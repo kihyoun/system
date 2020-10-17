@@ -1,0 +1,10 @@
+upstream review {
+    server ${REVIEW_PROXY};
+}
+
+server {
+    listen      80;
+    server_tokens off;
+    server_name *.${NGINX_HOST};
+    proxy_pass http://review;
+}

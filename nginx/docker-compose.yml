@@ -1,0 +1,11 @@
+web:
+  image: nginx
+  volumes:
+   - $NGINX_TEMPLATE_DIR:/etc/nginx/templates
+   - /etc/letsencrypt:/etc/letsencrypt
+  ports:
+    - "80:80"
+    - "443:443"
+  environment:
+   - NGINX_HOST=$NGINX_HOST
+   - NGINX_PORT=$NGINX_PORT
