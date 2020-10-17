@@ -1,0 +1,9 @@
+version: '2'
+services:
+  docker:
+    image: 'gitlab/gitlab-runner:latest'
+    restart: always
+    scale: 8
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/gitlab-runner

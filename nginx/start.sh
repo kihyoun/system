@@ -1,5 +1,8 @@
 #! /bin/bash
 source ../.docker.env
+source ../nginx-proxy/.docker.env
+source ../gitlab/.docker.env
+
 mkdir -p $NGINX_TEMPLATE_DIR
 cat ./templates/beta.conf.template  \
     ./templates/registry.conf.template \
@@ -11,12 +14,17 @@ cat ./templates/beta.conf.template  \
     -e "s@\${GITLAB_IP}@$GITLAB_IP@g" \
     -e "s@\${GITLAB_HOSTNAME}@$GITLAB_HOSTNAME@g" \
     -e "s@\${PROD_PROXY}@$PROD_PROXY@g" \
+    -e "s@\${BETA_PROXY}@$BETA_PROXY@g" \
     -e "s@\${NGINX_PROD_HOSTNAME}@$NGINX_PROD_HOSTNAME@g" \
+    -e "s@\${NGINX_HOST}@$NGINX_HOST@g" \
     -e "s@\${GITLAB_REGISTRY_HOST}@$GITLAB_REGISTRY_HOST@g" \
     -e "s@\${REVIEW_PROXY}@$REVIEW_PROXY@g" \
     > $NGINX_TEMPLATE_DIR/default.conf.template
 
 export NGINX_TEMPLATE_DIR=$NGINX_TEMPLATE_DIR
+export NGINX_HOST=$NGINX_HOST
+export NGINX_PORT=$NGINX_PORT
+docker-compose up --build --remove-orphans -d
 
 
 

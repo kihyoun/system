@@ -3,6 +3,7 @@ web:
   volumes:
    - $NGINX_TEMPLATE_DIR:/etc/nginx/templates
    - /etc/letsencrypt:/etc/letsencrypt
+  network_mode: "host"
   ports:
     - "80:80"
     - "443:443"
