@@ -1,0 +1,30 @@
+version: '2'
+
+services:
+  review:
+    image: 'jwilder/nginx-proxy'
+    restart: always
+    networks:
+      - review
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+  prod:
+    image: 'jwilder/nginx-proxy'
+    restart: always
+    networks:
+      - prod
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+  beta:
+    image: 'jwilder/nginx-proxy'
+    restart: always
+    networks:
+      - beta
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+networks:
+  review:
+  prod:
+  beta:
