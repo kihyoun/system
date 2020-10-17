@@ -12,6 +12,7 @@ gitlab_rails['registry_enabled'] = true
 registry['enable'] = true
 registry['registry_http_addr'] = "${GITLAB_IP}:${GITLAB_REGISTRY_PORT}"
 nginx['enable'] = true
+nginx['client_max_body_size'] = "200m"
 nginx['redirect_http_to_https'] = false
 nginx['listen_port'] = 80
 nginx['listen_https'] = false
