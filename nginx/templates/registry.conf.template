@@ -1,5 +1,5 @@
 upstream registry {
-    server ${GITLAB_IP};
+    server ${GITLAB_IP}:5050;
 }
 
 server {
