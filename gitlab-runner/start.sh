@@ -16,5 +16,6 @@ do
     --run-untagged=true \
     --locked=false \
     --access-level="not_protected" \
+    --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
     --docker-privileged=true
 done
