@@ -3,7 +3,7 @@ services:
   docker:
     image: 'gitlab/gitlab-runner:latest'
     restart: always
-    scale: 8
+    scale: $GITLAB_RUNNER_DOCKER_SCALE
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/gitlab-runner

@@ -1,12 +1,14 @@
-web:
-  image: nginx
-  volumes:
-   - $NGINX_TEMPLATE_DIR:/etc/nginx/templates
-   - /etc/letsencrypt:/etc/letsencrypt
-  network_mode: "host"
-  ports:
-    - "80:80"
-    - "443:443"
-  environment:
-   - NGINX_HOST=$NGINX_HOST
-   - NGINX_PORT=$NGINX_PORT
+version: "3.8"
+services:
+  web:
+    image: nginx
+    volumes:
+    - $NGINX_TEMPLATE_DIR:/etc/nginx/templates
+    - /etc/letsencrypt:/etc/letsencrypt
+    network_mode: "host"
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+    - NGINX_HOST=$NGINX_HOST
+    - NGINX_PORT=$NGINX_PORT

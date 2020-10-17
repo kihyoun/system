@@ -1,5 +1,13 @@
 #! /bin/bash
 source ../.docker.env
-export GITLAB_HOME=$GITLAB_HOME
-export GITLAB_HOSTNAME=$GITLAB_HOSTNAME
+export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
+
+for i in $( seq 1 $GITLAB_RUNNER_DOCKER_SCALE )
+do
+    docker run --rm --volumes-from gitlab-runner_docker_$i \
+        gitlab/gitlab-runner unregister --name docker-$i \
+        --url ${GITLAB_EXTERNAL_URL}
+done
+
 docker-compose down
+
