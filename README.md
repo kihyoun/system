@@ -1,6 +1,21 @@
-# The System-Web Bootstrapper
+# The System (System Bootstrapper)
 
-A Bootstrapper for the [System-Web Project](https://github.com/kihyoun/system-web)
+A Development Environment Bootstrapper for the [System-Web](https://github.com/kihyoun/system-web)
+
+## Intro
+
+What is the `System`?
+
+> „Software Engineering: The establishment and use of sound engineering principles in order to obtain economically software that is reliable and runs on real machines." - Friedrich Ludwig Bauer, 1968
+
+The above cite, made by Ludwig Bauer on a Nato Conference in 1968, describes the Goal of the `System`.
+
+A full functional software development lifecycle and environment based on Gitlab and Docker for the Development of "`X`". 
+
+This is the Bootstrapper for the `System-Web` Example, which is a Webapplication based on React and MobX.
+
+The `System Bootstrapper` aims to fully automate the `Bootstrap` of the Environment and maintenance for `System-Web`.
+
 
 ![https://raw.githubusercontent.com/kihyoun/system/main/overview.png](https://raw.githubusercontent.com/kihyoun/system/main/overview.png)
 
@@ -90,6 +105,7 @@ If the NGINX Proxy gets incoming Traffic from the NGINX Master, the Traffic will
 ### NGINX 
 
 The NGINX Server is running in Host Mode. It manages all incoming HTTP/HTTPS Requests and routing the Traffic to one of the internal NGINX Proxy or the Gitlab Container.
+
 
 
 
