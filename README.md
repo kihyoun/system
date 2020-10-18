@@ -27,7 +27,7 @@ All remaining Subdomains should be routed to dynamically created containers at r
 
 We could publish the internal IP of the container to the Master. But this approach would require the Master to restart and more difficult Maintenance and configuration.
 
-Instead, we use jwilder/nginx-proxy and create three instances with static internal IP's. Let's call them the Production, Beta and Review Proxy. Those are created before the Master, so that the IPs are published to the Master before the master startup. (The Master can anytime be refreshed with the `start.sh` command, to take over the IP's of the Gitlab Container and the Proxies).
+Instead, we use [jwilder/nginx-proxy](https://hub.docker.com/r/jwilder/nginx-proxy) and create three instances with static internal IP's. Let's call them the Production, Beta and Review Proxy. The IPs are published to the Master before the master startup. (The Master can anytime be refreshed with the `start.sh` command, this will also renew the Configuration with the IPs of the Gitlab Container and the Proxies).
 
 Subdomains `www` and `beta` are routed SSL encrypted to the Beta and Production Proxy. 
 All other Subdomains go unencrypted to the Review Proxy.
