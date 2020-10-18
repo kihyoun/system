@@ -81,6 +81,11 @@ Use `stop.sh`/`start.sh` from the Root Folder. They gracefully shutdown and clea
 However, all Services can individually be started/stopped with the `stop.sh`/`start.sh` Script inside each Folder for debugging and reconfiguration.
 
 ### Backup
+
+*Attention!: Backup is not part of the Architecture of the System, because the System itself is designed to be stateless!*.
+
+However, the Backup Script is designed to simply mirror all persistent Data into a specified location using rsync. This would include SSH Location as well.
+
 1. (optional) Shutdown the System:
 ```bash
 ./stop.sh
@@ -92,6 +97,10 @@ However, all Services can individually be started/stopped with the `stop.sh`/`st
 ```
 
 Hint: You can run the backup Script without shutting down everything, as it uses rsync, and watch the Sync Procedure
+
+Keep in Mind, that you can use the Gitlab Instance to handle the System Repository itself, including CI/CD. Currently, there is no CI/CD configured for the System Repository.
+
+A Feature improvement will include the **Pipeline for the System**. This turns the System into a Self-Contained System (SCS). The System itself could be deployed inside a virtual Docker Host...*to be continued...*
 
 ### Gitlab
 
@@ -121,6 +130,7 @@ If the NGINX Proxy gets incoming Traffic from the NGINX Master, the Traffic will
 ### NGINX 
 
 The NGINX Server is running in Host Mode. It manages all incoming HTTP/HTTPS Requests and routing the Traffic to one of the internal NGINX Proxy or the Gitlab Container.
+
 
 
 
