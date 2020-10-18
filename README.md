@@ -1,3 +1,3 @@
-# system
+# The System-Web Bootstrapper
 
-The [System-Web](https://github.com/kihyoun/system-web) Boostrapper
+A Bootstrapper for the [System-Web Project](https://github.com/kihyoun/system-web) Boostrapper
