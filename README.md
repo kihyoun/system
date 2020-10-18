@@ -12,13 +12,29 @@ The above cite, made by Ludwig Bauer on a Nato Conference in 1968, describes the
 
 A full functional software development lifecycle and environment based on Gitlab and Docker for the Development of "`X`". 
 
-This is the Bootstrapper for the `System-Web` Example, which is a Webapplication based on React and MobX.
+This is the Bootstrapper for the `System-Web` Example, which is a fully functional Development Environment and Self-Contained System for the Development of the React Application based on MobX.
 
 The `System Bootstrapper` aims to fully automate the `Bootstrap` of the Environment and maintenance for `System-Web`.
 
-
 ![https://raw.githubusercontent.com/kihyoun/system/main/overview.png](https://raw.githubusercontent.com/kihyoun/system/main/overview.png)
 
+### Architecture
+The Host is a Docker Host, which runs a NGINX Container in Host Network Mode, the Master NGINX. All HTTP/HTTPS Requests are handled by this Container. 
+
+Another Container is running Gitlab/CE. The Gitlab Container is created before the NGINX Master. The internal IP of the Container is published to the Master NGINX config. Requests to the `gitlab` and `registry` Subdomain are SSL encrypted and then routed as upstream with proxy_pass to the gitlab container. 
+
+All remaining Subdomains should be routed to dynamically created containers at runtime, a deployment Network.
+
+We could publish the internal IP of the container to the Master. But this approach would require the Master to handle complex scenarios.
+
+Instead, we use jwilder/nginx-proxy and create three instances with static internal IP's. Let's call them the Production, Beta and Review Proxy. Those are created before the Master, so that the IPs are published to the Master before the master startup. (The Master can anytime be refreshed with the `start.sh` command, to take over the IP's of the Gitlab Container and the Proxies).
+
+Subdomains `www` and `beta` are routed SSL encrypted to the Beta and Production Proxy. 
+All other Subdomains go unencrypted to the Review Proxy.
+
+During a successful Pipeline, the following will happen in the Test-Stage on a Merge-Request:
+1. The Container starts in detached Mode in the Review Proxy Network (see the [.gitlab-ci.yml](https://github.com/kihyoun/system-web/blob/main/.gitlab-ci.yml#L70) from the System-Web Example)
+2. The Subdomain, which is the Branchname, is published as VIRTUAL_HOST to the Review Proxy. **The Application will be served under the given Subdomain without restarting the Master.**
 
 ## Preperation
 
@@ -105,6 +121,7 @@ If the NGINX Proxy gets incoming Traffic from the NGINX Master, the Traffic will
 ### NGINX 
 
 The NGINX Server is running in Host Mode. It manages all incoming HTTP/HTTPS Requests and routing the Traffic to one of the internal NGINX Proxy or the Gitlab Container.
+
 
 
 
