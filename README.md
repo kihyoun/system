@@ -81,17 +81,17 @@ Use `stop.sh`/`start.sh` from the Root Folder. They gracefully shutdown and clea
 However, all Services can individually be started/stopped with the `stop.sh`/`start.sh` Script inside each Folder for debugging and reconfiguration.
 
 ### Backup
-1. Shutdown the System:
+1. (optional) Shutdown the System:
 ```bash
 ./stop.sh
 ```
-The Runners are trying to unregister and will then shutdown, after that the Gitlab Instance and the Nginx Instances.
-
 2. Setup `BACKUPDIR` and `LIVEDIR` in `.docker.env`
 3. Run the Backup Script: 
 ```bash
 ./backup.sh
 ```
+
+Hint: You can run the backup Script without shutting down everything, as it uses rsync, and watch the Sync Procedure
 
 ### Gitlab
 
