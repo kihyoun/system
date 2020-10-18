@@ -25,7 +25,7 @@ Another Container is running Gitlab/CE. The Gitlab Container is created before t
 
 All remaining Subdomains should be routed to dynamically created containers at runtime, a deployment Network.
 
-We could publish the internal IP of the container to the Master. But this approach would require the Master to handle complex scenarios.
+We could publish the internal IP of the container to the Master. But this approach would require the Master to restart and more difficult Maintenance and configuration.
 
 Instead, we use jwilder/nginx-proxy and create three instances with static internal IP's. Let's call them the Production, Beta and Review Proxy. Those are created before the Master, so that the IPs are published to the Master before the master startup. (The Master can anytime be refreshed with the `start.sh` command, to take over the IP's of the Gitlab Container and the Proxies).
 
