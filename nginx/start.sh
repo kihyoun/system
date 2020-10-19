@@ -18,6 +18,7 @@ cat ./templates/beta.conf.template  \
     -e "s@\${NGINX_PROD_HOSTNAME}@$NGINX_PROD_HOSTNAME@g" \
     -e "s@\${NGINX_HOST}@$NGINX_HOST@g" \
     -e "s@\${GITLAB_REGISTRY_HOST}@$GITLAB_REGISTRY_HOST@g" \
+    -e "s@\${GITLAB_REGISTRY_PORT}@$GITLAB_REGISTRY_PORT@g" \
     -e "s@\${REVIEW_PROXY}@$REVIEW_PROXY@g" \
     > $NGINX_TEMPLATE_DIR/default.conf.template
 
