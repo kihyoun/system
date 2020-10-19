@@ -1,6 +1,5 @@
 #! /bin/bash
 source ../.docker.env
-export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
 
 for i in $( seq 1 $GITLAB_RUNNER_DOCKER_SCALE )
 do

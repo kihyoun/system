@@ -4,12 +4,10 @@ source ../nginx-proxy/.docker.env
 source ../gitlab/.docker.env
 
 mkdir -p $NGINX_TEMPLATE_DIR
-cat ./templates/beta.conf.template  \
-    ./templates/registry.conf.template \
-    ./templates/gitlab.conf.template \
-    ./templates/prod.conf.template \
-    ./templates/review.conf.template \
-    | sed -e "s@\${BETA_PROXY}@$BETA_PROXY@g" \
+
+cat ./templates/beta.conf.template ./templates/registry.conf.template \
+    ./templates/gitlab.conf.template ./templates/prod.conf.template \
+    ./templates/review.conf.template | sed -e "s@\${BETA_PROXY}@$BETA_PROXY@g" \
     -e "s@\${NGINX_BETA_HOSTNAME}@$NGINX_BETA_HOSTNAME@g" \
     -e "s@\${GITLAB_IP}@$GITLAB_IP@g" \
     -e "s@\${GITLAB_HOSTNAME}@$GITLAB_HOSTNAME@g" \
@@ -22,11 +20,4 @@ cat ./templates/beta.conf.template  \
     -e "s@\${REVIEW_PROXY}@$REVIEW_PROXY@g" \
     > $NGINX_TEMPLATE_DIR/default.conf.template
 
-export NGINX_TEMPLATE_DIR=$NGINX_TEMPLATE_DIR
-export NGINX_HOST=$NGINX_HOST
-export NGINX_PORT=$NGINX_PORT
-export GITLAB_REGISTRY_PORT=$GITLAB_REGISTRY_PORT
 docker-compose up --build --remove-orphans -d
-
-
-
