@@ -25,6 +25,7 @@ cat ./templates/beta.conf.template  \
 export NGINX_TEMPLATE_DIR=$NGINX_TEMPLATE_DIR
 export NGINX_HOST=$NGINX_HOST
 export NGINX_PORT=$NGINX_PORT
+export GITLAB_REGISTRY_PORT=$GITLAB_REGISTRY_PORT
 docker-compose up --build --remove-orphans -d
 
 
