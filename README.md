@@ -10,7 +10,7 @@ What is the `System`?
 
 The above cite, made by Ludwig Bauer on a Nato Conference in 1968, describes the Goal of the `System`.
 
-A full functional software development lifecycle and environment based on Gitlab and Docker for the Development of "`X`". 
+A full functional, easy to maintain and bootable software development lifecycle and environment based on Gitlab and Docker. 
 
 This is the Bootstrapper for the `System-Web`, which aims to be a fully functional Development Environment and Self-Contained System for the Development of the Web Application written in React. It features a full functional Environment and Workflow for the [Gitlab Review Apps](https://docs.gitlab.com/ee/ci/review_apps/)
 
