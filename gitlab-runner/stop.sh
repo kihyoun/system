@@ -1,12 +1,16 @@
 #! /bin/bash
 source ../.docker.env
 
-for i in $( seq 1 $GITLAB_RUNNER_DOCKER_SCALE )
-do
-    docker run --rm --volumes-from gitlab-runner_docker_$i \
-        gitlab/gitlab-runner unregister --name docker-$i \
-        --url ${GITLAB_EXTERNAL_URL}
+for i in ../.projects.env/.*.env; do
+    source $i
+    export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
+
+    for i in $( seq 1 $GITLAB_RUNNER_DOCKER_SCALE )
+    do
+        docker run --rm --volumes-from ${PROJECT_NAME}_docker_$i \
+            gitlab/gitlab-runner unregister --name ${PROJECT_NAME}=docker-$i \
+            --url ${GITLAB_EXTERNAL_URL}
+    done
+
+    docker-compose -p ${PROJECT_NAME} down
 done
-
-docker-compose down
-
