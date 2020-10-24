@@ -8,7 +8,7 @@ for i in ../.projects.env/.*.env; do
     for i in $( seq 1 $GITLAB_RUNNER_DOCKER_SCALE )
     do
         docker run --rm --volumes-from ${PROJECT_NAME}_docker_$i \
-            gitlab/gitlab-runner unregister --name ${PROJECT_NAME}=docker-$i \
+            gitlab/gitlab-runner unregister --name ${PROJECT_NAME}-docker-$i \
             --url ${GITLAB_EXTERNAL_URL}
     done
 
