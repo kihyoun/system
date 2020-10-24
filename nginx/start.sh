@@ -81,4 +81,4 @@ for i in ../.projects.env/.*.env; do
   generate_proxy_config
 done
 
-# docker-compose up --build --remove-orphans -d
+docker-compose up --build --remove-orphans -d
