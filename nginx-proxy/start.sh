@@ -1,16 +1,26 @@
 #! /bin/bash
-echo > .docker.env
 for i in ../.projects.env/.*.env; do
     source $i
+    ENV_FILE=./.projects/.$PROJECT_NAME.env
+    echo > $ENV_FILE
+
+    [ $USE_BETA_HOST = true ] && export BETA_SCALE=1 || export BETA_SCALE=0
+    [ $USE_REVIEW_HOST = true ] && export REVIEW_SCALE=1 || export REVIEW_SCALE=0
+
     docker-compose -p ${PROJECT_NAME} up --remove-orphans --build -d
 
-    printf "${PROJECT_NAME}_REVIEW_PROXY=" >> .docker.env
-    docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${PROJECT_NAME}_review_1 >> .docker.env
+    printf "PROD_PROXY=" >> $ENV_FILE
+    docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${PROJECT_NAME}_prod_1 >> $ENV_FILE
 
-    printf "${PROJECT_NAME}_PROD_PROXY=" >> .docker.env
-    docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${PROJECT_NAME}_prod_1 >> .docker.env
+    if [ $USE_BETA_HOST = true ]; then
+        printf "BETA_PROXY=" >> $ENV_FILE
+        docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${PROJECT_NAME}_beta_1 >> $ENV_FILE
+    fi
 
-    printf "${PROJECT_NAME}_BETA_PROXY=" >> .docker.env
-    docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${PROJECT_NAME}_beta_1 >> .docker.env
-done
+    if [ $USE_REVIEW_HOST = true ]; then
+        printf "REVIEW_PROXY=" >> $ENV_FILE
+        docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${PROJECT_NAME}_review_1 >> $ENV_FILE
+    fi
+
+ done
 

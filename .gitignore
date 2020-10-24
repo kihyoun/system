@@ -2,3 +2,4 @@ gitlab/.docker.env
 .docker.env
 .projects.env/.*.env
 .projects.env/.*.env
+nginx-proxy/.projects/.*.env

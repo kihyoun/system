@@ -4,6 +4,7 @@ services:
   review:
     image: 'jwilder/nginx-proxy'
     restart: always
+    scale: $REVIEW_SCALE
     networks:
       - review
     volumes:
@@ -19,6 +20,7 @@ services:
   beta:
     image: 'jwilder/nginx-proxy'
     restart: always
+    scale: $BETA_SCALE
     networks:
       - beta
     volumes:
