@@ -1,3 +1,6 @@
 #! /bin/bash
-source ../.docker.env
-docker-compose down
+for i in ../.projects.env/.*.env; do
+    source $i
+    docker-compose -p ${PROJECT_NAME} down
+done
+

@@ -30,31 +30,13 @@ function generate_nginx_conf {
   esac
 }
 
-generate_nginx_conf $PROD_DOMAIN_MODE \
-  $PROD_UPSTREAM \
-  $PROD_PROXY \
-  $PROD_PORT \
-  $PROD_HOST \
-  $PROD_SSL \
-  $PROD_SSL_KEY \
-  > $NGINX_TEMPLATE_DIR/default.conf.template
-
-generate_nginx_conf $BETA_DOMAIN_MODE \
-  $BETA_UPSTREAM \
-  $BETA_PROXY \
-  $BETA_PORT \
-  $BETA_HOST \
-  $BETA_SSL \
-  $BETA_SSL_KEY \
-  >> $NGINX_TEMPLATE_DIR/default.conf.template
-
 generate_nginx_conf $GITLAB_DOMAIN_MODE \
   $GITLAB_UPSTREAM \
   $GITLAB_IP \
   $GITLAB_PORT \
   $GITLAB_HOST \
   $GITLAB_SSL \
-  $GITLAB_SSL_KEY >> $NGINX_TEMPLATE_DIR/default.conf.template
+  $GITLAB_SSL_KEY > $NGINX_TEMPLATE_DIR/default.conf.template
 
 generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
   $GITLAB_REGISTRY_UPSTREAM \
@@ -64,10 +46,37 @@ generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
   $GITLAB_REGISTRY_SSL \
   $GITLAB_REGISTRY_SSL_KEY >> $NGINX_TEMPLATE_DIR/default.conf.template
 
-generate_nginx_conf $REVIEW_DOMAIN_MODE \
-  $REVIEW_UPSTREAM \
-  $REVIEW_PROXY \
-  $REVIEW_PORT \
-  $REVIEW_HOST >> $NGINX_TEMPLATE_DIR/default.conf.template
+function generate_project_config {
+  generate_nginx_conf $PROD_DOMAIN_MODE \
+    $PROD_UPSTREAM \
+    $PROD_PROXY \
+    $PROD_PORT \
+    $PROD_HOST \
+    $PROD_SSL \
+    $PROD_SSL_KEY \
+    >> $NGINX_TEMPLATE_DIR/default.conf.template
 
-docker-compose up --build --remove-orphans -d
+  [ $USE_BETA_HOST = true ] && generate_nginx_conf $BETA_DOMAIN_MODE \
+    $BETA_UPSTREAM \
+    $BETA_PROXY \
+    $BETA_PORT \
+    $BETA_HOST \
+    $BETA_SSL \
+    $BETA_SSL_KEY \
+    >> $NGINX_TEMPLATE_DIR/default.conf.template
+
+  [ $USE_REVIEW_HOST = true ] && generate_nginx_conf $REVIEW_DOMAIN_MODE \
+    $REVIEW_UPSTREAM \
+    $REVIEW_PROXY \
+    $REVIEW_PORT \
+    $REVIEW_HOST >> $NGINX_TEMPLATE_DIR/default.conf.template
+}
+
+for i in ./.nginx.env/.*.env; do
+  source $i
+  generate_project_config
+done
+
+
+
+# docker-compose up --build --remove-orphans -d
