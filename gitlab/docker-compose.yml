@@ -1,7 +1,7 @@
 gitlab:
     image: 'gitlab/gitlab-ce:latest'
     restart: always
-    hostname: '$GITLAB_HOSTNAME'
+    hostname: '$GITLAB_HOST'
     volumes:
       - '$GITLAB_HOME/config:/etc/gitlab'
       - '$GITLAB_HOME/logs:/var/log/gitlab'
