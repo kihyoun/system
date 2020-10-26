@@ -4,6 +4,6 @@ services:
     image: nginx
     volumes:
     - $NGINX_TEMPLATE_DIR:/etc/nginx/templates
-    - /etc/letsencrypt:/etc/letsencrypt
+    - $SSL_BASEDIR:$SSL_BASEDIR
     network_mode: "host"
     ports: [80, 443]
