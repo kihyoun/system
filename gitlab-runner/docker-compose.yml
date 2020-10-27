@@ -9,8 +9,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/gitlab-runner
-      - .hosts:/etc/hosts.tmpl
-    command: cat /etc/hosts.tmpl >> /etc/hosts
+      - .hosts:/etc/hosts
 
 networks:
   gitlab_web:

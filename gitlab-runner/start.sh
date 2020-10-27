@@ -10,7 +10,8 @@ for i in ../.projects.env/.*.env; do
 
     for i in $( seq 1 $GITLAB_RUNNER_DOCKER_SCALE )
     do
-        docker run --rm --volumes-from ${PROJECT_NAME}_runner_docker_$i gitlab/gitlab-runner register \
+        docker run --rm --network=container:${PROJECT_NAME}_runner_docker_$i \
+        --volumes-from=${PROJECT_NAME}_runner_docker_$i gitlab/gitlab-runner register \
         --non-interactive \
         --executor "docker" \
         --docker-image alpine:latest \
