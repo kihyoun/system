@@ -29,10 +29,7 @@ services:
 networks:
   review:
       driver: bridge
-      internal: true
   prod:
       driver: bridge
-      internal: true
   beta:
       driver: bridge
-      internal: true
