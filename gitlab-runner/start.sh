@@ -1,5 +1,7 @@
 #! /bin/bash
 source ../.docker.env
+source ../gitlab/.docker.env
+echo ${GITLAB_IP} ${GITLAB_HOST} > .hosts
 
 for i in ../.projects.env/.*.env; do
     source $i

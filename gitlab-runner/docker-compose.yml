@@ -3,7 +3,16 @@ services:
   docker:
     image: 'gitlab/gitlab-runner:latest'
     restart: always
+    networks:
+      - gitlab_web
     scale: $GITLAB_RUNNER_DOCKER_SCALE
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/gitlab-runner
+      - .hosts:/etc/hosts.tmpl
+    command: cat /etc/hosts.tmpl >> /etc/hosts
+
+networks:
+  gitlab_web:
+    external:
+      name: gitlab_web

@@ -12,5 +12,5 @@ for i in ../.projects.env/.*.env; do
             --url ${GITLAB_EXTERNAL_URL}
     done
 
-    docker-compose -p ${PROJECT_NAME} down
+    docker-compose -p ${PROJECT_NAME}_runner down
 done
