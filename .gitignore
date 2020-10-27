@@ -3,3 +3,4 @@ gitlab/.docker.env
 .projects.env/.*.env
 .projects.env/.*.env
 nginx-proxy/.projects/.*.env
+gitlab-runner/.hosts

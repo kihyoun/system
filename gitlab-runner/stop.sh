@@ -9,7 +9,7 @@ for i in ../.projects.env/.*.env; do
     do
         docker run --rm --volumes-from ${PROJECT_NAME}_runner_docker_$i \
             gitlab/gitlab-runner unregister --name ${PROJECT_NAME}-runner-docker-$i \
-            --url ${GITLAB_EXTERNAL_URL}
+            --url ${GITLAB_EXTERNAL_URL} --all-runners
     done
 
     docker-compose -p ${PROJECT_NAME}_runner down
