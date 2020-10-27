@@ -28,5 +28,8 @@ services:
 
 networks:
   review:
+      driver: bridge
   prod:
+      driver: bridge
   beta:
+      driver: bridge
