@@ -1,11 +1,15 @@
 #! /bin/bash
 source ../.docker.env
 source ../gitlab/.docker.env
-echo ${GITLAB_IP} ${GITLAB_HOST} > .hosts
+
+echo > ./.hosts
+
+[ $GITLAB_REGISTRY_DOMAIN_MODE -lt 2 ] && echo "${GITLAB_IP} ${GITLAB_HOST}" > ./.hosts
 
 for i in ../.projects.env/.*.env; do
     source $i
     export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
+    
     docker-compose -p ${PROJECT_NAME}_runner up --build --remove-orphans -d
 
     for i in $( seq 1 $GITLAB_RUNNER_DOCKER_SCALE )

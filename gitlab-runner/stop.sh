@@ -15,3 +15,6 @@ for i in ../.projects.env/.*.env; do
 
     docker-compose -p ${PROJECT_NAME}_runner down
 done
+
+docker volume prune -f
+docker network prune -f
