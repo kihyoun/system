@@ -37,7 +37,7 @@ During a successful Pipeline, the following will happen in the Test-Stage on a M
 ## Preperation
 
 - [Install Docker](https://docs.docker.com/engine/install/ubuntu/)
-- Create .docker.env - [.docker.env.example](https://github.com/kihyoun/system/blob/main/.docker.env.example)
+- Create .docker.env - [.docker.env.example](https://github.com/kihyoun/system/blob/main/.docker.env.example) or use [the System Bootstrapper Wizard (Beta](https://www.system-bootstrapper.com)
 - Install SSL Certificates (this Project uses [Certbot](https://ceratbot.eff.org/lets-encrypt/ubuntufocal-other))
 - Setup Nginx nginx/templates/*.conf.template 
 
