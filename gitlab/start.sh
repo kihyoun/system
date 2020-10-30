@@ -3,7 +3,7 @@ source ../.docker.env
 
 docker-compose up --build --remove-orphans -d
 
-printf "GITLAB_IP=" > .docker.env
+printf "export GITLAB_IP=" > .docker.env
 docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' gitlab_gitlab_1 >> .docker.env
 source .docker.env
 cat gitlab.rb \

@@ -9,7 +9,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/gitlab-runner
-      - .hosts:/etc/hosts
+
+    extra_hosts:
+      - "$GITLAB_REGISTRY_HOST:$GITLAB_IP"
+      - "$GITLAB_HOST:$GITLAB_IP"
 
 networks:
   gitlab_web:

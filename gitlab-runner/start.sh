@@ -1,11 +1,9 @@
 #! /bin/bash
 source ../.docker.env
 source ../gitlab/.docker.env
-
-echo > ./.hosts
-
-[ $GITLAB_DOMAIN_MODE -lt 2 ] && echo "${GITLAB_IP} ${GITLAB_HOST}" >> ./.hosts
-[ $GITLAB_REGISTRY_DOMAIN_MODE -lt 2 ] && echo "${GITLAB_IP} ${GITLAB_REGISTRY_HOST}" >> ./.hosts
+export GITLAB_HOST=$GITLAB_HOST
+export GITLAB_REGISTRY_HOST=$GITLAB_REGISTRY_HOST
+export GITLAB_IP=$GITLAB_IP
 
 for i in ../.projects.env/.*.env; do
     source $i
@@ -20,16 +18,15 @@ for i in ../.projects.env/.*.env; do
         --non-interactive \
         --executor "docker" \
         --docker-image alpine:latest \
-        --url $([ $GITLAB_DOMAIN_MODE -lt 2 ] && echo "http://$GITLAB_IP:$GITLAB_PORT/" || echo "${GITLAB_EXTERNAL_URL}") \
+        --url "http://$GITLAB_IP:$GITLAB_PORT/" \
         --registration-token "$GITLAB_RUNNER_TOKEN" \
         --description "$PROJECT_NAME-runner-docker-$i" \
         --tag-list "docker,aws" \
         --run-untagged=true \
         --access-level="not_protected" \
+        --clone-url "http://$GITLAB_IP:$GITLAB_PORT/" \
         --docker-network-mode="gitlab_web" \
-        --clone-url $([ $GITLAB_DOMAIN_MODE -lt 2 ] && echo "http://$GITLAB_IP:$GITLAB_PORT/" || echo "${GITLAB_EXTERNAL_URL}") \
         --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
-        $([ $GITLAB_DOMAIN_MODE -lt 2 ] && echo '--docker-volumes /etc/hosts:/etc/hosts') \
         --docker-privileged=true
     done
 
