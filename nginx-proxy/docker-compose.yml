@@ -13,6 +13,7 @@ services:
   prod:
     image: 'jwilder/nginx-proxy'
     restart: always
+    scale: $PROD_SCALE
     networks:
       - prod
     volumes:
