@@ -117,11 +117,11 @@ They use the [docker-compose scale](https://docs.docker.com/compose/compose-file
 
 The NGINX Proxy Services handle each different Networks. One for Production, for for the Beta Test (both SSL Secured), and one for the dynamic [Review Apps](https://docs.gitlab.com/ee/ci/review_apps/) Network.
  
-The NGINX Proxies create 3 independent Subnetworks:
+The NGINX Proxies create up to three independent Subnetworks for each Project:
 
-* nginx-proxy_prod
-* nginx-proxy_beta
-* nginx-proxy_review
+* projectname_prod
+* projectname_prod_beta
+* projectname_prod_review
 
 If the NGINX Proxy gets incoming Traffic from the NGINX Master, the Traffic will be sent to the Container running in the same Network, with the matching VIRTUAL_HOST. See the [Gitlab CI Example from System-Web](https://github.com/kihyoun/system-web/blob/main/.gitlab-ci.yml#L70)
 
