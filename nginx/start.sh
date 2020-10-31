@@ -48,7 +48,7 @@ generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
 function generate_proxy_config {
   source ../nginx-proxy/.projects/.$PROJECT_NAME.env
 
-  generate_nginx_conf $PROD_DOMAIN_MODE \
+  [ $USE_PROD_HOST = true ] && generate_nginx_conf $PROD_DOMAIN_MODE \
     ${PROJECT_NAME}_prod \
     $PROD_PROXY \
     $PROD_PORT \
