@@ -26,7 +26,7 @@ do
     --docker-privileged=true
 done
 
-for i in ../.projects.env/.*.env; do
+for i in ../.projects.env/*.env; do
     source $i
     export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
 
