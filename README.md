@@ -1,6 +1,6 @@
 # The System (System Bootstrapper)
 
-A Development Environment Bootstrapper for the [System-Web](https://github.com/kihyoun/system-web)
+A Development Environment Bootstrapper
 
 ## Intro
 
