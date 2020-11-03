@@ -1,5 +1,5 @@
 #! /bin/bash
-for i in ../.projects.env/*.env; do
+for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/null); do
     source $i
     ENV_FILE=./.projects/.$PROJECT_NAME.env
     echo > $ENV_FILE

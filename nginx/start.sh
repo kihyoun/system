@@ -76,7 +76,7 @@ function generate_proxy_config {
     >> $NGINX_TEMPLATE_DIR/default.conf.template
 }
 
-for i in ../.projects.env/.*.env; do
+for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/null); do
   source $i
   generate_proxy_config
 done

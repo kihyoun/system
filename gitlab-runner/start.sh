@@ -26,9 +26,12 @@ do
     --docker-privileged=true
 done
 
-for i in ../.projects.env/*.env; do
+for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/null); do
     source $i
     export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
+    export GITLAB_HOST=$GITLAB_HOST
+    export GITLAB_REGISTRY_HOST=$GITLAB_REGISTRY_HOST
+    export GITLAB_IP=$GITLAB_IP
 
     docker-compose -p ${PROJECT_NAME}_runner up --build --remove-orphans -d
 
