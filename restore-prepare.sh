@@ -25,9 +25,8 @@ shopt -s dotglob
 [ -d system ] && [ -f bootstrapper.zip ] && unzip bootstrapper.zip -d ./system/
 if [ -d system ]; then
         (cd system; 
-	[ -d bootstrapper ] && mv bootstrapper/.projects.env/.*.env .projects.env
-	[ -d bootstrapper ] && mv bootstrapper/.projects.env/*.env .projects.env
-	[ -d bootstrapper ] && mv bootstrapper/* .
+	[ -d bootstrapper ] && cp bootstrapper/.projects.env/* .projects.env/
+	[ -d bootstrapper ] && cp bootstrapper/* .
 	[ -d bootstrapper ] && rm -fr bootstrapper
 	if [ -f .docker.env ]; then
 		source .docker.env
