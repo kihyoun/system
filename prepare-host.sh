@@ -21,14 +21,6 @@ sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
 sudo docker-compose --version
 
 # oh my
-sudo sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-
-echo 'export ZSH="/root/.oh-my-zsh"' > /root/.zshrc
-echo 'plugins=(git)' >>  /root/.zshrc
-echo 'source $ZSH/oh-my-zsh.sh' >>  /root/.zshrc
-echo 'export ZSH_THEME="apple"' >>  /root/.zshrc
-sudo zsh
-
 [ ! -d system ] && git clone https://github.com/kihyoun/system.git
 if [ -d system ]; then
         cd system;
