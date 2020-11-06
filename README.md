@@ -34,7 +34,7 @@ During a successful Pipeline, the following will happen in the Test-Stage on a M
 1. The Container starts in detached Mode in the Review Proxy Network (see the [.gitlab-ci.yml](https://github.com/kihyoun/system-web/blob/main/.gitlab-ci.yml#L70) from the System-Web Example)
 2. The Subdomain, which is the Branchname, is published as VIRTUAL_HOST to the Review Proxy. **The Application will be served under the given Subdomain without restarting the Master.**
 
-## Preperation
+## Manual Preperation
 
 - [Install Docker](https://docs.docker.com/engine/install/ubuntu/)
 - Create `.docker.env` - [.docker.env.example](https://github.com/kihyoun/system/blob/main/.docker.env.example) or use [the System Bootstrapper Wizard (Beta)](https://www.system-bootstrapper.com), which is a Web Application written in React [System-Wizard](https://github.com/kihyoun/system-wizard)
@@ -46,6 +46,15 @@ During a successful Pipeline, the following will happen in the Test-Stage on a M
 ```bash
 ./start.sh
 ```
+
+## Automated Installation
+Checkout the (Prepare-Host)[./Prepare-Host.md] Section for more options.
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/prepare.sh)"
+```
+
 The initial Run may take a few minutes, depending on Network. 
 
 Your Container Network should look like this:
