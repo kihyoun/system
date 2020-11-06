@@ -1,6 +1,4 @@
 #!/bin/bash
-source install.sh
-source prepare.sh
 shopt -s dotglob
 [ -d system ] && [ -f bootstrapper.zip ] && unzip bootstrapper.zip -d ./system/
 if [ -d system ]; then
