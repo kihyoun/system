@@ -19,13 +19,3 @@ sudo curl -L "https://github.com/docker/compose/releases/download/1.27.4/docker-
 sudo chmod +x /usr/local/bin/docker-compose
 sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
 sudo docker-compose --version
-
-# oh my
-[ ! -d system ] && git clone https://github.com/kihyoun/system.git
-if [ -d system ]; then
-        cd system;
-        ./start.sh
-else
-        echo "System not found."
-fi
-
