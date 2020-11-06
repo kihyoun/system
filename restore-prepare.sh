@@ -29,9 +29,9 @@ if [ -d system ]; then
 	[ -d bootstrapper ] && rm -fr bootstrapper
 	if [ -f .docker.env ]; then
 		source .docker.env
-		rsync -av $BACKUPDIR/srv $LIVEDIR
+		rsync -av --progress $BACKUPDIR/srv $LIVEDIR
 		mkdir -p /etc/letsencrypt
-		rsync -av $BACKUPDIR/letsencrypt /etc/letsencrypt
+		rsync -av --progress $BACKUPDIR/letsencrypt /etc/letsencrypt
 		./start.sh
 	fi
 	)
