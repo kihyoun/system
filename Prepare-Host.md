@@ -1,12 +1,20 @@
-## Semi start: Install dependencies and start
-This will install and launch the bootstrapper
+## Install dependencies
+
 ```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/install.sh)"
+```
+## prepare Bootstrapper
+This will checkout the Bootstrapper
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/install.sh)"
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/prepare.sh)"
 ```
 
-## Install dependencies, restore Backup and start
-This will read a bootstrapper.zip, install dependencies, restore the Backup Folders and start
+## Restore
+This will restore an existing Backup using the bootstrapper.zip
 ```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/prepare.sh)"
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/restore.sh)"
 ```
 
