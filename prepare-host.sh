@@ -32,9 +32,10 @@ sudo zsh
 [ ! -d system ] && git clone https://github.com/kihyoun/system.git
 [ -f ./bootstrapper.zip ] && mv bootstrapper.zip ./system/
 if [ -d system ]; then
-        [ -f ./bootstrapper.zip ] && unzip ./bootstrapper.zip
-        (cd system; ./start.sh)
-        echo 'Ready to deploy.'
+        cd system;
+        source .docker.env
+        rsync $BACKDIR $LIVEDIR
+        ./start.sh
 else
         echo "System not found."
 fi
