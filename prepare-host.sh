@@ -2,7 +2,7 @@
 
 sudo apt-get update
 sudo apt-get upgrade -y
-sudo apt-get install zsh git apt-transport-https \
+sudo apt-get install zsh unzip git apt-transport-https \
     ca-certificates \
     curl \
     gnupg-agent \
