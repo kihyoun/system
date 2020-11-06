@@ -22,6 +22,6 @@ sudo docker-compose --version
 
 # oh my
 sudo sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-sudo cat zshtmp > /root/.zshrc
+sudo echo 'ZSH_THEME="apple"' >> /root/.zshrc
 echo "READY"
 
