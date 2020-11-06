@@ -27,5 +27,15 @@ echo 'export ZSH="/root/.oh-my-zsh"' > /root/.zshrc
 echo 'plugins=(git)' >>  /root/.zshrc
 echo 'source $ZSH/oh-my-zsh.sh' >>  /root/.zshrc
 echo 'export ZSH_THEME="apple"' >>  /root/.zshrc
-echo "READY"
+sudo zsh
+
+[ ! -d system ] && git clone https://github.com/kihyoun/system.git
+[ -f ./bootstrapper.zip ] && mv bootstrapper.zip ./system/
+if [ -d system ]; then
+        [ -f ./bootstrapper.zip ] && unzip ./bootstrapper.zip
+        (cd system; ./start.sh)
+        echo 'Ready to deploy.'
+else
+        echo "System not found."
+fi
 
