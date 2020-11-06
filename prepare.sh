@@ -4,6 +4,6 @@ if [ -d system ]; then
         cd system;
         ./start.sh
 else
-        echo "System not found."
+        echo "System not found. Please create a .docker.env"
 fi
 
