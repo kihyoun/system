@@ -48,7 +48,7 @@ During a successful Pipeline, the following will happen in the Test-Stage on a M
 ```
 
 ## Automated Installation
-Checkout the (Prepare-Host)[./Prepare-Host.md] Section for more options.
+Checkout the [Prepare-Host](./Prepare-Host.md) Section for more options.
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/install.sh)"
