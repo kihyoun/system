@@ -30,11 +30,8 @@ echo 'export ZSH_THEME="apple"' >>  /root/.zshrc
 sudo zsh
 
 [ ! -d system ] && git clone https://github.com/kihyoun/system.git
-[ -f ./bootstrapper.zip ] && mv bootstrapper.zip ./system/
 if [ -d system ]; then
         cd system;
-        source .docker.env
-        rsync $BACKDIR $LIVEDIR
         ./start.sh
 else
         echo "System not found."
