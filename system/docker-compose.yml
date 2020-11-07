@@ -6,6 +6,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - $BACKUPDIR:$BACKUPDIR
       - templates:/templates
+      - synctemplates:/synctemplates
       - ssl:/ssl
     build:
       context: ./
@@ -18,6 +19,13 @@ services:
       - ssl:$SSL_BASEDIR
     network_mode: "host"
 
+  sync:
+    image: nginx
+    volumes:
+      - synctemplates:/etc/nginx/templates
+    network_mode: "host"
+
 volumes:
   templates:
+  synctemplates:
   ssl:
