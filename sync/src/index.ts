@@ -165,3 +165,12 @@ app.patch( "/command/start", authenticateJWT, async ( req, res ) => {
     process.exit(0);
 });
 
+app.patch( "/command/restore", authenticateJWT, async ( req, res ) => {
+    try {
+      execSync('cd ..; bash restore.sh');
+      res.sendStatus(200);
+      process.exit(0);
+    } catch (err) {
+      res.sendStatus(500);
+    }
+});
