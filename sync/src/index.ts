@@ -26,12 +26,12 @@ const SYNC_USER = process.env.SYNC_USER || Base64.stringify(hmacSHA512(Math.rand
 const SYNC_PASS = process.env.SYNC_PASS || Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
 let refreshTokens: any[] = [];
 
-const port = 8071; // default port to listen
+const port = 8071;
 
-// start the Express server
 app.listen( port, () => {
-    // tslint:disable-next-line:no-console
     console.log( `server started at http://localhost:${ port }` );
+    console.log( `SYNC_USER: ${SYNC_USER}` );
+    console.log( `SYNC_PASS: ${SYNC_PASS}` );
 } );
 
 const authenticateJWT = (req:any, res:any, next:any) => {
