@@ -11,7 +11,6 @@ if [ -d system ]; then
 		rsync -av --progress $BACKUPDIR/srv/ $LIVEDIR
 		mkdir -p /etc/letsencrypt
 		rsync -av --progress $BACKUPDIR/letsencrypt/ /etc/letsencrypt
-		./start.sh
 	fi
 	)
 	echo 'Ready.'
