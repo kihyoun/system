@@ -14,6 +14,8 @@ if [ -d system ]; then
 	fi
 	)
 	echo 'Ready.'
+	exit 0
 else
         echo "System not found."
+		exit 1
 fi
