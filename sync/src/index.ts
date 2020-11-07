@@ -65,7 +65,7 @@ app.post('/token', (req, res) => {
             return res.sendStatus(403);
         }
 
-        const accessToken = jwt.sign({ username: user.username, role: user.role }, SYNC_SECRET, { expiresIn: '1m' });
+        const accessToken = jwt.sign({ username: user.username, role: user.role }, SYNC_SECRET, { expiresIn: '20m' });
 
         res.json({
             accessToken
@@ -75,7 +75,7 @@ app.post('/token', (req, res) => {
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
     if (username === SYNC_USER && password === SYNC_PASS) {
-        const accessToken = jwt.sign({ username }, SYNC_SECRET, { expiresIn: '1m' });
+        const accessToken = jwt.sign({ username }, SYNC_SECRET, { expiresIn: '20m' });
         const refreshToken = jwt.sign({ username }, SYNC_REFRESHTOKENSECRET);
         refreshTokens.push(refreshToken);
 
