@@ -6,8 +6,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $BACKUPDIR:$BACKUPDIR
-      - /templates
-      - /ssl
+      - templates
+      - ssl
     build:
       context: ./
       dockerfile: Dockerfile
+volumes:
+  templates:
+  ssl:
