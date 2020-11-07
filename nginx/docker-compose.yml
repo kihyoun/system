@@ -6,3 +6,5 @@ services:
     - $NGINX_TEMPLATE_DIR:/etc/nginx/templates
     - $SSL_BASEDIR:$SSL_BASEDIR
     ports: [80, 443, 5050]
+    networks:
+      - bootstrapper_default
