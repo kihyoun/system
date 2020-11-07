@@ -5,11 +5,9 @@ services:
     network_mode: "host"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - $LIVEDIR
-      - $SSL_BASEDIR
       - $BACKUPDIR:$BACKUPDIR
+      - /templates
+      - /ssl
     build:
       context: ./
       dockerfile: Dockerfile
-      args:
-          - LIVEDIR=${LIVEDIR}

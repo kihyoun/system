@@ -2,8 +2,6 @@
 source ../.docker.env
 source ../gitlab/.docker.env
 
-mkdir -p $NGINX_TEMPLATE_DIR
-
 function generate_conf {
     cat $1 | sed -e "s@\${PROXY_UPSTREAM}@$2@g" \
       -e "s@\${PROXY_IP}@$3@g" \

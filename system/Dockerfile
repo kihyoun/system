@@ -1,12 +1,11 @@
 FROM bootstrapper_system
 ARG DEBIAN_FRONTEND=noninteractive
-ARG LIVEDIR
 # Checkout fresh Repo, prepare
-WORKDIR $LIVEDIR
+WORKDIR /
 RUN bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/prepare.sh)"
 # Install Sync Server
-WORKDIR $LIVEDIR/system/sync
+WORKDIR /system/sync
 RUN npm install
 # Start
-WORKDIR $LIVEDIR/system
+WORKDIR /system
 CMD ["/bin/bash", "./start.sh"]
