@@ -75,8 +75,8 @@ app.patch( "/command/start", async ( req, res ) => {
       if (err) {
           res.sendStatus(500);
       } else {
-        process.exit(0);
       }
     });
     res.sendStatus(200);
+    process.exit(0);
 });

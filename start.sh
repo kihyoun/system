@@ -11,6 +11,5 @@ if [ -f .docker.env ]; then
 else
   echo "No .docker.env found. Starting synchronisation server..."
   (cd sync; ./start.sh)
-  ./stop.sh
 fi
 
