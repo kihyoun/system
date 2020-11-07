@@ -1,4 +1,4 @@
 #! /bin/bash
 source ../.docker.env
 
-docker-compose up --build bootstrapper
+docker-compose up --build -d bootstrapper
