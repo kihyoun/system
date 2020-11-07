@@ -4,7 +4,7 @@ import fs from 'fs';
 import morgan from 'morgan';
 import md5 from 'md5';
 import path from 'path';
-import { exec } from "child_process";
+import { exec, execSync } from "child_process";
 import fileUpload from 'express-fileupload';
 
 
@@ -78,7 +78,7 @@ app.delete( "/config/project", async ( req, res ) => {
 });
 
 app.patch( "/command/stop", async ( req, res ) => {
-    exec('cd ..; ./stop.sh', (err, stdout, stderr) => {
+    exec('cd ..; bash stop.sh', (err, stdout, stderr) => {
       if (err) {
           res.sendStatus(500);
       }
@@ -87,7 +87,7 @@ app.patch( "/command/stop", async ( req, res ) => {
 });
 
 app.patch( "/command/start", async ( req, res ) => {
-    exec('cd ..; ./start.sh', (err, stdout, stderr) => {
+    exec('cd ..; bash start.sh', (err, stdout, stderr) => {
       if (err) {
           res.sendStatus(500);
       }
@@ -97,11 +97,11 @@ app.patch( "/command/start", async ( req, res ) => {
 });
 
 app.patch( "/command/restore", async ( req, res ) => {
-    exec('cd /; bash system/restore.sh', (err, stdout, stderr) => {
-      if (err) {
-          res.sendStatus(500);
-      }
-    });
-    res.sendStatus(200);
-    process.exit(0);
+    try {
+      execSync('cd ..; bash restore.sh');
+      res.sendStatus(200);
+      process.exit(0);
+    } catch (err) {
+      res.sendStatus(500);
+    }
 });
