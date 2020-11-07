@@ -12,6 +12,7 @@ services:
     working_dir: /system
     command: /bin/bash ./start.sh
     restart: always
+    network_mode: "host"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $LIVEDIR:$LIVEDIR
