@@ -3,6 +3,8 @@ services:
   web:
     image: nginx
     volumes:
-      - /templates:/etc/nginx/templates
+      - templates:/etc/nginx/templates
       - /ssl:$SSL_BASEDIR
     network_mode: "host"
+volumes:
+  templates:
