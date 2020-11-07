@@ -17,13 +17,13 @@ app.use(bodyParser.urlencoded({extended: true}));
 app.use(fileUpload({createParentPath: true}));
 app.use(morgan('combined'))
 const privateKey = Math.random().toString(36).slice(-8);
-const secret = Math.random().toString(36).slice(-8);
-const refresh = Math.random().toString(36).slice(-8);
 const nonce = Math.random().toString(36).slice(-8);
 const message = Math.random().toString(36).slice(-8);
 const hashDigest = sha256(nonce + message);
-const SYNC_SECRET = Base64.stringify(hmacSHA512(secret + hashDigest, privateKey));
-const SYNC_REFRESHTOKENSECRET = Base64.stringify(hmacSHA512(refresh + hashDigest, privateKey));
+const SYNC_SECRET = Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
+const SYNC_REFRESHTOKENSECRET = Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
+const SYNC_USER = process.env.SYNC_USER || Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
+const SYNC_PASS = process.env.SYNC_PASS || Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
 let refreshTokens: any[] = [];
 
 const port = 8071; // default port to listen
@@ -74,7 +74,7 @@ app.post('/token', (req, res) => {
 });
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === process.env.SYNC_USER && password === process.env.SYNC_PASS) {
+    if (username === SYNC_USER && password === SYNC_PASS) {
         const accessToken = jwt.sign({ username }, SYNC_SECRET, { expiresIn: '1m' });
         const refreshToken = jwt.sign({ username }, SYNC_REFRESHTOKENSECRET);
         refreshTokens.push(refreshToken);
