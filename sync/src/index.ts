@@ -74,7 +74,6 @@ app.patch( "/command/start", async ( req, res ) => {
     exec('cd ..; ./start.sh', (err, stdout, stderr) => {
       if (err) {
           res.sendStatus(500);
-      } else {
       }
     });
     res.sendStatus(200);
