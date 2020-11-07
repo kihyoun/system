@@ -10,8 +10,8 @@ if [ -d system ]; then
 	if [ -f .docker.env ]; then
 		source .docker.env
 		rsync -av --progress $BACKUPDIR/srv/ $LIVEDIR
-		mkdir -p /etc/letsencrypt
-		rsync -av --progress $BACKUPDIR/letsencrypt/ /etc/letsencrypt
+		mkdir -p /ssl
+		rsync -av --progress $BACKUPDIR/letsencrypt/ /ssl
 	fi
 	)
 	echo 'Ready.'
