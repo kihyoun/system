@@ -1,4 +1,11 @@
 #! /bin/bash
-source ../.docker.env
+
+if [ -f ../.docker.env ]; then
+    source ../.docker.env
+else
+    export LIVEDIR=/srv
+    export SSL_BASEDIR=/etc/letsencrypt
+    [ -z $BACKUPDIR ] && export BACKUPDIR=/mnt/backup
+fi
 
 docker-compose up --build --force-recreate -d

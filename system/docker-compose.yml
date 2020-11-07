@@ -1,19 +1,11 @@
 version: '2'
 services:
-  system:
-    build:
-      context: ./
-      dockerfile: Dockerfile
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-
   bootstrapper:
-    image: system_system
-    working_dir: /system
-    command: /bin/bash ./start.sh
+    image: bootstrapper_system
     restart: always
     network_mode: "host"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - $LIVEDIR:$LIVEDIR
-      - $SSL_BASEDIR:$SSL_BASEDIR
+      - $LIVEDIR
+      - $SSL_BASEDIR
+      - $BACKUPDIR:$BACKUPDIR

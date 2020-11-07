@@ -7,8 +7,10 @@ if [ -f .docker.env ]; then
   (cd nginx; ./start.sh)
   [ $ENABLE_SYNC = true ] && (cd sync; ./start.sh)
   [ $ENABLE_SYNC = false ] && ./wait-for-it.sh 127.0.0.1:8071 -t 0
+  ./stop.sh
 else
   echo "No .docker.env found. Starting synchronisation server..."
   (cd sync; ./start.sh)
+  ./stop.sh
 fi
 
