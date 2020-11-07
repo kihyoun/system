@@ -6,8 +6,8 @@ while [ true ]; do
     (cd gitlab; bash ./start.sh)
     (cd nginx-proxy; bash ./start.sh)
     (cd nginx; bash ./start.sh)
-    [ $ENABLE_SYNC = true ] && (cd sync; bash ./start.sh)
-    [ $ENABLE_SYNC = false ] && ./wait-for-it.sh 127.0.0.1:8071 -t 0
+    [ $SYNC_ENABLE = true ] && (cd sync; bash ./start.sh)
+    [ $SYNC_ENABLE = false ] && ./wait-for-it.sh 127.0.0.1:8071 -t 0
     bash ./stop.sh
   else
     echo "No .docker.env found. Starting synchronisation server..."
