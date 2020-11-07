@@ -1,5 +1,6 @@
 #!/bin/bash
 shopt -s dotglob
+(cd /;
 [ -d system ] && [ -f bootstrapper.zip ] && unzip bootstrapper.zip -d ./system/
 if [ -d system ]; then
         (cd system;
@@ -19,3 +20,4 @@ else
         echo "System not found."
 		exit 1
 fi
+)
