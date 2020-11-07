@@ -2,7 +2,6 @@ version: '3'
 services:
   bootstrapper:
     restart: always
-    network_mode: "host"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $BACKUPDIR:$BACKUPDIR
