@@ -29,5 +29,3 @@ for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/nu
     docker-compose -p ${PROJECT_NAME}_runner down
 done
 
-docker volume prune -f
-docker network prune -f
