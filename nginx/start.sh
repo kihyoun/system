@@ -81,4 +81,4 @@ for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/nu
   generate_proxy_config
 done
 
-docker-compose up --build --remove-orphans -d
+docker-compose up --build --remove-orphans --force-recreate -d
