@@ -5,3 +5,5 @@ gitlab/.docker.env
 nginx-proxy/.projects/.*.env
 gitlab-runner/.hosts
 bootstrapper.json
+sync/node_modules
+sync/dist
