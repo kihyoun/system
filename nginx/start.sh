@@ -27,13 +27,15 @@ function generate_nginx_conf {
   esac
 }
 
+mkdir -p /templates
+
 generate_nginx_conf $GITLAB_DOMAIN_MODE \
   $GITLAB_UPSTREAM \
   $GITLAB_IP \
   $GITLAB_PORT \
   $GITLAB_HOST \
   $GITLAB_SSL \
-  $GITLAB_SSL_KEY > /etc/nginx/templates/default.conf.template
+  $GITLAB_SSL_KEY > /templates/default.conf.template
 
 generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
   $GITLAB_REGISTRY_UPSTREAM \
@@ -41,7 +43,7 @@ generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
   $GITLAB_REGISTRY_PORT \
   $GITLAB_REGISTRY_HOST \
   $GITLAB_REGISTRY_SSL \
-  $GITLAB_REGISTRY_SSL_KEY >> /etc/nginx/templates/default.conf.template
+  $GITLAB_REGISTRY_SSL_KEY >> /templates/default.conf.template
 
 function generate_proxy_config {
   source ../nginx-proxy/.projects/.$PROJECT_NAME.env
@@ -53,7 +55,7 @@ function generate_proxy_config {
     $PROD_HOST \
     $PROD_SSL \
     $PROD_SSL_KEY \
-    >> /etc/nginx/templates/default.conf.template
+    >> /templates/default.conf.template
 
   [ $USE_BETA_HOST = true ] && generate_nginx_conf $BETA_DOMAIN_MODE \
     ${PROJECT_NAME}_beta \
@@ -62,7 +64,7 @@ function generate_proxy_config {
     $BETA_HOST \
     $BETA_SSL \
     $BETA_SSL_KEY \
-    >> /etc/nginx/templates/default.conf.template
+    >> /templates/default.conf.template
 
   [ $USE_REVIEW_HOST = true ] && generate_nginx_conf $REVIEW_DOMAIN_MODE \
     ${PROJECT_NAME}_review \
@@ -71,7 +73,7 @@ function generate_proxy_config {
     $REVIEW_HOST \
     $REVIEW_SSL \
     $REVIEW_SSL_KEY \
-    >> /etc/nginx/templates/default.conf.template
+    >> /templates/default.conf.template
 }
 
 for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/null); do
