@@ -9,4 +9,4 @@ else
     [ ! -z $BACKUPDIR ] && export BACKUPDIR=$BACKUPDIR
 fi
 
-docker-compose up --build --force-recreate -d
+docker-compose up --build --force-recreate -d bootstrapper
