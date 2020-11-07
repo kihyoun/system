@@ -1,6 +1,7 @@
 #! /bin/bash
 source ../.docker.env
 source ../gitlab/.docker.env
+source ../system/.docker.env
 
 function generate_conf {
     cat $1 | sed -e "s@\${PROXY_UPSTREAM}@$2@g" \
@@ -80,5 +81,14 @@ for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/nu
   source $i
   generate_proxy_config
 done
+
+ [ $SYNC_ENABLE = true ] && generate_nginx_conf $SYNC_DOMAIN_MODE \
+    sync \
+    $BOOTSTRAPPER_IP \
+    8071 \
+    $SYNC_HOST \
+    $SYNC_SSL \
+    $SYNC_SSL_KEY \
+    >> /templates/default.conf.template
 
 docker-compose -f ../system/docker-compose.yml up --build --remove-orphans --force-recreate -d web

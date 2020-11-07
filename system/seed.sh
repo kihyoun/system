@@ -10,3 +10,8 @@ else
 fi
 
 docker-compose up --build --force-recreate -d bootstrapper
+
+ENV_FILE=.docker.env
+echo > $ENV_FILE
+printf "BOOTSTRAPPER_IP=" > $ENV_FILE
+docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' system_bootstrapper_1 >> $ENV_FILE
