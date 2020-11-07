@@ -1,7 +1,6 @@
-version: '2'
+version: '3'
 services:
   bootstrapper:
-    image: bootstrapper_system
     restart: always
     network_mode: "host"
     volumes:
@@ -9,3 +8,8 @@ services:
       - $LIVEDIR
       - $SSL_BASEDIR
       - $BACKUPDIR:$BACKUPDIR
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      args:
+          - LIVEDIR=${LIVEDIR}

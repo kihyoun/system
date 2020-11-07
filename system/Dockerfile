@@ -1,6 +1,6 @@
-FROM system_system
+FROM bootstrapper_system
 ARG DEBIAN_FRONTEND=noninteractive
-ARG LIVEDIR=/srv
+ARG LIVEDIR
 WORKDIR $LIVEDIR
 RUN bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/prepare.sh)"
 WORKDIR $LIVEDIR/system/sync
