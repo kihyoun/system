@@ -5,12 +5,16 @@ import morgan from 'morgan';
 import md5 from 'md5';
 import path from 'path';
 import { exec } from "child_process";
+import fileUpload from 'express-fileupload';
 
 
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
   extended: true
+}));
+app.use(fileUpload({
+    createParentPath: true
 }));
 app.use(morgan('combined'))
 const port = 8071; // default port to listen
@@ -43,6 +47,18 @@ app.post( "/config/project", async ( req, res ) => {
   }
 });
 
+app.post( "/config/zip", async ( req, res ) => {
+  if (req.files && req.files.data.name === 'bootstrapper.zip') {
+    const file = req.files.data;
+    fs.writeFileSync('/bootstrapper.zip', file.data);
+     res.sendStatus(200);
+  } else {
+     res.sendStatus(400);
+  }
+});
+
+
+
 app.delete( "/config/project", async ( req, res ) => {
     const dir = '../.projects.env';
 
@@ -72,6 +88,16 @@ app.patch( "/command/stop", async ( req, res ) => {
 
 app.patch( "/command/start", async ( req, res ) => {
     exec('cd ..; ./start.sh', (err, stdout, stderr) => {
+      if (err) {
+          res.sendStatus(500);
+      }
+    });
+    res.sendStatus(200);
+    process.exit(0);
+});
+
+app.patch( "/command/restore", async ( req, res ) => {
+    exec('cd /; bash system/restore.sh', (err, stdout, stderr) => {
       if (err) {
           res.sendStatus(500);
       }
