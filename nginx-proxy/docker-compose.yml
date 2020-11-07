@@ -5,8 +5,6 @@ services:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $REVIEW_SCALE
-    networks:
-      - review
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
@@ -14,23 +12,11 @@ services:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $PROD_SCALE
-    networks:
-      - prod
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
   beta:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $BETA_SCALE
-    networks:
-      - beta
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
-
-networks:
-  review:
-      driver: bridge
-  prod:
-      driver: bridge
-  beta:
-      driver: bridge
