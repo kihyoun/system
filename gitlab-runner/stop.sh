@@ -1,6 +1,10 @@
 #! /bin/bash
-[ ! -f ../.docker.env ] && exit
-source ../.docker.env
+if [ -f ../.docker.env ]; then
+    source ../.docker.env
+else
+    source ../system/seed.env
+fi
+
 source ../gitlab/.docker.env
 
 export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
