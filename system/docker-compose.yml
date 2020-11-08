@@ -33,9 +33,9 @@ services:
     networks:
       - gitlab
     volumes:
-      - gitlabHome/config:/etc/gitlab
-      - gitlabHome/logs:/var/log/gitlab
-      - gitlabHome/data:/var/opt/gitlab
+      - ${gitlabHome}/config:/etc/gitlab
+      - ${gitlabHome}/logs:/var/log/gitlab
+      - ${gitlabHome}/data:/var/opt/gitlab
       - $BACKUPDIR:$BACKUPDIR
 
     ports:
