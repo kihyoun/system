@@ -31,8 +31,6 @@ services:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $REVIEW_SCALE
-    networks:
-      - system
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
@@ -40,16 +38,12 @@ services:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $PROD_SCALE
-    networks:
-      - system
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
   beta:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $BETA_SCALE
-    networks:
-      - system
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
@@ -72,4 +66,7 @@ volumes:
   ssl:
 
 networks:
+  bootstrapper:
   system:
+  runner:
+  gitlab:
