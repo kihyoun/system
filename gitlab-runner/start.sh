@@ -21,7 +21,7 @@ do
     --run-untagged=true \
     --access-level="not_protected" \
     --clone-url "http://$GITLAB_IP:$GITLAB_PORT/" \
-    --docker-network-mode="gitlab_web" \
+    --docker-network-mode="system_gitlab" \
     --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
     --docker-privileged=true
 done
@@ -49,7 +49,7 @@ for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/nu
         --run-untagged=true \
         --access-level="not_protected" \
         --clone-url "http://$GITLAB_IP:$GITLAB_PORT/" \
-        --docker-network-mode="gitlab_web" \
+        --docker-network-mode="system_gitlab" \
         --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
         --docker-privileged=true
     done

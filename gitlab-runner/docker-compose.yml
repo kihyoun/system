@@ -4,7 +4,7 @@ services:
     image: 'gitlab/gitlab-runner:latest'
     restart: always
     networks:
-      - gitlab_web
+      - system_gitlab
     scale: $GITLAB_RUNNER_DOCKER_SCALE
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -17,4 +17,4 @@ services:
 networks:
   gitlab_web:
     external:
-      name: gitlab_web
+      name: system_gitlab

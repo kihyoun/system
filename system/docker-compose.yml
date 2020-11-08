@@ -8,6 +8,7 @@ services:
       - templates:/templates
       - synctemplates:/synctemplates
       - ssl:/ssl
+      - gitlabHome:$GITLAB_HOME
     build:
       context: ./
       dockerfile: Dockerfile
@@ -25,8 +26,25 @@ services:
       - synctemplates:/etc/nginx/templates
     network_mode: "host"
 
+  gitlab:
+    image: 'gitlab/gitlab-ce:latest'
+    restart: always
+    hostname: '$GITLAB_HOST'
+    networks:
+      - gitlab
+    volumes:
+      - gitlabHome/config:/etc/gitlab
+      - gitlabHome/logs:/var/log/gitlab
+      - gitlabHome/data:/var/opt/gitlab
+      - $BACKUPDIR:$BACKUPDIR
+
+    ports:
+      - '22:22'
 volumes:
   templates:
   synctemplates:
   ssl:
+  gitlabHome:
 
+networks:
+  gitlab:
