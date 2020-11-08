@@ -33,7 +33,7 @@ while [ true ]; do
       -e "s@\${PROXY_HOSTNAME}@$BOOTSTRAPPER_IP@g" > /synctemplates/default.conf.template
 
     docker-compose -f system/docker-compose.yml up --build --remove-orphans --force-recreate -d sync
-    (cd sync; bash ./start.sh; cd ..; docker-compose -f system/docker-compose.yml stop sync)
+    cd sync; bash ./start.sh; cd ..; docker-compose -f system/docker-compose.yml stop sync
 
   fi
 
