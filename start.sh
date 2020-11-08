@@ -10,7 +10,7 @@ docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' syst
 while [ true ]; do
   source $ENV_FILE
   if [ -f .docker.env ]; then
-    echo 'found docker.env. starting environment'
+    echo "found docker.env. starting environment"
     source .docker.env
     (cd gitlab; bash ./start.sh; cd ..;
     cd nginx-proxy; bash ./start.sh; cd ..;
@@ -22,6 +22,7 @@ while [ true ]; do
     if [ $SYNC_ENABLE = false ]; then
       ./wait-for-it.sh $BOOTSTRAPPER_IP:8071 -t 0
     fi
+    echo "stopping environment..."
     bash ./stop.sh
     )
   else
