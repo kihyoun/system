@@ -144,30 +144,27 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
     }
 });
 
-app.patch( "/command/stop", authenticateJWT, async ( req, res ) => {
-  try {
-    const out = execSync('cd ..; bash stop.sh');
-    res.status(200).send(out.toString());
-  } catch (err) {
-    res.status(500).send(err.toString());
-  }
-});
-
-app.patch( "/command/start", authenticateJWT, async ( req, res ) => {
-  try {
-    const out = execSync('cd ..; bash start.sh');
-    res.status(200).send(out.toString());
-    process.exit(0);
-  } catch (err) {
-    res.sendStatus(500);
-  }
-});
-
 app.patch( "/command/restore", authenticateJWT, async ( req, res ) => {
     try {
       const out = execSync('cd ..; bash restore.sh');
       res.status(200).send(out.toString());
+    } catch (err) {
+      res.status(500).send(err.toString());
+    }
+});
+
+app.patch( "/command/restart", authenticateJWT, async ( req, res ) => {
+    try {
       process.exit(0);
+    } catch (err) {
+      res.status(500).send(err.toString());
+    }
+});
+
+app.patch( "/command/backup", authenticateJWT, async ( req, res ) => {
+    try {
+      const out = execSync('cd ..; bash backup.sh');
+      res.status(200).send(out.toString());
     } catch (err) {
       res.status(500).send(err.toString());
     }
