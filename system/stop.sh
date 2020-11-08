@@ -11,5 +11,5 @@ else
     [ ! -z $BACKUPDIR ] && export BACKUPDIR=$BACKUPDIR
 fi
 
-docker exec -it system_bootstrapper_1 stop.sh
+docker exec -it system_bootstrapper_1 /system/stop.sh
 docker-compose down
