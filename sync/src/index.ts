@@ -148,6 +148,8 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
     } catch (e) {
       res.status(500).send(e.toString());
     }
+
+    res.send(200);
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
