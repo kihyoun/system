@@ -182,7 +182,7 @@ app.patch( "/command/runners/register", authenticateJWT, async ( req, res ) => {
     }
 });
 
-app.patch( "/command/unregister",  async ( req, res ) => {
+app.patch( "/command/runners/unregister", authenticateJWT, async ( req, res ) => {
     try {
       const out = execSync('cd ../gitlab-runner; bash unregister.sh');
       res.status(200).send(out.toString());
