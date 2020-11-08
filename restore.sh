@@ -9,9 +9,9 @@ if [ -d system ]; then
 	[ -d bootstrapper ] && rm -fr bootstrapper
 	if [ -f .docker.env ]; then
 		source .docker.env
-		rsync -av --progress $BACKUPDIR/srv/ /srv
+		rsync -av --progress --delete $BACKUPDIR/srv/ /srv
 		mkdir -p /ssl
-		rsync -av --progress $BACKUPDIR/ssl/ /ssl
+		rsync -av --progress --delete $BACKUPDIR/ssl/ /ssl
 	fi
 	)
 	echo 'Ready.'
