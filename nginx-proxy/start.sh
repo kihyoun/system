@@ -8,7 +8,7 @@ for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/nu
     [ $USE_REVIEW_HOST = true ] && export REVIEW_SCALE=1 || export REVIEW_SCALE=0;
     [ $USE_PROD_HOST = true ] && export PROD_SCALE=1 || export PROD_SCALE=0;
 
-    docker-compose -p ${PROJECT_NAME} up --remove-orphans --build -d
+    docker-compose -f ../system/docker-compose.yml -p ${PROJECT_NAME} up --remove-orphans --build -d review prod beta
 
     if [ $USE_PROD_HOST = true ]; then
         printf "PROD_PROXY=" >> $ENV_FILE

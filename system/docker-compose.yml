@@ -25,6 +25,26 @@ services:
       - synctemplates:/etc/nginx/templates
     network_mode: "host"
 
+  review:
+    image: 'jwilder/nginx-proxy'
+    restart: always
+    scale: $REVIEW_SCALE
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+  prod:
+    image: 'jwilder/nginx-proxy'
+    restart: always
+    scale: $PROD_SCALE
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+  beta:
+    image: 'jwilder/nginx-proxy'
+    restart: always
+    scale: $BETA_SCALE
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
 volumes:
   templates:
   synctemplates:
