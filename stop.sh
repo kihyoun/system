@@ -1,5 +1,4 @@
 #! /bin/bash
-(cd nginx; ./stop.sh)
+source .docker.env
 (cd gitlab-runner; ./stop.sh)
-(cd gitlab; ./stop.sh)
 (cd nginx-proxy; ./stop.sh)
