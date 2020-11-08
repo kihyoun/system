@@ -145,11 +145,20 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
-    const file = '../.docker.env';
+    const dir = '../';
 
     try {
-      fs.unlink(file, (_err:any) => {
-        if (_err) throw _err;
+      fs.readdir(dir, (err, files) => {
+        if (err) throw err;
+        for (const file of files) {
+          if (file === ".docker.env") {
+             fs.unlink(path.join(dir, file), (_err:any) => {
+               if (_err) throw _err;
+             });
+            res.sendStatus(200);
+            return;
+          }
+        }
       });
       res.sendStatus(200);
     } catch (e) {
