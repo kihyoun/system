@@ -14,6 +14,7 @@ while [ true ]; do
     (cd gitlab; bash ./start.sh; cd ..;
     cd nginx-proxy; bash ./start.sh; cd ..;
     cd nginx; bash ./start.sh; cd ..;
+    cd gitlab-runner; bash ./start.sh; cd ..;
     if [ $SYNC_ENABLE = true ]; then
       cd sync; bash ./start.sh; cd ..
     fi
