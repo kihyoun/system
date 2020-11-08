@@ -1,5 +1,5 @@
 #! /bin/bash
-source ../.docker.env
+[ -f ../.docker.env ] && source ../.docker.env
 source ../gitlab/.docker.env
 source ../system/.docker.env
 
