@@ -1,7 +1,7 @@
 version: '3'
 services:
 
- review:
+  review:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $REVIEW_SCALE
@@ -14,6 +14,7 @@ services:
     scale: $PROD_SCALE
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
+
   beta:
     image: 'jwilder/nginx-proxy'
     restart: always
