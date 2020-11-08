@@ -156,7 +156,6 @@ app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
              fs.unlink(path.join(dir, file), (_err:any) => {
                if (_err) throw _err;
              });
-            return;
           }
         }
       });
