@@ -21,7 +21,7 @@ do
     --run-untagged=true \
     --access-level="not_protected" \
     --clone-url "http://$GITLAB_IP:$GITLAB_PORT/" \
-    --docker-network-mode="host" \
+    --docker-network-mode="system_default" \
     --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
     --docker-privileged=true
 done

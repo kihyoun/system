@@ -2,6 +2,8 @@ version: '3'
 services:
   bootstrapper:
     restart: always
+    networks:
+      - system
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $BACKUPDIR:$BACKUPDIR
@@ -29,6 +31,8 @@ services:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $REVIEW_SCALE
+    networks:
+      - system
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
@@ -36,12 +40,16 @@ services:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $PROD_SCALE
+    networks:
+      - system
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
   beta:
     image: 'jwilder/nginx-proxy'
     restart: always
     scale: $BETA_SCALE
+    networks:
+      - system
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
@@ -49,6 +57,8 @@ services:
       image: 'gitlab/gitlab-ce:latest'
       restart: always
       hostname: '$GITLAB_HOST'
+      networks:
+        - system
       volumes:
         - '$GITLAB_HOME/config:/etc/gitlab'
         - '$GITLAB_HOME/logs:/var/log/gitlab'
@@ -60,3 +70,6 @@ volumes:
   templates:
   synctemplates:
   ssl:
+
+networks:
+  system:
