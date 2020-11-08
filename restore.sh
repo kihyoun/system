@@ -1,12 +1,13 @@
 #!/bin/bash
 shopt -s dotglob
 (cd /;
-[ -d system ] && [ -f bootstrapper.zip ] && unzip bootstrapper.zip -d ./system/
+[ -d system ] && [ -f bootstrapper.zip ] && unzip bootstrapper.zip -d ./tmp/
 if [ -d system ]; then
         (cd system;
-	[ -d bootstrapper ] && cp bootstrapper/.projects.env/* .projects.env/
-	[ -d bootstrapper ] && cp bootstrapper/* .
-	[ -d bootstrapper ] && rm -fr bootstrapper
+	[ -d /tmp/bootstrapper ] && cp /tmp/bootstrapper/.projects.env/* .projects.env/
+	[ -d /tmp/bootstrapper ] && cp /tmp/bootstrapper/.*.env .
+	[ -d /tmp/bootstrapper ] && cp /tmp/bootstrapper/*.env .
+	[ -d /tmp/bootstrapper ] && rm -fr /tmp/bootstrapper
 	if [ -f .docker.env ]; then
 		source .docker.env
 		rsync -av --progress --delete $BACKUPDIR/srv/ /srv
