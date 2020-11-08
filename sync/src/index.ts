@@ -126,8 +126,6 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
   }
 });
 
-
-
 app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
     const dir = '../.projects.env';
 
@@ -142,35 +140,53 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
       });
       res.sendStatus(200);
     } catch (e) {
-      res.sendStatus(500);
+      res.status(500).send(e.toString());
     }
 });
 
 app.patch( "/command/stop", authenticateJWT, async ( req, res ) => {
-    exec('cd ..; bash stop.sh', (err, stdout, stderr) => {
-      if (err) {
-          res.sendStatus(500);
-      }
-    });
-    res.sendStatus(200);
+  try {
+    const out = execSync('cd ..; bash stop.sh');
+    res.status(200).send(out.toString());
+  } catch (err) {
+    res.status(500).send(err.toString());
+  }
 });
 
 app.patch( "/command/start", authenticateJWT, async ( req, res ) => {
-    exec('cd ..; bash start.sh', (err, stdout, stderr) => {
-      if (err) {
-          res.sendStatus(500);
-      }
-    });
-    res.sendStatus(200);
+  try {
+    const out = execSync('cd ..; bash start.sh');
+    res.status(200).send(out.toString());
     process.exit(0);
+  } catch (err) {
+    res.sendStatus(500);
+  }
 });
 
 app.patch( "/command/restore", authenticateJWT, async ( req, res ) => {
     try {
-      execSync('cd ..; bash restore.sh');
-      res.sendStatus(200);
+      const out = execSync('cd ..; bash restore.sh');
+      res.status(200).send(out.toString());
       process.exit(0);
     } catch (err) {
-      res.sendStatus(500);
+      res.status(500).send(err.toString());
+    }
+});
+
+app.patch( "/command/runners/register", authenticateJWT, async ( req, res ) => {
+    try {
+      const out = execSync('cd ../gitlab-runner; bash register.sh');
+      res.status(200).send(out.toString());
+    } catch (err) {
+      res.status(500).send(err.toString());
+    }
+});
+
+app.patch( "/command/unregister",  async ( req, res ) => {
+    try {
+      const out = execSync('cd ../gitlab-runner; bash unregister.sh');
+      res.status(200).send(out.toString());
+    } catch (err) {
+      res.status(500).send(err.toString());
     }
 });
