@@ -12,7 +12,7 @@ while [ true ]; do
   if [ -f .docker.env ]; then
     echo "found docker.env. starting environment"
     source .docker.env
-    (cd gitlab; bash ./start.sh; cd ..;
+    cd gitlab; bash ./start.sh; cd ..;
     cd nginx-proxy; bash ./start.sh; cd ..;
     cd nginx; bash ./start.sh; cd ..;
     cd gitlab-runner; bash ./start.sh; cd ..;
@@ -24,7 +24,6 @@ while [ true ]; do
     fi
     echo "stopping environment..."
     bash ./stop.sh
-    )
   else
     echo "No .docker.env found. Starting synchronisation server..."
     source system/seed.env
