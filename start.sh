@@ -11,12 +11,17 @@ while [ true ]; do
   source $ENV_FILE
   if [ -f .docker.env ]; then
     source .docker.env
-    (cd gitlab; bash ./start.sh)
-    (cd nginx-proxy; bash ./start.sh)
-    (cd nginx; bash ./start.sh)
-    [ $SYNC_ENABLE = true ] && (cd sync; bash ./start.sh)
-    [ $SYNC_ENABLE = false ] && ./wait-for-it.sh $BOOTSTRAPPER_IP:8071 -t 0
+    (cd gitlab; bash ./start.sh; cd ..;
+    cd nginx-proxy; bash ./start.sh; cd ..;
+    cd nginx; bash ./start.sh; cd ..;
+    if [ $SYNC_ENABLE = true ]; then
+      cd sync; bash ./start.sh; cd ..
+    fi
+    if [ $SYNC_ENABLE = false ]; then
+      ./wait-for-it.sh $BOOTSTRAPPER_IP:8071 -t 0
+    fi
     bash ./stop.sh
+    )
   else
     echo "No .docker.env found. Starting synchronisation server..."
     source system/seed.env
