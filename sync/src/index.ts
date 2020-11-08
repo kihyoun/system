@@ -127,6 +127,12 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
 });
 
 app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
+    try {
+      const out = execSync('cd ../nginx-proxy; bash stop.sh');
+    } catch (err) {
+      res.status(500).send(err.toString());
+    }
+
     const dir = '../.projects.env';
 
     try {
@@ -139,7 +145,6 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
           });
         }
       });
-      res.sendStatus(200);
     } catch (e) {
       res.status(500).send(e.toString());
     }
