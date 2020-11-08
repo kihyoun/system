@@ -8,9 +8,9 @@ services:
       - templates:/templates
       - synctemplates:/synctemplates
       - ssl:/ssl
-      - gitlabConfig:$GITLAB_HOME/config
-      - gitlabLogs:$GITLAB_HOME/log
-      - gitlabData:$GITLAB_HOME/data
+      - gitlabConfig:/srv/gitlab/config
+      - gitlabLogs:/srv/gitlab/log
+      - gitlabData:/srv/gitlab/data
     build:
       context: ./
       dockerfile: Dockerfile
