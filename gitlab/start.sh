@@ -1,7 +1,7 @@
 #! /bin/bash
 source ../.docker.env
 
-docker-compose up --build --remove-orphans -d gitlab
+docker-compose up --build --remove-orphans -d
 
 printf "export GITLAB_IP=" > .docker.env
 docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' gitlab_web_1 >> .docker.env
