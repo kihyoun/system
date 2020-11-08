@@ -8,7 +8,9 @@ services:
       - templates:/templates
       - synctemplates:/synctemplates
       - ssl:/ssl
-      - gitlabHome:$GITLAB_HOME
+      - gitlabConfig:$GITLAB_HOME/config
+      - gitlabLogs:$GITLAB_HOME/log
+      - gitlabData:$GITLAB_HOME/data
     build:
       context: ./
       dockerfile: Dockerfile
@@ -33,9 +35,9 @@ services:
     networks:
       - gitlab
     volumes:
-      - ${gitlabHome}/config:/etc/gitlab
-      - ${gitlabHome}/logs:/var/log/gitlab
-      - ${gitlabHome}/data:/var/opt/gitlab
+      - gitlabConfig:/etc/gitlab
+      - gitlabLogs:/var/log/gitlab
+      - gitlabData:/var/opt/gitlab
       - $BACKUPDIR:$BACKUPDIR
 
     ports:
@@ -44,7 +46,9 @@ volumes:
   templates:
   synctemplates:
   ssl:
-  gitlabHome:
+  gitlabConfig:
+  gitlabLogs:
+  gitlabData:
 
 networks:
   gitlab:

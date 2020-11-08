@@ -9,7 +9,7 @@ if [ -d system ]; then
 	[ -d bootstrapper ] && rm -fr bootstrapper
 	if [ -f .docker.env ]; then
 		source .docker.env
-		rsync -av --progress $BACKUPDIR/srv/ $LIVEDIR
+		rsync -av --progress $BACKUPDIR/srv/ /srv
 		mkdir -p /ssl
 		rsync -av --progress $BACKUPDIR/letsencrypt/ /ssl
 	fi

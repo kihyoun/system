@@ -10,16 +10,16 @@ What is the `System`?
 
 The above cite, made by Ludwig Bauer on a Nato Conference in 1968, describes the Goal of the `System`.
 
-A full functional, easy to maintain and bootable software development lifecycle and environment based on Gitlab and Docker. 
+A full functional, easy to maintain and bootable software development lifecycle and environment based on Gitlab and Docker.
 
 The Bootstrapper fully automates the creation of the Environment via a single Shellscript. The Environment basically is a composition of Docker Container Services. The Services are creating a full functional Development Environment for the Development of the Web Application written in React. It features a full functional Environment and Workflow for the [Gitlab Review Apps](https://docs.gitlab.com/ee/ci/review_apps/)
 
 ![https://raw.githubusercontent.com/kihyoun/system/main/overview.png](https://raw.githubusercontent.com/kihyoun/system/main/overview.png)
 
 ### Architecture
-The Host is a Docker Host, which runs a NGINX Container in Host Network Mode, the Master NGINX. All HTTP/HTTPS Requests are handled by this Container. 
+The Host is a Docker Host, which runs a NGINX Container in Host Network Mode, the Master NGINX. All HTTP/HTTPS Requests are handled by this Container.
 
-Another Container is running Gitlab/CE. The Gitlab Container is created before the NGINX Master. The internal IP of the Container is published to the Master NGINX config. Requests to the `gitlab` and `registry` Subdomain are SSL encrypted and then routed as upstream with proxy_pass to the gitlab container. 
+Another Container is running Gitlab/CE. The Gitlab Container is created before the NGINX Master. The internal IP of the Container is published to the Master NGINX config. Requests to the `gitlab` and `registry` Subdomain are SSL encrypted and then routed as upstream with proxy_pass to the gitlab container.
 
 All remaining Subdomains should be routed to dynamically created containers at runtime, a deployment Network.
 
@@ -27,7 +27,7 @@ We could publish the internal IP of the container to the Master. But this approa
 
 Instead, we use [jwilder/nginx-proxy](https://hub.docker.com/r/jwilder/nginx-proxy) and create three instances with static internal IP's. Let's call them the Production, Beta and Review Proxy. The IPs are published to the Master before the master startup. (The Master can anytime be refreshed with the `start.sh` command, this will also renew the Configuration with the IPs of the Gitlab Container and the Proxies).
 
-Subdomains `www` and `beta` are routed SSL encrypted to the Beta and Production Proxy. 
+Subdomains `www` and `beta` are routed SSL encrypted to the Beta and Production Proxy.
 All other Subdomains go unencrypted to the Review Proxy.
 
 During a successful Pipeline, the following will happen in the Test-Stage on a Merge-Request:
@@ -55,7 +55,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/inst
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/prepare.sh)"
 ```
 
-The initial Run may take a few minutes, depending on Network. 
+The initial Run may take a few minutes, depending on Network.
 
 Your Container Network should look like this:
 ```bash
@@ -97,8 +97,8 @@ However, the Backup Script is designed to simply mirror all persistent Data into
 ```bash
 ./stop.sh
 ```
-2. Setup `BACKUPDIR` and `LIVEDIR` in `.docker.env`
-3. Run the Backup Script: 
+2. Setup `BACKUPDIR` in `.docker.env`
+3. Run the Backup Script:
 ```bash
 ./backup.sh
 ```
@@ -111,7 +111,7 @@ A Feature improvement will include the **Pipeline for the System**. This turns t
 
 ### Gitlab
 
-The GITLAB Service has no dependencies and can be started/stopped at any time using the start/stop scripts. 
+The GITLAB Service has no dependencies and can be started/stopped at any time using the start/stop scripts.
 
 On startup, the Gitlab Service will create a .docker.env with the IP Address, and reconfigure itself with the IP Address. This is because we are using an external Registry Address, which is Proxied through our Main NGINX
 
@@ -125,7 +125,7 @@ They use the [docker-compose scale](https://docs.docker.com/compose/compose-file
 ### NGINX Proxy
 
 The NGINX Proxy Services handle each different Networks. One for Production, for for the Beta Test (both SSL Secured), and one for the dynamic [Review Apps](https://docs.gitlab.com/ee/ci/review_apps/) Network.
- 
+
 The NGINX Proxies create up to three independent Subnetworks for each Project:
 
 * projectname_prod
@@ -134,7 +134,7 @@ The NGINX Proxies create up to three independent Subnetworks for each Project:
 
 If the NGINX Proxy gets incoming Traffic from the NGINX Master, the Traffic will be sent to the Container running in the same Network, with the matching VIRTUAL_HOST. See the [Gitlab CI Example from System-Web](https://github.com/kihyoun/system-web/blob/main/.gitlab-ci.yml#L70)
 
-### NGINX 
+### NGINX
 
 The NGINX Server is running in Host Mode. It manages all incoming HTTP/HTTPS Requests and routing the Traffic to one of the internal NGINX Proxy or the Gitlab Container.
 

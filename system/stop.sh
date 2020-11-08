@@ -6,7 +6,6 @@ else
     export REVIEW_SCALE=0
     export PROD_SCALE=0
     export BETA_SCALE=0
-    export LIVEDIR=/srv
     export SSL_BASEDIR=/etc/letsencrypt
     [ -z $BACKUPDIR ] && export BACKUPDIR=/mnt/backup
     [ ! -z $BACKUPDIR ] && export BACKUPDIR=$BACKUPDIR
