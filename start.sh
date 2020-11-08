@@ -6,16 +6,6 @@ echo > $ENV_FILE
 printf "export BOOTSTRAPPER_IP=" > $ENV_FILE
 docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' system_bootstrapper_1 >> $ENV_FILE
 
-_term() {
-  echo "Caught SIGTERM signal!"
-  bash stop.sh
-  kill -TERM "$child" 2>/dev/null
-}
-
-trap _term SIGTERM
-
-child=$!
-wait "$child"
 
 while [ true ]; do
   source $ENV_FILE
