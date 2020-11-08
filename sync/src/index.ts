@@ -146,11 +146,6 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
-    try {
-      const out = execSync('cd ..; bash stop.sh');
-    } catch (err) {
-      res.status(500).send(err.toString());
-    }
     const dir = '../';
 
     try {
@@ -181,6 +176,7 @@ app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
         }
       });
       res.sendStatus(200);
+      process.exit(0);
     } catch (e) {
       res.status(500).send(e.toString());
     }
