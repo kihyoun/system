@@ -17,4 +17,4 @@ services:
 networks:
   system:
     external:
-      name: system
+      name: system_default
