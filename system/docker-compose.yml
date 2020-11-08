@@ -2,8 +2,6 @@ version: '3'
 services:
   bootstrapper:
     restart: always
-    networks:
-      - bootstrapper
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $BACKUPDIR:$BACKUPDIR
@@ -51,8 +49,6 @@ services:
       image: 'gitlab/gitlab-ce:latest'
       restart: always
       hostname: '$GITLAB_HOST'
-      networks:
-        - gitlab
       volumes:
         - '$GITLAB_HOME/config:/etc/gitlab'
         - '$GITLAB_HOME/logs:/var/log/gitlab'
@@ -65,6 +61,3 @@ volumes:
   synctemplates:
   ssl:
 
-networks:
-  bootstrapper:
-  gitlab:
