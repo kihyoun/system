@@ -15,6 +15,6 @@ services:
       - "$GITLAB_HOST:$GITLAB_IP"
 
 networks:
-  gitlab_web:
+  system_gitlab:
     external:
       name: system_gitlab
