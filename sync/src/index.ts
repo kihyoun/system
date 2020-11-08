@@ -144,6 +144,15 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
     }
 });
 
+app.patch( "/command/system/patch", authenticateJWT, async ( req, res ) => {
+    try {
+      const out = execSync('cd ..; git pull -r');
+      res.status(200).send(out.toString());
+    } catch (err) {
+      res.status(500).send(err.toString());
+    }
+});
+
 app.patch( "/command/restore", authenticateJWT, async ( req, res ) => {
     try {
       const out = execSync('cd ..; bash restore.sh');
