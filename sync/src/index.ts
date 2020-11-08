@@ -14,7 +14,12 @@ import cors from 'cors';
 
 export const app = express();
 app.use(bodyParser.json());
-app.use(cors());
+app.use(cors({
+  "origin": "*",
+  "methods": "GET,HEAD,PUT,PATCH,POST,DELETE",
+  "preflightContinue": false,
+  "optionsSuccessStatus": 204
+}));
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(fileUpload({createParentPath: true}));
 app.use(morgan('combined'))
