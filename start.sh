@@ -10,6 +10,7 @@ docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' syst
 while [ true ]; do
   source $ENV_FILE
   if [ -f .docker.env ]; then
+    echo 'found docker.env. starting environment'
     source .docker.env
     (cd gitlab; bash ./start.sh; cd ..;
     cd nginx-proxy; bash ./start.sh; cd ..;
