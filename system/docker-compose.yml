@@ -3,7 +3,7 @@ services:
   bootstrapper:
     restart: always
     networks:
-      - system
+      - bootstrapper
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $BACKUPDIR:$BACKUPDIR
@@ -52,7 +52,7 @@ services:
       restart: always
       hostname: '$GITLAB_HOST'
       networks:
-        - system
+        - gitlab
       volumes:
         - '$GITLAB_HOME/config:/etc/gitlab'
         - '$GITLAB_HOME/logs:/var/log/gitlab'
@@ -67,6 +67,4 @@ volumes:
 
 networks:
   bootstrapper:
-  system:
-  runner:
   gitlab:
