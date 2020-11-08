@@ -4,15 +4,17 @@ import fs from 'fs';
 import morgan from 'morgan';
 import md5 from 'md5';
 import path from 'path';
-import { exec, execSync } from "child_process";
+import { execSync } from "child_process";
 import fileUpload from 'express-fileupload';
 import jwt from 'jsonwebtoken';
 import sha256 from 'crypto-js/sha256';
 import hmacSHA512 from 'crypto-js/hmac-sha512';
 import Base64 from 'crypto-js/enc-base64';
+import cors from 'cors';
 
 export const app = express();
 app.use(bodyParser.json());
+app.use(cors());
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(fileUpload({createParentPath: true}));
 app.use(morgan('combined'))
