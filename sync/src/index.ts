@@ -133,6 +133,7 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
       fs.readdir(dir, (err, files) => {
         if (err) throw err;
         for (const file of files) {
+          if (file === dir) continue;
           fs.unlink(path.join(dir, file), (_err:any) => {
             if (_err) throw _err;
           });
