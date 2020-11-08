@@ -144,6 +144,19 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
     }
 });
 
+app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
+    const file = '../.docker.env';
+
+    try {
+      fs.unlink(file, (_err:any) => {
+        if (_err) throw _err;
+      });
+      res.sendStatus(200);
+    } catch (e) {
+      res.status(500).send(e.toString());
+    }
+});
+
 app.patch( "/command/system/patch", authenticateJWT, async ( req, res ) => {
     try {
       const out = execSync('cd ..; git pull -r');
