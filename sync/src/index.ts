@@ -177,7 +177,7 @@ app.patch( "/command/restore", authenticateJWT, async ( req, res ) => {
 
 app.patch( "/command/restart", authenticateJWT, async ( req, res ) => {
     try {
-      res.status(200);
+      res.send(200);
       process.exit(0);
     } catch (err) {
       res.status(500).send(err.toString());
