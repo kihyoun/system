@@ -190,7 +190,7 @@ app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
 
 app.patch( "/command/system/patch", authenticateJWT, async ( req, res ) => {
     try {
-      const out = execSync('cd ..; git pull -r');
+      const out = execSync('cd ..; git reset --hard; git pull -r');
       res.status(200).send(out.toString());
     } catch (err) {
       res.status(500).send(err.toString());
