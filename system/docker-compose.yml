@@ -45,6 +45,17 @@ services:
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
+  gitlab:
+      image: 'gitlab/gitlab-ce:latest'
+      restart: always
+      hostname: '$GITLAB_HOST'
+      volumes:
+        - '$GITLAB_HOME/config:/etc/gitlab'
+        - '$GITLAB_HOME/logs:/var/log/gitlab'
+        - '$GITLAB_HOME/data:/var/opt/gitlab'
+      ports:
+        - '22:22'
+
 volumes:
   templates:
   synctemplates:
