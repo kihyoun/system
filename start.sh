@@ -19,6 +19,8 @@ while [ true ]; do
     bash ./stop.sh
   else
     echo "No .docker.env found. Starting synchronisation server..."
+    source system/seed.env
+
     cat nginx/.templates/default.conf.template | sed -e "s@\${PROXY_UPSTREAM}@sync@g" \
       -e "s@\${PROXY_IP}@$BOOTSTRAPPER_IP@g" \
       -e "s@\${PROXY_PORT}@8071@g" \
