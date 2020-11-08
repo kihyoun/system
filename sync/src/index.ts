@@ -153,39 +153,12 @@ app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
-    const dir = '../';
-
-    try {
-      fs.readdir(dir, (err, files) => {
-        if (err) throw err;
-        for (const file of files) {
-          if (file === ".docker.env") {
-             fs.unlink(path.join(dir, file), (_err:any) => {
-               if (_err) throw _err;
-             });
-          }
-        }
-      });
-    } catch (e) {
-      res.status(500).send(e.toString());
-    }
-    const pdir = '../.projects.env';
-
-    try {
-      fs.readdir(pdir, (err, files) => {
-        if (err) throw err;
-        for (const file of files) {
-          if (file === pdir) continue;
-          fs.unlink(path.join(pdir, file), (_err:any) => {
-            if (_err) throw _err;
-          });
-        }
-      });
-      res.sendStatus(200);
+  try {
+    fs.unlinkSync('../.docker.env');
       process.exit(0);
-    } catch (e) {
-      res.status(500).send(e.toString());
-    }
+  } catch (e) {
+    res.status(500).send(e.toString());
+  }
 });
 
 app.patch( "/command/system/patch", authenticateJWT, async ( req, res ) => {
