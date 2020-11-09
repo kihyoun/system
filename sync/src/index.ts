@@ -117,6 +117,17 @@ app.post( "/config/main", authenticateJWT, async ( req, res ) => {
   }
 });
 
+app.get( "/config/main", authenticateJWT, async ( req, res ) => {
+  if (fs.existsSync('../.docker.env')) {
+    const data = fs.readFileSync('../.docker.env',
+      {encoding:'utf8', flag:'r'});
+
+    res.status(200).send(data)
+  } else {
+     res.sendStatus(404);
+  }
+});
+
 app.post( "/config/project", authenticateJWT, async ( req, res ) => {
   if (req.body.data.substr(807, 1) !== "$"
     || md5(req.body.data.substr(0, 1184)) !== "bd4a8426355824593a5e21ad759830c1"
@@ -125,6 +136,25 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
   } else {
      fs.writeFileSync('../.projects.env/.'+ req.body.projectKey+'.env', req.body.data);
      res.sendStatus(200);
+  }
+});
+
+app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
+ const dir = '../.projects.env';
+ try {
+  const fileNames = fs.readdirSync(dir);
+  const ret = [];
+  for (const fileName of fileNames) {
+    if (fileName === dir) continue;
+    const file = fs.readFileSync(path.join(dir, fileName));
+    ret.push({
+      filename: fileName,
+      data: file.toString()
+    })
+  }
+    res.status(200).send(ret);
+  } catch (e) {
+    res.status(500).send(e.toString());
   }
 });
 
@@ -138,7 +168,7 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
   }
 });
 
-app.delete( "/config/project", authenticateJWT, async ( req, res ) => {
+app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
     try {
       const out = execSync('cd ../nginx-proxy; bash stop.sh');
     } catch (err) {
