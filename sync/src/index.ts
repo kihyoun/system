@@ -122,7 +122,7 @@ app.get( "/config/main", authenticateJWT, async ( req, res ) => {
     const data = fs.readFileSync('../.docker.env',
       {encoding:'utf8', flag:'r'});
 
-    res.status(200).send(data)
+    res.status(200).json({filename: ".docker.env", data})
   } else {
      res.sendStatus(404);
   }
@@ -145,14 +145,14 @@ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
   const fileNames = fs.readdirSync(dir);
   const ret = [];
   for (const fileName of fileNames) {
-    if (fileName === dir) continue;
-    const file = fs.readFileSync(path.join(dir, fileName));
+    if (fileName === '.projects.env' || fileName.substr(-3,3) !== 'env') continue;
+    const data = fs.readFileSync(path.join(dir, fileName), {encoding:'utf8', flag:'r'});
     ret.push({
       filename: fileName,
-      data: file.toString()
+      data
     })
   }
-    res.status(200).send(ret);
+    res.status(200).json(ret);
   } catch (e) {
     res.status(500).send(e.toString());
   }
