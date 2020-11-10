@@ -32,8 +32,8 @@ const privateKey = Math.random().toString(36).slice(-8);
 const nonce = Math.random().toString(36).slice(-8);
 const message = Math.random().toString(36).slice(-8);
 const hashDigest = sha256(nonce + message);
-const SYNC_SECRET = Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
-const SYNC_REFRESHTOKENSECRET = Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
+const serverSecret = Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
+const serverTokenSecret = Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
 const SYNC_USER = process.env.SYNC_USER || Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
 const SYNC_PASS = process.env.SYNC_PASS || Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
 let refreshTokens: any[] = [];
@@ -51,7 +51,7 @@ const authenticateJWT = (req:any, res:any, next:any) => {
 
     if (authHeader) {
         const token = authHeader.split(' ')[1];
-        jwt.verify(token, SYNC_SECRET, (err:any, user:any) => {
+        jwt.verify(token, serverSecret, (err:any, user:any) => {
             if (err) return res.sendStatus(403);
             req.user = user;
             next();
@@ -71,12 +71,12 @@ app.post('/token', (req, res) => {
         return res.sendStatus(403);
     }
 
-    jwt.verify(token, SYNC_REFRESHTOKENSECRET, (err:any, user:any) => {
+    jwt.verify(token, serverTokenSecret, (err:any, user:any) => {
         if (err) {
             return res.sendStatus(403);
         }
 
-        const accessToken = jwt.sign({ username: user.username, role: user.role }, SYNC_SECRET, { expiresIn: '20m' });
+        const accessToken = jwt.sign({ username: user.username, role: user.role }, serverSecret, { expiresIn: '20m' });
 
         res.json({
             accessToken
@@ -86,8 +86,8 @@ app.post('/token', (req, res) => {
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
     if (username === SYNC_USER && password === SYNC_PASS) {
-        const accessToken = jwt.sign({ username }, SYNC_SECRET, { expiresIn: '20m' });
-        const refreshToken = jwt.sign({ username }, SYNC_REFRESHTOKENSECRET);
+        const accessToken = jwt.sign({ username }, serverSecret, { expiresIn: '20m' });
+        const refreshToken = jwt.sign({ username }, serverTokenSecret);
         refreshTokens.push(refreshToken);
 
         res.json({
@@ -158,9 +158,9 @@ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
 });
 
 app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
-  if (req.files && req.files.data.name === 'bootstrapper.zip') {
-    const file = req.files.data;
-    fs.writeFileSync('/bootstrapper.zip', file.data);
+  if (req.files && req.files['bootstrapper.zip']?.name==='bootstrapper.zip') {
+    const file = req.files['bootstrapper.zip'];
+    fs.writeFileSync('../../bootstrapper.zip', file.data);
      res.sendStatus(200);
   } else {
      res.sendStatus(400);
