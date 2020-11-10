@@ -4,8 +4,7 @@ if [ -f ../.docker.env ]; then
 else
     source ../system/seed.env
 fi
-
-source ../gitlab/.docker.env
-source ../system/.docker.env
+[ -f ../gitlab/.docker.env ] && source ../gitlab/.docker.env
+[ -f ../system/.docker.env ] && source ../system/.docker.env
 
 docker-compose -f ../system/docker-compose.yml stop web
