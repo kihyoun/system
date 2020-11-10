@@ -100,9 +100,9 @@ app.post('/login', (req, res) => {
 });
 
 app.post('/logout', authenticateJWT, (req, res) => {
-    const { t } = req.body;
+    const authHeader = req.headers.authorization;
+    const t = authHeader.split(' ')[1];
     refreshTokens = refreshTokens.filter(token => t !== token);
-
     res.send("Logout successful");
 });
 
