@@ -5,7 +5,7 @@ else
     source ../system/seed.env
 fi
 
-source ../gitlab/.docker.env
+[ -f ../gitlab/.docker.env ] && source ../gitlab/.docker.env
 
 export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
 docker-compose -p runner down
