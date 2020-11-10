@@ -63,7 +63,6 @@ const authenticateJWT = (req:any, res:any, next:any) => {
 
 app.post('/token', (req, res) => {
     const { token } = req.body;
-
     if (!token) {
         return res.sendStatus(401);
     }
@@ -100,7 +99,7 @@ app.post('/login', (req, res) => {
     }
 });
 
-app.post('/logout', (req, res) => {
+app.post('/logout', authenticateJWT, (req, res) => {
     const { t } = req.body;
     refreshTokens = refreshTokens.filter(token => t !== token);
 
