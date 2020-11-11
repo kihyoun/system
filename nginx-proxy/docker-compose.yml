@@ -6,7 +6,6 @@ services:
     restart: always
     networks:
       - review
-    scale: $REVIEW_SCALE
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
@@ -15,7 +14,6 @@ services:
     restart: always
     networks:
       - prod
-    scale: $PROD_SCALE
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
@@ -24,7 +22,6 @@ services:
     restart: always
     networks:
       - beta
-    scale: $BETA_SCALE
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
