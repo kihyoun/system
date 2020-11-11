@@ -81,8 +81,6 @@ app.post('/login', (req, res) => {
         refreshTokens.push(refreshToken);
         res.json({ accessToken, refreshToken });
     } else {
-      console.log('username provided', username)
-      console.log('sync user', SYNC_USER)
         res.status(401).send('Username or Password incorrect');
     }
 });
