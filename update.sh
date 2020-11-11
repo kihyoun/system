@@ -1,7 +1,8 @@
 #!/bin/bash
 shopt -s dotglob
 cd /
-[ -d system ] && [ -f bootstrapper.zip ] && unzip bootstrapper.zip -d ./tmp/bootstrapper -o
+mkdir -p /tmp/bootstrapper
+[ -d system ] && [ -f bootstrapper.zip ] && unzip -o bootstrapper.zip -d ./tmp/bootstrapper/
 if [ -d system ]; then
         (cd system;
 	[ -d /tmp/bootstrapper ] && rsync -av --progress --delete /tmp/bootstrapper/.projects.env/ .projects.env
