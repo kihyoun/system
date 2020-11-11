@@ -1,5 +1,4 @@
 #!/bin/bash
-bash update.sh
 shopt -s dotglob
 cd /;
 if [ -d system ]; then
