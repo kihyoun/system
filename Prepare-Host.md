@@ -9,6 +9,11 @@ This will checkout the Bootstrapper
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/install.sh)"
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/prepare.sh)"
 ```
+Optionally, install zsh if you like:
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+```
+
 
 ## Restore
 This will restore an existing Backup using the bootstrapper.zip
