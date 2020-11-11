@@ -6,7 +6,7 @@ if [ -f .docker.env ]; then
 	mkdir -p /ssl
 	rsync -av --progress --delete /seed/ssl/ /ssl
 else
-	echo "Restore failed. No .docker.env"
+	echo "Seed canceled. No .docker.env"
 	exit 1
 fi
 echo 'Ready.'

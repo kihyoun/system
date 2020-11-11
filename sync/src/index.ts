@@ -199,9 +199,9 @@ app.patch( "/command/system/patch", authenticateJWT, async ( req, res ) => {
     }
 });
 
-app.patch( "/command/restore", authenticateJWT, async ( req, res ) => {
+app.patch( "/command/feed", authenticateJWT, async ( req, res ) => {
     try {
-      const out = execSync('cd ..; bash restore.sh');
+      const out = execSync('cd ..; bash feed.sh');
       res.status(200).send(out.toString());
     } catch (err) {
       res.status(500).send(err.toString());
