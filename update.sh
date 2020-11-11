@@ -4,12 +4,11 @@ cd /
 mkdir -p /tmp/bootstrapper
 [ -d system ] && [ -f bootstrapper.zip ] && unzip -o bootstrapper.zip -d ./tmp/bootstrapper/
 if [ -d system ]; then
-        (cd system;
+    cd system;
 	[ -d /tmp/bootstrapper ] && rsync -av --progress --delete /tmp/bootstrapper/.projects.env/ .projects.env
 	[ -d /tmp/bootstrapper ] && cp /tmp/bootstrapper/.*.env .
 	[ -d /tmp/bootstrapper ] && cp /tmp/bootstrapper/*.env .
 	[ -d /tmp/bootstrapper ] && rm -fr /tmp/bootstrapper
-	)
 	echo 'Ready.'
 	exit 0
 else
