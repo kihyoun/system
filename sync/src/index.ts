@@ -141,6 +141,7 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
       execSync('cd ../nginx-proxy; bash stop.sh');
       execSync('cd ..; bash delete-projects.sh');
       execSync('cd ..; bash update.sh');
+      execSync('cd ../nginx-proxy; bash start.sh');
       res.sendStatus(200);
     } else {
       res.sendStatus(400);
