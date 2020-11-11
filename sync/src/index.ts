@@ -144,12 +144,17 @@ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
 });
 
 app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
-  if (req.files && req.files['bootstrapper.zip']?.name==='bootstrapper.zip') {
-    const file = req.files['bootstrapper.zip'];
-    fs.writeFileSync('../../bootstrapper.zip', file.data);
-     res.sendStatus(200);
-  } else {
-     res.sendStatus(400);
+  try {
+    if (req.files && req.files['bootstrapper.zip']?.name==='bootstrapper.zip') {
+      const file = req.files['bootstrapper.zip'];
+      fs.writeFileSync('../../bootstrapper.zip', file.data);
+      execSync('cd ..; bash update.sh');
+      res.sendStatus(200);
+    } else {
+      res.sendStatus(400);
+    }
+  } catch (err) {
+    res.status(500).send(err)
   }
 });
 
