@@ -194,6 +194,10 @@ app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
+  if (!fs.existsSync('../.docker.env')) {
+     res.status(404).send('File does not exist.');
+  }
+
   try {
     fs.unlinkSync('../.docker.env');
     res.sendStatus(200);
