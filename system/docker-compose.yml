@@ -4,7 +4,7 @@ services:
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - $BACKUPDIR:$BACKUPDIR
+      - $SEED_DIR:/seed
       - templates:/templates
       - synctemplates:/synctemplates
       - ssl:/ssl
@@ -38,10 +38,10 @@ services:
       - gitlabConfig:/etc/gitlab
       - gitlabLogs:/var/log/gitlab
       - gitlabData:/var/opt/gitlab
-      - $BACKUPDIR:$BACKUPDIR
-
+      - $SEED_DIR:/seed
     ports:
       - '22:22'
+
 volumes:
   templates:
   synctemplates:
