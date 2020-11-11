@@ -12,6 +12,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/prep
 Optionally, install zsh if you like:
 ```bash
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+sh -c "$(curl https://raw.githubusercontent.com/kihyoun/system/main/.zshrc -o /root/.zshrc)"
 ```
 
 
