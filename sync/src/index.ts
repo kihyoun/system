@@ -169,7 +169,7 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
 
 app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
     try {
-      const out = execSync('cd ../nginx-proxy; bash stop.sh');
+      execSync('cd ../nginx-proxy; bash stop.sh');
     } catch (err) {
       res.status(500).send(err.toString());
     }
@@ -190,13 +190,14 @@ app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
       res.status(500).send(e.toString());
     }
 
-    res.send(200);
+    res.sendStatus(200);
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
   try {
     fs.unlinkSync('../.docker.env');
-      process.exit(0);
+    res.sendStatus(200);
+    process.exit(0);
   } catch (e) {
     res.status(500).send(e.toString());
   }
@@ -222,7 +223,7 @@ app.patch( "/command/restore", authenticateJWT, async ( req, res ) => {
 
 app.patch( "/command/restart", authenticateJWT, async ( req, res ) => {
     try {
-      res.send(200);
+      res.sendStatus(200);
       process.exit(0);
     } catch (err) {
       res.status(500).send(err.toString());
