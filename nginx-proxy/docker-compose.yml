@@ -28,7 +28,7 @@ services:
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
-  networks:
-    review:
-    beta:
-    prod:
+networks:
+  review:
+  beta:
+  prod:
