@@ -92,16 +92,6 @@ app.post('/logout', authenticateJWT, (req, res) => {
     res.send("Logout successful");
 });
 
-app.post( "/config/main", authenticateJWT, async ( req, res ) => {
-  if (req.body.data.substr(807, 1) !== "$"
-    || md5(req.body.data.substr(0, 1184)) !== "bd4a8426355824593a5e21ad759830c1") {
-    res.sendStatus(400);
-  } else {
-     fs.writeFileSync('../.docker.env', req.body.data);
-     res.sendStatus(200);
-  }
-});
-
 app.get( "/config/main", authenticateJWT, async ( req, res ) => {
   if (fs.existsSync('../.docker.env')) {
     const data = fs.readFileSync('../.docker.env',
@@ -149,6 +139,20 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
       const file = req.files['bootstrapper.zip'];
       fs.writeFileSync('../../bootstrapper.zip', file.data);
       execSync('cd ..; bash update.sh');
+      res.sendStatus(200);
+    } else {
+      res.sendStatus(400);
+    }
+  } catch (err) {
+    res.status(500).send(err)
+  }
+});
+
+app.post( "/config/main", authenticateJWT, async ( req, res ) => {
+  try {
+    if (req.files && req.files['.docker.env']?.name==='.docker.env') {
+      const file = req.files['.docker.env'];
+      fs.writeFileSync('../.docker.env', file.data);
       res.sendStatus(200);
     } else {
       res.sendStatus(400);
