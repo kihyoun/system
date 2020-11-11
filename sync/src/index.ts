@@ -63,37 +63,23 @@ const authenticateJWT = (req:any, res:any, next:any) => {
 
 app.post('/token', (req, res) => {
     const { token } = req.body;
-    if (!token) {
-        return res.sendStatus(401);
-    }
-
-    if (!refreshTokens.includes(token)) {
-        return res.sendStatus(403);
-    }
+    if (!token)  return res.sendStatus(401);
+    if (!refreshTokens.includes(token))  return res.sendStatus(403);
 
     jwt.verify(token, serverTokenSecret, (err:any, user:any) => {
-        if (err) {
-            return res.sendStatus(403);
-        }
-
+        if (err) return res.sendStatus(403);
         const accessToken = jwt.sign({ username: user.username, role: user.role }, serverSecret, { expiresIn: '20m' });
-
-        res.json({
-            accessToken
-        });
+        res.json({ accessToken });
     });
 });
+
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
     if (username === SYNC_USER && password === SYNC_PASS) {
         const accessToken = jwt.sign({ username }, serverSecret, { expiresIn: '20m' });
         const refreshToken = jwt.sign({ username }, serverTokenSecret);
         refreshTokens.push(refreshToken);
-
-        res.json({
-            accessToken,
-            refreshToken
-        });
+        res.json({ accessToken, refreshToken });
     } else {
         res.status(401).send('Username or Password incorrect');
     }
@@ -170,22 +156,7 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
 app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
     try {
       execSync('cd ../nginx-proxy; bash stop.sh');
-    } catch (err) {
-      res.status(500).send(err.toString());
-    }
-
-    const dir = '../.projects.env';
-
-    try {
-      fs.readdir(dir, (err, files) => {
-        if (err) throw err;
-        for (const file of files) {
-          if (file === dir) continue;
-          fs.unlink(path.join(dir, file), (_err:any) => {
-            if (_err) throw _err;
-          });
-        }
-      });
+      execSync('cd ..; bash delete-projects.sh');
     } catch (e) {
       res.status(500).send(e.toString());
     }
