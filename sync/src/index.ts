@@ -138,6 +138,8 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
     if (req.files && req.files['bootstrapper.zip']?.name==='bootstrapper.zip') {
       const file = req.files['bootstrapper.zip'];
       fs.writeFileSync('../../bootstrapper.zip', file.data);
+      execSync('cd ../nginx-proxy; bash stop.sh');
+      execSync('cd ..; bash delete-projects.sh');
       execSync('cd ..; bash update.sh');
       res.sendStatus(200);
     } else {
