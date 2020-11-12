@@ -2,7 +2,7 @@ FROM bootstrapper_system
 ARG DEBIAN_FRONTEND=noninteractive
 # Checkout fresh Repo
 WORKDIR /
-COPY checkout.sh /tmp/checkout.sh
+COPY /system/bootstrapper/checkout.sh /tmp/checkout.sh
 RUN bash /tmp/checkout.sh
 # Install Sync Server
 WORKDIR /system/sync
