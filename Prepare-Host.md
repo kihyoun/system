@@ -15,7 +15,7 @@ sh -c "$(curl https://raw.githubusercontent.com/kihyoun/system/main/.zshrc -o /r
 This will checkout the Bootstrapper
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/bootstrapper/checkout.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/bootstrapper/checkout.sh)"
 ```
 
 ## Boot
