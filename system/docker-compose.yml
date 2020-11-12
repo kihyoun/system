@@ -12,8 +12,8 @@ services:
       - gitlabLogs:/srv/gitlab/log
       - gitlabData:/srv/gitlab/data
     build:
-      context: ./
-      dockerfile: Dockerfile
+      context: ../
+      dockerfile: ./Dockerfile
 
   web:
     image: nginx
