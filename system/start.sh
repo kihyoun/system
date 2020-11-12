@@ -16,7 +16,7 @@ if [ -f .docker.env ]; then
   cd ../nginx-proxy; bash ./start.sh;
 
   if [ $WIZARD_ENABLE = true ]; then
-    cd ../wizard; bash ./start.sh; cd ../system;
+    cd ../wizard; bash ./start.sh;
   fi
 
   cd ../nginx; bash ./start.sh;

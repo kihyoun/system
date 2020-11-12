@@ -3,7 +3,7 @@
 if [ -f .docker.env ]; then
   npm start
 else
-  source .seed.env
+  source ../system/.seed.env
   source ../.docker.env
   source ../wizard/.docker.env
 
