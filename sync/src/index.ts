@@ -93,7 +93,7 @@ app.post('/logout', authenticateJWT, (req, res) => {
 });
 
 app.get( "/config/main", authenticateJWT, async ( req, res ) => {
-  if (fs.existsSync('../systen/.docker.env')) {
+  if (fs.existsSync('../system/.docker.env')) {
     const data = fs.readFileSync('../system/.docker.env',
       {encoding:'utf8', flag:'r'});
 
