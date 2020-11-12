@@ -9,7 +9,7 @@ docker-compose -p runner up --build --remove-orphans -d
 
 for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
     source $i
-    export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
+    export GITLAB_RUNNER_SCALE=$GITLAB_RUNNER_SCALE
     export GITLAB_HOST=$GITLAB_HOST
     export GITLAB_REGISTRY_HOST=$GITLAB_REGISTRY_HOST
     export GITLAB_IP=$GITLAB_IP

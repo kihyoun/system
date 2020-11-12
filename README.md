@@ -119,7 +119,7 @@ On startup, the Gitlab Service will create a .docker.env with the IP Address, an
 
 Stop the Gitlab Runners only if the Gitlab is running. If the Gitlab Instance is not running, and you stop the Gitlab Runners, they will not unregister, and on next startup they will register again. That will create duplicate Runners entries. You can clean them up using the `--all-runners` Option in the stop Script.
 
-The Number Docker Runners can be changed with GITLAB_RUNNER_DOCKER_SCALE in the `.docker.env`
+The Number Docker Runners can be changed with GITLAB_RUNNER_SCALE in the `.docker.env`
 They use the [docker-compose scale](https://docs.docker.com/compose/compose-file/compose-file-v2/#scale) Feature, introduced in [Compose Version 2.2](https://docs.docker.com/compose/compose-file/compose-versioning/#version-22)
 
 ### NGINX Proxy

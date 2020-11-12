@@ -5,7 +5,7 @@ services:
     restart: always
     networks:
       - system_gitlab
-    scale: $GITLAB_RUNNER_DOCKER_SCALE
+    scale: $GITLAB_RUNNER_SCALE
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/gitlab-runner
