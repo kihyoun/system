@@ -1,5 +1,5 @@
 #!/bin/bash
-[ ! -d system ] && git clone https://github.com/kihyoun/system.git
+[ ! -d system ] && git clone --recursive https://github.com/kihyoun/system.git
 if [ -d system ]; then
         cd system;
 else
