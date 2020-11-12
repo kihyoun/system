@@ -28,6 +28,11 @@ services:
       - synctemplates:/etc/nginx/templates
     network_mode: "host"
 
+  wizard:
+    restart: always
+    build:
+      context: ../wizard
+
   gitlab:
     image: 'gitlab/gitlab-ce:latest'
     restart: always
