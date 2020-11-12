@@ -13,7 +13,7 @@ services:
       - gitlabData:/srv/gitlab/data
     build:
       context: ../
-      dockerfile: ./Dockerfile
+      dockerfile: Dockerfile
 
   web:
     image: nginx
