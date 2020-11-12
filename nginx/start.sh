@@ -31,7 +31,7 @@ function generate_nginx_conf {
 mkdir -p /templates
 
 generate_nginx_conf $GITLAB_DOMAIN_MODE \
-  $GITLAB_UPSTREAM \
+  gitlab \
   $GITLAB_IP \
   80 \
   $GITLAB_HOST \
@@ -39,7 +39,7 @@ generate_nginx_conf $GITLAB_DOMAIN_MODE \
   $GITLAB_SSL_KEY > /templates/default.conf.template
 
 generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
-  $GITLAB_REGISTRY_UPSTREAM \
+  registry \
   $GITLAB_IP \
   5050 \
   $GITLAB_REGISTRY_HOST \
