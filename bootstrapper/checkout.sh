@@ -3,6 +3,7 @@
 if [ -d system ]; then
         cd system;
 else
-        echo "System not found. Please create a .docker.env"
+        echo "Error. System not found."
+        exit 1
 fi
 

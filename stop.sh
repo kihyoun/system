@@ -1,12 +1,15 @@
 #! /bin/bash
-if [ -f .docker.env ]; then
-    source .docker.env
+if [ -f sysstem/.docker.env ]; then
+    source system/.docker.env
 else
-    source .docker.env.example
-    source seed.env
+    source system/.docker.env.example
+    source system/.seed.env
 fi
 
-(cd gitlab-runner; bash stop.sh)
-(cd nginx-proxy; bash stop.sh)
-(cd gitlab; bash stop.sh)
-(cd nginx; bash stop.sh)
+docker exec -it system_bootstrapper_1 /system/system/stop.sh
+docker-compose -f system/docker-compose.yml down
+
+docker system prune -f
+docker network prune -f
+docker volume prune -f
+docker image prune -f

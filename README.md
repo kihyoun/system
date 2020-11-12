@@ -51,8 +51,8 @@ During a successful Pipeline, the following will happen in the Test-Stage on a M
 Checkout the [Prepare-Host](./Prepare-Host.md) Section for more options.
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/install.sh)"
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/prepare.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/bootstrapper/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/bootstrapper/checkout.sh)"
 ```
 
 The initial Run may take a few minutes, depending on Network.

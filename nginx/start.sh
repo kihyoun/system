@@ -1,5 +1,5 @@
 #! /bin/bash
-source ../.docker.env
+source ../system/.docker.env
 source ../gitlab/.docker.env
 source ../system/.docker.env
 
@@ -77,7 +77,7 @@ function generate_proxy_config {
     >> /templates/default.conf.template
 }
 
-for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/null); do
+for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
   source $i
   generate_proxy_config
 done

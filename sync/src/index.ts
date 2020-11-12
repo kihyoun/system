@@ -93,8 +93,8 @@ app.post('/logout', authenticateJWT, (req, res) => {
 });
 
 app.get( "/config/main", authenticateJWT, async ( req, res ) => {
-  if (fs.existsSync('../.docker.env')) {
-    const data = fs.readFileSync('../.docker.env',
+  if (fs.existsSync('../systen/.docker.env')) {
+    const data = fs.readFileSync('../system/.docker.env',
       {encoding:'utf8', flag:'r'});
 
     res.status(200).json({filename: ".docker.env", data})
@@ -109,13 +109,13 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
     || !req.body.projectKey) {
     res.sendStatus(400);
   } else {
-     fs.writeFileSync('../.projects.env/.'+ req.body.projectKey+'.env', req.body.data);
+     fs.writeFileSync('../system/.projects.env/.'+ req.body.projectKey+'.env', req.body.data);
      res.sendStatus(200);
   }
 });
 
 app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
- const dir = '../.projects.env';
+ const dir = '../system/.projects.env';
  try {
   const fileNames = fs.readdirSync(dir);
   const ret = [];
@@ -137,10 +137,10 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
   try {
     if (req.files && req.files['bootstrapper.zip']?.name==='bootstrapper.zip') {
       const file = req.files['bootstrapper.zip'];
-      fs.writeFileSync('../../bootstrapper.zip', file.data);
+      fs.writeFileSync('../bootstrapper.zip', file.data);
       execSync('cd ../nginx-proxy; bash stop.sh');
-      execSync('cd ..; bash delete-projects.sh');
-      execSync('cd ..; bash update.sh');
+      execSync('cd ../system; bash delete-projects.sh');
+      execSync('cd ../system; bash push.sh');
       execSync('cd ../nginx-proxy; bash start.sh');
       res.sendStatus(200);
     } else {
@@ -155,7 +155,7 @@ app.post( "/config/main", authenticateJWT, async ( req, res ) => {
   try {
     if (req.files && req.files['.docker.env']?.name==='.docker.env') {
       const file = req.files['.docker.env'];
-      fs.writeFileSync('../.docker.env', file.data);
+      fs.writeFileSync('../system/.docker.env', file.data);
       res.sendStatus(200);
     } else {
       res.sendStatus(400);
@@ -168,7 +168,7 @@ app.post( "/config/main", authenticateJWT, async ( req, res ) => {
 app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
     try {
       execSync('cd ../nginx-proxy; bash stop.sh');
-      execSync('cd ..; bash delete-projects.sh');
+      execSync('cd ../system; bash delete-projects.sh');
     } catch (e) {
       res.status(500).send(e.toString());
     }
@@ -177,12 +177,12 @@ app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
-  if (!fs.existsSync('../.docker.env')) {
+  if (!fs.existsSync('../system/.docker.env')) {
      res.status(404).send('File does not exist.');
   }
 
   try {
-    fs.unlinkSync('../.docker.env');
+    fs.unlinkSync('../system/.docker.env');
     res.sendStatus(200);
     process.exit(0);
   } catch (e) {
@@ -199,9 +199,9 @@ app.patch( "/command/system/patch", authenticateJWT, async ( req, res ) => {
     }
 });
 
-app.patch( "/command/feed", authenticateJWT, async ( req, res ) => {
+app.patch( "/command/seed", authenticateJWT, async ( req, res ) => {
     try {
-      const out = execSync('cd ..; bash feed.sh');
+      const out = execSync('cd ../system; bash seed.sh');
       res.status(200).send(out.toString());
     } catch (err) {
       res.status(500).send(err.toString());
@@ -217,9 +217,9 @@ app.patch( "/command/restart", authenticateJWT, async ( req, res ) => {
     }
 });
 
-app.patch( "/command/backup", authenticateJWT, async ( req, res ) => {
+app.patch( "/command/harvest", authenticateJWT, async ( req, res ) => {
     try {
-      const out = execSync('cd ..; bash backup.sh');
+      const out = execSync('cd ../system; bash harvest.sh');
       res.status(200).send(out.toString());
     } catch (err) {
       res.status(500).send(err.toString());

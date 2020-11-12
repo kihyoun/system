@@ -1,5 +1,5 @@
 #! /bin/bash
-source ../.docker.env
+source ../system/.docker.env
 source ../gitlab/.docker.env
 
 export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
@@ -12,7 +12,7 @@ do
         --url ${GITLAB_EXTERNAL_URL} --all-runners
 done
 
-for i in $(find ../.projects.env ../projects.env -type f -name "*.env" 2>/dev/null); do
+for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
     source $i
     export GITLAB_RUNNER_DOCKER_SCALE=$GITLAB_RUNNER_DOCKER_SCALE
 

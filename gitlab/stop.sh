@@ -1,8 +1,9 @@
 #! /bin/bash
-if [ -f ../.docker.env ]; then
-    source ../.docker.env
+if [ -f ../system/.docker.env ]; then
+    source ../system/.docker.env
 else
-    source ../system/seed.env
+    source ../system/.docker.env.example
+    source ../system/.seed.env
 fi
 
 docker-compose -f ../system/docker-compose.yml stop gitlab

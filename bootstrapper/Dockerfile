@@ -5,4 +5,5 @@ RUN apt-get update
 RUN apt-get upgrade -y
 RUN apt-get install dialog apt-utils net-tools vim rsync iputils-ping -y
 RUN apt-get install curl npm -y
-RUN bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/install.sh)"
+COPY install.sh /tmp/install.sh
+RUN bash -c /tmp/install.sh

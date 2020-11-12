@@ -1,5 +1,5 @@
 #! /bin/bash
-source ../.docker.env
+source ../system/.docker.env
 
 docker-compose -f ../system/docker-compose.yml up --build --remove-orphans -d gitlab
 
