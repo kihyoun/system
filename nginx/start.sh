@@ -1,5 +1,5 @@
 #! /bin/bash
-source ../system/.docker.env
+source ../.docker.env
 source ../gitlab/.docker.env
 source ../system/.docker.env
 
@@ -90,5 +90,18 @@ done
     $SYNC_SSL \
     $SYNC_SSL_KEY \
     >> /templates/default.conf.template
+
+ if [ $WIZARD_ENABLE = true ]; then
+    source ../wizard/.docker.env
+
+    generate_nginx_conf $WIZARD_DOMAIN_MODE \
+      wizard \
+      $WIZARD_IP \
+      80 \
+      $WIZARD_HOST \
+      $WIZARD_SSL \
+      $SYNC_SSL_KEY \
+      >> /templates/default.conf.template
+  fi
 
 docker-compose -f ../system/docker-compose.yml up --build --remove-orphans --force-recreate -d web

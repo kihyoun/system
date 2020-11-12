@@ -14,6 +14,11 @@ if [ -f .docker.env ]; then
 
   cd ../gitlab; bash ./start.sh;
   cd ../nginx-proxy; bash ./start.sh;
+
+  if [ $WIZARD_ENABLE = true ]; then
+    cd ../wizard; bash ./start.sh; cd ../system;
+  fi
+
   cd ../nginx; bash ./start.sh;
   cd ../gitlab-runner; bash ./start.sh;
   cd ../system;
@@ -30,17 +35,7 @@ if [ -f .docker.env ]; then
   bash ./stop.sh
 
 else
-
-  source .seed.env
-
-  cat ../nginx/.templates/default.conf.template | sed -e "s@\${PROXY_UPSTREAM}@sync@g" \
-    -e "s@\${PROXY_IP}@$BOOTSTRAPPER_IP@g" \
-    -e "s@\${PROXY_PORT}@8071@g" \
-    -e "s@\${PROXY_HOSTNAME}@$BOOTSTRAPPER_IP@g" > /synctemplates/default.conf.template
-
-  docker-compose up --build --remove-orphans --force-recreate -d sync
-
-  cd ../sync; bash ./start.sh; cd ../system;
-
-  docker-compose stop sync
+  cd ../wizard; bash ./start.sh;
+  cd ../sync; bash ./start.sh;
+  cd ../system;
 fi
