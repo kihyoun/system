@@ -11,15 +11,14 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/too
 sh -c "$(curl https://raw.githubusercontent.com/kihyoun/system/main/.zshrc -o /root/.zshrc)"
 ```
 
-## Checkout
-This will checkout the Bootstrapper
-
+## Clone
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/system/checkout.sh)"
+git clone --recursive https://github.com/kihyoun/system.git
 ```
 
 ## Boot
 ```bash
+cd system
 bash start.sh
 ```
 
