@@ -41,7 +41,7 @@ generate_nginx_conf $GITLAB_DOMAIN_MODE \
 generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
   $GITLAB_REGISTRY_UPSTREAM \
   $GITLAB_IP \
-  $GITLAB_REGISTRY_PORT \
+  5050 \
   $GITLAB_REGISTRY_HOST \
   $GITLAB_REGISTRY_SSL \
   $GITLAB_REGISTRY_SSL_KEY >> /templates/default.conf.template

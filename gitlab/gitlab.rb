@@ -10,7 +10,7 @@ gitlab_rails['registry_enabled'] = true
 
 ### Settings used by Registry application
 registry['enable'] = true
-registry['registry_http_addr'] = "${GITLAB_IP}:${GITLAB_REGISTRY_PORT}"
+registry['registry_http_addr'] = "${GITLAB_IP}:5050"
 nginx['enable'] = true
 nginx['client_max_body_size'] = "900m"
 nginx['redirect_http_to_https'] = false
