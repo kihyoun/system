@@ -17,7 +17,7 @@ else
     -e "s@\${PROXY_PORT}@80@g" \
     -e "s@\${PROXY_HOSTNAME}@$WIZARD_IP@g" >> /synctemplates/default.conf.template
 
-  docker-compose up --build --remove-orphans --force-recreate -d sync
+  docker-compose -f ../system/docker-compose.yml up --build --remove-orphans --force-recreate -d sync
   npm start
-  docker-compose stop sync
+  docker-compose -f ../system/docker-compose.yml stop sync
 fi
