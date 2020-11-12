@@ -52,7 +52,7 @@ function generate_proxy_config {
   [ $USE_PROD_HOST = true ] && generate_nginx_conf $PROD_DOMAIN_MODE \
     ${PROJECT_NAME}_prod \
     $PROD_PROXY \
-    $PROD_PORT \
+    80 \
     $PROD_HOST \
     $PROD_SSL \
     $PROD_SSL_KEY \
@@ -61,7 +61,7 @@ function generate_proxy_config {
   [ $USE_BETA_HOST = true ] && generate_nginx_conf $BETA_DOMAIN_MODE \
     ${PROJECT_NAME}_beta \
     $BETA_PROXY \
-    $BETA_PORT \
+    80 \
     $BETA_HOST \
     $BETA_SSL \
     $BETA_SSL_KEY \
@@ -70,7 +70,7 @@ function generate_proxy_config {
   [ $USE_REVIEW_HOST = true ] && generate_nginx_conf $REVIEW_DOMAIN_MODE \
     ${PROJECT_NAME}_review \
     $REVIEW_PROXY \
-    $REVIEW_PORT \
+    80 \
     $REVIEW_HOST \
     $REVIEW_SSL \
     $REVIEW_SSL_KEY \
