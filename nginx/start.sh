@@ -33,7 +33,7 @@ mkdir -p /templates
 generate_nginx_conf $GITLAB_DOMAIN_MODE \
   $GITLAB_UPSTREAM \
   $GITLAB_IP \
-  $GITLAB_PORT \
+  80 \
   $GITLAB_HOST \
   $GITLAB_SSL \
   $GITLAB_SSL_KEY > /templates/default.conf.template

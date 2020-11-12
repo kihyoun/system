@@ -12,13 +12,13 @@ do
     --non-interactive \
     --executor "docker" \
     --docker-image alpine:latest \
-    --url "http://$GITLAB_IP:$GITLAB_PORT/" \
+    --url "http://$GITLAB_IP:80/" \
     --registration-token "$GITLAB_RUNNER_TOKEN" \
     --description "runner-docker-$i" \
     --tag-list "docker,aws" \
     --run-untagged=true \
     --access-level="not_protected" \
-    --clone-url "http://$GITLAB_IP:$GITLAB_PORT/" \
+    --clone-url "http://$GITLAB_IP:80/" \
     --docker-network-mode="system_gitlab" \
     --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
     --docker-privileged=true
@@ -38,13 +38,13 @@ for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.
         --non-interactive \
         --executor "docker" \
         --docker-image alpine:latest \
-        --url "http://$GITLAB_IP:$GITLAB_PORT/" \
+        --url "http://$GITLAB_IP:80/" \
         --registration-token "$GITLAB_RUNNER_TOKEN" \
         --description "$PROJECT_NAME-runner-docker-$i" \
         --tag-list "docker,aws" \
         --run-untagged=true \
         --access-level="not_protected" \
-        --clone-url "http://$GITLAB_IP:$GITLAB_PORT/" \
+        --clone-url "http://$GITLAB_IP:80/" \
         --docker-network-mode="system_gitlab" \
         --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
         --docker-privileged=true
