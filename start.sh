@@ -1,5 +1,4 @@
 #! /bin/bash
-cd bootstrapper; bash start.sh; cd ..
 if [ -f system/.docker.env ]; then
     source system/.docker.env
 else

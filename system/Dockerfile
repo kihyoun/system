@@ -1,4 +1,5 @@
-FROM bootstrapper_system
+FROM systembootstrapper/system
+
 ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /
 COPY . /system
