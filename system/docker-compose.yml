@@ -30,8 +30,9 @@ services:
 
   wizard:
     restart: always
-    build:
-      context: ../wizard
+    image: systembootstrapper/wizard
+    # build:
+    #   context: ../wizard
 
   gitlab:
     image: 'gitlab/gitlab-ce:latest'
