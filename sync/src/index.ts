@@ -44,7 +44,7 @@ const port = 8071;
 app.listen( port, () => {
     console.log(Helper.textLogo);
     if (process.env.SYNC_ENABLE !== 'true') {
-      console.log( `server listening on http://${process.env.BOOTSTRAPPER_IP}/sync` );
+      console.log( `server listening on http://${process.env.BOOTSTRAPPER_IP}:8071` );
     } else {
       console.log( `server listening on ${parseInt(process.env.SYNC_DOMAIN_MODE, 10) > 1 ? "https://" : "http://"}${process.env.SYNC_HOST}` );
     }
