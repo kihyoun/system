@@ -100,7 +100,7 @@ done
       80 \
       $WIZARD_HOST \
       $WIZARD_SSL \
-      $SYNC_SSL_KEY \
+      $WIZARD_SSL_KEY \
       >> /templates/default.conf.template
   fi
 
