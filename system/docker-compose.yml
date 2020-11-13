@@ -19,7 +19,7 @@ services:
     image: nginx
     volumes:
       - templates:/etc/nginx/templates
-      - ssl:$SSL_BASEDIR
+      - ssl:/ssl
     network_mode: "host"
 
   sync:
