@@ -1,6 +1,6 @@
 #! /bin/bash
 
-if [ -f .docker.env ]; then
+if [ -f ../system/.docker.env ]; then
   npm start
 else
   source ../system/.seed.env
