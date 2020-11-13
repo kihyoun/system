@@ -11,6 +11,7 @@ import sha256 from 'crypto-js/sha256';
 import hmacSHA512 from 'crypto-js/hmac-sha512';
 import Base64 from 'crypto-js/enc-base64';
 import cors from 'cors';
+import Helper from "./Helper";
 
 export const app = express();
 app.use(bodyParser.json());
@@ -41,7 +42,12 @@ let refreshTokens: any[] = [];
 const port = 8071;
 
 app.listen( port, () => {
-    console.log( `server started at http://localhost:${ port }` );
+    console.log(Helper.textLogo);
+    if (process.env.SYNC_ENABLE !== 'true') {
+      console.log( `server listening on http://${process.env.BOOTSTRAPPER_IP}/sync` );
+    } else {
+      console.log( `server listening on ${parseInt(process.env.SYNC_DOMAIN_MODE, 10) > 1 ? "https://" : "http://"}${process.env.SYNC_HOST}` );
+    }
     console.log( `SYNC_USER: ${SYNC_USER}` );
     console.log( `SYNC_PASS: ${SYNC_PASS}` );
 } );
