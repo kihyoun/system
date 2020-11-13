@@ -1,4 +1,5 @@
-FROM systembootstrapper/system
+ARG IMAGE=systembootstrapper/system
+FROM $IMAGE
 
 ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /

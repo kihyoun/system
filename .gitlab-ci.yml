@@ -1,0 +1,99 @@
+#-------------------------------------------------------------
+#                +------------------+                        |
+#               /|                 /|                        |
+#              / |                / |                        |
+#             *--+---------------*  |                        |
+#             |  |               |  |                        |
+#             |  |  System       |  |                        |
+#             |  |  Bootstrapper |  |                        |
+#             |  +---------------+--+                        |
+#             | /                | /                         |
+#             |/                 |/                          |
+#             *------------------*                           |
+#    +------+ https://www.system-bootstrapper.com
+#$  /      /|                                                |
+#  +------+ |                                                |
+#  |      | +                                                |
+#  |      |/                                                 |
+#  +------+                                                  |
+#-------------------------------------------------------------
+# Gitlab CI Definition
+# ProjectID: systembootstrapper
+# Filepath: ./gitlab-ci.yml
+image: docker:latest
+services:
+  - docker:dind
+variables:
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+
+stages:
+  - build
+  - deploy
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - .npm
+    - cache/Cypress
+    - node_modules
+
+build:
+  stage: build
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - docker build -t $IMAGE_TAG ./bootstrapper
+    - docker tag $IMAGE_TAG systembootstrapper/system:latest
+    - docker push $IMAGE_TAG
+  only:
+    - merge_requests
+    - master
+
+deploy:dockerhub:
+  stage: deploy
+  before_script:
+    - echo "$DOCKERHUB_PASS" | docker login --username $DOCKERHUB_USER --password-stdin
+  script:
+    - docker push systembootstrapper/system:latest
+  only:
+    - master
+
+deploy:github:
+  stage: deploy
+  image: node:alpine
+  before_script:
+    - 'which ssh-agent || ( apk update && apk add openssh-client git)'
+    - eval $(ssh-agent -s)
+    - echo "$GITHUB_SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan github.com >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - git remote rm origin && git remote add origin git@github.com:kihyoun/system.git
+    - git push origin HEAD:master
+  only:
+    - master
+
+
+
+# install:
+#   stage: install
+#   before_script:
+#     - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+#   script:
+#     - docker build -t $IMAGE_TAG_BOOTSTRAPPER --build-arg IMAGE=$IMAGE_TAG_SYSTEM ./system
+#     - docker push $IMAGE_TAG_BOOTSTRAPPER
+#   only:
+#     - merge_requests
+#     - master
+
+# test: TODO :)
+#   stage: test
+#   before_script:
+#     - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY_TEST
+#   script:
+#     - docker push $IMAGE_TAG_BOOTSTRAPPER
+#   only:
+#     - merge_requests
+#     - master
