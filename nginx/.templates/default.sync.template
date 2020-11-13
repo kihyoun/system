@@ -9,7 +9,7 @@ upstream wizard {
 server {
     listen      80;
     server_tokens off;
-    server_name *;
+    server_name "*";
 
     location / {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
