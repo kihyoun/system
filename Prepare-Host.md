@@ -1,14 +1,14 @@
 ## Install
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/main/bootstrapper/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/master/bootstrapper/install.sh)"
 ```
 
 (Optional) Install zsh and pull .zshrc:
 
 ```bash
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-sh -c "$(curl https://raw.githubusercontent.com/kihyoun/system/main/.zshrc -o /root/.zshrc)"
+sh -c "$(curl https://raw.githubusercontent.com/kihyoun/system/master/.zshrc -o /root/.zshrc)"
 ```
 
 ## Clone
