@@ -23,6 +23,8 @@ gitlab_rails['sentry_enabled'] = false
 grafana['enable'] = false
 prometheus_monitoring['enable'] = false
 node_exporter['enable'] = false
+prometheus['enable'] = false
+prometheus['monitor_kubernetes'] = false
 
 gitlab_rails['object_store']['enabled'] = false
 gitlab_rails['object_store']['connection'] = {}
