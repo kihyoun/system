@@ -9,6 +9,7 @@ docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' syst
 source $ENV_FILE
 
 if [ -f .docker.env ]; then
+  source .docker.env
   bash ./start-intermediate.sh
   bash ./start-main.sh
   [ $SYNC_ENABLE = false ] && cd ../system; ./wait-for-it.sh $BOOTSTRAPPER_IP:8071 -t 0

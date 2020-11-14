@@ -1,6 +1,7 @@
 #! /bin/bash
 
 if [ -f ../system/.docker.env ]; then
+  source ../system/.docker.env
   [ $SYNC_ENABLE = true ] && npm start
 else
   source ../system/.seed.env
