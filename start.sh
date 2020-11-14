@@ -6,4 +6,4 @@ else
     source system/.seed.env
 fi
 
-docker-compose -f system/docker-compose.yml up --build --force-recreate -d bootstrapper
+docker-compose -f system/docker-compose.yml up -d bootstrapper
