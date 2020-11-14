@@ -173,9 +173,10 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
       console.log('Stopping intermediate services...')
       const out = execSync('cd ../system; bash ./stop-intermediate.sh');
       fs.writeFileSync('../bootstrapper.zip', file.data);
+      const out2 = execSync('cd ../system; bash push.sh');
       status.needRestart = true;
       res.status(200).json({message: 'Config written.',
-        status, output: out.toString()});
+        status, output: out.toString() + out2.toString()});
     } else {
       res.sendStatus(400);
     }
