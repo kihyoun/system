@@ -9,33 +9,12 @@ docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' syst
 source $ENV_FILE
 
 if [ -f .docker.env ]; then
-
-  source .docker.env
-
-  cd ../gitlab; bash ./start.sh;
-  cd ../nginx-proxy; bash ./start.sh;
-
-  if [ $WIZARD_ENABLE = true ]; then
-    cd ../wizard; bash ./start.sh;
-  fi
-
-  cd ../nginx; bash ./start.sh;
-  cd ../gitlab-runner; bash ./start.sh;
-  cd ../system;
-
-  if [ $SYNC_ENABLE = true ]; then
-    cd ../sync; bash ./start.sh; cd ../system;
-  fi
-
-  if [ $SYNC_ENABLE = false ]; then
-    ./wait-for-it.sh $BOOTSTRAPPER_IP:8071 -t 0
-  fi
-
-  echo "stopping environment..."
-  bash ./stop.sh
-
+  bash ./start-intermediate.sh
+  bash ./start-main.sh
+  [ $SYNC_ENABLE = false ] && cd ../system; ./wait-for-it.sh $BOOTSTRAPPER_IP:8071 -t 0
+  cd ../system; bash ./stop.sh
 else
   cd ../wizard; bash ./start.sh;
   cd ../sync; bash ./start.sh;
-  cd ../system;
+  cd ../system; bash ./stop.sh
 fi

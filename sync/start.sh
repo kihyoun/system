@@ -1,7 +1,7 @@
 #! /bin/bash
 
 if [ -f ../system/.docker.env ]; then
-  npm start
+  [ $SYNC_ENABLE = true ] && npm start
 else
   source ../system/.seed.env
   source ../.docker.env
@@ -13,5 +13,4 @@ else
 
   docker-compose -f ../system/docker-compose.yml up --build --remove-orphans --force-recreate -d sync
   npm start
-  docker-compose -f ../system/docker-compose.yml stop sync
 fi
