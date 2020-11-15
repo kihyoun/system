@@ -8,7 +8,7 @@ if [ -f ../system/.docker.env ]; then
     docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' system_gitlab_1 >> .docker.env
     source .docker.env
     mkdir -p /srv/gitlab/config
-    [ $GITLAB_REGISTRY_DOMAIN_MODE < 2 ] && DISABLE_INSECURE_REGISTRY="" || DISABLE_INSECURE_REGISTRY="#"
+    [ $GITLAB_REGISTRY_DOMAIN_MODE -lt 2 ] && DISABLE_INSECURE_REGISTRY="" || DISABLE_INSECURE_REGISTRY="#"
     cat gitlab.rb \
         | sed -e "s@\${GITLAB_REGISTRY_URL}@${GITLAB_REGISTRY_URL}@g" \
         -e "s@\${GITLAB_REGISTRY_HOST}@${GITLAB_REGISTRY_HOST}@g" \
