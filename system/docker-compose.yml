@@ -47,6 +47,7 @@ services:
       - $SEED_DIR:/seed
     ports:
       - '22:22'
+      - '5050:5050'
 
 volumes:
   templates:

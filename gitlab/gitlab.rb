@@ -5,8 +5,8 @@ registry_external_url '${GITLAB_REGISTRY_URL}'
 
 ### Settings used by GitLab application
 gitlab_rails['registry_enabled'] = true
-#gitlab_rails['registry_host'] = "${GITLAB_REGISTRY_HOST}"
-#gitlab_rails['registry_port'] = "${GITLAB_REGISTRY_PORT}"
+${DISABLE_INSECURE_REGISTRY}gitlab_rails['registry_host'] = "${GITLAB_REGISTRY_HOST}"
+${DISABLE_INSECURE_REGISTRY}gitlab_rails['registry_port'] = 5050
 
 ### Settings used by Registry application
 registry['enable'] = true
