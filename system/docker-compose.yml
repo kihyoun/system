@@ -14,6 +14,9 @@ services:
     build:
       context: ../
       dockerfile: system/Dockerfile
+      # Uncomment following line to create a local System base Image
+      # args:
+      #   - IMAGE=bootstrapper_system
 
   web:
     image: nginx
