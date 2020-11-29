@@ -4,13 +4,13 @@ if [ -f ../system/.docker.env ] && [ -f ../gitlab/.docker.env ]; then
     source ../gitlab/.docker.env
 
     if [ $# -lt 1 ] || [ "$1" = "main" ]; then
-        docker-compose -p runner up --build --remove-orphans -d
+        docker-compose -p runner up --build --scale docker=$GITLAB_RUNNER_SCALE --remove-orphans -d
     fi
 
     if [ $# -lt 1 ] || [ "$1" = "projects" ]; then
         for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
             source $i
-            docker-compose -p ${PROJECT_NAME}_runner up --build --remove-orphans -d
+            docker-compose -p ${PROJECT_NAME}_runner up --build --scale docker=$GITLAB_RUNNER_SCALE --remove-orphans -d
         done
     fi
 
