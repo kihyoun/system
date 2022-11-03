@@ -1,4 +1,4 @@
-ARG IMAGE=systembootstrapper/system
+ARG IMAGE=systembootstrapper/system:12
 FROM $IMAGE
 
 ARG DEBIAN_FRONTEND=noninteractive
