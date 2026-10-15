@@ -2,6 +2,10 @@ version: '3'
 services:
   bootstrapper:
     restart: always
+    environment:
+      SEED_DIR: ${SEED_DIR:?SEED_DIR must be set}
+      GITLAB_HOST: ${GITLAB_HOST:-gitlab.example.com}
+      COMPOSE_COMPATIBILITY: "1"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $SEED_DIR:/seed

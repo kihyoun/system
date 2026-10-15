@@ -1,4 +1,5 @@
 #! /bin/bash
+cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 if [ -f system/.docker.env ]; then
     source system/.docker.env
 else
@@ -6,5 +7,7 @@ else
     source system/.seed.env
 fi
 
-docker exec -it system_bootstrapper_1 /system/system/stop.sh
-docker-compose -f system/docker-compose.yml down
+if [ -n "$(docker-compose -p system -f system/docker-compose.yml ps -q --status running bootstrapper)" ]; then
+    docker-compose -p system -f system/docker-compose.yml exec -T bootstrapper bash /system/system/stop.sh
+fi
+docker-compose -p system -f system/docker-compose.yml down

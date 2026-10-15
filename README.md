@@ -8,9 +8,15 @@ Its larger goal is continuous renewal: the platform should provide the GitLab wo
 
 ## Current status
 
-**This is a legacy implementation awaiting restoration, not a currently verified installation.**
+**The first-boot wizard now runs on Ubuntu/WSL2; the complete legacy platform is still under restoration.**
 
-The idea dates back to 2019. Development did not reach a sustainable renewal cycle, maintenance fell behind, and the existing code no longer provides a working bootstrap according to the maintainer. Compatibility with a current Ubuntu and Docker installation has not yet been re-established.
+The host installer, wizard, sync API authentication and file-based seed cycle
+have been exercised on Ubuntu 26.04.1 with Docker Engine 29.9.1 and Compose 5.6.0.
+See [Prepare-Host.md](Prepare-Host.md) for the tested first-boot procedure and
+seed behavior. GitLab, runners, registry integration and production migration
+remain unverified.
+
+The idea dates back to 2019. Development did not reach a sustainable renewal cycle and maintenance fell behind. Restoration has recovered the initial configuration environment, but compatibility of the complete platform with current Ubuntu and Docker is not yet established.
 
 The repository contains the foundations of the platform:
 
