@@ -39,15 +39,18 @@ Relevant implementation locations:
 
 ### Communication and modular composition
 
-The maintainer further describes the opening represented by `$` and port
-`8071` as an ongoing communication interface with the outside world, beyond
-the initial bootstrap. Through this interface, bootstrapper instances should
-be connectable as modules. Systems contained within a Cube should communicate
-with one another according to the same principle: a system has an outward
-interface and can itself contain communicating systems. Apply this composition
-principle consistently at both levels when developing the architecture.
+The maintainer clarified that the opening represented by `$` and port `8071`
+is currently only a theoretical possibility recorded in the architecture;
+this broader opening has not yet been developed into a working interface.
+Its intended future role is ongoing communication with the outside world,
+beyond the initial bootstrap, allowing bootstrapper instances to be connected
+as modules. Systems contained within a Cube should eventually communicate with
+one another according to the same principle. Preserve this composition idea
+at both levels when developing the architecture, without describing it as an
+existing capability.
 
-This is the intended architectural model. A listening port alone does not
+The existing sync API on port 8071 does not implement that broader model.
+A listening port alone does not
 implement inter-bootstrapper communication or guarantee continuous connectivity.
 Do not assume that a shared protocol, discovery, or nested-system communication
 has already been implemented or that every internal service must bind port

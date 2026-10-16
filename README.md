@@ -43,15 +43,17 @@ But installation is only the beginning. Dependencies change, services evolve, an
 
 ## Vision: automated recursive self-improvement
 
-The System Cube also expresses a principle of modular communication. The `$`
-opening in its ASCII signature, reflected in port `8071`, represents an ongoing
-connection to the outside world through which a seed can enter and bootstrapper
-instances can be connected. The systems contained within a Cube should
-communicate according to the same principle. A system exposes an interface to
-its surroundings and can contain other communicating systems; this structure
-can be composed recursively.
+The System Cube also records a theoretical possibility for modular
+communication. The `$` opening in its ASCII signature, reflected in port `8071`,
+symbolizes a future opening to the outside world for introducing a seed and
+communicating with other bootstrapper instances. This broader opening has not
+yet been developed into a working interface. In the intended model, systems
+contained within a Cube would communicate according to the same principle:
+each system could expose an interface to its surroundings and contain other
+communicating systems, allowing recursive composition.
 
-This is the intended architecture. The existing sync API is a starting point;
+This is an architectural possibility. The existing sync API does not implement
+this broader communication model;
 inter-bootstrapper and internal-system communication under a common model still
 need to be specified and demonstrated. The port itself does not establish that
 protocol or guarantee continuous connectivity.
