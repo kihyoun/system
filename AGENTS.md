@@ -35,6 +35,18 @@ Relevant implementation locations:
 - `wizard/src/api/Main.tsx`: configuration import validation.
 - `nginx/start.sh`, `system/start.sh`: references to the sync port.
 
+## Long-term vision
+
+The maintainer's stated vision (2026-10-16) is to demonstrate a system and an
+architecture that make automated recursive self-improvement possible. The
+system should provide the means to develop, build, evaluate and deploy improved
+versions of itself, and each improved version should be able to repeat and
+eventually improve that process. Generation renewal is a supporting mechanism;
+the larger goal is an automated improvement loop with demonstrable outcomes.
+Treat this as design intent, not an implemented autonomous capability. Keep
+future proposals and evaluation criteria tied to this vision without expanding
+the immediate task to implement it.
+
 ## Current delivery scope
 
 Restore the platform and integrate the UI project so it can be developed using

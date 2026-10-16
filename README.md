@@ -4,7 +4,7 @@
 
 System Bootstrapper is a project for a self-hosted software development platform on a single Ubuntu server or virtual machine. Its starting point is simple: clone a repository, run the bootstrap process, and let it assemble the services, container networks, and reverse-proxy configuration needed for a working development environment.
 
-Its larger goal is continuous renewal: the platform should provide the GitLab workflow and CI/CD infrastructure used to develop and validate the platform itself.
+Its long-term vision is to demonstrate a working system and architecture that make **automated recursive self-improvement** possible. The platform should provide the development, evaluation and deployment infrastructure used to improve the platform itself, with each improved generation able to continue that process.
 
 ## Current status
 
@@ -41,7 +41,11 @@ System Bootstrapper encodes that setup in a repository. Docker containers provid
 
 But installation is only the beginning. Dependencies change, services evolve, and a once-working environment can become difficult to update. The central purpose of this project is to make that renewal a normal, testable development workflow.
 
-## Vision: the platform develops its successor
+## Vision: automated recursive self-improvement
+
+The architecture should eventually support a feedback loop: identify a possible improvement, produce a candidate change, build and evaluate it, promote a validated improvement, and repeat from the improved system. The recursive aspect is that the system being improved also supplies the machinery for the next improvement cycle; that machinery can itself evolve.
+
+Rebuilding or replacing a generation alone does not demonstrate improvement. A convincing demonstration needs explicit objectives and evaluation criteria that show what improved and whether required behavior was preserved. The mechanisms for proposing changes, evaluating them and deciding promotion remain to be designed and validated. This is the long-term vision, not a claim of current autonomous capability or an expansion of the present platform-restoration task.
 
 The running platform should host its own source code and execute the pipelines that build its next version.
 
