@@ -8,13 +8,17 @@ Its larger goal is continuous renewal: the platform should provide the GitLab wo
 
 ## Current status
 
-**The first-boot wizard now runs on Ubuntu/WSL2; the complete legacy platform is still under restoration.**
+**The local platform now runs on Ubuntu/WSL2, including GitLab, a runner and an HTTP registry; production setup remains to be validated.**
 
 The host installer, wizard, sync API authentication and file-based seed cycle
 have been exercised on Ubuntu 26.04.1 with Docker Engine 29.9.1 and Compose 5.6.0.
 See [Prepare-Host.md](Prepare-Host.md) for the tested first-boot procedure and
-seed behavior. GitLab, runners, registry integration and production migration
-remain unverified.
+seed behavior. A fresh GitLab CE 19.4.2 / Runner 19.4.0 test also passed repository
+checkout, Docker build, registry push/pull, container execution and artifact
+upload. Production HTTPS, existing-data migration and the UI project's own
+pipeline remain unverified. The immediate next step is deployment on an Ubuntu
+server and integration of the UI project; generation changes are outside the
+current repair scope.
 
 The idea dates back to 2019. Development did not reach a sustainable renewal cycle and maintenance fell behind. Restoration has recovered the initial configuration environment, but compatibility of the complete platform with current Ubuntu and Docker is not yet established.
 

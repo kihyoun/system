@@ -19,8 +19,51 @@ complete platform or modernize GitLab and the application images.
 Validated on Ubuntu 26.04.1 under WSL2 with Docker Engine 29.9.1 and Compose
 5.6.0: installer, `hello-world`, and a Compose service using the legacy
 underscore-separated container name. The first-boot wizard and its sync API
-also run on this host. GitLab, runners and production migration are not yet
-validated.
+also run on this host. A fresh GitLab CE 19.4.2 instance with Runner 19.4.0
+passed a pipeline that clones a repository, builds an image, pushes and pulls
+it through the HTTP registry, runs the image and uploads a job artifact.
+Production HTTPS, existing-data migration and the UI project's own pipeline
+have not been validated.
+
+### Local integration test
+
+The modern GitLab version was tested with empty volumes only. The legacy
+GitLab default remains unchanged; do not point a new major version at existing
+GitLab data without following GitLab's supported upgrade path.
+
+The test used these optional exports in `system/.docker.env`:
+
+```bash
+export GITLAB_IMAGE=gitlab/gitlab-ce:19.4.2-ce.0
+export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0
+export GITLAB_SSH_BIND=127.0.0.1:2222
+export GITLAB_REGISTRY_BIND=127.0.0.1:5050
+```
+
+Use `gitlab.localhost`, `registry.localhost`, `sync.localhost` and `localhost`
+as the respective GitLab, registry, sync and wizard hosts, with domain mode 0
+(HTTP) and matching external URLs. Run `sudo bash bootstrapper/prepare-local.sh`
+to add the local hostnames and the Docker HTTP exception for
+`registry.localhost:5050`. This helper is opt-in for local tests; production
+should use its configured domains and certificates. It preserves other Docker
+daemon settings. The port overrides above apply to GitLab SSH and registry,
+not to the platform's web listener.
+
+Create a runner in GitLab, set its `glrt-` authentication token as
+`GITLAB_RUNNER_TOKEN` and set `GITLAB_RUNNER_SCALE=1` in the private configuration.
+The registration script also accepts legacy registration tokens and verifies
+existing registrations instead of duplicating them.
+
+Copy `tests/registry-smoke.gitlab-ci.yml` into a disposable GitLab project's
+`.gitlab-ci.yml` to reproduce the integration test. It uses this platform's
+Docker socket runner. Default BuildKit attestations are disabled for this test
+because the registry rejected their manifest with `blob unknown to registry`.
+The successful test covers a single-architecture image without attestations.
+See the [GitLab compatibility workaround](https://support.gitlab.com/hc/en-us/articles/29426166749596-Push-to-Container-Registry-Fails-Error-error-from-registry-blob-unknown-to-registry).
+
+Keep tokens and generated `.docker.env` files out of Git. The existing UI
+pipeline and its public domain targets have not been changed. The next step
+is to provision the actual Ubuntu server and integrate the UI project there.
 
 ### Historical remote installer
 
