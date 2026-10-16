@@ -43,6 +43,19 @@ But installation is only the beginning. Dependencies change, services evolve, an
 
 ## Vision: automated recursive self-improvement
 
+The System Cube also expresses a principle of modular communication. The `$`
+opening in its ASCII signature, reflected in port `8071`, represents an ongoing
+connection to the outside world through which a seed can enter and bootstrapper
+instances can be connected. The systems contained within a Cube should
+communicate according to the same principle. A system exposes an interface to
+its surroundings and can contain other communicating systems; this structure
+can be composed recursively.
+
+This is the intended architecture. The existing sync API is a starting point;
+inter-bootstrapper and internal-system communication under a common model still
+need to be specified and demonstrated. The port itself does not establish that
+protocol or guarantee continuous connectivity.
+
 The architecture should eventually support a feedback loop: identify a possible improvement, produce a candidate change, build and evaluate it, promote a validated improvement, and repeat from the improved system. The recursive aspect is that the system being improved also supplies the machinery for the next improvement cycle; that machinery can itself evolve.
 
 Rebuilding or replacing a generation alone does not demonstrate improvement. A convincing demonstration needs explicit objectives and evaluation criteria that show what improved and whether required behavior was preserved. The mechanisms for proposing changes, evaluating them and deciding promotion remain to be designed and validated. This is the long-term vision, not a claim of current autonomous capability or an expansion of the present platform-restoration task.

@@ -37,6 +37,24 @@ Relevant implementation locations:
 
 ## Long-term vision
 
+### Communication and modular composition
+
+The maintainer further describes the opening represented by `$` and port
+`8071` as an ongoing communication interface with the outside world, beyond
+the initial bootstrap. Through this interface, bootstrapper instances should
+be connectable as modules. Systems contained within a Cube should communicate
+with one another according to the same principle: a system has an outward
+interface and can itself contain communicating systems. Apply this composition
+principle consistently at both levels when developing the architecture.
+
+This is the intended architectural model. A listening port alone does not
+implement inter-bootstrapper communication or guarantee continuous connectivity.
+Do not assume that a shared protocol, discovery, or nested-system communication
+has already been implemented or that every internal service must bind port
+8071. Those implementation choices remain to be specified and validated.
+
+### Recursive improvement
+
 The maintainer's stated vision (2026-10-16) is to demonstrate a system and an
 architecture that make automated recursive self-improvement possible. The
 system should provide the means to develop, build, evaluate and deploy improved
