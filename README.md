@@ -4,13 +4,23 @@
 
 System Bootstrapper is a project for a self-hosted software development platform on a single Ubuntu server or virtual machine. Its starting point is simple: clone a repository, run the bootstrap process, and let it assemble the services, container networks, and reverse-proxy configuration needed for a working development environment.
 
-Its larger goal is continuous renewal: the platform should provide the GitLab workflow and CI/CD infrastructure used to develop and validate the platform itself.
+Its long-term vision is to demonstrate a working system and architecture that make **automated recursive self-improvement** possible. The platform should provide the development, evaluation and deployment infrastructure used to improve the platform itself, with each improved generation able to continue that process.
 
 ## Current status
 
-**This is a legacy implementation awaiting restoration, not a currently verified installation.**
+**The local platform now runs on Ubuntu/WSL2, including GitLab, a runner and an HTTP registry; production setup remains to be validated.**
 
-The idea dates back to 2019. Development did not reach a sustainable renewal cycle, maintenance fell behind, and the existing code no longer provides a working bootstrap according to the maintainer. Compatibility with a current Ubuntu and Docker installation has not yet been re-established.
+The host installer, wizard, sync API authentication and file-based seed cycle
+have been exercised on Ubuntu 26.04.1 with Docker Engine 29.9.1 and Compose 5.6.0.
+See [Prepare-Host.md](Prepare-Host.md) for the tested first-boot procedure and
+seed behavior. A fresh GitLab CE 19.4.2 / Runner 19.4.0 test also passed repository
+checkout, Docker build, registry push/pull, container execution and artifact
+upload. Production HTTPS, existing-data migration and the UI project's own
+pipeline remain unverified. The immediate next step is deployment on an Ubuntu
+server and integration of the UI project; generation changes are outside the
+current repair scope.
+
+The idea dates back to 2019. Development did not reach a sustainable renewal cycle and maintenance fell behind. Restoration has recovered the initial configuration environment, but compatibility of the complete platform with current Ubuntu and Docker is not yet established.
 
 The repository contains the foundations of the platform:
 
@@ -31,7 +41,26 @@ System Bootstrapper encodes that setup in a repository. Docker containers provid
 
 But installation is only the beginning. Dependencies change, services evolve, and a once-working environment can become difficult to update. The central purpose of this project is to make that renewal a normal, testable development workflow.
 
-## Vision: the platform develops its successor
+## Vision: automated recursive self-improvement
+
+The System Cube also records a theoretical possibility for modular
+communication. The `$` opening in its ASCII signature, reflected in port `8071`,
+symbolizes a future opening to the outside world for introducing a seed and
+communicating with other bootstrapper instances. This broader opening has not
+yet been developed into a working interface. In the intended model, systems
+contained within a Cube would communicate according to the same principle:
+each system could expose an interface to its surroundings and contain other
+communicating systems, allowing recursive composition.
+
+This is an architectural possibility. The existing sync API does not implement
+this broader communication model;
+inter-bootstrapper and internal-system communication under a common model still
+need to be specified and demonstrated. The port itself does not establish that
+protocol or guarantee continuous connectivity.
+
+The architecture should eventually support a feedback loop: identify a possible improvement, produce a candidate change, build and evaluate it, promote a validated improvement, and repeat from the improved system. The recursive aspect is that the system being improved also supplies the machinery for the next improvement cycle; that machinery can itself evolve.
+
+Rebuilding or replacing a generation alone does not demonstrate improvement. A convincing demonstration needs explicit objectives and evaluation criteria that show what improved and whether required behavior was preserved. The mechanisms for proposing changes, evaluating them and deciding promotion remain to be designed and validated. This is the long-term vision, not a claim of current autonomous capability or an expansion of the present platform-restoration task.
 
 The running platform should host its own source code and execute the pipelines that build its next version.
 

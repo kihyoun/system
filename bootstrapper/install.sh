@@ -1,22 +1,45 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+if (( EUID != 0 )); then
+  echo "Run this script as root: sudo bash bootstrapper/install.sh" >&2
+  exit 1
+fi
+
+source /etc/os-release
+if [[ "$ID" != ubuntu ]]; then
+  echo "This installer supports Ubuntu." >&2
+  exit 1
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y zsh unzip git ca-certificates curl python3
+
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+cat > /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: ${UBUNTU_CODENAME:-$VERSION_CODENAME}
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 apt-get update
-apt-get upgrade -y
-apt-get install zsh unzip git apt-transport-https \
-  ca-certificates \
-  curl \
-  gnupg-agent \
-  software-properties-common -y
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-apt-key fingerprint 0EBFCD88
-add-apt-repository \
-  "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) \
-  stable"
-apt-get update
-apt-get install docker-ce docker-ce-cli containerd.io -y
-# Dockekr Compose
-curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
-ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
-docker-compose --version
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Legacy orchestration scripts require underscore-separated container names.
+# Keep their command available while using the maintained Compose plugin.
+cat > /usr/local/bin/docker-compose <<'EOF'
+#!/bin/sh
+exec docker compose --compatibility "$@"
+EOF
+chmod 0755 /usr/local/bin/docker-compose
+
+systemctl enable --now docker
+docker version
+docker-compose version
+docker run --rm hello-world

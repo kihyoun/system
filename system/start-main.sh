@@ -1,3 +1,4 @@
 #! /bin/bash
-cd ../nginx; bash ./start.sh;
-cd ../sync; bash ./start.sh;
+set -eo pipefail
+cd ../nginx; bash -e ./start.sh;
+cd ../sync; bash -e ./start.sh;

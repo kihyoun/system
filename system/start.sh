@@ -1,4 +1,5 @@
 #! /bin/bash
+set -eo pipefail
 shopt -s dotglob
 
 ENV_FILE=../.docker.env
@@ -19,7 +20,7 @@ if [ -f .docker.env ]; then
 
   cd ../system; bash ./stop.sh
 else
-  cd ../wizard; bash ./start.sh;
-  cd ../sync; bash ./start.sh;
+  cd ../wizard; bash -e ./start.sh;
+  cd ../sync; bash -e ./start.sh;
   cd ../system; bash ./stop.sh
 fi
