@@ -2,6 +2,10 @@ version: '3'
 services:
   bootstrapper:
     restart: always
+    environment:
+      SEED_DIR: ${SEED_DIR:?SEED_DIR must be set}
+      GITLAB_HOST: ${GITLAB_HOST:-gitlab.example.com}
+      COMPOSE_COMPATIBILITY: "1"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $SEED_DIR:/seed
@@ -38,7 +42,8 @@ services:
     #   context: ../wizard
 
   gitlab:
-    image: 'gitlab/gitlab-ce:12.10.6-ce.0'
+    image: '${GITLAB_IMAGE:-gitlab/gitlab-ce:12.10.6-ce.0}'
+    shm_size: '256m'
     restart: always
     hostname: '$GITLAB_HOST'
     networks:
@@ -49,8 +54,8 @@ services:
       - gitlabData:/var/opt/gitlab
       - $SEED_DIR:/seed
     ports:
-      - '22:22'
-      - '5050:5050'
+      - '${GITLAB_SSH_BIND:-22}:22'
+      - '${GITLAB_REGISTRY_BIND:-5050}:5050'
 
 volumes:
   templates:

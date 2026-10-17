@@ -1,4 +1,5 @@
 #! /bin/bash
+set -eo pipefail
 if [ -f ../system/.docker.env ] && [ -f ../gitlab/.docker.env ]; then
     source ../system/.docker.env
     source ../gitlab/.docker.env

@@ -1,7 +1,7 @@
 version: '2'
 services:
   docker:
-    image: 'gitlab/gitlab-runner:latest'
+    image: '${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:latest}'
     restart: always
     networks:
       - system_gitlab
@@ -10,8 +10,8 @@ services:
       - /etc/gitlab-runner
 
     extra_hosts:
-      - "$GITLAB_REGISTRY_HOST:$GITLAB_IP"
-      - "$GITLAB_HOST:$GITLAB_IP"
+      - "$GITLAB_REGISTRY_HOST:host-gateway"
+      - "$GITLAB_HOST:host-gateway"
 
 networks:
   system_gitlab:
