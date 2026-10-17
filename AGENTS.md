@@ -1,5 +1,12 @@
 # Repository memory
 
+## Documentation language
+
+Write and maintain all project documentation in English, including READMEs,
+handbooks, operating guides and generated starter documentation. The maintainer
+confirmed this preference on 2026-10-17 after noticing the German handbook.
+Conversation with the maintainer may remain in German.
+
 ## System Cube signature and port 8071
 
 The maintainer explained the following design intent on 2026-10-16:

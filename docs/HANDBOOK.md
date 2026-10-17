@@ -2,29 +2,27 @@
 
 ## 0. Getting Started
 
-Dieses Kapitel führt dich vom Checkout bis zur ersten konfigurierten lokalen
-Plattform. Du brauchst keine Kubernetes-Kenntnisse. Befehle führst du in Ubuntu
-aus; die Einrichtung der Plattform erfolgt anschließend im Browser.
+This chapter takes you from checkout to your first configured local platform.
+You do not need Kubernetes experience. Run commands in Ubuntu, then configure
+the platform in your browser.
 
-Der **Bootstrapper** startet und steuert die Dienste. Der **Wizard** ist seine
-React-Oberfläche. Der **Sync-Dienst** verbindet die Oberfläche mit der
-Bootstrapper-Instanz. GitLab, Registry und Runner kommen nach der Konfiguration
-hinzu.
+The **Bootstrapper** starts and manages the services. The **Wizard** is its
+React interface. The **Sync service** connects the interface to the Bootstrapper
+instance. GitLab, the registry and runners are added after configuration.
 
-### 0.1 Ubuntu öffnen und Projekt auschecken
+### 0.1 Open Ubuntu and check out the project
 
-Unter Windows öffnest du eine Ubuntu-WSL2-Konsole. Falls Ubuntu noch nicht
-installiert ist, führe zunächst in PowerShell aus:
+On Windows, open an Ubuntu WSL2 console. If Ubuntu is not installed yet, first
+run this command in PowerShell:
 
 ```powershell
 wsl --install -d Ubuntu
 ```
 
-Folge den Installationsschritten und starte Windows neu, falls du dazu
-aufgefordert wirst. Öffne danach Ubuntu. Alle folgenden Shell-Befehle gehören
-in die **Ubuntu-Konsole**, nicht in PowerShell.
+Follow the installation steps and restart Windows if prompted. Then open Ubuntu.
+Run all subsequent shell commands in the **Ubuntu console**, rather than PowerShell.
 
-Installiere Git und lade das Projekt einschließlich Wizard-Unterprojekt:
+Install Git and download the project, including the Wizard submodule:
 
 ```bash
 sudo apt-get update
@@ -33,38 +31,37 @@ git clone --recurse-submodules https://github.com/kihyoun/system.git
 cd system
 ```
 
-Die Screenshots zeigen den lokalen Testaufbau. Die Oberfläche wird als Container-Image
-gestartet: Ein aktualisierter Git-Checkout allein aktualisiert dieses Image
-nicht. Für den hier dokumentierten Test wurde das neue Wizard-Image lokal
-gebaut. Verwende für eigene Tests ebenfalls das zum Checkout passende Image;
-der Abschnitt 0.2 unten zeigt den Build.
+The screenshots show the local test setup. The interface runs as a container
+image: updating the Git checkout alone does not update that image. The updated
+Wizard image was built locally for the documented test. Use an image matching
+your checkout for your own tests; section 0.2 below shows how to build it.
 
-### 0.2 Docker vorbereiten und Wizard-Image bauen
+### 0.2 Prepare Docker and build the Wizard image
 
-Installiere die benötigten Docker-Werkzeuge:
+Install the required Docker tools:
 
 ```bash
 sudo bash bootstrapper/install.sh
 ```
 
-Der Installer installiert Docker und Compose und prüft Docker mit einem
-Testcontainer. Für unseren lokalen HTTP-Test richtest du außerdem die lokalen
-Hostnamen und die HTTP-Ausnahme der Registry ein:
+The installer installs Docker and Compose and checks Docker using a test
+container. For the local HTTP test, also configure the local hostnames and the
+registry's HTTP exception:
 
 ```bash
 sudo bash bootstrapper/prepare-local.sh
 ```
 
-WSL kann `/etc/hosts` beim Start neu erzeugen. Falls später insbesondere die
-Registry nicht mehr aufgelöst wird, führe diesen lokalen Vorbereitungsschritt
-erneut aus. Er lädt die Docker-Konfiguration neu, ohne die Container neu zu
-starten. Die HTTP-Ausnahme gilt weiterhin nur für den lokalen Test.
+WSL may regenerate `/etc/hosts` at startup. If the registry or other local
+hostnames later stop resolving, run this preparation step again. It reloads the
+Docker configuration without restarting the containers. The HTTP exception
+remains limited to the local test.
 
-Dieser Leitfaden verwendet HTTP ausschließlich für den lokalen Test. Eine
-öffentlich erreichbare Instanz benötigt eine eigene Domain- und HTTPS-Einrichtung.
+This guide uses HTTP exclusively for local testing. A publicly accessible
+instance requires its own domain and HTTPS configuration.
 
-Für einen reproduzierbaren Build der aktuellen Wizard-Testversion benutzt du
-die im Wizard-Projekt deklarierte Node-Version und das vorhandene Lockfile:
+For a reproducible build of the current Wizard test version, use the Node
+version declared in the Wizard project and its existing lockfile:
 
 ```bash
 sudo docker run --name wizard-handbook-build \
@@ -74,8 +71,7 @@ sudo docker run --name wizard-handbook-build \
   'mkdir /app; cp -a /source/. /app/; cd /app; npm ci && npm run build'
 ```
 
-Wenn dieser Build erfolgreich abgeschlossen ist, übernimm das Ergebnis in ein
-lokales Wizard-Image:
+After the build completes successfully, copy the result into a local Wizard image:
 
 ```bash
 build_dir=$(mktemp -d)
@@ -91,13 +87,13 @@ sudo docker build -t systembootstrapper/wizard:latest "$build_dir"
 sudo docker rm wizard-handbook-build
 ```
 
-Das Image bleibt lokal und wird nicht auf Docker Hub veröffentlicht. Ein
-fehlgeschlagener Build muss zuerst korrigiert werden. Die alte Build-Umgebung
-ist ein Übergang für diese Projektversion, keine Empfehlung für neue Anwendungen.
+The image stays local and is not published to Docker Hub. Resolve any build
+failure before continuing. The old build environment is a temporary requirement
+of this project version, not a recommendation for new applications.
 
-### 0.3 Den Bootstrapper erstmals starten
+### 0.3 Start the Bootstrapper for the first time
 
-Starte aus dem Hauptverzeichnis des Projekts:
+Run this command from the project's root directory:
 
 ```bash
 sudo env \
@@ -108,442 +104,430 @@ sudo env \
   bash start.sh
 ```
 
-Die Versionsangaben wählen die für einen **frischen lokalen Test** geprüften
-GitLab- und Runner-Versionen. Diese Anleitung beschreibt kein Upgrade einer
-alten GitLab-Datenbank. Ohne die explizite Auswahl verwendet das Repository
-weiterhin seinen historischen GitLab-Standard.
+These versions select the GitLab and runner images verified for a **fresh local
+test**. This guide does not describe upgrading an old GitLab database. Without
+these explicit settings, the repository still uses its historical GitLab default.
 
-Der Bootstrapper baut sein Image und startet zunächst Wizard und Sync-Zugang.
-Er richtet an diesem Punkt noch kein vollständig konfiguriertes GitLab ein.
-Der erste Build kann etwas dauern.
+The Bootstrapper builds its image and initially starts the Wizard and Sync
+access point. GitLab is not fully configured at this stage. The first build
+may take some time.
 
-Mit diesen Befehlen prüfst du die Container und zeigst die Startausgabe an:
+Check the containers and view the startup output with:
 
 ```bash
 sudo docker ps
 sudo docker logs system_bootstrapper_1
 ```
 
-**Lass unter WSL eine Ubuntu-Konsole geöffnet**, während du die Plattform
-benutzt. Ein laufender systemd-Dienst allein hält die WSL-Instanz nicht offen.
+**Keep an Ubuntu console open under WSL** while using the platform. A running
+systemd service alone does not keep the WSL instance alive.
 
-### 0.4 Signatur, Serveradresse und echte Zugangsdaten finden
+### 0.4 Find the signature, server address and actual credentials
 
-In der Bootstrapper-Ausgabe erscheint der originale System Cube. Direkt darunter
-stehen die Adresse des Sync-Dienstes und die Zugangsdaten:
+The original System Cube appears in the Bootstrapper output. The Sync service
+address and credentials appear directly below it:
 
 ```text
-server listening on http://<interne-container-ip>:8071
-SYNC_USER: <dein-tatsächlicher-benutzername>
-SYNC_PASS: <dein-tatsächliches-passwort>
+server listening on http://<internal-container-ip>:8071
+SYNC_USER: <your-actual-username>
+SYNC_PASS: <your-actual-password>
 ```
 
-![Originale Bootstrapper-Ausgabe mit System Cube und erklärten Kopierhinweisen](images/getting-started/02-console-signature.png)
+The example above uses placeholders instead of actual credentials. The UI
+illustrations below are screenshots of the running interface.
 
-*Konsolenabbildung: Die Originalausgabe der lokalen Instanz ist für die
-Dokumentation gerendert; echte Zugangsdaten sind durch Kopierhinweise ersetzt.
-Die UI-Abbildungen weiter unten sind Screenshots der laufenden Oberfläche.*
+**Get the actual credentials from your own Bootstrapper process:** run
+`sudo docker logs system_bootstrapper_1` in Ubuntu. Copy the values **after**
+`SYNC_USER:` and `SYNC_PASS:`, excluding those labels and any extra whitespace.
+The placeholders in the image are not valid credentials.
 
-**Woher kommen die echten Daten?** Aus deinem eigenen Bootstrapper-Prozess:
-Führe in deiner Ubuntu-Konsole `sudo docker logs system_bootstrapper_1` aus.
-Kopiere die Werte **hinter** `SYNC_USER:` und `SYNC_PASS:`, ohne diese Bezeichner
-und ohne zusätzliche Leerzeichen. Die Platzhalter im Bild funktionieren nicht
-als Zugangsdaten.
+The displayed container IP and port `8071` are the internal Node address. During
+local first startup, access Sync from the browser at **`http://localhost/sync`**.
+NGINX forwards this address to the Node service. The internal IP may change
+whenever the container restarts.
 
-Die angezeigte Container-IP und Port `8071` sind die interne Node-Adresse.
-Beim lokalen Erststart erreichst du den Sync-Dienst aus dem Browser über
-**`http://localhost/sync`**. NGINX leitet diese Adresse an den Node-Dienst weiter.
-Die interne IP kann bei jedem Container-Neustart anders aussehen.
+### 0.5 Open the Wizard in your browser
 
-### 0.5 Den Wizard im Browser öffnen
+Open [http://localhost/](http://localhost/).
 
-Öffne [http://localhost/](http://localhost/).
+If an older version is already open, reload the page. Use **Ctrl+F5** if the
+interface looks outdated; the browser cache may still contain the previous version.
 
-Wenn du dort schon eine ältere Version geöffnet hattest, lade die Seite neu.
-Bei veralteter Oberfläche verwende **Strg+F5**. Ein Browsercache kann sonst noch
-die vorherige Version anzeigen.
+![Wizard before connecting: the pencil icon and Connect button are at the top right](images/getting-started/01-wizard-start.png)
 
-![Wizard vor dem Verbinden: Rechts oben befinden sich Stift und Connect](images/getting-started/01-wizard-start.png)
+Before loading a configuration, the form may contain Example values. This does
+not mean GitLab has already been configured at those addresses. Do not click
+Push or Seed yet.
 
-In einer noch nicht geladenen Maske können zunächst Example-Werte stehen.
-Das bedeutet nicht, dass GitLab bereits unter diesen Adressen eingerichtet ist.
-Klicke jetzt noch nicht auf Push oder Seed.
+### 0.6 Open Edit and enter the connection details first
 
-### 0.6 Zuerst Edit öffnen und Verbindungsdaten eintragen
+Click the **pencil icon immediately to the left of Connect**. It opens the
+**Connect** dialog with three input fields.
 
-Klicke auf das **Stift-Symbol direkt links neben Connect**. Es öffnet den Dialog
-**Connect** mit drei Eingabefeldern.
+![Edit dialog showing Server Address and empty Username and Password fields](images/getting-started/03-edit-connection.png)
 
-![Edit-Dialog: Server Address sowie leere Felder für Username und Password](images/getting-started/03-edit-connection.png)
+Enter the following:
 
-Trage Folgendes ein:
-
-| Feld im Edit-Dialog | Woher kommt der Wert? |
+| Field in the Edit dialog | Source of the value |
 | --- | --- |
-| **Server Address** | Für diesen lokalen Erststart: `http://localhost/sync` |
-| **Username** | Der echte Wert hinter `SYNC_USER:` aus deiner WSL-Konsole |
-| **Password** | Der echte Wert hinter `SYNC_PASS:` aus derselben Ausgabe |
+| **Server Address** | For this local first startup: `http://localhost/sync` |
+| **Username** | The actual value after `SYNC_USER:` in your WSL console |
+| **Password** | The actual value after `SYNC_PASS:` in the same output |
 
-**Die Zugangsdaten sind Teil der Bootstrapper-Startausgabe.** Sie sind keine
-GitLab-Zugangsdaten und dürfen nicht aus dem Screenshot übernommen werden.
+**These credentials come from the Bootstrapper startup output.** They are
+separate from GitLab credentials. Do not copy them from the screenshot.
 
-### 0.7 Erst jetzt verbinden
+### 0.7 Connect after entering all three fields
 
-Nachdem alle drei Felder eingetragen sind, bestätige im Dialog mit **Submit**.
-Dieser Button führt die Anmeldung aus; du musst danach nicht nochmals auf
-Connect klicken.
+Confirm the dialog with **Submit** after filling in all three fields. This
+button signs you in; you do not need to click Connect again afterwards.
 
-Der Connect-Button im Hauptfenster ist ein Schnellzugang mit den dort bereits
-hinterlegten Einstellungen. Für die erste Anmeldung benutzt du den oben
-beschriebenen Edit-Dialog.
+The Connect button in the main window is a shortcut using the connection settings
+already stored there. Use the Edit dialog described above for your first login.
 
-![Erfolgreich verbunden: Serveradresse, Disconnect und Synchronize sind sichtbar](images/getting-started/04-connected.png)
+![Connected successfully: the server address, Disconnect and Synchronize are visible](images/getting-started/04-connected.png)
 
-Die erfolgreiche Verbindung erkennst du an der Serveradresse, dem grünen Punkt,
-dem farblich geänderten **Disconnect**-Button und dem zusätzlichen Menü
-**Synchronize**. Damit ist die Verbindung zur Bootstrapper-Instanz hergestellt.
+The server address, green dot, changed **Disconnect** button color and additional
+**Synchronize** menu indicate a successful connection to the Bootstrapper instance.
 
-### 0.8 Die Konfiguration mit Fetch laden
+### 0.8 Load the configuration with Fetch
 
-Öffne **Synchronize** und wähle **Fetch**.
+Open **Synchronize** and select **Fetch**.
 
-![Synchronize-Menü mit dem Eintrag Fetch](images/getting-started/05-fetch-menu.png)
+![Synchronize menu with the Fetch entry](images/getting-started/05-fetch-menu.png)
 
-Es gibt zwei Fälle:
+There are two cases:
 
-- **Die Instanz hat eine gespeicherte Konfiguration:** Fetch lädt genau diese
-  Einstellungen und die vorhandenen Projekte in den Wizard.
-- **Es wurde noch keine Hauptkonfiguration übertragen:** Die neue Version fragt
-  abgeleitete Vorschläge vom verbundenen Bootstrapper ab und lädt sie in die Maske.
+- **The instance has a saved configuration:** Fetch loads those exact settings
+  and the existing projects into the Wizard.
+- **No main configuration has been transferred yet:** the current version requests
+  derived suggestions from the connected Bootstrapper and loads them into the form.
 
-![Erststart nach Fetch: lokale Hostvorschläge mit Sternchen](images/getting-started/06-derived-settings.png)
+![First startup after Fetch: suggested local hostnames marked with asterisks](images/getting-started/06-derived-settings.png)
 
-Ein **Sternchen** markiert einen abgeleiteten Wert. Bewege den Mauszeiger darüber
-oder wähle das Sternchen mit der Tab-Taste an. Der Tooltip erklärt die Herkunft
-und fordert dich auf, den Wert vor dem Übertragen zu prüfen.
+An **asterisk** marks a derived value. Hover over it or focus it with the Tab key.
+Its tooltip explains the source and asks you to verify the value before transfer.
 
-![Tooltip am Sternchen: Die Daten wurden abgeleitet und müssen geprüft werden](images/getting-started/07-derived-tooltip.png)
+![Asterisk tooltip explaining that derived data must be verified](images/getting-started/07-derived-tooltip.png)
 
-Vorhandene NGINX-Routen haben bei den Vorschlägen Vorrang. Andernfalls können
-Hostnamen aus der Verbindungsadresse vorgeschlagen werden. Vorschläge richten
-kein DNS ein und beweisen nicht, dass ein Zertifikat existiert. Unbekannte Werte
-bleiben leer; Passwörter und Runner-Tokens werden nicht geraten.
+Existing NGINX routes take priority when deriving suggestions. Otherwise,
+hostnames may be suggested from the connection address. Suggestions do not set
+up DNS or prove that a certificate exists. Unknown values remain empty;
+passwords and runner tokens are not guessed.
 
-Fetch schreibt keine neue Konfiguration auf den Server. Es ersetzt aber Werte
-in deiner Browsermaske. Sichere ungesendete Änderungen bei Bedarf vorher mit Backup.
+Fetch does not write a new configuration to the server, but it replaces values
+in your browser form. Use Backup first if you need to preserve unsent changes.
 
-### 0.9 Vorschläge für den lokalen Test vervollständigen
+### 0.9 Complete the suggestions for the local test
 
-Prüfe die Abschnitte **Start**, **SSL**, **Sync** und **Wizard** unter General:
+Check the **Start**, **SSL**, **Sync** and **Wizard** sections under General:
 
-| Einstellung | Wert für unseren lokalen Test |
+| Setting | Value for this local test |
 | --- | --- |
-| `SEED_DIR` | Den von Fetch geladenen Seed-Pfad beibehalten; im Screenshot ist das `/var/lib/system-bootstrapper/seed`, bei einem unveränderten Checkout normalerweise `/mnt/seed` |
+| `SEED_DIR` | Keep the seed path loaded by Fetch; the screenshot shows `/var/lib/system-bootstrapper/seed`, while an unchanged checkout normally uses `/mnt/seed` |
 | `GITLAB_HOST` | `gitlab.localhost` |
 | `GITLAB_REGISTRY_HOST` | `registry.localhost` |
-| Gitlab Runners | Zunächst `0`; den Runner richten wir nach der GitLab-Anmeldung ein |
-| GitLab und Registry unter SSL | **Default, HTTP** |
-| Enable Synchronization Server | Einschalten |
+| Gitlab Runners | Initially `0`; configure the runner after signing into GitLab |
+| GitLab and registry under SSL | **Default, HTTP** |
+| Enable Synchronization Server | Enable |
 | `SYNC_HOST` | `sync.localhost` |
-| `SYNC_USER` und `SYNC_PASS` | Eigene Zugangsdaten für die spätere Verbindung festlegen und merken |
-| Sync-Modus | **Default, HTTP** |
-| Enable Wizard | Einschalten |
+| `SYNC_USER` and `SYNC_PASS` | Choose and remember your own credentials for subsequent connections |
+| Sync mode | **Default, HTTP** |
+| Enable Wizard | Enable |
 | `WIZARD_HOST` | `localhost` |
-| Wizard-Modus | **Default, HTTP** |
+| Wizard mode | **Default, HTTP** |
 
-Der Seed-Pfad ist ein Verzeichnis auf dem Docker-Host. Ändere ihn für diesen
-Test nicht beiläufig: Er muss zu dem beim Start eingebundenen Verzeichnis passen.
-Ein fehlender Seed ist beim Erststart normal und bedeutet eine frische Installation.
+The seed path is a directory on the Docker host. Keep it consistent with the
+directory mounted at startup. A missing seed is normal on first startup and
+means this is a fresh installation.
 
-### 0.10 Konfiguration sichern, übertragen und anwenden
+### 0.10 Back up, transfer and apply the configuration
 
-1. Wähle **Backup**, anschließend **Download**. Die Datei `bootstrapper.json`
-   wird auf deinen Rechner geladen. Sie enthält auch Zugangsdaten; bewahre sie privat auf.
-2. Wähle **Synchronize → Push** und bestätige die Übertragung. Damit sendest du
-   die Einstellungen aus dem Wizard an die Instanz. Dienste können dabei gestoppt werden.
-3. Lass den geöffneten Browser-Tab offen und wähle **Synchronize → Restart**.
-   Die Plattform startet anschließend mit der übertragenen Konfiguration.
+1. Select **Backup**, then **Download**. The `bootstrapper.json` file is downloaded
+   to your computer. It includes credentials; keep it private.
+2. Select **Synchronize → Push** and confirm the transfer. This sends the Wizard
+   settings to the instance. Services may be stopped during this operation.
+3. Keep the browser tab open and select **Synchronize → Restart**. The platform
+   then starts with the transferred configuration.
 
-**Push überträgt. Restart startet die Dienste mit diesen Einstellungen.**
-Mit Open kannst du eine zuvor heruntergeladene JSON wieder in den Wizard laden;
-das allein verändert die Serverkonfiguration noch nicht.
+**Push transfers the settings. Restart starts services with those settings.**
+Open loads a previously downloaded JSON file into the Wizard; loading the file
+alone does not change the server configuration.
 
-### 0.11 GitLab öffnen und erstmals anmelden
+### 0.11 Open GitLab and sign in for the first time
 
-Der erste GitLab-Start kann mehrere Minuten dauern. Prüfe den Zustand in Ubuntu:
+GitLab's first startup may take several minutes. Check its status in Ubuntu:
 
 ```bash
 sudo docker ps
 ```
 
-Der GitLab-Container sollte schließlich `healthy` melden. Öffne danach
+The GitLab container should eventually report `healthy`. Then open
 [http://gitlab.localhost/](http://gitlab.localhost/).
 
-Der Benutzername des GitLab-Administrators lautet **`root`**. Bei einer frischen
-Datenbank legt der Bootstrapper ein zufälliges Initialpasswort fest. Optional
-kannst du vor dem ersten Start `GITLAB_INITIAL_ROOT_PASSWORD` mit mindestens
-12 Zeichen in der privaten `system/.docker.env` setzen. Der Wizard bietet
-für dieses optionale Feld derzeit keine Eingabe an.
+The GitLab administrator username is **`root`**. For a fresh database, the
+Bootstrapper generates a random initial password. Before the first startup,
+you can optionally set `GITLAB_INITIAL_ROOT_PASSWORD` to at least 12 characters
+in the private `system/.docker.env` file. The Wizard currently has no input for
+this optional field.
 
-Lies das Initialpasswort nach dem ersten Start lokal aus:
+Read the initial password locally after the first startup:
 
 ```bash
 sudo docker exec system_gitlab_1 cat /etc/gitlab/bootstrapper_initial_root_password
 ```
 
-Diese nur für root lesbare Datei liegt im persistenten GitLab-Konfigurationsvolume
-und bleibt bei Neustarts erhalten. Melde dich mit `root` an und verwahre den Zugang
-privat. Die Datei dokumentiert das Erstpasswort; spätere Passwortänderungen werden
-nicht in sie zurückgeschrieben. Sie wird mit dem GitLab-Konfigurationsvolume auch
-in einen Seed übernommen. Bewahre daher auch den Seed privat auf.
+This root-readable file is stored in GitLab's persistent configuration volume
+and survives restarts. Sign in as `root` and keep the credentials private. The
+file records the initial password; later password changes are not written back
+to it. Harvest also includes it in the seed through the GitLab configuration
+volume, so keep the seed private too.
 
-Eine bestehende Datenbank wird nicht verändert. Wurde sie bereits ohne diesen
-Mechanismus eingerichtet, wird keine solche Datei nachträglich mit einem
-vermeintlichen Login-Passwort angelegt. Dann kannst du die native temporäre Datei
-prüfen, falls sie noch vorhanden ist:
+An existing database is left unchanged. If it was set up without this mechanism,
+no file containing an assumed login password is created retroactively. You can
+check GitLab's native temporary file if it is still present:
 
 ```bash
 sudo docker exec system_gitlab_1 grep 'Password:' /etc/gitlab/initial_root_password
 ```
 
-Diese native Datei kann beim Container-Neustart nach 24 Stunden entfernt werden.
-Ist kein gültiges Passwort mehr bekannt, ist ein gezielter GitLab-Passwort-Reset
-nötig. Die Sync-Zugangsdaten sind unabhängig von der GitLab-Anmeldung.
+GitLab may remove this native file on a container restart after 24 hours. If no
+valid password is known, a targeted GitLab password reset is required. Sync
+credentials are independent of the GitLab login.
 
-### 0.12 Später wieder verbinden und Einstellungen ändern
+### 0.12 Reconnect later and change settings
 
-Öffne erneut den Wizard unter [http://localhost/](http://localhost/). Nach der
-oben beschriebenen Einrichtung lautet die Sync-Adresse nun
-**`http://sync.localhost`**, nicht mehr der Erststart-Pfad `/sync`.
+Open the Wizard again at [http://localhost/](http://localhost/). After completing
+the setup above, the Sync address is **`http://sync.localhost`**, replacing the
+first-startup `/sync` path.
 
-Benutze den Edit-Dialog und die von dir in Abschnitt 0.9 festgelegten
-Sync-Zugangsdaten. Über **Synchronize → Fetch** lädst du die gespeicherte
-Konfiguration. Du kannst sie ändern, mit Backup lokal sichern und anschließend
-über Push und Restart anwenden.
+Use the Edit dialog and the Sync credentials you chose in section 0.9. Load the
+saved configuration with **Synchronize → Fetch**. You can change it, save a local
+Backup, then apply it with Push and Restart.
 
-Die ersten Schritte bis einschließlich Fetch wurden mit der abgebildeten
-frischen lokalen Instanz durchgeführt. Die Einrichtung von GitLab und Runner
-wurde zuvor separat lokal geprüft; dieses Handbook ist keine Zusage für einen
-Produktionsbetrieb oder eine Datenmigration.
+The steps through Fetch were performed on the fresh local instance shown in the
+images. GitLab and runner setup were tested separately beforehand. This handbook
+does not establish production readiness or validate data migration.
 
-## 1. Die wichtigsten Aktionen
+## 1. Main actions
 
-| Aktion | Was passiert? |
+| Action | What happens |
 | --- | --- |
-| Edit (Stift) | Öffnet den Dialog für Serveradresse und Sync-Zugangsdaten |
-| Submit / Connect | Meldet den Wizard am Sync-Dienst an |
-| Disconnect | Beendet die Verbindung des Wizards |
-| Open | Lädt eine Konfigurationsdatei vom eigenen Rechner in den Wizard |
-| Backup | Lädt die Wizard-Konfiguration als JSON auf den eigenen Rechner herunter |
-| Fetch | Holt gespeicherte Instanzeinstellungen; ohne Konfiguration lädt die neue Version markierte Vorschläge |
-| Push | Überträgt die Wizard-Konfiguration an die Instanz |
-| Restart | Startet die Dienste mit der übertragenen Konfiguration neu |
-| Register / Unregister | Registriert konfigurierte Runner beziehungsweise meldet sie ab |
-| Harvest | Kopiert persistente Dienstedaten und Zertifikate in das Seed-Verzeichnis |
-| Seed | Stellt Daten aus dem Seed wieder her; vorhandene Zieldaten können überschrieben werden |
-| Reset | Löscht die Hauptkonfiguration und Projektkonfigurationen über den Reset-Ablauf |
-| Update | Aktualisiert den Quellcode über den vorhandenen Update-Ablauf |
+| Edit (pencil) | Opens the dialog for the server address and Sync credentials |
+| Submit / Connect | Signs the Wizard into the Sync service |
+| Disconnect | Disconnects the Wizard |
+| Open | Loads a configuration file from your computer into the Wizard |
+| Backup | Downloads the Wizard configuration to your computer as JSON |
+| Fetch | Retrieves saved instance settings; without a configuration, the current version loads marked suggestions |
+| Push | Transfers the Wizard configuration to the instance |
+| Restart | Restarts services using the transferred configuration |
+| Register / Unregister | Registers or unregisters configured runners |
+| Harvest | Copies persistent service data and certificates to the seed directory |
+| Seed | Restores data from the seed; existing destination data may be overwritten |
+| Reset | Deletes the main and project configurations through the reset workflow |
+| Update | Updates source code through the existing update workflow |
 
-**Konfiguration und persistente Dienstedaten sind getrennt.** Open/Backup und
-Push/Fetch verwalten die Konfiguration. Harvest/Seed betreffen die Dienstedaten.
-Du brauchst Harvest oder Seed nicht, um eine Konfiguration mit Fetch anzusehen.
+**Configuration and persistent service data are managed separately.** Open/Backup
+and Push/Fetch manage configuration. Harvest/Seed handle service data. Harvest
+and Seed are not needed to view a configuration with Fetch.
 
-Hinweis zum aktuellen Code: Die bestehende Wizard-Aktion **Seed** überträgt vor
-der Wiederherstellung auch die Hauptkonfiguration aus der Maske. Prüfe diese
-daher vor dem Aufruf. Diese Kopplung wurde mit den Erststart-Vorschlägen nicht
-geändert. Für die Ersteinrichtung in Kapitel 0 verwendest du Push und Restart.
+Current implementation detail: the existing Wizard **Seed** action also
+transfers the main configuration from the form before restoring data. Check the
+form before invoking it. First-startup suggestions did not change this coupling.
+Use Push and Restart for the initial setup in chapter 0.
 
-Harvest allein ist noch kein nachgewiesen konsistentes GitLab-Datenbankbackup.
-Wiederherstellung, Updates und Produktivbetrieb brauchen zusätzliche Validierung.
+Harvest alone has not been demonstrated to produce a consistent GitLab database
+backup. Restore, updates and production operation require additional validation.
 
-## 2. GitLab-Runner einrichten
+## 2. Setting up GitLab runners
 
-Ein Runner führt die Jobs deiner GitLab-Pipelines aus. Für die eigene, vom
-Bootstrapper gestartete GitLab-Instanz kannst du ihn automatisch einrichten.
-Die automatische Einrichtung benötigt GitLab 16 oder neuer; die historische
-GitLab-12-Image-Vorgabe unterstützt diesen Ablauf nicht. Verwende für den
-lokalen Test die Image-Einstellungen aus Kapitel 0.
+A runner executes jobs in your GitLab pipelines. It can be set up automatically
+for the Bootstrapper's own GitLab instance. Automatic setup requires GitLab 16
+or newer; the historical GitLab 12 image default does not support this workflow.
+Use the image settings from chapter 0 for the local test.
 
-### 2.1 Anzahl festlegen und starten
+### 2.1 Set the count and start the runners
 
-1. Öffne den Wizard und verbinde ihn über **Edit → Submit** mit dem Sync-Dienst.
-2. Lade mit **Synchronize → Fetch** die vorhandene Konfiguration. Damit gehen
-   keine bereits eingerichteten Hosts beim nächsten Push verloren.
-3. Trage unter **Gitlab Runners** die gewünschte Anzahl ein, zunächst **1**.
-   Der zulässige Bereich ist 0 bis 50; wähle die Anzahl passend zum Arbeitsspeicher
-   und zur CPU-Leistung deines Rechners.
-4. Lass **Runner authentication token** für die automatische Einrichtung leer.
-   Ein bereits mit Fetch geladener Token kann stehen bleiben: Er wird wiederverwendet.
-5. Übertrage die Einstellungen mit **Synchronize → Push** und wähle anschließend
-   **Restart**. Warte auf den GitLab-Erststart und die Runner-Registrierung.
-6. Prüfe in der Ubuntu-Konsole:
+1. Open the Wizard and connect to Sync using **Edit → Submit**.
+2. Load the existing configuration with **Synchronize → Fetch** so the next Push
+   preserves your configured hosts.
+3. Under **Gitlab Runners**, enter the desired count, initially **1**. The allowed
+   range is 0 to 50; choose a count appropriate for your computer's memory and CPU.
+4. Leave **Runner authentication token** empty for automatic setup. A token
+   already loaded by Fetch can stay in place: it will be reused.
+5. Transfer the settings with **Synchronize → Push**, then select **Restart**.
+   Wait for GitLab startup and runner registration.
+6. Check the Ubuntu console:
 
    ```bash
    sudo docker ps
    ```
 
-   Bei Anzahl 1 gehört `runner_docker_1` dazu. Ein gestarteter Container allein
-   bestätigt noch keine erfolgreiche Anmeldung. Die Bootstrapper-Ausgabe meldet
-   nach erfolgreicher Anmeldung `Runner runner-docker-1 registered.` beziehungsweise
-   bei einer erneuten Prüfung `Runner runner-docker-1 verified.`
-7. Öffne GitLab als Administrator und prüfe unter **Admin → CI/CD → Runners**
-   den Eintrag **System Bootstrapper Docker pool**. Seine verbundenen Runner-Manager
-   müssen online sein. Projekte können diesen Instanz-Runner verwenden, wenn
-   Instanz-Runner für das jeweilige Projekt freigegeben sind.
+   With a count of 1, `runner_docker_1` should be present. A running container
+   alone does not confirm successful registration. After registration, the
+   Bootstrapper reports `Runner runner-docker-1 registered.`, or
+   `Runner runner-docker-1 verified.` when checking an existing registration.
+7. Sign into GitLab as an administrator and check **System Bootstrapper Docker
+   pool** under **Admin → CI/CD → Runners**. Its connected runner managers must
+   be online. Projects can use this instance runner when instance runners are
+   enabled for that project.
 
-Die Anzahl bezeichnet **Runner-Container in einem gemeinsamen Instanz-Runner-Pool**.
-GitLab zeigt einen Runner-Eintrag mit mehreren Managern an. Es wird nicht für
-jeden Container ein eigener globaler Runner-Eintrag angelegt. Die Tags des
-automatisch erzeugten Pools sind `docker` und `aws`; er übernimmt auch Jobs ohne Tags.
+The count means **runner containers in a shared instance runner pool**. GitLab
+shows one runner entry with multiple managers, rather than a separate global
+runner entry for each container. The automatically created pool has the tags
+`docker` and `aws` and also accepts untagged jobs.
 
-### 2.2 Token anzeigen und Konfiguration herunterladen
+### 2.2 Show the token and download the configuration
 
-1. Verbinde den Wizard nach dem Neustart gegebenenfalls erneut mit der
-   konfigurierten Sync-Adresse, lokal zum Beispiel `http://sync.localhost`.
-2. Wähle **Synchronize → Fetch**. Jetzt lädt der Wizard auch den erzeugten
-   Runner-Token aus der Bootstrapper-Konfiguration.
-3. Der Token ist standardmäßig verborgen. Mit **Show** kannst du ihn anzeigen
-   und aus dem Eingabefeld kopieren; **Hide** verbirgt ihn wieder.
-4. Wähle **Backup**, um die Konfiguration einschließlich Runner-Token als
-   Bootstrapper-JSON herunterzuladen. Bewahre diese Datei privat auf.
+1. After restarting, reconnect the Wizard to the configured Sync address if
+   needed, for example `http://sync.localhost` locally.
+2. Select **Synchronize → Fetch**. The Wizard now also loads the generated runner
+   token from the Bootstrapper configuration.
+3. The token is hidden by default. Use **Show** to display and copy it from the
+   input field; **Hide** conceals it again.
+4. Select **Backup** to download the configuration, including its runner token,
+   as Bootstrapper JSON. Keep this file private.
 
-Im Export steht der Token unter `gitlabRunnerToken`, die Anzahl unter
-`gitlabRunnerScale`. Der Token gehört zur betreffenden GitLab-Instanz; eine
-unabhängige neue GitLab-Datenbank kennt ihn nicht. Für deren automatische
-Ersteinrichtung lässt du das Feld wieder leer. Ein manuell eingegebener Token
-wird ebenfalls unterstützt und nicht durch einen automatisch erzeugten ersetzt.
+The export stores the token under `gitlabRunnerToken` and the count under
+`gitlabRunnerScale`. The token belongs to that GitLab instance; an independent
+new GitLab database will not recognize it. Leave the field empty again for
+automatic first setup against a new database. Manually supplied tokens are also
+supported and are not replaced with automatically generated ones.
 
-### 2.3 Was intern passiert
+### 2.3 What happens internally
 
-Der Bootstrapper wartet auf GitLabs Bereitschaftsprüfung und nutzt seinen
-vorhandenen Docker-Zugriff auf den eigenen GitLab-Container. Dort erzeugt er
-für den Administrator einen temporären Zugriffstoken mit dem Scope `create_runner`,
-legt über die GitLab-API den Instanz-Runner an und widerruft diesen Zugriffstoken
-direkt danach, auch bei einem API-Fehler. Er verlässt den GitLab-Prozess nicht
-und erscheint weder im Wizard noch im JSON-Backup. Als Absicherung bei einem
-harten Prozessabbruch läuft er am folgenden Datum ab; beim nächsten Setup
-werden zurückgebliebene Setup-Tokens ebenfalls widerrufen.
+The Bootstrapper waits for GitLab's readiness check and uses its existing Docker
+access to its own GitLab container. Inside that container, it creates a temporary
+administrator access token with the `create_runner` scope, creates the instance
+runner through the GitLab API, and immediately revokes the access token, including
+on API failure. The access token stays inside the GitLab process and appears in
+neither the Wizard nor the JSON backup. It expires the following day as a fallback
+for abrupt process termination; subsequent setup also revokes leftover setup tokens.
 
-Nur der Runner-Authentifizierungstoken wird in die Bootstrapper-Konfiguration
-übernommen. Wiederholtes Registrieren verwendet den vorhandenen Pool weiter.
-Die Runner verwenden im gemeinsamen Docker-Netz den Dienstnamen `gitlab`, damit
-ein GitLab-Neustart mit neuer interner IP ihre Verbindung nicht unterbricht.
-Register aktualisiert alte interne IP-Endpunkte in verwalteten Runnern, ohne
-deren Token oder externe, manuell konfigurierte Adressen zu verändern.
-Die Wiederaufnahme nach einer unterbrochenen Konfigurationsspeicherung sucht
-den eigenen Pool über seinen Namen. Benenne diesen Eintrag deshalb nicht um,
-wenn du diese Wiederaufnahme nutzen möchtest.
+Only the runner authentication token is saved in the Bootstrapper configuration.
+Repeated registration reuses the existing pool. Runners use the `gitlab` service
+name on the shared Docker network so a GitLab restart with a different internal
+IP does not break their connection. Register updates old internal IP endpoints
+in managed runners without changing their tokens or externally configured addresses.
+Recovery after interrupted configuration persistence locates the managed pool by
+name. Keep that entry's name unchanged if you want this recovery behavior.
 
-**Register** startet beziehungsweise skaliert die Runner mit der bereits
-gespeicherten Konfiguration und prüft ihre Anmeldung. **Unregister** meldet
-die Manager ab. Beim modernen Token-Verfahren bleibt der globale Runner-Eintrag
-in GitLab bestehen. Anzahl **0** stoppt die Runner-Container; sie löscht weder
-den Pool noch seinen Token. Änderungen im Wizard werden erst mit Push übertragen.
+**Register** starts or scales runners using the saved configuration and checks
+their registration. **Unregister** unregisters the managers. With modern token
+registration, the global runner entry remains in GitLab. Count **0** stops the
+runner containers without deleting the pool or token. Wizard changes are only
+transferred when you use Push.
 
-Diese Einrichtung verändert den Harvest-/Seed-Kreislauf nicht. Die
-Bootstrapper-Konfiguration bleibt über Push/Fetch und Open/Backup verwaltet.
+This setup does not change the Harvest/Seed cycle. Bootstrapper configuration
+continues to be managed through Push/Fetch and Open/Backup.
 
-### 2.4 Lokaler Funktionstest
+### 2.4 Local functional test
 
-Geprüft mit GitLab CE **19.4.2** und GitLab Runner **19.4.0** unter Ubuntu/WSL2:
-automatische Pool-Erstellung, widerrufener Setup-Zugang, Fetch des Runner-Tokens,
-erfolgreicher Pipeline-Job mit Checkout und Artefakt sowie Skalierung von einem
-auf zwei Container und zurück mit unverändertem Token. Der lokale Test endet
-mit einem Runner-Container.
+Verified with GitLab CE **19.4.2** and GitLab Runner **19.4.0** on Ubuntu/WSL2:
+automatic pool creation, revoked setup access, fetching the runner token, a
+successful pipeline job with checkout and artifact, and scaling from one to two
+containers and back while preserving the token. The local test ends with one
+runner container.
 
-Für eine ausdrücklich entbehrliche lokale Testinstanz gibt es außerdem
-`tests/runner-live.py`. Das Skript legt ein privates Testprojekt mit Pipeline an,
-prüft den Runner und lädt die erzeugte Ergebnisdatei herunter. Dafür erzeugt es
-separat einen temporären Test-API-Zugang mit `api`-Scope und widerruft ihn im
-Anschluss. Das ist eine Testhilfe; die eigentliche Runner-Einrichtung benötigt
-nur `create_runner`.
+For an explicitly disposable local test instance, `tests/runner-live.py` creates
+a private test project and pipeline, checks the runner and downloads the generated
+result file. It creates a separate temporary test access token with the `api`
+scope and revokes it afterwards. This is a test helper; actual runner setup only
+requires `create_runner`.
 
-Schlägt die Runner-Einrichtung fehl, startet die Plattform trotzdem weiter,
-damit du die Konfiguration im Wizard korrigieren kannst. Prüfe dann die
-Bootstrapper-Ausgabe und versuche **Register** nach der Korrektur erneut.
+If runner setup fails, platform startup continues so you can correct the
+configuration in the Wizard. Check the Bootstrapper output, correct the settings
+and try **Register** again.
 
 ```bash
 sudo python3 tests/runner-live.py
 ```
 
-Voraussetzungen sind laufende lokale Dienste, Docker-Zugriff und die Adressen
-`gitlab.localhost` und `sync.localhost` auf dem lokalen HTTP-Proxy.
+Prerequisites are running local services, Docker access, and the addresses
+`gitlab.localhost` and `sync.localhost` on the local HTTP proxy.
 
-## 3. Anwendungen und Umgebungen konfigurieren
+## 3. Configuring applications and environments
 
-Der Wizard-Bereich **Projects** hieß zuvor **Proxy**. Er beschreibt eine
-Anwendung mit ihren Umgebungen **Production**, **Beta** und **Review Apps**.
-Mit **Add Project** legst du deren Deployment-Konfiguration an. Ein NGINX-Proxy
-leitet Anfragen für die eingestellten Domains an die passenden Anwendungscontainer
-weiter. Ein Proxy ist also ein Bestandteil der Anwendungskonfiguration.
+The Wizard's **Projects** section was previously named **Proxy**. It describes an
+application with its **Production**, **Beta** and **Review Apps** environments.
+Use **Add Project** to create its deployment configuration. An NGINX proxy forwards
+requests for configured domains to the corresponding application containers.
+The proxy is one part of the application configuration.
 
-Einige Abbildungen in Kapitel 0 zeigen noch die frühere Beschriftung **Proxy**.
-In der aktuellen Oberfläche findest du an derselben Stelle **Projects**.
+Some images in chapter 0 still show the former **Proxy** label. The current
+interface uses **Projects** in the same location.
 
-Der **Project Key** bestimmt bei neuen Projekten exakt den GitLab-Namen und Pfad. Er darf nur Kleinbuchstaben a–z und Ziffern enthalten; alte gespeicherte Schlüssel werden nicht umbenannt.
+For new projects, the **Project Key** is exactly the GitLab name and path. Only
+lowercase letters a–z and digits are allowed; existing stored keys are not renamed.
 
-Verbinde den Wizard mit Sync und lade zuerst **Fetch**. Wähle unter **Projects → Add Project** den Namespace, prüfe die Verfügbarkeit und konfiguriere die aktivierten Umgebungen samt HTTP/HTTPS-Einstellungen. **Save** erstellt jetzt tatsächlich ein privates GitLab-Repository mit README und generierter CI. Die Einrichtung meldet ihren Status asynchron. Ein belegtes Repository wird weder übernommen noch überschrieben; wiederholtes Save erzeugt keine Duplikate.
+Connect the Wizard to Sync and use **Fetch** first. Under **Projects → Add Project**,
+choose the namespace, check availability and configure the enabled environments
+with their HTTP/HTTPS settings. **Save** creates a private GitLab repository with
+a README and generated CI. Setup reports progress asynchronously. Occupied
+repositories are neither adopted nor overwritten; repeated Save does not create
+duplicates.
 
-### 3.1 Eine Anwendung aus einer Vorlage starten
+### 3.1 Start an application from a template
 
-Wähle im Anlagedialog unter **Application template**:
+In the creation dialog, choose an **Application template**:
 
-| Auswahl | Erzeugtes Startprojekt |
+| Selection | Generated starter |
 | --- | --- |
-| React + TypeScript + Vite | React-Quellcode, Vite-Build, Lockfile und Dockerfile |
-| Angular + TypeScript | Angular-Quellcode, CLI-Build, Lockfile und Dockerfile |
-| General web project | HTML, CSS und JavaScript ohne Framework-Build, mit Dockerfile |
-| Empty repository | Nur Repository/CI; eigener Quellcode folgt später |
+| React + TypeScript + Vite | React source, Vite build, lockfile and Dockerfile |
+| Angular + TypeScript | Angular source, CLI build, lockfile and Dockerfile |
+| General web project | HTML, CSS and JavaScript without a framework build, with a Dockerfile |
+| Empty repository | Repository and CI only; add your own source later |
 
-Für die ersten drei Optionen musst du keine eigene Dockerfile schreiben. Save
-legt die Dateien und passende CI an und startet nach der Routeneinrichtung die
-erste Pipeline. Diese baut und veröffentlicht das Image, prüft die HTTP-Antwort
-und startet die automatisch konfigurierten Deployments. Bei manueller
-Bereitstellung startest du den betreffenden Job in GitLab selbst.
+The first three options include a Dockerfile. Save creates the files and matching
+CI and starts the first pipeline after configuring routing. The pipeline builds
+and publishes the image, checks its HTTP response and starts automatic deployments.
+For a manual deployment, start the corresponding job in GitLab yourself.
 
-Öffne den Pipeline-Link und warte auf den erfolgreichen Build und Deployment-Job.
-Erst dann prüfst du die Anwendungsdomain. Der Repository-Link allein beweist
-keine laufende Anwendung. Anschließend kannst du direkt am erzeugten Quellcode
-weiterarbeiten; Dockerfile und Pipeline bleiben ebenfalls anpassbar.
-Die Datei GETTING_STARTED.md im neuen Repository erklärt die lokalen Befehle.
-Neue Angular-/React-Projekte bauen mit Node 24; das alte Node 13 ist nur für den
-bestehenden System Wizard erforderlich.
+Open the pipeline link and wait for the build and deployment jobs to succeed
+before checking the application domain. A repository link alone does not prove
+that an application is running. You can then work directly on the generated
+source; the Dockerfile and pipeline remain editable too. GETTING_STARTED.md in
+the new repository explains the local commands. New Angular and React projects
+build with Node 24; the old Node 13 is only required for the existing System Wizard.
 
-Ein leeres Repository ist noch keine laufende Anwendung. Im bisherigen Ablauf wartet die Pipeline auf Anwendungscode mit Dockerfile. Repository-Metadaten bleiben bei Fetch und JSON Backup/Open erhalten. Die vollständige Anleitung mit Wiederaufnahme nach Fehlern steht im [Projektleitfaden](PROJECT_BOOTSTRAP_GUIDE.md).
+An empty repository is not yet a running application. In that workflow, the
+pipeline waits for application source with a Dockerfile. Repository metadata
+survives Fetch and JSON Backup/Open. See the [project guide](PROJECT_BOOTSTRAP_GUIDE.md)
+for the complete instructions, including recovery after errors.
 
-Den bestehenden Wizard selbst als Anwendung zu importieren bleibt ein **optionaler**, separater Anwendungsfall. Er wird nicht für jeden Benutzer automatisch angelegt.
+Importing the existing Wizard itself as an application remains an **optional**,
+separate use case. It is not automatically created for every user.
 
-Die Runner-Einstellungen haben zwei verschiedene Aufgaben:
+The runner settings have two different purposes:
 
-| Ort im Wizard | Bedeutung |
+| Location in the Wizard | Meaning |
 | --- | --- |
-| General → Gitlab Runners | Gemeinsamer Instanz-Runner-Pool; nutzbar für mehrere GitLab-Projekte |
-| Projects → Additional runners (optional) | Zusätzliche Runner-Container für diese Anwendungskonfiguration mit separat vorgegebenem Token |
+| General → Gitlab Runners | Shared instance runner pool available to multiple GitLab projects |
+| Projects → Additional runners (optional) | Additional runner containers for this application configuration, using a separately supplied token |
 
-Für den Einstieg lässt du die zusätzlichen Runner eines Projekts auf **0**.
-Deine Pipelines können dann den gemeinsamen Pool verwenden, sofern Instanz-Runner
-im jeweiligen GitLab-Projekt aktiviert sind und die Job-Tags passen. Der Wert 0
-deaktiviert diese gemeinsamen Runner nicht; er startet lediglich keine zusätzlichen
-Container für diese Anwendung.
+Start with **0** additional project runners. Your pipelines can use the shared
+pool when instance runners are enabled for the GitLab project and the job tags
+match. A value of 0 does not disable the shared runners; it simply starts no
+additional containers for this application.
 
-Bei zusätzlichen Runnern bestimmt die Registrierung in GitLab und der verwendete
-Token, welche Projekte sie nutzen dürfen. Die Zuordnung zum Project Key allein
-schränkt einen Runner nicht auf dieses GitLab-Projekt ein. Die automatische
-Token-Erzeugung aus Kapitel 2 gilt für den gemeinsamen Instanz-Pool.
+For additional runners, their GitLab registration and token determine which
+projects can use them. Associating a runner with a Project Key alone does not
+restrict it to that GitLab project. Automatic token creation in chapter 2 applies
+to the shared instance pool.
 
-## 4. Wenn etwas nicht funktioniert
+## 4. Troubleshooting
 
-| Beobachtung | Nächster Schritt |
+| Observation | Next step |
 | --- | --- |
-| `localhost` öffnet sich nicht | Ubuntu-Konsole offen lassen und `sudo docker ps` prüfen |
-| Connect meldet Network Error | Über Edit die Adresse prüfen: beim lokalen Erststart `http://localhost/sync`, danach die konfigurierte Sync-Domain |
-| Anmeldung wird abgelehnt | Aktuelle Werte aus `sudo docker logs system_bootstrapper_1` verwenden; nach einer Konfiguration die selbst festgelegten Werte benutzen |
-| Example-Werte stehen in der Maske | Zuerst verbinden und Fetch ausführen; eine unverbundene Maske ist noch keine Serverkonfiguration |
-| Fetch liefert bei einer frischen Instanz 404 | Wizard neu laden; für Vorschläge müssen Wizard und Sync-Dienst beide die passende PR-Version verwenden |
-| Gespeicherte Example-Werte kommen wieder | Fetch hat Vorrang für gespeicherte Einstellungen. Korrigiere sie bewusst im Wizard; Vorschläge überschreiben keine vorhandene Konfiguration |
-| GitLab ist noch nicht erreichbar | Bei Erststart nach Push und Restart auf `healthy` warten und bei Problemen die GitLab-Logs prüfen |
-| Pipeline wartet nach GitLab-Neustart auf den Runner | Register prüft den Pool und aktualisiert verwaltete interne IP-Endpunkte auf den stabilen Docker-Dienstnamen |
-| Pipeline kann `registry.localhost` nicht auflösen | In Ubuntu erneut `sudo bash bootstrapper/prepare-local.sh` ausführen; WSL kann lokale Hosts-Einträge beim Start zurücksetzen |
-| In `docker ps` fehlt ein eigener Sync-Node-Container | Normal: Node läuft im Bootstrapper-Container. `system_sync_1` ist beim Erststart der NGINX-Zugang |
+| `localhost` does not open | Keep an Ubuntu console open and check `sudo docker ps` |
+| Connect reports Network Error | Check the address through Edit: `http://localhost/sync` at local first startup, then the configured Sync domain |
+| Login is rejected | Use current values from `sudo docker logs system_bootstrapper_1`; after configuration, use the credentials you chose |
+| The form contains Example values | Connect and run Fetch first; an unconnected form is not the server configuration |
+| Fetch returns 404 on a fresh instance | Reload the Wizard; both the Wizard and Sync must use versions supporting suggestions |
+| Saved Example values return | Fetch prioritizes saved settings. Correct them explicitly in the Wizard; suggestions do not overwrite existing configuration |
+| GitLab is not reachable yet | On first startup after Push and Restart, wait for `healthy` and inspect GitLab logs if needed |
+| A pipeline waits for its runner after a GitLab restart | Register checks the pool and updates managed internal IP endpoints to the stable Docker service name |
+| A pipeline cannot resolve `registry.localhost` | Run `sudo bash bootstrapper/prepare-local.sh` again in Ubuntu; WSL may reset local hosts entries at startup |
+| `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
 
-Weitere technische Details stehen in [Prepare-Host.md](../Prepare-Host.md).
+See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
