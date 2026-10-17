@@ -33,16 +33,16 @@ export function suggestConfig(nginx: string, connectionHost: string,
     const hosts = Array.from(new Set(matches.map(item => item.names[0])));
     if (hosts.length !== 1) { return; }
     const prefix = roles[role];
-    const block = matches.find(item => item.names[0] === hosts[0])!.block;
-    const mode = /listen\s+[^;]*\bssl\b/.test(block) ? 2 : 0;
+    const selectedBlock = matches.find(item => item.names[0] === hosts[0])!.block;
+    const mode = /listen\s+[^;]*\bssl\b/.test(selectedBlock) ? 2 : 0;
     add(prefix + 'Host', hosts[0], 'Existing NGINX route');
     add(prefix + 'DomainMode', mode, 'Existing NGINX listener');
     if (role === 'gitlab' || role === 'registry') {
       add(role === 'gitlab' ? 'gitlabExternalUrl' : 'gitlabRegistryUrl',
         (mode === 2 ? 'https://' : 'http://') + hosts[0], 'Existing NGINX route');
     }
-    const cert = (block.match(/ssl_certificate\s+([^;\s]+);/) || [])[1];
-    const key = (block.match(/ssl_certificate_key\s+([^;\s]+);/) || [])[1];
+    const cert = (selectedBlock.match(/ssl_certificate\s+([^;\s]+);/) || [])[1];
+    const key = (selectedBlock.match(/ssl_certificate_key\s+([^;\s]+);/) || [])[1];
     if (cert) { add(prefix + 'SSL', cert, 'Existing NGINX certificate path'); }
     if (key) { add(prefix + 'SSLKey', key, 'Existing NGINX key path'); }
   });
