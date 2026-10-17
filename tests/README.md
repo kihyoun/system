@@ -10,23 +10,43 @@ goal. The component runner executes only the isolated manifest. Nothing under a
 From a clean checkout, with Docker available:
 
 ```sh
-docker build -f tests/Dockerfile -t system-component-tests .
+git submodule update --init --recursive
+node project-bootstrap/wizard-source/package.js
+node tests/prepare-context.js
+docker build -f tests/Dockerfile -t system-component-tests - < .test-context/context.tar
 docker run --rm --network none system-component-tests all
 docker run --rm --network none system-component-tests sync
 ```
 
 Do not mount a Docker socket, private configuration, host network or platform
-volumes. The image contains an explicitly selected source snapshot, Node
-24.22.0 with its bundled npm, Bash/core utilities and the committed Sync lockfile.
-It installs with `npm ci --ignore-scripts` and calls TypeScript directly: the
-legacy `npm run build` prebuild hook fixes source files and is intentionally
-not used. This test runtime does not migrate the production Sync runtime; that
-is tracked separately in [System issue 23](https://github.com/kihyoun/system/issues/23).
+volumes. Snapshot/context preparation requires Node, Git and tar in the trusted checkout;
+`bash project-bootstrap/wizard-source/prepare.sh` is the documented host fallback
+when Node is absent. The candidate image contains the validated snapshot, never
+the real checkout's Git metadata. It combines digest-pinned Node 24.22.0/npm
+11.19.1 and Ruby 3.4.11 on the same Debian Bookworm/glibc family. Its full Ruby
+base supplies Git, Bash/core utilities and the shared libraries required by Node;
+the build prints runtime versions and `ldd` output. No Alpine binary is copied
+into a Debian runtime.
 
-The Node image is pinned to an exact release tag rather than `latest`. Debian
-base rebuilds can still change that tag; it is not a claim of byte-identical
-images. The dependency tree comes from the lockfile, and compilation fails if
-the lockfile and package manifest become inconsistent.
+The test context contains only an explicit allowlist of files from the current
+**committed** Git tree plus the validated Wizard snapshot matching its gitlink.
+It omits ignored/untracked files, dirty working-copy changes, runtime/private
+paths and real Git metadata. Binary contents and executable modes are retained.
+The generated `.test-context/` directory records the source revision, selected
+paths and archive checksum. Commit intended source changes before preparing it;
+there is no fallback to sending the whole checkout. This test-specific contract
+does not change the application's main Docker context or private-config behavior.
+
+The image installs the committed Sync lockfile with `npm ci --ignore-scripts`
+and runs the migrated `npm run build`: supported ESLint now checks without
+autofix before TypeScript compilation. Its ESLint configuration is explicitly
+copied into the image. The Sync migration is tracked in
+[System issue 23](https://github.com/kihyoun/system/issues/23).
+
+Runtime images are pinned by exact release **and digest**. The dependency tree
+comes from the lockfile; inconsistent manifests fail installation. Ruby 3.4 is
+in [normal maintenance](https://www.ruby-lang.org/en/downloads/branches/); this
+fixture runtime does not replace the Ruby bundled inside GitLab.
 
 Inside this disposable Linux environment the stable entry point is:
 
@@ -58,23 +78,43 @@ docker run --rm --network none \
   -v "$PWD/test-results:/candidate/test-results" system-component-tests all
 ```
 
-The root GitLab pipeline runs the same entry point as seven component-named
-matrix jobs in a required `test` stage before the existing `build` and `deploy`
-stages. The platform's existing runner mounts a Docker socket into its jobs and
+The root GitLab pipeline first runs a required `prepare:wizard-source` job in a
+digest-pinned Node/Git image with a recursive submodule checkout. It packages the
+exact Wizard gitlink and validates the resulting source snapshot. It then creates
+the minimal committed test archive. These artifacts are passed to downstream
+test-image builds; the test jobs
+themselves do not need real submodule Git metadata. A missing submodule/object or
+invalid snapshot fails preparation rather than testing an arbitrary fallback.
+The Docker parent verifies the archive checksum and requires its recorded
+revision to equal `CI_COMMIT_SHA` before contacting Docker. Missing, damaged or
+stale context artifacts fail the job. A local wrapper invocation must likewise
+provide the expected full commit ID; the direct archive build above is simpler
+for ordinary local use.
+
+Seven component-named matrix jobs then run the same entry point in a required
+`test` stage before the existing `build` and `deploy` stages. The platform's
+existing runner mounts a Docker socket into its jobs and
 sets privileged mode. Merely disabling Docker-in-Docker services does not remove
-that authority. Therefore each CI job is a **trusted parent** using pinned
-`docker:29.9.1-cli`, `services: []` and the existing `docker` runner tag. It calls
+that authority. Therefore each CI job is a **trusted parent** using
+digest-pinned `docker:29.9.1-cli`, `services: []` and the existing `docker` runner tag. It calls
 `sh tests/ci-isolated.sh <component>` to build the Node test image, then starts a
 child with `--network none`, no socket/host mounts, no privilege flag and no
-inherited CI credentials. Source enters through the image build context; reports
+inherited CI credentials. Only the verified archive enters the build through
+stdin; reports
 leave through `docker cp`, avoiding the incorrect assumption that a CI checkout
 path also exists on the daemon host. No new runner is provisioned.
 
 Resource names include numeric CI project/job IDs. The script copies reports
-before returning the child's exit code, removes its exact container/image on
-normal exit, failure and trapped cancellation, and repeats cleanup from GitLab
+before returning the child's exit code, attempts exact container/image removal
+on normal exit, failure and trapped cancellation, and repeats cleanup from GitLab
 `after_script`. The eight-minute script timeout leaves time within the ten-minute
-job for the one-minute cleanup budget. Abrupt runner/host loss or SIGKILL can
+job for the one-minute cleanup budget. Each cleanup command is bounded to eight
+seconds. Successful absence is distinguished from daemon/removal errors, which
+produce visible diagnostics and separate `test-results/cleanup/on-exit.json`
+and `after-script.json` records. Cleanup failure changes an otherwise successful
+script to failure while preserving an existing test/build exit code. GitLab does
+not use an `after_script` failure to change the primary job result, so its separate
+log/status record remains important. Abrupt runner/host loss or SIGKILL can
 prevent both traps and `after_script`; labeled residual resources then require
 operator cleanup. Shared BuildKit cache is ordinary daemon build cache, not a
 separate clean platform-generation environment.
@@ -121,6 +161,28 @@ synthetic fixtures and does not require a service. `shared/ci-parent-contract.js
 uses a fake Docker transport to verify failed-candidate exit propagation,
 artifact copying before exact-resource cleanup, socket-free child arguments and
 rejection of unsafe CI resource IDs.
+
+`shared/source-context.js` verifies committed-only inputs, private/untracked and
+dirty-file exclusion, binary/mode preservation, validated snapshot inclusion,
+and stale-snapshot/link refusal. The parent contract additionally checks context
+checksums/revisions before Docker, failed cleanup visibility, preserved primary
+failure, absent resources and unreachable-daemon reporting.
+
+The integrated manifest also includes these checks, with the same process/time
+limits, component output and JUnit reporting:
+
+| Path under tests/ | Scope and prerequisites | Timeout |
+| --- | --- | --- |
+| `sync/migration-api.js` | Private Sync process on 8071; JWT authentication/refresh and multipart configuration round trips after Express migration | 30s |
+| `wizard/source-package.js` | Git-created disposable repositories; pinned/binary/mode preservation, dirty/private-file exclusions and path/hash/link rejection using Helper bytes from the validated source snapshot | 30s |
+| `wizard/source-workflow.js` | Compiled Sync, prepared snapshot and fake Rails transport; preview, locks, durable receipt/retry/conflict behavior | 30s |
+| `wizard/source-api.js` | Compiled Sync/snapshot; private ephemeral HTTP listener, explicit forbidden shell/container transports; auth, preview, initialization, polling and mutation guards | 30s |
+| `gitlab/source-import.rb` | Ruby standard library and in-memory GitLab API adapter; source/CI conflicts, binary/mode import and interrupted-commit recovery; no Rails/server/network | 20s |
+
+The Ruby import fixture moved from `tests/wizard/source-import.rb` to the GitLab
+component because it exercises that adapter. The shared runner selects `ruby`
+for manifest entries ending in `.rb`; live Rails audits remain excluded. All
+fixture Git repositories are created and cleaned inside the disposable child.
 
 ## Live/disposable integration boundary
 
