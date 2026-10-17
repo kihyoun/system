@@ -4,6 +4,7 @@ if [ -f ../system/.docker.env ]; then
     source ../system/.docker.env
 
     mkdir -p /srv/gitlab/config
+    GITLAB_INITIAL_ROOT_PASSWORD="${GITLAB_INITIAL_ROOT_PASSWORD:-}" node ./prepare-root-password.js
     [ $GITLAB_REGISTRY_DOMAIN_MODE -lt 2 ] && DISABLE_INSECURE_REGISTRY="" || DISABLE_INSECURE_REGISTRY="#"
     cat gitlab.rb \
         | sed -e "s@\${GITLAB_REGISTRY_URL}@${GITLAB_REGISTRY_URL}@g" \

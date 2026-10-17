@@ -101,6 +101,36 @@ alone do not keep the WSL instance alive. See
 
 ## Seed lifecycle
 
+### GitLab first administrator login
+
+The username is `root`. For a fresh database, the bootstrapper generates a unique
+initial password, or accepts `GITLAB_INITIAL_ROOT_PASSWORD` (at least 12 characters)
+from the private `system/.docker.env`. The tracked example deliberately has no
+shared default password. The wizard does not yet expose this optional field.
+
+Read the password locally after startup:
+
+```bash
+sudo docker exec system_gitlab_1 cat /etc/gitlab/bootstrapper_initial_root_password
+```
+
+This root-readable file lives in the persistent GitLab configuration volume and
+is retained across restarts, unlike GitLab's temporary initial-password file.
+It is also included when harvesting the GitLab configuration into a seed: treat
+that seed as containing credentials. Store the password privately and change it
+after login. The retained file records the initial password, not later changes.
+An existing file is never overwritten, and an existing PostgreSQL directory
+without that file causes generation to be skipped. Setting this option does not
+reset an existing GitLab account; use GitLab's password-reset procedure instead.
+
+The ASCII startup signature and Sync login output are unchanged. Sync credentials
+and the GitLab administrator credentials remain separate.
+
+Run `node tests/gitlab-root-password.js` to check the initialization behavior
+using temporary directories without touching a running GitLab installation.
+
+### Persistent state
+
 `SEED_DIR` is the host directory mounted at `/seed` in the bootstrapper. It
 holds the persistent state used to bootstrap a subsequent production generation.
 `harvest.sh` copies `/srv` and `/ssl` into that directory; `seed.sh` restores them.
