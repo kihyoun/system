@@ -7,7 +7,8 @@ const source = path.resolve(__dirname, '../..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-build-'));
 fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
-fs.writeFileSync(path.join(root, 'system/.docker.env'), 'GITLAB_REGISTRY_URL=http://registry.localhost:5050\n');
+const mainConfig = path.join(root, 'system/.docker.env');
+fs.writeFileSync(mainConfig, 'GITLAB_REGISTRY_URL=http://registry.localhost\nGITLAB_REGISTRY_DOMAIN_MODE=0\n');
 process.chdir(path.join(root, 'sync'));
 const bootstrap = require(path.join(source, 'sync/dist/ProjectBootstrap'));
 const {wizardConfiguration, wizardCi} = require(path.join(source, 'sync/dist/DefaultWizard'));
@@ -17,11 +18,11 @@ const data = wizardConfiguration({WIZARD_HOST: 'localhost'});
 const receipt = {operation: 'registration', namespaceId: 1, defaultProject: true, template: 'wizard', state: 'complete',
   repository: {id: 99, path: 'root/wizard', defaultBranch: 'main', systemProject: true, ciPath: '.system-bootstrapper/ci.yml', generatedCi: wizardCi()},
   wizardWorkflow: {version: 1, operation: 'source-operation', sourceRevision: 'c'.repeat(40), manifestHash: 'd'.repeat(64), importCommit: 'a'.repeat(40), phase: 'source-imported'}};
-let calls = 0, finish;
+let calls = 0, finish, expectedRegistryPrefix = 'registry.localhost:5050/root/wizard';
 bootstrap.rails = input => {
   calls++;
   assert.equal(input.operation, 'registration');
-  assert.equal(input.registryPrefix, 'registry.localhost:5050/root/wizard');
+  assert.equal(input.registryPrefix, expectedRegistryPrefix);
   assert(input.action === 'wizard-build' || input.action === 'wizard-build-status');
   assert.equal(input.workflow.importCommit, 'a'.repeat(40));
   return new Promise(resolve => {finish = () => resolve({build: {...input.build, phase: 'pipeline-running',
@@ -40,6 +41,18 @@ const wait = async job => {while (job.state === 'running') await new Promise(res
   assert.equal(activateWizardBuild({recipeHash: preview.recipeHash}), job);
   assert.equal(refreshWizardBuild(), job); assert.equal(calls, 1);
   finish(); await wait(job); assert.equal(job.state, 'complete');
+  for (const [url, mode, expected] of [
+    ['http://registry.localhost', '1', 'registry.localhost:5050/root/wizard'],
+    ['https://registry.localhost', '2', 'registry.localhost/root/wizard'],
+    ['https://registry.localhost:5443', '3', 'registry.localhost:5443/root/wizard']
+  ]) {
+    fs.writeFileSync(mainConfig, 'GITLAB_REGISTRY_URL=' + url + '\nGITLAB_REGISTRY_DOMAIN_MODE=' + mode + '\n');
+    expectedRegistryPrefix = expected;
+    const refreshed = refreshWizardBuild(); finish(); await wait(refreshed);
+    assert.equal(refreshed.state, 'complete', 'Registry mode did not match the platform advertisement');
+  }
+  fs.writeFileSync(mainConfig, 'GITLAB_REGISTRY_URL=http://registry.localhost\nGITLAB_REGISTRY_DOMAIN_MODE=0\n');
+  expectedRegistryPrefix = 'registry.localhost:5050/root/wizard';
   let saved = bootstrap.readReceipt(fs.readFileSync(file, 'utf8'));
   assert.equal(saved.wizardWorkflow.phase, 'source-imported');
   assert.equal(saved.wizardWorkflow.importCommit, receipt.wizardWorkflow.importCommit);

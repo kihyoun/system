@@ -530,6 +530,70 @@ Source initialization and managed build activation are explicit actions.
 Complete local-GitLab acceptance, Review/Beta and controlled Production rollout
 remain tracked in the [workflow issue](https://github.com/kihyoun/system/issues/18).
 
+#### Build and check the Wizard manually
+
+Before starting, use matching System and Wizard versions that expose the source
+and build actions. The System image must contain its prepared pinned Wizard
+source package. GitLab, its project registry and a shared runner accepting the
+`docker` tag must be available. The runner needs the reviewed Docker executor
+setup used by the managed recipe, including Docker/Buildx access and registry
+connectivity. Confirm sufficient physical disk and RAM for the build; avoid
+running competing infrastructure builds at the same time. The legacy Node 13
+builder is still required here; this action does not modernize its dependencies.
+
+1. Open the existing Wizard address. Use the pencil icon beside **Connect** to
+   enter the configured Sync address and your current Sync credentials, then
+   choose **Submit**. After first setup, use the configured Sync domain rather
+   than assuming the initial `http://localhost/sync` path is still correct.
+2. Select **Synchronize → Fetch**. In **Projects**, expand the first **wizard**
+   entry. Check its repository link and the existing Production address. If the
+   managed entry is missing, resolve registration first; do not create a second
+   Wizard project with **Add Project**.
+3. If source is already initialized, retain its receipt and skip to step 4;
+   do not reimport after managed build activation. Otherwise choose
+   **Initialize Wizard source**. Check the preview's **Repository**,
+   **Source revision** and **Files**, then choose **Import source**. Wait for
+   completion. This imports the source pinned by this System version without
+   starting a pipeline. If source was already imported, retain that receipt;
+   reimporting is not a source-upgrade mechanism.
+4. Close the source dialog and choose **Build and verify Wizard**. Check the
+   **Repository**, **Imported commit** and **Recipe version**. The preview alone
+   does not create a pipeline or change the repository.
+5. Choose **Enable build pipeline** once. Wait for the controller operation to
+   finish; it records the managed recipe and initial pipeline. An interrupted
+   browser response is a reason to inspect/refresh the saved operation, not to
+   delete its receipt or create another project.
+6. Choose **Open pipeline** in the build dialog. In GitLab, inspect the same
+   pipeline's `build:wizard` and `test:wizard` jobs. The first runs the existing
+   Jest suite and production build, then publishes a candidate image. The second
+   pulls the immutable image and checks HTTP, rendered UI, Projects and SPA
+   navigation in an isolated browser candidate. A pending runner or running job
+   has not passed these checks.
+7. Return to the Wizard and choose **Refresh status** after the jobs finish.
+   Wait for **Candidate checks and the immutable artifact are verified** and
+   **Verified candidate image**. Record the pipeline and the image reference
+   ending in `@sha256:…`. A green pipeline alone does not replace the controller's
+   required-job and matching-artifact verification.
+8. Inspect the GitLab job artifacts if evidence is needed: `build-evidence.json`
+   from `build:wizard`, and `wizard-evidence.json` plus `browser-evidence/` from
+   `test:wizard`. Evidence belongs to that pipeline and commit. The recipe
+   currently retains these artifacts for seven days; an expired artifact may
+   prevent a later verification even when an earlier job was green.
+9. Confirm the existing Wizard still opens at its original address. Fetch again
+   and check that the same project/repository and Production address remain.
+   A verified candidate is available for later rollout work; this workflow has
+   no Review, Beta or Production deployment job and does not replace the running
+   interface. A later Production rollout must use the separately reviewed manual
+   GitLab Play job.
+
+For failures, use the [build status and recovery table](WIZARD_BUILD.md#status-and-safe-continuation).
+Retry failed jobs in the same GitLab pipeline, then refresh status. Resume only
+when the dialog offers **Resume activation**, after **Refresh preview** confirms
+the current state. **Pipeline creation has an uncertain outcome. Refresh only.** permits refresh
+only and needs administrator inspection; never clear its durable checkpoint to
+force another pipeline. Keep credentials out of screenshots, issue comments and
+job-log excerpts.
+
 ### 3.3 Shared and additional runners
 
 The runner settings have two different purposes:

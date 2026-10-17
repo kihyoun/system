@@ -70,10 +70,17 @@ async function project() {
   assert(production, 'Managed Production address is missing');
   const preview = await request('GET', '/projects/wizard/source');
   assert.equal(preview.repository.id, expectedProject);
-  const imported = await finish(await request('POST', '/projects/wizard/source', {manifestHash: preview.manifestHash}));
-  assert.equal(imported.workflow.phase, 'source-imported');
-  const repeated = await finish(await request('POST', '/projects/wizard/source', {manifestHash: preview.manifestHash}));
-  assert.equal(repeated.workflow.importCommit, imported.workflow.importCommit);
+  let imported;
+  if (preview.workflow?.phase === 'source-imported') {
+    // A resumed run may already have installed managed CI. Reimport would
+    // correctly fail its source-scaffold guard; retain the existing receipt.
+    imported = {workflow: preview.workflow};
+  } else {
+    imported = await finish(await request('POST', '/projects/wizard/source', {manifestHash: preview.manifestHash}));
+    assert.equal(imported.workflow.phase, 'source-imported');
+    const repeated = await finish(await request('POST', '/projects/wizard/source', {manifestHash: preview.manifestHash}));
+    assert.equal(repeated.workflow.importCommit, imported.workflow.importCommit);
+  }
   const buildPreview = await request('GET', '/projects/wizard/build');
   assert.equal(buildPreview.repository.id, expectedProject);
   let result = await finish(await request('POST', '/projects/wizard/build', {recipeHash: buildPreview.recipeHash}));

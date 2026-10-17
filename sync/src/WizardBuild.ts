@@ -33,6 +33,9 @@ function context() {
     registry.pathname !== '/' || registry.search || registry.hash) {
     throw new Error('Invalid local GitLab registry configuration.');
   }
+  // Keep artifact identity aligned with gitlab/start.sh and gitlab.rb: HTTP
+  // registry modes advertise port 5050 even when the external proxy URL has no port.
+  if (Number(settings.GITLAB_REGISTRY_DOMAIN_MODE || 0) < 2) { registry.port = '5050'; }
   return {content, data, receipt, recipe, registryPrefix: registry.host + '/' + receipt.repository.path};
 }
 export function previewWizardBuild() {
