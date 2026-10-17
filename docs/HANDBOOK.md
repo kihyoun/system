@@ -508,6 +508,12 @@ README and managed CI. Expand its row and select **Initialize Wizard source**
 to preview and explicitly import the pinned application source. See the
 [source initialization guide](WIZARD_SOURCE.md) for preparation and safe retry.
 This source-only action does not start a pipeline or deploy another interface.
+After initialization, **Build and verify Wizard** opens a separate read-only
+preview. **Enable build pipeline** explicitly installs the managed recipe and
+starts or recovers its initial pipeline. See the [build workflow guide](WIZARD_BUILD.md)
+for required matching versions, verified candidate evidence and safe recovery.
+The first real GitLab run remains a maintainer-controlled acceptance step;
+the local component tests alone do not establish that it succeeds.
 Beta and Review remain disabled. The existing Wizard
 container and Production route are reused, with no duplicate project proxy.
 Manage the interface settings under General; the system project is read-only in
@@ -520,8 +526,9 @@ does not replace or stop the working interface. Check the Bootstrapper output,
 resolve the reported conflict/readiness problem and restart to retry.
 
 The current delivery is tracked in [the registration issue](https://github.com/kihyoun/system/issues/19).
-Source import, development through local GitLab, Review/Beta and controlled
-Production rollout are the [next expansion](https://github.com/kihyoun/system/issues/18).
+Source initialization and managed build activation are explicit actions.
+Complete local-GitLab acceptance, Review/Beta and controlled Production rollout
+remain tracked in the [workflow issue](https://github.com/kihyoun/system/issues/18).
 
 ### 3.3 Shared and additional runners
 
