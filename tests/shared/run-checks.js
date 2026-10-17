@@ -20,7 +20,7 @@ function killGroup(child) {
 async function execute(check, root) {
   const started = Date.now();
   const file = path.resolve(root, 'tests', check.file);
-  const command = check.file.endsWith('.sh') ? 'bash' : process.execPath;
+  const command = check.file.endsWith('.sh') ? 'bash' : check.file.endsWith('.rb') ? 'ruby' : process.execPath;
   return new Promise(resolve => {
     let output = '', timedOut = false, canceled = false, launchError;
     const environment = {...process.env};

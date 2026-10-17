@@ -2,14 +2,20 @@
   {"component":"gitlab", "file":"gitlab/root-password.js", "timeoutSeconds":15},
   {"component":"gitlab", "file":"gitlab/startup.sh", "timeoutSeconds":20},
   {"component":"gitlab", "file":"gitlab/application-templates.js", "timeoutSeconds":20},
-  {"component":"gitlab", "file":"gitlab/project-bootstrap.js", "timeoutSeconds":45},
+  {"component":"gitlab", "file":"gitlab/project-bootstrap.js", "timeoutSeconds":45, "port":8071},
+  {"component":"gitlab", "file":"gitlab/source-import.rb", "timeoutSeconds":20},
   {"component":"sync", "file":"sync/config-suggestions.js", "timeoutSeconds":15},
-  {"component":"sync", "file":"sync/config-suggestions-api.js", "timeoutSeconds":30},
+  {"component":"sync", "file":"sync/config-suggestions-api.js", "timeoutSeconds":30, "port":8071},
+  {"component":"sync", "file":"sync/migration-api.js", "timeoutSeconds":30, "port":8071},
   {"component":"gitlab-runner", "file":"gitlab-runner/provision.js", "timeoutSeconds":15},
   {"component":"gitlab-runner", "file":"gitlab-runner/endpoint.js", "timeoutSeconds":15},
   {"component":"bootstrapper", "file":"bootstrapper/runner-startup.sh", "timeoutSeconds":15},
   {"component":"nginx", "file":"nginx/default-wizard-routing.sh", "timeoutSeconds":20},
   {"component":"wizard", "file":"wizard/default-wizard.js", "timeoutSeconds":30},
+  {"component":"wizard", "file":"wizard/source-package.js", "timeoutSeconds":30},
+  {"component":"wizard", "file":"wizard/source-workflow.js", "timeoutSeconds":30},
+  {"component":"wizard", "file":"wizard/source-api.js", "timeoutSeconds":30},
   {"component":"shared", "file":"shared/runner-contract.js", "timeoutSeconds":15},
-  {"component":"shared", "file":"shared/ci-parent-contract.js", "timeoutSeconds":15}
+  {"component":"shared", "file":"shared/ci-parent-contract.js", "timeoutSeconds":15},
+  {"component":"shared", "file":"shared/source-context.js", "timeoutSeconds":30}
 ]

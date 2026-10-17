@@ -35,8 +35,9 @@ pipeline remain unverified. Framework-aware starter generation covers Angular, R
 server setup and the UI project's own build/review/rollout remain separate;
 generation changes are outside the current repair scope. The existing Wizard
 is automatically registered as the first project with its actual Production
-URL, without replacing the interface. Its repository is a registration scaffold;
-source import and the feedback-loop workflow are tracked in
+URL, without replacing the interface. Its repository starts as a registration
+scaffold; [explicit pinned-source initialization](docs/WIZARD_SOURCE.md) is
+available separately. Build, review and rollout remain tracked in
 [the next-expansion issue](https://github.com/kihyoun/system/issues/18).
 
 The idea dates back to 2019. Development did not reach a sustainable renewal cycle and maintenance fell behind. The local Ubuntu/WSL2 baseline, shared runner and private project bootstrap now pass the documented tests; full production operation and platform generation replacement remain unverified.
