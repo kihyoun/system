@@ -1,5 +1,5 @@
 """Acceptance test for a disposable local GitLab; creates a private CI test project."""
-import json,re,shlex,subprocess,time,urllib.request,urllib.error
+import hashlib,json,re,shlex,subprocess,time,urllib.request,urllib.error
 from pathlib import Path
 
 def docker(*args):
@@ -41,6 +41,8 @@ try:
     login=api('login','',{'username':values['SYNC_USER'],'password':values['SYNC_PASS']},host='sync.localhost')
     req=urllib.request.Request('http://127.0.0.1/config/main',headers={'Host':'sync.localhost','Authorization':'Bearer '+login['accessToken']})
     with urllib.request.urlopen(req) as response: fetched=json.load(response)['data']
+    assert fetched[807]=='$', 'Fetched configuration has an altered signature marker'
+    assert hashlib.md5(fetched[:1184].encode()).hexdigest()=='bd4a8426355824593a5e21ad759830c1', 'Fetched configuration signature differs from the original'
     assert values['GITLAB_RUNNER_TOKEN'] in fetched
     assert not token in fetched
     print('PASS: authenticated Fetch contains runner token, no test admin token.',flush=True)
