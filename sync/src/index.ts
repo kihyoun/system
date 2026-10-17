@@ -4,7 +4,7 @@ import fs from 'fs';
 import morgan from 'morgan';
 import md5 from 'md5';
 import path from 'path';
-import { execSync } from "child_process";
+import { execSync, execFile } from "child_process";
 import fileUpload from 'express-fileupload';
 import jwt from 'jsonwebtoken';
 import sha256 from 'crypto-js/sha256';
@@ -43,8 +43,18 @@ const SYNC_PASS = process.env.SYNC_PASS || Base64.stringify(hmacSHA512(Math.rand
 let refreshTokens: any[] = [];
 
 const status = {
-  needRestart: false
+  needRestart: false,
+  runnerSetupInProgress: false
 };
+
+// Keep the configuration stable while the asynchronous setup saves its token.
+app.use(['/config', '/command'], (req, res, next) => {
+  if (status.runnerSetupInProgress && req.method !== 'GET') {
+    res.status(409).json({message: "Runner setup is in progress. Wait before changing the configuration."});
+    return;
+  }
+  next();
+});
 
 const port = 8071;
 
@@ -305,13 +315,16 @@ app.patch( "/command/harvest", authenticateJWT, async ( req, res ) => {
 });
 
 app.patch( "/command/runners/register", authenticateJWT, async ( req, res ) => {
-    try {
-      const out = execSync('cd ../gitlab-runner; bash register.sh');
+    status.runnerSetupInProgress = true;
+    execFile('bash', ['start.sh'], {cwd: path.resolve('../gitlab-runner'), timeout: 900000}, (err, out) => {
+      status.runnerSetupInProgress = false;
+      if (err) {
+        res.status(500).json({message: "Runner setup failed. Check GitLab readiness, version and runner configuration."});
+        return;
+      }
       res.status(200).json({message: "Runner registration completed.",
         status, output: out.toString()});
-    } catch (err) {
-      res.status(500).send(err.toString());
-    }
+    });
 });
 
 app.patch( "/command/runners/unregister", authenticateJWT, async ( req, res ) => {
