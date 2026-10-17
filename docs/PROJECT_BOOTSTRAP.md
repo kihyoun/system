@@ -1,4 +1,4 @@
-# Project bootstrap: first managed application
+# Project bootstrap
 
 ## Intended workflow
 
@@ -8,7 +8,13 @@ a project should not require a second manual repository setup or copying CI YAML
 into GitLab. This is the next functional extension, not behavior implemented by
 the current label changes.
 
-The first managed application will be **System Wizard itself**. Import its
+First implement the general **Add Project → Save** workflow: configure an
+application, create its GitLab repository and install its generated CI without
+manual copying. This foundation comes before automatically suggesting or
+bootstrapping the Wizard project.
+
+After that foundation works, the first infrastructure demonstration will be
+**System Wizard itself**. Import its
 existing source into the platform's GitLab, build it using the shared instance
 runner pool, and expose a separately reviewable version before replacing the
 running configuration UI. This makes the UI a concrete participant in the
@@ -23,14 +29,15 @@ pipeline or managing its deployment as a project.
 
 ## One project creation flow
 
-1. Select the existing System Wizard source, a project key and the target GitLab
-   namespace. Show the source and destination before creating anything.
+1. Choose a project key and the target GitLab namespace through **Add Project**.
+   Show the destination repository before creating anything.
 2. Configure the application's enabled Production, Beta and Review environments,
    their domains and HTTP/HTTPS settings. Additional project runners remain
    optional; the existing instance runner pool is sufficient for this first app.
-3. Create/import the GitLab repository and record its identity with the project
-   configuration. An existing destination must be detected and explicitly linked
-   rather than silently overwritten.
+3. **Save** sends the complete project configuration to the bootstrapper. It
+   creates the GitLab project/repository and records its identity with the
+   configuration. An existing destination must be reported rather than silently
+   overwritten or assigned an automatically suffixed name.
 4. Generate and install the CI configuration for those settings. Preserve the
    upstream pipeline and its deliberate public domains; a separate managed CI
    path is preferable for the locally imported project. Account for the actual
@@ -39,6 +46,19 @@ pipeline or managing its deployment as a project.
    to the repository, pipeline and enabled application environments.
 6. Build and test a separate Wizard deployment. Promotion to the configuration UI
    remains an explicit operation so a failed build does not remove the working UI.
+
+## Repository naming contract
+
+The repository display name and path are exactly the **Project Key**. For example,
+key `my-webapp` creates `<selected-namespace>/my-webapp`. Validate the key before
+Save; do not silently transform it into a different slug. Production URL, Beta
+URL and Review App domains are independent settings and do not determine the
+repository name. A later domain change must not rename the repository.
+
+Collision handling must distinguish a successful retry of the same operation
+from an unrelated existing repository. Never overwrite an existing project or
+create `my-webapp-2` as an implicit fallback. Renaming a configured key must not
+silently rename or replace a GitLab repository.
 
 ## Backend responsibilities
 
