@@ -60,6 +60,29 @@ from an unrelated existing repository. Never overwrite an existing project or
 create `my-webapp-2` as an implicit fallback. Renaming a configured key must not
 silently rename or replace a GitLab repository.
 
+### Background availability check
+
+After a short input pause, check the entered Project Key against the GitLab API
+in the selected namespace. The browser calls the authenticated bootstrapper Sync
+service; GitLab administration credentials never enter the browser. Check the
+complete namespace/repository path, not just the display name or a global search.
+Also reject duplicate keys already present in the current Wizard configuration.
+
+Show checking, available, already exists and could not verify states beside the
+field. An existing repository is a blocking error for creating a new project.
+An API failure or authorization error must not be interpreted as availability.
+Ignore stale responses when the user changes the key or namespace while a check
+is running.
+
+The background check is advisory: revalidate on Save and handle GitLab's actual
+create response as authoritative. Two users may choose the same key between
+validation and creation. Report that conflict without overwriting, silently
+linking or automatically renaming a repository.
+
+Use a UUID for an internal operation/idempotency identifier, not as a replacement
+for the repository name. Retrying a successful Save should return the recorded
+result for the same operation rather than creating another repository.
+
 ## Backend responsibilities
 
 Repository creation and CI installation belong in the authenticated Sync service,
@@ -88,4 +111,7 @@ real domain/DNS control; the local HTTP test does not demonstrate issuance.
 - A review deployment is reachable through its configured local domain.
 - A failed import, build or deployment leaves the existing Wizard available.
 - Repeating or retrying does not create duplicate projects or erase source files.
+- Background key checks are namespace-aware and discard stale responses.
+- A duplicate detected during Save is reported even if the earlier check passed.
+- GitLab lookup failures are shown as unknown availability, never as a free name.
 - No temporary GitLab administration credential reaches the UI or JSON export.
