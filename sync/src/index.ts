@@ -4,7 +4,7 @@ import fs from 'fs';
 import morgan from 'morgan';
 import md5 from 'md5';
 import path from 'path';
-import { execSync } from "child_process";
+import { execSync, execFile } from "child_process";
 import fileUpload from 'express-fileupload';
 import jwt from 'jsonwebtoken';
 import sha256 from 'crypto-js/sha256';
@@ -13,7 +13,9 @@ import Base64 from 'crypto-js/enc-base64';
 import cors from 'cors';
 import Helper from "./Helper";
 import os from 'os';
+import {createProject, queryGitlab, lookupJob, validProjectKey, projectBusy, readReceipt, validateProject} from './ProjectBootstrap';
 import { suggestConfig } from './ConfigSuggestions';
+import {ensureDefaultWizard} from './DefaultWizard';
 
 export const app = express();
 app.use(bodyParser.json());
@@ -43,8 +45,20 @@ const SYNC_PASS = process.env.SYNC_PASS || Base64.stringify(hmacSHA512(Math.rand
 let refreshTokens: any[] = [];
 
 const status = {
-  needRestart: false
+  needRestart: false,
+  runnerSetupInProgress: false,
+  defaultWizardSetupInProgress: false,
+  defaultWizardProject: {state: 'not-started', message: ''}
 };
+
+// Keep the configuration stable while the asynchronous setup saves its token.
+app.use(['/config', '/command'], (req, res, next) => {
+  if ((status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy()) && req.method !== 'GET') {
+    res.status(409).json({message: "Runner or project setup is in progress. Wait before changing the configuration."});
+    return;
+  }
+  next();
+});
 
 const port = 8071;
 
@@ -58,6 +72,14 @@ app.listen( port, () => {
     }
     console.log( `SYNC_USER: ${SYNC_USER}` );
     console.log( `SYNC_PASS: ${SYNC_PASS}` );
+    status.defaultWizardSetupInProgress = true;
+    ensureDefaultWizard().then((result) => {
+      status.defaultWizardProject = {state: result.state, message: ''};
+      console.log('System Wizard project: ' + result.state);
+    }).catch((error) => {
+      status.defaultWizardProject = {state: 'failed', message: error.message};
+      console.error('System Wizard registration failed: ' + error.message + ' The existing interface remains available; restart to retry.');
+    }).finally(() => { status.defaultWizardSetupInProgress = false; });
 } );
 
 const authenticateJWT = (req:any, res:any, next:any) => {
@@ -145,6 +167,33 @@ app.get('/config/suggestions', authenticateJWT, (req, res) => {
   }
 });
 
+app.get('/projects/jobs/:id', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const job = lookupJob(req.params.id);
+  if (!job) { res.sendStatus(404); return; }
+  res.json(job);
+});
+app.get('/projects/namespaces', authenticateJWT, (req, res) => {
+  try { res.status(202).json(queryGitlab({action: 'namespaces'})); }
+  catch (error) { res.status(503).json({message: error.message}); }
+});
+app.get('/projects/availability', authenticateJWT, (req, res) => {
+  if (!validProjectKey(req.query.projectKey) || !/^[1-9][0-9]*$/.test(String(req.query.namespaceId))) {
+    res.status(400).json({message: 'Invalid Project Key or namespace.'}); return;
+  }
+  if (fs.existsSync(path.join('../system/.projects.env', '.' + req.query.projectKey + '.env'))) {
+    res.json({state: 'complete', availability: 'occupied'}); return;
+  }
+  try { res.status(202).json(queryGitlab({action: 'availability', projectKey: req.query.projectKey, namespaceId: req.query.namespaceId})); }
+  catch (error) { res.status(503).json({message: error.message}); }
+});
+app.post('/projects', authenticateJWT, (req, res) => {
+  if (status.runnerSetupInProgress) { res.status(409).json({message: 'Wait for runner setup to finish.'}); return; }
+  try { validateProject(req.body); }
+  catch (error) { res.status(400).json({message: error.message}); return; }
+  try { res.status(202).json(createProject(req.body)); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
 app.post( "/config/project", authenticateJWT, async ( req, res ) => {
   try {
     if (req.body.data.substr(807, 1) !== "$"
@@ -168,7 +217,7 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
 app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
  const dir = '../system/.projects.env';
  try {
-  const fileNames = fs.readdirSync(dir);
+  const fileNames = fs.readdirSync(dir).sort((a, b) => a === '.wizard.env' ? -1 : b === '.wizard.env' ? 1 : a.localeCompare(b));
   const ret = [];
   for (const fileName of fileNames) {
     if (fileName === '.projects.env' || fileName.substr(-3,3) !== 'env') continue;
@@ -176,7 +225,11 @@ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
       {encoding:'utf8', flag:'r'});
     ret.push({
       filename: fileName,
-      data
+      data,
+      repository: readReceipt(data)?.repository,
+      namespaceId: readReceipt(data)?.namespaceId,
+      template: readReceipt(data)?.template,
+      bootstrapPending: !!readReceipt(data) && readReceipt(data).state !== 'complete'
     })
   }
     res.status(200).json(ret);
@@ -305,13 +358,16 @@ app.patch( "/command/harvest", authenticateJWT, async ( req, res ) => {
 });
 
 app.patch( "/command/runners/register", authenticateJWT, async ( req, res ) => {
-    try {
-      const out = execSync('cd ../gitlab-runner; bash register.sh');
+    status.runnerSetupInProgress = true;
+    execFile('bash', ['start.sh'], {cwd: path.resolve('../gitlab-runner'), timeout: 900000}, (err, out) => {
+      status.runnerSetupInProgress = false;
+      if (err) {
+        res.status(500).json({message: "Runner setup failed. Check GitLab readiness, version and runner configuration."});
+        return;
+      }
       res.status(200).json({message: "Runner registration completed.",
         status, output: out.toString()});
-    } catch (err) {
-      res.status(500).send(err.toString());
-    }
+    });
 });
 
 app.patch( "/command/runners/unregister", authenticateJWT, async ( req, res ) => {

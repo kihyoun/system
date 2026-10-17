@@ -79,6 +79,8 @@ function generate_proxy_config {
 
 for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
   source $i
+  # Its production domain is already rendered by the main WIZARD settings below.
+  if [ "${PROJECT_TEMPLATE:-}" = wizard ] && [ "$PROJECT_NAME" = wizard ]; then continue; fi
   generate_proxy_config
 done
 
@@ -104,4 +106,12 @@ done
       >> /templates/default.conf.template
   fi
 
-docker-compose -f ../system/docker-compose.yml up --build --remove-orphans --force-recreate -d web
+if [ "${1:-}" = reload ]; then
+    # Render the updated shared templates and reload the existing entry proxy.
+    # The asynchronous project status endpoint stays reachable during setup.
+    docker exec system_web_1 /docker-entrypoint.d/20-envsubst-on-templates.sh
+    docker exec system_web_1 nginx -t
+    docker exec system_web_1 nginx -s reload
+else
+    docker-compose -f ../system/docker-compose.yml up --build --remove-orphans --force-recreate -d web
+fi

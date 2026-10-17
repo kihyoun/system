@@ -18,6 +18,11 @@ The original use case is still simple: spend more time building web projects and
 
 ## Current status
 
+New here? Start with the illustrated [System Bootstrapper Handbook](docs/HANDBOOK.md),
+including checkout, the first Sync login, configuration suggestions and the
+local setup workflow. The handbook is currently written in German and documents
+the local test version.
+
 **The local platform now runs on Ubuntu/WSL2, including GitLab, a runner and an HTTP registry; production setup remains to be validated.**
 
 The host installer, wizard, sync API authentication and file-based seed cycle
@@ -26,11 +31,11 @@ See [Prepare-Host.md](Prepare-Host.md) for the tested first-boot procedure and
 seed behavior. A fresh GitLab CE 19.4.2 / Runner 19.4.0 test also passed repository
 checkout, Docker build, registry push/pull, container execution and artifact
 upload. Production HTTPS, existing-data migration and the UI project's own
-pipeline remain unverified. The immediate next step is deployment on an Ubuntu
-server and integration of the UI project; generation changes are outside the
+pipeline remain unverified. Framework-aware starter generation covers Angular, React and general web projects. Production
+server setup and optional integration of the existing UI project remain separate; generation changes are outside the
 current repair scope.
 
-The idea dates back to 2019. Development did not reach a sustainable renewal cycle and maintenance fell behind. Restoration has recovered the initial configuration environment, but compatibility of the complete platform with current Ubuntu and Docker is not yet established.
+The idea dates back to 2019. Development did not reach a sustainable renewal cycle and maintenance fell behind. The local Ubuntu/WSL2 baseline, shared runner and private project bootstrap now pass the documented tests; full production operation and platform generation replacement remain unverified.
 
 The repository contains the foundations of the platform:
 
@@ -135,9 +140,9 @@ The container definitions can be reproduced; GitLab repositories, database conte
 
 ## Restoration and next milestones
 
-The immediate goal is to restore a working baseline and establish the renewal cycle early.
+The local baseline and general private-project bootstrap have been restored and tested. Application starters cover Angular, React and general web projects; complete platform renewal remains a future milestone.
 
-1. **Restore the bootstrap on a clean Ubuntu test VM.** Inspect and repair the scripts, dependency versions, configuration, and service integration. Record the host and software versions that actually pass validation.
+1. **Maintain the tested local baseline.** Keep the documented Ubuntu/WSL2, GitLab, runner, registry and configuration workflow reproducible.
 2. **Make that baseline reproducible.** Define configuration inputs, pin tested dependencies, and verify a fresh installation.
 3. **Build a second platform from a merge request.** Run a candidate alongside the current platform on the same host, with isolated state and routing.
 4. **Test the candidate and the transition.** Cover service integration, representative data migrations, cleanup, and recovery.
@@ -148,14 +153,18 @@ The first decisive milestone is a running platform that can build and validate a
 
 ## Working with the current code
 
-There is currently no verified quick-start procedure. Earlier installation instructions and remote one-line installers should not be treated as working instructions for a modern host.
+The [handbook](docs/HANDBOOK.md) documents the tested local Ubuntu/WSL2 setup, including the matching Wizard image, first login, configuration and shared runner. The [project guide](docs/PROJECT_BOOTSTRAP_GUIDE.md) covers private repository creation and CI. These local checks do not establish a production installation or an existing-data upgrade procedure.
 
 Use a dedicated, disposable Ubuntu test VM for restoration. Inspect the scripts before running them: the bootstrapper mounts the Docker socket, and the configuration can change services, networking, ports, and persistent volumes on its host.
 
-After the bootstrap has been repaired and tested, this section should document the supported Ubuntu version, resource requirements, configuration inputs, installation commands, verification steps, and recovery procedure.
+See [Prepare-Host.md](Prepare-Host.md) for tested versions, host requirements and the remaining production limitations. Historical remote installers remain historical references.
 
 ## Guiding principle
 
 **Every stable generation should provide the tools to build, test, and deliver the next one.**
 
 The goal is a maintainable development platform whose own evolution follows the same reviewable software engineering workflow it provides to its users.
+
+## Application project bootstrap
+
+Projects → Add Project → Save now provisions a private GitLab repository and managed CI through authenticated Sync, with namespace-aware availability and asynchronous status. See the [project bootstrap guide](docs/PROJECT_BOOTSTRAP_GUIDE.md) for the workflow, retry behavior and validation. Angular, React and general web templates add editable source, Dockerfile and an initial build/test/deployment pipeline. Empty repositories remain available. Importing the existing Wizard itself stays optional.

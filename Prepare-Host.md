@@ -49,8 +49,11 @@ should use its configured domains and certificates. It preserves other Docker
 daemon settings. The port overrides above apply to GitLab SSH and registry,
 not to the platform's web listener.
 
-Create a runner in GitLab, set its `glrt-` authentication token as
-`GITLAB_RUNNER_TOKEN` and set `GITLAB_RUNNER_SCALE=1` in the private configuration.
+For the managed local GitLab, set the runner count to 1 and leave its token blank:
+the bootstrapper creates/reuses the shared pool automatically. Fetch afterwards
+loads its runner token. See [the handbook](docs/HANDBOOK.md#2-gitlab-runner-einrichten).
+Alternatively, create a runner in GitLab and supply its `glrt-` authentication
+token as `GITLAB_RUNNER_TOKEN` with `GITLAB_RUNNER_SCALE=1`.
 The registration script also accepts legacy registration tokens and verifies
 existing registrations instead of duplicating them.
 
@@ -128,6 +131,34 @@ configuration volume or automatic persistence mechanism is introduced here.
 After compiling sync, run `node tests/config-suggestions.js`. The API test
 `node tests/config-suggestions-api.js` must run in a disposable container: it
 starts its own sync process on port 8071 with a temporary configuration tree.
+
+### GitLab first administrator login
+
+The username is `root`. For a fresh database, the bootstrapper generates a unique
+initial password, or accepts `GITLAB_INITIAL_ROOT_PASSWORD` (at least 12 characters)
+from the private `system/.docker.env`. The tracked example deliberately has no
+shared default password. The wizard does not yet expose this optional field.
+
+Read the password locally after startup:
+
+```bash
+sudo docker exec system_gitlab_1 cat /etc/gitlab/bootstrapper_initial_root_password
+```
+
+This root-readable file lives in the persistent GitLab configuration volume and
+is retained across restarts, unlike GitLab's temporary initial-password file.
+It is also included when harvesting the GitLab configuration into a seed: treat
+that seed as containing credentials. Store the password privately and change it
+after login. The retained file records the initial password, not later changes.
+An existing file is never overwritten, and an existing PostgreSQL directory
+without that file causes generation to be skipped. Setting this option does not
+reset an existing GitLab account; use GitLab's password-reset procedure instead.
+
+The ASCII startup signature and Sync login output are unchanged. Sync credentials
+and the GitLab administrator credentials remain separate.
+
+Run `node tests/gitlab-root-password.js` to check the initialization behavior
+using temporary directories without touching a running GitLab installation.
 
 ### Persistent state
 
