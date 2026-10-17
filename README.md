@@ -18,6 +18,11 @@ The original use case is still simple: spend more time building web projects and
 
 ## Current status
 
+New here? Start with the illustrated [System Bootstrapper Handbook](docs/HANDBOOK.md),
+including checkout, the first Sync login, configuration suggestions and the
+local setup workflow. The handbook is currently written in German and documents
+the local test version.
+
 **The local platform now runs on Ubuntu/WSL2, including GitLab, a runner and an HTTP registry; production setup remains to be validated.**
 
 The host installer, wizard, sync API authentication and file-based seed cycle
