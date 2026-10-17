@@ -13,6 +13,7 @@ import Base64 from 'crypto-js/enc-base64';
 import cors from 'cors';
 import Helper from "./Helper";
 import os from 'os';
+import {createProject, queryGitlab, lookupJob, validProjectKey, projectBusy, readReceipt, validateProject} from './ProjectBootstrap';
 import { suggestConfig } from './ConfigSuggestions';
 
 export const app = express();
@@ -49,8 +50,8 @@ const status = {
 
 // Keep the configuration stable while the asynchronous setup saves its token.
 app.use(['/config', '/command'], (req, res, next) => {
-  if (status.runnerSetupInProgress && req.method !== 'GET') {
-    res.status(409).json({message: "Runner setup is in progress. Wait before changing the configuration."});
+  if ((status.runnerSetupInProgress || projectBusy()) && req.method !== 'GET') {
+    res.status(409).json({message: "Runner or project setup is in progress. Wait before changing the configuration."});
     return;
   }
   next();
@@ -155,6 +156,33 @@ app.get('/config/suggestions', authenticateJWT, (req, res) => {
   }
 });
 
+app.get('/projects/jobs/:id', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const job = lookupJob(req.params.id);
+  if (!job) { res.sendStatus(404); return; }
+  res.json(job);
+});
+app.get('/projects/namespaces', authenticateJWT, (req, res) => {
+  try { res.status(202).json(queryGitlab({action: 'namespaces'})); }
+  catch (error) { res.status(503).json({message: error.message}); }
+});
+app.get('/projects/availability', authenticateJWT, (req, res) => {
+  if (!validProjectKey(req.query.projectKey) || !/^[1-9][0-9]*$/.test(String(req.query.namespaceId))) {
+    res.status(400).json({message: 'Invalid Project Key or namespace.'}); return;
+  }
+  if (fs.existsSync(path.join('../system/.projects.env', '.' + req.query.projectKey + '.env'))) {
+    res.json({state: 'complete', availability: 'occupied'}); return;
+  }
+  try { res.status(202).json(queryGitlab({action: 'availability', projectKey: req.query.projectKey, namespaceId: req.query.namespaceId})); }
+  catch (error) { res.status(503).json({message: error.message}); }
+});
+app.post('/projects', authenticateJWT, (req, res) => {
+  if (status.runnerSetupInProgress) { res.status(409).json({message: 'Wait for runner setup to finish.'}); return; }
+  try { validateProject(req.body); }
+  catch (error) { res.status(400).json({message: error.message}); return; }
+  try { res.status(202).json(createProject(req.body)); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
 app.post( "/config/project", authenticateJWT, async ( req, res ) => {
   try {
     if (req.body.data.substr(807, 1) !== "$"
@@ -186,7 +214,10 @@ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
       {encoding:'utf8', flag:'r'});
     ret.push({
       filename: fileName,
-      data
+      data,
+      repository: readReceipt(data)?.repository,
+      namespaceId: readReceipt(data)?.namespaceId,
+      bootstrapPending: !!readReceipt(data) && readReceipt(data).state !== 'complete'
     })
   }
     res.status(200).json(ret);

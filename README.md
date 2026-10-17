@@ -164,3 +164,7 @@ After the bootstrap has been repaired and tested, this section should document t
 **Every stable generation should provide the tools to build, test, and deliver the next one.**
 
 The goal is a maintainable development platform whose own evolution follows the same reviewable software engineering workflow it provides to its users.
+
+## Application project bootstrap
+
+Projects → Add Project → Save now provisions a private GitLab repository and managed CI through authenticated Sync, with namespace-aware availability and asynchronous status. See the [project bootstrap guide](docs/PROJECT_BOOTSTRAP_GUIDE.md) for the workflow, retry behavior and validation. Importing the Wizard itself remains an optional next step.
