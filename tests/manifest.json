@@ -20,6 +20,7 @@
   {"component":"wizard", "file":"wizard/build-workflow.js", "timeoutSeconds":30},
   {"component":"wizard", "file":"wizard/build-api.js", "timeoutSeconds":30, "port":8071},
   {"component":"wizard", "file":"wizard/build-cleanup.js", "timeoutSeconds":30},
+  {"component":"wizard", "file":"wizard/acceptance-driver.js", "timeoutSeconds":20},
   {"component":"shared", "file":"shared/runner-contract.js", "timeoutSeconds":15},
   {"component":"shared", "file":"shared/ci-parent-contract.js", "timeoutSeconds":15},
   {"component":"shared", "file":"shared/source-context.js", "timeoutSeconds":30}

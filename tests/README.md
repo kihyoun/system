@@ -212,6 +212,14 @@ Push or restart endpoints. It verifies authenticated Fetch signatures, source
 and initial-pipeline identity on repetition, required checks/digest, and the
 unchanged Production address. Evidence stays in the candidate's private
 `/tmp/wizard-build-live-evidence.json`; the driver has a 65-minute overall budget.
+The driver refreshes the twenty-minute access token proactively at eighteen
+minutes and retries an authentication-failed GET at most once. Source/build
+POSTs are never blindly replayed. Pipeline polling uses the same 65-minute
+overall deadline rather than a shorter fixed poll count. The offline regression
+`node tests/wizard/acceptance-driver.js` checks long-running polling, refresh and
+refresh refusal, GET recovery, mutation non-replay, resumed source import,
+pipeline/Production identity changes and the overall deadline using transports
+that perform no network calls or evidence-file writes.
 The operator must independently check the existing Production service and
 preserve any receipt needed to recover the same operation. This proves neither
 MR failure behavior nor Review, promotion or rollback by itself.
