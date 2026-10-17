@@ -69,6 +69,11 @@ if(process.env.MOCK_CLEANUP==='remove-failed' && (args[0]==='rm' || (args[0]==='
   const damaged = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env,encoding:'utf8'});
   assert.equal(damaged.status,1,'refuse a damaged context archive');
   assert.equal(fs.readFileSync(trace,'utf8'),'');
+  fs.writeFileSync(path.join(root,'.test-context/sha256'),hash+'\n');
+  fs.unlinkSync(path.join(root,'.test-context/context.tar'));
+  const missing = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env,encoding:'utf8'});
+  assert.notEqual(missing.status,0,'refuse a missing context archive');
+  assert.equal(fs.readFileSync(trace,'utf8'),'','never fall back to the checkout when an artifact is missing');
   const invalid = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env:{...env,CI_JOB_ID:'../foreign'},encoding:'utf8'});
   assert.equal(invalid.status,2,'unsafe resource identifiers must be refused');
   console.log('PASS: verified context only, stale/damaged artifacts fail closed, primary failure preserved, absent resources distinguished and cleanup failures visible.');

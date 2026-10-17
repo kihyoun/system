@@ -74,7 +74,9 @@ export async function rails(input: any): Promise<any> {
 function runRails(input: any): Promise<any> {
   return new Promise((resolve, reject) => {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
-    const importer = input.action === 'wizard-source' ? fs.readFileSync(path.join(__dirname, '../../project-bootstrap/wizard-source/import.rb'), 'utf8') + '\n' : '';
+    const modules: {[key: string]: string} = {'wizard-source': 'wizard-source/import.rb',
+      'wizard-build': 'wizard-build/activate.rb', 'wizard-build-status': 'wizard-build/activate.rb'};
+    const importer = modules[input.action] ? fs.readFileSync(path.join(__dirname, '../../project-bootstrap', modules[input.action]), 'utf8') + '\n' : '';
     const script = `BOOTSTRAPPER_INPUT = '${encoded}'\n` + importer + fs.readFileSync(path.join(__dirname, '../../project-bootstrap/provision.rb'), 'utf8');
     const child = spawn('docker', ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-']);
     let output = '';

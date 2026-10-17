@@ -1,0 +1,84 @@
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import {rails, readReceipt, writeReceipt, startJob, lookupJob, withProjectLock, validateProject} from './ProjectBootstrap';
+import {wizardCi, readSettings} from './DefaultWizard';
+import Helper from './Helper';
+
+const recipes = require('../../project-bootstrap/wizard-build/recipe');
+const configPath = () => path.resolve('../system/.projects.env/.wizard.env');
+function context() {
+  const content = fs.readFileSync(configPath(), 'utf8');
+  const receipt = readReceipt(content);
+  if (!receipt?.defaultProject || receipt.state !== 'complete' || receipt.template !== 'wizard' ||
+    !receipt.repository?.systemProject || !receipt.repository.id || !receipt.namespaceId || !receipt.operation ||
+    receipt.repository.ciPath !== '.system-bootstrapper/ci.yml' || receipt.repository.generatedCi !== wizardCi() ||
+    receipt.wizardWorkflow?.version !== 1 || receipt.wizardWorkflow.phase !== 'source-imported' ||
+    !/^[a-f0-9]{40}$/.test(receipt.wizardWorkflow.importCommit || '')) {
+    throw new Error('Initialize the managed Wizard source before enabling its build pipeline.');
+  }
+  const data = content.split('\n').filter(line => !line.startsWith('# BOOTSTRAPPER_PROJECT=')).join('\n');
+  validateProject({projectKey: 'wizard', namespaceId: receipt.namespaceId, template: 'wizard', data, ci: wizardCi()});
+  const recipe = recipes.generate(Helper.textLogo);
+  const build = receipt.wizardWorkflow.build;
+  if (build && (build.version !== 1 || build.recipeHash !== recipe.recipeHash)) {
+    throw new Error('A different build recipe is reserved. Use a reviewed versioned recipe upgrade.');
+  }
+  const settings = readSettings(fs.readFileSync(path.resolve('../system/.docker.env'), 'utf8'));
+  let registry;
+  try { registry = new URL(settings.GITLAB_REGISTRY_URL); } catch (_) {
+    throw new Error('Configure the local GitLab registry before enabling Wizard builds.');
+  }
+  if (!['http:', 'https:'].includes(registry.protocol) || registry.username || registry.password ||
+    registry.pathname !== '/' || registry.search || registry.hash) {
+    throw new Error('Invalid local GitLab registry configuration.');
+  }
+  return {content, data, receipt, recipe, registryPrefix: registry.host + '/' + receipt.repository.path};
+}
+export function previewWizardBuild() {
+  const {receipt, recipe} = context();
+  return {version: recipe.version, recipeHash: recipe.recipeHash, sourceRevision: receipt.wizardWorkflow.sourceRevision,
+    importCommit: receipt.wizardWorkflow.importCommit, repository: receipt.repository,
+    build: receipt.wizardWorkflow.build, message: 'Enables legacy Wizard checks and candidate artifacts only; Production deployment remains disabled.'};
+}
+function operation(mode: 'activate' | 'status', input?: any) {
+  const {content, data, receipt, recipe, registryPrefix} = context();
+  let expectedContent = content;
+  const persist = (nextReceipt: any) => {
+    if (fs.readFileSync(configPath(), 'utf8') !== expectedContent) {
+      throw new Error('Wizard configuration or receipt changed during the build operation. Fetch and inspect before retrying.');
+    }
+    writeReceipt(configPath(), data, nextReceipt);
+    expectedContent = fs.readFileSync(configPath(), 'utf8');
+  };
+  const workflow = receipt.wizardWorkflow;
+  if (mode === 'activate' && input?.recipeHash !== recipe.recipeHash) { throw new Error('Preview the current build recipe before activation.'); }
+  if (mode === 'status' && !workflow.build) { return {state: 'not-activated', message: 'Build pipeline has not been enabled.'}; }
+  const build = workflow.build || {version: 1, operation: crypto.randomBytes(24).toString('hex'), recipeHash: recipe.recipeHash, phase: 'pending'};
+  const previous = lookupJob(build.operation);
+  if (previous?.state === 'running') { return previous; }
+  return withProjectLock(build.operation, () => {
+    receipt.wizardWorkflow = {...workflow, build};
+    persist(receipt);
+    return startJob(build.operation, async () => {
+      try {
+        const result = await rails({action: mode === 'activate' ? 'wizard-build' : 'wizard-build-status',
+          projectKey: 'wizard', namespaceId: receipt.namespaceId, operation: receipt.operation,
+          repository: receipt.repository, workflow, build, expectedCi: wizardCi(), recipe, registryPrefix});
+        if (result.state === 'failed') { throw new Error(result.message); }
+        receipt.wizardWorkflow = {...workflow, build: {...build, ...result.build,
+          message: result.build?.phase === 'requires-reconciliation' ? result.message : ''}};
+        persist(receipt);
+        return {build: receipt.wizardWorkflow.build, message: result.message};
+      } catch (error) {
+        const unverified = {...build, phase: 'verification-failed', message: error.message};
+        delete unverified.artifact;
+        receipt.wizardWorkflow = {...workflow, build: unverified};
+        persist(receipt);
+        throw error;
+      }
+    });
+  });
+}
+export const activateWizardBuild = (input: any) => operation('activate', input);
+export const refreshWizardBuild = () => operation('status');
