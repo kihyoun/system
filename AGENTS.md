@@ -10,7 +10,10 @@ Conversation with the maintainer may remain in German.
 Track new requirements and future expansions in GitHub issues, as requested on
 2026-10-17; documentation should explain current behavior and link to the issue.
 Create the issue before starting new implementation, then link the implementing
-pull requests to it. The current Wizard registration delivery is tracked in
+pull requests to it. Keep the issue collection centralized: create every issue
+in `kihyoun/system`, including issues concerning the Wizard repository. Do not
+create new issues in `kihyoun/system-wizard`; Wizard PRs must reference the
+central System issue. The current Wizard registration delivery is tracked in
 https://github.com/kihyoun/system/issues/19.
 The Wizard is now to be registered automatically as the first project with its
 real Production URL. This supersedes the previous optional-registration scope.
