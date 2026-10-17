@@ -178,6 +178,20 @@ limits, component output and JUnit reporting:
 | `wizard/source-workflow.js` | Compiled Sync, prepared snapshot and fake Rails transport; preview, locks, durable receipt/retry/conflict behavior | 30s |
 | `wizard/source-api.js` | Compiled Sync/snapshot; private ephemeral HTTP listener, explicit forbidden shell/container transports; auth, preview, initialization, polling and mutation guards | 30s |
 | `gitlab/source-import.rb` | Ruby standard library and in-memory GitLab API adapter; source/CI conflicts, binary/mode import and interrupted-commit recovery; no Rails/server/network | 20s |
+| `gitlab/wizard-build.rb` | Ruby standard library and in-memory GitLab adapter; owned recipe activation, commit/pipeline identity, durable creation intent, interrupted recovery, duplicate prevention and artifact verification | 20s |
+| `wizard/build-recipe.js` | Compiled Sync Helper and committed recipe files; deterministic hashes, immutable signature, legacy lockfile/Jest/build commands, browser recipe and absence of deployment jobs | 20s |
+| `wizard/build-workflow.js` | Compiled Sync and fake Rails transport; confirmed preview, asynchronous operation deduplication, source/build receipt identity, status-only refresh, stale artifact removal and concurrent-edit refusal | 30s |
+| `wizard/build-api.js` | Compiled Sync, private HTTP listener and forbidden shell/container transports; authentication, explicit recipe confirmation, job polling/deduplication, mutation guards and honest recovery/failure states | 30s |
+| `wizard/build-cleanup.js` | Linux shell/core utilities and fake Docker transport; exact owned resources, absent versus unreachable daemon, removal failure and preserved primary exit status | 30s |
+
+These five Phase-B fixtures are registered under the GitLab/Wizard component
+selectors and use the same isolated runner/JUnit reports. Their transport doubles
+do not create a real GitLab pipeline, push a registry image or run a browser.
+Fresh legacy installation/build, rendered browser evidence and real GitLab
+pipeline/registry acceptance remain separate gates under
+[System issue 33](https://github.com/kihyoun/system/issues/33). Run the expanded
+manifest against the exact prepared Wizard pin before recording a passing
+combined CI result; an earlier nineteen-check run does not cover these additions.
 
 The Ruby import fixture moved from `tests/wizard/source-import.rb` to the GitLab
 component because it exercises that adapter. The shared runner selects `ruby`
@@ -185,6 +199,22 @@ for manifest entries ending in `.rb`; live Rails audits remain excluded. All
 fixture Git repositories are created and cleaned inside the disposable child.
 
 ## Live/disposable integration boundary
+
+`wizard/live/build.js` is a separate, explicit managed-Wizard acceptance driver,
+never an isolated-manifest entry. Run it only in an operator-prepared candidate
+controller with a private copy of the intended configuration and an explicitly
+authorized managed GitLab repository. Set `SYSTEM_WIZARD_LIVE_ACCEPTANCE=true`
+and `SYSTEM_WIZARD_EXPECTED_PROJECT` to that repository's numeric ID. Supply Sync
+credentials privately through the candidate environment, never in the command
+line or test logs. The driver imports source and enables real CI in that exact
+repository; it is not a read-only probe. It never calls deployment, Reset, Seed,
+Push or restart endpoints. It verifies authenticated Fetch signatures, source
+and initial-pipeline identity on repetition, required checks/digest, and the
+unchanged Production address. Evidence stays in the candidate's private
+`/tmp/wizard-build-live-evidence.json`; the driver has a 65-minute overall budget.
+The operator must independently check the existing Production service and
+preserve any receipt needed to recover the same operation. This proves neither
+MR failure behavior nor Review, promotion or rollback by itself.
 
 The live checks are preserved for a future disposable-platform adapter. Several
 still use fixed `system_*` container names, localhost routing, temporary paths,

@@ -17,6 +17,7 @@ import {createProject, queryGitlab, lookupJob, validProjectKey, projectBusy, rea
 import { suggestConfig } from './ConfigSuggestions';
 import {ensureDefaultWizard} from './DefaultWizard';
 import {initializeWizardSource, previewWizardSource} from './WizardWorkflow';
+import {activateWizardBuild, previewWizardBuild, refreshWizardBuild} from './WizardBuild';
 
 export const app = express();
 app.use(bodyParser.json());
@@ -186,6 +187,29 @@ app.post('/projects/wizard/source', authenticateJWT, (req, res) => {
   try { res.status(202).json(initializeWizardSource(req.body)); }
   catch (error) { res.status(409).json({message: error.message}); }
 });
+app.get('/projects/wizard/build', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(previewWizardBuild()); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
+app.post('/projects/wizard/build', authenticateJWT, (req, res) => {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+    res.status(409).json({message: 'Wait for system setup to finish.'}); return;
+  }
+  // The module deduplicates its own running job and rejects other project locks.
+  try { res.status(202).json(activateWizardBuild(req.body)); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
+app.get('/projects/wizard/build/status', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+    res.status(409).json({message: 'Wait for system setup to finish.'}); return;
+  }
+  try {
+    const result = refreshWizardBuild();
+    res.status(result.state === 'not-activated' ? 200 : 202).json(result);
+  } catch (error) { res.status(409).json({message: error.message}); }
+});
 app.get('/projects/namespaces', authenticateJWT, (req, res) => {
   try { res.status(202).json(queryGitlab({action: 'namespaces'})); }
   catch (error) { res.status(503).json({message: error.message}); }
@@ -201,7 +225,9 @@ app.get('/projects/availability', authenticateJWT, (req, res) => {
   catch (error) { res.status(503).json({message: error.message}); }
 });
 app.post('/projects', authenticateJWT, (req, res) => {
-  if (status.runnerSetupInProgress || projectBusy()) { res.status(409).json({message: 'Wait for runner or project setup to finish.'}); return; }
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy()) {
+    res.status(409).json({message: 'Wait for runner or project setup to finish.'}); return;
+  }
   try { validateProject(req.body); }
   catch (error) { res.status(400).json({message: error.message}); return; }
   try { res.status(202).json(createProject(req.body)); }

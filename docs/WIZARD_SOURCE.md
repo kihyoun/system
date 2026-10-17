@@ -29,7 +29,8 @@ disabled `.system-bootstrapper/ci.yml`. No pipeline is started. The known safe
 `.system-bootstrapper/preflight.env`; local dotenv files are excluded.
 
 The running interface, routing and Production URL are untouched. Beta and Review
-remain disabled. This phase does not provide builds or deployment; the later
+remain disabled. Source initialization does not start builds or deployment;
+[managed build activation](WIZARD_BUILD.md) is a separate explicit action. The later
 workflow includes a deliberate manual Production job in GitLab, not automatic
 self-improvement. The remaining phases are tracked in
 [the central workflow issue](https://github.com/kihyoun/system/issues/18).

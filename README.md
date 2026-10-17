@@ -37,7 +37,10 @@ generation changes are outside the current repair scope. The existing Wizard
 is automatically registered as the first project with its actual Production
 URL, without replacing the interface. Its repository starts as a registration
 scaffold; [explicit pinned-source initialization](docs/WIZARD_SOURCE.md) is
-available separately. Build, review and rollout remain tracked in
+available separately. The [managed build workflow](docs/WIZARD_BUILD.md) adds
+an explicit recipe preview, activation and verified candidate status. Its real
+GitLab acceptance is still pending; activation is a maintainer action. Review
+and rollout remain tracked in
 [the next-expansion issue](https://github.com/kihyoun/system/issues/18).
 
 The idea dates back to 2019. Development did not reach a sustainable renewal cycle and maintenance fell behind. The local Ubuntu/WSL2 baseline, shared runner and private project bootstrap now pass the documented tests; full production operation and platform generation replacement remain unverified.
