@@ -5,8 +5,9 @@
 The Wizard should manage an application as one project, including its GitLab
 repository, generated CI configuration, environments and NGINX routing. Creating
 a project should not require a second manual repository setup or copying CI YAML
-into GitLab. This is the next functional extension, not behavior implemented by
-the current label changes.
+into GitLab. The general Add Project flow is implemented on the feature branch;
+see the [operating guide](PROJECT_BOOTSTRAP_GUIDE.md). Wizard source import and
+its separate review deployment remain the subsequent optional delivery.
 
 First implement the general **Add Project → Save** workflow: configure an
 application, create its GitLab repository and install its generated CI without
