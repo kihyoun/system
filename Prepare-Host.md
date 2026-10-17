@@ -49,8 +49,11 @@ should use its configured domains and certificates. It preserves other Docker
 daemon settings. The port overrides above apply to GitLab SSH and registry,
 not to the platform's web listener.
 
-Create a runner in GitLab, set its `glrt-` authentication token as
-`GITLAB_RUNNER_TOKEN` and set `GITLAB_RUNNER_SCALE=1` in the private configuration.
+For the managed local GitLab, set the runner count to 1 and leave its token blank:
+the bootstrapper creates/reuses the shared pool automatically. Fetch afterwards
+loads its runner token. See [the handbook](docs/HANDBOOK.md#2-gitlab-runner-einrichten).
+Alternatively, create a runner in GitLab and supply its `glrt-` authentication
+token as `GITLAB_RUNNER_TOKEN` with `GITLAB_RUNNER_SCALE=1`.
 The registration script also accepts legacy registration tokens and verifies
 existing registrations instead of duplicating them.
 

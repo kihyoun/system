@@ -16,7 +16,8 @@ const mock = `#!${process.execPath}
 let text = ''; process.stdin.on('data', chunk => text += chunk);
 process.stdin.on('end', () => {
  const input = JSON.parse(Buffer.from(/BOOTSTRAPPER_INPUT = '([^']+)'/.exec(text)[1], 'base64'));
- const result = input.action === 'namespaces' ? {namespaces: [{id: 1, path: 'root'}]} :
+ const result = input.action === 'pipeline' ? {pipeline: {id: 123, webUrl: 'http://gitlab.localhost/pipeline', status: 'pending'}} :
+ input.action === 'namespaces' ? {namespaces: [{id: 1, path: 'root'}]} :
  input.action === 'availability' ? {availability: input.projectKey === 'occupied' ? 'occupied' : 'available'} :
  input.projectKey === 'race' ? {state: 'failed', conflict: true, message: 'Repository already exists'} :
  {repository: {id: 42, namespaceId: input.namespaceId, path: 'root/' + input.projectKey, defaultBranch: 'main', webUrl: 'http://gitlab.localhost/root/' + input.projectKey}};
@@ -77,6 +78,10 @@ let child;
   const resumed = restarted.createProject(input('resume'));
   assert.equal(resumed.id, interrupted.id, 'restart resumes the durable operation');
   assert.equal((await wait(resumed)).state, 'complete');
+  const application = await wait(bootstrap.createProject({...input('reactapp'), template: 'react'}));
+  assert.equal(application.state, 'complete');
+  assert.equal(application.repository.initialPipeline.id, 123);
+  assert.equal(application.repository.deploymentState, 'pipeline-started');
   child = spawn(process.execPath, [path.join(sync, 'index.js')], {cwd: path.join(root, 'sync'),
     env: {...process.env, SYNC_USER: 'test', SYNC_PASS: 'test-password'}, stdio: 'ignore'});
   for (let attempt = 0; attempt < 100; attempt++) {

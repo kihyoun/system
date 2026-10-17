@@ -217,6 +217,7 @@ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
       data,
       repository: readReceipt(data)?.repository,
       namespaceId: readReceipt(data)?.namespaceId,
+      template: readReceipt(data)?.template,
       bootstrapPending: !!readReceipt(data) && readReceipt(data).state !== 'complete'
     })
   }

@@ -55,6 +55,11 @@ Hostnamen und die HTTP-Ausnahme der Registry ein:
 sudo bash bootstrapper/prepare-local.sh
 ```
 
+WSL kann `/etc/hosts` beim Start neu erzeugen. Falls später insbesondere die
+Registry nicht mehr aufgelöst wird, führe diesen lokalen Vorbereitungsschritt
+erneut aus. Er lädt die Docker-Konfiguration neu, ohne die Container neu zu
+starten. Die HTTP-Ausnahme gilt weiterhin nur für den lokalen Test.
+
 Dieser Leitfaden verwendet HTTP ausschließlich für den lokalen Test. Eine
 öffentlich erreichbare Instanz benötigt eine eigene Domain- und HTTPS-Einrichtung.
 
@@ -421,6 +426,10 @@ werden zurückgebliebene Setup-Tokens ebenfalls widerrufen.
 
 Nur der Runner-Authentifizierungstoken wird in die Bootstrapper-Konfiguration
 übernommen. Wiederholtes Registrieren verwendet den vorhandenen Pool weiter.
+Die Runner verwenden im gemeinsamen Docker-Netz den Dienstnamen `gitlab`, damit
+ein GitLab-Neustart mit neuer interner IP ihre Verbindung nicht unterbricht.
+Register aktualisiert alte interne IP-Endpunkte in verwalteten Runnern, ohne
+deren Token oder externe, manuell konfigurierte Adressen zu verändern.
 Die Wiederaufnahme nach einer unterbrochenen Konfigurationsspeicherung sucht
 den eigenen Pool über seinen Namen. Benenne diesen Eintrag deshalb nicht um,
 wenn du diese Wiederaufnahme nutzen möchtest.
@@ -471,23 +480,38 @@ weiter. Ein Proxy ist also ein Bestandteil der Anwendungskonfiguration.
 Einige Abbildungen in Kapitel 0 zeigen noch die frühere Beschriftung **Proxy**.
 In der aktuellen Oberfläche findest du an derselben Stelle **Projects**.
 
-Der **Project Key** identifiziert die Konfiguration. Der Eintrag legt noch kein
-Repository in GitLab an und verbindet es auch nicht automatisch mit einem
-vorhandenen Repository. Das GitLab-Projekt und seine Pipeline müssen zu dieser
-Deployment-Konfiguration passen.
+Der **Project Key** bestimmt bei neuen Projekten exakt den GitLab-Namen und Pfad. Er darf nur Kleinbuchstaben a–z und Ziffern enthalten; alte gespeicherte Schlüssel werden nicht umbenannt.
 
-Als nächster Ausbau ist ein gemeinsamer **Projekt-Bootstrap** vorgesehen:
-Repository übernehmen oder anlegen, generierte CI-Konfiguration einspielen und
-die passenden Deployment-Umgebungen einrichten. Das erste so verwaltete Projekt
-soll der **System Wizard selbst** sein. Der geplante Ablauf und die Abnahmekriterien
-stehen in [Project Bootstrap](PROJECT_BOOTSTRAP.md); diese Automatisierung ist
-mit der Umbenennung noch nicht implementiert.
+Verbinde den Wizard mit Sync und lade zuerst **Fetch**. Wähle unter **Projects → Add Project** den Namespace, prüfe die Verfügbarkeit und konfiguriere die aktivierten Umgebungen samt HTTP/HTTPS-Einstellungen. **Save** erstellt jetzt tatsächlich ein privates GitLab-Repository mit README und generierter CI. Die Einrichtung meldet ihren Status asynchron. Ein belegtes Repository wird weder übernommen noch überschrieben; wiederholtes Save erzeugt keine Duplikate.
 
-Den Wizard selbst als Projekt zu verwalten ist **optional**: Wir nutzen ihn als
-erstes Beispiel, um die Oberfläche über die Plattform weiterzuentwickeln. Wer
-nur eigene Webanwendungen betreiben möchte, kann den mitgelieferten Wizard
-verwenden, ohne dessen Repository oder Pipeline als eigenes Projekt anzulegen.
-Ein Wizard-Projekt wird nicht automatisch für jeden Benutzer hinzugefügt.
+### 3.1 Eine Anwendung aus einer Vorlage starten
+
+Wähle im Anlagedialog unter **Application template**:
+
+| Auswahl | Erzeugtes Startprojekt |
+| --- | --- |
+| React + TypeScript + Vite | React-Quellcode, Vite-Build, Lockfile und Dockerfile |
+| Angular + TypeScript | Angular-Quellcode, CLI-Build, Lockfile und Dockerfile |
+| General web project | HTML, CSS und JavaScript ohne Framework-Build, mit Dockerfile |
+| Empty repository | Nur Repository/CI; eigener Quellcode folgt später |
+
+Für die ersten drei Optionen musst du keine eigene Dockerfile schreiben. Save
+legt die Dateien und passende CI an und startet nach der Routeneinrichtung die
+erste Pipeline. Diese baut und veröffentlicht das Image, prüft die HTTP-Antwort
+und startet die automatisch konfigurierten Deployments. Bei manueller
+Bereitstellung startest du den betreffenden Job in GitLab selbst.
+
+Öffne den Pipeline-Link und warte auf den erfolgreichen Build und Deployment-Job.
+Erst dann prüfst du die Anwendungsdomain. Der Repository-Link allein beweist
+keine laufende Anwendung. Anschließend kannst du direkt am erzeugten Quellcode
+weiterarbeiten; Dockerfile und Pipeline bleiben ebenfalls anpassbar.
+Die Datei GETTING_STARTED.md im neuen Repository erklärt die lokalen Befehle.
+Neue Angular-/React-Projekte bauen mit Node 24; das alte Node 13 ist nur für den
+bestehenden System Wizard erforderlich.
+
+Ein leeres Repository ist noch keine laufende Anwendung. Im bisherigen Ablauf wartet die Pipeline auf Anwendungscode mit Dockerfile. Repository-Metadaten bleiben bei Fetch und JSON Backup/Open erhalten. Die vollständige Anleitung mit Wiederaufnahme nach Fehlern steht im [Projektleitfaden](PROJECT_BOOTSTRAP_GUIDE.md).
+
+Den bestehenden Wizard selbst als Anwendung zu importieren bleibt ein **optionaler**, separater Anwendungsfall. Er wird nicht für jeden Benutzer automatisch angelegt.
 
 Die Runner-Einstellungen haben zwei verschiedene Aufgaben:
 
@@ -518,6 +542,8 @@ Token-Erzeugung aus Kapitel 2 gilt für den gemeinsamen Instanz-Pool.
 | Fetch liefert bei einer frischen Instanz 404 | Wizard neu laden; für Vorschläge müssen Wizard und Sync-Dienst beide die passende PR-Version verwenden |
 | Gespeicherte Example-Werte kommen wieder | Fetch hat Vorrang für gespeicherte Einstellungen. Korrigiere sie bewusst im Wizard; Vorschläge überschreiben keine vorhandene Konfiguration |
 | GitLab ist noch nicht erreichbar | Bei Erststart nach Push und Restart auf `healthy` warten und bei Problemen die GitLab-Logs prüfen |
+| Pipeline wartet nach GitLab-Neustart auf den Runner | Register prüft den Pool und aktualisiert verwaltete interne IP-Endpunkte auf den stabilen Docker-Dienstnamen |
+| Pipeline kann `registry.localhost` nicht auflösen | In Ubuntu erneut `sudo bash bootstrapper/prepare-local.sh` ausführen; WSL kann lokale Hosts-Einträge beim Start zurücksetzen |
 | In `docker ps` fehlt ein eigener Sync-Node-Container | Normal: Node läuft im Bootstrapper-Container. `system_sync_1` ist beim Erststart der NGINX-Zugang |
 
 Weitere technische Details stehen in [Prepare-Host.md](../Prepare-Host.md).

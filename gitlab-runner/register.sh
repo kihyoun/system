@@ -34,6 +34,7 @@ register_runner() {
         return 0
     fi
     if docker exec "$container" grep -q '^\[\[runners\]\]' /etc/gitlab-runner/config.toml 2>/dev/null; then
+        node refresh-endpoint.js "$container"
         docker exec "$container" gitlab-runner verify >/dev/null 2>&1 || {
             echo "Runner $name verification failed; check its configured token." >&2
             return 1
@@ -67,8 +68,8 @@ register_runner() {
         'variable=$1; shift; export "$variable=$(cat)"; exec gitlab-runner register "$@"' \
         sh "$token_variable" --non-interactive "${extra_args[@]}" \
         --executor docker --docker-image alpine:3.22 \
-        --url "http://$GITLAB_IP/" \
-        --description "$name" --clone-url "http://$GITLAB_IP/" \
+        --url "http://gitlab/" \
+        --description "$name" --clone-url "http://gitlab/" \
         --docker-network-mode system_gitlab \
         --docker-extra-hosts "$GITLAB_HOST:host-gateway" \
         --docker-extra-hosts "$GITLAB_REGISTRY_HOST:host-gateway" \
