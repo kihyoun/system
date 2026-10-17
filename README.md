@@ -2,9 +2,19 @@
 
 **Bootstrap a development platform. Use it to build, test, and evolve its own next generation.**
 
-System Bootstrapper is a project for a self-hosted software development platform on a single Ubuntu server or virtual machine. Its starting point is simple: clone a repository, run the bootstrap process, and let it assemble the services, container networks, and reverse-proxy configuration needed for a working development environment.
+> **Build your web projects. Not your infrastructure.**
 
-Its long-term vision is to demonstrate a working system and architecture that make **automated recursive self-improvement** possible. The platform should provide the development, evaluation and deployment infrastructure used to improve the platform itself, with each improved generation able to continue that process.
+## How it started: a developer's problem, a bigger idea
+
+Imagine you're a solo front-end developer. You want to build and maintain your own web projects. You want the freedom of self-hosting on an affordable server—but you don't want to spend your evenings configuring services, chasing broken dependencies, or planning infrastructure upgrades.
+
+That's the problem that led me to start **System Bootstrapper** in 2019. I wanted a development platform I could bootstrap for my own projects instead of repeatedly assembling and maintaining all the pieces by hand.
+
+But getting the platform running was only half the problem. The platform itself would age and need upgrades. That led to a bigger question: **What if the platform could use its own development tools to build, test, and deliver its next generation?**
+
+The idea grew from a convenient self-hosted setup into an open-source framework for **generation-by-generation renewal**. The running system should be able to develop a candidate successor, validate it as a complete platform, safely carry forward its persistent state, and let the validated successor repeat the process. A human developer—or, in the future, an optional AI agent—could propose changes through the same merge-request workflow.
+
+The original use case is still simple: spend more time building web projects and less time maintaining the infrastructure behind them. But the underlying architecture could eventually support other kinds of infrastructure. **The self-renewal cycle is the project's vision, not a capability already delivered today.**
 
 ## Current status
 
