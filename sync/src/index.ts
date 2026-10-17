@@ -12,6 +12,8 @@ import hmacSHA512 from 'crypto-js/hmac-sha512';
 import Base64 from 'crypto-js/enc-base64';
 import cors from 'cors';
 import Helper from "./Helper";
+import os from 'os';
+import { suggestConfig } from './ConfigSuggestions';
 
 export const app = express();
 app.use(bodyParser.json());
@@ -116,6 +118,7 @@ app.get( "/status", authenticateJWT, async ( req, res ) => {
 });
 
 app.get( "/config/main", authenticateJWT, async ( req, res ) => {
+  res.setHeader('Cache-Control', 'no-store');
   if (fs.existsSync('../system/.docker.env')) {
     const data = fs.readFileSync('../system/.docker.env',
       {encoding:'utf8', flag:'r'});
@@ -123,6 +126,22 @@ app.get( "/config/main", authenticateJWT, async ( req, res ) => {
     res.status(200).json({filename: ".docker.env", data})
   } else {
      res.sendStatus(404);
+  }
+});
+
+app.get('/config/suggestions', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (fs.existsSync('../system/.docker.env')) {
+    res.status(409).json({ message: 'Saved configuration exists. Fetch it instead.' });
+    return;
+  }
+  try {
+    const files = ['/templates/default.conf.template', '/synctemplates/default.conf.template'];
+    const nginx = files.filter(file => fs.existsSync(file))
+      .map(file => fs.readFileSync(file, 'utf8')).join('\n');
+    res.json(suggestConfig(nginx, req.hostname, os.hostname(), process.env.SEED_DIR || ''));
+  } catch (error) {
+    res.status(500).json({ message: 'Could not derive configuration suggestions.' });
   }
 });
 
