@@ -443,7 +443,48 @@ sudo python3 tests/runner-live.py
 Voraussetzungen sind laufende lokale Dienste, Docker-Zugriff und die Adressen
 `gitlab.localhost` und `sync.localhost` auf dem lokalen HTTP-Proxy.
 
-## 3. Wenn etwas nicht funktioniert
+## 3. Anwendungen und Umgebungen konfigurieren
+
+Der Wizard-Bereich **Projects** hieß zuvor **Proxy**. Er beschreibt eine
+Anwendung mit ihren Umgebungen **Production**, **Beta** und **Review Apps**.
+Mit **Add Project** legst du deren Deployment-Konfiguration an. Ein NGINX-Proxy
+leitet Anfragen für die eingestellten Domains an die passenden Anwendungscontainer
+weiter. Ein Proxy ist also ein Bestandteil der Anwendungskonfiguration.
+
+Einige Abbildungen in Kapitel 0 zeigen noch die frühere Beschriftung **Proxy**.
+In der aktuellen Oberfläche findest du an derselben Stelle **Projects**.
+
+Der **Project Key** identifiziert die Konfiguration. Der Eintrag legt noch kein
+Repository in GitLab an und verbindet es auch nicht automatisch mit einem
+vorhandenen Repository. Das GitLab-Projekt und seine Pipeline müssen zu dieser
+Deployment-Konfiguration passen.
+
+Als nächster Ausbau ist ein gemeinsamer **Projekt-Bootstrap** vorgesehen:
+Repository übernehmen oder anlegen, generierte CI-Konfiguration einspielen und
+die passenden Deployment-Umgebungen einrichten. Das erste so verwaltete Projekt
+soll der **System Wizard selbst** sein. Der geplante Ablauf und die Abnahmekriterien
+stehen in [Project Bootstrap](PROJECT_BOOTSTRAP.md); diese Automatisierung ist
+mit der Umbenennung noch nicht implementiert.
+
+Die Runner-Einstellungen haben zwei verschiedene Aufgaben:
+
+| Ort im Wizard | Bedeutung |
+| --- | --- |
+| General → Gitlab Runners | Gemeinsamer Instanz-Runner-Pool; nutzbar für mehrere GitLab-Projekte |
+| Projects → Additional runners (optional) | Zusätzliche Runner-Container für diese Anwendungskonfiguration mit separat vorgegebenem Token |
+
+Für den Einstieg lässt du die zusätzlichen Runner eines Projekts auf **0**.
+Deine Pipelines können dann den gemeinsamen Pool verwenden, sofern Instanz-Runner
+im jeweiligen GitLab-Projekt aktiviert sind und die Job-Tags passen. Der Wert 0
+deaktiviert diese gemeinsamen Runner nicht; er startet lediglich keine zusätzlichen
+Container für diese Anwendung.
+
+Bei zusätzlichen Runnern bestimmt die Registrierung in GitLab und der verwendete
+Token, welche Projekte sie nutzen dürfen. Die Zuordnung zum Project Key allein
+schränkt einen Runner nicht auf dieses GitLab-Projekt ein. Die automatische
+Token-Erzeugung aus Kapitel 2 gilt für den gemeinsamen Instanz-Pool.
+
+## 4. Wenn etwas nicht funktioniert
 
 | Beobachtung | Nächster Schritt |
 | --- | --- |
