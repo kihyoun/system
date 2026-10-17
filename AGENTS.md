@@ -20,12 +20,24 @@ The maintainer explained the following design intent on 2026-10-16:
   `bd4a8426355824593a5e21ad759830c1`. This format check is distinct from the
   persistent-state seed directory and from API authentication.
 
-Preserve the ASCII graphic exactly, including spaces, line breaks, `$`, and
-its position in generated configuration files. Do not treat it as decorative
-boilerplate, reformat it, or casually replace port 8071. Before an intentional
-change, inspect all producers and validators and account for compatibility
-with existing configurations. Do not describe the MD5 format check as a
-cryptographic authentication mechanism.
+The maintainer explicitly reaffirmed on 2026-10-17: **the signature must not
+be changed**. It is a fixed part of the project, not decorative boilerplate.
+Preserve every character, space, line break, URL, `$`, and its position. This
+applies equally to repository sources, generated configuration, live instances,
+test fixtures, screenshots and temporary setup scripts. Do not replace port 8071.
+
+In particular, the signature's fixed `https://www.system-bootstrapper.com`
+link must stay HTTPS even when the actual local service URLs use HTTP. Never
+apply blanket URL/scheme replacements, trimming or formatting to an entire
+configuration file. Change only the intended configuration assignments after
+the signature. A local setup script previously changed this link to HTTP and
+broke Fetch by shifting `$` from offset 807 to 806.
+
+When preparing or modifying configuration, verify the unmodified signature
+before applying it and verify the authenticated Fetch response, not just whether
+it contains the expected settings. Keep the existing strict validator; do not
+weaken its hash/position checks to accommodate altered signatures. Do not describe
+the MD5 format check as a cryptographic authentication mechanism.
 
 Relevant implementation locations:
 
