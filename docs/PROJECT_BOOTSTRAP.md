@@ -50,14 +50,23 @@ pipeline or managing its deployment as a project.
 ## Repository naming contract
 
 The repository display name and path are exactly the **Project Key**. For example,
-key `my-webapp` creates `<selected-namespace>/my-webapp`. Validate the key before
-Save; do not silently transform it into a different slug. Production URL, Beta
-URL and Review App domains are independent settings and do not determine the
+key `mywebapp` creates `<selected-namespace>/mywebapp`. New keys must be nonempty
+and contain only lowercase ASCII letters `a-z` and digits `0-9` (`^[a-z0-9]+$`).
+No spaces, umlauts, punctuation, hyphens or other special characters are allowed.
+Lowercase also fits the derived Docker Compose project names. Validate this
+same rule in the input field and on the backend before checking availability or
+creating anything. Explain invalid input rather than silently removing characters
+or lowercasing the user's key. Existing stored keys are not renamed by this new
+creation rule. GitLab-specific reserved names and API constraints still need to
+be reported if GitLab rejects an otherwise syntactically valid key.
+
+Production URL, Beta URL and Review App domains are independent settings and do not determine the
 repository name. A later domain change must not rename the repository.
 
 Collision handling must distinguish a successful retry of the same operation
 from an unrelated existing repository. Never overwrite an existing project or
-create `my-webapp-2` as an implicit fallback. Renaming a configured key must not
+create an automatically suffixed name as an implicit fallback. Renaming a
+configured key must not
 silently rename or replace a GitLab repository.
 
 ### Background availability check
@@ -79,9 +88,9 @@ create response as authoritative. Two users may choose the same key between
 validation and creation. Report that conflict without overwriting, silently
 linking or automatically renaming a repository.
 
-Use a UUID for an internal operation/idempotency identifier, not as a replacement
-for the repository name. Retrying a successful Save should return the recorded
-result for the same operation rather than creating another repository.
+There is no UUID requirement. Retrying a successful Save must recognize the
+same project operation rather than create another repository; choose the
+implementation without changing the user-visible Project Key/repository name.
 
 ## Backend responsibilities
 
@@ -112,6 +121,8 @@ real domain/DNS control; the local HTTP test does not demonstrate issuance.
 - A failed import, build or deployment leaves the existing Wizard available.
 - Repeating or retrying does not create duplicate projects or erase source files.
 - Background key checks are namespace-aware and discard stale responses.
+- New keys satisfy the same lowercase alphanumeric rule in the UI and backend.
+- Invalid keys never trigger repository creation and receive a clear field error.
 - A duplicate detected during Save is reported even if the earlier check passed.
 - GitLab lookup failures are shown as unknown availability, never as a free name.
 - No temporary GitLab administration credential reaches the UI or JSON export.
