@@ -1,5 +1,5 @@
 const assert = require('assert');
-const {stableEndpoint} = require('../gitlab-runner/refresh-endpoint');
+const {stableEndpoint} = require('../../gitlab-runner/refresh-endpoint');
 const config = '[[runners]]\n  url = "http://172.19.0.2/"\n  clone_url = "http://172.19.0.2/"\n  token = "glrt-test-only"\n  [runners.docker]\n    network_mode = "system_gitlab"\n';
 const updated = stableEndpoint(config);
 assert(updated.includes('url = "http://gitlab/"'));

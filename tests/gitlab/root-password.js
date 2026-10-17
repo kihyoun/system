@@ -2,7 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const prepare = require('../gitlab/prepare-root-password');
+const prepare = require('../../gitlab/prepare-root-password');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bootstrapper-password-'));
 try {
   const config = path.join(tmp, 'config');

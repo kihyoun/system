@@ -35,7 +35,7 @@ function request(route, body, token) {
  assert(project.data.includes('USE_BETA_HOST="false"')&&project.data.includes('USE_REVIEW_HOST="false"'));
  assert.equal(project.data.substr(807,1),'$');
  assert.equal(crypto.createHash('md5').update(project.data.substr(0,1184)).digest('hex'),'bd4a8426355824593a5e21ad759830c1');
- const {ensureDefaultWizard}=require('../sync/dist/DefaultWizard');
+ const {ensureDefaultWizard}=require('../../../sync/dist/DefaultWizard');
  const repeated=await ensureDefaultWizard();
  assert.equal(repeated.repository.id,project.repository.id);
  const again=await request('/config/projects',null,token);

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-repo=$(cd "$(dirname "$0")/.." && pwd)
+repo=$(cd "$(dirname "$0")/../.." && pwd)
 fixture=$(mktemp -d)
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture/gitlab" "$fixture/system" "$fixture/config" "$fixture/bin"

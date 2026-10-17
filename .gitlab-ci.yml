@@ -27,6 +27,7 @@ variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
 
 stages:
+  - test
   - build
   - deploy
 
@@ -36,6 +37,38 @@ cache:
     - .npm
     - cache/Cypress
     - node_modules
+
+# The existing trusted socket runner launches a socket-free test child.
+# The current build/deploy jobs retain their upstream publishing behavior.
+test:isolated:
+  stage: test
+  image: docker:29.9.1-cli
+  services: []
+  tags: [docker]
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    GIT_SUBMODULE_STRATEGY: none
+    RUNNER_SCRIPT_TIMEOUT: 8m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+  parallel:
+    matrix:
+      - COMPONENT: [gitlab, sync, gitlab-runner, bootstrapper, nginx, wizard, shared]
+  timeout: 10m
+  allow_failure: false
+  cache: []
+  script:
+    - sh tests/ci-isolated.sh "$COMPONENT"
+  after_script:
+    - sh tests/ci-isolated.sh cleanup
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths: [test-results/]
+    reports:
+      junit: test-results/*/junit.xml
+  only:
+    - merge_requests
+    - master
 
 build:
   stage: build
@@ -90,12 +123,5 @@ deploy:github:
 #     - merge_requests
 #     - master
 
-# test: TODO :)
-#   stage: test
-#   before_script:
-#     - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY_TEST
-#   script:
-#     - docker push $IMAGE_TAG_BOOTSTRAPPER
-#   only:
-#     - merge_requests
-#     - master
+# Full disposable-platform acceptance remains tracked in System issue 21.
+# Isolated checks above do not claim GitLab/registry/seed integration coverage.

@@ -9,7 +9,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'suggestions-api-'));
 fs.mkdirSync(path.join(tmp, 'sync'));
 fs.mkdirSync(path.join(tmp, 'system'));
 const child = spawn(process.execPath,
-  [process.env.SYNC_ENTRY || path.resolve(__dirname, '../sync/dist/index.js')], {
+  [process.env.SYNC_ENTRY || path.resolve(__dirname, '../../sync/dist/index.js')], {
     cwd: path.join(tmp, 'sync'), stdio: 'ignore',
     env: { ...process.env, SYNC_USER: 'test-user', SYNC_PASS: 'test-only-password' }
   });
