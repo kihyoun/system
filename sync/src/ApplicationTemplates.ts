@@ -2,11 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import Helper from './Helper';
 
-export const applicationTemplates = ['empty', 'angular', 'react', 'web'];
+export const applicationTemplates = ['empty', 'angular', 'react', 'web', 'wizard'];
 
 export function prepareApplication(template: string, key: string, settings: any): any {
   if (!applicationTemplates.includes(template)) { throw new Error('Select a supported application template.'); }
-  if (template === 'empty') { return {}; }
+  if (template === 'empty' || template === 'wizard') { return {}; }
   const root = path.resolve(__dirname, '../../project-bootstrap/templates', template);
   const files: any[] = [];
   function visit(directory: string) {

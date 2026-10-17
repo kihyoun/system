@@ -20,8 +20,8 @@ The original use case is still simple: spend more time building web projects and
 
 New here? Start with the illustrated [System Bootstrapper Handbook](docs/HANDBOOK.md),
 including checkout, the first Sync login, configuration suggestions and the
-local setup workflow. The handbook is currently written in German and documents
-the local test version.
+local setup workflow. The handbook is written in English and documents the
+local test version.
 
 **The local platform now runs on Ubuntu/WSL2, including GitLab, a runner and an HTTP registry; production setup remains to be validated.**
 
@@ -32,8 +32,12 @@ seed behavior. A fresh GitLab CE 19.4.2 / Runner 19.4.0 test also passed reposit
 checkout, Docker build, registry push/pull, container execution and artifact
 upload. Production HTTPS, existing-data migration and the UI project's own
 pipeline remain unverified. Framework-aware starter generation covers Angular, React and general web projects. Production
-server setup and optional integration of the existing UI project remain separate; generation changes are outside the
-current repair scope.
+server setup and the UI project's own build/review/rollout remain separate;
+generation changes are outside the current repair scope. The existing Wizard
+is automatically registered as the first project with its actual Production
+URL, without replacing the interface. Its repository is a registration scaffold;
+source import and the feedback-loop workflow are tracked in
+[the next-expansion issue](https://github.com/kihyoun/system/issues/18).
 
 The idea dates back to 2019. Development did not reach a sustainable renewal cycle and maintenance fell behind. The local Ubuntu/WSL2 baseline, shared runner and private project bootstrap now pass the documented tests; full production operation and platform generation replacement remain unverified.
 

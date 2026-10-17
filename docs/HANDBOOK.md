@@ -495,8 +495,32 @@ pipeline waits for application source with a Dockerfile. Repository metadata
 survives Fetch and JSON Backup/Open. See the [project guide](PROJECT_BOOTSTRAP_GUIDE.md)
 for the complete instructions, including recovery after errors.
 
-Importing the existing Wizard itself as an application remains an **optional**,
-separate use case. It is not automatically created for every user.
+### 3.2 The automatically registered System Wizard
+
+After the platform has a main configuration and GitLab is available, startup
+automatically registers **wizard** as the first project when the Wizard is
+enabled. Use Fetch after registration completes. Its Production URL, HTTP/HTTPS
+mode and certificate paths come from the actual Wizard settings under General;
+locally, the existing interface remains at `http://localhost`.
+
+The project has a private `root/wizard` repository scaffold containing README
+and managed CI. It does not yet contain the Wizard source, start a pipeline or
+deploy another interface. Beta and Review remain disabled. The existing Wizard
+container and Production route are reused, with no duplicate project proxy.
+Manage the interface settings under General; the system project is read-only in
+the project list. Its repository links and configuration survive Fetch, Backup,
+Open, Push and restart. Repeated startup reuses the same repository.
+
+If a local `wizard` key or an unrelated GitLab repository already exists, the
+Bootstrapper reports the conflict without overwriting it. A registration failure
+does not replace or stop the working interface. Check the Bootstrapper output,
+resolve the reported conflict/readiness problem and restart to retry.
+
+The current delivery is tracked in [the registration issue](https://github.com/kihyoun/system/issues/19).
+Source import, development through local GitLab, Review/Beta and controlled
+Production rollout are the [next expansion](https://github.com/kihyoun/system/issues/18).
+
+### 3.3 Shared and additional runners
 
 The runner settings have two different purposes:
 

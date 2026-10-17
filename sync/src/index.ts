@@ -15,6 +15,7 @@ import Helper from "./Helper";
 import os from 'os';
 import {createProject, queryGitlab, lookupJob, validProjectKey, projectBusy, readReceipt, validateProject} from './ProjectBootstrap';
 import { suggestConfig } from './ConfigSuggestions';
+import {ensureDefaultWizard} from './DefaultWizard';
 
 export const app = express();
 app.use(bodyParser.json());
@@ -45,12 +46,14 @@ let refreshTokens: any[] = [];
 
 const status = {
   needRestart: false,
-  runnerSetupInProgress: false
+  runnerSetupInProgress: false,
+  defaultWizardSetupInProgress: false,
+  defaultWizardProject: {state: 'not-started', message: ''}
 };
 
 // Keep the configuration stable while the asynchronous setup saves its token.
 app.use(['/config', '/command'], (req, res, next) => {
-  if ((status.runnerSetupInProgress || projectBusy()) && req.method !== 'GET') {
+  if ((status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy()) && req.method !== 'GET') {
     res.status(409).json({message: "Runner or project setup is in progress. Wait before changing the configuration."});
     return;
   }
@@ -69,6 +72,14 @@ app.listen( port, () => {
     }
     console.log( `SYNC_USER: ${SYNC_USER}` );
     console.log( `SYNC_PASS: ${SYNC_PASS}` );
+    status.defaultWizardSetupInProgress = true;
+    ensureDefaultWizard().then((result) => {
+      status.defaultWizardProject = {state: result.state, message: ''};
+      console.log('System Wizard project: ' + result.state);
+    }).catch((error) => {
+      status.defaultWizardProject = {state: 'failed', message: error.message};
+      console.error('System Wizard registration failed: ' + error.message + ' The existing interface remains available; restart to retry.');
+    }).finally(() => { status.defaultWizardSetupInProgress = false; });
 } );
 
 const authenticateJWT = (req:any, res:any, next:any) => {
@@ -206,7 +217,7 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
 app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
  const dir = '../system/.projects.env';
  try {
-  const fileNames = fs.readdirSync(dir);
+  const fileNames = fs.readdirSync(dir).sort((a, b) => a === '.wizard.env' ? -1 : b === '.wizard.env' ? 1 : a.localeCompare(b));
   const ret = [];
   for (const fileName of fileNames) {
     if (fileName === '.projects.env' || fileName.substr(-3,3) !== 'env') continue;
