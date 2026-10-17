@@ -334,7 +334,116 @@ geändert. Für die Ersteinrichtung in Kapitel 0 verwendest du Push und Restart.
 Harvest allein ist noch kein nachgewiesen konsistentes GitLab-Datenbankbackup.
 Wiederherstellung, Updates und Produktivbetrieb brauchen zusätzliche Validierung.
 
-## 2. Wenn etwas nicht funktioniert
+## 2. GitLab-Runner einrichten
+
+Ein Runner führt die Jobs deiner GitLab-Pipelines aus. Für die eigene, vom
+Bootstrapper gestartete GitLab-Instanz kannst du ihn automatisch einrichten.
+Die automatische Einrichtung benötigt GitLab 16 oder neuer; die historische
+GitLab-12-Image-Vorgabe unterstützt diesen Ablauf nicht. Verwende für den
+lokalen Test die Image-Einstellungen aus Kapitel 0.
+
+### 2.1 Anzahl festlegen und starten
+
+1. Öffne den Wizard und verbinde ihn über **Edit → Submit** mit dem Sync-Dienst.
+2. Lade mit **Synchronize → Fetch** die vorhandene Konfiguration. Damit gehen
+   keine bereits eingerichteten Hosts beim nächsten Push verloren.
+3. Trage unter **Gitlab Runners** die gewünschte Anzahl ein, zunächst **1**.
+   Der zulässige Bereich ist 0 bis 50; wähle die Anzahl passend zum Arbeitsspeicher
+   und zur CPU-Leistung deines Rechners.
+4. Lass **Runner authentication token** für die automatische Einrichtung leer.
+   Ein bereits mit Fetch geladener Token kann stehen bleiben: Er wird wiederverwendet.
+5. Übertrage die Einstellungen mit **Synchronize → Push** und wähle anschließend
+   **Restart**. Warte auf den GitLab-Erststart und die Runner-Registrierung.
+6. Prüfe in der Ubuntu-Konsole:
+
+   ```bash
+   sudo docker ps
+   ```
+
+   Bei Anzahl 1 gehört `runner_docker_1` dazu. Ein gestarteter Container allein
+   bestätigt noch keine erfolgreiche Anmeldung. Die Bootstrapper-Ausgabe meldet
+   nach erfolgreicher Anmeldung `Runner runner-docker-1 registered.` beziehungsweise
+   bei einer erneuten Prüfung `Runner runner-docker-1 verified.`
+7. Öffne GitLab als Administrator und prüfe unter **Admin → CI/CD → Runners**
+   den Eintrag **System Bootstrapper Docker pool**. Seine verbundenen Runner-Manager
+   müssen online sein. Projekte können diesen Instanz-Runner verwenden, wenn
+   Instanz-Runner für das jeweilige Projekt freigegeben sind.
+
+Die Anzahl bezeichnet **Runner-Container in einem gemeinsamen Instanz-Runner-Pool**.
+GitLab zeigt einen Runner-Eintrag mit mehreren Managern an. Es wird nicht für
+jeden Container ein eigener globaler Runner-Eintrag angelegt. Die Tags des
+automatisch erzeugten Pools sind `docker` und `aws`; er übernimmt auch Jobs ohne Tags.
+
+### 2.2 Token anzeigen und Konfiguration herunterladen
+
+1. Verbinde den Wizard nach dem Neustart gegebenenfalls erneut mit der
+   konfigurierten Sync-Adresse, lokal zum Beispiel `http://sync.localhost`.
+2. Wähle **Synchronize → Fetch**. Jetzt lädt der Wizard auch den erzeugten
+   Runner-Token aus der Bootstrapper-Konfiguration.
+3. Der Token ist standardmäßig verborgen. Mit **Show** kannst du ihn anzeigen
+   und aus dem Eingabefeld kopieren; **Hide** verbirgt ihn wieder.
+4. Wähle **Backup**, um die Konfiguration einschließlich Runner-Token als
+   Bootstrapper-JSON herunterzuladen. Bewahre diese Datei privat auf.
+
+Im Export steht der Token unter `gitlabRunnerToken`, die Anzahl unter
+`gitlabRunnerScale`. Der Token gehört zur betreffenden GitLab-Instanz; eine
+unabhängige neue GitLab-Datenbank kennt ihn nicht. Für deren automatische
+Ersteinrichtung lässt du das Feld wieder leer. Ein manuell eingegebener Token
+wird ebenfalls unterstützt und nicht durch einen automatisch erzeugten ersetzt.
+
+### 2.3 Was intern passiert
+
+Der Bootstrapper wartet auf GitLabs Bereitschaftsprüfung und nutzt seinen
+vorhandenen Docker-Zugriff auf den eigenen GitLab-Container. Dort erzeugt er
+für den Administrator einen temporären Zugriffstoken mit dem Scope `create_runner`,
+legt über die GitLab-API den Instanz-Runner an und widerruft diesen Zugriffstoken
+direkt danach, auch bei einem API-Fehler. Er verlässt den GitLab-Prozess nicht
+und erscheint weder im Wizard noch im JSON-Backup. Als Absicherung bei einem
+harten Prozessabbruch läuft er am folgenden Datum ab; beim nächsten Setup
+werden zurückgebliebene Setup-Tokens ebenfalls widerrufen.
+
+Nur der Runner-Authentifizierungstoken wird in die Bootstrapper-Konfiguration
+übernommen. Wiederholtes Registrieren verwendet den vorhandenen Pool weiter.
+Die Wiederaufnahme nach einer unterbrochenen Konfigurationsspeicherung sucht
+den eigenen Pool über seinen Namen. Benenne diesen Eintrag deshalb nicht um,
+wenn du diese Wiederaufnahme nutzen möchtest.
+
+**Register** startet beziehungsweise skaliert die Runner mit der bereits
+gespeicherten Konfiguration und prüft ihre Anmeldung. **Unregister** meldet
+die Manager ab. Beim modernen Token-Verfahren bleibt der globale Runner-Eintrag
+in GitLab bestehen. Anzahl **0** stoppt die Runner-Container; sie löscht weder
+den Pool noch seinen Token. Änderungen im Wizard werden erst mit Push übertragen.
+
+Diese Einrichtung verändert den Harvest-/Seed-Kreislauf nicht. Die
+Bootstrapper-Konfiguration bleibt über Push/Fetch und Open/Backup verwaltet.
+
+### 2.4 Lokaler Funktionstest
+
+Geprüft mit GitLab CE **19.4.2** und GitLab Runner **19.4.0** unter Ubuntu/WSL2:
+automatische Pool-Erstellung, widerrufener Setup-Zugang, Fetch des Runner-Tokens,
+erfolgreicher Pipeline-Job mit Checkout und Artefakt sowie Skalierung von einem
+auf zwei Container und zurück mit unverändertem Token. Der lokale Test endet
+mit einem Runner-Container.
+
+Für eine ausdrücklich entbehrliche lokale Testinstanz gibt es außerdem
+`tests/runner-live.py`. Das Skript legt ein privates Testprojekt mit Pipeline an,
+prüft den Runner und lädt die erzeugte Ergebnisdatei herunter. Dafür erzeugt es
+separat einen temporären Test-API-Zugang mit `api`-Scope und widerruft ihn im
+Anschluss. Das ist eine Testhilfe; die eigentliche Runner-Einrichtung benötigt
+nur `create_runner`.
+
+Schlägt die Runner-Einrichtung fehl, startet die Plattform trotzdem weiter,
+damit du die Konfiguration im Wizard korrigieren kannst. Prüfe dann die
+Bootstrapper-Ausgabe und versuche **Register** nach der Korrektur erneut.
+
+```bash
+sudo python3 tests/runner-live.py
+```
+
+Voraussetzungen sind laufende lokale Dienste, Docker-Zugriff und die Adressen
+`gitlab.localhost` und `sync.localhost` auf dem lokalen HTTP-Proxy.
+
+## 3. Wenn etwas nicht funktioniert
 
 | Beobachtung | Nächster Schritt |
 | --- | --- |

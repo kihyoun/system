@@ -13,10 +13,10 @@ const child = spawn(process.execPath,
     cwd: path.join(tmp, 'sync'), stdio: 'ignore',
     env: { ...process.env, SYNC_USER: 'test-user', SYNC_PASS: 'test-only-password' }
   });
-function request(route, token, data) {
+function request(route, token, data, method) {
   return new Promise((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port: 8071, path: route,
-      method: data ? 'POST' : 'GET', headers: {
+      method: method || (data ? 'POST' : 'GET'), headers: {
         Host: 'sync.localhost', 'Content-Type': 'application/json',
         ...(token ? { Authorization: 'Bearer ' + token } : {})
       } }, res => {
@@ -56,7 +56,22 @@ function request(route, token, data) {
     assert.equal(JSON.parse(fetched.body).data, saved);
     assert.equal((await request('/config/suggestions', token)).status, 409);
     assert.equal(fs.readFileSync(main, 'utf8'), saved);
+    fs.mkdirSync(path.join(tmp, 'gitlab-runner'));
+    const runnerScript = path.join(tmp, 'gitlab-runner', 'start.sh');
+    fs.writeFileSync(runnerScript, 'sleep 1\nprintf "Runner registered.\\n"\n');
+    assert.equal((await request('/command/runners/register', null, null, 'PATCH')).status, 401);
+    const setup = request('/command/runners/register', token, null, 'PATCH');
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.equal((await request('/status', token)).status, 200, 'setup must not block Sync');
+    assert.equal((await request('/config/main', token, {})).status, 409, 'Push must wait for setup');
+    assert.equal((await setup).status, 200);
+    fs.writeFileSync(runnerScript, 'echo private-test-credential >&2\nexit 1\n');
+    const failedSetup = await request('/command/runners/register', token, null, 'PATCH');
+    assert.equal(failedSetup.status, 500);
+    assert(!failedSetup.body.includes('private-test-credential'), 'errors must not relay credential output');
+    assert.equal(JSON.parse((await request('/status', token)).body).runnerSetupInProgress, false);
     console.log('PASS: authenticated API, missing config fallback, no writes, no-store and saved config precedence');
+    console.log('PASS: authenticated asynchronous runner setup, config write guard and redacted errors');
   } finally {
     child.kill();
     fs.rmSync(tmp, { recursive: true, force: true });
