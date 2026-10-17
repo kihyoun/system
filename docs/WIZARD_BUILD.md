@@ -112,3 +112,44 @@ separately. Those checks do not prove a real GitLab pipeline, registry artifact
 or deployment. Coordinated infrastructure acceptance and its actual evidence
 belong to [the central Phase B issue](https://github.com/kihyoun/system/issues/33).
 Do not treat a candidate artifact as a Production rollout.
+
+## Local acceptance record
+
+On 2026-10-18, an isolated candidate controller completed the real managed
+build/check workflow against the existing private local GitLab project
+`root/wizard` (project ID 7). It used copied private settings without publishing
+them in the image or evidence. The completed workflow receipt was preserved in
+the existing project configuration, with its other settings unchanged.
+
+| Identity | Accepted value |
+| --- | --- |
+| Pinned Wizard source | `7aededb705fe9c25fc86bf683a7547d9c1565adb` |
+| Source import commit | `910df75b0be72d7e4a11da3a1f78c0d8a71ffb19` |
+| Managed activation commit | `61d42180687c1c7c3cd04fab5b5ebb52e9ea90a3` |
+| Initial pipeline | `13`, API source, `main` |
+| Required successful jobs | `build:wizard` 38; `test:wizard` 37; neither allows failure |
+| Candidate image | `registry.localhost:5050/root/wizard@sha256:1740164a44a7aed7caa9cd830ff1e2546dd0b9e557ccff2400af3ee0f96ae9e4` |
+
+The initial build job failed because WSL had regenerated `/etc/hosts` during
+the storage move. Running the existing local preparation restored the registry
+hostname. Retrying that job in pipeline 13 succeeded; no replacement initial
+pipeline or project was created. Registry identity verification also accounts
+for the infrastructure's port 5050 in local HTTP registry modes.
+
+The retained build and browser artifacts agree on the activation commit,
+pipeline ID and immutable image digest. Jest, the production build, HTTP,
+rendered UI, Projects and SPA checks passed. Repeated activation returned the
+same pipeline and artifact. Both jobs reported successful resource cleanup.
+Authenticated Fetch validated both main and project Cube signatures; the
+original Production address, service IDs and start times stayed unchanged,
+and the existing Wizard returned HTTP 200.
+
+The combined isolated suite also passed all 26 checks at System integration
+commit `40f3ca79ca48819db3f98527457f9eeb96747024`, including the acceptance
+driver's token refresh/deadline regressions and disposable test lifecycle
+contracts. This is separate evidence from the real GitLab pipeline.
+
+No Review/Beta environment, Production rollout, GitHub backup activation or
+GitLab-primary cutover was performed. These remain separately gated work;
+repository cutover is tracked in
+[the central transition issue](https://github.com/kihyoun/system/issues/34).
