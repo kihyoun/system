@@ -49,7 +49,22 @@ begin
     encoded = URI.encode_www_form_component(full_path)
     code, project = api.call(Net::HTTP::Get, 'projects/' + encoded)
     raise BootstrapError, 'Project lookup failed' unless [200, 404].include?(code)
-    if input['action'] == 'availability'
+    if input['action'] == 'pipeline'
+      marker = 'System Bootstrapper operation ' + input.fetch('operation')
+      raise BootstrapError, 'Cannot start pipeline for an unrelated project' unless code == 200 && project['description'] == marker
+      branch = project.fetch('default_branch')
+      file_code, ci_file = api.call(Net::HTTP::Get, "projects/#{project.fetch('id')}/repository/files/%2Esystem-bootstrapper%2Fci.yml?ref=#{URI.encode_www_form_component(branch)}")
+      raise BootstrapError, 'Managed CI missing' unless file_code == 200
+      sha = ci_file.fetch('last_commit_id')
+      pipeline_code, pipelines = api.call(Net::HTTP::Get, "projects/#{project.fetch('id')}/pipelines?sha=#{sha}&ref=#{URI.encode_www_form_component(branch)}")
+      raise BootstrapError, 'Pipeline lookup failed; retry Save' unless pipeline_code == 200
+      pipeline = pipelines.find { |item| item['source'] == 'api' }
+      unless pipeline
+        pipeline_code, pipeline = api.call(Net::HTTP::Post, "projects/#{project.fetch('id')}/pipeline", {ref: branch})
+        raise BootstrapError, "Pipeline start failed (HTTP #{pipeline_code}); retry Save" unless pipeline_code == 201
+      end
+      result = {pipeline: {id: pipeline.fetch('id'), webUrl: pipeline.fetch('web_url'), status: pipeline.fetch('status')}}
+    elsif input['action'] == 'availability'
       result = {availability: code == 404 ? 'available' : 'occupied', path: full_path}
     else
       marker = 'System Bootstrapper operation ' + input.fetch('operation')
@@ -78,8 +93,8 @@ begin
           ci = input.fetch('ci')
           if file_code == 404
             commit_code, = api.call(Net::HTTP::Post, "projects/#{project.fetch('id')}/repository/commits", {
-              branch: branch, commit_message: 'Install managed application CI [skip ci]',
-              actions: [{action: 'create', file_path: ci_path, content: ci}]})
+              branch: branch, commit_message: input['files'] ? 'Install application template and managed CI' : 'Install managed application CI [skip ci]',
+              actions: [{action: 'create', file_path: ci_path, content: ci}] + (input['files'] || [])})
             raise BootstrapError, 'CI installation failed; retry Save' unless commit_code == 201
           elsif Base64.decode64(file.fetch('content')) != ci
             raise BootstrapError, 'Managed CI changed; refusing to overwrite repository content'
@@ -89,7 +104,8 @@ begin
           result = {repository: {id: project.fetch('id'), namespaceId: namespace_id,
             path: full_path, webUrl: project.fetch('web_url'), defaultBranch: branch,
             pipelineUrl: project.fetch('web_url') + '/-/pipelines', ciPath: ci_path,
-            deploymentState: 'awaiting-source'}}
+            template: input['template'] || 'empty', templateVersion: input['templateVersion'], generatedCi: input['files'] ? ci : nil,
+            deploymentState: input['files'] ? 'awaiting-pipeline' : 'awaiting-source'}}
         end
       end
     end

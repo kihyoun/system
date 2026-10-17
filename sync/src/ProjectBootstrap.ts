@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import md5 from 'md5';
+import {applicationTemplates, prepareApplication} from './ApplicationTemplates';
 import {spawn, execFile} from 'child_process';
 
 export const validProjectKey = (key: any) => typeof key === 'string' && /^[a-z0-9]+$/.test(key);
@@ -26,7 +27,7 @@ export function validateProject(input: any) {
   for (const line of input.data.substr(1184).split('\n')) {
     if (!line.trim() || line.startsWith('#')) { continue; }
     const match = /^(?:export )?([A-Z_]+)="([A-Za-z0-9_./:@+*-]*)"\s*$/.exec(line);
-    if (!match || !/^(PROJECT_NAME|USE_(PROD|BETA|REVIEW)_HOST|(PROD|BETA|REVIEW)_(HOST|DOMAIN_MODE|DEPLOY_MODE|SSL|SSL_KEY)|GITLAB_RUNNER_(TOKEN|SCALE))$/.test(match[1])) {
+    if (!match || !/^(PROJECT_NAME|PROJECT_TEMPLATE|USE_(PROD|BETA|REVIEW)_HOST|(PROD|BETA|REVIEW)_(HOST|DOMAIN_MODE|DEPLOY_MODE|SSL|SSL_KEY)|GITLAB_RUNNER_(TOKEN|SCALE))$/.test(match[1])) {
       throw new Error('Invalid project configuration assignment.');
     }
     if (values[match[1]] !== undefined) { throw new Error('Duplicate configuration assignment.'); }
@@ -44,13 +45,15 @@ export function validateProject(input: any) {
     }
     for (const setting of ['DOMAIN_MODE', 'DEPLOY_MODE']) {
       const value = values[environment + '_' + setting];
-      if (value !== undefined && !(setting === 'DOMAIN_MODE' ? /^[0-3]$/ : /^[01]$/).test(value)) {
+      if ((value !== undefined || values['USE_' + environment + '_HOST'] === 'true') && !(setting === 'DOMAIN_MODE' ? /^[0-3]$/ : /^[01]$/).test(value || '')) {
         throw new Error('Invalid environment mode.');
       }
     }
   }
   if (values.PROJECT_NAME !== input.projectKey) { throw new Error('Project Key does not match configuration.'); }
-  if (typeof input.ci !== 'string' || input.ci.length > 200000 || !input.ci.includes('CI_DEFAULT_BRANCH')) {
+  if (!applicationTemplates.includes(input.template || 'empty')) { throw new Error('Select a supported application template.'); }
+  if (values.PROJECT_TEMPLATE !== undefined && values.PROJECT_TEMPLATE !== (input.template || 'empty')) { throw new Error('Template does not match configuration.'); }
+  if ((input.template || 'empty') === 'empty' && (typeof input.ci !== 'string' || input.ci.length > 200000 || !input.ci.includes('CI_DEFAULT_BRANCH'))) {
     throw new Error('Missing generated CI configuration.');
   }
   return values;
@@ -126,10 +129,13 @@ export function queryGitlab(input: any) {
   return startJob(id, () => rails(input));
 }
 export function createProject(input: any) {
-  validateProject(input);
+  const settings = validateProject(input);
+  input = {...input, files: undefined, templateVersion: undefined, ...prepareApplication(input.template || 'empty', input.projectKey, settings)};
   const file = path.join(directory, '.' + input.projectKey + '.env');
-  const stableData = input.data.split('\n').filter((line: string) => !line.startsWith('# created on ') && !line.startsWith('# BOOTSTRAPPER_REPOSITORY=')).join('\n');
-  const fingerprint = digest(JSON.stringify([String(input.namespaceId), input.projectKey, stableData, input.ci]));
+  const stableData = input.data.split('\n').filter((line: string) => !line.startsWith('# created on ') && !line.startsWith('# BOOTSTRAPPER_REPOSITORY=') && line !== 'PROJECT_TEMPLATE="empty"').join('\n');
+  const identity = [String(input.namespaceId), input.projectKey, stableData, input.ci];
+  if (input.files) { identity.push(input.template, input.files); }
+  const fingerprint = digest(JSON.stringify(identity));
   fs.mkdirSync(directory, {recursive: true});
   let receipt: any;
   if (fs.existsSync(file)) {
@@ -137,7 +143,7 @@ export function createProject(input: any) {
     if (!receipt || receipt.fingerprint !== fingerprint) { throw new Error('Project Key already exists locally. Fetch before changing it.'); }
     if (receipt.state === 'complete') { return {id: receipt.operation, state: 'complete', repository: receipt.repository}; }
   } else {
-    receipt = {operation: crypto.randomBytes(24).toString('hex'), fingerprint, namespaceId: input.namespaceId, state: 'pending'};
+    receipt = {operation: crypto.randomBytes(24).toString('hex'), fingerprint, namespaceId: input.namespaceId, template: input.template || 'empty', state: 'pending'};
     // Reserve the key before any asynchronous work; a second Save cannot win.
     fs.writeFileSync(file, input.data + '\n' + receiptLine + Buffer.from(JSON.stringify(receipt)).toString('base64') + '\n', {flag: 'wx', mode: 0o600});
   }
@@ -157,9 +163,15 @@ export function createProject(input: any) {
       writeReceipt(file, input.data, receipt);
       await new Promise<void>((resolve, reject) => execFile('bash', ['apply.sh'],
         {cwd: path.resolve('../project-bootstrap'), timeout: 180000}, (error) => error ? reject(new Error('Repository ready; routing failed. Retry Save.')) : resolve()));
+      if (input.template && input.template !== 'empty') {
+        const pipeline = await rails({...input, files: undefined, action: 'pipeline', operation: id});
+        if (pipeline.state === 'failed') { return pipeline; }
+        receipt.repository.initialPipeline = pipeline.pipeline;
+        receipt.repository.deploymentState = 'pipeline-started';
+      }
       receipt.state = 'complete';
       writeReceipt(file, input.data, receipt);
-      return {repository: result.repository, message: 'Repository and CI ready. Add application source to deploy.'};
+      return {repository: receipt.repository, message: input.template && input.template !== 'empty' ? 'Application and CI ready; first pipeline started.' : 'Repository and CI ready. Add application source to deploy.'};
     } finally { active.delete(id); }
   });
 }

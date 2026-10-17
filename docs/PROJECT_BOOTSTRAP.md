@@ -5,9 +5,34 @@
 The Wizard should manage an application as one project, including its GitLab
 repository, generated CI configuration, environments and NGINX routing. Creating
 a project should not require a second manual repository setup or copying CI YAML
-into GitLab. The general Add Project flow is implemented on the feature branch;
+into GitLab. The general Add Project flow is implemented;
 see the [operating guide](PROJECT_BOOTSTRAP_GUIDE.md). Wizard source import and
-its separate review deployment remain the subsequent optional delivery.
+its separate review deployment remain an optional subsequent delivery.
+
+## Application templates
+
+Agreed with the maintainer on 2026-10-17: extend Add Project with a choice of
+**Angular**, **React**, or a **general web project**. This branch implements template generation on top of the merged general bootstrap.
+
+For Angular and React, selecting a template should create a complete, small,
+working application: source, dependencies, framework-specific build settings,
+Dockerfile, runtime configuration and matching GitLab CI. The user should not
+need to write a Dockerfile or manually assemble the initial build pipeline.
+The generated files remain editable in the repository so the user can start
+coding immediately after creation.
+
+The first pipeline should build the generated application using the existing
+runner/registry and deploy it to the enabled environments according to the
+selected automatic/manual deployment settings. Verify a reachable application,
+not just repository creation or successful CI YAML validation. Preserve the
+strict key/collision contract, asynchronous status, recovery behavior and the
+immutable Cube signature from the general bootstrap delivery.
+
+The general web-project option starts with framework-free HTML, CSS and JavaScript, served by NGINX without a Node build. Users can edit its Dockerfile for a custom toolchain. Angular and React use pinned manifests, lockfiles and Node 24 build images, independently of the existing Wizard toolchain.
+
+The previous general-bootstrap and signature PRs were merged with explicit maintainer approval. Template changes are a separate delivery. Importing the existing Wizard remains an optional infrastructure use case.
+
+## Bootstrap foundation and optional Wizard demonstration
 
 First implement the general **Add Project → Save** workflow: configure an
 application, create its GitLab repository and install its generated CI without

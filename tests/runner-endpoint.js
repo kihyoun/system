@@ -1,0 +1,11 @@
+const assert = require('assert');
+const {stableEndpoint} = require('../gitlab-runner/refresh-endpoint');
+const config = '[[runners]]\n  url = "http://172.19.0.2/"\n  clone_url = "http://172.19.0.2/"\n  token = "glrt-test-only"\n  [runners.docker]\n    network_mode = "system_gitlab"\n';
+const updated = stableEndpoint(config);
+assert(updated.includes('url = "http://gitlab/"'));
+assert(updated.includes('clone_url = "http://gitlab/"'));
+assert(updated.includes('token = "glrt-test-only"'));
+assert.equal(stableEndpoint(updated), updated);
+assert.equal(stableEndpoint(config.replace(/172.19.0.2/g, 'external.example.com')), config.replace(/172.19.0.2/g, 'external.example.com'));
+assert.equal(stableEndpoint(config.replace('system_gitlab', 'unmanaged')), config.replace('system_gitlab', 'unmanaged'));
+console.log('Managed runner endpoint migration preserves tokens, external URLs and unrelated networks.');
