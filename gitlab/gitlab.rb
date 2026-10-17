@@ -1,6 +1,12 @@
 
 external_url '${GITLAB_EXTERNAL_URL}'
 
+# Used only when GitLab initializes a fresh database; never resets an existing user.
+bootstrapper_password_file = '/etc/gitlab/bootstrapper_initial_root_password'
+if File.file?(bootstrapper_password_file)
+  gitlab_rails['initial_root_password'] = File.read(bootstrapper_password_file)
+end
+
 registry_external_url '${GITLAB_REGISTRY_URL}'
 
 ### Settings used by GitLab application

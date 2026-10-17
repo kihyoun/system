@@ -274,19 +274,36 @@ sudo docker ps
 Der GitLab-Container sollte schließlich `healthy` melden. Öffne danach
 [http://gitlab.localhost/](http://gitlab.localhost/).
 
-Der Benutzername des GitLab-Administrators lautet **`root`**. GitLab erzeugt bei
-dieser Installation ein eigenes Initialpasswort. Lies es nach dem ersten Start aus:
+Der Benutzername des GitLab-Administrators lautet **`root`**. Bei einer frischen
+Datenbank legt der Bootstrapper ein zufälliges Initialpasswort fest. Optional
+kannst du vor dem ersten Start `GITLAB_INITIAL_ROOT_PASSWORD` mit mindestens
+12 Zeichen in der privaten `system/.docker.env` setzen. Der Wizard bietet
+für dieses optionale Feld derzeit keine Eingabe an.
+
+Lies das Initialpasswort nach dem ersten Start lokal aus:
+
+```bash
+sudo docker exec system_gitlab_1 cat /etc/gitlab/bootstrapper_initial_root_password
+```
+
+Diese nur für root lesbare Datei liegt im persistenten GitLab-Konfigurationsvolume
+und bleibt bei Neustarts erhalten. Melde dich mit `root` an und verwahre den Zugang
+privat. Die Datei dokumentiert das Erstpasswort; spätere Passwortänderungen werden
+nicht in sie zurückgeschrieben. Sie wird mit dem GitLab-Konfigurationsvolume auch
+in einen Seed übernommen. Bewahre daher auch den Seed privat auf.
+
+Eine bestehende Datenbank wird nicht verändert. Wurde sie bereits ohne diesen
+Mechanismus eingerichtet, wird keine solche Datei nachträglich mit einem
+vermeintlichen Login-Passwort angelegt. Dann kannst du die native temporäre Datei
+prüfen, falls sie noch vorhanden ist:
 
 ```bash
 sudo docker exec system_gitlab_1 grep 'Password:' /etc/gitlab/initial_root_password
 ```
 
-Melde dich mit `root` und diesem Passwort an und verwahre den Zugang privat.
-Die temporäre Passwortdatei kann beim ersten Container-Neustart nach 24 Stunden
-entfernt werden. Die Sync-Zugangsdaten funktionieren nicht als GitLab-Anmeldung.
-
-Die gesonderte Änderung für dauerhaft abrufbare GitLab-Initialpasswörter ist
-nicht Voraussetzung für diesen Ablauf und muss separat geprüft werden.
+Diese native Datei kann beim Container-Neustart nach 24 Stunden entfernt werden.
+Ist kein gültiges Passwort mehr bekannt, ist ein gezielter GitLab-Passwort-Reset
+nötig. Die Sync-Zugangsdaten sind unabhängig von der GitLab-Anmeldung.
 
 ### 0.12 Später wieder verbinden und Einstellungen ändern
 
