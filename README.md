@@ -139,7 +139,8 @@ The container definitions can be reproduced; GitLab repositories, database conte
 | `nginx-proxy/` | Production, beta, and review proxy configuration. |
 | `sync/` | Synchronization-related configuration and scripts. |
 | `wizard/` | Configuration wizard submodule. |
-| `.gitlab-ci.yml` | Existing image build and deployment/publishing pipeline. |
+| `.gitlab-ci.yml` | Required isolated component checks, image build and deployment/publishing pipeline. |
+| [tests/](tests/README.md) | Component inventory, isolated test commands and explicit live-integration boundaries. |
 | [Prepare-Host.md](Prepare-Host.md) | Historical host preparation notes; not a validated current installation guide. |
 
 ## Restoration and next milestones

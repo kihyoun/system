@@ -8,3 +8,4 @@ bootstrapper.json
 bootstrapper_initial_root_password
 sync/node_modules
 sync/dist
+test-results/

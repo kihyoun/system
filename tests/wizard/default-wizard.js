@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const source = path.resolve(__dirname, '..');
+const source = path.resolve(__dirname, '../..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'default-wizard-'));
 for (const name of ['sync', 'system', 'project-bootstrap', 'bin']) fs.mkdirSync(path.join(root, name));
 fs.writeFileSync(path.join(root, 'project-bootstrap/apply.sh'), 'exit 0\n');

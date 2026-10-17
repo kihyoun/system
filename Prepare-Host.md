@@ -57,7 +57,7 @@ token as `GITLAB_RUNNER_TOKEN` with `GITLAB_RUNNER_SCALE=1`.
 The registration script also accepts legacy registration tokens and verifies
 existing registrations instead of duplicating them.
 
-Copy `tests/registry-smoke.gitlab-ci.yml` into a disposable GitLab project's
+Copy `tests/registry/registry-smoke.gitlab-ci.yml` into a disposable GitLab project's
 `.gitlab-ci.yml` to reproduce the integration test. It uses this platform's
 Docker socket runner. Default BuildKit attestations are disabled for this test
 because the registry rejected their manifest with `blob unknown to registry`.
@@ -128,8 +128,8 @@ This keeps the configuration workflow (`Open` / `Backup`, `Push` / `Fetch`)
 independent from the persistent-data workflow (`Harvest` / `Seed`). No new
 configuration volume or automatic persistence mechanism is introduced here.
 
-After compiling sync, run `node tests/config-suggestions.js`. The API test
-`node tests/config-suggestions-api.js` must run in a disposable container: it
+After compiling sync, run `node tests/sync/config-suggestions.js`. The API test
+`node tests/sync/config-suggestions-api.js` must run in a disposable container: it
 starts its own sync process on port 8071 with a temporary configuration tree.
 
 ### GitLab first administrator login
@@ -157,7 +157,7 @@ reset an existing GitLab account; use GitLab's password-reset procedure instead.
 The ASCII startup signature and Sync login output are unchanged. Sync credentials
 and the GitLab administrator credentials remain separate.
 
-Run `node tests/gitlab-root-password.js` to check the initialization behavior
+Run `node tests/gitlab/root-password.js` to check the initialization behavior
 using temporary directories without touching a running GitLab installation.
 
 ### Persistent state
@@ -179,7 +179,7 @@ the file-copy test below does not establish database backup consistency.
 After building the bootstrapper image, test this behavior inside Ubuntu with:
 
 ```bash
-sudo python3 tests/seed-cycle.py
+sudo python3 tests/seed/seed-cycle.py
 ```
 
 The test uses temporary directories and disposable containers. It checks the

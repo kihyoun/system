@@ -1,6 +1,6 @@
-// Run after compiling sync with: node tests/config-suggestions.js
+// Run after compiling sync with: node tests/sync/config-suggestions.js
 const assert = require('assert');
-const { suggestConfig } = require(process.env.SUGGESTIONS_MODULE || '../sync/dist/ConfigSuggestions');
+const { suggestConfig } = require(process.env.SUGGESTIONS_MODULE || '../../sync/dist/ConfigSuggestions');
 const route = (role, host, ssl = false) => `server {
   listen ${ssl ? '443 ssl' : '80'};
   server_name ${host};
