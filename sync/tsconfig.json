@@ -1,18 +1,15 @@
 {
     "compilerOptions": {
-        "module": "commonjs",
+        "module": "node16",
         "esModuleInterop": true,
-        "target": "es6",
+        "target": "es2022",
         "noImplicitAny": true,
-        "moduleResolution": "node",
+        "strict": false,
+        "moduleResolution": "node16",
+        "types": ["node"],
         "sourceMap": true,
         "outDir": "dist",
-        "baseUrl": ".",
-        "paths": {
-            "*": [
-                "node_modules/*"
-            ]
-        }
+        "rootDir": "src"
     },
     "include": [
         "src/**/*"
