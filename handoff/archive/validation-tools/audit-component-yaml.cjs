@@ -1,0 +1,12 @@
+const fs=require('fs'),assert=require('assert');
+const yaml=require('/candidate/sync/node_modules/js-yaml');
+const before=yaml.safeLoad(fs.readFileSync('/evidence/original-ci.yml','utf8'));
+const after=yaml.safeLoad(fs.readFileSync('/ci.yml','utf8'));
+assert.deepStrictEqual(after.stages,['test','build','deploy']);
+for(const key of Object.keys(before).filter(key=>key!=='stages')) assert.deepStrictEqual(after[key],before[key], 'preserve existing '+key);
+const job=after['test:isolated'];
+assert.equal(job.stage,'test'); assert.equal(job.allow_failure,false);
+assert.deepStrictEqual(job.services,[]); assert.equal(job.parallel.matrix[0].COMPONENT.length,7);
+assert(job.script[0].includes('ci-isolated.sh')); assert(job.after_script[0].includes('cleanup'));
+assert.equal(job.artifacts.reports.junit,'test-results/*/junit.xml');
+console.log('PASS: YAML parses; all original jobs/global settings unchanged except added test stage; required matrix, service isolation, cleanup and JUnit configured.');

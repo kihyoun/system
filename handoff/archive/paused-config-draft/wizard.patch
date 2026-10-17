@@ -1,0 +1,13 @@
+diff --git a/src/components/ServerControlButton.tsx b/src/components/ServerControlButton.tsx
+index 3a0384d..0f190ff 100644
+--- a/src/components/ServerControlButton.tsx
++++ b/src/components/ServerControlButton.tsx
+@@ -83,8 +83,6 @@ export default function ServerControlButton(props:any) {
+   const handleSeed = () => {
+     runInAction(async () => {
+       try {
+-        props.setOpenSuccess('Pushing Seed Information...');
+-        await props.main.sync.pushMain();
+         props.setOpenSuccess('Initiating Seed...');
+         await props.main.sync.seed();
+         props.setOpenSuccess('Ready.');

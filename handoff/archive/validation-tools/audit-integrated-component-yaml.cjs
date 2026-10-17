@@ -1,0 +1,12 @@
+const fs=require('fs'),assert=require('assert'),yaml=require('/candidate/sync/node_modules/js-yaml');
+const before=yaml.load(fs.readFileSync('/evidence/original-integrated-ci.yml','utf8'));
+const after=yaml.load(fs.readFileSync('/ci.yml','utf8'));
+for(const key of ['image','services','variables','cache','build','deploy:dockerhub','deploy:github']) assert.deepStrictEqual(after[key],before[key],key);
+assert.deepStrictEqual(after.stages,['prepare','test','build','deploy']);
+const prep=after['prepare:wizard-source'],test=after['test:isolated'];
+assert.equal(prep.stage,'prepare');assert.equal(prep.variables.GIT_SUBMODULE_STRATEGY,'recursive');
+assert.deepStrictEqual(prep.services,[]);assert(prep.image.includes('@sha256:'));
+assert.deepStrictEqual(prep.artifacts.paths,['project-bootstrap/wizard-source/snapshot.json']);
+assert.deepStrictEqual(test.dependencies,['prepare:wizard-source']);assert.equal(test.allow_failure,false);
+assert.deepStrictEqual(test.only,prep.only);assert(test.image.includes('@sha256:'));
+console.log('PASS: CI YAML artifact dependency, recursive pinned preparation, digest images and unchanged upstream jobs.');

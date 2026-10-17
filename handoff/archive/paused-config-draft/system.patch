@@ -1,0 +1,84 @@
+diff --git a/sync/src/index.ts b/sync/src/index.ts
+index 53c5e5d..7722856 100644
+--- a/sync/src/index.ts
++++ b/sync/src/index.ts
+@@ -116,6 +116,7 @@ app.get( "/status", authenticateJWT, async ( req, res ) => {
+ });
+ 
+ app.get( "/config/main", authenticateJWT, async ( req, res ) => {
++  res.setHeader('Cache-Control', 'no-store');
+   if (fs.existsSync('../system/.docker.env')) {
+     const data = fs.readFileSync('../system/.docker.env',
+       {encoding:'utf8', flag:'r'});
+@@ -147,6 +148,7 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
+ });
+ 
+ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
++ res.setHeader('Cache-Control', 'no-store');
+  const dir = '../system/.projects.env';
+  try {
+   const fileNames = fs.readdirSync(dir);
+@@ -220,13 +222,15 @@ app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
+ app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
+   if (!fs.existsSync('../system/.docker.env')) {
+      res.status(404).send('File does not exist.');
++     return;
+   }
+ 
+   try {
+     console.log('Stopping intermediate services...');
+     const out = execSync('cd ../system; bash stop-intermediate.sh');
+-    console.log('Unlink ../systen/.docker.env');
+-    fs.unlinkSync('../system/.docker.env');
++    console.log('Delete saved main configuration');
++    // Keep the link so subsequent uploads still write to the persistent volume.
++    fs.unlinkSync(fs.realpathSync('../system/.docker.env'));
+     status.needRestart = true;
+     res.status(200).json({ message: "Main config deleted.", status,
+       output: out.toString()});
+@@ -303,4 +307,4 @@ app.patch( "/command/runners/unregister", authenticateJWT, async ( req, res ) =>
+     } catch (err) {
+       res.status(500).send(err.toString());
+     }
+-});
+\ No newline at end of file
++});
+diff --git a/system/docker-compose.yml b/system/docker-compose.yml
+index 31c5458..c147c1a 100644
+--- a/system/docker-compose.yml
++++ b/system/docker-compose.yml
+@@ -13,6 +13,7 @@ services:
+     volumes:
+       - /var/run/docker.sock:/var/run/docker.sock
+       - $SEED_DIR:/seed
++      - bootstrapperConfig:/config
+       - templates:/templates
+       - synctemplates:/synctemplates
+       - ssl:/ssl
+@@ -62,6 +63,7 @@ services:
+       - '${GITLAB_REGISTRY_BIND:-5050}:5050'
+ 
+ volumes:
++  bootstrapperConfig:
+   templates:
+   synctemplates:
+   ssl:
+diff --git a/system/start.sh b/system/start.sh
+index c4fe9df..e149c79 100755
+--- a/system/start.sh
++++ b/system/start.sh
+@@ -2,6 +2,8 @@
+ set -eo pipefail
+ shopt -s dotglob
+ 
++node ./prepare-config.js
++
+ ENV_FILE=../.docker.env
+ echo > $ENV_FILE
+ printf "export BOOTSTRAPPER_IP=" > $ENV_FILE
+diff --git a/wizard b/wizard
+--- a/wizard
++++ b/wizard
+@@ -1 +1 @@
+-Subproject commit ac00e4869ecd8ee395ce46830d34741765c430e4
++Subproject commit ac00e4869ecd8ee395ce46830d34741765c430e4-dirty
