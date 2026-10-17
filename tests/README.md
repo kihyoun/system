@@ -200,6 +200,13 @@ fixture Git repositories are created and cleaned inside the disposable child.
 
 ## Live/disposable integration boundary
 
+The reusable [disposable candidate lifecycle](e2e/README.md) now provides an
+explicit private-daemon driver, temporary configuration, bounded smoke readiness,
+ownership-checked cleanup and sanitized JSON/JUnit receipts. Its additional
+`shared/disposable-candidate-contract.js` manifest fixture runs entirely offline;
+it does not start DinD. A privileged full-platform run and root CI integration
+remain pending resource review and separate acceptance evidence.
+
 `wizard/live/build.js` is a separate, explicit managed-Wizard acceptance driver,
 never an isolated-manifest entry. Run it only in an operator-prepared candidate
 controller with a private copy of the intended configuration and an explicitly

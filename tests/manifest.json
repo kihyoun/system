@@ -23,5 +23,6 @@
   {"component":"wizard", "file":"wizard/acceptance-driver.js", "timeoutSeconds":20},
   {"component":"shared", "file":"shared/runner-contract.js", "timeoutSeconds":15},
   {"component":"shared", "file":"shared/ci-parent-contract.js", "timeoutSeconds":15},
-  {"component":"shared", "file":"shared/source-context.js", "timeoutSeconds":30}
+  {"component":"shared", "file":"shared/source-context.js", "timeoutSeconds":30},
+  {"component":"shared", "file":"shared/disposable-candidate-contract.js", "timeoutSeconds":20}
 ]
