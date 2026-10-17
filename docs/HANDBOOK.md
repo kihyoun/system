@@ -466,6 +466,12 @@ soll der **System Wizard selbst** sein. Der geplante Ablauf und die Abnahmekrite
 stehen in [Project Bootstrap](PROJECT_BOOTSTRAP.md); diese Automatisierung ist
 mit der Umbenennung noch nicht implementiert.
 
+Den Wizard selbst als Projekt zu verwalten ist **optional**: Wir nutzen ihn als
+erstes Beispiel, um die Oberfläche über die Plattform weiterzuentwickeln. Wer
+nur eigene Webanwendungen betreiben möchte, kann den mitgelieferten Wizard
+verwenden, ohne dessen Repository oder Pipeline als eigenes Projekt anzulegen.
+Ein Wizard-Projekt wird nicht automatisch für jeden Benutzer hinzugefügt.
+
 Die Runner-Einstellungen haben zwei verschiedene Aufgaben:
 
 | Ort im Wizard | Bedeutung |

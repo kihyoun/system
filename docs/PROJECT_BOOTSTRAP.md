@@ -15,6 +15,12 @@ running configuration UI. This makes the UI a concrete participant in the
 platform's feedback cycle. It does not implement autonomous self-improvement or
 a platform generation switch.
 
+Managing the Wizard as an application is an **optional development use case**.
+It is our first demonstration project, not a project automatically added to
+every bootstrapper instance. Users who only manage their own web applications
+can use the supplied Wizard without importing its repository, creating its
+pipeline or managing its deployment as a project.
+
 ## One project creation flow
 
 1. Select the existing System Wizard source, a project key and the target GitLab
