@@ -7,6 +7,16 @@ handbooks, operating guides and generated starter documentation. The maintainer
 confirmed this preference on 2026-10-17 after noticing the German handbook.
 Conversation with the maintainer may remain in German.
 
+Track new requirements and future expansions in GitHub issues, as requested on
+2026-10-17; documentation should explain current behavior and link to the issue.
+Create the issue before starting new implementation, then link the implementing
+pull requests to it. The current Wizard registration delivery is tracked in
+https://github.com/kihyoun/system/issues/19.
+The Wizard is now to be registered automatically as the first project with its
+real Production URL. This supersedes the previous optional-registration scope.
+Source import, Review/Beta and rollout remain the next expansion, tracked in
+https://github.com/kihyoun/system/issues/18. Preserve the existing running UI.
+
 ## System Cube signature and port 8071
 
 The maintainer explained the following design intent on 2026-10-16:

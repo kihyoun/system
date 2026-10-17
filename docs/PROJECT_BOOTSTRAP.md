@@ -1,5 +1,30 @@
 # Project bootstrap
 
+## Current delivery: register the System Wizard automatically
+
+Tracked in [the automatic Wizard registration issue](https://github.com/kihyoun/system/issues/19).
+
+The maintainer revised the scope on 2026-10-17: when the configured platform
+starts with the Wizard enabled, register it automatically as the first project.
+Its Production URL must come from the real main Wizard configuration, including
+its HTTP/HTTPS mode and certificate settings. The running interface remains the
+same service. Do not create a second proxy for its address or replace the UI.
+
+Use the existing authenticated project provisioning infrastructure to create
+the private `root/wizard` repository scaffold and retain its identity across
+Fetch, Backup/Open, Push and restart. Repeated startup must reuse it. Existing
+local keys or unrelated repositories must be reported without overwriting them.
+Beta and Review are deliberately disabled in this delivery. This registration
+is an initial part of the feedback loop, not a working self-update mechanism.
+
+## Next expansion
+
+New requirements are tracked in GitHub issues. Wizard source import, local
+build/test, Review/Beta and controlled Production rollout are tracked in
+[the Wizard feedback-loop issue](https://github.com/kihyoun/system/issues/18).
+The remaining sections preserve earlier requirements as background; automatic
+registration supersedes their optional-project wording for this delivery only.
+
 ## Intended workflow
 
 The Wizard should manage an application as one project, including its GitLab

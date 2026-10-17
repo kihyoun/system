@@ -16,6 +16,7 @@ if [ -f ../system/.docker.env ] && [ -f ../gitlab/.docker.env ]; then
     if [ $# -lt 1 ] || [ "$1" = "projects" ]; then
         for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
             source $i
+            if [ "${PROJECT_TEMPLATE:-}" = wizard ] && [ "$PROJECT_NAME" = wizard ]; then continue; fi
             docker-compose -p ${PROJECT_NAME}_runner up --build --scale docker=$GITLAB_RUNNER_SCALE --remove-orphans -d
         done
     fi

@@ -91,6 +91,7 @@ if [ $# -lt 1 ] || [ "$1" = projects ]; then
     for config in ../system/.projects.env/*.env ../system/.projects.env/.*.env ../system/projects.env/*.env; do
         [ -f "$config" ] || continue
         source "$config"
+        if [ "${PROJECT_TEMPLATE:-}" = wizard ] && [ "$PROJECT_NAME" = wizard ]; then continue; fi
         for i in $(seq 1 "$GITLAB_RUNNER_SCALE"); do
             register_runner "${PROJECT_NAME}_runner_docker_$i" "$PROJECT_NAME-runner-docker-$i"
         done

@@ -53,7 +53,7 @@ export function validateProject(input: any) {
   if (values.PROJECT_NAME !== input.projectKey) { throw new Error('Project Key does not match configuration.'); }
   if (!applicationTemplates.includes(input.template || 'empty')) { throw new Error('Select a supported application template.'); }
   if (values.PROJECT_TEMPLATE !== undefined && values.PROJECT_TEMPLATE !== (input.template || 'empty')) { throw new Error('Template does not match configuration.'); }
-  if ((input.template || 'empty') === 'empty' && (typeof input.ci !== 'string' || input.ci.length > 200000 || !input.ci.includes('CI_DEFAULT_BRANCH'))) {
+  if (['empty', 'wizard'].includes(input.template || 'empty') && (typeof input.ci !== 'string' || input.ci.length > 200000 || !input.ci.includes('CI_DEFAULT_BRANCH'))) {
     throw new Error('Missing generated CI configuration.');
   }
   return values;
@@ -96,7 +96,7 @@ export function readReceipt(content: string) {
   const line = content.split('\n').find((item) => item.startsWith(receiptLine));
   return line ? JSON.parse(Buffer.from(line.substr(receiptLine.length), 'base64').toString('utf8')) : undefined;
 }
-function writeReceipt(file: string, data: string, receipt: any) {
+export function writeReceipt(file: string, data: string, receipt: any) {
   const temporary = file + '.tmp';
   fs.writeFileSync(temporary, data + '\n' + receiptLine + Buffer.from(JSON.stringify(receipt)).toString('base64') + '\n', {mode: 0o600});
   fs.renameSync(temporary, file);
@@ -128,7 +128,8 @@ export function queryGitlab(input: any) {
   if (previous && previous.state === 'running') { return previous; }
   return startJob(id, () => rails(input));
 }
-export function createProject(input: any) {
+export function createProject(input: any, defaultProject = false) {
+  if (input.template === 'wizard' && !defaultProject) { throw new Error('The system Wizard project is managed automatically.'); }
   const settings = validateProject(input);
   input = {...input, files: undefined, templateVersion: undefined, ...prepareApplication(input.template || 'empty', input.projectKey, settings)};
   const file = path.join(directory, '.' + input.projectKey + '.env');
@@ -140,10 +141,10 @@ export function createProject(input: any) {
   let receipt: any;
   if (fs.existsSync(file)) {
     receipt = readReceipt(fs.readFileSync(file, 'utf8'));
-    if (!receipt || receipt.fingerprint !== fingerprint) { throw new Error('Project Key already exists locally. Fetch before changing it.'); }
+    if (!receipt || (receipt.fingerprint !== fingerprint && !(defaultProject && receipt.defaultProject && receipt.template === 'wizard'))) { throw new Error('Project Key already exists locally. Fetch before changing it.'); }
     if (receipt.state === 'complete') { return {id: receipt.operation, state: 'complete', repository: receipt.repository}; }
   } else {
-    receipt = {operation: crypto.randomBytes(24).toString('hex'), fingerprint, namespaceId: input.namespaceId, template: input.template || 'empty', state: 'pending'};
+    receipt = {operation: crypto.randomBytes(24).toString('hex'), fingerprint, namespaceId: input.namespaceId, template: input.template || 'empty', defaultProject, state: 'pending'};
     // Reserve the key before any asynchronous work; a second Save cannot win.
     fs.writeFileSync(file, input.data + '\n' + receiptLine + Buffer.from(JSON.stringify(receipt)).toString('base64') + '\n', {flag: 'wx', mode: 0o600});
   }
@@ -158,12 +159,17 @@ export function createProject(input: any) {
         return result;
       }
       receipt.repository = result.repository;
+      if (defaultProject) {
+        receipt.repository.systemProject = true;
+        receipt.repository.deploymentState = 'existing-interface';
+        receipt.repository.generatedCi = input.ci;
+      }
       // Persist identity before routing. Retry can repair routing without
       // recreating the project or overwriting a repository file.
       writeReceipt(file, input.data, receipt);
       await new Promise<void>((resolve, reject) => execFile('bash', ['apply.sh'],
         {cwd: path.resolve('../project-bootstrap'), timeout: 180000}, (error) => error ? reject(new Error('Repository ready; routing failed. Retry Save.')) : resolve()));
-      if (input.template && input.template !== 'empty') {
+      if (input.files) {
         const pipeline = await rails({...input, files: undefined, action: 'pipeline', operation: id});
         if (pipeline.state === 'failed') { return pipeline; }
         receipt.repository.initialPipeline = pipeline.pipeline;
@@ -171,7 +177,7 @@ export function createProject(input: any) {
       }
       receipt.state = 'complete';
       writeReceipt(file, input.data, receipt);
-      return {repository: receipt.repository, message: input.template && input.template !== 'empty' ? 'Application and CI ready; first pipeline started.' : 'Repository and CI ready. Add application source to deploy.'};
+      return {repository: receipt.repository, message: defaultProject ? 'System Wizard registered; the existing interface is unchanged.' : input.files ? 'Application and CI ready; first pipeline started.' : 'Repository and CI ready. Add application source to deploy.'};
     } finally { active.delete(id); }
   });
 }

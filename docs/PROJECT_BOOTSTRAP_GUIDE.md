@@ -57,9 +57,20 @@ project is created, ordinary environment edits still use the established local
 configuration/Push workflow; they do not rename repositories or automatically
 rewrite committed CI. Managed CI can be reviewed in GitLab before later changes.
 
-The Wizard is an optional infrastructure project. Importing its source, adapting
-its Node 13 build, validating a separate review deployment and promoting it remain
-a separate optional delivery. They are not performed for every user by Add Project.
+The Wizard is automatically registered as the first system project after a
+configured startup with the Wizard enabled. Its real Production URL comes from
+the main configuration. The private `root/wizard` repository is currently only a
+README/CI registration scaffold; no source import, pipeline or UI rollout occurs.
+Beta and Review are disabled. The original interface and its existing route stay
+in place, without a second project proxy for that host. General manages its
+settings, so edit/delete and environment switches are disabled for this entry.
+Repeated startup reuses the repository, and ordinary Push preserves the
+server-owned registration receipt while updating its displayed Production
+settings at the next startup. An occupied local key or foreign repository is
+reported without overwriting it; resolve the conflict and restart to retry.
+See the [registration issue](https://github.com/kihyoun/system/issues/19) and
+[next expansion](https://github.com/kihyoun/system/issues/18) for source import,
+local GitLab builds, Review/Beta and deliberate rollout.
 Harvest/Seed continue to concern persistent service volumes and certificates;
 configuration stays independent through Push/Fetch and Open/Backup.
 
@@ -123,3 +134,22 @@ starts after routing is ready and its ID is retained for repeat/recovery.
 `tests/application-templates-live-audit.rb` cover generation and the live result.
 The Wizard now has twelve passing Jest tests, including a stable pending-project
 ENV round trip; its existing Node 13 production build also passes.
+
+Automatic Wizard registration was verified locally on 2026-10-17. Startup
+created the private `root/wizard` scaffold, authenticated Fetch returned it first
+with the actual `localhost` Production address, and recovery/repeated startup
+retained its repository identity. The normal Bootstrapper restart preserved the
+existing Wizard and GitLab container identities/start times; the interface
+remained reachable. No additional Wizard proxy or runner resources were created.
+GitLab CI lint accepted the scaffold. GitLab recorded one skipped pipeline for
+the CI-installation commit, with no jobs; no application pipeline or deployment
+was started. Provisioning tokens were revoked.
+
+`tests/default-wizard.js` covers HTTP/HTTPS settings, disabled environments,
+signature validation, repeat registration, configuration-Push preservation and
+local-key conflicts. `tests/default-wizard-routing.sh` covers the single existing
+route and proxy/runner lifecycle exclusion. The authenticated live check is
+`tests/default-wizard-live.js`. The UI now passes thirteen Jest tests across seven
+suites, including first-row ordering, managed controls and metadata import, and
+its Node 13 production build passes. Wizard source import and rollout are still
+the separate expansion linked above.
