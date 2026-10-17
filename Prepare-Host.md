@@ -101,6 +101,34 @@ alone do not keep the WSL instance alive. See
 
 ## Seed lifecycle
 
+### First-setup suggestions in the Wizard
+
+With the matching Wizard update, `Synchronize → Fetch` first requests the saved
+configuration as before. Only a missing main configuration (HTTP 404) triggers
+the new authenticated `GET /config/suggestions` endpoint. Authentication and
+other server errors do not trigger guesses.
+
+Suggestions use the generated NGINX routing templates when available. Missing
+service hostnames can be proposed from the connection/server hostname. These
+are suggestions only: they do not verify DNS, provision domains or establish
+that HTTPS is available. IP addresses, Docker-style container IDs and the
+example.com/org/net placeholder domains are not used to invent hostnames.
+Unknown values remain blank in the Wizard. Passwords and runner tokens are
+not inferred. The user must complete and verify the form before pushing it.
+
+The Wizard marks derived values with `*` and a tooltip asking the user to verify
+them. A saved configuration always takes precedence, including values that the
+user might want to change. Reading suggestions never creates or changes a
+configuration, starts services, or applies a seed.
+
+This keeps the configuration workflow (`Open` / `Backup`, `Push` / `Fetch`)
+independent from the persistent-data workflow (`Harvest` / `Seed`). No new
+configuration volume or automatic persistence mechanism is introduced here.
+
+After compiling sync, run `node tests/config-suggestions.js`. The API test
+`node tests/config-suggestions-api.js` must run in a disposable container: it
+starts its own sync process on port 8071 with a temporary configuration tree.
+
 ### GitLab first administrator login
 
 The username is `root`. For a fresh database, the bootstrapper generates a unique

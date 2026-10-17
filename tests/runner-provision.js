@@ -1,0 +1,11 @@
+'use strict';
+const assert = require('assert');
+const {withToken} = require('../gitlab-runner/provision');
+const signature = require('fs').readFileSync(require('path').join(__dirname, '../system/.docker.env.example'), 'utf8');
+const updated = withToken(signature, 'glrt-example_token-123');
+assert.strictEqual(updated.slice(0, 1184), signature.slice(0, 1184));
+assert.strictEqual(updated.match(/^GITLAB_RUNNER_TOKEN=.*$/m)[0], "GITLAB_RUNNER_TOKEN='glrt-example_token-123'");
+assert.strictEqual(withToken(updated, 'glrt-example_token-123'), updated);
+assert.ok(withToken(signature, 'glrt-t1_example.suffix').includes('glrt-t1_example.suffix'));
+assert.throws(() => withToken(signature, "glrt-'; echo secret"));
+console.log('Runner token update preserves signature and rejects shell injection.');

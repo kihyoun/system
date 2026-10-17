@@ -4,7 +4,7 @@ import fs from 'fs';
 import morgan from 'morgan';
 import md5 from 'md5';
 import path from 'path';
-import { execSync } from "child_process";
+import { execSync, execFile } from "child_process";
 import fileUpload from 'express-fileupload';
 import jwt from 'jsonwebtoken';
 import sha256 from 'crypto-js/sha256';
@@ -12,6 +12,8 @@ import hmacSHA512 from 'crypto-js/hmac-sha512';
 import Base64 from 'crypto-js/enc-base64';
 import cors from 'cors';
 import Helper from "./Helper";
+import os from 'os';
+import { suggestConfig } from './ConfigSuggestions';
 
 export const app = express();
 app.use(bodyParser.json());
@@ -41,8 +43,18 @@ const SYNC_PASS = process.env.SYNC_PASS || Base64.stringify(hmacSHA512(Math.rand
 let refreshTokens: any[] = [];
 
 const status = {
-  needRestart: false
+  needRestart: false,
+  runnerSetupInProgress: false
 };
+
+// Keep the configuration stable while the asynchronous setup saves its token.
+app.use(['/config', '/command'], (req, res, next) => {
+  if (status.runnerSetupInProgress && req.method !== 'GET') {
+    res.status(409).json({message: "Runner setup is in progress. Wait before changing the configuration."});
+    return;
+  }
+  next();
+});
 
 const port = 8071;
 
@@ -116,6 +128,7 @@ app.get( "/status", authenticateJWT, async ( req, res ) => {
 });
 
 app.get( "/config/main", authenticateJWT, async ( req, res ) => {
+  res.setHeader('Cache-Control', 'no-store');
   if (fs.existsSync('../system/.docker.env')) {
     const data = fs.readFileSync('../system/.docker.env',
       {encoding:'utf8', flag:'r'});
@@ -123,6 +136,22 @@ app.get( "/config/main", authenticateJWT, async ( req, res ) => {
     res.status(200).json({filename: ".docker.env", data})
   } else {
      res.sendStatus(404);
+  }
+});
+
+app.get('/config/suggestions', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (fs.existsSync('../system/.docker.env')) {
+    res.status(409).json({ message: 'Saved configuration exists. Fetch it instead.' });
+    return;
+  }
+  try {
+    const files = ['/templates/default.conf.template', '/synctemplates/default.conf.template'];
+    const nginx = files.filter(file => fs.existsSync(file))
+      .map(file => fs.readFileSync(file, 'utf8')).join('\n');
+    res.json(suggestConfig(nginx, req.hostname, os.hostname(), process.env.SEED_DIR || ''));
+  } catch (error) {
+    res.status(500).json({ message: 'Could not derive configuration suggestions.' });
   }
 });
 
@@ -286,13 +315,16 @@ app.patch( "/command/harvest", authenticateJWT, async ( req, res ) => {
 });
 
 app.patch( "/command/runners/register", authenticateJWT, async ( req, res ) => {
-    try {
-      const out = execSync('cd ../gitlab-runner; bash register.sh');
+    status.runnerSetupInProgress = true;
+    execFile('bash', ['start.sh'], {cwd: path.resolve('../gitlab-runner'), timeout: 900000}, (err, out) => {
+      status.runnerSetupInProgress = false;
+      if (err) {
+        res.status(500).json({message: "Runner setup failed. Check GitLab readiness, version and runner configuration."});
+        return;
+      }
       res.status(200).json({message: "Runner registration completed.",
         status, output: out.toString()});
-    } catch (err) {
-      res.status(500).send(err.toString());
-    }
+    });
 });
 
 app.patch( "/command/runners/unregister", authenticateJWT, async ( req, res ) => {

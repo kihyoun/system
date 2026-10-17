@@ -70,6 +70,14 @@ the immediate task to implement it.
 
 ## Current delivery scope
 
+Bootstrapper configuration is managed independently through the Wizard: local
+Open/Backup and server Push/Fetch. Harvest/Seed are for persistent service data;
+do not fold Wizard configuration into that cycle or add configuration volumes
+without an explicit design decision. For first setup only, if no saved main
+configuration exists, Fetch may load derived suggestions marked with an asterisk
+and verification tooltip. Saved configuration always wins; suggestions must
+not be written to the server automatically.
+
 Restore the platform and integrate the UI project so it can be developed using
 the platform's own GitLab, runner and registry. A platform generation switch
 is a longer-term architectural idea, not part of this repair task. The public
