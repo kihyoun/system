@@ -27,8 +27,10 @@ The helper requires an existing destination branch with compatible ancestry.
 ## Helper contract
 
 `gitlab/github-backup.sh` runs in a checkout with an `origin` pointing to the
-intended primary GitLab project. It requires Git and a POSIX shell with `mkdir`
-and `rmdir`. Its configuration is supplied by the protected CI job:
+intended primary GitLab project. The production runtime requires supported Node
+24, Git and a POSIX shell with `mkdir` and `rmdir`. Keep the companion
+`github-backup-transport.js` beside the shell helper. Configuration comes from
+the protected CI job:
 
 | Variable | Required value |
 | --- | --- |
@@ -36,6 +38,7 @@ and `rmdir`. Its configuration is supplied by the protected CI job:
 | `GITHUB_BACKUP_SOURCE_PROJECT` | Approved exact `CI_PROJECT_PATH` |
 | `GITHUB_BACKUP_REMOTE` | Approved GitHub SSH repository, without credentials |
 | `GITHUB_BACKUP_BRANCH` | Approved existing backup branch |
+| `GITHUB_BACKUP_TIMEOUT_SECONDS` | Optional per-transport deadline, integer 1–300; default 30 |
 
 GitLab supplies `GITLAB_CI`, `CI_PIPELINE_SOURCE`, `CI_PROJECT_PATH`,
 `CI_DEFAULT_BRANCH`, `CI_COMMIT_BRANCH`, `CI_COMMIT_REF_PROTECTED` and
@@ -60,6 +63,16 @@ Each invocation forwards the **same merged commit**, using a normal Git push:
 - Rejected pushes and uncertain responses are re-fetched and re-evaluated, with
   at most three push attempts. Retry the CI job after resolving an access error.
 
+Push explicitly disables inherited `push.followTags`; only the configured
+branch is forwarded. Each fetch/push runs under the Node transport boundary
+with a wall-clock deadline. On Unix it owns a process group, sends TERM and
+then KILL after two seconds even if the leader exited first. On Windows the
+offline fixture targets only its own recorded child PID/tree using `taskkill`.
+Cancellation uses the same tree cleanup. The CI job must retain a finite job
+timeout with runner process cleanup as an outer safety boundary. A deadline
+failure releases the checkout lock; an uncatchable host/process termination
+still requires the interrupted-owner inspection described below.
+
 A checkout-local lock rejects overlapping invocations using the same Git object
 database. An uncatchable termination can leave that lock behind; inspect the
 owner before removing `.git/system-github-backup.lock` (use the common Git
@@ -70,7 +83,10 @@ An older job can run after a newer one safely. See
 [GitLab resource groups](https://docs.gitlab.com/ci/resource_groups/).
 
 The helper suppresses transport output, disables shell tracing and local Git
-hooks, and logs only fixed outcome messages. It does not read a private-key
+hooks, and logs only fixed outcome messages. Transport output is discarded,
+terminal/credential-manager prompts are disabled and SSH uses BatchMode with
+strict host-key checking. The job must pre-provision verified `known_hosts`;
+unknown keys fail rather than prompt or bypass verification. It does not read a private-key
 variable, print a remote URL or install credentials. The existing job's SSH
 setup must use protected/masked credentials and verified host keys; do not enable
 CI debug tracing or echo secrets in surrounding commands. Retain the existing
@@ -149,4 +165,5 @@ The fixture creates and removes only its own temporary local repositories.
 instead of GitHub SSH; it is only for those offline fixtures, never production CI.
 The fixture exercises exact-SHA forwarding, retries, out-of-order commits,
 eligibility guards, divergence, missing history, lock contention, competing
-checkouts and secret-output suppression. It never contacts a remote service.
+checkouts, inherited tag configuration, hanging transport descendants,
+cancellation and secret-output suppression. It never contacts a remote service.

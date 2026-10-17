@@ -7,6 +7,16 @@ set -eu
 fail() { printf '%s\n' "GitHub backup failed: $1" >&2; exit 1; }
 skip() { printf '%s\n' "GitHub backup skipped: $1"; exit 0; }
 git_safe() { git -c core.hooksPath=/dev/null "$@"; }
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+transport_pid=
+transport() {
+  node "$script_dir/github-backup-transport.js" "$@" &
+  transport_pid=$!
+  result=0
+  wait "$transport_pid" || result=$?
+  transport_pid=
+  return "$result"
+}
 
 [ "${GITHUB_BACKUP_ENABLED:-}" = true ] || skip 'not enabled'
 [ "${GITLAB_CI:-}" = true ] || fail 'GitLab CI context required'
@@ -58,20 +68,27 @@ cleanup() {
   rmdir "$lock" 2>/dev/null || :
 }
 trap cleanup EXIT
-trap 'exit 1' HUP INT TERM
+cancel() {
+  if [ -n "$transport_pid" ]; then
+    kill -TERM "$transport_pid" 2>/dev/null || :
+    wait "$transport_pid" 2>/dev/null || :
+  fi
+  exit 1
+}
+trap cancel HUP INT TERM
 
 # Full source ancestry is necessary to distinguish a queued ancestor from a fork.
 if [ "$(git_safe rev-parse --is-shallow-repository 2>/dev/null)" = true ]; then
-  git_safe fetch --quiet --no-tags --unshallow origin "+refs/heads/$CI_DEFAULT_BRANCH:$source_ref" >/dev/null 2>&1 || fail 'cannot fetch complete source history'
+  transport fetch --quiet --no-tags --unshallow origin "+refs/heads/$CI_DEFAULT_BRANCH:$source_ref" >/dev/null 2>&1 || fail 'cannot fetch complete source history within transport deadline'
 else
-  git_safe fetch --quiet --no-tags origin "+refs/heads/$CI_DEFAULT_BRANCH:$source_ref" >/dev/null 2>&1 || fail 'cannot fetch source default branch'
+  transport fetch --quiet --no-tags origin "+refs/heads/$CI_DEFAULT_BRANCH:$source_ref" >/dev/null 2>&1 || fail 'cannot fetch source default branch within transport deadline'
 fi
 git_safe merge-base --is-ancestor "$sha" "$source_ref" >/dev/null 2>&1 || fail 'pinned commit is no longer in the source default branch'
 
 attempt=1
 while [ "$attempt" -le 3 ]; do
   # Restrict backup transport and avoid logging URLs or raw transport errors.
-  git_safe -c protocol.allow=never -c "protocol.$target_protocol.allow=always" fetch --quiet --no-tags -- "$remote" "+refs/heads/$branch:$target_ref" >/dev/null 2>&1 || fail 'cannot fetch existing backup branch; inspect mapping, access and history'
+  transport -c protocol.allow=never -c "protocol.$target_protocol.allow=always" fetch --quiet --no-tags -- "$remote" "+refs/heads/$branch:$target_ref" >/dev/null 2>&1 || fail 'cannot fetch existing backup branch within deadline; inspect mapping, access and history'
   target=$(git_safe rev-parse "$target_ref")
   if git_safe merge-base --is-ancestor "$sha" "$target" >/dev/null 2>&1; then
     printf '%s\n' 'GitHub backup verified: target contains the pinned commit'
@@ -79,13 +96,13 @@ while [ "$attempt" -le 3 ]; do
   fi
   git_safe merge-base --is-ancestor "$target" "$sha" >/dev/null 2>&1 || fail 'backup history diverged; manual reconciliation required, nothing overwritten'
   # Ordinary push supplies Git's atomic fast-forward check. Never force or merge.
-  if git_safe -c protocol.allow=never -c "protocol.$target_protocol.allow=always" push --quiet -- "$remote" "$sha:refs/heads/$branch" >/dev/null 2>&1; then
+  if transport -c protocol.allow=never -c "protocol.$target_protocol.allow=always" push --no-follow-tags --quiet -- "$remote" "$sha:refs/heads/$branch" >/dev/null 2>&1; then
     # Re-fetch even after apparent success; a lost response is also retried safely.
     :
   fi
   attempt=$((attempt + 1))
 done
 # The final push may have succeeded despite its response being interrupted.
-git_safe -c protocol.allow=never -c "protocol.$target_protocol.allow=always" fetch --quiet --no-tags -- "$remote" "+refs/heads/$branch:$target_ref" >/dev/null 2>&1 || fail 'cannot verify backup after bounded retries'
+transport -c protocol.allow=never -c "protocol.$target_protocol.allow=always" fetch --quiet --no-tags -- "$remote" "+refs/heads/$branch:$target_ref" >/dev/null 2>&1 || fail 'cannot verify backup after bounded retries and transport deadlines'
 git_safe merge-base --is-ancestor "$sha" "$target_ref" >/dev/null 2>&1 || fail 'backup not verified after bounded retries; retry job after inspecting access/history'
 printf '%s\n' 'GitHub backup verified: target contains the pinned commit'

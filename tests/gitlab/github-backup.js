@@ -69,6 +69,25 @@ function wrapper(f, mode, raceSha = '') {
     : spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
   fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh
 case " $* " in
+  *" fetch "*)
+    if [ ${quote(mode)} = hang-fetch ]; then
+      : > ${quote(path.join(f.dir, 'ready'))}
+      trap '' TERM
+      (trap '' TERM; node -e 'setTimeout(() => require("fs").writeFileSync(process.argv[1], "survived"), 4000)' ${quote(path.join(f.dir, 'survived'))}) &
+      wait
+      exit 1
+    fi
+    ;;
+esac
+if [ ${quote(mode)} = noninteractive ]; then
+  case " $* " in
+    *" fetch "*|*" push "*)
+      [ "$GIT_TERMINAL_PROMPT" = 0 ] && [ "$GCM_INTERACTIVE" = Never ] || exit 1
+      case "$GIT_SSH_COMMAND" in *"BatchMode=yes"*"StrictHostKeyChecking=yes"*) ;; *) exit 1;; esac
+      ;;
+  esac
+fi
+case " $* " in
   *" push "*)
     if [ ! -f ${quote(path.join(f.dir, 'attempted'))} ]; then
       : > ${quote(path.join(f.dir, 'attempted'))}
@@ -90,8 +109,12 @@ exec ${quote(gitPath)} "$@"
 
 async function main() {
   let f = fixture();
+  git(f.work, 'config', 'push.followTags', 'true');
+  git(f.work, 'tag', '-a', 'unrelated-tag', '-m', 'not part of branch backup');
   pass(f.run());
   assert.equal(f.tip(), f.sha, 'backup receives the exact merged commit');
+  assert.equal(git(f.dir, '--git-dir', f.backup, 'for-each-ref', '--format=%(refname)'),
+    'refs/heads/master', 'push.followTags cannot publish unconfigured refs');
   pass(f.run());
   assert.equal(git(f.work, 'remote', 'get-url', 'origin'), posix(f.source));
   assert.equal(git(f.work, 'show-ref', '--verify', '--quiet', 'refs/heads/main'), '');
@@ -142,7 +165,7 @@ async function main() {
   pass(f.run({}, shallow));
   assert.equal(git(shallow, 'rev-parse', '--is-shallow-repository'), 'false');
   assert.equal(f.tip(), f.sha);
-  for (const mode of ['fail-once', 'lost-response', 'always-fail']) {
+  for (const mode of ['fail-once', 'lost-response', 'always-fail', 'noninteractive']) {
     f = fixture(); const extra = wrapper(f, mode);
     const result = f.run(extra);
     if (mode === 'always-fail') {
@@ -179,7 +202,38 @@ async function main() {
     (error, stdout, stderr) => error ? reject(new Error(stderr)) : resolve(stdout)));
   await Promise.all([runAsync(f.work), runAsync(second)]);
   assert.equal(f.tip(), f.sha, 'independent checkouts converge safely');
-  console.log('PASS: guarded FF-only backup, idempotency, queued commits, divergence, locks, transport retry/redaction, competing checkouts');
+
+  f = fixture();
+  let extra = wrapper(f, 'hang-fetch');
+  let started = Date.now();
+  fail(f.run({ ...extra, GITHUB_BACKUP_TIMEOUT_SECONDS: '1' }), /transport deadline/);
+  assert(fs.existsSync(path.join(f.dir, 'ready')), 'deadline fixture actually started');
+  assert(Date.now() - started < 12000, 'hanging source fetch has a bounded lifetime');
+  await new Promise(resolve => setTimeout(resolve, 4500));
+  assert(!fs.existsSync(path.join(f.dir, 'survived')), 'deadline kills transport descendants');
+  assert(!fs.existsSync(path.join(f.work, '.git/system-github-backup.lock')));
+  pass(f.run());
+
+  f = fixture(); extra = wrapper(f, 'hang-fetch');
+  const savedEnv = process.env;
+  const savedDirectory = process.cwd();
+  process.env = { ...f.env, ...extra };
+  process.chdir(f.work);
+  const { startTransport } = require('../../gitlab/github-backup-transport');
+  const transport = startTransport(['fetch', 'origin'], 30);
+  process.env = savedEnv;
+  process.chdir(savedDirectory);
+  const ready = path.join(f.dir, 'ready');
+  started = Date.now();
+  while (!fs.existsSync(ready) && Date.now() - started < 5000) {
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert(fs.existsSync(ready), 'cancellation fixture transport started');
+  transport.cancel();
+  assert.equal(await transport.done, 124);
+  await new Promise(resolve => setTimeout(resolve, 4500));
+  assert(!fs.existsSync(path.join(f.dir, 'survived')), 'cancellation kills transport descendants');
+  console.log('PASS: guarded branch-only backup, idempotency, shallow/queued commits, divergence, locks, retry/redaction, races, noninteractive deadlines and descendant cancellation');
 }
 main().finally(() => fs.rmSync(tmp, { recursive: true, force: true })).catch(error => {
   console.error(error.message); process.exitCode = 1;
