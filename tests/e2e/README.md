@@ -238,7 +238,7 @@ acceptance and retains private inputs for targeted recovery.
 This deliberately reports `acmeRenewalVerified: false`: synthetic TLS plus restored
 renewal configuration is not a Certbot/ACME renewal dry-run. Full #43 closure still
 requires a bounded local ACME fixture or separately authorized real renewal proof.
-The eleven offline adapter tests include actual ephemeral HTTPS with a trusted CA,
+The offline adapter tests include actual ephemeral HTTPS with a trusted CA,
 wrong-host and foreign-CA rejection, lifecycle ordering, cancellation, stream
 boundaries and failed-cleanup handling. They do not establish a passed cold run.
 
@@ -246,10 +246,22 @@ boundaries and failed-cleanup handling. They do not establish a passed cold run.
 The baseline cold fixture uses its explicitly source-built local Wizard image.
 Capture preserves any existing `WIZARD_IMAGE`, GitLab/Runner version and host
 binding assignments rather than replacing those choices with fixture defaults.
-A restored private Wizard registry pin currently fails explicitly with
-`wizard-pin-recovery-artifact-not-declared`; it is never silently changed to the
-local fixture image. Reports also state `privateWizardPinVerified: false`.
-#43 remains open for a server-owned temporary `read_registry` credential and
-registry/bootstrap routing procedure, or a declared compatible rebuild at the
-recorded promoted source revision. A fresh host must not depend on an old Docker
-login, and successful local-image recovery does not verify that private-pin case.
+Without the explicit `privateWizardRecovery` scenario, a restored private Wizard
+registry pin fails with `wizard-pin-recovery-artifact-not-declared`; it is never
+silently changed to the local fixture image.
+
+The private-image scenario publishes a derivative of the declared source-built
+Wizard image through a real CI job on a separate branch of the managed Wizard
+project. A unique marker layer makes its image ID different from every prepared
+archive. The actual exported configuration pins that CI-published registry digest.
+The new daemon must have neither its digest reference nor its private image ID
+before startup. After Seed restoration, the fresh-source startup helper retrieves
+the exact image using a temporary project-scoped `read_registry` deploy token.
+The adapter verifies the running Wizard's image ID and marker and verifies that
+no live reserved recovery token remains. Only then may the report state
+`privateWizardPinVerified: true`. The fixture does not supply an old Docker login,
+private image archive or substitute image. This scenario still requires actual
+passing candidate execution; its component contracts are not integration proof.
+#43 remains open until the complete private-image scenario and actual renewal
+proof pass. A fresh host must not depend on an old Docker login, and successful
+local-image recovery alone does not verify the private-pin case.

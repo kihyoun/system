@@ -23,3 +23,12 @@ source is fetched afresh. Runners and their working directories are regenerated.
 
 All implementation and tests use isolated checkouts and fixtures. Production,
 existing Seed trees and historical backups are untouched.
+
+Follow-up: retain an exported private, immutable Wizard image pin on a clean host.
+Start GitLab and a GitLab/registry-only proxy, mint an owned-project
+`read_registry` deploy token through restored GitLab, pull the exact digest using
+a new temporary Docker configuration, then revoke the token and remove the login.
+Check receipt/project identity before minting, persist interrupted-cleanup state,
+and cover success/failure revocation plus the early routing boundary. Prove the
+complete path with a real CI-published derivative image absent from the fresh
+daemon's declared source-build archives; do not replace the saved image pin.

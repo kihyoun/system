@@ -14,6 +14,7 @@ function included(name) {
   // do not belong in the test context. The one validated snapshot is added below.
   if (name === snapshotPath || /(^|\/)(node_modules|dist|test-results|\.test-context|\.projects\.env)(\/|$)/.test(name)) return false;
   if (/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper_initial_root_password)$/.test(name)) return false;
+  if (['system/ensure-wizard-image.sh','system/wizard-image-recovery.js','system/wizard-registry-token.rb'].includes(name)) return true;
   return /^sync\/src\//.test(name) ||
     ['sync/package.json','sync/package-lock.json','sync/tsconfig.json','sync/eslint.config.mjs'].includes(name) ||
     name.startsWith('project-bootstrap/') || name.startsWith('tests/') ||

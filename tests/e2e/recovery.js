@@ -10,6 +10,16 @@ const BASE='/recovered-data/platform';
 const SEED='/recovered-data/seed';
 const LEAF='/ssl/live/recovery-fixture/fullchain.pem';
 const KEY='/ssl/live/recovery-fixture/privkey.pem';
+const PRIVATE_MARKER='/opt/system-bootstrapper/private-recovery-proof';
+function privateWizardDescriptor(value,spec) {
+  if(!value||!Number.isInteger(value.projectId)||value.projectId<1||!/^[-a-z0-9_/]+\/wizard$/.test(value.projectPath||'')||
+    !/^sha256:[a-f0-9]{64}$/.test(value.imageDigest||'')||!/^sha256:[a-f0-9]{64}$/.test(value.imageId||'')||
+    value.sourceImageId!==spec.images?.wizard?.id||Object.values(spec.images||{}).some(image=>image.id===value.imageId)||
+    value.imageRef!=='registry.candidate.test:5050/'+value.projectPath+'/recovery-wizard@'+value.imageDigest||
+    !/^[a-f0-9]{24}$/.test(value.marker||'')||value.markerPath!==PRIVATE_MARKER||
+    !Number.isInteger(value.pipelineId)||value.pipelineId<1||!Number.isInteger(value.jobId)||value.jobId<1)throw Error('private-wizard-recovery-descriptor-invalid');
+  return value;
+}
 function hashFile(filename) {
   const descriptor=fs.openSync(filename,'r'),hash=crypto.createHash('sha256'),buffer=Buffer.allocUnsafe(1024*1024);
   try {let count;while((count=fs.readSync(descriptor,buffer,0,buffer.length,null)))hash.update(buffer.subarray(0,count));}
@@ -70,7 +80,7 @@ async function revoke(candidate,token) {
   try {await candidate.api('/personal_access_tokens/self',token,'DELETE');}
   catch {await candidate.rails("User.find_by_username('root').personal_access_tokens.where(name:'disposable-backup-recovery',revoked:false).find_each(&:revoke!); puts '{}'");}
 }
-async function capture(original) {
+async function capture(original,dependencies={}) {
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'system-recovery-'));
   fs.chmodSync(directory,0o700);
   const inputs={directory,configArchive:path.join(directory,'bootstrapper.zip'),seedArchive:path.join(directory,'seed.tgz'),base:BASE,seed:SEED};
@@ -94,6 +104,10 @@ async function capture(original) {
         inputs.expected={rootId:auth.root_id,projectId,path:project.path_with_namespace,branch:project.default_branch,head:branch.commit.id,
           issueIid:issue.iid,nonce,userId:user.id,userName:user.username,registryId:registry.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
       } finally {await revoke(original,auth.token);}
+    });
+    if(original.spec.privateWizardRecovery)await original.stage('recovery-publish-uncached-private-wizard',async()=>{
+      const publish=dependencies.publishWizard||require('./wizard-pin-fixture').publish;
+      inputs.expected.privateWizard=privateWizardDescriptor(await publish(original),original.spec);
     });
     await original.stage('recovery-backup-wizard-configuration',async()=>{
       // Generate a real test certificate, then place its deploy/renewal state in
@@ -119,9 +133,16 @@ async function capture(original) {
         fs.symlinkSync('../../archive/recovery-fixture/privkey1.pem',state+'/live/recovery-fixture/privkey.pem');
         fs.writeFileSync(state+'/accounts/fixture/account.json',JSON.stringify({testOnly:true,identity:input.identity}),{mode:0o600});
         fs.writeFileSync(state+'/renewal/recovery-fixture.conf','[renewalparams]\nauthenticator = webroot\nwebroot_path = /candidate-data/platform/ssl/acme-http01,\n[[webroot_map]]\nwizard.candidate.test = /candidate-data/platform/ssl/acme-http01\n');
-        const config=updateConfiguration(fs.readFileSync('/state/.docker.env','utf8'),input.settings);
+        let config=updateConfiguration(fs.readFileSync('/state/.docker.env','utf8'),input.settings);
+        if(input.privateWizard){
+          // Deliberately promote this scenario's actual CI-published artifact
+          // before the real Wizard backup; restore must retain this exact pin.
+          const assignment="export WIZARD_IMAGE='"+input.privateWizard+"'";
+          const expression=/^(?:export )?WIZARD_IMAGE=.*$/m;
+          config=expression.test(config)?config.replace(expression,()=>assignment):config+'\n'+assignment+'\n';
+        }
         fs.writeFileSync('/state/.docker.env',config,{mode:0o600});
-      },{settings,identity:original.id});
+      },{settings,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef});
       inputs.expected.certificateHash=await node(original,function(){process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync('/ssl/live/recovery-fixture/fullchain.pem')).digest('hex'));},{});
       inputs.expected.accountIdentity=original.id;
       const fetched=await syncFetch(original);
@@ -147,6 +168,9 @@ async function capture(original) {
 async function bootstrapRestore(candidate,dependencies={}) {
   const input=candidate.spec.restore;
   if(input.base!==BASE || input.seed!==SEED || input.configHash!==hashFile(input.configArchive) || input.seedHash!==hashFile(input.seedArchive))throw Error('recovery-input-identity-mismatch');
+  const privateWizard=input.expected?.privateWizard;
+  if(!!candidate.spec.privateWizardRecovery!==!!privateWizard)throw Error('private-wizard-recovery-scenario-mismatch');
+  if(privateWizard)privateWizardDescriptor(privateWizard,candidate.spec);
   const directories=['configuration','templates','synctemplates','ssl','runners','gitlab/config','gitlab/logs','gitlab/data','host/letsencrypt'];
   await candidate.call(['exec',candidate.daemon,'mkdir','-p',SEED,...directories.map(name=>BASE+'/'+name)]);
   const mounts={configuration:'configuration',templates:'templates',synctemplates:'synctemplates',ssl:'ssl',gitlabConfig:'gitlab/config',gitlabLogs:'gitlab/logs',gitlabData:'gitlab/data'};
@@ -162,7 +186,11 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await transferToController(candidate,input.configArchive,'/system/bootstrapper.zip');
   await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','push.sh']);
   const wizardImage=await candidate.inner(['exec','system_bootstrapper_1','bash','-c','source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"']);
-  if(wizardImage!=='systembootstrapper/wizard')throw Error('wizard-pin-recovery-artifact-not-declared');
+  if(wizardImage!==(privateWizard?.imageRef||'systembootstrapper/wizard'))throw Error('wizard-pin-recovery-artifact-not-declared');
+  if(privateWizard)for(const identity of [privateWizard.imageRef,privateWizard.imageId]){
+    let present=false;try{await candidate.inner(['image','inspect',identity]);present=true;}catch{/* the new private layer must genuinely be absent */}
+    if(present)throw Error('private-wizard-recovery-image-already-cached');
+  }
   // Rebind the one declared host-specific setting; preserve every Cube byte and
   // every unrelated value. Runners/routing/source are never copied from old live data.
   await node(candidate,function(input){
@@ -227,6 +255,7 @@ async function verifyRestore(candidate,input) {
     if(proof.certificate!==input.expected.certificateHash || proof.account!==input.expected.accountIdentity || proof.oldLivePresent ||
       !proof.renewal.includes(BASE+'/ssl/acme-http01') || proof.renewal.includes('/candidate-data/platform'))throw Error('restored-renewal-path-or-identity-mismatch');
   });
+  if(input.expected.privateWizard)await verifyPrivateWizard(candidate,input.expected.privateWizard);
   await candidate.stage('recovery-gitlab-data-identity',async()=>{
     await candidate.wait(async()=>{await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness']);return true;},candidate.spec.readinessMilliseconds||600000);
     const auth=await rootToken(candidate);
@@ -243,6 +272,15 @@ async function verifyRestore(candidate,input) {
     } finally {await revoke(candidate,auth.token);}
   });
 }
+async function verifyPrivateWizard(candidate,expected){
+  await candidate.stage('recovery-private-wizard-image-and-credential-cleanup',async()=>{
+    const identity=await candidate.inner(['inspect','--format','{{.Image}}','system_wizard_1']);
+    const marker=await candidate.inner(['exec','system_wizard_1','cat',PRIVATE_MARKER]);
+    const cleanup=await candidate.rails("require 'json';p=Project.find("+expected.projectId+");raise unless p.full_path=="+JSON.stringify(expected.projectPath)+";puts JSON.generate(active:p.deploy_tokens.where(name:'system-bootstrapper-wizard-image-recovery',revoked:false).count)");
+    if(identity!==expected.imageId||marker!==expected.marker||cleanup.active!==0)throw Error('private-wizard-restoration-or-credential-cleanup-failed');
+    candidate.privateWizardPinVerified=true;
+  });
+}
 async function verifyRegistryBlob(candidate,input) {
   await candidate.stage('recovery-original-registry-blob-ci',async()=>{
     const auth=await rootToken(candidate);
@@ -256,7 +294,7 @@ async function verifyRegistryBlob(candidate,input) {
       if(pipeline.status!=='success')throw Error('restored-registry-ci-failed');
       const jobs=await candidate.api('/projects/'+expected.projectId+'/pipelines/'+pipeline.id+'/jobs',auth.token);
       if(jobs.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id)throw Error('restored-registry-job-not-successful');
-      candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false};
+      candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:candidate.privateWizardPinVerified===true};
     } finally {await revoke(candidate,auth.token);}
   });
 }
@@ -278,7 +316,7 @@ async function run(original,reportDirectory,dependencies={}) {
     await (dependencies.verifyRestore || verifyRestore)(second,input);
     await second.platform();
     await (dependencies.verifyRegistryBlob || verifyRegistryBlob)(second,input);
-    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false};
+    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:second.privateWizardPinVerified===true};
   } finally {
     let clean=true;
     if(second){clean=second.cleanup();second.report(reportDirectory(second));}
@@ -286,4 +324,4 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!clean)throw Error('restored-host-cleanup-failed');
   }
 }
-module.exports={capture,bootstrapRestore,verifyRestore,verifyRegistryBlob,run,exporter,tlsProbe,hashFile,updateConfiguration,BASE,SEED};
+module.exports={capture,bootstrapRestore,verifyRestore,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,hashFile,updateConfiguration,privateWizardDescriptor,BASE,SEED};

@@ -162,7 +162,7 @@ build:
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
   script:
-    - docker build -t $IMAGE_TAG ./bootstrapper
+    - docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper
     - docker tag $IMAGE_TAG systembootstrapper/system:latest
     - docker push $IMAGE_TAG
   only:

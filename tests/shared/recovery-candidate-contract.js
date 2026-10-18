@@ -20,6 +20,13 @@ function original() {
     stage:async(name,action)=>{events.push(name);return action();},
     cleanup(){events.push('original-cleanup');this.removed=true;return true;}};
 }
+function privateFixture(){
+  const images={wizard:{id:'sha256:'+'b'.repeat(64)},candidate:{id:'sha256:'+'c'.repeat(64)}};
+  const expected={projectId:12,projectPath:'root/wizard',imageDigest:'sha256:'+'d'.repeat(64),imageId:'sha256:'+'e'.repeat(64),
+    sourceImageId:images.wizard.id,marker:'a'.repeat(24),markerPath:'/opt/system-bootstrapper/private-recovery-proof',pipelineId:21,jobId:31};
+  expected.imageRef='registry.candidate.test:5050/root/wizard/recovery-wizard@'+expected.imageDigest;
+  return {images,expected};
+}
 function dependencies(first,input,options={}) {
   const events=first.events;
   class FakeCandidate {
@@ -158,4 +165,39 @@ test('a private Wizard pin fails explicitly without silently selecting the fixtu
   const candidate={spec:{restore:input},daemon:'owned-private-daemon',call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{calls.push({args,options});return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'registry.private.test/wizard@sha256:'+'a'.repeat(64):'';}};
   await assert.rejects(()=>recovery.bootstrapRestore(candidate,{rewriter:'public fixture'}),/wizard-pin-recovery-artifact-not-declared/);
   assert(!calls.some(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint')),'normal provisioning must not conceal a substituted image');
+});
+
+test('the private image oracle requires an exact owned-registry artifact absent from declared build archives',()=>{
+  const f=privateFixture();assert.equal(recovery.privateWizardDescriptor(f.expected,f),f.expected);
+  for(const change of [{imageId:f.images.wizard.id},{sourceImageId:'sha256:'+'0'.repeat(64)},{imageRef:f.expected.imageRef.replace('root/wizard','root/other')},{markerPath:'/etc/passwd'},{projectId:0}]){
+    assert.throws(()=>recovery.privateWizardDescriptor({...f.expected,...change},f),/descriptor-invalid/);
+  }
+});
+test('declared private pin remains exact and both its new image ID and reference must be absent before startup',async t=>{
+  const input=fixture(t),f=privateFixture(),calls=[];input.expected.privateWizard=f.expected;
+  const candidate={spec:{restore:input,privateWizardRecovery:true,images:f.images},daemon:'owned-private-daemon',call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{
+    calls.push({args,options});if(args[0]==='image')throw Error('absent image');
+    return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?f.expected.imageRef:'';
+  }};
+  await recovery.bootstrapRestore(candidate,{rewriter:'public source fixture'});
+  assert.deepEqual(calls.filter(call=>call.args[0]==='image').map(call=>call.args.at(-1)),[f.expected.imageRef,f.expected.imageId]);
+  assert(calls.some(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint')));
+  assert(!calls.some(call=>call.args.some(arg=>arg===f.expected.imageRef)&&call.args[0]==='tag'),'the test must not manufacture a cached pin');
+});
+test('an already cached private layer fails acceptance before normal platform startup',async t=>{
+  const input=fixture(t),f=privateFixture(),calls=[];input.expected.privateWizard=f.expected;
+  const candidate={spec:{restore:input,privateWizardRecovery:true,images:f.images},daemon:'owned-private-daemon',call:async()=>'',inner:async args=>{
+    calls.push(args);return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?f.expected.imageRef:'cached image';
+  }};
+  await assert.rejects(()=>recovery.bootstrapRestore(candidate),/image-already-cached/);
+  assert(!calls.some(args=>args[0]==='create'&&!args.includes('--entrypoint')));
+});
+test('private-image proof requires the restored container identity, marker and zero live recovery credentials',async()=>{
+  const expected=privateFixture().expected;
+  const candidate={stage:async(_name,action)=>action(),inner:async args=>args[0]==='inspect'?expected.imageId:expected.marker,rails:async()=>({active:0})};
+  await recovery.verifyPrivateWizard(candidate,expected);assert.equal(candidate.privateWizardPinVerified,true);
+  for(const fault of ['image','marker','credential']){
+    const bad={...candidate,privateWizardPinVerified:false,inner:async args=>args[0]==='inspect'?(fault==='image'?'sha256:'+'f'.repeat(64):expected.imageId):(fault==='marker'?'different-marker':expected.marker),rails:async()=>({active:fault==='credential'?1:0})};
+    await assert.rejects(()=>recovery.verifyPrivateWizard(bad,expected),/restoration-or-credential-cleanup-failed/);assert.equal(bad.privateWizardPinVerified,false);
+  }
 });

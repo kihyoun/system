@@ -18,6 +18,12 @@ function identifiers(env=process.env){
   const suffix=env.CI_PROJECT_ID+'-'+env.CI_JOB_ID;
   return {candidate:'system-platform-candidate:ci-'+suffix,wizard:'system-platform-wizard:ci-'+suffix};
 }
+function privateWizardAcceptance(files,exists=filename=>fs.existsSync(path.join(root,filename))) {
+  const helpers=["system/ensure-wizard-image.sh","system/wizard-image-recovery.js","system/wizard-registry-token.rb"];
+  if(!helpers.some(filename=>files.includes(filename)))return false;
+  if(!helpers.every(filename=>files.includes(filename))||!exists("tests/e2e/recovery.js")||!exists("tests/e2e/wizard-pin-fixture.js"))throw Error("Private Wizard startup requires the complete private-registry recovery contract.");
+  return true;
+}
 function prepare(){
   if(process.arch!=='x64'||process.platform!=='linux')throw Error('Current pinned candidate images require Linux amd64.');
   const tags=identifiers();
@@ -28,6 +34,8 @@ function prepare(){
   if(crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex')!==fs.readFileSync(path.join(manifest,'sha256'),'utf8').trim())throw Error('Candidate context checksum mismatch.');
   const trackedManifest=JSON.parse(fs.readFileSync(path.join(manifest,'manifest.json'),'utf8'));
   const recoveryAcceptance=trackedManifest.files.includes('system/seed-manifest.js');
+  const privateWizardRecovery=privateWizardAcceptance(trackedManifest.files);
+  if(privateWizardRecovery&&!recoveryAcceptance)throw Error('Private Wizard recovery requires marked Seed recovery.');
   if(recoveryAcceptance&&!fs.existsSync(path.join(__dirname,'recovery.js')))throw Error('Marked Seed requires the complete cold recovery adapter.');
   const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',timeout:600000,...options});
   let fd=fs.openSync(archive,'r');
@@ -56,10 +64,10 @@ function prepare(){
     if(!/^sha256:[a-f0-9]{64}$/.test(id))throw Error('Invalid inspected image identity.');
     const filename=path.join(output,role+'.tar');run(['image','save','--output',filename,reference]);images[role]={id,archive:filename};
   }
-  const spec={sourceRevision:process.env.CI_COMMIT_SHA,configurationExporter,recoveryAcceptance,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>role!=='helper')),
+  const spec={sourceRevision:process.env.CI_COMMIT_SHA,configurationExporter,recoveryAcceptance,privateWizardRecovery,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>role!=='helper')),
     supportImages:{helper:images.helper},fullAcceptance:true,readinessMilliseconds:600000};
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});
   console.log('Prepared pinned full-platform candidate images for '+process.env.CI_COMMIT_SHA);
 }
-module.exports={defaults,identifiers};
+module.exports={defaults,identifiers,privateWizardAcceptance};
 if(require.main===module){try{prepare();}catch{console.error('Candidate image preparation failed; see public build log.');process.exitCode=1;}}

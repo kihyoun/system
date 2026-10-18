@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const {spawnSync} = require('child_process');
+const jobDiagnostics = require('./job-diagnostics');
 
 const LABEL = 'com.system-bootstrapper.test-run';
 const SIGNATURE = 'bd4a8426355824593a5e21ad759830c1';
@@ -146,7 +147,7 @@ class Candidate {
         '--mount','type=volume,source='+volume+',target=/var/lib/docker',
         '--add-host','registry.candidate.test:127.0.0.1','--add-host','gitlab.candidate.test:127.0.0.1',
         '--env','DOCKER_TLS_CERTDIR=',this.spec.daemonImage,'dockerd','--host=unix:///var/run/docker.sock',
-        '--insecure-registry','registry.candidate.test']);
+        '--insecure-registry','registry.candidate.test','--insecure-registry','registry.candidate.test:5050']);
       await this.call(['start',this.daemon]);
       await this.wait(async()=>{await this.inner(['info','--format','{{.ID}}']);return true;},90000);
       // All HTTP probes execute inside the owned daemon; publish no outer port.
@@ -248,11 +249,14 @@ class Candidate {
         const script='('+function(base){
           const fs=require('fs');const p=base+'/runners/runner/1/config/config.toml';
           let t=fs.readFileSync(p,'utf8');
-          t=t.replace(/(\[runners\.docker\]\n)/,'$1    helper_image = "candidate-helper:under-test"\n    pull_policy = "if-not-present"\n    allowed_pull_policies = ["never", "if-not-present"]\n');
+          if((t.match(/\[runners\.docker\]\r?\n/g)||[]).length!==1)throw Error('candidate-runner-docker-section-required');
+          t=t.replace(/(\[runners\.docker\]\r?\n)/,'$1    helper_image = "candidate-helper:under-test"\n    pull_policy = "if-not-present"\n    allowed_pull_policies = ["never", "if-not-present"]\n');
           fs.writeFileSync(p,t,{mode:0o600});
         }.toString()+')('+JSON.stringify(this.spec.restore?.base||'/candidate-data/platform')+')';
         await this.inner(['exec','system_bootstrapper_1','node','-e',script]);
+        await this.inner(['exec','runner_docker_1','sh','-c','grep -F \'allowed_pull_policies = ["never", "if-not-present"]\' /etc/gitlab-runner/config.toml >/dev/null && grep -F \'helper_image = "candidate-helper:under-test"\' /etc/gitlab-runner/config.toml >/dev/null']);
         await this.sleep(4000);
+        await this.inner(['exec','runner_docker_1','gitlab-runner','verify']);
       });
       let project,branch;
       await this.stage('registry-build-push-pull-run',async()=>{
@@ -269,7 +273,7 @@ registry-round-trip:
   script:
     - echo 'FROM system-candidate:under-test' > Dockerfile
     - echo 'RUN printf candidate-registry-ok > /candidate-proof' >> Dockerfile
-    - docker build --network none -t "$CI_REGISTRY_IMAGE/probe:$CI_COMMIT_SHA" .
+    - docker build --network none --provenance=false --sbom=false -t "$CI_REGISTRY_IMAGE/probe:$CI_COMMIT_SHA" .
     - printf '%s' "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin
     - docker push "$CI_REGISTRY_IMAGE/probe:$CI_COMMIT_SHA"
     - docker image rm "$CI_REGISTRY_IMAGE/probe:$CI_COMMIT_SHA"
@@ -295,7 +299,15 @@ delivery-gate:
         },300000);
         const jobs=await this.api('/projects/'+project.id+'/pipelines/'+pipeline.id+'/jobs',token);
         this.evidence={projectId:project.id,pipelineId:pipeline.id,pipelineStatus:pipeline.status,jobs:jobs.map(job=>({id:job.id,name:job.name,status:job.status,failureReason:job.failure_reason,runnerId:job.runner?.id,duration:job.duration,queuedSeconds:job.queued_duration,startedAt:job.started_at,finishedAt:job.finished_at}))};
-        if(pipeline.status!=='success')throw new Error('candidate-pipeline-failed');
+        if(pipeline.status!=='success') {
+          for(const job of jobs.filter(item=>item.status==='failed')) {
+            let diagnostics;
+            try {diagnostics=jobDiagnostics.classify(await this.api('/projects/'+project.id+'/jobs/'+job.id+'/trace',token));}
+            catch {diagnostics={codes:['trace-unavailable']};}
+            this.evidence.jobs.find(item=>item.id===job.id).diagnostics=diagnostics;
+          }
+          throw new Error('candidate-pipeline-failed');
+        }
         if(jobs.length!==2||jobs.some(job=>job.status!=='success'||!job.runner?.id))throw new Error('candidate-jobs-not-successful');
         const proof=jobs.find(job=>job.name==='registry-round-trip');
         const artifact=await this.api('/projects/'+project.id+'/jobs/'+proof.id+'/artifacts/proof.txt',token);
@@ -440,8 +452,15 @@ function recover(report,exec=docker) {
   if(Array.isArray(report.evidence?.jobs)) evidence.jobs=report.evidence.jobs.filter(job=>
     Number.isInteger(job.id)&&['registry-round-trip','delivery-gate'].includes(job.name)&&['success','failed','skipped'].includes(job.status)).map(job=>({id:job.id,name:job.name,status:job.status,
       ...(Number.isInteger(job.runnerId)?{runnerId:job.runnerId}:{}),
+      ...(jobDiagnostics.failureReason(job.failureReason)?{failureReason:jobDiagnostics.failureReason(job.failureReason)}:{}),
       ...(Number.isFinite(job.duration)?{duration:job.duration}:{}),
-      ...(Number.isFinite(job.queuedSeconds)?{queuedSeconds:job.queuedSeconds}:{})}));
+      ...(Number.isFinite(job.queuedSeconds)?{queuedSeconds:job.queuedSeconds}:{}),
+      ...(jobDiagnostics.sanitize(job.diagnostics)?{diagnostics:jobDiagnostics.sanitize(job.diagnostics)}:{})}));
+  if(report.evidence?.recovery && /^[a-f0-9]{24}$/.test(report.evidence.recovery.runId||'')) {
+    const recovery={runId:report.evidence.recovery.runId};
+    for(const key of ['backupOnly','originalHostRemoved','syntheticTlsVerified','acmeRenewalVerified','privateWizardPinVerified'])if(typeof report.evidence.recovery[key]==='boolean')recovery[key]=report.evidence.recovery[key];
+    evidence.recovery=recovery;
+  }
   Object.assign(instance,{id:report.runId,name,resources:report.resources,results,exec,
     startedAt:typeof report.startedAt==='string'&&Number.isFinite(Date.parse(report.startedAt))?Date.parse(report.startedAt):undefined,
     evidence:Object.keys(evidence).length?evidence:undefined,

@@ -57,7 +57,7 @@ promote a `.harvest-*` staging directory to `current`.
    changed (use the Wizard field and regenerate the export; never replace text
    across the Cube header). Run storage preflight before any service. Install the backup configuration in
    the new persistent configuration directory before provisioning GitLab/runners.
-3. Rebuild custom controller and Wizard images from the freshly fetched source
+3. Rebuild custom controller and source-built Wizard images from the freshly fetched source
    using their committed Dockerfiles/build recipes. Pull public GitLab and Runner
    images at the exact retained references. Set `BOOTSTRAPPER_IMAGE`,
    `WIZARD_IMAGE`, `NGINX_IMAGE`, `GITLAB_IMAGE` and `GITLAB_RUNNER_IMAGE` explicitly
@@ -68,6 +68,9 @@ promote a `.harvest-*` staging directory to `current`.
    [managed environment procedure](../project-bootstrap/wizard-environments/README.md).
    Update the installed recipe explicitly; its old immutable helper identity must
    not be silently redirected to a new image.
+   If `WIZARD_IMAGE` instead pins a published image in this platform's own GitLab
+   registry, keep that exact digest. Its registry data must be in the completed
+   Seed; rebuilding an unrelated default-branch image is not a replacement.
 4. Before starting GitLab, run `system/seed.sh` in a recovery container with the
    same `/srv`, `/ssl`, `/seed` and `/host-letsencrypt` bindings as the controller.
    The Docker daemon must be available, and GitLab must be absent or stopped.
@@ -85,6 +88,29 @@ promote a `.harvest-*` staging directory to `current`.
    renewal dry-run through `system-certbot`, then start the platform normally.
    Runner managers/workspaces are recreated from configuration and restored GitLab
    state; no old runner directories or checkout are required recovery inputs.
+
+### Pulling a restored private Wizard image
+
+After GitLab starts, `system/ensure-wizard-image.sh` recovers an absent immutable
+Wizard image from the platform's own registry. It validates the saved managed
+Wizard receipt and registry/project identity, renders a GitLab/registry-only proxy,
+and waits for GitLab's internal readiness endpoint. GitLab creates a project deploy
+token with only `read_registry`; Docker receives the password on standard input
+and writes its login to a new private temporary directory. The helper pulls and
+verifies the exact saved digest, revokes the token on success or failure, and
+removes the temporary login. Old host Docker credentials are not recovery inputs.
+Normal public-image startup and already cached exact pins need no token.
+
+The deploy token has GitLab's next-day UTC expiry as a safety bound and is normally
+revoked immediately. See the [GitLab deploy-token documentation](https://docs.gitlab.com/api/deploy_tokens/).
+Only tokens with the reserved recovery purpose in the receipt's exact project are
+eligible for cleanup. A failed revocation retains
+`configuration/.wizard-image-recovery.pending`; startup must finish that cleanup
+even if the image has since been cached. An interrupted process leaves
+`configuration/.wizard-image-recovery.lock`. After verifying the old process has
+ended, remove only that stale lock and retry startup; retain the pending file so
+the helper can revoke the reserved credential. Credential failures stop startup
+before Wizard and project services rather than substituting a different image.
 
 ## Verification and remaining limits
 

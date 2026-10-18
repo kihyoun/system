@@ -168,6 +168,14 @@ and stale-snapshot/link refusal. The parent contract additionally checks context
 checksums/revisions before Docker, failed cleanup visibility, preserved primary
 failure, absent resources and unreachable-daemon reporting.
 
+`shared/wizard-pin-fixture-contract.js` checks the owned managed-project receipt,
+branch-only CI publication, exact commit selection, a new image ID absent from
+the prepared archives, immutable registry reference, and temporary credential
+revocation, including malformed mint responses. It uses a transport fixture; real
+publication and private image recovery are proven separately by the required
+platform candidate. Image preparation enables that scenario when all three
+tracked private-Wizard startup helpers are present and rejects partial contracts.
+
 The integrated manifest also includes these checks, with the same process/time
 limits, component output and JUnit reporting:
 
@@ -175,6 +183,7 @@ limits, component output and JUnit reporting:
 | --- | --- | --- |
 | `sync/migration-api.js` | Private Sync process on 8071; JWT authentication/refresh and multipart configuration round trips after Express migration | 30s |
 | `wizard/source-package.js` | Git-created disposable repositories; pinned/binary/mode preservation, dirty/private-file exclusions and path/hash/link rejection using Helper bytes from the validated source snapshot | 30s |
+| `wizard/in-place-upgrade.js` | Disposable GitLab API fixture with real Git no-op semantics; isolated branch/receipt preservation, stopped leases, exact four-commit activation identities, lost-write reconciliation, modern artifacts, fast-forward adoption, private history and concurrent-edit refusal | 30s |
 | `wizard/source-workflow.js` | Compiled Sync, prepared snapshot and fake Rails transport; preview, locks, durable receipt/retry/conflict behavior | 30s |
 | `wizard/source-api.js` | Compiled Sync/snapshot; private ephemeral HTTP listener, explicit forbidden shell/container transports; auth, preview, initialization, polling and mutation guards | 30s |
 | `gitlab/source-import.rb` | Ruby standard library and in-memory GitLab API adapter; source/CI conflicts, binary/mode import and interrupted-commit recovery; no Rails/server/network | 20s |
@@ -304,3 +313,13 @@ repositories and fake transports; it does not push to GitHub or change GitLab.
 (30-second budget), using Python 3 standard-library fixtures for passive resource
 collection, parsing, reports and endpoint behavior. It performs no live load
 test. The required GitLab matrix includes both checks.
+
+The single-platform registry probe, private Wizard derivative and root GitLab
+publishing build explicitly use `--provenance=false --sbom=false`. Docker 29
+with the containerd store can push an OCI attestation before its subject, which
+GitLab rejects as `blob unknown to registry`; see the [Moby maintainer report](https://github.com/moby/moby/issues/53293)
+and [Docker attestation documentation](https://docs.docker.com/build/metadata/attestations/).
+This compatibility setting applies only to the affected GitLab publishing paths.
+Registry digest, pull/run and artifact verification remain required; these jobs
+do not claim attestation verification. Source-only candidate image builds retain
+their existing metadata behavior.

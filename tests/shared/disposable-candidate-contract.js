@@ -88,9 +88,53 @@ function fixture() {
     assert.equal((await actual.instance.httpFromCandidate('http://candidate.invalid/probe?ref=main',{headers:{Host:'wizard.candidate.test'}})).status,200,
       'The actual Node transport must preserve the NGINX virtual Host header.');
   } finally {await new Promise(resolve=>server.close(resolve));}
+  const diagnostic=require('./job-diagnostics');
+  const trace='$ docker build --network none -t private-image .\n$ printf secret-fixture-token | docker login registry.test --password-stdin\nhttp: server gave HTTP response to HTTPS client\nERROR: Job failed: exit code 1\n';
+  const classified=diagnostic.classify(trace);
+  assert.deepEqual(classified,{commands:['build','login'],codes:['registry-protocol'],exitCode:1});
+  assert(!JSON.stringify(classified).includes('secret-fixture-token'));
+  assert.deepEqual(diagnostic.sanitize({...classified,private:'secret-fixture-token',codes:['registry-protocol','secret-fixture-token']}),classified);
+  assert.deepEqual(diagnostic.classify('x'.repeat(524289)),{codes:['trace-unavailable']});
+  assert.deepEqual(diagnostic.classify('ERROR: Job failed (system failure): the configured PullPolicies ([never]) are not allowed by AllowedPullPolicies ([always])'),{commands:[],codes:['runner-pull-policy']});
+  assert.equal(diagnostic.failureReason('runner_configuration_error'),'runner_configuration_error');
+  assert.equal(diagnostic.failureReason('secret-fixture-token'),undefined);
+  const failing=fixture().instance;
+  const policyDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-runner-policy-'));
+  const policyFile=path.join(policyDirectory,'runners/runner/1/config/config.toml');
+  fs.mkdirSync(path.dirname(policyFile),{recursive:true});
+  fs.writeFileSync(policyFile,'[[runners]]\r\n  token = "secret-fixture-token"\r\n  [runners.docker]\r\n    image = "alpine"\r\n');
+  failing.spec={...spec,supportImages:{helper:{}},restore:{base:policyDirectory}};
+  const policyTransport=failing.inner.bind(failing);
+  failing.inner=async(args,options)=>{
+    if(args.includes('node')&&args.includes('-e'))return require('child_process').execFileSync(process.execPath,['-e',args.at(-1)],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
+    return policyTransport(args,options);
+  };
+  failing.rails=async()=>({token:'secret-fixture-token',pools:1,active_setup:0});
+  failing.stage=async(name,action)=>{if(name==='gitlab-and-runner-ready')return;return action();};
+  failing.wait=async action=>{if(!await action())throw Error('fixture-wait-failed');};
+  let createdProjects=0;
+  failing.api=async(route)=>{
+    if(route==='/projects'){createdProjects++;return {id:2,default_branch:'main'};}
+    if(route.endsWith('/pipelines'))return [{id:3,status:'failed'}];
+    if(route.endsWith('/jobs'))return [{id:4,name:'registry-round-trip',status:'failed',runner:{id:1},failure_reason:'runner_configuration_error'}];
+    if(route.endsWith('/trace'))return trace;
+    return null;
+  };
+  failing.request=async()=>({status:401});
+  try {
+    await assert.rejects(failing.platform(),/candidate-pipeline-failed/);
+    assert(fs.readFileSync(policyFile,'utf8').includes('allowed_pull_policies = ["never", "if-not-present"]'));
+    assert.deepEqual(failing.evidence.jobs[0].diagnostics,classified);
+    assert.equal(failing.evidence.jobs[0].failureReason,'runner_configuration_error');
+    fs.writeFileSync(policyFile,'[[runners]]\n  token = "secret-fixture-token"\n');
+    await assert.rejects(failing.platform());
+    assert.equal(createdProjects,1,'A missing real Docker TOML section must fail before creating any CI project.');
+  } finally {fs.rmSync(policyDirectory,{recursive:true,force:true});}
   const test=fixture(); await test.instance.start(); await test.instance.smoke();
   const creation=test.commands.find(x=>x.args[0]==='create').args;
   assert(creation.includes('--privileged')); assert(!creation.includes('--publish'));
+  assert(creation.some((value,index)=>value==='--insecure-registry'&&creation[index+1]==='registry.candidate.test'));
+  assert(creation.some((value,index)=>value==='--insecure-registry'&&creation[index+1]==='registry.candidate.test:5050'));
   assert.equal(test.instance.url,'http://candidate.invalid');
   assert(!creation.some(x=>x.includes('docker.sock:') || x.includes('source=/var/run'))); assert(!creation.includes('--network=host'));
   assert(test.commands.find(x=>x.args[0]==='network' && x.args[1]==='create').args.includes('--internal'));
@@ -128,6 +172,11 @@ function fixture() {
   assert.equal(fullRecovery.spec.images.candidate.id,'sha256:'+hash);
   assert.equal(fullRecovery.results[0].name,'registry-build-push-pull-run');
   assert.equal(fullRecovery.results[0].milliseconds,123);
+  const durable=recover({...fullReceipt,evidence:{jobs:[{id:3,name:'registry-round-trip',status:'failed',diagnostics:{...classified,private:'secret-fixture-token'}}],
+    recovery:{runId:'a'.repeat(24),backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false,private:'secret-fixture-token'}}});
+  assert.deepEqual(durable.evidence.jobs[0].diagnostics,classified);
+  assert.deepEqual(durable.evidence.recovery,{runId:'a'.repeat(24),backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false});
+  assert(!JSON.stringify(durable.evidence).includes('secret-fixture-token'));
   assert.deepEqual(fullRecovery.evidence,{projectId:1,pipelineId:2,jobs:[{id:3,name:'registry-round-trip',status:'success',runnerId:4,duration:5}]});
   assert(!JSON.stringify(fullRecovery).includes('never retain'));
 
