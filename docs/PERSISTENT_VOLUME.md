@@ -127,11 +127,13 @@ publish private configuration or image archives containing credentials in Git.
 3. Recreate `/etc/system-bootstrapper/persistence.env` from the retained selector
    values. Confirm the mounted filesystem and optional UUID match the expected
    volume, and that `platform` and the old seed backup are present.
-4. Run the recovery entrypoint retained under `platform/recovery`. It loads the
-   retained local images, pulls the recorded public image versions, restores the
-   host certificate integration and starts the saved source definitions with
-   `BOOTSTRAPPER_IMAGE` and rebuilding disabled. Read that entrypoint's usage for
-   the supported invocation and required host prerequisites.
+4. Run `bash /mnt/HC_Volume_24222125/platform/recovery/recover.sh`. The retained
+   wrapper selects `recovery/persistence.env` and invokes
+   `source/bootstrapper/recover-volume.sh`. It verifies archive checksums, loads
+   local images, obtains the recorded public image versions, reinstalls host
+   certificate integration and starts the definitions without rebuilding. Pass
+   `--verify` for a storage/archive check without loading images or starting
+   services. The host prerequisites in step 2 remain required.
 5. Let startup regenerate container IP settings, nginx configuration and runner
    connections. Update public DNS if the new VM has a different address, retaining
    the configured domain names.
@@ -141,15 +143,41 @@ publish private configuration or image archives containing credentials in Git.
 
 Before any initial migration, stop writers while moving retained service data.
 Existing named volumes do not adopt changed driver options automatically; recreate
-their metadata deliberately after establishing the new bind directories. Keep the
-old root-disk data until the new containers have passed validation. The current
+their metadata deliberately after establishing the new bind directories. When existing state must be preserved, retain a rollback copy until the new
+containers have passed validation. The current
 permission to discard test data does not authorize deleting the old seed backup.
 
 ## Verification status
 
-The volume layout and replacement-host procedure require live validation before
-reporting that the current VM can be removed safely. Record the deployed source
-revision, mount/device inventory, restart result, certificate renewal result and
-recovery artifact verification here after those checks pass. Merely having a
-mounted volume or a historical seed does not establish that current service state
-is retained there.
+Verified on the current host on 2026-10-18:
+
+- All five platform containers were recreated during migration. Their 17 data
+  mounts resolve to the attached filesystem; named-volume devices explicitly
+  reference the directories below `platform`. The Docker socket is not a data
+  mount, and the static Wizard has no retained container-local application state.
+- GitLab data/configuration/registry, runner registration/home, routing and SSL
+  state were copied consistently while the original services were stopped.
+  The older `backup/seed-20261018` was preserved.
+- The recovery entrypoint was executed from the volume's independent GitHub
+  checkout: checksums verified, all three local image tags loaded, public image
+  identities restored, host integration reinstalled and the controller recreated.
+  A configuration marker, saved main/project Fetch signatures and the existing
+  Sync authentication survived. Runner verification passed.
+- Main Wizard and GitLab HTTPS returned 200; unauthenticated registry `/v2/`
+  returned the expected 401. Both certificate lineages passed Certbot's simulated
+  renewal using the new persistent webroot. Certbot state itself is retained at
+  `host/letsencrypt`.
+- 38 isolated component checks passed, plus the runner lifecycle regression in
+  the actual Alpine controller runtime. The retained runtime archive is about
+  185 MiB; checksums, pinned public images and private operational evidence live
+  under `recovery` on the volume.
+
+Deployed code tree: `4555202b291c31ff6b83781a8655c1df46bfbbb9`
+(GitHub revision `469e8b83a54de975a1bba15b4dc6fc3534ecbedc`). The documentation
+update after acceptance does not change that deployed code.
+
+This validates migration and controller recreation on the current VM. A complete
+replacement with a newly provisioned VM has **not** been exercised, and neither
+the VM nor the volume was deleted. Retaining this volume is a requirement for
+replacement; an off-host backup is not a prerequisite of this delivery. GitHub
+remains the code-review workflow; no GitLab-primary cutover was performed.
