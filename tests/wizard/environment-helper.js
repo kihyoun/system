@@ -3,7 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {Runtime, parse} = require('../../project-bootstrap/wizard-environments/helper');
+const {Runtime, parse, canonicalLegacyRecipe} = require('../../project-bootstrap/wizard-environments/helper');
 const state = require('../../project-bootstrap/wizard-environments/state');
 const op = 'a'.repeat(48), sha = 'b'.repeat(40), digest = 'registry.example.test/root/wizard@sha256:' + 'c'.repeat(64);
 const request = (pipelineId = 10, jobId = 20, mrIid = 1, action = 'deploy', kind = 'review') =>
@@ -219,5 +219,34 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
     await rejects(() => fixture.run(), /another job/);
     assert.strictEqual(fixture.events.length, 0, 'other-MR deploy mutated pending resources');
   } finally { fixture.destroy(); }
+  const proof = new Runtime(request());
+  const legacy = canonicalLegacyRecipe();
+  const logo = require('../../sync/dist/Helper').default.textLogo;
+  const options = {settings: {review: setting, beta: {...setting, enabled: false}}, settingsHash: '1'.repeat(64),
+    helperImage: 'sha256:' + '2'.repeat(64), operation: op, controller: 'system_bootstrapper_1'};
+  proof.environment = {...options, recipeHash: require('../../project-bootstrap/wizard-environments/recipe').generate(logo, options).recipeHash};
+  proof.context = {publicSettings: {GITLAB_REGISTRY_URL: 'https://registry.example.test', GITLAB_REGISTRY_DOMAIN_MODE: '2'},
+    receipt: {operation: 'registration', repository: {id: 1, path: 'root/wizard', defaultBranch: 'main'},
+      wizardWorkflow: {sourceRevision: '3'.repeat(40), importCommit: '4'.repeat(40),
+        build: {version: 1, operation: '5'.repeat(48), recipeHash: legacy.recipeHash, activationCommit: '6'.repeat(40)}}}};
+  let proofRequests = 0;
+  proof.json = async (_args, script) => {
+    proofRequests++;
+    const encoded = script.match(/^BOOTSTRAPPER_ENVIRONMENT_INPUT = '([A-Za-z0-9+/=]+)'/)[1];
+    const input = JSON.parse(Buffer.from(encoded, 'base64'));
+    assert.deepStrictEqual(input.legacyFiles, legacy.files, 'runtime omitted or altered an immutable managed build file');
+    assert.strictEqual(input.buildActivationCommit, '6'.repeat(40));
+    assert.deepStrictEqual(JSON.parse(input.legacyMarker.content), {version: 1, operation: '5'.repeat(48),
+      recipeHash: legacy.recipeHash, sourceRevision: '3'.repeat(40), importCommit: '4'.repeat(40)});
+    assert(input.legacyFiles.some(file => file.path.endsWith('/build.sh')));
+    assert(input.legacyFiles.some(file => file.path.endsWith('/Dockerfile')));
+    assert(input.legacyFiles.some(file => file.path.endsWith('/verify.sh')));
+    return {ok: true, imageRef: digest};
+  };
+  await proof.verify();
+  assert.strictEqual(proofRequests, 1);
+  proof.context.receipt.wizardWorkflow.build.recipeHash = 'changed';
+  await rejects(() => proof.verify(), /managed build recipe identity changed/);
+  assert.strictEqual(proofRequests, 1, 'changed canonical recipe reached external verification');
   console.log('Environment helper: singleton MR lease, stale jobs/stops, owned resources, health gates, CAS/reload rollback, tombstones and interrupted cutover recovery passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

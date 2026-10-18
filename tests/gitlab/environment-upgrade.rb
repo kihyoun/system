@@ -148,3 +148,47 @@ assert(run.call[:environments]['activationCommit'] == 'd' * 40 && fixture.posts.
 assert(Base64.decode64(fixture.files.fetch('README.md').fetch('content')) == 'upstream README')
 assert(fixture.posts.all? { |body| body.fetch(:actions).none? { |a| a.fetch(:file_path) == '.gitlab-ci.yml' || a.fetch(:file_path).include?('/build-v1/') } })
 puts 'Environment upgrade: ownership, prior verified build, exact content, skip-CI atomic install/update, occupied paths, active lease refusal, interrupted/raced commit recovery and read-only status passed.'
+require_relative '../../project-bootstrap/wizard-environments/verify'
+activation, pipeline_sha = 'a' * 40, 'e' * 40
+managed = [
+  {'path' => '.system-bootstrapper/build-v1/build.sh', 'content' => 'real build and immutable digest evidence'},
+  {'path' => '.system-bootstrapper/build-v1/Dockerfile', 'content' => 'RUN real checks'},
+  {'path' => '.system-bootstrapper/build-v1/verify.sh', 'content' => 'real browser checks'},
+  {'path' => '.system-bootstrapper/wizard-build.json', 'content' => 'canonical Phase B marker'}
+]
+repo = managed.to_h { |file| [file.fetch('path'), {'content' => Base64.strict_encode64(file.fetch('content')), 'last_commit_id' => activation}] }
+repo['src/App.tsx'] = {'content' => Base64.strict_encode64('legitimate MR source edits'), 'last_commit_id' => pipeline_sha}
+lookups = []
+get = lambda do |route|
+  parsed = URI.parse('https://gitlab.test/' + route)
+  assert(URI.decode_www_form(parsed.query).to_h.fetch('ref') == pipeline_sha, 'proof inspected default branch instead of actual MR pipeline commit')
+  path = URI.decode_www_form_component(parsed.path.split('/repository/files/').last)
+  lookups << path
+  repo.fetch(path)
+end
+verify = -> { WizardEnvironmentProof.files!(get, 'projects/1/', pipeline_sha, managed, activation) }
+verify.call
+assert(lookups == managed.map { |file| file.fetch('path') } && !lookups.include?('src/App.tsx'))
+managed.each do |file|
+  name = file.fetch('path'); original = repo.fetch(name).dup
+  # A passing CI job may forge all artifact booleans. Managed source proof must
+  # reject its edited producer before any such artifact can authorize deploy.
+  repo[name] = {'content' => Base64.strict_encode64('forged success evidence'), 'last_commit_id' => pipeline_sha}
+  begin
+    verify.call
+    raise 'Edited managed MR recipe was accepted'
+  rescue RuntimeError => error
+    raise unless error.message == 'managed-file-content'
+  end
+  # Editing and restoring bytes still changes file identity and must fail.
+  repo[name] = original.merge('last_commit_id' => pipeline_sha)
+  begin
+    verify.call
+    raise 'Recommitted managed MR recipe was accepted'
+  rescue RuntimeError => error
+    raise unless error.message == 'managed-file-content'
+  end
+  repo[name] = original
+end
+verify.call
+puts 'Environment candidate proof: actual pipeline SHA, all preserved build scripts/Dockerfiles/Phase B marker, original activation identity, edited/restored recipe refusal and editable application source passed.'

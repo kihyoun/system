@@ -8,15 +8,19 @@ const ROOT = '/templates/wizard-environments';
 const canonicalCode = fs.readFileSync(path.join(__dirname, 'canonical.js'), 'utf8')
   .replace("if (require.main === module)", 'if (true)');
 const verifier = fs.readFileSync(path.join(__dirname, 'verify.rb'), 'utf8');
-function canonicalRecipe(environment) {
+function canonicalLogo() {
   const source = fs.readFileSync(path.join(__dirname, '../../sync/src/Helper.ts'), 'utf8');
   const logo = source.match(/return `([\s\S]*?)`;/)?.[1];
   if (!logo || logo[807] !== '$' || crypto.createHash('md5').update(logo.slice(0, 1184)).digest('hex') !== 'bd4a8426355824593a5e21ad759830c1')
     throw new Error('Immutable helper signature source changed.');
-  const recipe = require('./recipe').generate(logo, environment);
+  return logo;
+}
+function canonicalRecipe(environment) {
+  const recipe = require('./recipe').generate(canonicalLogo(), environment);
   if (recipe.recipeHash !== environment.recipeHash) throw new Error('Immutable helper recipe identity changed.');
   return recipe;
 }
+function canonicalLegacyRecipe() { return require('../wizard-build/recipe').generate(canonicalLogo()); }
 function parse(args) {
   const values = {};
   for (let i = 0; i < args.length; i += 2) {
@@ -247,7 +251,7 @@ class Runtime {
         const key = crypto.createPrivateKey(fs.readFileSync(setting.sslKey));
         if (!certificate.checkPrivateKey(key)) throw new Error('key');
       } catch (_) { throw new Error('Candidate certificate is unavailable.'); }
-      if (certificate.checkHost(setting.host, {wildcards: false}) !== setting.host ||
+      if (certificate.checkHost(setting.host, {subject: 'never', wildcards: false}) !== setting.host ||
           Date.parse(certificate.validFrom) > Date.now() || Date.parse(certificate.validTo) <= Date.now())
         throw new Error('Candidate certificate does not cover its exact host or is expired.');
     }
@@ -255,9 +259,17 @@ class Runtime {
   async verify() {
     const registry = new URL(this.context.publicSettings.GITLAB_REGISTRY_URL);
     if (Number(this.context.publicSettings.GITLAB_REGISTRY_DOMAIN_MODE || 0) < 2) registry.port = '5050';
+    const legacy = canonicalLegacyRecipe();
+    const workflow = this.context.receipt.wizardWorkflow;
+    const build = workflow?.build;
+    if (build?.version !== 1 || build.recipeHash !== legacy.recipeHash || !/^[a-f0-9]{40}$/.test(build.activationCommit || ''))
+      throw new Error('Canonical managed build recipe identity changed.');
+    const legacyMarker = {path: '.system-bootstrapper/wizard-build.json', content: JSON.stringify({version: 1,
+      operation: build.operation, recipeHash: legacy.recipeHash, sourceRevision: workflow.sourceRevision, importCommit: workflow.importCommit})};
     const input = {repository: this.context.receipt.repository, registrationOperation: this.context.receipt.operation,
       request: this.request, registryPrefix: registry.host + '/' + this.context.receipt.repository.path,
-      environments: this.environment, recipe: canonicalRecipe(this.environment)};
+      environments: this.environment, recipe: canonicalRecipe(this.environment),
+      legacyFiles: legacy.files, legacyMarker, buildActivationCommit: build.activationCommit};
     const script = "BOOTSTRAPPER_ENVIRONMENT_INPUT = '" + Buffer.from(JSON.stringify(input)).toString('base64') + "'\n" + verifier;
     const result = await this.json(['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'], script, {timeout: 180000});
     if (!result.ok) throw new Error('Canonical GitLab job, source, or candidate checks failed.');
@@ -381,4 +393,4 @@ if (require.main === module) {
     });
   } catch (_) { console.error('Invalid managed environment invocation.'); process.exitCode = 2; }
 }
-module.exports = {parse, Runtime, canonicalRecipe};
+module.exports = {parse, Runtime, canonicalRecipe, canonicalLegacyRecipe};

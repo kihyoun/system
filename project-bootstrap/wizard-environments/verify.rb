@@ -3,6 +3,18 @@ require 'json'
 require 'base64'
 require 'net/http'
 require 'uri'
+class WizardEnvironmentProof
+  def self.files!(get, prefix, sha, files, activation)
+    raise 'managed-file-proof' unless sha.match?(/\A[a-f0-9]{40}\z/) && activation.match?(/\A[a-f0-9]{40}\z/) &&
+      !files.empty? && files.map { |source| source.fetch('path') }.uniq.length == files.length
+    files.each do |source|
+      row = get.call(prefix + 'repository/files/' + URI.encode_www_form_component(source.fetch('path')) + '?ref=' + sha)
+      raise 'managed-file-content' unless row['last_commit_id'] == activation &&
+        Base64.strict_decode64(row.fetch('content').delete("\n")) == source.fetch('content')
+    end
+  end
+end
+if defined?(BOOTSTRAPPER_ENVIRONMENT_INPUT)
 input = JSON.parse(Base64.strict_decode64(BOOTSTRAPPER_ENVIRONMENT_INPUT))
 credential = nil
 begin
@@ -32,11 +44,12 @@ begin
     job['name'] == request.fetch('action') + ':' + request.fetch('kind') && job['status'] == 'running'
   environment, recipe = input.fetch('environments'), input.fetch('recipe')
   expected_files = recipe.fetch('files') + [{'path' => '.system-bootstrapper/ci.yml', 'content' => recipe.fetch('ci')}]
-  expected_files.each do |source|
-    row = get.call(prefix + 'repository/files/' + URI.encode_www_form_component(source.fetch('path')) + '?ref=' + pipeline.fetch('sha'))
-    raise 'recipe-content' unless row['last_commit_id'] == environment.fetch('activationCommit') &&
-      Base64.strict_decode64(row.fetch('content').delete("\n")) == source.fetch('content')
-  end
+  WizardEnvironmentProof.files!(get, prefix, pipeline.fetch('sha'), expected_files, environment.fetch('activationCommit'))
+  legacy_files = input.fetch('legacyFiles')
+  legacy_marker = input.fetch('legacyMarker')
+  raise 'legacy-proof' unless !legacy_files.empty? && legacy_files.all? { |source| source.fetch('path').start_with?('.system-bootstrapper/build-v1/') } &&
+    legacy_marker.fetch('path') == '.system-bootstrapper/wizard-build.json'
+  WizardEnvironmentProof.files!(get, prefix, pipeline.fetch('sha'), legacy_files + [legacy_marker], input.fetch('buildActivationCommit'))
   marker = get.call(prefix + 'repository/files/' + URI.encode_www_form_component('.system-bootstrapper/wizard-environments.json') + '?ref=' + pipeline.fetch('sha'))
   parsed = JSON.parse(Base64.strict_decode64(marker.fetch('content').delete("\n")))
   expected_marker = {'version' => 1, 'operation' => environment.fetch('operation'), 'recipeHash' => environment.fetch('recipeHash'),
@@ -83,3 +96,4 @@ ensure
   credential.revoke! if credential
 end
 puts JSON.generate(result)
+end
