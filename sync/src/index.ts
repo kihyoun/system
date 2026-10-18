@@ -309,13 +309,15 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
   try {
     const file = req.files?.['bootstrapper.zip'];
     if (file && !Array.isArray(file) && file.name==='bootstrapper.zip') {
-      console.log('Stopping intermediate services...')
-      const out = execSync('cd ../system; bash ./stop-intermediate.sh');
       fs.writeFileSync('../bootstrapper.zip', file.data);
       const out2 = execSync('cd ../system; bash push.sh');
       status.needRestart = true;
-      res.status(200).json({message: 'Config written.',
-        status, output: out.toString() + out2.toString()});
+      // Keep the Wizard available until import succeeds and the response is sent.
+      // Exiting Sync lets the controller stop services and restart with the saved
+      // configuration, including runner scale; no second UI action is required.
+      res.once('finish', () => setImmediate(stopExecution));
+      res.status(200).json({message: 'Config written. Restarting system.',
+        status, output: out2.toString()});
     } else {
       res.sendStatus(400);
     }

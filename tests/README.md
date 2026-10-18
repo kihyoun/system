@@ -141,6 +141,7 @@ Every old path below was directly under `tests/`.
 | `project-bootstrap.js` | `gitlab/project-bootstrap.js` | Validation, conflicts, idempotency, async jobs/auth/Fetch with private files, fake transport and private Sync process; compiled Sync/Bash | <10s |
 | `config-suggestions.js` | `sync/config-suggestions.js` | NGINX/host suggestion precedence, unknown hosts and secret exclusion; compiled Sync | <1s |
 | `config-suggestions-api.js` | `sync/config-suggestions-api.js` | Auth, saved-config precedence, runner mutation guards and error redaction; private Sync process on 8071/Bash | <5s |
+| New regression | `sync/push-restart-api.js` | Actual authenticated multipart ZIP import, response before restart, failed import preserves availability; isolated Sync/Bash/unzip | <5s |
 | `runner-provision.js` | `gitlab-runner/provision.js` | Literal token update and unchanged signature; Node | <1s |
 | `runner-endpoint.js` | `gitlab-runner/endpoint.js` | Managed stable endpoint migration without token/external-host changes; Node | <1s |
 | `runner-startup.sh` | `bootstrapper/runner-startup.sh` | Wizard startup remains available after fake runner failure; Bash | <1s |

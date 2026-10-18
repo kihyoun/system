@@ -8,6 +8,7 @@
   {"component":"gitlab","file":"gitlab/wizard-registry-token.rb","timeoutSeconds":20},
   {"component":"sync","file":"sync/config-suggestions.js","timeoutSeconds":15},
   {"component":"sync","file":"sync/config-suggestions-api.js","timeoutSeconds":30,"port":8071},
+  {"component":"sync","file":"sync/push-restart-api.js","timeoutSeconds":30,"port":8071},
   {"component":"sync","file":"sync/migration-api.js","timeoutSeconds":30,"port":8071},
   {"component":"gitlab-runner","file":"gitlab-runner/provision.js","timeoutSeconds":15},
   {"component":"gitlab-runner","file":"gitlab-runner/endpoint.js","timeoutSeconds":15},

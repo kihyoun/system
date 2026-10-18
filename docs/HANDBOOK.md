@@ -246,11 +246,11 @@ means this is a fresh installation.
 1. Select **Backup**, then **Download**. The `bootstrapper.json` file is downloaded
    to your computer. It includes credentials; keep it private.
 2. Select **Synchronize → Push** and confirm the transfer. This sends the Wizard
-   settings to the instance. Services may be stopped during this operation.
-3. Keep the browser tab open and select **Synchronize → Restart**. The platform
-   then starts with the transferred configuration.
+   settings to the instance and automatically restarts services after a successful
+   import. The interface is temporarily unavailable while services start.
+3. Wait for the interface to return, then reconnect and Fetch to verify the settings.
 
-**Push transfers the settings. Restart starts services with those settings.**
+**Push transfers and applies settings. No separate Restart click is required.**
 Open loads a previously downloaded JSON file into the Wizard; loading the file
 alone does not change the server configuration.
 
@@ -303,7 +303,7 @@ first-startup `/sync` path.
 
 Use the Edit dialog and the Sync credentials you chose in section 0.9. Load the
 saved configuration with **Synchronize → Fetch**. You can change it, save a local
-Backup, then apply it with Push and Restart.
+Backup, then apply it with Push (which restarts automatically).
 
 The steps through Fetch were performed on the fresh local instance shown in the
 images. GitLab and runner setup were tested separately beforehand. This handbook
@@ -319,7 +319,7 @@ does not establish production readiness or validate data migration.
 | Open | Loads a configuration file from your computer into the Wizard |
 | Backup | Downloads the Wizard configuration to your computer as JSON |
 | Fetch | Retrieves saved instance settings; without a configuration, the current version loads marked suggestions |
-| Push | Transfers the Wizard configuration to the instance |
+| Push | Transfers the Wizard configuration and automatically restarts the instance |
 | Restart | Restarts services using the transferred configuration |
 | Register / Unregister | Registers or unregisters configured runners |
 | Harvest | Copies persistent service data and certificates to the seed directory |
@@ -334,7 +334,7 @@ and Seed are not needed to view a configuration with Fetch.
 Current implementation detail: the existing Wizard **Seed** action also
 transfers the main configuration from the form before restoring data. Check the
 form before invoking it. First-startup suggestions did not change this coupling.
-Use Push and Restart for the initial setup in chapter 0.
+Use Push for the initial setup in chapter 0.
 
 Harvest alone has not been demonstrated to produce a consistent GitLab database
 backup. Restore, updates and production operation require additional validation.
@@ -355,7 +355,7 @@ Use the image settings from chapter 0 for the local test.
    range is 0 to 50; choose a count appropriate for your computer's memory and CPU.
 4. Leave **Runner authentication token** empty for automatic setup. A token
    already loaded by Fetch can stay in place: it will be reused.
-5. Transfer the settings with **Synchronize → Push**, then select **Restart**.
+5. Transfer and apply the settings with **Synchronize → Push**; restart is automatic.
    Wait for GitLab startup and runner registration.
 6. Check the Ubuntu console:
 
