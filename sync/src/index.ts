@@ -240,8 +240,8 @@ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
 
 app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
   try {
-    if (req.files && req.files['bootstrapper.zip']?.name==='bootstrapper.zip') {
-      const file = req.files['bootstrapper.zip'];
+    const file = req.files?.['bootstrapper.zip'];
+    if (file && !Array.isArray(file) && file.name==='bootstrapper.zip') {
       console.log('Stopping intermediate services...')
       const out = execSync('cd ../system; bash ./stop-intermediate.sh');
       fs.writeFileSync('../bootstrapper.zip', file.data);
@@ -259,8 +259,8 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
 
 app.post( "/config/main", authenticateJWT, async ( req, res ) => {
   try {
-    if (req.files && req.files['.docker.env']?.name==='.docker.env') {
-      const file = req.files['.docker.env'];
+    const file = req.files?.['.docker.env'];
+    if (file && !Array.isArray(file) && file.name==='.docker.env') {
       console.log('Stopping intermediate services...');
       const out = execSync('cd ../system; bash stop-intermediate.sh');
       fs.writeFileSync('../system/.docker.env', file.data);
