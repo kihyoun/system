@@ -21,7 +21,7 @@ async function main() {
     if (fs.existsSync(path.join(root,file))) throw Error('Use a clean checkout without private runtime configuration: ' + file);
   }
   const selected = manifest.filter(item => component === 'all' || item.component === component);
-  if (selected.some(item => /project-bootstrap\.js$|suggestions-api\.js$/.test(item.file))) {
+  if (selected.some(item => item.port === 8071)) {
     await new Promise((resolve,reject) => {
       const server = net.createServer();
       server.once('error', () => reject(Error('Port 8071 is occupied; use a private container network namespace.')));

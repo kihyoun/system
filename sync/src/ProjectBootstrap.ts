@@ -61,7 +61,7 @@ export function validateProject(input: any) {
 
 let railsWorkers = 0;
 const railsQueue: Array<() => void> = [];
-async function rails(input: any): Promise<any> {
+export async function rails(input: any): Promise<any> {
   if (railsQueue.length >= 50) { throw new Error('GitLab setup queue is busy. Retry shortly.'); }
   if (railsWorkers >= 2) { await new Promise<void>((resolve) => railsQueue.push(resolve)); }
   railsWorkers++;
@@ -74,7 +74,8 @@ async function rails(input: any): Promise<any> {
 function runRails(input: any): Promise<any> {
   return new Promise((resolve, reject) => {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
-    const script = `BOOTSTRAPPER_INPUT = '${encoded}'\n` + fs.readFileSync(path.join(__dirname, '../../project-bootstrap/provision.rb'), 'utf8');
+    const importer = input.action === 'wizard-source' ? fs.readFileSync(path.join(__dirname, '../../project-bootstrap/wizard-source/import.rb'), 'utf8') + '\n' : '';
+    const script = `BOOTSTRAPPER_INPUT = '${encoded}'\n` + importer + fs.readFileSync(path.join(__dirname, '../../project-bootstrap/provision.rb'), 'utf8');
     const child = spawn('docker', ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-']);
     let output = '';
     const timer = setTimeout(() => { child.kill(); reject(new Error('GitLab setup timed out; retry to recover the same operation.')); }, 240000);
@@ -111,12 +112,18 @@ function trimJobs() {
     jobs.delete(completed[0]);
   }
 }
-function startJob(id: string, operation: () => Promise<any>) {
+export function withProjectLock(id: string, operation: () => any) {
+  if (active.size > 0) { throw new Error('Another project operation is running. Retry after it completes.'); }
+  active.add(id);
+  try { return operation(); } catch (error) { active.delete(id); throw error; }
+}
+export function startJob(id: string, operation: () => Promise<any>) {
   trimJobs();
   const job: any = {id, state: 'running', created: Date.now()};
   jobs.set(id, job);
   operation().then((result) => Object.assign(job, result, {state: result.state || 'complete'}))
-    .catch((error) => Object.assign(job, {state: 'failed', message: error.message}));
+    .catch((error) => Object.assign(job, {state: 'failed', message: error.message}))
+    .finally(() => active.delete(id));
   return job;
 }
 export function lookupJob(id: string) { return jobs.get(id); }

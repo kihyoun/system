@@ -49,7 +49,10 @@ begin
     encoded = URI.encode_www_form_component(full_path)
     code, project = api.call(Net::HTTP::Get, 'projects/' + encoded)
     raise BootstrapError, 'Project lookup failed' unless [200, 404].include?(code)
-    if input['action'] == 'pipeline'
+    if input['action'] == 'wizard-source'
+      raise BootstrapError, 'Wizard repository missing' unless code == 200
+      result = WizardSourceImport.new(api, input, project).call
+    elsif input['action'] == 'pipeline'
       marker = 'System Bootstrapper operation ' + input.fetch('operation')
       raise BootstrapError, 'Cannot start pipeline for an unrelated project' unless code == 200 && project['description'] == marker
       branch = project.fetch('default_branch')

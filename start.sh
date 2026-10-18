@@ -9,4 +9,6 @@ else
     source system/.seed.env
 fi
 
+# Read pinned Git objects before the Docker context excludes Git metadata.
+bash project-bootstrap/wizard-source/prepare.sh
 docker-compose -p system -f system/docker-compose.yml up --build -d bootstrapper

@@ -503,9 +503,12 @@ enabled. Use Fetch after registration completes. Its Production URL, HTTP/HTTPS
 mode and certificate paths come from the actual Wizard settings under General;
 locally, the existing interface remains at `http://localhost`.
 
-The project has a private `root/wizard` repository scaffold containing README
-and managed CI. It does not yet contain the Wizard source, start a pipeline or
-deploy another interface. Beta and Review remain disabled. The existing Wizard
+The project starts with a private `root/wizard` repository scaffold containing
+README and managed CI. Expand its row and select **Initialize Wizard source**
+to preview and explicitly import the pinned application source. See the
+[source initialization guide](WIZARD_SOURCE.md) for preparation and safe retry.
+This source-only action does not start a pipeline or deploy another interface.
+Beta and Review remain disabled. The existing Wizard
 container and Production route are reused, with no duplicate project proxy.
 Manage the interface settings under General; the system project is read-only in
 the project list. Its repository links and configuration survive Fetch, Backup,
