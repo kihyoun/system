@@ -120,10 +120,12 @@ publish private configuration or image archives containing credentials in Git.
 
 1. Retain the attached volume explicitly when deleting the VM. Do not delete,
    format or initialize that volume. Do not restore the old seed automatically.
-2. Provision a compatible host and install Docker Engine, Docker Compose and
-   Certbot. Attach the retained volume and mount its existing filesystem at
-   `/mnt/HC_Volume_24222125`. Restore the persistent mount entry and Docker's mount
-   dependency before platform startup.
+2. Provision a compatible Ubuntu host. Attach the retained volume and mount its
+   existing filesystem at `/mnt/HC_Volume_24222125`. Run
+   `bash /mnt/HC_Volume_24222125/platform/source/bootstrapper/install.sh` to install
+   Docker Engine, Compose and the required `docker-compose` compatibility wrapper;
+   install Certbot too. The recovery installer restores the persistent mount
+   entry and Docker's mount dependency before platform startup.
 3. Recreate `/etc/system-bootstrapper/persistence.env` from the retained selector
    values. Confirm the mounted filesystem and optional UUID match the expected
    volume, and that `platform` and the old seed backup are present.
