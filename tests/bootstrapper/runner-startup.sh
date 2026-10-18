@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source_script="$(cd "$(dirname "$0")/.." && pwd)/system/start-intermediate.sh"
+source_script="$(cd "$(dirname "$0")/../.." && pwd)/system/start-intermediate.sh"
 fixture=$(mktemp -d)
 trap 'rm -rf -- "$fixture"' EXIT
 for service in system gitlab nginx-proxy gitlab-runner wizard; do

@@ -6,6 +6,7 @@ const assert = require('assert');
 const http = require('http');
 const crypto = require('crypto');
 const {spawnSync} = require('child_process');
+const path = require('path');
 function request(route, token, data) {
   return new Promise((resolve, reject) => {
     const req = http.request({host: '127.0.0.1', port: 8071, path: route, method: data ? 'POST' : 'GET',
@@ -55,7 +56,7 @@ async function poll(job, token) {
   assert.equal(config.data.substr(807, 1), '$');
   assert.equal(crypto.createHash('md5').update(config.data.substr(0, 1184)).digest('hex'), 'bd4a8426355824593a5e21ad759830c1');
   // A different operation must never acquire even this known test repository.
-  const ruby = "BOOTSTRAPPER_INPUT = '" + Buffer.from(JSON.stringify({...input, action: 'create', operation: 'unrelated-operation'})).toString('base64') + "'\n" + fs.readFileSync('../project-bootstrap/provision.rb', 'utf8');
+  const ruby = "BOOTSTRAPPER_INPUT = '" + Buffer.from(JSON.stringify({...input, action: 'create', operation: 'unrelated-operation'})).toString('base64') + "'\n" + fs.readFileSync(path.resolve(__dirname, '../../../project-bootstrap/provision.rb'), 'utf8');
   const refused = spawnSync('docker', ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'], {input: ruby, encoding: 'utf8', timeout: 240000});
   assert.equal(refused.status, 0, 'Local Rails check failed');
   const conflict = JSON.parse(refused.stdout.trim().split('\n').pop());

@@ -1,8 +1,8 @@
 const assert = require('assert');
 const crypto = require('crypto');
-const {prepareApplication} = require('../sync/dist/ApplicationTemplates');
-const {validateProject} = require('../sync/dist/ProjectBootstrap');
-const logo = require('../sync/dist/Helper').default.textLogo;
+const {prepareApplication} = require('../../sync/dist/ApplicationTemplates');
+const {validateProject} = require('../../sync/dist/ProjectBootstrap');
+const logo = require('../../sync/dist/Helper').default.textLogo;
 const settings = {
   PROJECT_NAME: 'templatecheck', USE_PROD_HOST: 'true', PROD_HOST: 'app.localhost',
   PROD_DOMAIN_MODE: '0', PROD_DEPLOY_MODE: '0', USE_BETA_HOST: 'false',

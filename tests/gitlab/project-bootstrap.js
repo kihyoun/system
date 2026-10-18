@@ -7,7 +7,7 @@ const os = require('os');
 const http = require('http');
 const {spawn} = require('child_process');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'project-bootstrap-'));
-const sync = path.resolve(__dirname, '../sync/dist');
+const sync = path.resolve(__dirname, '../../sync/dist');
 fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'bin'));
 fs.mkdirSync(path.join(root, 'project-bootstrap'));

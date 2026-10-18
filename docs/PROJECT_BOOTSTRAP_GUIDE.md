@@ -76,7 +76,7 @@ configuration stays independent through Push/Fetch and Open/Backup.
 
 ## Validation
 
-Build Sync with `cd sync && npm run build`. Run `node tests/project-bootstrap.js`
+Build Sync with `cd sync && npm run build`. Run `node tests/gitlab/project-bootstrap.js`
 in an isolated container/network namespace (the disposable API uses port 8071).
 The test covers key/signature validation, shell assignment rejection,
 authentication, namespace conflicts, competing Save, restart recovery, polling,
@@ -87,7 +87,7 @@ For the Wizard, use the established Node 13.12 dependency image, run
 Tests include ENV/JSON metadata, certificate/deployment settings, legacy keys,
 debounce and ignored stale responses.
 
-`tests/project-bootstrap-live.js` is an explicit integration test for a disposable
+`tests/gitlab/live/project-bootstrap.js` is an explicit integration test for a disposable
 local platform. It requires Sync credentials in the environment and a
 `PROJECT_PAYLOAD` JSON file containing `{projectKey, namespaceId, data, ci}` from
 the Wizard generator. It creates or resumes the private `bootstrapdemo` project,
@@ -130,8 +130,8 @@ Template files are versioned under `project-bootstrap/templates/`. Their direct
 dependencies, lockfiles and image digests are pinned. Source is installed through
 one all-create GitLab commit, never by overwriting user files. The first pipeline
 starts after routing is ready and its ID is retained for repeat/recovery.
-`tests/application-templates.js`, `tests/application-templates-live.js` and
-`tests/application-templates-live-audit.rb` cover generation and the live result.
+`tests/gitlab/application-templates.js`, `tests/gitlab/live/application-templates.js` and
+`tests/gitlab/live/application-templates-audit.rb` cover generation and the live result.
 The Wizard now has twelve passing Jest tests, including a stable pending-project
 ENV round trip; its existing Node 13 production build also passes.
 
@@ -145,11 +145,11 @@ GitLab CI lint accepted the scaffold. GitLab recorded one skipped pipeline for
 the CI-installation commit, with no jobs; no application pipeline or deployment
 was started. Provisioning tokens were revoked.
 
-`tests/default-wizard.js` covers HTTP/HTTPS settings, disabled environments,
+`tests/wizard/default-wizard.js` covers HTTP/HTTPS settings, disabled environments,
 signature validation, repeat registration, configuration-Push preservation and
-local-key conflicts. `tests/default-wizard-routing.sh` covers the single existing
+local-key conflicts. `tests/nginx/default-wizard-routing.sh` covers the single existing
 route and proxy/runner lifecycle exclusion. The authenticated live check is
-`tests/default-wizard-live.js`. The UI now passes thirteen Jest tests across seven
+`tests/wizard/live/default-wizard.js`. The UI now passes thirteen Jest tests across seven
 suites, including first-row ordering, managed controls and metadata import, and
 its Node 13 production build passes. Wizard source import and rollout are still
 the separate expansion linked above.

@@ -429,7 +429,7 @@ successful pipeline job with checkout and artifact, and scaling from one to two
 containers and back while preserving the token. The local test ends with one
 runner container.
 
-For an explicitly disposable local test instance, `tests/runner-live.py` creates
+For an explicitly disposable local test instance, `tests/gitlab-runner/live/runner.py` creates
 a private test project and pipeline, checks the runner and downloads the generated
 result file. It creates a separate temporary test access token with the `api`
 scope and revokes it afterwards. This is a test helper; actual runner setup only
@@ -440,7 +440,7 @@ configuration in the Wizard. Check the Bootstrapper output, correct the settings
 and try **Register** again.
 
 ```bash
-sudo python3 tests/runner-live.py
+sudo python3 tests/gitlab-runner/live/runner.py
 ```
 
 Prerequisites are running local services, Docker access, and the addresses

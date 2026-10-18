@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert');
-const {withToken} = require('../gitlab-runner/provision');
-const signature = require('fs').readFileSync(require('path').join(__dirname, '../system/.docker.env.example'), 'utf8');
+const {withToken} = require('../../gitlab-runner/provision');
+const signature = require('fs').readFileSync(require('path').join(__dirname, '../../system/.docker.env.example'), 'utf8');
 const updated = withToken(signature, 'glrt-example_token-123');
 assert.strictEqual(updated.slice(0, 1184), signature.slice(0, 1184));
 assert.strictEqual(updated.match(/^GITLAB_RUNNER_TOKEN=.*$/m)[0], "GITLAB_RUNNER_TOKEN='glrt-example_token-123'");

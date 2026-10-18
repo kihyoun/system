@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-repository = Path(__file__).resolve().parents[1]
+repository = Path(__file__).resolve().parents[2]
 
 with tempfile.TemporaryDirectory(prefix='system-seed-test-') as temporary:
     root = Path(temporary)
