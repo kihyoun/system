@@ -28,3 +28,14 @@ corresponding directory before replacing its container.
 (the controller uses `/state`). This preserves the legacy configuration symlink
 when atomically recording a newly provisioned runner token. These changes are
 tracked in [issue #41](https://github.com/kihyoun/system/issues/41).
+
+Run the lifecycle regression in the built controller image too, since its
+BusyBox utilities differ from the Debian component-test image:
+
+```sh
+docker run --rm --network none --read-only --tmpfs /tmp:exec \
+  -v "$PWD:/work:ro" -w /work --entrypoint node \
+  system-persistent:20261018 tests/gitlab-runner/persistence.js
+```
+
+This uses the runtime's actual `mktemp`, without Docker access or live state.

@@ -10,7 +10,7 @@ runner_pool() {
     fi
     # Compose needs a nonempty service model even when taking a pool down.
     if [ "$operation" = down ] || [ "$count" = 0 ]; then count=1; operation=down; fi
-    definition_file=$(mktemp /tmp/system-runner-compose.XXXXXXXX.json)
+    definition_file=$(mktemp /tmp/system-runner-compose.XXXXXXXX)
     local prepare=()
     if [ "$operation" = up ]; then prepare=(--prepare); fi
     if node compose.js "$pool" "$count" "${PERSISTENT_DIR:-}" "${prepare[@]}" > "$definition_file"; then

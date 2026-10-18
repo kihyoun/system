@@ -46,6 +46,9 @@ try {
   fs.writeFileSync(path.join(fixture, 'project-state/.wizard.env'), 'PROJECT_NAME=wizard\nPROJECT_TEMPLATE=wizard\nGITLAB_RUNNER_SCALE=2\n');
   const env = {...process.env, PATH: path.join(fixture, 'bin') + ':' + process.env.PATH, COMPOSE_LOG: log};
   const writeMain = scale => fs.writeFileSync(path.join(fixture, 'system/.docker.env'), `export PERSISTENT_DIR='${persistent}'\nexport GITLAB_RUNNER_SCALE=${scale}\n`);
+  // Leave mktemp unmocked: run this lifecycle test in the Alpine controller
+  // image as well as the component image. BusyBox rejects GNU's suffix form
+  // (XXXXXXXX.json); start/stop must work with the runtime's real utility.
   const invoke = (script, argument) => {
     const result = spawnSync('bash', [script, ...(argument ? [argument] : [])], {cwd: path.join(fixture, 'gitlab-runner'), env, encoding: 'utf8'});
     assert.equal(result.status, 0, result.stderr + result.stdout);
