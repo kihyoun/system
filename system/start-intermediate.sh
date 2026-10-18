@@ -1,6 +1,7 @@
 #! /bin/bash
 set -eo pipefail
 cd ../gitlab; bash -e ./start.sh;
+cd ../system; bash -e ./ensure-wizard-image.sh;
 cd ../nginx-proxy; bash -e ./start.sh;
 cd ../gitlab-runner
 if ! bash -e ./start.sh; then

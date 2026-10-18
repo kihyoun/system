@@ -3,7 +3,7 @@ const assert=require('assert');
 const fs=require('fs');
 const path=require('path');
 const os=require('os');
-const {Candidate,configuration,signature,recover,LABEL}=require('./disposable-candidate');
+const {Candidate,configuration,signature,configurationValues,recover,LABEL}=require('./disposable-candidate');
 // Git's committed LF bytes are the signed contract; Windows checkout conversion
 // must not lead this fixture to rewrite or relax the Cube validator.
 let example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
@@ -19,6 +19,17 @@ assert(config.includes('https://www.system-bootstrapper.com'));
 assert.throws(()=>configuration(example.replace('https://www.system-bootstrapper.com','http://www.system-bootstrapper.com'),{}));
 assert.throws(()=>new Candidate({...spec,daemonImage:'docker:latest'}));
 assert.throws(()=>new Candidate({...spec,images:{}}));
+for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},1200000],[{acmeRenewalAcceptance:true},1500000]]) {
+  const bounded=new Candidate({...spec,...options},{now:()=>123});
+  assert.equal(bounded.deadline,123+budget);
+}
+for(const quote of ['',"'",'"'])assert.deepEqual(configurationValues(`export SYNC_USER=${quote}fixture${quote}\nSYNC_PASS=${quote}password${quote}`,['SYNC_USER','SYNC_PASS']),{SYNC_USER:'fixture',SYNC_PASS:'password'});
+const literalConfig="VALUE='literal=one=two $HOME'\nOTHER=\"escaped\\$HOME \\\"quote\\\" \\`tick\\`\"\nMULTILINE='first\nSYNC_USER=fake\nlast'\nSYNC_USER=actual\n";
+const parsed=configurationValues(literalConfig,['VALUE','OTHER','MULTILINE','SYNC_USER']);
+assert.equal(parsed.VALUE,'literal=one=two $HOME');assert.equal(parsed.SYNC_USER,'actual');
+const native=require('child_process').execFileSync('bash',['-s'],{input:literalConfig+"printf '%s\\0' \"$VALUE\" \"$OTHER\" \"$MULTILINE\" \"$SYNC_USER\"\n",encoding:'utf8',timeout:2000}).split('\0').slice(0,-1);
+assert.deepEqual(Object.values(parsed),native);
+for(const text of ['VALUE=$(touch /should-not-run)','VALUE=$HOME','VALUE=$[1+2]','VALUE="$[1+2]"','VALUE=$','VALUE=`id`','VALUE="unterminated','VALUE=first\nVALUE=second','OTHER=missing'])assert.throws(()=>configurationValues(text,['VALUE']));
 
 function fixture() {
   const commands=[]; const records=new Map(); let instance; let clock=0; let failRemoval=false; let offline=false;
@@ -46,13 +57,135 @@ function fixture() {
   return {instance,commands,records,failRemoval:()=>{failRemoval=true;},offline:()=>{offline=true;}};
 }
 (async()=>{
+  for(const quoted of [false,true]) {
+    const serialized=fixture();const previous=serialized.instance.request;
+    serialized.instance.request=async(url,options)=>{
+      if(url.endsWith('/config/main')) {
+        let text=configuration(example,serialized.instance.secrets);
+        if(quoted)for(const [key,value]of [['SYNC_USER',serialized.instance.secrets.user],['SYNC_PASS',serialized.instance.secrets.password]])text=text.replace(key+'='+value,key+'="'+value+'"');
+        return {status:200,body:JSON.stringify({data:text})};
+      }
+      return previous(url,options);
+    };
+    await serialized.instance.smoke();
+  }
+  const wrong=fixture(),originalRequest=wrong.instance.request;
+  wrong.instance.request=async(url,options)=>url.endsWith('/config/main')?
+    {status:200,body:JSON.stringify({data:configuration(example,wrong.instance.secrets).replace('SYNC_PASS='+wrong.instance.secrets.password,'SYNC_PASS='+wrong.instance.secrets.password+'suffix')})}:
+    originalRequest(url,options);
+  await assert.rejects(wrong.instance.smoke(),/configuration-round-trip-mismatch/);
+  const streams=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-stream-'));
+  const previousPath=process.env.PATH;
+  try {
+    fs.writeFileSync(path.join(streams,'docker'),'#!/bin/sh\ncat\n',{mode:0o755});
+    const bytes=Buffer.from([0,255,13,10,128,0,1]);
+    const input=path.join(streams,'input'),output=path.join(streams,'output');fs.writeFileSync(input,bytes);
+    process.env.PATH=streams+path.delimiter+previousPath;
+    const streamed=new Candidate(spec);
+    assert.equal(streamed.exec(['fake-stream'],{inputFile:input,outputFile:output,timeout:2000}),'');
+    assert(fs.readFileSync(output).equals(bytes),'Streaming preserves binary bytes without buffering stdout.');
+    assert.equal(fs.statSync(output).mode&0o777,0o600);
+    assert.throws(()=>streamed.exec(['fake-stream'],{inputFile:input,outputFile:output}),/EEXIST/);
+    fs.writeFileSync(path.join(streams,'docker'),'#!/bin/sh\nprintf "%s\\n" "Fixed fixture failure" "secret-fixture-token" >&2\nexit 7\n',{mode:0o755});
+    assert.throws(()=>streamed.exec(['exec'],{failureCodes:{'Fixed fixture failure':'configuration-round-trip-mismatch'},timeout:2000}),error=>{
+      assert.equal(error.message,'configuration-round-trip-mismatch');assert.equal(error.exitCode,7);
+      assert(!JSON.stringify(error).includes('secret-fixture-token'));return true;
+    });
+    for(const failureCodes of [{'Fixed fixture failure':'secret-fixture-token'},{'fixture failure':'configuration-round-trip-mismatch'}]) {
+      assert.throws(()=>streamed.exec(['exec'],{failureCodes,timeout:2000}),error=>error.message==='docker-exec-failed'&&error.exitCode===7);
+    }
+    fs.writeFileSync(path.join(streams,'docker'),'#!/bin/sh\nexec sleep 2\n',{mode:0o755});
+    await assert.rejects(streamed.stage('recovery-completed-cold-seed',async()=>streamed.exec(['exec'],{timeout:30})));
+    assert.equal(streamed.results.at(-1).systemCode,'ETIMEDOUT');
+    assert.equal(streamed.results.at(-1).exitCode,undefined);
+  } finally {process.env.PATH=previousPath;fs.rmSync(streams,{recursive:true,force:true});}
+  const routed=fixture();
+  routed.instance.inner=async(args,options)=>{
+    if(args[0]==='inspect'){assert(args.includes('{{json .NetworkSettings.Networks}}'));return JSON.stringify({bridge:{Gateway:'172.17.0.1'}});}
+    const input=JSON.parse(options.input);
+    assert.equal(input.url,'http://172.17.0.1/api/v4/pipelines?ref=main');
+    return JSON.stringify({status:200,body:'[]'});
+  };
+  assert.equal((await routed.instance.httpFromCandidate('http://candidate.invalid/api/v4/pipelines?ref=main')).status,200);
+  const http=require('http');
+  const server=http.createServer((request,response)=>{
+    response.statusCode=request.headers.host==='wizard.candidate.test' && request.url==='/probe?ref=main'?200:421;
+    response.end('<html>private transport probe</html>');
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try {
+    const actual=fixture();
+    actual.instance.inner=async(args,options)=>{
+      if(args[0]==='inspect')return JSON.stringify({bridge:{Gateway:'127.0.0.1'}});
+      const input=JSON.parse(options.input);input.url=input.url.replace('127.0.0.1','127.0.0.1:'+server.address().port);
+      return await new Promise((resolve,reject)=>{
+        const child=require('child_process').spawn(process.execPath,['-e',args.at(-1)],{stdio:['pipe','pipe','ignore']});
+        let output='';child.stdout.on('data',chunk=>output+=chunk);child.once('error',reject);
+        child.once('exit',code=>code===0?resolve(output):reject(Error('private-http-transport-failed')));
+        child.stdin.end(JSON.stringify(input));
+      });
+    };
+    assert.equal((await actual.instance.httpFromCandidate('http://candidate.invalid/probe?ref=main',{headers:{Host:'wizard.candidate.test'}})).status,200,
+      'The actual Node transport must preserve the NGINX virtual Host header.');
+  } finally {await new Promise(resolve=>server.close(resolve));}
+  const diagnostic=require('./job-diagnostics');
+  const trace='$ docker build --network none -t private-image .\n$ printf secret-fixture-token | docker login registry.test --password-stdin\nhttp: server gave HTTP response to HTTPS client\nERROR: Job failed: exit code 1\n';
+  const classified=diagnostic.classify(trace);
+  assert.deepEqual(classified,{commands:['build','login'],codes:['registry-protocol'],exitCode:1});
+  assert(!JSON.stringify(classified).includes('secret-fixture-token'));
+  assert.deepEqual(diagnostic.sanitize({...classified,private:'secret-fixture-token',codes:['registry-protocol','secret-fixture-token']}),classified);
+  assert.deepEqual(diagnostic.classify('x'.repeat(524289)),{codes:['trace-unavailable']});
+  assert.deepEqual(diagnostic.classify('ERROR: Job failed (system failure): the configured PullPolicies ([never]) are not allowed by AllowedPullPolicies ([always])'),{commands:[],codes:['runner-pull-policy']});
+  assert.equal(diagnostic.failureReason('runner_configuration_error'),'runner_configuration_error');
+  assert.equal(diagnostic.failureReason('secret-fixture-token'),undefined);
+  const failing=fixture().instance;
+  const policyDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-runner-policy-'));
+  const policyFile=path.join(policyDirectory,'runners/runner/1/config/config.toml');
+  fs.mkdirSync(path.dirname(policyFile),{recursive:true});
+  fs.writeFileSync(policyFile,'[[runners]]\r\n  token = "secret-fixture-token"\r\n  [runners.docker]\r\n    image = "alpine"\r\n');
+  failing.spec={...spec,supportImages:{helper:{}},restore:{base:policyDirectory}};
+  const policyTransport=failing.inner.bind(failing);
+  failing.inner=async(args,options)=>{
+    if(args.includes('node')&&args.includes('-e'))return require('child_process').execFileSync(process.execPath,['-e',args.at(-1)],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
+    return policyTransport(args,options);
+  };
+  failing.rails=async()=>({token:'secret-fixture-token',pools:1,active_setup:0});
+  failing.stage=async(name,action)=>{if(name==='gitlab-and-runner-ready')return;return action();};
+  failing.wait=async action=>{if(!await action())throw Error('fixture-wait-failed');};
+  let createdProjects=0;
+  failing.api=async(route)=>{
+    if(route==='/projects'){createdProjects++;return {id:2,default_branch:'main'};}
+    if(route.endsWith('/pipelines'))return [{id:3,status:'failed'}];
+    if(route.endsWith('/jobs'))return [{id:4,name:'registry-round-trip',status:'failed',runner:{id:1},failure_reason:'runner_configuration_error'}];
+    if(route.endsWith('/trace'))return trace;
+    return null;
+  };
+  failing.request=async()=>({status:401});
+  try {
+    await assert.rejects(failing.platform(),/candidate-pipeline-failed/);
+    assert(fs.readFileSync(policyFile,'utf8').includes('allowed_pull_policies = ["never", "if-not-present"]'));
+    assert.deepEqual(failing.evidence.jobs[0].diagnostics,classified);
+    assert.equal(failing.evidence.jobs[0].failureReason,'runner_configuration_error');
+    fs.writeFileSync(policyFile,'[[runners]]\n  token = "secret-fixture-token"\n');
+    await assert.rejects(failing.platform());
+    assert.equal(createdProjects,1,'A missing real Docker TOML section must fail before creating any CI project.');
+  } finally {fs.rmSync(policyDirectory,{recursive:true,force:true});}
   const test=fixture(); await test.instance.start(); await test.instance.smoke();
   const creation=test.commands.find(x=>x.args[0]==='create').args;
-  assert(creation.includes('--privileged')); assert(creation.includes('127.0.0.1::80'));
+  assert(creation.includes('--privileged')); assert(!creation.includes('--publish'));
+  assert(creation.some((value,index)=>value==='--insecure-registry'&&creation[index+1]==='registry.candidate.test'));
+  assert(creation.some((value,index)=>value==='--insecure-registry'&&creation[index+1]==='registry.candidate.test:5050'));
+  assert.equal(test.instance.url,'http://candidate.invalid');
   assert(!creation.some(x=>x.includes('docker.sock:') || x.includes('source=/var/run'))); assert(!creation.includes('--network=host'));
   assert(test.commands.find(x=>x.args[0]==='network' && x.args[1]==='create').args.includes('--internal'));
-  assert.equal(test.commands.filter(x=>x.args[0]==='cp').length,5);
+  assert.equal(test.commands.filter(x=>x.args.includes('load')).length,5);
+  assert(test.commands.filter(x=>x.args.includes('load')).every(x=>path.isAbsolute(x.options.inputFile)));
   assert(test.commands.some(x=>x.args.includes('COMPOSE_COMPATIBILITY=1')));
+  const bootstrap=test.commands.find(x=>x.args.includes('SYSTEM_CONFIG_DIR=/state')).args;
+  assert(bootstrap.includes('PERSISTENT_DIR=/candidate-data/platform'));
+  assert(bootstrap.includes('system_configuration:/state'));
+  assert(bootstrap.includes('/candidate-data/platform/runners:/candidate-data/platform/runners'));
+  assert(test.commands.some(x=>x.args.includes('device=/candidate-data/platform/gitlab/data')));
   assert.equal(test.instance.cleanup(),true); assert.equal(test.records.size,0);
   assert(test.commands.some(x=>x.args[0]==='container' && x.args[1]==='ls' && x.args.includes('--all')));
   assert.equal(test.instance.cleanup(),true); // confirmed absent resources
@@ -70,6 +203,43 @@ function fixture() {
   const recovered=recover({runId:test.instance.id,resources:test.instance.resources,results:[{name:'authenticated-fetch',status:'failed',private:'must-not-copy'}]},()=>{throw new Error('offline');});
   assert.equal(recovered.cleanup(),false);
   assert.deepEqual(recovered.results[0],{name:'authenticated-fetch',status:'failed'});
+  const errors=fixture();
+  await assert.rejects(errors.instance.stage('recovery-acme-tls-and-config',async()=>{throw Error('restored-runtime-configuration-mismatch');}));
+  await assert.rejects(errors.instance.stage('authenticated-fetch',async()=>{throw Error('secret-fixture-token');}));
+  const sanitized=recover({runId:errors.instance.id,resources:[],results:errors.instance.results});
+  assert.deepEqual(sanitized.results.map(item=>item.reason),['restored-runtime-configuration-mismatch','stage-error']);
+  const twice=recover({runId:errors.instance.id,resources:[],results:sanitized.results});
+  assert.deepEqual(twice.results,sanitized.results); // Independent after_script retries retain diagnostic identity.
+  assert(!JSON.stringify(twice.results).includes('secret-fixture-token'));
+  assert.equal(recover({runId:errors.instance.id,resources:[],results:[{name:'authenticated-fetch',status:'failed',reason:'secret-fixture-token'}]}).results[0].reason,'stage-error');
+  const status=fixture();
+  await assert.rejects(status.instance.stage('recovery-completed-cold-seed',async()=>{throw Object.assign(Error('docker-exec-failed'),{exitCode:7,systemCode:'ETIMEDOUT',private:'secret-fixture-token'});}));
+  assert.equal(status.instance.results[0].exitCode,7);assert.equal(status.instance.results[0].systemCode,'ETIMEDOUT');
+  const resumedStatus=recover({runId:status.instance.id,resources:[],results:status.instance.results});
+  const repeatedStatus=recover({runId:status.instance.id,resources:[],results:resumedStatus.results});
+  assert.deepEqual(repeatedStatus.results,status.instance.results);
+  assert(!JSON.stringify(repeatedStatus.results).includes('secret-fixture-token'));
+  for(const exitCode of [-1,256,'secret-fixture-token']) {
+    const unsafeStatus=recover({runId:status.instance.id,resources:[],results:[{name:'cleanup',status:'failed',exitCode,systemCode:'secret-fixture-token'}]});
+    assert.deepEqual(unsafeStatus.results,[{name:'cleanup',status:'failed'}]);
+  }
+  const fullReceipt={runId:test.instance.id,resources:test.instance.resources,startedAt:'2026-10-18T00:00:00Z',
+    images:{candidate:'sha256:'+hash},daemonImage:spec.daemonImage,fullAcceptance:true,
+    results:[{name:'registry-build-push-pull-run',status:'passed',milliseconds:123,private:'never retain'}],
+    evidence:{projectId:1,pipelineId:2,private:'never retain',jobs:[{id:3,name:'registry-round-trip',status:'success',runnerId:4,duration:5,private:'never retain'}]}};
+  const fullRecovery=recover(fullReceipt,()=>{throw Error('offline');});
+  assert.equal(fullRecovery.spec.fullAcceptance,true);
+  assert.equal(fullRecovery.spec.images.candidate.id,'sha256:'+hash);
+  assert.equal(fullRecovery.results[0].name,'registry-build-push-pull-run');
+  assert.equal(fullRecovery.results[0].milliseconds,123);
+  const durable=recover({...fullReceipt,evidence:{jobs:[{id:3,name:'registry-round-trip',status:'failed',diagnostics:{...classified,private:'secret-fixture-token'}}],
+    recovery:{runId:'a'.repeat(24),backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false,private:'secret-fixture-token'}}});
+  assert.deepEqual(durable.evidence.jobs[0].diagnostics,classified);
+  assert.deepEqual(durable.evidence.recovery,{runId:'a'.repeat(24),backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false});
+  assert(!JSON.stringify(durable.evidence).includes('secret-fixture-token'));
+  assert.deepEqual(fullRecovery.evidence,{projectId:1,pipelineId:2,jobs:[{id:3,name:'registry-round-trip',status:'success',runnerId:4,duration:5}]});
+  assert(!JSON.stringify(fullRecovery).includes('never retain'));
+
   const failure=fixture(); await failure.instance.start(); failure.failRemoval(); assert.equal(failure.instance.cleanup(),false);
   const broken=fixture(); await broken.instance.start(); broken.offline(); assert.equal(broken.instance.cleanup(),false);
   const pending=fixture(); await pending.instance.start();
@@ -195,14 +365,14 @@ function fixture() {
   process.once('SIGTERM',signalHandler);
   signaled.instance.exec=(args,options)=>{
     const result=transport(args,options);
-    if(args[0]==='cp') setImmediate(()=>process.emit('SIGTERM'));
+    if(args.includes('load')) setImmediate(()=>process.emit('SIGTERM'));
     return result;
   };
   try {
     await assert.rejects(()=>signaled.instance.start(),/canceled-or-overall-timeout/);
     assert.equal(signaled.instance.canceled,true);
-    assert.equal(signaled.commands.filter(item=>item.args[0]==='cp').length,1);
-    assert.equal(signaled.commands.filter(item=>item.args.includes('load')).length,0);
+    assert.equal(signaled.commands.filter(item=>item.args[0]==='cp').length,0);
+    assert.equal(signaled.commands.filter(item=>item.args.includes('load')).length,1);
     assert.equal(signaled.instance.cleanup(),true); assert.equal(signaled.records.size,0);
   } finally {process.removeListener('SIGTERM',signalHandler);}
   console.log('Disposable candidate offline contracts passed; no Docker or live HTTP used.');

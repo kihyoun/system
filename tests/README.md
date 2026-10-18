@@ -56,7 +56,7 @@ SYSTEM_TEST_ISOLATED=1 node tests/run.js gitlab
 ```
 
 Other selectors are `sync`, `gitlab-runner`, `bootstrapper`, `nginx`, `wizard`
-and `shared`. Checks are explicit in `manifest.json`, run sequentially, and have
+`shared` and `performance`. Checks are explicit in `manifest.json`, run sequentially, and have
 per-check time limits. A failed, canceled or timed-out check returns a nonzero
 runner exit status. The runner terminates the check's process group, including
 an isolated Sync child, and writes reports after each completed check. A runner
@@ -153,7 +153,7 @@ Every old path below was directly under `tests/`.
 | `runner-live.py` | `gitlab-runner/live/runner.py` | Real runner pipeline/artifact, Fetch signature and PAT revocation; Python 3, disposable `system_*` containers and localhost routes | 1–20min |
 | `default-wizard-live.js` | `wizard/live/default-wizard.js` | Real default registration, URL/signature, same repo on repeat; compiled Sync/disposable platform credentials | 1–10min |
 | `registry-smoke.gitlab-ci.yml` | `registry/registry-smoke.gitlab-ci.yml` | Explicit disposable-project CI example for build/push/pull/run; Docker socket runner/registry credentials | 1–10min |
-| `seed-cycle.py` | `seed/seed-cycle.py` | Harvest/restore in temporary mounts, empty and incomplete seed cases; Python 3, Docker, explicitly prepared `system_bootstrapper` image | <2min |
+| `seed-cycle.py` | `seed/seed-cycle.py` | Completed cold Harvest/restore, checksums, version/edition, failure/resume, renewal lease and path rebinding; Python 3, Node and rsync, fixture Docker command | <2min |
 
 `shared/runner-contract.js` adds harness acceptance for passing/failing child
 processes, enforced timeouts and persistent escaped reports. It uses only
@@ -168,6 +168,14 @@ and stale-snapshot/link refusal. The parent contract additionally checks context
 checksums/revisions before Docker, failed cleanup visibility, preserved primary
 failure, absent resources and unreachable-daemon reporting.
 
+`shared/wizard-pin-fixture-contract.js` checks the owned managed-project receipt,
+branch-only CI publication, exact commit selection, a new image ID absent from
+the prepared archives, immutable registry reference, and temporary credential
+revocation, including malformed mint responses. It uses a transport fixture; real
+publication and private image recovery are proven separately by the required
+platform candidate. Image preparation enables that scenario when all three
+tracked private-Wizard startup helpers are present and rejects partial contracts.
+
 The integrated manifest also includes these checks, with the same process/time
 limits, component output and JUnit reporting:
 
@@ -175,6 +183,7 @@ limits, component output and JUnit reporting:
 | --- | --- | --- |
 | `sync/migration-api.js` | Private Sync process on 8071; JWT authentication/refresh and multipart configuration round trips after Express migration | 30s |
 | `wizard/source-package.js` | Git-created disposable repositories; pinned/binary/mode preservation, dirty/private-file exclusions and path/hash/link rejection using Helper bytes from the validated source snapshot | 30s |
+| `wizard/in-place-upgrade.js` | Disposable GitLab API fixture with real Git no-op semantics; isolated branch/receipt preservation, stopped leases, exact four-commit activation identities, lost-write reconciliation, modern artifacts, fast-forward adoption, private history and concurrent-edit refusal | 30s |
 | `wizard/source-workflow.js` | Compiled Sync, prepared snapshot and fake Rails transport; preview, locks, durable receipt/retry/conflict behavior | 30s |
 | `wizard/source-api.js` | Compiled Sync/snapshot; private ephemeral HTTP listener, explicit forbidden shell/container transports; auth, preview, initialization, polling and mutation guards | 30s |
 | `gitlab/source-import.rb` | Ruby standard library and in-memory GitLab API adapter; source/CI conflicts, binary/mode import and interrupted-commit recovery; no Rails/server/network | 20s |
@@ -219,6 +228,14 @@ Push or restart endpoints. It verifies authenticated Fetch signatures, source
 and initial-pipeline identity on repetition, required checks/digest, and the
 unchanged Production address. Evidence stays in the candidate's private
 `/tmp/wizard-build-live-evidence.json`; the driver has a 65-minute overall budget.
+The driver refreshes the twenty-minute access token proactively at eighteen
+minutes and retries an authentication-failed GET at most once. Source/build
+POSTs are never blindly replayed. Pipeline polling uses the same 65-minute
+overall deadline rather than a shorter fixed poll count. The offline regression
+`node tests/wizard/acceptance-driver.js` checks long-running polling, refresh and
+refresh refusal, GET recovery, mutation non-replay, resumed source import,
+pipeline/Production identity changes and the overall deadline using transports
+that perform no network calls or evidence-file writes.
 The operator must independently check the existing Production service and
 preserve any receipt needed to recover the same operation. This proves neither
 MR failure behavior nor Review, promotion or rollback by itself.
@@ -245,3 +262,79 @@ until the complete acceptance criteria pass. Coordinate new Wizard checks with
 the [workflow implementation](https://github.com/kihyoun/system/issues/18);
 add their isolated paths to the manifest only after agreeing prerequisites and
 timeouts. Do not add live checks by glob discovery.
+
+## Managed Review and Beta
+
+The Phase C delivery is tracked in [issue 39](https://github.com/kihyoun/system/issues/39).
+Its eight manifest entries are `gitlab/environment-upgrade.rb`,
+`wizard/environment-recipe.js`, `wizard/environment-helper.js`, `wizard/environment-canonical.js`,
+`wizard/environment-launcher.js`,
+`wizard/environments-workflow.js`, `wizard/environments-api.js` and
+`nginx/environment-routing.sh`. They use fake GitLab/Docker transports and a
+private API listener, never a real Docker socket or platform configuration.
+They exercise explicit optional settings, authentication, readiness/recovery,
+expected-content CI upgrades, MR lease and stale-job protection, owned cleanup
+and preservation of the primary Wizard route. See the
+[operating guide](../project-bootstrap/wizard-environments/README.md).
+Live manual-job/HTTPS acceptance remains a separate explicit operator gate.
+
+## Full-System image gate
+
+The required `test:candidate-image` job builds `system/Dockerfile`, not only the
+standalone base. Preparation writes `.candidate-context/` from committed runtime
+blobs and the validated Wizard snapshot matching the committed gitlink. Wizard
+files are materialized from that snapshot; checkout dirt, ignored files, private
+configuration and Git metadata are excluded. Both context packagers support GNU
+and BusyBox tar. The image installs the pinned Sync lockfile and compiles Sync
+during the build. A socket-free, network-disabled child verifies the resulting
+compiler/lint/runtime/Compose and source-snapshot contracts. The job records the
+source commit, exact built image ID and JUnit result and removes its job-scoped
+container and image on exit and `after_script`.
+
+Reproduce packaging with `node tests/prepare-candidate.js` after preparing the
+Wizard snapshot. Build with `docker build -f system/Dockerfile -t
+system-candidate:local - < .candidate-context/context.tar`. This is image/runtime
+acceptance; the separate private-daemon scenarios remain explicit.
+
+The additional required `test:platform-candidate` stage runs the explicit full
+private-daemon driver after the isolated matrix and full-image gate. It builds
+Wizard/System from their committed inputs, preloads pinned service/helper images,
+and exercises real private GitLab CI/registry/runner and stopped seed behavior.
+See [the lifecycle guide](e2e/README.md) for the twelve-GiB resource contract,
+readiness, credential revocation and exact owned cleanup. Results report each
+stage; neither a YAML lint nor an offline fixture alone counts as live success.
+
+## Maintained delivery checks
+
+`gitlab/github-backup.js` runs with the GitLab component (60-second budget). It
+checks the generated backup/synchronization definitions with disposable Git
+repositories and fake transports; it does not push to GitHub or change GitLab.
+`performance/resources/test_collect.py` runs with the performance component
+(30-second budget), using Python 3 standard-library fixtures for passive resource
+collection, parsing, reports and endpoint behavior. It performs no live load
+test. The required GitLab matrix includes both checks.
+
+The single-platform registry probe, private Wizard derivative and root GitLab
+publishing build explicitly use `--provenance=false --sbom=false`. Docker 29
+with the containerd store can push an OCI attestation before its subject, which
+GitLab rejects as `blob unknown to registry`; see the [Moby maintainer report](https://github.com/moby/moby/issues/53293)
+and [Docker attestation documentation](https://docs.docker.com/build/metadata/attestations/).
+This compatibility setting applies only to the affected GitLab publishing paths.
+Registry digest, pull/run and artifact verification remain required; these jobs
+do not claim attestation verification. Source-only candidate image builds retain
+their existing metadata behavior.
+
+`node tests/e2e/candidate.js cleanup-all test-results/e2e` validates each
+receipt and removes full platform daemons first, tiny container-only clients
+second, and fixture owners holding shared networks last. Failed or malformed
+receipts preserve dependent authority resources for a targeted retry. The same
+ordering runs on normal exit and in the independent GitLab after_script; it
+never discovers or deletes resources by a global Docker prune.
+
+The separate ACME activation requires every pinned-authority adapter/trust file
+and all three declared host scripts; partial contracts fail before platform
+creation. Image preparation verifies explicit public pins and the Certbot
+archive/trust hashes, then sets `acmeRenewalAcceptance: true`. This scenario
+uses a local authority and HTTP-01 validation, with no public ACME requests or
+outer published port. It proves issuance/account recovery and renewal/deploy
+scripts; it does not claim systemd timer installation on a fresh VM.

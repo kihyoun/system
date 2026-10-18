@@ -541,6 +541,11 @@ connectivity. Confirm sufficient physical disk and RAM for the build; avoid
 running competing infrastructure builds at the same time. The legacy Node 13
 builder is still required here; this action does not modernize its dependencies.
 
+For the local WSL setup, run `sudo bash bootstrapper/prepare-local.sh` again
+after a WSL restart if `registry.localhost` no longer resolves. WSL can regenerate
+`/etc/hosts`. The preparation reloads Docker configuration without restarting
+the running containers; retry the failed job in the same pipeline afterwards.
+
 1. Open the existing Wizard address. Use the pencil icon beside **Connect** to
    enter the configured Sync address and your current Sync credentials, then
    choose **Submit**. After first setup, use the configured Sync domain rather
@@ -593,6 +598,17 @@ the current state. **Pipeline creation has an uncertain outcome. Refresh only.**
 only and needs administrator inspection; never clear its durable checkpoint to
 force another pipeline. Keep credentials out of screenshots, issue comments and
 job-log excerpts.
+
+The coordinated local acceptance on 2026-10-18 completed this build/check path
+in the existing private `root/wizard` project: pipeline **13**, `build:wizard`
+job **38** and `test:wizard` job **37** succeeded. Source initialization and
+repeated activation retained the same repository, import commit and initial
+pipeline. Both jobs identified the same immutable candidate image. The existing
+Wizard remained available at its original address, with unchanged service IDs
+and start times; authenticated Fetch passed the unchanged Cube signature checks.
+See [the retained acceptance identities](WIZARD_BUILD.md#local-acceptance-record)
+for the commits and digest. This used an isolated candidate controller; it did
+not upgrade the running management UI or deploy the candidate to Production.
 
 ### 3.3 Shared and additional runners
 

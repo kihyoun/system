@@ -6,11 +6,13 @@ const path = require('node:path');
 const http = require('node:http');
 const {spawn} = require('node:child_process');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-migration-'));
-for (const name of ['sync', 'system']) fs.mkdirSync(path.join(root, name));
+for (const name of ['sync', 'system', 'state']) fs.mkdirSync(path.join(root, name));
 fs.writeFileSync(path.join(root, 'system/stop-intermediate.sh'), 'exit 0\n');
 const entry = path.resolve(__dirname, '../../sync/dist/index.js');
 const child = spawn(process.execPath, [entry], {cwd: path.join(root, 'sync'),
-  env: {...process.env, SYNC_USER: 'migration-test', SYNC_PASS: 'test-only'}, stdio: 'ignore'});
+  env: {...process.env, SYSTEM_CONFIG_DIR: path.join(root, 'state'), SYNC_USER: 'migration-test', SYNC_PASS: 'test-only'}, stdio: ['ignore','pipe','pipe']});
+let logs='';
+for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>{logs=(logs+chunk.toString()).slice(-65536);});
 function request(route, method, body, token, contentType = 'application/json') {
   return new Promise((resolve, reject) => {
     const req = http.request({host: '127.0.0.1', port: 8071, path: route, method,
@@ -50,13 +52,24 @@ function multipart(field, count) {
     const type = 'multipart/form-data; boundary=sync-migration';
     assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 2), accessToken, type)).status, 400);
     assert.equal((await request('/config/zip', 'POST', multipart('bootstrapper.zip', 2), accessToken, type)).status, 400);
-    assert(!fs.existsSync(path.join(root, 'system/.docker.env')));
+    assert(!fs.existsSync(path.join(root, 'state/.docker.env')));
     assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 1), accessToken, type)).status, 200);
     const fetched = await request('/config/main', 'GET', undefined, accessToken);
     assert.equal(fetched.status, 200);
     assert.equal(JSON.parse(fetched.text).data, 'configuration-0');
+    assert(!fs.existsSync(path.join(root, 'system/.docker.env')), 'writes must use the mounted configuration directory');
+    assert.equal((await request('/config/main', 'DELETE', undefined, accessToken)).status, 200);
+    assert(!fs.existsSync(path.join(root, 'state/.docker.env')));
+    assert.equal((await request('/config/main', 'GET', undefined, accessToken)).status, 404);
+    assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 1), accessToken, type)).status, 200);
+    assert.equal(JSON.parse((await request('/config/main', 'GET', undefined, accessToken)).text).data, 'configuration-0');
     assert.equal((await request('/logout', 'POST', '{}', accessToken)).status, 200);
-    console.log('Sync migration: login/refresh/auth, multipart array rejection and single-file Push/Fetch passed.');
+    await new Promise(resolve=>setImmediate(resolve));
+    assert(logs.includes('Sync authentication is configured.'),'Startup must confirm configured authentication without values.');
+    for(const secret of ['migration-test','test-only',accessToken,refreshToken]) {
+      assert(!logs.includes(secret),'Sync stdout/stderr must not contain configured credentials or issued tokens.');
+    }
+    console.log('Sync migration: login/refresh/auth, credential-safe output, multipart array rejection and single-file Push/Fetch passed.');
   } finally {
     child.kill();
     fs.rmSync(root, {recursive: true, force: true});

@@ -176,8 +176,11 @@ class WizardBuildActivation
       raise BootstrapError, 'Wizard required checks did not succeed' unless selected.all? { |job| job && job['status'] == 'success' && job['allow_failure'] == false }
       build = artifact(selected[0], 'build-evidence.json', commit, pipeline.fetch('id'))
       smoke = artifact(selected[1], 'wizard-evidence.json', commit, pipeline.fetch('id'))
-      raise BootstrapError, 'Wizard artifact checks are incomplete' unless build['jest'] == true && build['productionBuild'] == true &&
-        ['http', 'renderedUI', 'projects', 'spa'].all? { |key| smoke[key] == true } && build['imageRef'] == smoke['imageRef']
+      raise BootstrapError, 'Wizard artifact checks are incomplete' unless (build['jest'] == true || (build['unitTests'] == true && build['testRunner'] == 'vitest' &&
+        build['lint'] == true && build['typecheck'] == true)) && build['productionBuild'] == true &&
+        ['http', 'renderedUI', 'projects', 'spa'].all? { |key| smoke[key] == true } &&
+        (build['testRunner'] != 'vitest' || ['configurationBackup', 'cubeSignature'].all? { |key| smoke[key] == true }) &&
+        build['imageRef'] == smoke['imageRef']
       state['artifact'] = {imageRef: build.fetch('imageRef'), sourceCommit: commit, pipelineId: pipeline.fetch('id')}
       state['phase'] = 'candidate-verified'
     end

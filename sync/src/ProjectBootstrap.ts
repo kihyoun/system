@@ -1,3 +1,4 @@
+import {projectsDirectory} from './StatePaths';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -6,7 +7,7 @@ import {applicationTemplates, prepareApplication} from './ApplicationTemplates';
 import {spawn, execFile} from 'child_process';
 
 export const validProjectKey = (key: any) => typeof key === 'string' && /^[a-z0-9]+$/.test(key);
-const directory = path.resolve('../system/.projects.env');
+const directory = projectsDirectory();
 const jobs = new Map<string, any>();
 const active = new Set<string>();
 export const projectBusy = () => active.size > 0;
@@ -75,7 +76,8 @@ function runRails(input: any): Promise<any> {
   return new Promise((resolve, reject) => {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
     const modules: {[key: string]: string} = {'wizard-source': 'wizard-source/import.rb',
-      'wizard-build': 'wizard-build/activate.rb', 'wizard-build-status': 'wizard-build/activate.rb'};
+      'wizard-build': 'wizard-build/activate.rb', 'wizard-build-status': 'wizard-build/activate.rb',
+      'wizard-environments': 'wizard-environments/activate.rb', 'wizard-environments-status': 'wizard-environments/activate.rb'};
     const importer = modules[input.action] ? fs.readFileSync(path.join(__dirname, '../../project-bootstrap', modules[input.action]), 'utf8') + '\n' : '';
     const script = `BOOTSTRAPPER_INPUT = '${encoded}'\n` + importer + fs.readFileSync(path.join(__dirname, '../../project-bootstrap/provision.rb'), 'utf8');
     const child = spawn('docker', ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-']);

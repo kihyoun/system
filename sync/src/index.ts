@@ -1,3 +1,4 @@
+import {mainConfigPath, projectsDirectory, wizardConfigPath} from './StatePaths';
 import express from "express";
 import bodyParser from 'body-parser';
 import fs from 'fs';
@@ -18,6 +19,7 @@ import { suggestConfig } from './ConfigSuggestions';
 import {ensureDefaultWizard} from './DefaultWizard';
 import {initializeWizardSource, previewWizardSource} from './WizardWorkflow';
 import {activateWizardBuild, previewWizardBuild, refreshWizardBuild} from './WizardBuild';
+import {configureWizardEnvironments, previewWizardEnvironments, refreshWizardEnvironments} from './WizardEnvironments';
 
 export const app = express();
 app.use(bodyParser.json());
@@ -49,14 +51,19 @@ let refreshTokens: any[] = [];
 const status = {
   needRestart: false,
   runnerSetupInProgress: false,
+  harvestInProgress: false,
   defaultWizardSetupInProgress: false,
   defaultWizardProject: {state: 'not-started', message: ''}
 };
 
+// The CI helper runs in another process; its canonical filesystem mutex
+// must also protect ordinary Push, deletion and system-control mutations.
+const environmentHelperBusy = () => fs.existsSync(wizardConfigPath() + '.environments.lock');
+
 // Keep the configuration stable while the asynchronous setup saves its token.
 app.use(['/config', '/command'], (req, res, next) => {
-  if ((status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy()) && req.method !== 'GET') {
-    res.status(409).json({message: "Runner or project setup is in progress. Wait before changing the configuration."});
+  if ((fs.existsSync('/seed/.operation-lock') || status.harvestInProgress || status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy()) && req.method !== 'GET') {
+    res.status(409).json({message: "A backup, recovery, runner or project operation is in progress. Wait before changing the configuration."});
     return;
   }
   next();
@@ -72,8 +79,7 @@ app.listen( port, () => {
       console.log( `server listening on ${parseInt(process.env.SYNC_DOMAIN_MODE, 10) > 1
           ? "https://" : "http://"}${process.env.SYNC_HOST}` );
     }
-    console.log( `SYNC_USER: ${SYNC_USER}` );
-    console.log( `SYNC_PASS: ${SYNC_PASS}` );
+    console.log('Sync authentication is configured.');
     status.defaultWizardSetupInProgress = true;
     ensureDefaultWizard().then((result) => {
       status.defaultWizardProject = {state: result.state, message: ''};
@@ -143,8 +149,8 @@ app.get( "/status", authenticateJWT, async ( req, res ) => {
 
 app.get( "/config/main", authenticateJWT, async ( req, res ) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (fs.existsSync('../system/.docker.env')) {
-    const data = fs.readFileSync('../system/.docker.env',
+  if (fs.existsSync(mainConfigPath())) {
+    const data = fs.readFileSync(mainConfigPath(),
       {encoding:'utf8', flag:'r'});
 
     res.status(200).json({filename: ".docker.env", data})
@@ -155,7 +161,7 @@ app.get( "/config/main", authenticateJWT, async ( req, res ) => {
 
 app.get('/config/suggestions', authenticateJWT, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (fs.existsSync('../system/.docker.env')) {
+  if (fs.existsSync(mainConfigPath())) {
     res.status(409).json({ message: 'Saved configuration exists. Fetch it instead.' });
     return;
   }
@@ -181,7 +187,7 @@ app.get('/projects/wizard/source', authenticateJWT, (req, res) => {
   catch (error) { res.status(409).json({message: error.message}); }
 });
 app.post('/projects/wizard/source', authenticateJWT, (req, res) => {
-  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || environmentHelperBusy()) {
     res.status(409).json({message: 'Wait for system setup to finish.'}); return;
   }
   try { res.status(202).json(initializeWizardSource(req.body)); }
@@ -193,7 +199,7 @@ app.get('/projects/wizard/build', authenticateJWT, (req, res) => {
   catch (error) { res.status(409).json({message: error.message}); }
 });
 app.post('/projects/wizard/build', authenticateJWT, (req, res) => {
-  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || environmentHelperBusy()) {
     res.status(409).json({message: 'Wait for system setup to finish.'}); return;
   }
   // The module deduplicates its own running job and rejects other project locks.
@@ -210,6 +216,28 @@ app.get('/projects/wizard/build/status', authenticateJWT, (req, res) => {
     res.status(result.state === 'not-activated' ? 200 : 202).json(result);
   } catch (error) { res.status(409).json({message: error.message}); }
 });
+app.get('/projects/wizard/environments', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(previewWizardEnvironments()); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
+app.post('/projects/wizard/environments', authenticateJWT, (req, res) => {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || environmentHelperBusy()) {
+    res.status(409).json({message: 'Wait for system setup to finish.'}); return;
+  }
+  try { res.status(202).json(configureWizardEnvironments(req.body)); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
+app.get('/projects/wizard/environments/status', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+    res.status(409).json({message: 'Wait for system setup to finish.'}); return;
+  }
+  try {
+    const result = refreshWizardEnvironments();
+    res.status(result.state === 'not-activated' ? 200 : 202).json(result);
+  } catch (error) { res.status(409).json({message: error.message}); }
+});
 app.get('/projects/namespaces', authenticateJWT, (req, res) => {
   try { res.status(202).json(queryGitlab({action: 'namespaces'})); }
   catch (error) { res.status(503).json({message: error.message}); }
@@ -218,14 +246,14 @@ app.get('/projects/availability', authenticateJWT, (req, res) => {
   if (!validProjectKey(req.query.projectKey) || !/^[1-9][0-9]*$/.test(String(req.query.namespaceId))) {
     res.status(400).json({message: 'Invalid Project Key or namespace.'}); return;
   }
-  if (fs.existsSync(path.join('../system/.projects.env', '.' + req.query.projectKey + '.env'))) {
+  if (fs.existsSync(path.join(projectsDirectory(), '.' + req.query.projectKey + '.env'))) {
     res.json({state: 'complete', availability: 'occupied'}); return;
   }
   try { res.status(202).json(queryGitlab({action: 'availability', projectKey: req.query.projectKey, namespaceId: req.query.namespaceId})); }
   catch (error) { res.status(503).json({message: error.message}); }
 });
 app.post('/projects', authenticateJWT, (req, res) => {
-  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy()) {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy()) {
     res.status(409).json({message: 'Wait for runner or project setup to finish.'}); return;
   }
   try { validateProject(req.body); }
@@ -242,7 +270,7 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
     } else {
       console.log('Stopping intermediate Services...')
       const out = execSync('cd ../system; bash stop-intermediate.sh');
-      fs.writeFileSync('../system/.projects.env/.'+ req.body.projectKey+'.env',
+      fs.writeFileSync(path.join(projectsDirectory(), '.'+ req.body.projectKey+'.env'),
         req.body.data);
       status.needRestart = true;
       res.status(200).json({message: 'New Project added.', status,
@@ -254,7 +282,7 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
 });
 
 app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
- const dir = '../system/.projects.env';
+ const dir = projectsDirectory();
  try {
   const fileNames = fs.readdirSync(dir).sort((a, b) => a === '.wizard.env' ? -1 : b === '.wizard.env' ? 1 : a.localeCompare(b));
   const ret = [];
@@ -302,7 +330,7 @@ app.post( "/config/main", authenticateJWT, async ( req, res ) => {
     if (file && !Array.isArray(file) && file.name==='.docker.env') {
       console.log('Stopping intermediate services...');
       const out = execSync('cd ../system; bash stop-intermediate.sh');
-      fs.writeFileSync('../system/.docker.env', file.data);
+      fs.writeFileSync(mainConfigPath(), file.data);
       status.needRestart = true;
       res.status(200).json({message: 'Main config written.',
         status, output: out.toString()});
@@ -329,7 +357,7 @@ app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
-  if (!fs.existsSync('../system/.docker.env')) {
+  if (!fs.existsSync(mainConfigPath())) {
      res.status(404).send('File does not exist.');
   }
 
@@ -337,7 +365,7 @@ app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
     console.log('Stopping intermediate services...');
     const out = execSync('cd ../system; bash stop-intermediate.sh');
     console.log('Unlink ../systen/.docker.env');
-    fs.unlinkSync('../system/.docker.env');
+    fs.unlinkSync(mainConfigPath());
     status.needRestart = true;
     res.status(200).json({ message: "Main config deleted.", status,
       output: out.toString()});
@@ -384,16 +412,20 @@ app.patch( "/command/restart", authenticateJWT, async ( req, res, next ) => {
     }
 });
 
-app.use( "/command/restart", authenticateJWT, stopExecution);
+app.patch( "/command/restart", authenticateJWT, stopExecution);
 
 app.patch( "/command/harvest", authenticateJWT, async ( req, res ) => {
-    try {
-      const out = execSync('cd ../system; bash harvest.sh');
-      res.status(200).json({ message: "Harvesting complete.", status,
-        output: out.toString()});
-    } catch (err) {
-      res.status(500).send(err.toString());
-    }
+    status.harvestInProgress = true;
+    // Keep authenticated status/Fetch requests responsive during a cold copy.
+    // The filesystem lease also protects against a second Sync process/CLI.
+    execFile('bash', ['harvest.sh'], {cwd: path.resolve('../system'), maxBuffer: 1024 * 1024}, (err, out) => {
+      status.harvestInProgress = false;
+      if (err) {
+        res.status(500).json({message: "Harvest failed. Previous completed Seed remains available; check service restart and operation locks."});
+        return;
+      }
+      res.status(200).json({message: "Harvesting complete.", status, output: out.toString()});
+    });
 });
 
 app.patch( "/command/runners/register", authenticateJWT, async ( req, res ) => {

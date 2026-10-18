@@ -1,0 +1,5 @@
+**
+!.system-bootstrapper
+!.system-bootstrapper/build-v1
+!.system-bootstrapper/build-v1/smoke
+!.system-bootstrapper/build-v1/smoke/**

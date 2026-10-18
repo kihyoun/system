@@ -72,3 +72,52 @@ HTTP/browser checks and real platform GitLab/runner/registry execution are
 separate required gates. Cached build dependencies and fixtures alone do not
 prove the complete workflow. Record each gate's actual result in issue 33;
 keep parent issue 18 open until Review/manual promotion/recovery are delivered.
+
+## Supported Wizard toolchain profile
+
+The legacy `build-v1` recipe is retained byte-for-byte for its recorded hashes
+and historical GitLab evidence. New source imports whose verified snapshot uses
+Vite select the Node 24 / Vite 8 family (`node24-vite8-cleanup-v2` for new
+reservations): Node 24.22.0/npm 11.19.1, locked install,
+lint, Vitest, TypeScript/Vite build and Playwright 1.64.1 browser checks. Both
+profiles use the same bounded job names and artifact/digest contract; modern
+artifacts report `unitTests`, `testRunner: vitest`, `lint` and `typecheck` rather
+than claiming Jest ran.
+
+A reserved build always selects its exact known recipe hash. Unknown hashes are
+rejected. Review/Beta reservations retain the matching build recipe hash and the
+immutable helper checks that it still matches the canonical build reservation.
+The modern profile therefore does not rewrite old GitLab recipes or silently
+invalidate current deployment checkpoints. An existing imported project's
+in-place source/toolchain upgrade still requires a separately reviewed migration;
+a new snapshot import can use the supported profile directly.
+
+Related implementation and delivery acceptance are tracked in
+[System #22](https://github.com/kihyoun/system/issues/22) and
+[System #18](https://github.com/kihyoun/system/issues/18).
+
+## Exact default-tag cleanup
+
+The recorded `legacy` and `node24-vite8` recipes remain byte-for-byte available
+for their existing receipts and historical proofs. They have a known cleanup
+limitation: an untagged browser image is recorded by Docker as `:latest`, and
+that older cleanup comparison can leave its job tag behind while reporting
+success.
+
+New, unreserved builds use `legacy-cleanup-v2` or `node24-vite8-cleanup-v2`.
+These profiles share the corrected cleanup implementation and otherwise retain
+their original toolchain, build checks, browser checks and CI definition. The
+cleanup adds `:latest` only when the final repository path component has no tag;
+a registry port is preserved, and explicit tags and digest references are not
+changed. Removal targets only that exact tag/reference, without pruning or
+forcing image removal. Their distinct recipe hashes make the change explicit.
+
+Installing this controller does not rewrite an existing canonical build or its
+receipt. An already reserved recipe continues selecting its exact historical
+hash. The existing controller/helper must first be replaced by reviewed code
+that recognizes both old and corrected profiles. Moving an active canonical
+project to the corrected profile then requires a separately reviewed managed
+build/environment-only migration and native job cleanup verification. That
+migration must retain current source edits, the source import marker, stopped
+environment floors and unrelated configuration. The full source-import
+migration is not a shortcut for a cleanup-only change.

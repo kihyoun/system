@@ -1,19 +1,17 @@
-version: '2'
-services:
-  docker:
-    image: '${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:latest}'
-    restart: always
-    networks:
-      - system_gitlab
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /etc/gitlab-runner
-
-    extra_hosts:
-      - "$GITLAB_REGISTRY_HOST:host-gateway"
-      - "$GITLAB_HOST:host-gateway"
-
-networks:
-  system_gitlab:
-    external:
-      name: system_gitlab
+{
+  "version": "2",
+  "services": {
+    "docker": {
+      "image": "${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:latest}",
+      "restart": "always",
+      "networks": ["system_gitlab"],
+      "volumes": [
+        {"type": "bind", "source": "/var/run/docker.sock", "target": "/var/run/docker.sock"},
+        {"type": "bind", "source": "${RUNNER_CONFIG_DIR:?Use start.sh to select the runner manager directory}", "target": "/etc/gitlab-runner"},
+        {"type": "bind", "source": "${RUNNER_HOME_DIR:?Use start.sh to select the runner manager directory}", "target": "/home/gitlab-runner"}
+      ],
+      "extra_hosts": ["${GITLAB_REGISTRY_HOST}:host-gateway", "${GITLAB_HOST}:host-gateway"]
+    }
+  },
+  "networks": {"system_gitlab": {"external": {"name": "system_gitlab"}}}
+}

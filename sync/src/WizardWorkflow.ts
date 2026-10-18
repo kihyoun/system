@@ -1,3 +1,4 @@
+import {wizardConfigPath} from './StatePaths';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -6,7 +7,7 @@ import {wizardCi} from './DefaultWizard';
 
 const snapshotModule = require('../../project-bootstrap/wizard-source/package');
 const snapshotPath = path.resolve(__dirname, '../../project-bootstrap/wizard-source/snapshot.json');
-const configPath = () => path.resolve('../system/.projects.env/.wizard.env');
+const configPath = () => wizardConfigPath();
 function context() {
   const content = fs.readFileSync(configPath(), 'utf8');
   const receipt = readReceipt(content);

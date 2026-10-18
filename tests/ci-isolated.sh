@@ -49,7 +49,7 @@ cleanup() {
   return "$cleanup_failed"
 }
 if [ "${1:-}" = cleanup ]; then cleanup after-script; exit $?; fi
-case "${1:-}" in all|gitlab|sync|gitlab-runner|bootstrapper|nginx|wizard|shared) component="$1";;
+case "${1:-}" in all|gitlab|sync|gitlab-runner|bootstrapper|nginx|wizard|shared|performance) component="$1";;
   *) echo 'Select a documented isolated component.' >&2; exit 2;; esac
 case "${CI_COMMIT_SHA:-}" in ''|*[!0-9a-f]*) echo 'The expected CI_COMMIT_SHA is required.' >&2; exit 2;; esac
 [ "${#CI_COMMIT_SHA}" -eq 40 ] || { echo 'The expected CI_COMMIT_SHA must be a full commit ID.' >&2; exit 2; }
@@ -74,7 +74,7 @@ mkdir -p test-results
 
 docker build --label "org.system-bootstrapper.test-job=$CI_JOB_ID" -f tests/Dockerfile -t "$image" - < .test-context/context.tar
 docker create --name "$resource" --label "org.system-bootstrapper.test-job=$CI_JOB_ID" \
-  --network none "$image" "$component" >/dev/null
+  --init --network none --memory 2g --cpus 2 --pids-limit 512 "$image" "$component" >/dev/null
 docker start "$resource" >/dev/null
 status=$(docker wait "$resource")
 docker logs "$resource"

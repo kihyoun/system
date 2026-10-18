@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const {execFileSync} = require('child_process');
-const {validate} = require('../project-bootstrap/wizard-source/package');
+const {validate,verifyCommitted} = require('../project-bootstrap/wizard-source/package');
 const snapshotPath = 'project-bootstrap/wizard-source/snapshot.json';
 const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 
@@ -14,13 +14,17 @@ function included(name) {
   // do not belong in the test context. The one validated snapshot is added below.
   if (name === snapshotPath || /(^|\/)(node_modules|dist|test-results|\.test-context|\.projects\.env)(\/|$)/.test(name)) return false;
   if (/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper_initial_root_password)$/.test(name)) return false;
+  if (['system/ensure-wizard-image.sh','system/wizard-image-recovery.js','system/wizard-registry-token.rb'].includes(name)) return true;
   return /^sync\/src\//.test(name) ||
     ['sync/package.json','sync/package-lock.json','sync/tsconfig.json','sync/eslint.config.mjs'].includes(name) ||
     name.startsWith('project-bootstrap/') || name.startsWith('tests/') ||
     /^gitlab\/[^/]+\.(js|sh)$/.test(name) || name === 'gitlab/gitlab.rb' ||
-    /^gitlab-runner\/[^/]+\.(js|sh)$/.test(name) || /^nginx\/[^/]+\.sh$/.test(name) ||
+    /^gitlab-runner\/[^/]+\.(js|sh|rb)$/.test(name) || /^nginx\/[^/]+\.sh$/.test(name) ||
     name.startsWith('nginx/.templates/') || /^nginx-proxy\/[^/]+\.sh$/.test(name) ||
-    ['system/.docker.env.example','system/start-intermediate.sh'].includes(name);
+    ['tests/prepare-candidate.js','start.sh','sync/start.sh','bootstrapper/persistence.sh',
+      'gitlab-runner/docker-compose.yml','system/.docker.env.example','system/.seed.env',
+      'system/start-intermediate.sh','system/persistence-init.js','system/push.sh',
+      'system/harvest.sh','system/seed.sh','system/seed-manifest.js','bootstrapper/rebind-renewal.py'].includes(name);
 }
 function prepareContext(root) {
   root = path.resolve(root);
@@ -30,6 +34,7 @@ function prepareContext(root) {
   if (!pin) throw Error('The committed checkout must pin a Wizard gitlink.');
   const snapshot = validate(JSON.parse(fs.readFileSync(path.join(root,snapshotPath),'utf8')));
   if (snapshot.sourceRevision !== pin[1]) throw Error('The prepared Wizard snapshot is stale; regenerate it for the current gitlink.');
+  verifyCommitted(root,snapshot);
   const files = git('ls-tree','-rz','HEAD').toString().split('\0').filter(Boolean).map(entry => {
     const match = /^(\d+) (\w+) ([a-f0-9]{40})\t(.+)$/.exec(entry);
     if (!match) throw Error('Unexpected committed tree entry.');
@@ -44,13 +49,14 @@ function prepareContext(root) {
   try {
     const archive = path.join(temporary,'context.tar');
     git('archive','--format=tar','--output='+archive,'HEAD','--',...files.map(file=>file.name));
+    execFileSync('tar',['-xf',archive,'-C',temporary]);
     const stagedSnapshot = path.join(temporary,snapshotPath);
     fs.mkdirSync(path.dirname(stagedSnapshot),{recursive:true});
     // Do not carry unknown metadata fields into the candidate context.
     const cleanSnapshot = {version:snapshot.version,sourceRevision:snapshot.sourceRevision,manifestHash:snapshot.manifestHash,
       files:snapshot.files.map(({path,mode,sha256,content})=>({path,mode,sha256,content}))};
     fs.writeFileSync(stagedSnapshot,JSON.stringify(cleanSnapshot));
-    execFileSync('tar',['--append','--file',archive,'-C',temporary,snapshotPath],{stdio:['ignore','pipe','pipe']});
+    execFileSync('tar',['-cf',archive,'-C',temporary,...files.map(file=>file.name),snapshotPath],{stdio:['ignore','pipe','pipe']});
     const names = execFileSync('tar',['--list','--file',archive],{encoding:'utf8',maxBuffer:1024*1024}).split(/\r?\n/).filter(name=>name && !name.endsWith('/'));
     const expected = [...files.map(file=>file.name),snapshotPath].sort();
     if (JSON.stringify(names.sort()) !== JSON.stringify(expected)) throw Error('The test archive does not match the selected committed inputs.');

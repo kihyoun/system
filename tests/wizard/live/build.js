@@ -9,8 +9,10 @@ assert.equal(process.env.SYSTEM_WIZARD_LIVE_ACCEPTANCE, 'true', 'Explicit live a
 const expectedProject = Number(process.env.SYSTEM_WIZARD_EXPECTED_PROJECT);
 assert(Number.isSafeInteger(expectedProject) && expectedProject > 0, 'Set the intended managed project ID');
 let token;
+let refreshToken;
+let refreshAt = 0;
 const deadline = Date.now() + 65 * 60 * 1000;
-function request(method, route, data) {
+function rawRequest(method, route, data) {
   assert(Date.now() < deadline, 'Managed Wizard acceptance exceeded its overall time budget');
   return new Promise((resolve, reject) => {
     const body = data ? JSON.stringify(data) : undefined;
@@ -20,7 +22,9 @@ function request(method, route, data) {
       response.on('data', chunk => { text += chunk; });
       response.on('end', () => {
         if (![200, 202].includes(response.statusCode)) {
-          reject(new Error('Acceptance request failed: ' + method + ' ' + route + ' HTTP ' + response.statusCode));
+          const error = new Error('Acceptance request failed: ' + method + ' ' + route + ' HTTP ' + response.statusCode);
+          error.statusCode = response.statusCode;
+          reject(error);
           return;
         }
         try { resolve(JSON.parse(text)); } catch (_) { reject(new Error('Invalid acceptance response')); }
@@ -30,6 +34,26 @@ function request(method, route, data) {
     req.on('error', reject);
     req.end(body);
   });
+}
+async function renew() {
+  assert(refreshToken, 'Acceptance refresh credential is missing');
+  const session = await rawRequest('POST', '/token', {token: refreshToken});
+  assert(session.accessToken, 'Acceptance token refresh failed');
+  token = session.accessToken;
+  // Sync grants twenty-minute tokens. Refresh before dispatch at eighteen
+  // minutes, including before mutations; never replay a mutating request.
+  refreshAt = Date.now() + 18 * 60 * 1000;
+}
+async function request(method, route, data) {
+  if (token && Date.now() >= refreshAt) await renew();
+  try { return await rawRequest(method, route, data); }
+  catch (error) {
+    if (method !== 'GET' || error.statusCode !== 401) throw error;
+    // A read can be retried once after clock drift/expiry; source/build POSTs
+    // may already have committed durable state and must never be retried here.
+    await renew();
+    return rawRequest(method, route, data);
+  }
 }
 const sleep = () => new Promise(resolve => setTimeout(resolve, 2000));
 function signature(text) {
@@ -56,7 +80,9 @@ async function project() {
 (async () => {
   const login = await request('POST', '/login', {username: process.env.SYNC_USER, password: process.env.SYNC_PASS});
   token = login.accessToken;
-  assert(token);
+  refreshToken = login.refreshToken;
+  assert(token && refreshToken);
+  refreshAt = Date.now() + 18 * 60 * 1000;
   let ready = false;
   for (let attempt = 0; attempt < 180; attempt++) {
     const status = await request('GET', '/status');
@@ -84,7 +110,7 @@ async function project() {
   const buildPreview = await request('GET', '/projects/wizard/build');
   assert.equal(buildPreview.repository.id, expectedProject);
   let result = await finish(await request('POST', '/projects/wizard/build', {recipeHash: buildPreview.recipeHash}));
-  for (let attempt = 0; attempt < 450; attempt++) {
+  while (Date.now() < deadline) {
     assert(result.build, 'Build receipt is missing');
     if (result.build.phase === 'candidate-verified') break;
     assert(!['checks-failed', 'verification-failed', 'requires-reconciliation'].includes(result.build.phase),

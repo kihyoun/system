@@ -10,7 +10,10 @@ Conversation with the maintainer may remain in German.
 Track new requirements and future expansions in GitHub issues, as requested on
 2026-10-17; documentation should explain current behavior and link to the issue.
 Create the issue before starting new implementation, then link the implementing
-pull requests to it. The current Wizard registration delivery is tracked in
+pull requests to it. Keep the issue collection centralized: create every issue
+in `kihyoun/system`, including issues concerning the Wizard repository. Do not
+create new issues in `kihyoun/system-wizard`; Wizard PRs must reference the
+central System issue. The current Wizard registration delivery is tracked in
 https://github.com/kihyoun/system/issues/19.
 The Wizard is now to be registered automatically as the first project with its
 real Production URL. This supersedes the previous optional-registration scope.
@@ -101,8 +104,14 @@ the immediate task to implement it.
 
 Bootstrapper configuration is managed independently through the Wizard: local
 Open/Backup and server Push/Fetch. Harvest/Seed are for persistent service data;
-do not fold Wizard configuration into that cycle or add configuration volumes
-without an explicit design decision. For first setup only, if no saved main
+do not fold Wizard configuration into that cycle. On 2026-10-18 the maintainer
+explicitly decided that all persistent state must live beneath the attached
+volume. Wizard configuration now has a separate persistent configuration directory
+(`/state` in the controller), outside Harvest/Seed. Docker service data, runner
+identity, routing and TLS state must also map beneath `PERSISTENT_DIR`. Never
+fall back to root-disk storage when the configured volume is absent. The storage
+contract and migration are tracked in https://github.com/kihyoun/system/issues/41.
+For first setup only, if no saved main
 configuration exists, Fetch may load derived suggestions marked with an asterisk
 and verification tooltip. Saved configuration always wins; suggestions must
 not be written to the server automatically.

@@ -2,6 +2,12 @@
 source ../.docker.env
 source ../gitlab/.docker.env
 source ../system/.docker.env
+recovery=false
+if [ "${1:-}" = recovery ]; then
+  recovery=true
+  SYNC_ENABLE=false
+  WIZARD_ENABLE=false
+fi
 
 function generate_conf {
     cat $1 | sed -e "s@\${PROXY_UPSTREAM}@$2@g" \
@@ -29,6 +35,7 @@ function generate_nginx_conf {
 }
 
 mkdir -p /templates
+cp ./.templates/acme-http01.conf.template /templates/00-acme-http01.conf.template
 
 generate_nginx_conf $GITLAB_DOMAIN_MODE \
   gitlab \
@@ -37,6 +44,12 @@ generate_nginx_conf $GITLAB_DOMAIN_MODE \
   $GITLAB_HOST \
   $GITLAB_SSL \
   $GITLAB_SSL_KEY > /templates/default.conf.template
+
+# Candidate fragments belong to the versioned managed environment helper.
+# Preserve them when the main configuration is rendered on start/reload.
+if [ "$recovery" != true ]; then
+  printf '\ninclude /etc/nginx/templates/wizard-environments/*.conf;\n' >> /templates/default.conf.template
+fi
 
 generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
   registry \
@@ -77,7 +90,8 @@ function generate_proxy_config {
     >> /templates/default.conf.template
 }
 
-for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
+for i in $(find -H ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
+  [ "$recovery" = true ] && break
   source $i
   # Its production domain is already rendered by the main WIZARD settings below.
   if [ "${PROJECT_TEMPLATE:-}" = wizard ] && [ "$PROJECT_NAME" = wizard ]; then continue; fi

@@ -11,3 +11,7 @@ sync/dist
 test-results/
 project-bootstrap/wizard-source/snapshot.json
 .test-context/
+
+.candidate-context/
+
+.candidate-images/

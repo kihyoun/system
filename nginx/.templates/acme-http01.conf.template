@@ -1,0 +1,14 @@
+# HTTP-01 only. Unknown hosts cannot proxy into a platform service.
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /ssl/acme-http01;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 404;
+    }
+}
