@@ -9,6 +9,8 @@ services:
       SYSTEM_CONFIG_DIR: /state
       NGINX_IMAGE: ${NGINX_IMAGE:-nginx}
       WIZARD_IMAGE: ${WIZARD_IMAGE:-systembootstrapper/wizard}
+      SYSTEM_WIZARD_ENVIRONMENT_IMAGE: ${SYSTEM_WIZARD_ENVIRONMENT_IMAGE:-}
+      SYSTEM_WIZARD_CANONICAL_CONTROLLER: ${SYSTEM_WIZARD_CANONICAL_CONTROLLER:-system_bootstrapper_1}
       GITLAB_HOST: ${GITLAB_HOST:-gitlab.example.com}
       COMPOSE_COMPATIBILITY: "1"
       GITLAB_IMAGE: ${GITLAB_IMAGE:-gitlab/gitlab-ce:12.10.6-ce.0}
@@ -18,6 +20,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - configuration:/state
+      - type: bind
+        source: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/host/letsencrypt
+        target: /host-letsencrypt
+        bind:
+          create_host_path: false
       - type: bind
         source: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/runners
         target: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/runners

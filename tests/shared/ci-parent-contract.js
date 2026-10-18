@@ -42,6 +42,9 @@ if(process.env.MOCK_CLEANUP==='remove-failed' && (args[0]==='rm' || (args[0]==='
   const calls = fs.readFileSync(trace,'utf8').trim().split('\n').map(line=>JSON.parse(line));
   const create = calls.find(args=>args[0]==='create');
   assert(create.includes('--network') && create.includes('none'));
+  assert(create.includes('--init'),'Reap orphaned fixture processes through an init process.');
+  assert(create.includes('--pids-limit') && create.includes('512'));
+  assert(create.includes('--memory') && create.includes('2g'));
   assert(!create.some(arg=>['-v','--volume','--mount','--privileged','--env','-e'].includes(arg)));
   assert(calls.findIndex(args=>args[0]==='cp') < calls.findIndex(args=>args[0]==='rm'),'copy failure artifacts before cleanup');
   assert(calls.some(args=>args[0]==='rm' && args.includes('system-tests-21-90001')));

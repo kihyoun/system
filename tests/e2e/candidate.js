@@ -17,7 +17,7 @@ async function main() {
   }
   if(process.argv.length!==3) throw new Error('spec-required');
   const spec=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
-  for(const image of Object.values(spec.images || {})) {
+  for(const image of Object.values({...spec.images,...spec.supportImages})) {
     const stat=fs.lstatSync(image.archive);
     if(!stat.isFile() || stat.isSymbolicLink()) throw new Error('regular-image-archives-required');
   }
@@ -30,7 +30,8 @@ async function main() {
   const cancel=()=>{candidate.canceled=true;};
   process.on('SIGINT',cancel); process.on('SIGTERM',cancel);
   let failed=false;
-  try { await candidate.start(); await candidate.smoke(); }
+  try { await candidate.start(); await candidate.smoke(); if(spec.fullAcceptance===true) await candidate.platform();
+    if(spec.recoveryAcceptance===true) await require('./recovery').run(candidate,reportDirectory); }
   catch { failed=true; console.error('Disposable candidate failed; see sanitized stage report.'); }
   finally {
     if(!candidate.cleanup()) failed=true;

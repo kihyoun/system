@@ -51,6 +51,7 @@ let refreshTokens: any[] = [];
 const status = {
   needRestart: false,
   runnerSetupInProgress: false,
+  harvestInProgress: false,
   defaultWizardSetupInProgress: false,
   defaultWizardProject: {state: 'not-started', message: ''}
 };
@@ -61,8 +62,8 @@ const environmentHelperBusy = () => fs.existsSync(wizardConfigPath() + '.environ
 
 // Keep the configuration stable while the asynchronous setup saves its token.
 app.use(['/config', '/command'], (req, res, next) => {
-  if ((status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy()) && req.method !== 'GET') {
-    res.status(409).json({message: "Runner or project setup is in progress. Wait before changing the configuration."});
+  if ((fs.existsSync('/seed/.operation-lock') || status.harvestInProgress || status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy()) && req.method !== 'GET') {
+    res.status(409).json({message: "A backup, recovery, runner or project operation is in progress. Wait before changing the configuration."});
     return;
   }
   next();
@@ -415,13 +416,17 @@ app.patch( "/command/restart", authenticateJWT, async ( req, res, next ) => {
 app.patch( "/command/restart", authenticateJWT, stopExecution);
 
 app.patch( "/command/harvest", authenticateJWT, async ( req, res ) => {
-    try {
-      const out = execSync('cd ../system; bash harvest.sh');
-      res.status(200).json({ message: "Harvesting complete.", status,
-        output: out.toString()});
-    } catch (err) {
-      res.status(500).send(err.toString());
-    }
+    status.harvestInProgress = true;
+    // Keep authenticated status/Fetch requests responsive during a cold copy.
+    // The filesystem lease also protects against a second Sync process/CLI.
+    execFile('bash', ['harvest.sh'], {cwd: path.resolve('../system'), maxBuffer: 1024 * 1024}, (err, out) => {
+      status.harvestInProgress = false;
+      if (err) {
+        res.status(500).json({message: "Harvest failed. Previous completed Seed remains available; check service restart and operation locks."});
+        return;
+      }
+      res.status(200).json({message: "Harvesting complete.", status, output: out.toString()});
+    });
 });
 
 app.patch( "/command/runners/register", authenticateJWT, async ( req, res ) => {

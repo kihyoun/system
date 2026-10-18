@@ -56,7 +56,7 @@ SYSTEM_TEST_ISOLATED=1 node tests/run.js gitlab
 ```
 
 Other selectors are `sync`, `gitlab-runner`, `bootstrapper`, `nginx`, `wizard`
-and `shared`. Checks are explicit in `manifest.json`, run sequentially, and have
+`shared` and `performance`. Checks are explicit in `manifest.json`, run sequentially, and have
 per-check time limits. A failed, canceled or timed-out check returns a nonzero
 runner exit status. The runner terminates the check's process group, including
 an isolated Sync child, and writes reports after each completed check. A runner
@@ -153,7 +153,7 @@ Every old path below was directly under `tests/`.
 | `runner-live.py` | `gitlab-runner/live/runner.py` | Real runner pipeline/artifact, Fetch signature and PAT revocation; Python 3, disposable `system_*` containers and localhost routes | 1–20min |
 | `default-wizard-live.js` | `wizard/live/default-wizard.js` | Real default registration, URL/signature, same repo on repeat; compiled Sync/disposable platform credentials | 1–10min |
 | `registry-smoke.gitlab-ci.yml` | `registry/registry-smoke.gitlab-ci.yml` | Explicit disposable-project CI example for build/push/pull/run; Docker socket runner/registry credentials | 1–10min |
-| `seed-cycle.py` | `seed/seed-cycle.py` | Harvest/restore in temporary mounts, empty and incomplete seed cases; Python 3, Docker, explicitly prepared `system_bootstrapper` image | <2min |
+| `seed-cycle.py` | `seed/seed-cycle.py` | Completed cold Harvest/restore, checksums, version/edition, failure/resume, renewal lease and path rebinding; Python 3, Node and rsync, fixture Docker command | <2min |
 
 `shared/runner-contract.js` adds harness acceptance for passing/failing child
 processes, enforced timeouts and persistent escaped reports. It uses only
@@ -268,3 +268,39 @@ expected-content CI upgrades, MR lease and stale-job protection, owned cleanup
 and preservation of the primary Wizard route. See the
 [operating guide](../project-bootstrap/wizard-environments/README.md).
 Live manual-job/HTTPS acceptance remains a separate explicit operator gate.
+
+## Full-System image gate
+
+The required `test:candidate-image` job builds `system/Dockerfile`, not only the
+standalone base. Preparation writes `.candidate-context/` from committed runtime
+blobs and the validated Wizard snapshot matching the committed gitlink. Wizard
+files are materialized from that snapshot; checkout dirt, ignored files, private
+configuration and Git metadata are excluded. Both context packagers support GNU
+and BusyBox tar. The image installs the pinned Sync lockfile and compiles Sync
+during the build. A socket-free, network-disabled child verifies the resulting
+compiler/lint/runtime/Compose and source-snapshot contracts. The job records the
+source commit, exact built image ID and JUnit result and removes its job-scoped
+container and image on exit and `after_script`.
+
+Reproduce packaging with `node tests/prepare-candidate.js` after preparing the
+Wizard snapshot. Build with `docker build -f system/Dockerfile -t
+system-candidate:local - < .candidate-context/context.tar`. This is image/runtime
+acceptance; the separate private-daemon scenarios remain explicit.
+
+The additional required `test:platform-candidate` stage runs the explicit full
+private-daemon driver after the isolated matrix and full-image gate. It builds
+Wizard/System from their committed inputs, preloads pinned service/helper images,
+and exercises real private GitLab CI/registry/runner and stopped seed behavior.
+See [the lifecycle guide](e2e/README.md) for the twelve-GiB resource contract,
+readiness, credential revocation and exact owned cleanup. Results report each
+stage; neither a YAML lint nor an offline fixture alone counts as live success.
+
+## Maintained delivery checks
+
+`gitlab/github-backup.js` runs with the GitLab component (60-second budget). It
+checks the generated backup/synchronization definitions with disposable Git
+repositories and fake transports; it does not push to GitHub or change GitLab.
+`performance/resources/test_collect.py` runs with the performance component
+(30-second budget), using Python 3 standard-library fixtures for passive resource
+collection, parsing, reports and endpoint behavior. It performs no live load
+test. The required GitLab matrix includes both checks.

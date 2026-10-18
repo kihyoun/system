@@ -12,8 +12,8 @@ outer Docker daemon. No existing System installation, WSL account, local seed,
 private configuration, globally named platform container or workstation path is
 an input. The driver may run inside a CI container: HTTP requests execute through
 Node in the private candidate bootstrapper, not through the CI container's
-loopback. The outer published HTTP port is assigned by Docker and bound only to
-the outer daemon host's `127.0.0.1`.
+loopback. No port is published on the outer daemon. HTTP probes run through Node inside
+the owned candidate, through its private bridge gateway and private NGINX.
 
 The driver creates one randomly named, ownership-labeled **privileged DinD**
 container, an internal network and a Docker-data volume. DinD has its own Unix
@@ -52,8 +52,13 @@ created with `docker image save`) and `id` (the exact `sha256:` image ID, obtain
 with `docker image inspect --format '{{.Id}}' IMAGE`). These are **image IDs**,
 not registry manifest digests. The daemon is pinned by registry digest; each
 loaded role is verified by image ID before its expected local alias is assigned.
-The archives must contain all required service image layers. The driver copies
+The archives must contain all required service image layers. The driver streams
 only these explicit files, not the checkout, host Docker storage or existing data.
+The current bootstrap creates configuration, service and runner bind directories
+inside the owned private daemon at `/candidate-data/platform`, and mounts the
+configuration at `/state`. These are disposable candidate paths, never the
+Production attached volume. Every Docker operation is capped by the remaining
+overall budget as well as its own timeout.
 Use candidate images built without private configuration or credentials.
 
 For example, the shape of one role is:
@@ -63,12 +68,12 @@ For example, the shape of one role is:
 ```
 
 `readinessMilliseconds` is optional (1,000–1,200,000; default 1,200,000 per smoke
-readiness gate). The overall lifecycle has a one-hour budget, checked between
-bounded Docker/HTTP operations. Each archive copy/load is capped at ten minutes;
+readiness gate). The overall lifecycle has a twenty-minute budget, checked between
+bounded Docker/HTTP operations. Each streamed archive load is capped at ten minutes;
 other Docker operations at two minutes and individual HTTP requests at ten
 seconds. An explicit event-loop yield before every Docker operation delivers
-queued signal callbacks. Cancellation is observed between operations, so a
-copy/load can delay cooperative cancellation by up to ten minutes. CI must allow
+queued signal callbacks. Cancellation is observed between operations, so an
+archive load can delay cooperative cancellation by up to ten minutes. CI must allow
 cleanup after that boundary and retain the receipt for forced termination.
 
 From a committed LF checkout (the signed example must validate unchanged):
@@ -152,11 +157,99 @@ They invoke neither Docker nor live HTTP:
 node tests/shared/disposable-candidate-contract.js
 ```
 
-No privileged candidate execution or real GitLab pipeline is claimed by these
-fixtures. Root CI YAML integration is owned separately. Real startup compatibility,
+The offline fixtures do not establish privileged candidate execution or a real
+GitLab pipeline. The required root CI job now invokes the full driver separately. Real startup compatibility,
 resource budget, Docker cancellation behavior, runner idempotency, registry
 build/push/pull/run, detailed routing, persistent-data harvest/restore and repeated
 full-candidate cleanup require the later resource-leased acceptance run and
 scenario adapters. Existing `*/live/` scripts are not automatically imported;
 their fixed-name assumptions must be adapted explicitly to this private daemon.
 Issue 21 stays open until that evidence and real pipeline gating exist.
+
+## Required full-platform CI
+
+`test:platform-candidate` runs after every isolated/image test and blocks the
+existing publishing stage. Its trusted Node 24 / Alpine parent installs the same
+pinned CLI utilities as System, builds the full System context and the Wizard
+from the validated pinned snapshot, and preloads the pinned service images.
+The job is serialized with a GitLab resource group. Image preparation has a
+separate bounded budget; private execution has an overall twenty-minute limit.
+The runner host needs twelve GiB candidate RAM plus its existing platform/job
+headroom and enough free disk for image archives, extraction and GitLab state.
+
+The CI specification explicitly sets `fullAcceptance: true` and supplies a
+matching pinned runner helper image through `supportImages.helper`. In addition
+to routed HTML and authenticated signed Fetch, the full driver verifies a fresh
+GitLab and runner, repeats registration without duplicate pools or active setup
+credentials, creates an owned private project, runs a real Docker build/push/
+pull/run pipeline with artifact delivery, and proves a deliberate failed job
+blocks the downstream delivery job. It revokes its temporary API credential
+and confirms HTTP 401 before stopping services for the seed cycle. The seed
+scenario harvests stopped private GitLab files, removes a marker from live data,
+restores, and checks that marker. This proves the current service-data copy
+cycle; it is not the stronger configuration-plus-Seed fresh-server acceptance
+tracked in issue 43. No Production rollout is performed.
+
+The manifest records individual stage outcomes and sanitized numeric pipeline/
+job/project identities. Failed pipelines retain sanitized job status/reasons,
+without raw traces, credentials, configuration or Docker output. Both shell
+traps and GitLab `after_script` replay ownership-checked cleanup receipts. Only
+job-labeled built image tags are removed; shared pinned public image caches are
+retained. No global prune is used. Forced host loss still requires replaying the
+retained receipt once the daemon is reachable.
+
+
+## Backup-only cold recovery adapter (#43)
+
+When the committed source includes the completed Seed manifest implementation,
+image preparation requires `recovery.js`, enables `recoveryAcceptance`, and extracts
+the actual Wizard configuration-export model bundle from the freshly built Wizard
+image. The exporter is an explicit private file input, checked by SHA-256 and the
+pinned Wizard source revision. Its ZIP uses the same model and generator as Backup;
+it contains configuration only.
+
+The adapter records synthetic GitLab users, repository head, an issue, an encrypted
+CI variable and an existing registry digest. It creates a synthetic TLS certificate
+and account/renewal layout, fetches saved main/project configuration through the
+authenticated API, exports it through the Wizard model, and runs the real controlled
+cold Harvest. Only that ZIP and the completed marked Seed leave the original owned
+DinD daemon. Binary transfers use file descriptors and checksums use bounded buffers.
+Private archives have mode 0600 beneath a mode-0700 temporary directory; they never
+enter public CI artifacts or reports.
+
+The original daemon and its Docker-data volume are removed before a fresh owned
+daemon starts. Recovery uses a different empty data root and reloads only the
+explicit images built from the committed source and pinned public dependencies.
+It imports the real ZIP before provisioning, rebinds the declared Seed path without
+changing the Cube, applies the real Seed, executes the fresh-source renewal-path
+rewriter, and then starts services. No previous live configuration directory, runner
+workspace or undeclared image archive is mounted or read. Expected credentials and
+identities remain verification oracles; they are never written as recovery inputs.
+
+The restored instance must pass CA-verified HTTPS with the expected host/SNI,
+authenticated configuration Fetch, account/certificate/renewal-path preservation,
+and GitLab user/project/repository/issue/encrypted-setting/registry identity checks.
+It repeats actual runner/registry CI and its failure gate, then runs a further real
+CI job that pulls and executes the original registry blob captured before Harvest.
+Both lifecycles share the original overall deadline and cancellation flag. Each has
+an independent ownership/checkpoint receipt and cleanup; a cleanup failure fails
+acceptance and retains private inputs for targeted recovery.
+
+This deliberately reports `acmeRenewalVerified: false`: synthetic TLS plus restored
+renewal configuration is not a Certbot/ACME renewal dry-run. Full #43 closure still
+requires a bounded local ACME fixture or separately authorized real renewal proof.
+The eleven offline adapter tests include actual ephemeral HTTPS with a trusted CA,
+wrong-host and foreign-CA rejection, lifecycle ordering, cancellation, stream
+boundaries and failed-cleanup handling. They do not establish a passed cold run.
+
+
+The baseline cold fixture uses its explicitly source-built local Wizard image.
+Capture preserves any existing `WIZARD_IMAGE`, GitLab/Runner version and host
+binding assignments rather than replacing those choices with fixture defaults.
+A restored private Wizard registry pin currently fails explicitly with
+`wizard-pin-recovery-artifact-not-declared`; it is never silently changed to the
+local fixture image. Reports also state `privateWizardPinVerified: false`.
+#43 remains open for a server-owned temporary `read_registry` credential and
+registry/bootstrap routing procedure, or a declared compatible rebuild at the
+recorded promoted source revision. A fresh host must not depend on an old Docker
+login, and successful local-image recovery does not verify that private-pin case.

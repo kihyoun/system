@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Persist host TLS renewal state independently of service Harvest/Seed.
+# Install volume-backed host TLS renewal integration after setup or Seed restore.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 set -a
@@ -14,15 +14,14 @@ fi
 state="$PERSISTENT_DIR/host"
 install -d -m 0700 "$state"
 if [ -d /etc/letsencrypt ] && [ ! -L /etc/letsencrypt ]; then
-    if [ -e "$state/letsencrypt" ]; then
-        # A fresh Certbot package may have created empty directories. Preserve
-        # those host files, but never silently replace another active lineage.
-        if find /etc/letsencrypt -type f \( -name '*.pem' -o -path '*/accounts/*' -o -path '*/renewal/*.conf' \) -print -quit | grep -q .; then
-            echo 'Both host and volume contain active Certbot state; reconcile them first.' >&2
-            exit 1
-        fi
-    else
-        cp -a /etc/letsencrypt "$state/letsencrypt"
+    host_active=$(find /etc/letsencrypt -type f \( -name '*.pem' -o -path '*/accounts/*' -o -path '*/renewal/*.conf' \) -print -quit)
+    volume_active=$(find "$state/letsencrypt" -type f \( -name '*.pem' -o -path '*/accounts/*' -o -path '*/renewal/*.conf' \) -print -quit)
+    if [ -n "$host_active" ] && [ -n "$volume_active" ]; then
+        echo 'Both host and volume contain active Certbot state; reconcile them first.' >&2
+        exit 1
+    fi
+    if [ -n "$host_active" ] || [ -z "$volume_active" ]; then
+        cp -a /etc/letsencrypt/. "$state/letsencrypt/"
     fi
     mv /etc/letsencrypt "/etc/letsencrypt.before-volume-$(date -u +%Y%m%dT%H%M%SZ)"
 fi
@@ -34,16 +33,10 @@ else
 fi
 install -d /etc/systemd/system/docker.service.d /etc/systemd/system/certbot.service.d
 printf '[Unit]\nRequiresMountsFor=%s\n' "$PERSISTENT_MOUNT" > /etc/systemd/system/docker.service.d/20-system-volume.conf
-printf '[Unit]\nRequiresMountsFor=%s\n' "$PERSISTENT_MOUNT" > /etc/systemd/system/certbot.service.d/20-system-volume.conf
+printf '[Unit]\nRequiresMountsFor=%s\n[Service]\nExecStart=\nExecStart=/usr/local/sbin/system-certbot -q renew\n' "$PERSISTENT_MOUNT" > /etc/systemd/system/certbot.service.d/20-system-volume.conf
+install -m 0755 bootstrapper/certbot-with-volume-lock.sh /usr/local/sbin/system-certbot
 install -m 0755 bootstrapper/install-volume-certificate.sh /usr/local/sbin/system-install-certificate
-python3 - "$PERSISTENT_DIR/ssl/acme-http01" <<'PYRENEW'
-import pathlib, sys
-for renewal in pathlib.Path('/etc/letsencrypt/renewal').glob('*.conf'):
-    text = renewal.read_text()
-    updated = text.replace('/var/lib/docker/volumes/system_ssl/_data/acme-http01', sys.argv[1])
-    if text != updated:
-        renewal.write_text(updated)
-PYRENEW
+python3 bootstrapper/rebind-renewal.py /etc/letsencrypt/renewal "$PERSISTENT_DIR/ssl/acme-http01"
 install -d /etc/letsencrypt/renewal-hooks/deploy
 printf '#!/bin/sh\nexec /usr/local/sbin/system-install-certificate\n' > /etc/letsencrypt/renewal-hooks/deploy/system-web
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/system-web

@@ -38,3 +38,28 @@ assert.equal(JSON.parse(content('smoke/package.json')).dependencies.playwright, 
 const again = require(path.join(root, 'project-bootstrap/wizard-build/recipe')).generate(logo);
 assert.equal(recipe.recipeHash, again.recipeHash);
 console.log('Wizard recipe: immutable signature, deterministic manifest, legacy lockfile checks, browser gate, contextual excludes and no deployment passed.');
+const recipes = require(path.join(root, 'project-bootstrap/wizard-build/recipe'));
+const modern = recipes.generate(logo, 'node24-vite8');
+const modernContent = name => modern.files.find(file => file.path.endsWith('/' + name)).content;
+assert.equal(modern.profile, 'node24-vite8');
+assert.notEqual(modern.recipeHash, recipe.recipeHash);
+assert.deepEqual(recipes.select(logo, recipe.recipeHash), recipe, 'Legacy reservations must keep identical file/CI hashes');
+assert.deepEqual(recipes.select(logo, modern.recipeHash), modern);
+assert.throws(() => recipes.select(logo, '0'.repeat(64)), /Unknown reserved/);
+assert.equal(modern.ci[807], '$');
+assert.equal(crypto.createHash('md5').update(modern.ci.slice(0, 1184)).digest('hex'), 'bd4a8426355824593a5e21ad759830c1');
+assert(modernContent('Dockerfile').includes('node:24.22.0-bookworm@sha256:'));
+assert(modernContent('Dockerfile').includes('npm run lint && npm test && npm run build'));
+assert(!modernContent('Dockerfile').includes('13.12.0'));
+assert(!modernContent('Dockerfile').includes('COPY package.json package-lock.json .npmrc'), 'Source snapshots deliberately exclude npm credential files');
+assert(modernContent('build.sh').includes('"testRunner":"vitest"'));
+assert(!modernContent('build.sh').includes('"jest":true'), 'Vitest evidence must not claim Jest ran');
+assert.equal(JSON.parse(modernContent('smoke/package.json')).dependencies.playwright, '1.64.1');
+assert.equal(JSON.parse(modernContent('smoke/package-lock.json')).packages['node_modules/playwright'].version, '1.64.1');
+for (const file of modern.files) assert.equal(crypto.createHash('sha256').update(file.content).digest('hex'), file.sha256);
+const sourceSnapshot = JSON.parse(fs.readFileSync(path.join(root, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8'));
+const packageJson = JSON.parse(Buffer.from(sourceSnapshot.files.find(file => file.path === 'package.json').content, 'base64'));
+assert.equal(recipes.forSource(logo, sourceSnapshot.sourceRevision).recipeHash,
+  (packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? modern : recipe).recipeHash);
+assert.equal(recipes.forSource(logo, 'f'.repeat(40)).recipeHash, recipe.recipeHash, 'Historical source keeps legacy recipe');
+console.log('Modern Wizard profile: Node 24, exact browser lock, honest Vitest evidence, strict reservation and backward-compatible legacy hashes passed.');

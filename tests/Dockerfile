@@ -8,7 +8,7 @@ COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_mod
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && node --version && npm --version && ruby --version && git --version \
  && ldd /usr/local/bin/node
-RUN apt-get update && apt-get install -y --no-install-recommends python3 rsync unzip zip \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 rsync unzip zip openssl \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /candidate
 COPY sync/package.json sync/package-lock.json ./sync/
@@ -24,9 +24,8 @@ COPY nginx/.templates ./nginx/.templates
 COPY nginx-proxy/*.sh ./nginx-proxy/
 COPY start.sh ./
 COPY sync/start.sh ./sync/
-COPY system/.docker.env.example system/.seed.env system/start-intermediate.sh ./system/
-COPY bootstrapper/persistence.sh ./bootstrapper/
-COPY system/persistence-init.js system/push.sh ./system/
+COPY system/ ./system/
+COPY bootstrapper/ ./bootstrapper/
 COPY tests ./tests
 RUN node project-bootstrap/wizard-source/package.js --verify \
  && cd sync && npm run build

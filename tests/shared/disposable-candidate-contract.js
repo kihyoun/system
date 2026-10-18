@@ -46,13 +46,62 @@ function fixture() {
   return {instance,commands,records,failRemoval:()=>{failRemoval=true;},offline:()=>{offline=true;}};
 }
 (async()=>{
+  const streams=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-stream-'));
+  const previousPath=process.env.PATH;
+  try {
+    fs.writeFileSync(path.join(streams,'docker'),'#!/bin/sh\ncat\n',{mode:0o755});
+    const bytes=Buffer.from([0,255,13,10,128,0,1]);
+    const input=path.join(streams,'input'),output=path.join(streams,'output');fs.writeFileSync(input,bytes);
+    process.env.PATH=streams+path.delimiter+previousPath;
+    const streamed=new Candidate(spec);
+    assert.equal(streamed.exec(['fake-stream'],{inputFile:input,outputFile:output,timeout:2000}),'');
+    assert(fs.readFileSync(output).equals(bytes),'Streaming preserves binary bytes without buffering stdout.');
+    assert.equal(fs.statSync(output).mode&0o777,0o600);
+    assert.throws(()=>streamed.exec(['fake-stream'],{inputFile:input,outputFile:output}),/EEXIST/);
+  } finally {process.env.PATH=previousPath;fs.rmSync(streams,{recursive:true,force:true});}
+  const routed=fixture();
+  routed.instance.inner=async(args,options)=>{
+    if(args[0]==='inspect'){assert(args.includes('{{json .NetworkSettings.Networks}}'));return JSON.stringify({bridge:{Gateway:'172.17.0.1'}});}
+    const input=JSON.parse(options.input);
+    assert.equal(input.url,'http://172.17.0.1/api/v4/pipelines?ref=main');
+    return JSON.stringify({status:200,body:'[]'});
+  };
+  assert.equal((await routed.instance.httpFromCandidate('http://candidate.invalid/api/v4/pipelines?ref=main')).status,200);
+  const http=require('http');
+  const server=http.createServer((request,response)=>{
+    response.statusCode=request.headers.host==='wizard.candidate.test' && request.url==='/probe?ref=main'?200:421;
+    response.end('<html>private transport probe</html>');
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try {
+    const actual=fixture();
+    actual.instance.inner=async(args,options)=>{
+      if(args[0]==='inspect')return JSON.stringify({bridge:{Gateway:'127.0.0.1'}});
+      const input=JSON.parse(options.input);input.url=input.url.replace('127.0.0.1','127.0.0.1:'+server.address().port);
+      return await new Promise((resolve,reject)=>{
+        const child=require('child_process').spawn(process.execPath,['-e',args.at(-1)],{stdio:['pipe','pipe','ignore']});
+        let output='';child.stdout.on('data',chunk=>output+=chunk);child.once('error',reject);
+        child.once('exit',code=>code===0?resolve(output):reject(Error('private-http-transport-failed')));
+        child.stdin.end(JSON.stringify(input));
+      });
+    };
+    assert.equal((await actual.instance.httpFromCandidate('http://candidate.invalid/probe?ref=main',{headers:{Host:'wizard.candidate.test'}})).status,200,
+      'The actual Node transport must preserve the NGINX virtual Host header.');
+  } finally {await new Promise(resolve=>server.close(resolve));}
   const test=fixture(); await test.instance.start(); await test.instance.smoke();
   const creation=test.commands.find(x=>x.args[0]==='create').args;
-  assert(creation.includes('--privileged')); assert(creation.includes('127.0.0.1::80'));
+  assert(creation.includes('--privileged')); assert(!creation.includes('--publish'));
+  assert.equal(test.instance.url,'http://candidate.invalid');
   assert(!creation.some(x=>x.includes('docker.sock:') || x.includes('source=/var/run'))); assert(!creation.includes('--network=host'));
   assert(test.commands.find(x=>x.args[0]==='network' && x.args[1]==='create').args.includes('--internal'));
-  assert.equal(test.commands.filter(x=>x.args[0]==='cp').length,5);
+  assert.equal(test.commands.filter(x=>x.args.includes('load')).length,5);
+  assert(test.commands.filter(x=>x.args.includes('load')).every(x=>path.isAbsolute(x.options.inputFile)));
   assert(test.commands.some(x=>x.args.includes('COMPOSE_COMPATIBILITY=1')));
+  const bootstrap=test.commands.find(x=>x.args.includes('SYSTEM_CONFIG_DIR=/state')).args;
+  assert(bootstrap.includes('PERSISTENT_DIR=/candidate-data/platform'));
+  assert(bootstrap.includes('system_configuration:/state'));
+  assert(bootstrap.includes('/candidate-data/platform/runners:/candidate-data/platform/runners'));
+  assert(test.commands.some(x=>x.args.includes('device=/candidate-data/platform/gitlab/data')));
   assert.equal(test.instance.cleanup(),true); assert.equal(test.records.size,0);
   assert(test.commands.some(x=>x.args[0]==='container' && x.args[1]==='ls' && x.args.includes('--all')));
   assert.equal(test.instance.cleanup(),true); // confirmed absent resources
@@ -70,6 +119,18 @@ function fixture() {
   const recovered=recover({runId:test.instance.id,resources:test.instance.resources,results:[{name:'authenticated-fetch',status:'failed',private:'must-not-copy'}]},()=>{throw new Error('offline');});
   assert.equal(recovered.cleanup(),false);
   assert.deepEqual(recovered.results[0],{name:'authenticated-fetch',status:'failed'});
+  const fullReceipt={runId:test.instance.id,resources:test.instance.resources,startedAt:'2026-10-18T00:00:00Z',
+    images:{candidate:'sha256:'+hash},daemonImage:spec.daemonImage,fullAcceptance:true,
+    results:[{name:'registry-build-push-pull-run',status:'passed',milliseconds:123,private:'never retain'}],
+    evidence:{projectId:1,pipelineId:2,private:'never retain',jobs:[{id:3,name:'registry-round-trip',status:'success',runnerId:4,duration:5,private:'never retain'}]}};
+  const fullRecovery=recover(fullReceipt,()=>{throw Error('offline');});
+  assert.equal(fullRecovery.spec.fullAcceptance,true);
+  assert.equal(fullRecovery.spec.images.candidate.id,'sha256:'+hash);
+  assert.equal(fullRecovery.results[0].name,'registry-build-push-pull-run');
+  assert.equal(fullRecovery.results[0].milliseconds,123);
+  assert.deepEqual(fullRecovery.evidence,{projectId:1,pipelineId:2,jobs:[{id:3,name:'registry-round-trip',status:'success',runnerId:4,duration:5}]});
+  assert(!JSON.stringify(fullRecovery).includes('never retain'));
+
   const failure=fixture(); await failure.instance.start(); failure.failRemoval(); assert.equal(failure.instance.cleanup(),false);
   const broken=fixture(); await broken.instance.start(); broken.offline(); assert.equal(broken.instance.cleanup(),false);
   const pending=fixture(); await pending.instance.start();
@@ -195,14 +256,14 @@ function fixture() {
   process.once('SIGTERM',signalHandler);
   signaled.instance.exec=(args,options)=>{
     const result=transport(args,options);
-    if(args[0]==='cp') setImmediate(()=>process.emit('SIGTERM'));
+    if(args.includes('load')) setImmediate(()=>process.emit('SIGTERM'));
     return result;
   };
   try {
     await assert.rejects(()=>signaled.instance.start(),/canceled-or-overall-timeout/);
     assert.equal(signaled.instance.canceled,true);
-    assert.equal(signaled.commands.filter(item=>item.args[0]==='cp').length,1);
-    assert.equal(signaled.commands.filter(item=>item.args.includes('load')).length,0);
+    assert.equal(signaled.commands.filter(item=>item.args[0]==='cp').length,0);
+    assert.equal(signaled.commands.filter(item=>item.args.includes('load')).length,1);
     assert.equal(signaled.instance.cleanup(),true); assert.equal(signaled.records.size,0);
   } finally {process.removeListener('SIGTERM',signalHandler);}
   console.log('Disposable candidate offline contracts passed; no Docker or live HTTP used.');

@@ -20,8 +20,9 @@ function context() {
   }
   const data = content.split('\n').filter(line => !line.startsWith('# BOOTSTRAPPER_PROJECT=')).join('\n');
   validateProject({projectKey: 'wizard', namespaceId: receipt.namespaceId, template: 'wizard', data, ci: wizardCi()});
-  const recipe = recipes.generate(Helper.textLogo);
   const build = receipt.wizardWorkflow.build;
+  const recipe = build ? recipes.select(Helper.textLogo, build.recipeHash) :
+    recipes.forSource(Helper.textLogo, receipt.wizardWorkflow.sourceRevision);
   if (build && (build.version !== 1 || build.recipeHash !== recipe.recipeHash)) {
     throw new Error('A different build recipe is reserved. Use a reviewed versioned recipe upgrade.');
   }
@@ -56,7 +57,7 @@ export function previewWizardBuild() {
     importCommit: receipt.wizardWorkflow.importCommit, repository: receipt.repository,
     build: historical ? historicalBuild(receipt.wizardWorkflow.build) : receipt.wizardWorkflow.build,
     message: historical ? historicalMessage :
-      'Enables legacy Wizard checks and candidate artifacts only; Production deployment remains disabled.'};
+      'Enables verified Wizard toolchain checks and candidate artifacts only; Production deployment remains disabled.'};
 }
 function operation(mode: 'activate' | 'status', input?: any) {
   const {content, data, receipt, recipe, registryPrefix} = context();

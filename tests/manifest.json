@@ -25,6 +25,7 @@
   {"component":"shared","file":"shared/ci-parent-contract.js","timeoutSeconds":15},
   {"component":"shared","file":"shared/source-context.js","timeoutSeconds":30},
   {"component":"shared","file":"shared/disposable-candidate-contract.js","timeoutSeconds":20},
+  {"component":"shared","file":"shared/recovery-candidate-contract.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/environment-upgrade.rb","timeoutSeconds":25},
   {"component":"wizard","file":"wizard/environment-recipe.js","timeoutSeconds":25},
   {"component":"wizard","file":"wizard/environment-helper.js","timeoutSeconds":35},
@@ -37,5 +38,11 @@
   {"component":"bootstrapper","file":"persistence/persistence-guard.test.py","timeoutSeconds":15},
   {"component":"bootstrapper","file":"persistence/persistence-init.test.js","timeoutSeconds":15},
   {"component":"bootstrapper","file":"persistence/persistence-push.test.js","timeoutSeconds":25},
-  {"component":"bootstrapper","file":"persistence/persistence-start.test.js","timeoutSeconds":15}
+  {"component":"bootstrapper","file":"persistence/persistence-start.test.js","timeoutSeconds":15},
+  {"component":"bootstrapper","file":"seed/recovery-contract.py","timeoutSeconds":60},
+  {"component":"wizard","file":"wizard/production-promotion.js","timeoutSeconds":25},
+  {"component":"gitlab","file":"gitlab/wizard-production.rb","timeoutSeconds":25},
+  {"component":"bootstrapper","file":"seed/restore-durability.js","timeoutSeconds":15},
+  {"component":"gitlab","file":"gitlab/github-backup.js","timeoutSeconds":60},
+  {"component":"performance","file":"performance/resources/test_collect.py","timeoutSeconds":30}
 ]

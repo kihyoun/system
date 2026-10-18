@@ -8,7 +8,7 @@ RUN sh /system/bootstrapper/install-runtime.sh
 RUN node /system/project-bootstrap/wizard-source/package.js --verify
 # Install Sync Server
 WORKDIR /system/sync
-RUN npm ci
+RUN npm ci && npm run build
 # Start
 WORKDIR /system/system
 CMD ["/bin/bash", "./start.sh"]

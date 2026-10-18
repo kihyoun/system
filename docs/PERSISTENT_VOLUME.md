@@ -80,6 +80,9 @@ state directory so existing Push/Fetch and startup code use the same saved
 configuration and project receipts. The main configuration retains the exact
 System Cube signature, including its fixed URL and port 8071.
 
+See the [completed Seed recovery contract](RECOVERY_CONTRACT.md) for cold Harvest,
+completion markers, retained snapshots and certificate-renewal state.
+
 Configuration remains independent of Harvest/Seed. Neither configuration nor
 host recovery is reconstructed by automatically applying the old seed. The seed
 paths remain separate from `platform`; the old seed backup is left untouched.

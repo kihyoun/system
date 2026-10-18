@@ -72,3 +72,25 @@ HTTP/browser checks and real platform GitLab/runner/registry execution are
 separate required gates. Cached build dependencies and fixtures alone do not
 prove the complete workflow. Record each gate's actual result in issue 33;
 keep parent issue 18 open until Review/manual promotion/recovery are delivered.
+
+## Supported Wizard toolchain profile
+
+The legacy `build-v1` recipe is retained byte-for-byte for its recorded hashes
+and historical GitLab evidence. New source imports whose verified snapshot uses
+Vite select the `node24-vite8` profile: Node 24.22.0/npm 11.19.1, locked install,
+lint, Vitest, TypeScript/Vite build and Playwright 1.64.1 browser checks. Both
+profiles use the same bounded job names and artifact/digest contract; modern
+artifacts report `unitTests`, `testRunner: vitest`, `lint` and `typecheck` rather
+than claiming Jest ran.
+
+A reserved build always selects its exact known recipe hash. Unknown hashes are
+rejected. Review/Beta reservations retain the matching build recipe hash and the
+immutable helper checks that it still matches the canonical build reservation.
+The modern profile therefore does not rewrite old GitLab recipes or silently
+invalidate current deployment checkpoints. An existing imported project's
+in-place source/toolchain upgrade still requires a separately reviewed migration;
+a new snapshot import can use the supported profile directly.
+
+Related implementation and delivery acceptance are tracked in
+[System #22](https://github.com/kihyoun/system/issues/22) and
+[System #18](https://github.com/kihyoun/system/issues/18).
