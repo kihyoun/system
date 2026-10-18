@@ -29,6 +29,7 @@ variables:
 stages:
   - prepare
   - test
+  - candidate
   - build
   - deploy
 
@@ -54,9 +55,10 @@ prepare:wizard-source:
     - node project-bootstrap/wizard-source/package.js
     - node project-bootstrap/wizard-source/package.js --verify
     - node tests/prepare-context.js
+    - node tests/prepare-candidate.js
   artifacts:
     expire_in: 1 day
-    paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/]
+    paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/]
   only:
     - merge_requests
     - master
@@ -75,7 +77,7 @@ test:isolated:
     RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
   parallel:
     matrix:
-      - COMPONENT: [gitlab, sync, gitlab-runner, bootstrapper, nginx, wizard, shared]
+      - COMPONENT: [gitlab, sync, gitlab-runner, bootstrapper, nginx, wizard, shared, performance]
   timeout: 10m
   allow_failure: false
   cache: []
@@ -94,12 +96,73 @@ test:isolated:
     - merge_requests
     - master
 
+# Build the complete runtime and packaged Sync/Wizard source before publishing.
+test:candidate-image:
+  stage: test
+  image: docker:29.9.1-cli@sha256:6fae2214c3121a28d5aa639d09032f61310b7c9c75ffbad1025f261a1b621800
+  services: []
+  tags: [docker]
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    GIT_SUBMODULE_STRATEGY: none
+    RUNNER_SCRIPT_TIMEOUT: 13m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+  cache: []
+  dependencies: [prepare:wizard-source]
+  timeout: 15m
+  allow_failure: false
+  script:
+    - sh tests/ci-candidate-image.sh
+  after_script:
+    - sh tests/ci-candidate-image.sh cleanup
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths: [test-results/candidate-image/]
+    reports:
+      junit: test-results/candidate-image/junit.xml
+  only:
+    - merge_requests
+    - master
+
+# One required resource-heavy candidate after all socket-free checks pass.
+test:platform-candidate:
+  stage: candidate
+  image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+  services: []
+  tags: [docker]
+  resource_group: system-disposable-candidate
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    GIT_SUBMODULE_STRATEGY: none
+    RUNNER_SCRIPT_TIMEOUT: 28m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+  cache: []
+  dependencies: [prepare:wizard-source]
+  timeout: 30m
+  allow_failure: false
+  before_script:
+    - sh bootstrapper/install-runtime.sh
+  script:
+    - sh tests/ci-platform.sh
+  after_script:
+    - sh tests/ci-platform.sh cleanup
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths: [test-results/e2e/]
+    reports:
+      junit: test-results/e2e/*/junit.xml
+  only:
+    - merge_requests
+    - master
+
 build:
   stage: build
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
   script:
-    - docker build -t $IMAGE_TAG ./bootstrapper
+    - docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper
     - docker tag $IMAGE_TAG systembootstrapper/system:latest
     - docker push $IMAGE_TAG
   only:

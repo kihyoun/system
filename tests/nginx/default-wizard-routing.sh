@@ -8,7 +8,7 @@ mkdir -p "$fixture"/{system/.projects.env,gitlab,nginx,nginx-proxy/.projects,wiz
 cp -a "$root/nginx/.templates" "$fixture/nginx/"
 cp "$root/nginx/start.sh" "$fixture/nginx/"
 cp "$root/nginx-proxy/"{start,stop}.sh "$fixture/nginx-proxy/"
-cp "$root/gitlab-runner/"{start,stop,register,unregister}.sh "$fixture/gitlab-runner/"
+cp "$root/gitlab-runner/"{start,stop,register,unregister,pool}.sh "$fixture/gitlab-runner/"
 node - "$root" "$fixture" <<'NODE'
 const fs=require('fs'),path=require('path');
 const [root,fixture]=process.argv.slice(2);
@@ -41,3 +41,8 @@ test "$(grep -c 'server_name localhost;' /templates/default.conf.template)" -eq 
 ! grep -q wizard_prod /templates/default.conf.template
 ! grep -q 'wizard_runner\|wizard_prod' "$TRACE"
 echo 'PASS: exactly one real Wizard route and no extra proxy/runner lifecycle resources.'
+bash -e start.sh recovery
+grep -q 'server_name gitlab.localhost;' /templates/default.conf.template
+grep -q 'server_name registry.localhost;' /templates/default.conf.template
+! grep -q 'server_name localhost;\|server_name sync.localhost;\|wizard-environments\|wizard_prod' /templates/default.conf.template
+echo 'PASS: registry recovery renders only GitLab and registry routing before Wizard is available.'

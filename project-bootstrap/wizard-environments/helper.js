@@ -20,7 +20,11 @@ function canonicalRecipe(environment) {
   if (recipe.recipeHash !== environment.recipeHash) throw new Error('Immutable helper recipe identity changed.');
   return recipe;
 }
-function canonicalLegacyRecipe() { return require('../wizard-build/recipe').generate(canonicalLogo()); }
+function canonicalLegacyRecipe(recipeHash) {
+  const recipes = require('../wizard-build/recipe');
+  try { return recipeHash ? recipes.select(canonicalLogo(), recipeHash) : recipes.generate(canonicalLogo()); }
+  catch (_) { throw new Error('Canonical managed build recipe identity changed.'); }
+}
 function parse(args) {
   const values = {};
   for (let i = 0; i < args.length; i += 2) {
@@ -259,10 +263,11 @@ class Runtime {
   async verify() {
     const registry = new URL(this.context.publicSettings.GITLAB_REGISTRY_URL);
     if (Number(this.context.publicSettings.GITLAB_REGISTRY_DOMAIN_MODE || 0) < 2) registry.port = '5050';
-    const legacy = canonicalLegacyRecipe();
     const workflow = this.context.receipt.wizardWorkflow;
     const build = workflow?.build;
-    if (build?.version !== 1 || build.recipeHash !== legacy.recipeHash || !/^[a-f0-9]{40}$/.test(build.activationCommit || ''))
+    const legacy = canonicalLegacyRecipe(build?.recipeHash);
+    if (build?.version !== 1 || build.recipeHash !== legacy.recipeHash ||
+        (this.environment.buildRecipeHash && this.environment.buildRecipeHash !== build.recipeHash) || !/^[a-f0-9]{40}$/.test(build.activationCommit || ''))
       throw new Error('Canonical managed build recipe identity changed.');
     const legacyMarker = {path: '.system-bootstrapper/wizard-build.json', content: JSON.stringify({version: 1,
       operation: build.operation, recipeHash: legacy.recipeHash, sourceRevision: workflow.sourceRevision, importCommit: workflow.importCommit})};

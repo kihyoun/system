@@ -51,7 +51,17 @@ function pack(root) {
   const manifest = {version: 1, sourceRevision, files: files.map(({path, mode, sha256}) => ({path, mode, sha256}))};
   return validate({...manifest, manifestHash: hash(JSON.stringify(manifest)), files});
 }
-module.exports = {pack, validate, safePath, excluded};
+function verifyCommitted(root, snapshot) {
+  validate(snapshot);
+  // A self-consistent content hash proves integrity, not provenance. Re-read
+  // committed Wizard Git objects so a dirty generated snapshot cannot claim a pin.
+  const committed = pack(root);
+  if (snapshot.sourceRevision !== committed.sourceRevision || snapshot.manifestHash !== committed.manifestHash) {
+    throw Error('Wizard snapshot differs from committed source objects. Regenerate it.');
+  }
+  return snapshot;
+}
+module.exports = {pack, validate, verifyCommitted, safePath, excluded};
 if (require.main === module) {
   const root = path.resolve(__dirname, '../..');
   const output = path.join(__dirname, 'snapshot.json');

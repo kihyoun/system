@@ -220,7 +220,7 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
     assert.strictEqual(fixture.events.length, 0, 'other-MR deploy mutated pending resources');
   } finally { fixture.destroy(); }
   const proof = new Runtime(request());
-  const legacy = canonicalLegacyRecipe();
+  let legacy = canonicalLegacyRecipe();
   const logo = require('../../sync/dist/Helper').default.textLogo;
   const options = {settings: {review: setting, beta: {...setting, enabled: false}}, settingsHash: '1'.repeat(64),
     helperImage: 'sha256:' + '2'.repeat(64), operation: op, controller: 'system_bootstrapper_1'};
@@ -248,5 +248,16 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   proof.context.receipt.wizardWorkflow.build.recipeHash = 'changed';
   await rejects(() => proof.verify(), /managed build recipe identity changed/);
   assert.strictEqual(proofRequests, 1, 'changed canonical recipe reached external verification');
+  legacy = require('../../project-bootstrap/wizard-build/recipe').generate(logo, 'node24-vite8');
+  const modernOptions = {...options, buildRecipeHash: legacy.recipeHash};
+  proof.environment = {...modernOptions,
+    recipeHash: require('../../project-bootstrap/wizard-environments/recipe').generate(logo, modernOptions).recipeHash};
+  proof.context.receipt.wizardWorkflow.build.recipeHash = legacy.recipeHash;
+  await proof.verify();
+  assert.strictEqual(proofRequests, 2, 'modern canonical build did not reach complete proof verification');
+  proof.environment.buildRecipeHash = canonicalLegacyRecipe().recipeHash;
+  await rejects(() => proof.verify(), /managed build recipe identity changed/);
+  assert.strictEqual(proofRequests, 2, 'mismatched environment/build profile reached external verification');
+
   console.log('Environment helper: singleton MR lease, stale jobs/stops, owned resources, health gates, CAS/reload rollback, tombstones and interrupted cutover recovery passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

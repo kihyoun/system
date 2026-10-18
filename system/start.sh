@@ -1,6 +1,12 @@
 #! /bin/bash
 set -eo pipefail
 shopt -s dotglob
+if [ -e /srv/gitlab/data/.system-bootstrapper-restore-incomplete ]; then
+  echo 'An interrupted Seed restore must be completed before startup.' >&2
+  exit 1
+fi
+node ./persistence-init.js
+source "${SYSTEM_CONFIG_DIR:-/state}/sync-auth.env"
 
 ENV_FILE=../.docker.env
 echo > $ENV_FILE

@@ -27,8 +27,8 @@ const mockfs = {
   renameSync(from, to) { if (!files.has(from)) throw error('ENOENT'); files.set(to, files.get(from)); files.delete(from); }
 };
 const moduleValue = {exports: {}};
-const requireValue = name => name === 'fs' ? mockfs : name === 'crypto' ? crypto : {promises: {lookup: async () => []}};
-vm.runInNewContext(source, {require: requireValue, module: moduleValue, Buffer, URL, console});
+const requireValue = name => name === 'fs' ? mockfs : name === 'crypto' ? crypto : name === 'path' ? require('path') : {promises: {lookup: async () => []}};
+vm.runInNewContext(source, {require: requireValue, module: moduleValue, Buffer, URL, console, process: {env: {}}});
 const run = moduleValue.exports.run;
 (async () => {
   const publicRead = await run('read', {});

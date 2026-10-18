@@ -49,3 +49,12 @@ for (const file of recipe.files) {
 const source = fs.readFileSync(require.resolve('../../project-bootstrap/wizard-environments/helper'), 'utf8');
 assert(!source.includes("['pull', imageRef]"), 'helper must not receive registry credentials');
 console.log('Environment recipe: deterministic manual-only jobs, immutable image, MR identities, serialized host ownership and bounded clean helper passed.');
+const modernBuild = require('../../project-bootstrap/wizard-build/recipe').generate(logo, 'node24-vite8');
+const modernEnvironment = generate(logo, {...options, buildRecipeHash: modernBuild.recipeHash});
+assert.notStrictEqual(modernEnvironment.recipeHash, recipe.recipeHash);
+assert(modernEnvironment.ci.includes('Node 24 / Vite 8'));
+assert.strictEqual(modernEnvironment.ci[807], '$');
+assert.throws(() => generate(logo, {...options, buildRecipeHash: '0'.repeat(64)}), /different build recipe/);
+assert.strictEqual(generate(logo, {...options, buildRecipeHash: require('../../project-bootstrap/wizard-build/recipe').generate(logo).recipeHash}).recipeHash,
+  recipe.recipeHash, 'Explicit legacy profile must not change existing environment recipes');
+console.log('Review/Beta recipe retains the explicitly selected, canonical modern or historical toolchain.');

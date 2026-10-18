@@ -13,7 +13,7 @@ function withToken(content, token) {
 }
 
 function provision() {
-  const configPath = path.join(__dirname, '../system/.docker.env');
+  const configPath = path.resolve(process.env.SYSTEM_CONFIG_DIR || path.join(__dirname, '../system'), '.docker.env');
   const content = fs.readFileSync(configPath, 'utf8');
   // The shell has already sourced this file. Never print its credentials.
   const current = process.env.GITLAB_RUNNER_TOKEN || '';

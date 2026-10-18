@@ -1,3 +1,4 @@
+import {mainConfigPath, wizardConfigPath} from './StatePaths';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -6,7 +7,7 @@ import {wizardCi, readSettings} from './DefaultWizard';
 import Helper from './Helper';
 
 const recipes = require('../../project-bootstrap/wizard-build/recipe');
-const configPath = () => path.resolve('../system/.projects.env/.wizard.env');
+const configPath = () => wizardConfigPath();
 function context() {
   const content = fs.readFileSync(configPath(), 'utf8');
   const receipt = readReceipt(content);
@@ -19,12 +20,13 @@ function context() {
   }
   const data = content.split('\n').filter(line => !line.startsWith('# BOOTSTRAPPER_PROJECT=')).join('\n');
   validateProject({projectKey: 'wizard', namespaceId: receipt.namespaceId, template: 'wizard', data, ci: wizardCi()});
-  const recipe = recipes.generate(Helper.textLogo);
   const build = receipt.wizardWorkflow.build;
+  const recipe = build ? recipes.select(Helper.textLogo, build.recipeHash) :
+    recipes.forSource(Helper.textLogo, receipt.wizardWorkflow.sourceRevision);
   if (build && (build.version !== 1 || build.recipeHash !== recipe.recipeHash)) {
     throw new Error('A different build recipe is reserved. Use a reviewed versioned recipe upgrade.');
   }
-  const settings = readSettings(fs.readFileSync(path.resolve('../system/.docker.env'), 'utf8'));
+  const settings = readSettings(fs.readFileSync(mainConfigPath(), 'utf8'));
   let registry;
   try { registry = new URL(settings.GITLAB_REGISTRY_URL); } catch (_) {
     throw new Error('Configure the local GitLab registry before enabling Wizard builds.');
@@ -55,7 +57,7 @@ export function previewWizardBuild() {
     importCommit: receipt.wizardWorkflow.importCommit, repository: receipt.repository,
     build: historical ? historicalBuild(receipt.wizardWorkflow.build) : receipt.wizardWorkflow.build,
     message: historical ? historicalMessage :
-      'Enables legacy Wizard checks and candidate artifacts only; Production deployment remains disabled.'};
+      'Enables verified Wizard toolchain checks and candidate artifacts only; Production deployment remains disabled.'};
 }
 function operation(mode: 'activate' | 'status', input?: any) {
   const {content, data, receipt, recipe, registryPrefix} = context();

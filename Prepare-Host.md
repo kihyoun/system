@@ -87,16 +87,39 @@ git clone --recursive https://github.com/kihyoun/system.git
 ```
 
 ## Boot
+
+Mount the attached filesystem before startup. Create the root-owned selector
+file `/etc/system-bootstrapper/persistence.env` using your actual mount path:
+
 ```bash
-cd system
-bash start.sh
+sudo install -d -m 0700 /etc/system-bootstrapper
+sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
+PERSISTENT_MOUNT=/mnt/HC_Volume_24222125
+PERSISTENT_DIR=/mnt/HC_Volume_24222125/platform
+SEED_DIR=/mnt/HC_Volume_24222125/seed
+# Optional: PERSISTENT_UUID=<existing-filesystem-uuid>
+EOF
+sudo chmod 0600 /etc/system-bootstrapper/persistence.env
+sudo bash bootstrapper/install-volume-host.sh
+sudo bash start.sh
 ```
+
+Replace the example paths with the existing volume mount; do not format it.
+The host integration installs the persistent Docker mount dependency and
+certificate integration. Startup rejects an absent or mismatched filesystem
+before creating platform data directories. The seed must remain separate from
+the live `platform` directory. Fresh and reset startup preserve this host-selected
+seed path while loading legacy defaults. See [Persistent platform
+volume](docs/PERSISTENT_VOLUME.md) for the directory layout, retained credentials
+and VM replacement procedure.
 
 On a fresh installation, open `http://localhost/` on the host. The bootstrapper
 builds its image and starts the configuration wizard and sync proxy. Allow time
 for the first build and service startup. Obtain the generated sync login from
 `sudo docker logs system_bootstrapper_1` (the `SYNC_USER` and `SYNC_PASS` lines).
-These credentials change when the sync process restarts.
+The generated first-setup credentials are retained in
+`platform/configuration/sync-auth.env`; saved main configuration may explicitly
+set the Sync login.
 
 Under WSL, keep an Ubuntu shell open while using the platform: systemd services
 alone do not keep the WSL instance alive. See
@@ -125,8 +148,9 @@ user might want to change. Reading suggestions never creates or changes a
 configuration, starts services, or applies a seed.
 
 This keeps the configuration workflow (`Open` / `Backup`, `Push` / `Fetch`)
-independent from the persistent-data workflow (`Harvest` / `Seed`). No new
-configuration volume or automatic persistence mechanism is introduced here.
+independent from the persistent-data workflow (`Harvest` / `Seed`). Configuration
+is persisted separately beneath `platform/configuration` and mounted at `/state`;
+suggestions themselves never save or apply configuration automatically.
 
 After compiling sync, run `node tests/sync/config-suggestions.js`. The API test
 `node tests/sync/config-suggestions-api.js` must run in a disposable container: it

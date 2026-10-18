@@ -86,8 +86,12 @@ begin
         artifact.fetch('imageRef', '').match?(/\A#{Regexp.escape(input.fetch('registryPrefix'))}@sha256:[a-f0-9]{64}\z/)
       artifact
     end
-    raise 'evidence' unless artifacts[0]['jest'] == true && artifacts[0]['productionBuild'] == true &&
-      ['http', 'renderedUI', 'projects', 'spa'].all? { |key| artifacts[1][key] == true } && artifacts[0]['imageRef'] == artifacts[1]['imageRef']
+    raise 'evidence' unless (artifacts[0]['jest'] == true || (artifacts[0]['unitTests'] == true &&
+      artifacts[0]['testRunner'] == 'vitest' && artifacts[0]['lint'] == true && artifacts[0]['typecheck'] == true)) &&
+      artifacts[0]['productionBuild'] == true &&
+      ['http', 'renderedUI', 'projects', 'spa'].all? { |key| artifacts[1][key] == true } &&
+      (artifacts[0]['testRunner'] != 'vitest' || ['configurationBackup', 'cubeSignature'].all? { |key| artifacts[1][key] == true }) &&
+      artifacts[0]['imageRef'] == artifacts[1]['imageRef']
     result[:imageRef] = artifacts[0].fetch('imageRef')
   end
 rescue StandardError

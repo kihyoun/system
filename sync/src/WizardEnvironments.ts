@@ -1,3 +1,4 @@
+import {mainConfigPath, wizardConfigPath} from './StatePaths';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -7,8 +8,8 @@ import {wizardCi, readSettings, wizardConfiguration} from './DefaultWizard';
 import Helper from './Helper';
 
 const legacyRecipes = require('../../project-bootstrap/wizard-build/recipe');
-const configPath = () => path.resolve('../system/.projects.env/.wizard.env');
-const mainPath = () => path.resolve('../system/.docker.env');
+const configPath = () => wizardConfigPath();
+const mainPath = () => mainConfigPath();
 const digest = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
 const same = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
 const environments = ['review', 'beta'] as const;
@@ -123,8 +124,9 @@ function context() {
   }
   const helperImage = process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE || '';
   const controller = process.env.SYSTEM_WIZARD_CANONICAL_CONTROLLER || 'system_bootstrapper_1';
-  const legacyRecipe = legacyRecipes.generate(Helper.textLogo);
   const build = receipt.wizardWorkflow.build;
+  const legacyRecipe = build ? legacyRecipes.select(Helper.textLogo, build.recipeHash) :
+    legacyRecipes.forSource(Helper.textLogo, receipt.wizardWorkflow.sourceRevision);
   let registry: URL;
   try { registry = new URL(platform.GITLAB_REGISTRY_URL); }
   catch (_) { throw new Error('Configure the local GitLab registry before enabling environments.'); }
@@ -134,6 +136,9 @@ function context() {
   }
   if (Number(platform.GITLAB_REGISTRY_DOMAIN_MODE || 0) < 2) { registry.port = '5050'; }
   const registryPrefix = registry.host + '/' + receipt.repository.path;
+  if (current?.buildRecipeHash && current.buildRecipeHash !== build?.recipeHash) {
+    throw new Error('The environment and build toolchain reservations differ.');
+  }
   const artifact = build?.artifact;
   const expectedRef = registryPrefix + '@sha256:';
   const initialVerified = build?.version === 1 && build.recipeHash === legacyRecipe.recipeHash &&
@@ -187,7 +192,8 @@ async function preflight(settings: any, platform: any) {
 }
 function recipeFor(environments: any) {
   return environmentAdapters.recipe(Helper.textLogo, {settings: environments.settings, settingsHash: environments.settingsHash,
-    helperImage: environments.helperImage, operation: environments.operation, controller: environments.controller});
+    helperImage: environments.helperImage, operation: environments.operation, controller: environments.controller,
+    buildRecipeHash: environments.buildRecipeHash});
 }
 function withoutDeployments(content: string) {
   const receipt = readReceipt(content);
@@ -232,6 +238,7 @@ function operation(mode: 'activate' | 'status', input?: any) {
     if (previous) { delete previous.previous; }
     environments = {version: 1, operation: crypto.randomBytes(24).toString('hex'), settings: selected,
       settingsHash: selectedHash, phase: 'pending', helperImage: value.helperImage, controller: value.controller,
+      ...(value.legacyRecipe.profile ? {buildRecipeHash: value.legacyRecipe.recipeHash} : {}),
       ...(previous ? {previous, deployments: previous.deployments || {}} : {})};
   } else if (mode === 'activate' &&
     (environments.helperImage !== value.helperImage || environments.controller !== value.controller)) {

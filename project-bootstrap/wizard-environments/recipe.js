@@ -12,7 +12,8 @@ function generate(logo, options) {
   const run = fs.readFileSync(path.join(__dirname, 'run.sh'), 'utf8')
     .replace(/__HELPER_IMAGE__/g, helperImage).replace(/__OPERATION__/g, operation);
   const files = [{path: '.system-bootstrapper/environments-v1/run.sh', content: run, sha256: hash(run)}];
-  let ci = legacy.generate(logo).ci.replace('stages: [build, test]', 'stages: [build, test, deploy]');
+  const buildRecipe = options.buildRecipeHash ? legacy.select(logo, options.buildRecipeHash) : legacy.generate(logo);
+  let ci = buildRecipe.ci.replace('stages: [build, test]', 'stages: [build, test, deploy]');
   ci += '\n# Managed Wizard environments v1; separate candidate hosts, manual jobs only.\n';
   for (const kind of ['review', 'beta']) {
     const setting = settings[kind];

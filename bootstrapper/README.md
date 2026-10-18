@@ -10,7 +10,7 @@ The complete System image also runs `bootstrapper/install-runtime.sh` from its
 repository build context. It starts from the same official digest-pinned Node
 24.22.0 / Alpine 3.24 image instead of requiring a separately published System
 base. The shared installer checks Node 24.22.0 and npm 11.19.1 before installing
-the pinned Docker CLI 29.8.2, Compose 5.1.4 and the existing shell utilities.
+the pinned Docker CLI 29.8.2, Compose 5.1.4, Buildx 0.34.1 and the existing shell utilities.
 Both `docker-compose` and `docker compose` remain available. Custom `IMAGE`
 overrides must satisfy the same runtime checks.
 

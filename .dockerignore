@@ -1,1 +1,9 @@
 .git
+**/node_modules
+**/.docker.env
+**/.projects.env/.*.env
+**/.projects.env/*.lock
+**/.projects.env/*.tmp-*
+**/.projects.env/*.environments-*
+**/bootstrapper.zip
+test-results

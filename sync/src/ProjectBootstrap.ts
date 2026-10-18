@@ -1,3 +1,4 @@
+import {projectsDirectory} from './StatePaths';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -6,7 +7,7 @@ import {applicationTemplates, prepareApplication} from './ApplicationTemplates';
 import {spawn, execFile} from 'child_process';
 
 export const validProjectKey = (key: any) => typeof key === 'string' && /^[a-z0-9]+$/.test(key);
-const directory = path.resolve('../system/.projects.env');
+const directory = projectsDirectory();
 const jobs = new Map<string, any>();
 const active = new Set<string>();
 export const projectBusy = () => active.size > 0;

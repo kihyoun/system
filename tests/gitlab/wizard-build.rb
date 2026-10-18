@@ -141,6 +141,14 @@ fixture.status = 'success'
 end
 fixture.artifact_override = {'jest' => false}
 rejects('incomplete') { run.call }
+fixture.artifact_override = {'jest' => false, 'unitTests' => true, 'testRunner' => 'vitest',
+  'lint' => true, 'typecheck' => true, 'configurationBackup' => true, 'cubeSignature' => true}
+assert(run.call[:build]['phase'] == 'candidate-verified', 'Modern Vitest evidence was rejected')
+%w[lint typecheck configurationBackup cubeSignature].each do |key|
+  fixture.artifact_override[key] = false
+  rejects('incomplete') { run.call }
+  fixture.artifact_override[key] = true
+end
 fixture.artifact_override = nil
 fixture.job_override = [{'id' => 10, 'name' => 'build:wizard', 'status' => 'success', 'allow_failure' => true}]
 rejects('required checks') { run.call }

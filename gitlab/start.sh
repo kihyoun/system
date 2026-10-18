@@ -1,5 +1,9 @@
 #! /bin/bash
 set -eo pipefail
+if [ -e /srv/gitlab/data/.system-bootstrapper-restore-incomplete ]; then
+    echo 'An interrupted Seed restore must be completed before GitLab startup.' >&2
+    exit 1
+fi
 if [ -f ../system/.docker.env ]; then
     source ../system/.docker.env
 
