@@ -1,76 +1,164 @@
-# Codex host handoff — 2026-10-18
+# Host handoff - 2026-10-18
 
-## Start here
+## Resume here
 
-Continue from **System branch `codex/host-handoff-20261018`**. It combines the supported System runtime, Sync migration, organized isolated tests, Wizard source/build workflow, passive resource collector, disposable acceptance harness and the inactive GitHub backup helper. The Wizard submodule is pinned to `7aededb705fe9c25fc86bf683a7547d9c1565adb`, also preserved as `codex/host-handoff-20261018` in `kihyoun/system-wizard`.
+Read `AGENTS.md`, this snapshot and [System issue #34](https://github.com/kihyoun/system/issues/34).
+The next task is to make the platform-owned GitLab primary and GitHub its backup.
+The maintainer selected that task, then explicitly paused implementation to
+prepare this handoff for a new chat. No cutover, GitHub backup push, new API
+credential or synchronization activation was performed during that preflight.
+Resume implementation when the new chat requests it.
 
-The source tree before adding this handoff file is `43e6c5d8783520b3c26b519347f7e340b0c000e8`, published at System commit `3c2ed12ab004a95308c30726425e12d2c11f9cd5`. It matches the final local integration tree byte-for-byte. Some GitHub commits were created through the connected GitHub API and therefore have different commit IDs from local integration commits; compare trees and file contents rather than assuming those local commit IDs exist remotely.
+Use current GitHub `master`, not the old `codex/host-handoff-20261018` branch.
+Baseline immediately before this documentation-only update:
+System `d9cfdf42ea46a0d57263f2fe22a5f4903b7aaaf4`, tree
+`61da97d36c86fec5c240c354e5677b690410052b`; Wizard gitlink
+`6588a2104d682a9a33192f64f8f0b8921fcfeb23`. The running runtime code was merged
+in System PR #38 as `ba36026682f3aed45b288ff517b2f45b69ba0ac7`.
+Later handoff documentation commits do not change that runtime validation.
 
 ```bash
-git clone --branch codex/host-handoff-20261018 --recurse-submodules https://github.com/kihyoun/system.git
+git clone --recurse-submodules https://github.com/kihyoun/system.git
 cd system
-git status --short
-git submodule status
+# Read AGENTS.md and HOST_HANDOFF.md, then inspect the linked issue and live state.
 ```
 
-Read `AGENTS.md`, [the handbook](docs/HANDBOOK.md), [source initialization](docs/WIZARD_SOURCE.md), [managed build/manual recovery](docs/WIZARD_BUILD.md), and [isolated tests](tests/README.md). Follow the handbook to bootstrap a fresh host. Runtime credentials, private configuration and the previous test instance are intentionally not needed for this source handoff. Generate the ignored Wizard source snapshot from the checked-out gitlink before building the System image:
+## Current platform and access
 
-```bash
-bash project-bootstrap/wizard-source/prepare.sh
-```
-
-Do not change any System Cube bytes, its fixed HTTPS URL, the dollar position or port 8071. Verify authenticated Fetch, not only source text. Keep configuration management separate from Harvest/Seed.
-
-## Completed verification
-
-- Real own-GitLab acceptance passed on the original test host: private project 7, pipeline 13 at `61d42180687c1c7c3cd04fab5b5ebb52e9ea90a3`; required build job 38 and browser job 37 succeeded. Locked dependency installation, Jest, production build, registry publication, HTTP, rendered UI, Projects and SPA navigation passed.
-- Both artifacts and the controller verified `registry.localhost:5050/root/wizard@sha256:1740164a44a7aed7caa9cd830ff1e2546dd0b9e557ccff2400af3ee0f96ae9e4`. Repeated activation retained the same initial pipeline. The local workflow receipt was preserved; the temporary candidate controller/image were removed.
-- The first build failed because a WSL restart regenerated hosts mappings. Existing `bootstrapper/prepare-local.sh` restored registry resolution without restarting containers; retrying the same pipeline succeeded.
-- All **26 combined isolated checks** passed, with Sync lint/TypeScript and owned cleanup. Companion Wizard UI validation passed 23 tests across 9 suites and its production build. The resource collector passed 10 offline tests on Windows and Linux. Backup helper offline suites passed on both platforms. Disposable lifecycle contracts passed on Windows and in a network-disabled Linux container.
-- Existing production Wizard/GitLab/Bootstrapper service IDs and start times stayed unchanged. Live HTTP 200 and authenticated main/project Fetch signatures passed.
-- These pipeline/project IDs and registry references describe the original test host. A fresh bootstrap creates its own identities; no prior GitLab state is required or restored.
-
-## Open work and PRs
-
-All requirements remain centralized in `kihyoun/system`. Use an existing issue before implementation and link PRs to it. Wizard PRs also reference central System issues. Do not create a separate Wizard issue collection.
-
-| Delivery | PR | Current state |
+| Machine | Address | Purpose |
 | --- | --- | --- |
-| Supported System/container runtime | [System #29](https://github.com/kihyoun/system/pull/29) | Unmerged; first runtime prerequisite |
-| Sync runtime/dependency migration | [System #30](https://github.com/kihyoun/system/pull/30) | Unmerged; stacked on runtime |
-| Component test organization/CI | [System #28](https://github.com/kihyoun/system/pull/28) | Unmerged; stacked on Sync |
-| Wizard source initialization | [System #31](https://github.com/kihyoun/system/pull/31), [Wizard #12](https://github.com/kihyoun/system-wizard/pull/12) | Unmerged Phase A |
-| Central issue policy | [System #32](https://github.com/kihyoun/system/pull/32) | Unmerged; original staged copy separately preserved |
-| Wizard managed build/API/UI/manual | [System #35](https://github.com/kihyoun/system/pull/35), [Wizard #13](https://github.com/kihyoun/system-wizard/pull/13) | Unmerged Phase B; real build/check acceptance passed |
-| Inactive GitHub backup transport | [System #36](https://github.com/kihyoun/system/pull/36) | Unmerged; no live push/activation |
-| Passive resource measurement | [System #37](https://github.com/kihyoun/system/pull/37) | Unmerged; measurement tools, no VM sizing conclusion |
-| Disposable platform-test lifecycle | [System #38](https://github.com/kihyoun/system/pull/38) | Unmerged; offline lifecycle contracts only |
+| Platform | `2.31.62.101` | GitLab, registry, Wizard, controller and runner; 8 CPUs/32 GB RAM |
+| Codex VM | `159.69.212.100` | This session's root-owned Codex client; approximately 4 GB RAM |
 
-The handoff branch is a combined source checkpoint, not evidence that these PRs were merged or that the running management UI was upgraded. Review their stacking and merge deliberately; do not overwrite the current main branches.
+Production UI: https://system-bootstrapper.com ; GitLab:
+https://gitlab.system-bootstrapper.com ; registry:
+https://registry.system-bootstrapper.com ; Sync:
+https://sync.system-bootstrapper.com . Both hosts are Ubuntu 26.04.1.
 
-Remaining requirements:
-- [#18](https://github.com/kihyoun/system/issues/18): Review/Beta and explicit manual GitLab Production promotion/rollback, followed by full rollout acceptance. Source import/build/check is proven; the full feedback workflow is not finished.
-- [#22](https://github.com/kihyoun/system/issues/22): Wizard React/CRA/dependency modernization after the own-platform workflow is ready. The current Wizard builder deliberately remains legacy Node 13/CRA; this is not a supported modern application stack.
-- [#21](https://github.com/kihyoun/system/issues/21): full disposable infrastructure/CI acceptance still needs a coordinated resource window. Do not launch privileged DinD beside the live platform without resource review. The 12 GiB/4 CPU values are ceilings, not reservations or a disk quota.
-- [#26](https://github.com/kihyoun/system/issues/26): controlled resource/build-peak measurements and Hetzner sizing. Three passive baseline samples are not sizing proof. A later passive observation during the real build hit its bounded WSL timeout and retained no complete metrics.
-- [#34](https://github.com/kihyoun/system/issues/34): transition to own GitLab as primary and GitHub as backup. The helper is tested but disabled. Resolve original-history preservation versus a new backup branch before changing history; prevent backup/deployment loops and coordinate System/Wizard repository and issue/MR mappings.
+On the existing Codex VM, the platform SSH identity selector is
+`/home/codex/.ssh/id_ed25519_codex_20261018`; do not copy its contents into Git.
+Verified platform host fingerprint:
+`SHA256:4zV00K0CoXYEjsbsMUjYIjw/Sq0uX7yyUPkuVrSHebw`.
+Existing platform checkout: `/opt/system` ->
+`/mnt/HC_Volume_24222125/platform/source`, clean at the baseline above.
 
-No Production deployment, Review/Beta rollout, live backup activation, GitLab-primary cutover or PR merge was authorized/performed in this completion step. The maintainer delegated the first real build/check run, superseding the earlier plan to trigger that run personally. There are no outstanding agent builds from this handoff.
+The small Codex VM now accepts SSH public-key authentication only, including
+root; port22 remains open. UFW allows incoming22/tcp for IPv4/IPv6, otherwise
+blocks unsolicited inbound traffic and permits outbound traffic. The maintainer
+confirmed a new key login works and explicitly wants Codex's root privileges
+preserved. APT update/upgrade completed and automatic security updates are enabled.
+`open-vm-tools` remains deferred by Ubuntu phasing. A reboot for installed kernel
+7.0.0-38 is still pending; running kernel was 7.0.0-30. No reboot was authorized or
+performed during this session. Local receipt:
+`/root/coordination/root-vm-hardening-20261018.json` on the Codex VM.
 
-The existing detailed workflow plan and coordination instructions are Markdown comments in [issue #18](https://github.com/kihyoun/system/issues/18), not a newly committed `plan.md`.
+The old dedicated GitLab API tokens30/31/32 were revoked and each verified401.
+Their private JSON records under platform-host `/root/coordination/private/`
+remain for audit but cannot authenticate. Do not reuse them or print credentials.
+If API access is needed, provision a new owned, scoped, expiring credential through
+an authorized mechanism, keep it private and revoke it after the operation.
+No GitHub write credential readiness was established in the cutover preflight.
 
-## Additional source snapshots
+## Running state and completed backlog
 
-These branches preserve older dirty checkouts and parked source without mixing them into the tested start branch:
+Fourteen GitHub PRs were merged: System #28/#29/#30/#31/#32/#35/#36/#37/#38/#40/#42
+and Wizard #12/#13/#14. System issues #18/#21/#22/#23/#24/#26/#43 are completed;
+only #34 remained open. There were no open GitHub PRs at final verification.
 
-| Repository / branch | Snapshot |
-| --- | --- |
-| System `codex/host-handoff-wsl-local-20261018` | `70f8b898ca0fc6801f372798d0b4ee1dcd295572`; 14 changed/new files from the older `/opt/system-bootstrapper` checkout |
-| System `codex/host-handoff-wsl-review-20261018` | `038108ea48425a57f0e3d98938d0ac29429e8092`; 83 changed/new source entries from `/opt/system-bootstrapper-review`, including the saved dirty Wizard submodule |
-| Wizard `codex/host-handoff-wsl-review-20261018` | `57ff8527a4543b3f0a596de200df8b6c04c383e6`; nine changed/new files from the older review Wizard |
-| System `codex/host-handoff-policy-20261018` | `554b08cef1b4c1c5ef1889fba87df228fe097b5f`; original staged AGENTS policy and central-issue Wizard pin |
-| System `codex/host-handoff-drafts-20261018` | `851a250a79c6c2434cbff97ac9bdf889d352f722`; loose parked drafts and validation helpers under `handoff/archive/` |
+- Controller and prospective environment-helper image:
+  `sha256:16474e4858527294414a87b80e3a4874761fb85d796d611864aaca5334aa8a58`.
+  It is the clean, validated pipeline45 artifact; no runtime docker commit was used.
+- Production Wizard stays on accepted pipeline44/source
+  `b43c52d952af04e2ebe10a9273c024da2b55a965`, registry reference
+  `registry.system-bootstrapper.com/root/wizard@sha256:8d16ec3e3d97be0600a1233b99146bbee27f4cd015308c5824efa3300edf7f9d`.
+  Promotion, deliberate rollback and re-promotion passed. Subsequent build-only
+  cleanup changes were not promoted as a new application version.
+- Canonical private GitLab project1 is `root/wizard`, default branch `main` at
+  `cdd5c07b8a6bdc97d6704e4d116dba57a0640f4c`. MR4 upgraded only managed build/
+  environment definitions. App/import-marker bytes, modes and last-change history,
+  source gitlink revision6588 and original import2cb21135 were preserved.
+- Canonical merge policy is restored to `merge`. Review and Beta are stopped,
+  without pending/retired leases; their generation floors/tombstones remain43/44.
+  Do not reset them or treat intentionally stopped endpoints as failed deployment.
+- Wizard migration is complete: React19.3.1, Vite8.3.4, TypeScript6.0.3,
+  Node24.22.0/npm11.19.1. Existing docs for registration-only or legacy Node13
+  describe earlier delivery stages; current evidence below supersedes that status.
+- Diagnostic project2 `root/coordination-runtime-ci-20261018` and project3
+  `root/wizard-modernization-review-20261018` are retained evidence projects.
+  Their diagnostic MRs are closed without merging; branches/artifacts preserved.
+  Do not silently turn these into the canonical System development repository.
+- Historical and corrected Wizard browser-job image tags were reconciled; final
+  global `wizard-check-*` tag count was zero. No global Docker prune was used.
 
-Snapshot trees were checked against the selected working-copy bytes/modes. The review System snapshot intentionally points to the newly saved Wizard snapshot. Existing source files, indexes and dirty WSL checkouts were left untouched. Older WIP snapshots are preservation copies, not tested upgrades; do not blindly merge them into the combined start branch.
+## Persistence and evidence
 
-Generated dependencies, Docker/test images, machine-specific disk-migration helpers and private runtime files were omitted. Regenerable test artifacts remain documented by the acceptance identities and issue comments. Only the two project repositories are required for continuing the source work.
+The retained volume is `/dev/sdb`, direct ext4, mounted at
+`/mnt/HC_Volume_24222125`, UUID `07e22857-8272-430d-bd3f-8fcd02c6d9ca`.
+Online resize2fs completed after expansion to25 GiB; final usage was about7.9 GB,
+with16 GB free. All persistent service-data volumes/binds resolve to that UUID.
+`PERSISTENT_DIR` is the volume's `platform/` directory. Preserve `seed/`, `backup/`
+and live `platform/` data. The retained Seed predates later GitLab workflow changes;
+do not assume it is a current matching snapshot of the latest configuration ZIP.
+
+Host mount settings are in `/etc/system-bootstrapper/persistence.env`.
+Private configuration is in `platform/configuration/`, with main `.docker.env`,
+project `.projects.env/.wizard.env` and `sync-auth.env`. These are secret-bearing
+runtime files, not repository inputs. Configuration export remains separate from
+Harvest/Seed. Source code is freshly checked out when rebuilding.
+
+Verified evidence (all dates2026-10-18):
+
+- [Full required pipeline45](https://gitlab.system-bootstrapper.com/root/coordination-runtime-ci-20261018/-/pipelines/45):
+  all12 jobs and53 maintained checks passed. Real config ZIP/cold Harvest,
+  original-host removal, second-host backup-only restore, private Wizard recovery,
+  restored database/registry/runner state, actual registry CI/failure gating,
+  old registry-blob execution and real ACME renewal passed. All five cleanup
+  receipts passed and owned containers/networks/volumes were zero.
+- [Wizard MR4](https://gitlab.system-bootstrapper.com/root/wizard/-/merge_requests/4),
+  [MR pipeline50](https://gitlab.system-bootstrapper.com/root/wizard/-/pipelines/50)
+  and [main pipeline51](https://gitlab.system-bootstrapper.com/root/wizard/-/pipelines/51):
+  corrected browser tags153/157 were observed during execution and then removed
+  natively, independently of cleanup.json. Historical recipe hashes remain valid.
+- Actual final Production Chromium Connect/Fetch/UI ZIP download passed, including
+  Cube signature, runner1/project1 and all runtime extension literals. Multiple
+  WIZARD_IMAGE override lines correctly resolved to the final Production digest.
+- Full passing resource measurements were recorded for pipeline35. Only one
+  12 GiB/4 CPU heavy lifecycle was qualified on the32 GB host; concurrent heavy
+  candidates remain unqualified. Optional Review/Beta helper reprovisioning on a
+  completely fresh OS is an explicit operator step, not part of the core backup-only proof.
+
+On the volume, inspect `platform/recovery/evidence/acceptance-pipeline45.json`,
+`resource-measurements-through-35.tar.gz` in that evidence directory, and
+`platform/recovery/wizard-build-cleanup-acceptance-20261018/`. The last directory
+contains sanitized evidence and the latest PRIVATE configuration `bootstrapper.zip`
+(70706 bytes, SHA256 `15a502c7b2f0c4bd39adaf7b192273945b6a63400997b807ab48436cc6e9c3d3`).
+Controller/Production rollback checkpoints are also under `platform/recovery/`.
+`/opt/coordination/runtime-ci-retained-image.json` on the platform host binds
+validated image164 to source9191/treeacabb/public0fd and pipeline45/job148.
+
+## Next task: issue34 cutover
+
+1. Inventory real GitLab repositories, refs, protected variables and permissions.
+   Preserve the running platform. Establish the canonical System repository and
+   central issue home deliberately; inspect only secret names/readiness, never
+   dump values. Do not assume a GitHub CI push key exists or can write both repos.
+2. Reconcile histories and record source/target branch mappings first. Managed
+   Wizard main contains imported source and local managed commits; it must not be
+   force-pushed over GitHub master. Decide a history-preserving integration or an
+   explicitly mapped backup branch. Preserve tags and the System Wizard gitlink.
+3. Reuse `gitlab/github-backup.sh` and `github-backup-transport.js` with protected
+   CI credentials. Their offline failure/retry/divergence tests passed; live backup
+   activation has not. The selected managed Wizard workflow is
+   `.system-bootstrapper/ci.yml`; changing only upstream `.gitlab-ci.yml` will not
+   activate it. Serialize backup jobs, preserve strict host verification, expose
+   failures and prevent backup/deployment loops or automatic Production promotion.
+4. Move/redirect the remaining central issue with cross-links and retain historical
+   issue/PR references. Update agent instructions, remotes and operating docs when
+   the actual source-of-truth switch occurs, not before.
+5. Prove the complete flow: central GitLab issue -> MR -> required green checks ->
+   merge -> GitHub backup at the same resulting commit, with failure/retry,
+   concurrency/divergence recovery and repository plus GitLab metadata restore
+   evidence. Close issue34 only after its acceptance criteria are fulfilled.
+
+Production stays manual. Keep the Cube unchanged, keep every persistent path on
+its volume, preserve source edits and avoid unrelated history rewrites.
