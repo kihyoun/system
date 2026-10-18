@@ -49,7 +49,10 @@ begin
     encoded = URI.encode_www_form_component(full_path)
     code, project = api.call(Net::HTTP::Get, 'projects/' + encoded)
     raise BootstrapError, 'Project lookup failed' unless [200, 404].include?(code)
-    if ['wizard-build', 'wizard-build-status'].include?(input['action'])
+    if ['wizard-environments', 'wizard-environments-status'].include?(input['action'])
+      raise BootstrapError, 'Wizard repository missing' unless code == 200
+      result = WizardEnvironmentsAdapter.new(api, input, project).call
+    elsif ['wizard-build', 'wizard-build-status'].include?(input['action'])
       raise BootstrapError, 'Wizard repository missing' unless code == 200
       result = WizardBuildActivation.new(api, input, project).call
     elsif input['action'] == 'wizard-source'

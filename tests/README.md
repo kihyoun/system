@@ -253,3 +253,18 @@ until the complete acceptance criteria pass. Coordinate new Wizard checks with
 the [workflow implementation](https://github.com/kihyoun/system/issues/18);
 add their isolated paths to the manifest only after agreeing prerequisites and
 timeouts. Do not add live checks by glob discovery.
+
+## Managed Review and Beta
+
+The Phase C delivery is tracked in [issue 39](https://github.com/kihyoun/system/issues/39).
+Its eight manifest entries are `gitlab/environment-upgrade.rb`,
+`wizard/environment-recipe.js`, `wizard/environment-helper.js`, `wizard/environment-canonical.js`,
+`wizard/environment-launcher.js`,
+`wizard/environments-workflow.js`, `wizard/environments-api.js` and
+`nginx/environment-routing.sh`. They use fake GitLab/Docker transports and a
+private API listener, never a real Docker socket or platform configuration.
+They exercise explicit optional settings, authentication, readiness/recovery,
+expected-content CI upgrades, MR lease and stale-job protection, owned cleanup
+and preservation of the primary Wizard route. See the
+[operating guide](../project-bootstrap/wizard-environments/README.md).
+Live manual-job/HTTPS acceptance remains a separate explicit operator gate.

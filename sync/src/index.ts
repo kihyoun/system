@@ -18,6 +18,7 @@ import { suggestConfig } from './ConfigSuggestions';
 import {ensureDefaultWizard} from './DefaultWizard';
 import {initializeWizardSource, previewWizardSource} from './WizardWorkflow';
 import {activateWizardBuild, previewWizardBuild, refreshWizardBuild} from './WizardBuild';
+import {configureWizardEnvironments, previewWizardEnvironments, refreshWizardEnvironments} from './WizardEnvironments';
 
 export const app = express();
 app.use(bodyParser.json());
@@ -207,6 +208,28 @@ app.get('/projects/wizard/build/status', authenticateJWT, (req, res) => {
   }
   try {
     const result = refreshWizardBuild();
+    res.status(result.state === 'not-activated' ? 200 : 202).json(result);
+  } catch (error) { res.status(409).json({message: error.message}); }
+});
+app.get('/projects/wizard/environments', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(previewWizardEnvironments()); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
+app.post('/projects/wizard/environments', authenticateJWT, (req, res) => {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+    res.status(409).json({message: 'Wait for system setup to finish.'}); return;
+  }
+  try { res.status(202).json(configureWizardEnvironments(req.body)); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
+app.get('/projects/wizard/environments/status', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+    res.status(409).json({message: 'Wait for system setup to finish.'}); return;
+  }
+  try {
+    const result = refreshWizardEnvironments();
     res.status(result.state === 'not-activated' ? 200 : 202).json(result);
   } catch (error) { res.status(409).json({message: error.message}); }
 });

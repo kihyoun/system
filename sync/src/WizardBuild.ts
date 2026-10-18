@@ -38,14 +38,33 @@ function context() {
   if (Number(settings.GITLAB_REGISTRY_DOMAIN_MODE || 0) < 2) { registry.port = '5050'; }
   return {content, data, receipt, recipe, registryPrefix: registry.host + '/' + receipt.repository.path};
 }
+const historicalMessage = 'Phase B evidence is historical while the environment CI migration owns the recipe. ' +
+  'Use environment status for the current recipe; Phase B reactivation is disabled.';
+function migrationOwnsCi(receipt: any) {
+  const environment = receipt.wizardWorkflow.environments;
+  return !!environment && (!!environment.activationCommit || environment.externalAttempted === true ||
+    environment.phase === 'requires-reconciliation');
+}
+function historicalBuild(build: any) {
+  return {...build, historical: true, historicalPhase: build.phase, phase: 'historical', message: historicalMessage};
+}
 export function previewWizardBuild() {
   const {receipt, recipe} = context();
+  const historical = migrationOwnsCi(receipt);
   return {version: recipe.version, recipeHash: recipe.recipeHash, sourceRevision: receipt.wizardWorkflow.sourceRevision,
     importCommit: receipt.wizardWorkflow.importCommit, repository: receipt.repository,
-    build: receipt.wizardWorkflow.build, message: 'Enables legacy Wizard checks and candidate artifacts only; Production deployment remains disabled.'};
+    build: historical ? historicalBuild(receipt.wizardWorkflow.build) : receipt.wizardWorkflow.build,
+    message: historical ? historicalMessage :
+      'Enables legacy Wizard checks and candidate artifacts only; Production deployment remains disabled.'};
 }
 function operation(mode: 'activate' | 'status', input?: any) {
   const {content, data, receipt, recipe, registryPrefix} = context();
+  if (migrationOwnsCi(receipt)) {
+    if (mode === 'activate') {
+      throw new Error('Environment CI migration owns the current recipe. Phase B build activation is disabled; refresh environment status instead.');
+    }
+    return {state: 'historical', build: historicalBuild(receipt.wizardWorkflow.build), message: historicalMessage};
+  }
   let expectedContent = content;
   const persist = (nextReceipt: any) => {
     if (fs.readFileSync(configPath(), 'utf8') !== expectedContent) {
