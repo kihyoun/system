@@ -79,8 +79,7 @@ app.listen( port, () => {
       console.log( `server listening on ${parseInt(process.env.SYNC_DOMAIN_MODE, 10) > 1
           ? "https://" : "http://"}${process.env.SYNC_HOST}` );
     }
-    console.log( `SYNC_USER: ${SYNC_USER}` );
-    console.log( `SYNC_PASS: ${SYNC_PASS}` );
+    console.log('Sync authentication is configured.');
     status.defaultWizardSetupInProgress = true;
     ensureDefaultWizard().then((result) => {
       status.defaultWizardProject = {state: result.state, message: ''};

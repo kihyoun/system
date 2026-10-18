@@ -228,7 +228,7 @@ async function verifyRestore(candidate,input) {
       !proof.renewal.includes(BASE+'/ssl/acme-http01') || proof.renewal.includes('/candidate-data/platform'))throw Error('restored-renewal-path-or-identity-mismatch');
   });
   await candidate.stage('recovery-gitlab-data-identity',async()=>{
-    await candidate.wait(async()=>{const response=await candidate.request(candidate.url+'/-/readiness',{headers:{Host:'gitlab.candidate.test'}});return response.status===200;},candidate.spec.readinessMilliseconds||600000);
+    await candidate.wait(async()=>{await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness']);return true;},candidate.spec.readinessMilliseconds||600000);
     const auth=await rootToken(candidate);
     try {
       const expected=input.expected;
