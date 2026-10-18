@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -a
 source "${PERSISTENCE_ENV_FILE:-/etc/system-bootstrapper/persistence.env}"
+set +a
 mountpoint -q "$PERSISTENT_MOUNT"
 [ "$(findmnt -rn -T "$PERSISTENT_DIR" -o TARGET)" = "$PERSISTENT_MOUNT" ]
 [ "$(cat "$PERSISTENT_DIR/.system-bootstrapper-volume")" = system-bootstrapper-persistence-v1 ]

@@ -3,7 +3,9 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${PERSISTENCE_ENV_FILE:?Set PERSISTENCE_ENV_FILE to the retained recovery/persistence.env}"
+set -a
 source "$PERSISTENCE_ENV_FILE"
+set +a
 bash bootstrapper/persistence.sh
 recovery="$PERSISTENT_DIR/recovery"
 python3 - "$recovery" <<'PYVERIFY'

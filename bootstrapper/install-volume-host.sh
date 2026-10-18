@@ -2,7 +2,9 @@
 # Persist host TLS renewal state independently of service Harvest/Seed.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+set -a
 source "${PERSISTENCE_ENV_FILE:-/etc/system-bootstrapper/persistence.env}"
+set +a
 bash bootstrapper/persistence.sh
 if ! awk -v target="$PERSISTENT_MOUNT" '$1 !~ /^#/ && $2 == target { found=1 } END { exit !found }' /etc/fstab; then
     volume_uuid=${PERSISTENT_UUID:-$(findmnt -rn -T "$PERSISTENT_MOUNT" -o UUID)}
