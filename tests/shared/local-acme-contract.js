@@ -129,7 +129,11 @@ test('negative HTTP validation must fail before real renewal can establish evide
   const expected={account:'pebble/dir/account',keyHash:'private-key-fingerprint',serial:'AA',certificateHash:'before'};
   x.instance.attach=async()=> '172.29.0.4';x.instance.prepareClient=async()=>{};
   let identities=0;x.instance.identity=async()=>++identities===1?expected:{...expected,serial:'BB',certificateHash:'after'};
-  x.instance.certbot=async()=>{events.push('renew');if(events.length===1)throw Object.assign(Error('actual HTTP validation failed'),{exitCode:1});};
+  x.instance.certbot=async(_candidate,base,args)=>{
+    assert.equal(base,'/recovered-data/platform');
+    assert.deepEqual(args,['renew','--server','https://pebble:14000/dir','--non-interactive','--force-renewal','--no-random-sleep-on-renew','--cert-name','recovery-fixture']);
+    events.push('renew');if(events.length===1)throw Object.assign(Error('actual HTTP validation failed'),{exitCode:1});
+  };
   const candidate={stage:async(_name,action)=>action(),wait:async action=>{assert(await action());},evidence:{recovery:{acmeRenewalVerified:false}},inner:async(args,input)=>{
     if(args[0]==='inspect')return JSON.stringify({bridge:{Gateway:'127.0.0.1'}});
     return JSON.stringify({status:200,body:'<html>renewed</html>',serial:'BB'});

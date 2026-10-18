@@ -11,6 +11,20 @@ const SEED='/recovered-data/seed';
 const LEAF='/ssl/live/recovery-fixture/fullchain.pem';
 const KEY='/ssl/live/recovery-fixture/privkey.pem';
 const PRIVATE_MARKER='/opt/system-bootstrapper/private-recovery-proof';
+// These are source-owned public lines; raw paths, credentials and upstream
+// output are never attached to errors or copied into acceptance reports.
+const HARVEST_FAILURE_CODES={
+  'Cannot harvest: service/TLS/renewal source is missing.':'harvest-missing-source',
+  'Cannot harvest an incomplete restore; finish Seed recovery first.':'harvest-incomplete-restore',
+  'A Harvest/Seed operation is already active or was interrupted.':'harvest-operation-locked',
+  'Certificate renewal is active or was interrupted; retry after resolving its lock.':'harvest-certificate-locked',
+  'GitLab restart failed after Harvest.':'harvest-gitlab-restart-failed',
+  'GitLab did not shut down cleanly; no Seed published.':'harvest-gitlab-unclean'
+};
+for(const phase of ['certificate-lock','gitlab-inspect','gitlab-stop','gitlab-stopped-check','gitlab-clean-exit','stage-create','srv-copy','ssl-copy','certbot-copy','manifest-create','snapshot-publish']){
+  HARVEST_FAILURE_CODES['Harvest phase failed: '+phase+'.']='harvest-phase-'+phase;
+}
+
 function privateWizardDescriptor(value,spec) {
   if(!value||!Number.isInteger(value.projectId)||value.projectId<1||!/^[-a-z0-9_/]+\/wizard$/.test(value.projectPath||'')||
     !/^sha256:[a-f0-9]{64}$/.test(value.imageDigest||'')||!/^sha256:[a-f0-9]{64}$/.test(value.imageId||'')||
@@ -81,11 +95,14 @@ async function revoke(candidate,token) {
   try {await candidate.api('/personal_access_tokens/self',token,'DELETE');}
   catch {await candidate.rails("User.find_by_username('root').personal_access_tokens.where(name:'disposable-backup-recovery',revoked:false).find_each(&:revoke!); puts '{}'");}
 }
-async function checkpoint(candidate,name,action){
+async function checkpoint(candidate,name,action,allowedReasons=[]){
   return candidate.stage(name,async()=>{
     try{return await action();}catch(error){
-      if(['canceled-or-overall-timeout','readiness-timeout'].includes(error?.message))throw error;
-      throw Error(name+'-failed');
+      if(['canceled-or-overall-timeout','readiness-timeout',...allowedReasons].includes(error?.message))throw error;
+      const failure=Error(name+'-failed');
+      if(Number.isInteger(error?.exitCode)&&error.exitCode>=0&&error.exitCode<=255)failure.exitCode=error.exitCode;
+      if(['ETIMEDOUT','ENOBUFS','ENOENT','EACCES'].includes(error?.systemCode))failure.systemCode=error.systemCode;
+      throw failure;
     }
   });
 }
@@ -172,18 +189,27 @@ async function capture(original,dependencies={}) {
       await original.inner(['exec','system_bootstrapper_1','node','/tmp/export-configuration.cjs','/tmp/recovery-fetch.json','/tmp/bootstrapper.zip']);
       await fromController(original,'/tmp/bootstrapper.zip',inputs.configArchive);
     });
-    await original.stage('recovery-completed-cold-seed',async()=>{
-      await original.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','bash','stop.sh']);
-      await original.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],{timeout:180000});
-      const current=await original.inner(['exec','system_bootstrapper_1','node','/system/system/seed-manifest.js','current','/seed']);
-      if(!/^\/seed\/snapshots\/[A-Za-z0-9.-]+$/.test(current))throw Error('completed-snapshot-required');
-      await original.call(['exec',original.daemon,'tar','-czf','-','-C','/candidate-data/seed','current',current.slice('/seed/'.length)],{outputFile:inputs.seedArchive,timeout:180000});
-      fs.chmodSync(inputs.seedArchive,0o600);
-      inputs.configHash=hashFile(inputs.configArchive);
-      inputs.seedHash=hashFile(inputs.seedArchive);
-    });
+    await original.stage('recovery-completed-cold-seed',()=>captureSeed(original,inputs));
     return inputs;
   } catch(error) {fs.rmSync(directory,{recursive:true,force:true});throw error;}
+}
+
+async function captureSeed(original,inputs) {
+  const step=(name,action,allowedReasons)=>checkpoint(original,'recovery-seed-'+name,action,allowedReasons);
+  await step('runner-stop',()=>original.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','bash','stop.sh']));
+  await step('harvest',()=>original.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],
+    {timeout:180000,failureCodes:HARVEST_FAILURE_CODES}),Object.values(HARVEST_FAILURE_CODES));
+  const current=await step('manifest-current',async()=>{
+    const current=await original.inner(['exec','system_bootstrapper_1','node','/system/system/seed-manifest.js','current','/seed']);
+    if(!/^\/seed\/snapshots\/[A-Za-z0-9.-]+$/.test(current))throw Error('completed-snapshot-required');
+    return current;
+  });
+  await step('archive',async()=>{
+    await original.call(['exec',original.daemon,'tar','-czf','-','-C','/candidate-data/seed','current',current.slice('/seed/'.length)],{outputFile:inputs.seedArchive,timeout:180000});
+    fs.chmodSync(inputs.seedArchive,0o600);
+    inputs.configHash=hashFile(inputs.configArchive);
+    inputs.seedHash=hashFile(inputs.seedArchive);
+  });
 }
 
 async function bootstrapRestore(candidate,dependencies={}) {
@@ -387,4 +413,4 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!clean)throw Error('restored-host-cleanup-failed');
   }
 }
-module.exports={capture,bootstrapRestore,verifyRestore,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,BASE,SEED};
+module.exports={capture,bootstrapRestore,verifyRestore,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,BASE,SEED};

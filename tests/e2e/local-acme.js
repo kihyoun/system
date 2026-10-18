@@ -203,7 +203,9 @@ class LocalAcme {
       const ip=await this.attach(candidate);await this.prepareClient(candidate,'/recovered-data/platform');
       const before=await this.identity(candidate);
       if(before.account!==expected.account||before.keyHash!==expected.keyHash||before.serial!==expected.serial)throw Error('acme-restored-account-identity-mismatch');
-      const args=['renew','--server',DIRECTORY,'--non-interactive','--force-renewal','--cert-name','recovery-fixture'];
+      // This isolated CA has no shared issuance load; avoid Certbot's default
+      // non-interactive scheduling delay inside the bounded validation calls.
+      const args=['renew','--server',DIRECTORY,'--non-interactive','--force-renewal','--no-random-sleep-on-renew','--cert-name','recovery-fixture'];
       const blocked=await request(candidate,'http://'+this.dnsAddress+':8055/set-default-ipv4',{body:{ip:'127.0.0.1'}});
       if(blocked.status!==200)throw Error('acme-negative-validation-setup-failed');
       let failed=false;try{await this.certbot(candidate,'/recovered-data/platform',args);}catch(error){if(error.exitCode!==1)throw error;failed=true;}

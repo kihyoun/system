@@ -390,3 +390,46 @@ test('restored configuration Fetch rejects missing or invalid application data a
     assert(!JSON.stringify(f.stages).includes('private-'));
   }
 });
+
+function coldSeedFixture(t,failure){
+  const input=fixture(t),events=[],stages=[];
+  const candidate={daemon:'owned-daemon',results:stages,now:()=>0,checkpoint:()=>{},stage:require('./disposable-candidate').Candidate.prototype.stage,
+    inner:async(args,options)=>{
+      const kind=args.includes('stop.sh')?'runner-stop':args.includes('harvest.sh')?'harvest':'manifest-current';events.push(kind);
+      if(kind==='harvest')assert.deepEqual(options.failureCodes,recovery.HARVEST_FAILURE_CODES);
+      if(kind===failure?.step)throw Object.assign(Error(failure.message||'private-upstream-error'),failure.metadata);
+      return kind==='manifest-current'?'/seed/snapshots/completed-fixture':'';
+    },call:async(args,options)=>{events.push('archive');assert.equal(options.outputFile,input.seedArchive);if(failure?.step==='archive')throw Object.assign(Error('private-upstream-error'),failure.metadata);return '';}};
+  return {input,candidate,events,stages};
+}
+test('cold Seed capture journals runner stop, actual Harvest, completed manifest and binary archive independently',async t=>{
+  const f=coldSeedFixture(t);await recovery.captureSeed(f.candidate,f.input);
+  assert.deepEqual(f.events,['runner-stop','harvest','manifest-current','archive']);
+  assert.deepEqual(f.stages.map(stage=>stage.name),f.events.map(name=>'recovery-seed-'+name));
+  assert(f.stages.every(stage=>stage.status==='passed'));
+  assert.equal(f.input.configHash,recovery.hashFile(f.input.configArchive));assert.equal(f.input.seedHash,recovery.hashFile(f.input.seedArchive));
+});
+test('cold Seed failures identify each command and do not attempt later operations',async t=>{
+  const order=['runner-stop','harvest','manifest-current','archive'];
+  for(const step of order){
+    const f=coldSeedFixture(t,{step,metadata:{exitCode:23,systemCode:'ETIMEDOUT'}});
+    await assert.rejects(()=>recovery.captureSeed(f.candidate,f.input),error=>{
+      assert.equal(error.message,'recovery-seed-'+step+'-failed');assert.equal(error.exitCode,23);assert.equal(error.systemCode,'ETIMEDOUT');return true;
+    });
+    assert.deepEqual(f.events,order.slice(0,order.indexOf(step)+1));
+    assert.equal(f.stages.at(-1).exitCode,23);assert.equal(f.stages.at(-1).systemCode,'ETIMEDOUT');
+    assert(!JSON.stringify(f.stages).includes('private-upstream-error'));
+  }
+});
+test('fixed Harvest failure codes identify internal phases without exposing arbitrary output',async t=>{
+  const {failureReason}=require('./stage-diagnostics');
+  const script=fs.readFileSync(path.join(__dirname,'../../system/harvest.sh'),'utf8');
+  for(const [line,code]of Object.entries(recovery.HARVEST_FAILURE_CODES)){
+    assert.equal(failureReason(code),code);
+    if(line.startsWith('Harvest phase failed: '))assert(script.includes('phase='+line.slice('Harvest phase failed: '.length,-1)));
+    else assert(script.includes(line));
+    const f=coldSeedFixture(t,{step:'harvest',message:code,metadata:{exitCode:1}});
+    await assert.rejects(()=>recovery.captureSeed(f.candidate,f.input),{message:code});
+    assert.equal(f.stages.at(-1).reason,code);assert.deepEqual(f.events,['runner-stop','harvest']);
+  }
+});

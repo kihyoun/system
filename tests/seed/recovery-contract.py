@@ -34,6 +34,13 @@ if os.environ.get('FAIL_COPY') and os.environ['FAIL_COPY'] in sys.argv[-1]: sys.
 os.execv(os.environ['REAL_RSYNC'], ['rsync']+sys.argv[1:])
 '''
 
+NODE = '''#!/usr/bin/env python3
+import os,sys
+if len(sys.argv)>2 and sys.argv[1].endswith('seed-manifest.js') and sys.argv[2]==os.environ.get('FAIL_MANIFEST'):
+ print('private injected manifest failure',file=sys.stderr);sys.exit(19)
+os.execv(os.environ['REAL_NODE'], ['node']+sys.argv[1:])
+'''
+
 class RecoveryContract(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='seed-contract-')
@@ -44,8 +51,8 @@ class RecoveryContract(unittest.TestCase):
         self.env = {**os.environ, 'PATH': str(self.root/'bin') + os.pathsep + os.environ['PATH'],
                     'GITLAB_IMAGE': 'gitlab/gitlab-ce:19.4.2-ce.0', 'TEST_STATE': str(self.root), 'SEED_ROOT': str(self.root/'seed'),
                     'SERVICE_DATA_DIR': str(self.root/'srv'), 'TLS_DATA_DIR': str(self.root/'ssl'),
-                    'LETSENCRYPT_DATA_DIR': str(self.root/'letsencrypt'), 'REAL_RSYNC': shutil.which('rsync')}
-        for name, body in [('docker', DOCKER), ('rsync', RSYNC)]:
+                    'LETSENCRYPT_DATA_DIR': str(self.root/'letsencrypt'), 'REAL_RSYNC': shutil.which('rsync'), 'REAL_NODE': shutil.which('node')}
+        for name, body in [('docker', DOCKER), ('rsync', RSYNC), ('node', NODE)]:
             (self.root/'bin'/name).write_text(body); (self.root/'bin'/name).chmod(0o755)
         (self.root/'running').write_text('true')
         (self.root/'srv/gitlab/data/identity').write_text('restorable database identity')
@@ -99,8 +106,25 @@ class RecoveryContract(unittest.TestCase):
         self.assertEqual((self.root/'running').read_text(), 'true')
         self.assertFalse((self.root/'seed/.operation-lock').exists())
 
+    def test_cold_harvest_failure_phases_preserve_exit_resume_locks_and_previous_snapshot(self):
+        first = self.harvest()
+        failures = [({'FAIL_COPY': '/' + name + '/'}, phase, 12)
+                    for name, phase in [('srv', 'srv-copy'), ('ssl', 'ssl-copy'), ('letsencrypt', 'certbot-copy')]]
+        failures += [({'FAIL_MANIFEST': command}, phase, 19)
+                     for command, phase in [('create', 'manifest-create'), ('publish', 'snapshot-publish')]]
+        for environment, phase, code in failures:
+            with self.subTest(phase=phase):
+                result = self.run_script('harvest', success=False, **environment)
+                self.assertEqual(result.returncode, code)
+                self.assertIn('Harvest phase failed: ' + phase + '.', result.stderr)
+                self.assertEqual((self.root/'seed/current').resolve(), first)
+                self.assertEqual((self.root/'running').read_text(), 'true')
+                self.assertFalse((self.root/'seed/.operation-lock').exists())
+                self.assertFalse((self.root/'letsencrypt/.system-bootstrapper-certificate-lock').exists())
+
     def test_forced_shutdown_is_not_published_as_consistent(self):
-        self.run_script('harvest', success=False, TEST_EXIT='137')
+        result = self.run_script('harvest', success=False, TEST_EXIT='137')
+        self.assertIn('Harvest phase failed: gitlab-clean-exit.', result.stderr)
         self.assertFalse((self.root/'seed/current').exists())
         self.assertEqual((self.root/'running').read_text(), 'true')
 

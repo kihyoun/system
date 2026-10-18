@@ -9,6 +9,12 @@ const {configurationValues} = require('./literal-configuration');
 
 const LABEL = 'com.system-bootstrapper.test-run';
 const SIGNATURE = 'bd4a8426355824593a5e21ad759830c1';
+function exitDetails(error) {
+  return {
+    ...(Number.isInteger(error.exitCode)&&error.exitCode>=0&&error.exitCode<=255?{exitCode:error.exitCode}:{}),
+    ...(['ETIMEDOUT','ENOBUFS','ENOENT','EACCES'].includes(error.systemCode)?{systemCode:error.systemCode}:{})
+  };
+}
 function signature(text) {
   if (text[807] !== '$' || crypto.createHash('md5').update(text.slice(0,1184)).digest('hex') !== SIGNATURE) {
     throw new Error('invalid-cube-signature');
@@ -43,7 +49,14 @@ function docker(args, options={}) {
   // Docker output can contain credentials: never propagate its text into reports/errors.
   if (result.error || result.status !== 0) {
     // Preserve only operation/error codes, never potentially private output.
-    const error=new Error('docker-'+args[0]+'-failed');
+    let reason='docker-'+args[0]+'-failed';
+    const lines=new Set(((result.stderr||'')+'\n'+(result.stdout||'')).split(/\r?\n/));
+    for(const [message,code]of Object.entries(options.failureCodes||{})) {
+      if(message.length>0&&message.length<=1024&&stageDiagnostics.failureReason(code)===code&&lines.has(message)) {
+        reason=code;break;
+      }
+    }
+    const error=new Error(reason);
     error.exitCode=result.status;error.systemCode=result.error?.code;
     throw error;
   }
@@ -123,7 +136,7 @@ class Candidate {
   async stage(name, action) {
     const start=this.now();
     try { const value=await action(); this.results.push({name,status:'passed',milliseconds:this.now()-start}); this.checkpoint(this); return value; }
-    catch(error) { this.results.push({name,status:'failed',milliseconds:this.now()-start,reason:stageDiagnostics.failureReason(error.message)}); this.checkpoint(this); throw error; }
+    catch(error) { this.results.push({name,status:'failed',milliseconds:this.now()-start,reason:stageDiagnostics.failureReason(error.message),...exitDetails(error)}); this.checkpoint(this); throw error; }
   }
   async wait(check, milliseconds) {
     const until=this.now()+milliseconds;
@@ -449,7 +462,8 @@ function recover(report,exec=docker) {
     /^[a-z][a-z0-9-]{0,80}$/.test(item.name||'') && ['passed','failed'].includes(item.status))
     .map(item=>({name:item.name,status:item.status,
       ...(Number.isFinite(item.milliseconds)&&item.milliseconds>=0?{milliseconds:item.milliseconds}:{}),
-      ...(item.status==='failed'&&item.reason!==undefined?{reason:stageDiagnostics.failureReason(item.reason)}:{})}));
+      ...(item.status==='failed'&&item.reason!==undefined?{reason:stageDiagnostics.failureReason(item.reason)}:{}),
+      ...(item.status==='failed'?exitDetails(item):{})}));
   const images=Object.fromEntries(Object.entries(report.images||{}).filter(([role,id])=>
     ['candidate','wizard','gitlab','runner','nginx'].includes(role)&&/^sha256:[a-f0-9]{64}$/.test(id)).map(([role,id])=>[role,{id}]));
   const evidence={};

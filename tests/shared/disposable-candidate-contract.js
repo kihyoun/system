@@ -86,6 +86,18 @@ function fixture() {
     assert(fs.readFileSync(output).equals(bytes),'Streaming preserves binary bytes without buffering stdout.');
     assert.equal(fs.statSync(output).mode&0o777,0o600);
     assert.throws(()=>streamed.exec(['fake-stream'],{inputFile:input,outputFile:output}),/EEXIST/);
+    fs.writeFileSync(path.join(streams,'docker'),'#!/bin/sh\nprintf "%s\\n" "Fixed fixture failure" "secret-fixture-token" >&2\nexit 7\n',{mode:0o755});
+    assert.throws(()=>streamed.exec(['exec'],{failureCodes:{'Fixed fixture failure':'configuration-round-trip-mismatch'},timeout:2000}),error=>{
+      assert.equal(error.message,'configuration-round-trip-mismatch');assert.equal(error.exitCode,7);
+      assert(!JSON.stringify(error).includes('secret-fixture-token'));return true;
+    });
+    for(const failureCodes of [{'Fixed fixture failure':'secret-fixture-token'},{'fixture failure':'configuration-round-trip-mismatch'}]) {
+      assert.throws(()=>streamed.exec(['exec'],{failureCodes,timeout:2000}),error=>error.message==='docker-exec-failed'&&error.exitCode===7);
+    }
+    fs.writeFileSync(path.join(streams,'docker'),'#!/bin/sh\nexec sleep 2\n',{mode:0o755});
+    await assert.rejects(streamed.stage('recovery-completed-cold-seed',async()=>streamed.exec(['exec'],{timeout:30})));
+    assert.equal(streamed.results.at(-1).systemCode,'ETIMEDOUT');
+    assert.equal(streamed.results.at(-1).exitCode,undefined);
   } finally {process.env.PATH=previousPath;fs.rmSync(streams,{recursive:true,force:true});}
   const routed=fixture();
   routed.instance.inner=async(args,options)=>{
@@ -200,6 +212,17 @@ function fixture() {
   assert.deepEqual(twice.results,sanitized.results); // Independent after_script retries retain diagnostic identity.
   assert(!JSON.stringify(twice.results).includes('secret-fixture-token'));
   assert.equal(recover({runId:errors.instance.id,resources:[],results:[{name:'authenticated-fetch',status:'failed',reason:'secret-fixture-token'}]}).results[0].reason,'stage-error');
+  const status=fixture();
+  await assert.rejects(status.instance.stage('recovery-completed-cold-seed',async()=>{throw Object.assign(Error('docker-exec-failed'),{exitCode:7,systemCode:'ETIMEDOUT',private:'secret-fixture-token'});}));
+  assert.equal(status.instance.results[0].exitCode,7);assert.equal(status.instance.results[0].systemCode,'ETIMEDOUT');
+  const resumedStatus=recover({runId:status.instance.id,resources:[],results:status.instance.results});
+  const repeatedStatus=recover({runId:status.instance.id,resources:[],results:resumedStatus.results});
+  assert.deepEqual(repeatedStatus.results,status.instance.results);
+  assert(!JSON.stringify(repeatedStatus.results).includes('secret-fixture-token'));
+  for(const exitCode of [-1,256,'secret-fixture-token']) {
+    const unsafeStatus=recover({runId:status.instance.id,resources:[],results:[{name:'cleanup',status:'failed',exitCode,systemCode:'secret-fixture-token'}]});
+    assert.deepEqual(unsafeStatus.results,[{name:'cleanup',status:'failed'}]);
+  }
   const fullReceipt={runId:test.instance.id,resources:test.instance.resources,startedAt:'2026-10-18T00:00:00Z',
     images:{candidate:'sha256:'+hash},daemonImage:spec.daemonImage,fullAcceptance:true,
     results:[{name:'registry-build-push-pull-run',status:'passed',milliseconds:123,private:'never retain'}],
