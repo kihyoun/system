@@ -8,6 +8,8 @@ COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_mod
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && node --version && npm --version && ruby --version && git --version \
  && ldd /usr/local/bin/node
+RUN apt-get update && apt-get install -y --no-install-recommends python3 rsync unzip zip \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /candidate
 COPY sync/package.json sync/package-lock.json ./sync/
 RUN cd sync && npm ci --ignore-scripts --no-audit --no-fund
@@ -16,11 +18,13 @@ COPY sync/tsconfig.json ./sync/tsconfig.json
 COPY sync/eslint.config.mjs ./sync/eslint.config.mjs
 COPY project-bootstrap ./project-bootstrap
 COPY gitlab/*.js gitlab/*.sh gitlab/gitlab.rb ./gitlab/
-COPY gitlab-runner/*.js gitlab-runner/*.sh ./gitlab-runner/
+COPY gitlab-runner/*.js gitlab-runner/*.sh gitlab-runner/*.rb gitlab-runner/docker-compose.yml ./gitlab-runner/
 COPY nginx/*.sh ./nginx/
 COPY nginx/.templates ./nginx/.templates
 COPY nginx-proxy/*.sh ./nginx-proxy/
 COPY system/.docker.env.example system/start-intermediate.sh ./system/
+COPY bootstrapper/persistence.sh ./bootstrapper/
+COPY system/persistence-init.js system/push.sh ./system/
 COPY tests ./tests
 RUN node project-bootstrap/wizard-source/package.js --verify \
  && cd sync && npm run build

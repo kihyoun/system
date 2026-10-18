@@ -4,7 +4,9 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const dns = require('dns').promises;
-const file = '/system/system/.projects.env/.wizard.env';
+const path = require('path');
+const configDirectory = process.env.SYSTEM_CONFIG_DIR || '/system/system';
+const file = path.join(configDirectory, '.projects.env/.wizard.env');
 const lock = file + '.environments.lock';
 const prefix = '# BOOTSTRAPPER_PROJECT=';
 const sha = text => crypto.createHash('sha256').update(text).digest('hex');
@@ -19,7 +21,7 @@ function read() {
       receipt.repository.ciPath !== '.system-bootstrapper/ci.yml') throw new Error('ownership');
   const allowed = new Set(['WIZARD_HOST', 'GITLAB_HOST', 'GITLAB_REGISTRY_HOST', 'GITLAB_REGISTRY_URL', 'GITLAB_REGISTRY_DOMAIN_MODE']);
   const publicSettings = {};
-  for (const line of fs.readFileSync('/system/system/.docker.env', 'utf8').split('\n')) {
+  for (const line of fs.readFileSync(path.join(configDirectory, '.docker.env'), 'utf8').split('\n')) {
     const match = /^(?:export )?([A-Z_]+)=(?:"([^"]*)"|'([^']*)'|([^\s#]+))\s*$/.exec(line);
     if (match && allowed.has(match[1])) publicSettings[match[1]] = match[2] ?? match[3] ?? match[4];
   }

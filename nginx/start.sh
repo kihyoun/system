@@ -82,7 +82,7 @@ function generate_proxy_config {
     >> /templates/default.conf.template
 }
 
-for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
+for i in $(find -H ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
   source $i
   # Its production domain is already rendered by the main WIZARD settings below.
   if [ "${PROJECT_TEMPLATE:-}" = wizard ] && [ "$PROJECT_NAME" = wizard ]; then continue; fi

@@ -21,14 +21,14 @@ if [ -f ../system/.docker.env ] && [ -f ../gitlab/.docker.env ]; then
     fi
 
     if [ $# -lt 1 ] || [ "$1" = "projects" ]; then
-        for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
-            source $i
+        while IFS= read -r -d '' config; do
+            source "$config"
             if [ "${PROJECT_TEMPLATE:-}" = wizard ] && [ "$PROJECT_NAME" = wizard ]; then continue; fi
 
             for i in $( seq 1 $GITLAB_RUNNER_SCALE ); do
                 unregister_runner "${PROJECT_NAME}_runner_docker_$i"
             done
-        done
+        done < <(find -H ../system/.projects.env ../system/projects.env -type f -name '*.env' -print0 2>/dev/null)
     fi
 else
     echo "gitlab-runner [unregister] skipped (no main config)"

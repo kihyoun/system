@@ -1,5 +1,5 @@
 #! /bin/bash
-for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
+for i in $(find -H ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
     source $i
     # The system project describes the existing interface, not a second proxy.
     if [ "${PROJECT_TEMPLATE:-}" = wizard ] && [ "$PROJECT_NAME" = wizard ]; then continue; fi

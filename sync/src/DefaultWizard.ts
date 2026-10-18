@@ -1,3 +1,4 @@
+import {mainConfigPath, wizardConfigPath} from './StatePaths';
 import fs from 'fs';
 import path from 'path';
 import Helper from './Helper';
@@ -68,11 +69,11 @@ async function waitForJob(job: any) {
 }
 
 export async function ensureDefaultWizard() {
-  const config = path.resolve('../system/.docker.env');
+  const config = mainConfigPath();
   if (!fs.existsSync(config)) { return {state: 'not-configured'}; }
   const settings = readSettings(fs.readFileSync(config, 'utf8'));
   if (settings.WIZARD_ENABLE !== 'true') { return {state: 'disabled'}; }
-  const file = path.resolve('../system/.projects.env/.wizard.env');
+  const file = wizardConfigPath();
   const previous = fs.existsSync(file) ? readReceipt(fs.readFileSync(file, 'utf8')) : undefined;
   if (fs.existsSync(file) && (!previous?.defaultProject || previous.template !== 'wizard')) {
     throw new Error('The wizard Project Key is already configured. Existing projects are never overwritten.');

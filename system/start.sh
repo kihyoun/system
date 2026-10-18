@@ -1,6 +1,8 @@
 #! /bin/bash
 set -eo pipefail
 shopt -s dotglob
+node ./persistence-init.js
+source "${SYSTEM_CONFIG_DIR:-/state}/sync-auth.env"
 
 ENV_FILE=../.docker.env
 echo > $ENV_FILE

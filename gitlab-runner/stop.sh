@@ -1,22 +1,23 @@
 #! /bin/bash
+set -eo pipefail
+source ./pool.sh
 if [ -f ../system/.docker.env ] && [ -f ../gitlab/.docker.env ]; then
     source ../system/.docker.env
     source ../gitlab/.docker.env
 
-    bash unregister.sh $1
-
-    if [ $# -lt 1 ] || [ "$1" = "main" ]; then
-        docker-compose -p runner down
+    # Keep manager registration and config for restart. Explicit unregister.sh
+    # remains available when intentionally removing registration.
+    if [ $# -lt 1 ] || [ "$1" = main ]; then
+        runner_pool down runner
     fi
 
-    if [ $# -lt 1 ] || [ "$1" = "projects" ]; then
-        for i in $(find ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
-            source $i
+    if [ $# -lt 1 ] || [ "$1" = projects ]; then
+        while IFS= read -r -d '' config; do
+            source "$config"
             if [ "${PROJECT_TEMPLATE:-}" = wizard ] && [ "$PROJECT_NAME" = wizard ]; then continue; fi
-            docker-compose -p ${PROJECT_NAME}_runner down
-        done
+            runner_pool down "${PROJECT_NAME}_runner"
+        done < <(find -H ../system/.projects.env ../system/projects.env -type f -name '*.env' -print0 2>/dev/null)
     fi
 else
-    echo "gitlab-runner [stop] skipped (no main config)"
+    echo 'gitlab-runner [stop] skipped (no main config)'
 fi
-

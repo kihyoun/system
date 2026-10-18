@@ -1,3 +1,4 @@
+import {mainConfigPath, wizardConfigPath} from './StatePaths';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -7,8 +8,8 @@ import {wizardCi, readSettings, wizardConfiguration} from './DefaultWizard';
 import Helper from './Helper';
 
 const legacyRecipes = require('../../project-bootstrap/wizard-build/recipe');
-const configPath = () => path.resolve('../system/.projects.env/.wizard.env');
-const mainPath = () => path.resolve('../system/.docker.env');
+const configPath = () => wizardConfigPath();
+const mainPath = () => mainConfigPath();
 const digest = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
 const same = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
 const environments = ['review', 'beta'] as const;

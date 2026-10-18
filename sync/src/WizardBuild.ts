@@ -1,3 +1,4 @@
+import {mainConfigPath, wizardConfigPath} from './StatePaths';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -6,7 +7,7 @@ import {wizardCi, readSettings} from './DefaultWizard';
 import Helper from './Helper';
 
 const recipes = require('../../project-bootstrap/wizard-build/recipe');
-const configPath = () => path.resolve('../system/.projects.env/.wizard.env');
+const configPath = () => wizardConfigPath();
 function context() {
   const content = fs.readFileSync(configPath(), 'utf8');
   const receipt = readReceipt(content);
@@ -24,7 +25,7 @@ function context() {
   if (build && (build.version !== 1 || build.recipeHash !== recipe.recipeHash)) {
     throw new Error('A different build recipe is reserved. Use a reviewed versioned recipe upgrade.');
   }
-  const settings = readSettings(fs.readFileSync(path.resolve('../system/.docker.env'), 'utf8'));
+  const settings = readSettings(fs.readFileSync(mainConfigPath(), 'utf8'));
   let registry;
   try { registry = new URL(settings.GITLAB_REGISTRY_URL); } catch (_) {
     throw new Error('Configure the local GitLab registry before enabling Wizard builds.');

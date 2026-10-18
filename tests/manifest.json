@@ -32,5 +32,9 @@
   {"component":"wizard","file":"wizard/environments-api.js","timeoutSeconds":35,"port":8071},
   {"component":"nginx","file":"nginx/environment-routing.sh","timeoutSeconds":25},
   {"component":"wizard","file":"wizard/environment-canonical.js","timeoutSeconds":25},
-  {"component":"wizard","file":"wizard/environment-launcher.js","timeoutSeconds":25}
+  {"component":"wizard","file":"wizard/environment-launcher.js","timeoutSeconds":25},
+  {"component":"gitlab-runner","file":"gitlab-runner/persistence.js","timeoutSeconds":20},
+  {"component":"bootstrapper","file":"persistence/persistence-guard.test.py","timeoutSeconds":15},
+  {"component":"bootstrapper","file":"persistence/persistence-init.test.js","timeoutSeconds":15},
+  {"component":"bootstrapper","file":"persistence/persistence-push.test.js","timeoutSeconds":25}
 ]

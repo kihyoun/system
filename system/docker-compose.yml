@@ -1,9 +1,14 @@
 version: '3'
 services:
   bootstrapper:
+    image: ${BOOTSTRAPPER_IMAGE:-system_bootstrapper}
     restart: always
     environment:
       SEED_DIR: ${SEED_DIR:?SEED_DIR must be set}
+      PERSISTENT_DIR: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}
+      SYSTEM_CONFIG_DIR: /state
+      NGINX_IMAGE: ${NGINX_IMAGE:-nginx}
+      WIZARD_IMAGE: ${WIZARD_IMAGE:-systembootstrapper/wizard}
       GITLAB_HOST: ${GITLAB_HOST:-gitlab.example.com}
       COMPOSE_COMPATIBILITY: "1"
       GITLAB_IMAGE: ${GITLAB_IMAGE:-gitlab/gitlab-ce:12.10.6-ce.0}
@@ -12,6 +17,12 @@ services:
       GITLAB_REGISTRY_BIND: ${GITLAB_REGISTRY_BIND:-5050}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - configuration:/state
+      - type: bind
+        source: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/runners
+        target: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/runners
+        bind:
+          create_host_path: false
       - $SEED_DIR:/seed
       - templates:/templates
       - synctemplates:/synctemplates
@@ -27,21 +38,21 @@ services:
       #   - IMAGE=bootstrapper_system
 
   web:
-    image: nginx
+    image: ${NGINX_IMAGE:-nginx}
     volumes:
       - templates:/etc/nginx/templates
       - ssl:/ssl
     network_mode: "host"
 
   sync:
-    image: nginx
+    image: ${NGINX_IMAGE:-nginx}
     volumes:
       - synctemplates:/etc/nginx/templates
     network_mode: "host"
 
   wizard:
     restart: always
-    image: systembootstrapper/wizard
+    image: ${WIZARD_IMAGE:-systembootstrapper/wizard}
     # build:
     #   context: ../wizard
 
@@ -63,11 +74,54 @@ services:
 
 volumes:
   templates:
+    name: system_templates
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/templates"
   synctemplates:
+    name: system_synctemplates
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/synctemplates"
   ssl:
+    name: system_ssl
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/ssl"
   gitlabConfig:
+    name: system_gitlabConfig
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/gitlab/config"
   gitlabLogs:
+    name: system_gitlabLogs
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/gitlab/logs"
   gitlabData:
+    name: system_gitlabData
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/gitlab/data"
+  configuration:
+    name: system_configuration
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/configuration"
 
 networks:
   gitlab:

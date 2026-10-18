@@ -1,3 +1,4 @@
+import {mainConfigPath, projectsDirectory, wizardConfigPath} from './StatePaths';
 import express from "express";
 import bodyParser from 'body-parser';
 import fs from 'fs';
@@ -56,7 +57,7 @@ const status = {
 
 // The CI helper runs in another process; its canonical filesystem mutex
 // must also protect ordinary Push, deletion and system-control mutations.
-const environmentHelperBusy = () => fs.existsSync(path.resolve('../system/.projects.env/.wizard.env.environments.lock'));
+const environmentHelperBusy = () => fs.existsSync(wizardConfigPath() + '.environments.lock');
 
 // Keep the configuration stable while the asynchronous setup saves its token.
 app.use(['/config', '/command'], (req, res, next) => {
@@ -148,8 +149,8 @@ app.get( "/status", authenticateJWT, async ( req, res ) => {
 
 app.get( "/config/main", authenticateJWT, async ( req, res ) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (fs.existsSync('../system/.docker.env')) {
-    const data = fs.readFileSync('../system/.docker.env',
+  if (fs.existsSync(mainConfigPath())) {
+    const data = fs.readFileSync(mainConfigPath(),
       {encoding:'utf8', flag:'r'});
 
     res.status(200).json({filename: ".docker.env", data})
@@ -160,7 +161,7 @@ app.get( "/config/main", authenticateJWT, async ( req, res ) => {
 
 app.get('/config/suggestions', authenticateJWT, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (fs.existsSync('../system/.docker.env')) {
+  if (fs.existsSync(mainConfigPath())) {
     res.status(409).json({ message: 'Saved configuration exists. Fetch it instead.' });
     return;
   }
@@ -245,7 +246,7 @@ app.get('/projects/availability', authenticateJWT, (req, res) => {
   if (!validProjectKey(req.query.projectKey) || !/^[1-9][0-9]*$/.test(String(req.query.namespaceId))) {
     res.status(400).json({message: 'Invalid Project Key or namespace.'}); return;
   }
-  if (fs.existsSync(path.join('../system/.projects.env', '.' + req.query.projectKey + '.env'))) {
+  if (fs.existsSync(path.join(projectsDirectory(), '.' + req.query.projectKey + '.env'))) {
     res.json({state: 'complete', availability: 'occupied'}); return;
   }
   try { res.status(202).json(queryGitlab({action: 'availability', projectKey: req.query.projectKey, namespaceId: req.query.namespaceId})); }
@@ -269,7 +270,7 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
     } else {
       console.log('Stopping intermediate Services...')
       const out = execSync('cd ../system; bash stop-intermediate.sh');
-      fs.writeFileSync('../system/.projects.env/.'+ req.body.projectKey+'.env',
+      fs.writeFileSync(path.join(projectsDirectory(), '.'+ req.body.projectKey+'.env'),
         req.body.data);
       status.needRestart = true;
       res.status(200).json({message: 'New Project added.', status,
@@ -281,7 +282,7 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
 });
 
 app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
- const dir = '../system/.projects.env';
+ const dir = projectsDirectory();
  try {
   const fileNames = fs.readdirSync(dir).sort((a, b) => a === '.wizard.env' ? -1 : b === '.wizard.env' ? 1 : a.localeCompare(b));
   const ret = [];
@@ -329,7 +330,7 @@ app.post( "/config/main", authenticateJWT, async ( req, res ) => {
     if (file && !Array.isArray(file) && file.name==='.docker.env') {
       console.log('Stopping intermediate services...');
       const out = execSync('cd ../system; bash stop-intermediate.sh');
-      fs.writeFileSync('../system/.docker.env', file.data);
+      fs.writeFileSync(mainConfigPath(), file.data);
       status.needRestart = true;
       res.status(200).json({message: 'Main config written.',
         status, output: out.toString()});
@@ -356,7 +357,7 @@ app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
-  if (!fs.existsSync('../system/.docker.env')) {
+  if (!fs.existsSync(mainConfigPath())) {
      res.status(404).send('File does not exist.');
   }
 
@@ -364,7 +365,7 @@ app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
     console.log('Stopping intermediate services...');
     const out = execSync('cd ../system; bash stop-intermediate.sh');
     console.log('Unlink ../systen/.docker.env');
-    fs.unlinkSync('../system/.docker.env');
+    fs.unlinkSync(mainConfigPath());
     status.needRestart = true;
     res.status(200).json({ message: "Main config deleted.", status,
       output: out.toString()});
