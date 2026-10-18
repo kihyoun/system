@@ -1,9 +1,10 @@
 # Build and verify the imported Wizard
 
-This Phase B delivery adds an explicit managed CI activation and status workflow
-after [source initialization](WIZARD_SOURCE.md). It builds and verifies a
-candidate. It never replaces the running Wizard, enables Review/Beta or deploys
-Production. The subsequent Production rollout remains a manual GitLab job.
+Managed CI activation builds and verifies a candidate after
+[source initialization](WIZARD_SOURCE.md). Build activation preserves the running
+Wizard. Review/Beta use separate
+[manual environment jobs](../project-bootstrap/wizard-environments/README.md);
+Production uses the guarded [operator promotion command](../project-bootstrap/wizard-production/README.md).
 
 ## Preview and activate
 
@@ -62,7 +63,7 @@ activated by this action.
 
 | Job | Work and evidence |
 | --- | --- |
-| `build:wizard` | Installs the committed lockfile with the existing Node 13/CRA toolchain, runs Jest and the production build, publishes the candidate, and records the source commit, pipeline ID and immutable registry digest in `build-evidence.json`. |
+| `build:wizard` | Installs the committed lockfile, runs the selected toolchain checks, publishes the candidate, and records the source commit, pipeline ID and immutable registry digest in `build-evidence.json`. |
 | `test:wizard` | Pulls that immutable image, checks HTTP and browser rendering/Projects/SPA navigation, then records matching identity in `wizard-evidence.json`; `browser-evidence/` contains browser results and a screenshot. |
 
 Each job has a 30-minute timeout. The configured artifact retention is seven
@@ -79,9 +80,10 @@ continuation offered by a fresh preview, or request administrator reconciliation
 Record the pipeline/commit/image identity when retaining acceptance evidence;
 keep configuration, credentials and tokens out of reports.
 
-This recipe has build and test stages only. It neither publishes Review/Beta
-routes nor contains a Production deployment job. Production deployment remains
-a later, separately reviewed manual GitLab Play operation.
+The build recipe has build and test stages only. Installing the separate
+environment recipe adds manual Review/Beta jobs. Neither recipe enables a
+Production deployment job; Production promotion requires an explicit operator
+plan and confirmation.
 
 ## Controller API
 
@@ -98,58 +100,36 @@ Runner/startup operations and other project mutations are guarded. Repeated
 requests for this build's own active operation return its existing job. Status
 refresh does not install files or create pipelines.
 
-## Validation and limitations
+## Toolchain profiles
 
-This is compatibility work using the existing React/CRA and Node 13 build
-toolchain, which is not a current security-supported stack. The modernization
-remains tracked in [the central Wizard migration issue](https://github.com/kihyoun/system/issues/22).
-The supported controller runtime is separate from that legacy build environment.
+New source imports with Vite select the `node24-vite8-cleanup-v2` profile: the
+pinned Node 24/npm toolchain, locked install, lint, Vitest, TypeScript/Vite build,
+configuration-export checks and Playwright browser checks. Browser evidence
+includes rendered UI, Projects, SPA navigation, a configuration ZIP and exact
+Cube validation. Use `wizard/package.json` and the managed recipe for the exact
+pinned versions.
 
-The UI and isolated authenticated API tests exercise explicit confirmation,
-safe continuation, failure/status presentation and mutation guards without
-contacting the running GitLab. The existing Wizard production build is checked
-separately. Those checks do not prove a real GitLab pipeline, registry artifact
-or deployment. Coordinated infrastructure acceptance and its actual evidence
-belong to [the central Phase B issue](https://github.com/kihyoun/system/issues/33).
-Do not treat a candidate artifact as a Production rollout.
+Reserved historical recipes remain verifiable by their exact hash, including
+legacy Node 13/CRA/Jest recipes. Historical compatibility does not make that
+obsolete toolchain appropriate for a new project. Upgrading an imported
+project requires the guarded [source/toolchain migration](../project-bootstrap/wizard-upgrade/README.md);
+changing a controller image does not rewrite an existing reservation. A
+build/environment-only upgrade is available when source is already modern and
+must retain local development.
 
-## Local acceptance record
+## Verification
 
-On 2026-10-18, an isolated candidate controller completed the real managed
-build/check workflow against the existing private local GitLab project
-`root/wizard` (project ID 7). It used copied private settings without publishing
-them in the image or evidence. The completed workflow receipt was preserved in
-the existing project configuration, with its other settings unchanged.
+The isolated API, recipe and adapter fixtures check explicit confirmation,
+continuation, failure/status presentation, ownership and mutation guards:
 
-| Identity | Accepted value |
-| --- | --- |
-| Pinned Wizard source | `7aededb705fe9c25fc86bf683a7547d9c1565adb` |
-| Source import commit | `910df75b0be72d7e4a11da3a1f78c0d8a71ffb19` |
-| Managed activation commit | `61d42180687c1c7c3cd04fab5b5ebb52e9ea90a3` |
-| Initial pipeline | `13`, API source, `main` |
-| Required successful jobs | `build:wizard` 38; `test:wizard` 37; neither allows failure |
-| Candidate image | `registry.localhost:5050/root/wizard@sha256:1740164a44a7aed7caa9cd830ff1e2546dd0b9e557ccff2400af3ee0f96ae9e4` |
+```sh
+node tests/wizard/build-recipe.js
+node tests/wizard/build-workflow.js
+ruby tests/gitlab/wizard-build.rb
+```
 
-The initial build job failed because WSL had regenerated `/etc/hosts` during
-the storage move. Running the existing local preparation restored the registry
-hostname. Retrying that job in pipeline 13 succeeded; no replacement initial
-pipeline or project was created. Registry identity verification also accounts
-for the infrastructure's port 5050 in local HTTP registry modes.
-
-The retained build and browser artifacts agree on the activation commit,
-pipeline ID and immutable image digest. Jest, the production build, HTTP,
-rendered UI, Projects and SPA checks passed. Repeated activation returned the
-same pipeline and artifact. Both jobs reported successful resource cleanup.
-Authenticated Fetch validated both main and project Cube signatures; the
-original Production address, service IDs and start times stayed unchanged,
-and the existing Wizard returned HTTP 200.
-
-The combined isolated suite also passed all 26 checks at System integration
-commit `40f3ca79ca48819db3f98527457f9eeb96747024`, including the acceptance
-driver's token refresh/deadline regressions and disposable test lifecycle
-contracts. This is separate evidence from the real GitLab pipeline.
-
-No Review/Beta environment, Production rollout, GitHub backup activation or
-GitLab-primary cutover was performed. These remain separately gated work;
-repository cutover is tracked in
-[the central transition issue](https://github.com/kihyoun/system/issues/34).
+These fixtures do not contact the running GitLab. Complete integration checks
+also need a real owned project, successful required jobs, matching immutable
+registry artifacts, browser evidence and job-owned resource cleanup. Inspect
+actual pipeline results before promotion; a candidate artifact alone is not a
+Production rollout. Keep tokens and private configuration out of reports.

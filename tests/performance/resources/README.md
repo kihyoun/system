@@ -1,16 +1,13 @@
 # Passive resource observation
 
-This is the first measurement tool for [System issue 26](https://github.com/kihyoun/system/issues/26).
-It observes an already running system. It does not start workloads, containers,
-WSL distributions, pipelines, bootstrap operations or deployments. Python 3.9+
-and, for the Windows wrapper, PowerShell 7+ are required. No packages are installed.
+The collector observes an already running system. It does not start workloads,
+containers, WSL distributions, pipelines, bootstrap operations or deployments.
+Python 3.9+ and, for the Windows wrapper, PowerShell 7+ are required. No packages
+are installed.
 
-The [native Linux capacity report](native-2026-10-18.md) connects timestamped
-observations to actual CI job queue/execution data, storage reserves and current
-VM comparisons. The separate `benchmark-native.py` workload driver requires an
-explicit coordinator lease and `--execute`; it is not part of passive collection
-or the automatic offline test suite. Its cold/warm procedure and cleanup limits
-are documented in that report.
+`benchmark-native.py` is a separate explicit workload driver. It requires an
+operator-selected resource window, a shared deadline and `--execute`; passive
+collection and the automatic offline suite never invoke it.
 
 ## Run
 
@@ -100,42 +97,79 @@ cancellation. They invoke no Docker or WSL commands and spawn only short-lived
 synthetic Python processes, never infrastructure workloads. The Windows wrapper
 requires a real Windows/WSL smoke check to validate its platform integration.
 
-## Gates still required before VM sizing
+## Capacity assessment
 
 The collector always reports `productionSizingReady: false`. A passive window
 does not establish idle usage, build peaks, adequate memory or safe concurrency.
-The following runs require separate coordinator approval and isolated ownership:
+Assess workload qualification separately with controlled runs:
 
-| Observation | Required evidence |
+| Observation | Evidence to retain |
 | --- | --- |
-| Quiet baseline and startup | Known background activity, service readiness, repeated startup peak and OOM deltas |
-| Cold and warm build | Exact source/image revisions, named cache state, timestamps and measured memory/CPU/IO peaks |
-| One full pipeline | Queue time versus execution, required jobs/artifacts and persistent storage growth |
-| Parallel pipelines | Declared runner limits, controlled concurrency, resource contention and failure/OOM checks |
-| Retention window | Image/cache/artifact growth, backup reserve and explicit retention assumptions |
-| Native Linux transfer | Repeat representative work on comparable x86 Linux; WSL results alone are insufficient |
+| Quiet baseline and startup | Known background activity, readiness, repeated startup peak and OOM deltas |
+| Cold and warm build | Exact source/image revisions, cache state, timestamps and memory/CPU/IO samples |
+| Full pipeline | Queue time versus execution, required jobs/artifacts and storage changes |
+| Overlapping pipelines | Declared runner limits, actual execution overlap, contention and OOM/failure checks |
+| Retention | Image/cache/artifact growth, backup reserve and explicit retention assumptions |
+| Host transfer | Representative work on the intended architecture and platform; WSL alone does not qualify native Linux |
 
-Record source revision and cache/workload labels alongside sanitized reports.
-Do not dump GitLab configuration or credentials to enrich a report. Choose RAM
-and disk reserves after repeated workload peaks and retention measurements;
-include OS/GitLab variability and shared-vCPU contention. No automatic procurement
-or infrastructure changes are part of this tool.
+Record source/cache/workload labels beside sanitized reports, without private
+GitLab configuration. One submitted pipeline is not necessarily one running
+workload; runner managers and `request_concurrency` do not directly define
+execution concurrency. Measure queue time independently from execution and
+verify overlap before describing a concurrency experiment as parallel.
 
-## Hetzner comparison snapshot (checked 2026-10-17)
+Choose RAM/disk reserves from repeated peaks, retained-data growth and the
+largest backup/export staging requirement. Account for GitLab background work,
+OS reserve and shared-vCPU contention. The full disposable platform driver caps
+one private daemon at 12 GiB/four CPUs; that is a ceiling, not a reservation or a
+disk quota. Its host also needs capacity for existing services, job drivers,
+archives, extraction and cleanup. Additional managers cannot provide capacity
+the host does not have. No automatic procurement is part of these tools.
 
-These are comparison candidates, **not sizing recommendations**. The official
-[cost-optimized overview](https://www.hetzner.com/cloud/cost-optimized/) lists:
+## Reproduce bounded native template builds
 
-| Shared x86 plan | vCPU | RAM | NVMe storage | EUR monthly cap, Germany/Finland |
-| --- | ---: | ---: | ---: | ---: |
-| CX33 | 4 | 8 GB | 80 GB | 8.49 |
-| CX43 | 8 | 16 GB | 160 GB | 15.99 |
-| CX53 | 16 | 32 GB | 320 GB | 29.49 |
+Use Linux amd64 with the local Docker socket, Buildx and Python available. Drain
+competing heavy jobs and agree a resource window before execution. The driver
+rejects remote Docker overrides. It supports the committed React and Angular
+recipes only, verifies their pinned images and lockfile, rejects symlinks/private
+input filenames, and records a public input manifest. Without `--execute`, it
+prints the validated plan and starts no Docker workload.
 
-Prices come from Hetzner's official
-[15 June 2026 adjustment table](https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/),
-excluding VAT and IPv4. Backups, additional storage and other extras are excluded.
-Availability and current checkout pricing must be checked again before purchase.
-Shared vCPU counts are not dedicated CPU throughput guarantees. Compare dedicated
-CPU plans as well if controlled pipeline measurements reveal sustained CPU
-contention. The present passive WSL observation cannot select any of these plans.
+Extract exact committed templates instead of assigning a commit ID to dirty
+working-copy files:
+
+```sh
+export TASK_BENCHMARK_REVISION=$(git rev-parse HEAD)
+export TASK_BENCHMARK_INPUTS=$(mktemp -d /tmp/system-resource-inputs.XXXXXXXX)
+export TASK_BENCHMARK_OUTPUT=$(mktemp -d /tmp/system-resource-results.XXXXXXXX)
+git archive --format=tar "$TASK_BENCHMARK_REVISION" project-bootstrap/templates |   tar -xf - -C "$TASK_BENCHMARK_INPUTS"
+python3 tests/performance/resources/benchmark-native.py   --case react --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"   --source-revision "$TASK_BENCHMARK_REVISION"   --output "$TASK_BENCHMARK_OUTPUT/react"
+```
+
+After reviewing that plan and checking host reserve, the following pair uses one
+absolute ten-minute window. Each invocation creates its own new output directory;
+do not reuse a directory from an interrupted attempt:
+
+```sh
+export TASK_BENCHMARK_DEADLINE=$(python3 -c 'import time; print(time.time() + 600)')
+export SYSTEM_RESOURCE_BENCHMARK_APPROVED=1
+timeout --signal=TERM --kill-after=45s 555s bash -e -c '
+  python3 tests/performance/resources/benchmark-native.py     --case react --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"     --source-revision "$TASK_BENCHMARK_REVISION"     --output "$TASK_BENCHMARK_OUTPUT/react" --execute     --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"
+  python3 tests/performance/resources/benchmark-native.py     --case angular --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"     --source-revision "$TASK_BENCHMARK_REVISION"     --output "$TASK_BENCHMARK_OUTPUT/angular" --execute     --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"
+'
+```
+
+Each builder is capped at 4 GiB/two CPUs, followed by a 128-MiB/half-CPU static
+HTTP candidate. Builds run sequentially; each phase has a four-minute command
+bound and two-million-byte log limit. Both cases share the deadline and reserve
+its final 60 seconds for cleanup. SIGTERM enters owned cleanup; SIGKILL or host
+loss still requires inspecting the retained `operation.json` and exact owned
+identities. Never use a global prune to recover an interrupted benchmark.
+
+Cold means an empty fresh job-owned BuildKit cache, not an unconditioned network.
+Warm retains dependency layers and changes a harmless source comment so the
+application compiles again. Evidence distinguishes command wall time, sample
+completion, cache labels and bounded build logs. The HTTP smoke proves static
+serving, not full application/browser or unit-test acceptance. Samples can miss
+brief peaks; one run per phase is not a timing distribution or a qualified
+minimum-memory claim.

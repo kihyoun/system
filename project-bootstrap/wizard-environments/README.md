@@ -1,8 +1,6 @@
 # Managed Wizard Review and Beta
 
-This is the bounded Phase C delivery in [System issue 39](https://github.com/kihyoun/system/issues/39),
-under [issue 18](https://github.com/kihyoun/system/issues/18). It extends the
-existing managed source/build receipts. Production promotion and rollback remain
+The environment workflow extends the managed source/build receipts. Production promotion and rollback remain
 outside this recipe. The existing public source CI and publishing destinations
 are retained.
 
@@ -36,8 +34,8 @@ retrying. A verified installed operation is ready for the manual CI jobs.
 To change settings, stop active environments and reconcile pending work first.
 Preview again and explicitly confirm the change. The update checks the prior
 recipe and exact file identities before replacing managed content. Preserve the
-server-owned receipt across Fetch/Push and controller startup. Phase B evidence
-then remains historical; use environment status for the current recipe.
+server-owned receipt across Fetch/Push and controller startup. Earlier build
+evidence remains historical; use environment status for the installed recipe.
 
 ## Immutable helper provisioning
 
@@ -48,6 +46,20 @@ existing runner Docker daemon, retain it while the recipe is installed, and
 configure SYSTEM_WIZARD_ENVIRONMENT_IMAGE with its exact sha256 image ID.
 SYSTEM_WIZARD_CANONICAL_CONTROLLER must identify system_bootstrapper_1.
 The UI cannot choose a helper image or canonical controller.
+
+From the matching System checkout with initialized submodules, prepare the pinned
+source package before building the complete helper image:
+
+```sh
+bash project-bootstrap/wizard-source/prepare.sh
+docker build -f system/Dockerfile -t system-wizard-helper:local .
+docker image inspect --format '{{.Id}}' system-wizard-helper:local
+```
+
+Record that returned image ID in the private controller configuration and make
+that exact image available on the runner's Docker daemon. The standalone runtime
+base is not the complete helper. See [source packaging](../../docs/WIZARD_SOURCE.md)
+for the pinned snapshot contract.
 
 CI uses ordinary job-scoped registry credentials to preload its candidate
 digest. No Sync/admin credential enters the helper. The helper uses the existing
@@ -80,10 +92,9 @@ receipt or route merely because a retry failed. Pending cutovers and retired
 resources remain recorded for reconciliation. Never use global Docker prune or
 restart the primary platform as cleanup.
 
-Configuration stays separate from Harvest/Seed. This delivery does not move the
-canonical repository to GitLab, establish a GitHub backup, modernize the legacy
-Wizard toolchain or promote the running Production Wizard. Those remain issues
-34, 22 and later phases of 18.
+Configuration stays separate from Harvest/Seed. Environment installation does
+not select the primary development platform or promote the running Production
+Wizard. Production uses the separate [operator promotion workflow](../wizard-production/README.md).
 
 ## Certificates without proxy downtime
 
@@ -101,6 +112,6 @@ Issuance and renewal remain operator tasks, not CI deployment privileges.
 
 The isolated manifest covers environment API/workflow, deterministic recipes,
 guarded GitLab upgrades, helper ownership/recovery and proxy preservation.
-Real GitLab manual-job execution, HTTPS/browser checks and unchanged Production
-must be recorded separately in issue 39; fixture success alone proves none of
-those live gates.
+Also verify real GitLab manual-job execution, HTTPS/browser behavior and
+preservation of Production on a disposable platform. Fixture success alone
+does not prove those integration gates.

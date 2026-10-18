@@ -1,3 +1,5 @@
+# Prepare an Ubuntu host
+
 ## Install
 
 Run the host installer from a local checkout on Ubuntu (including Ubuntu in
@@ -11,27 +13,24 @@ cd system
 sudo bash bootstrapper/install.sh
 ```
 
-The installer provides a `docker-compose` wrapper for the legacy orchestration
-scripts. It uses `docker compose --compatibility` to preserve their expected
-container names. This prepares the host; it does not by itself verify the
-complete platform or modernize GitLab and the application images.
-
-Validated on Ubuntu 26.04.1 under WSL2 with Docker Engine 29.9.1 and Compose
-5.6.0: installer, `hello-world`, and a Compose service using the legacy
-underscore-separated container name. The first-boot wizard and its sync API
-also run on this host. A fresh GitLab CE 19.4.2 instance with Runner 19.4.0
-passed a pipeline that clones a repository, builds an image, pushes and pulls
-it through the HTTP registry, runs the image and uploads a job artifact.
-Production HTTPS, existing-data migration and the UI project's own pipeline
-have not been validated.
+The installer provides a `docker-compose` wrapper for the orchestration scripts.
+It uses `docker compose --compatibility` to preserve their expected
+underscore-separated container names. Service configuration, persistence and
+platform acceptance are separate steps.
 
 ### Local integration test
 
-The modern GitLab version was tested with empty volumes only. The legacy
-GitLab default remains unchanged; do not point a new major version at existing
-GitLab data without following GitLab's supported upgrade path.
+Select compatible GitLab and Runner releases explicitly. The example below uses
+GitLab CE 19.4.2 and Runner 19.4.0, also pinned by the disposable integration
+suite. Do not point a new major version at existing GitLab data without following
+GitLab's supported upgrade path.
 
-The test used these optional exports in `system/.docker.env`:
+For the local integration setup, include these optional exports in the complete
+private main configuration at `PERSISTENT_DIR/configuration/.docker.env` before
+starting GitLab. Do not create a partial main configuration containing only
+these options. Inside the controller, `system/.docker.env` is a compatibility
+link to the saved configuration; the persistent copy takes precedence over
+configuration embedded in an image:
 
 ```bash
 export GITLAB_IMAGE=gitlab/gitlab-ce:19.4.2-ce.0
@@ -59,44 +58,27 @@ existing registrations instead of duplicating them.
 
 Copy `tests/registry/registry-smoke.gitlab-ci.yml` into a disposable GitLab project's
 `.gitlab-ci.yml` to reproduce the integration test. It uses this platform's
-Docker socket runner. Default BuildKit attestations are disabled for this test
-because the registry rejected their manifest with `blob unknown to registry`.
-The successful test covers a single-architecture image without attestations.
+Docker socket runner and covers a single-architecture image without
+attestations. The fixture disables BuildKit attestations because affected
+Docker/GitLab versions can reject their manifests with `blob unknown to registry`.
 See the [GitLab compatibility workaround](https://support.gitlab.com/hc/en-us/articles/29426166749596-Push-to-Container-Registry-Fails-Error-error-from-registry-blob-unknown-to-registry).
 
-Keep tokens and generated `.docker.env` files out of Git. The existing UI
-pipeline and its public domain targets have not been changed. The next step
-is to provision the actual Ubuntu server and integrate the UI project there.
-
-### Historical remote installer
-
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/kihyoun/system/master/bootstrapper/install.sh)"
-```
-
-(Optional) Install zsh and pull .zshrc:
-
-```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-sh -c "$(curl https://raw.githubusercontent.com/kihyoun/system/master/.zshrc -o /root/.zshrc)"
-```
-
-## Clone
-```bash
-git clone --recursive https://github.com/kihyoun/system.git
-```
+Keep tokens and generated `.docker.env` files out of Git. Use the
+[disposable integration suite](tests/e2e/README.md) for isolated platform
+acceptance rather than running fixture projects against retained user data.
 
 ## Boot
 
-Mount the attached filesystem before startup. Create the root-owned selector
+Mount the attached filesystem before startup. Install Certbot on hosts using
+automatic HTTPS renewal (`sudo apt-get install -y certbot`). Create the root-owned selector
 file `/etc/system-bootstrapper/persistence.env` using your actual mount path:
 
 ```bash
 sudo install -d -m 0700 /etc/system-bootstrapper
 sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
-PERSISTENT_MOUNT=/mnt/HC_Volume_24222125
-PERSISTENT_DIR=/mnt/HC_Volume_24222125/platform
-SEED_DIR=/mnt/HC_Volume_24222125/seed
+PERSISTENT_MOUNT=/mnt/bootstrapper-data
+PERSISTENT_DIR=/mnt/bootstrapper-data/platform
+SEED_DIR=/mnt/bootstrapper-data/seed
 # Optional: PERSISTENT_UUID=<existing-filesystem-uuid>
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
@@ -115,11 +97,11 @@ and VM replacement procedure.
 
 On a fresh installation, open `http://localhost/` on the host. The bootstrapper
 builds its image and starts the configuration wizard and sync proxy. Allow time
-for the first build and service startup. Obtain the generated sync login from
-`sudo docker logs system_bootstrapper_1` (the `SYNC_USER` and `SYNC_PASS` lines).
-The generated first-setup credentials are retained in
-`platform/configuration/sync-auth.env`; saved main configuration may explicitly
-set the Sync login.
+for the first build and service startup. Read the generated first-setup Sync login privately from
+`PERSISTENT_DIR/configuration/sync-auth.env` (mounted at `/state/sync-auth.env` in
+the controller). Saved main configuration in `configuration/.docker.env` is
+loaded afterwards and may override `SYNC_USER` and `SYNC_PASS`; use those saved
+values when present. Startup logs do not print the password.
 
 Under WSL, keep an Ubuntu shell open while using the platform: systemd services
 alone do not keep the WSL instance alive. See
@@ -129,9 +111,8 @@ alone do not keep the WSL instance alive. See
 
 ### First-setup suggestions in the Wizard
 
-With the matching Wizard update, `Synchronize → Fetch` first requests the saved
-configuration as before. Only a missing main configuration (HTTP 404) triggers
-the new authenticated `GET /config/suggestions` endpoint. Authentication and
+`Synchronize → Fetch` first requests the saved configuration. Only a missing main
+configuration (HTTP 404) triggers the authenticated `GET /config/suggestions` endpoint. Authentication and
 other server errors do not trigger guesses.
 
 Suggestions use the generated NGINX routing templates when available. Missing
@@ -160,8 +141,11 @@ starts its own sync process on port 8071 with a temporary configuration tree.
 
 The username is `root`. For a fresh database, the bootstrapper generates a unique
 initial password, or accepts `GITLAB_INITIAL_ROOT_PASSWORD` (at least 12 characters)
-from the private `system/.docker.env`. The tracked example deliberately has no
-shared default password. The wizard does not yet expose this optional field.
+from the complete private main configuration at
+`PERSISTENT_DIR/configuration/.docker.env`. The controller reads this through
+its `system/.docker.env` compatibility link; the persistent saved configuration
+takes precedence over configuration embedded in an image. The tracked example
+deliberately has no shared default password.
 
 Read the password locally after startup:
 
@@ -178,37 +162,36 @@ An existing file is never overwritten, and an existing PostgreSQL directory
 without that file causes generation to be skipped. Setting this option does not
 reset an existing GitLab account; use GitLab's password-reset procedure instead.
 
-The ASCII startup signature and Sync login output are unchanged. Sync credentials
-and the GitLab administrator credentials remain separate.
+Sync and GitLab administrator credentials are separate. The retained password
+file must not be published in a repository or diagnostic log.
 
 Run `node tests/gitlab/root-password.js` to check the initialization behavior
 using temporary directories without touching a running GitLab installation.
 
 ### Persistent state
 
-`SEED_DIR` is the host directory mounted at `/seed` in the bootstrapper. It
-holds the persistent state used to bootstrap a subsequent production generation.
-`harvest.sh` copies `/srv` and `/ssl` into that directory; `seed.sh` restores them.
+`SEED_DIR` is the host directory mounted at `/seed` in the bootstrapper. Harvest
+creates a completed recovery snapshot containing service data from `/srv`, TLS
+files from `/ssl`, and complete Certbot account/renewal state. It stops GitLab,
+requires a clean exit, verifies a checksum/ownership manifest, and atomically
+selects the new snapshot through `seed/current`. Earlier snapshots are retained.
 
-- If neither `srv` nor `ssl` exists in the seed, restoration is skipped. A fresh
-  installation can start empty, and existing destination data is left alone.
-- If both directories exist, their contents are restored with `rsync --delete`.
-- If only one exists, restoration fails before either destination is changed.
+Seed restore is explicit; startup does not automatically overwrite live data.
+Restore requires GitLab to be absent or stopped, a completed manifest and the
+same GitLab image identity. An incomplete or legacy unmarked Seed is rejected
+before copying. A missing Seed leaves existing destination data alone.
+Configuration remains a separate Wizard backup, and the Wizard does not download
+service-data Seeds. See the [recovery contract](docs/RECOVERY_CONTRACT.md) for
+locks, failure handling and restoration on empty storage.
 
-The current startup path does not automatically restore a seed. Restoration is
-an explicit operation exposed by the control panel. A production generation
-workflow still needs consistent GitLab backups and a validated migration path;
-the file-copy test below does not establish database backup consistency.
-
-After building the bootstrapper image, test this behavior inside Ubuntu with:
+The shell/rsync regression uses temporary data and a fixture Docker command:
 
 ```bash
-sudo python3 tests/seed/seed-cycle.py
+python3 tests/seed/recovery-contract.py
 ```
 
-The test uses temporary directories and disposable containers. It checks the
-harvest/restore round trip, a missing seed and an incomplete seed without
-mounting the platform's real volumes or seed directory.
+Run the [full disposable acceptance suite](tests/e2e/README.md) to exercise real
+GitLab, registry, runner CI, configuration export and TLS renewal together.
 
 ## Shutdown
 ```bash

@@ -1,12 +1,11 @@
-# Configuration and completed Seed recovery
+# Configuration and Seed recovery
 
 The recovery inputs remain separate: a Wizard configuration backup, a completed
 Harvest Seed, and freshly fetched System source including its pinned Wizard
 submodule. Configuration is not copied into Harvest, and no service-data download
-has been added to the Wizard. Track full acceptance in
-[System #43](https://github.com/kihyoun/system/issues/43).
+is provided by the Wizard.
 
-The corrected Wizard imports literal shell assignments, including single/double
+The Wizard imports literal shell assignments, including single/double
 quotes, escaped metacharacters and equals signs. Backup preserves unmodelled
 runtime settings in `main.runtimeOptions` / project `runtimeOptions`, including
 image references and host port bindings. JSON and ZIP exports contain secrets;
@@ -112,17 +111,24 @@ ended, remove only that stale lock and retry startup; retain the pending file so
 the helper can revoke the reserved credential. Credential failures stop startup
 before Wizard and project services rather than substituting a different image.
 
-## Verification and remaining limits
+## Verification boundaries
 
 `tests/seed/recovery-contract.py` exercises the real shell scripts and rsync with a
 fixture Docker command, including failed copies, forced shutdown, version mismatch,
 corruption, missing completion markers, active writers, renewal locking and retry
-of an interrupted restore. Wizard model regressions cover the observed backup
-corruption, JSON/ENV/ZIP equivalence and immutable signature.
+of an interrupted restore. Wizard model regressions cover literal assignments,
+JSON/ENV/ZIP equivalence and the immutable signature.
 
-These are component regressions. Before closing #43, run the complete clean-host
-exercise using only declared inputs, verify GitLab service/data identities, a real
-runner CI job, registry push/pull and TLS renewal, and demonstrate rebuilding every
-required custom image without an old Docker cache or private image archive.
-The existing `recover-volume.sh` remains a separate retained-volume recovery path;
-its image archive is not evidence that source-only recovery has passed.
+The required [disposable platform scenario](../tests/e2e/README.md) additionally
+runs real GitLab/runner/registry CI, exports configuration through the actual
+Wizard model, removes the original private host and restores only declared
+fresh-source images, configuration ZIP and completed Seed onto different empty
+paths. It checks restored service/data identities, uncached private Wizard image
+recovery and actual ACME account/renewal/deployment through a local authority.
+These checks do not emulate a new VM's OS installation or systemd timer scheduling.
+
+The retained-volume `recover-volume.sh` path is separate: its image archives are
+explicit inputs, whereas the configuration-plus-Seed scenario rebuilds declared
+custom images from source. Neither path makes an older Seed a matching backup for
+a newer configuration. Capture compatible inputs and verify the intended GitLab
+image identity before recovery.

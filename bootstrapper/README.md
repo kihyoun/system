@@ -22,7 +22,7 @@ version. Refresh the digest, Node/npm assertions and direct package versions
 together in a reviewed change, then rebuild and validate the complete candidate.
 
 Do not replace libraries inside the historical Alpine 3.16 image or copy glibc
-Node binaries into it. The supported base is a complete candidate replacement.
+Node binaries into it. The supported base supplies the complete runtime.
 Building it does not restart the running platform or alter its Docker daemon.
 The Docker client communicates with the existing daemon only when explicitly
 given access to it; a version check does not prove deployment compatibility.
@@ -31,6 +31,3 @@ Before promotion, validate Compose configuration and startup contract tests,
 build/lint/API/signature regressions and the integrated Wizard source packaging.
 Live restart/recovery acceptance and manual Production promotion remain separate
 coordinated actions. Preserve the previous working image and private settings.
-
-Tracking: [supported base refresh](https://github.com/kihyoun/system/issues/27)
-and [Sync migration](https://github.com/kihyoun/system/issues/23).

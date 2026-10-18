@@ -1,8 +1,6 @@
 # Deliberate Wizard Production promotion and recovery
 
-Tracked in [System #18](https://github.com/kihyoun/system/issues/18) and
-[System #22](https://github.com/kihyoun/system/issues/22). This is an operator
-command in the canonical controller, not an automatically enabled GitLab job.
+Production promotion is an explicit operator command in the canonical controller, not an automatically enabled GitLab job.
 Review/Beta remain separate manually deployed candidate environments.
 
 ## Preconditions and exact plan
@@ -22,12 +20,12 @@ Write a mode-0600 proof JSON below the persistent configuration directory, e.g.
 ```json
 {
   "version": 1,
-  "projectId": 3,
-  "projectPath": "root/wizard-modernization-review-20261018",
-  "pipelineId": 22,
+  "projectId": 42,
+  "projectPath": "example/wizard",
+  "pipelineId": 100,
   "sourceCommit": "REPLACE_WITH_THE_EXACT_GITLAB_PIPELINE_SHA",
-  "imageRef": "registry.example.test/root/wizard@sha256:REPLACE_WITH_THE_64_HEX_DIGEST",
-  "productionHost": "system-bootstrapper.com"
+  "imageRef": "registry.example.test/example/wizard@sha256:REPLACE_WITH_THE_64_HEX_DIGEST",
+  "productionHost": "bootstrapper.example.test"
 }
 ```
 
@@ -111,5 +109,6 @@ lost create response, route reload failure, canonical health failure with a
 changed rollback IP, concurrent writes, retained mutex/reconciliation and
 explicit rollback. The Ruby proof fixture rejects private-project, source,
 optional-job, digest and modern check mismatches and verifies token revocation.
-These are component checks. Record the real successful pipeline, separate
-candidate, Production promotion and rollback before closing #18/#22.
+These are component checks. Verify a real successful pipeline, separate
+candidate, Production promotion and rollback on your own infrastructure before
+relying on the procedure for a service you need to keep available.

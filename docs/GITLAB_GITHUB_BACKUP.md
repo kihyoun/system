@@ -1,9 +1,10 @@
-# GitLab primary and GitHub backup preparation
+# Configure GitLab as primary and GitHub as an optional backup
 
-Tracked in [System issue #34](https://github.com/kihyoun/system/issues/34).
-This is preparation for a maintainer-approved cutover after the Wizard workflow
-has been accepted. Nothing in this delivery enables a backup job, changes a
-remote, migrates an issue or starts a pipeline.
+The guarded backup helper forwards a protected GitLab default-branch commit
+to an explicitly mapped GitHub branch. It is opt-in: adding the helper to a
+checkout does not change remotes, activate synchronization or migrate project
+metadata. Select a primary repository and integrate the helper into its chosen
+CI configuration before enabling it.
 
 ## Resolve history before enabling anything
 
@@ -16,13 +17,14 @@ Record an explicit mapping for both System and Wizard:
 | Backup repository | Existing `git@github.com:owner/repository.git` |
 | Backup branch | Explicit destination; it need not share the source branch name |
 
-The locally imported Wizard started with scaffold commits rather than the
-upstream GitHub history. Consequently, its current history cannot simply be
-fast-forwarded into the existing upstream branch. The maintainer must choose
-and review either a history-preserving migration into GitLab or a separate
-backup branch with an agreed starting point. That choice is still open. Do not
-force-push, synthesize an automatic merge, or quietly switch the backup target.
-The helper requires an existing destination branch with compatible ancestry.
+A Wizard initialized through the managed source-import workflow starts with
+scaffold/import commits, rather than the upstream GitHub ancestry. Such a
+repository cannot simply fast-forward the existing upstream branch. Review
+either a history-preserving migration into GitLab or a separate backup branch
+with an agreed starting point. The same ancestry check applies to any source
+and destination pair. Do not force-push, synthesize an automatic merge or
+quietly switch the backup target. The helper requires an existing destination
+branch with compatible ancestry.
 
 ## Helper contract
 
@@ -34,7 +36,7 @@ the protected CI job:
 
 | Variable | Required value |
 | --- | --- |
-| `GITHUB_BACKUP_ENABLED` | `true`, only after the explicit cutover approval |
+| `GITHUB_BACKUP_ENABLED` | `true` to explicitly enable the configured backup job |
 | `GITHUB_BACKUP_SOURCE_PROJECT` | Approved exact `CI_PROJECT_PATH` |
 | `GITHUB_BACKUP_REMOTE` | Approved GitHub SSH repository, without credentials |
 | `GITHUB_BACKUP_BRANCH` | Approved existing backup branch |
@@ -92,18 +94,18 @@ setup must use protected/masked credentials and verified host keys; do not enabl
 CI debug tracing or echo secrets in surrounding commands. Retain the existing
 protected `GITHUB_SSH_PRIVATE_KEY` identity unless separately authorized.
 
-## Integrating the existing jobs later
+## Integrate with the selected CI configuration
 
 System and Wizard already contain `deploy:github` jobs. Adapt those jobs to call
 this common helper rather than adding another mirror. Their old assumptions
 (`master`, mutable `node:alpine`, remote rewriting and runtime key scanning)
-need review against the approved branch mapping and supported runtime. This
-preparation deliberately changes neither repository's CI nor the managed recipe.
+need review against the chosen branch mapping and supported runtime. The
+helper is not wired into these upstream jobs automatically.
 
-The imported Wizard selects `.system-bootstrapper/ci.yml`, which currently
-contains build/test only. Its preserved upstream `.gitlab-ci.yml` is not active.
-Make the helper available at an explicitly pinned version in that managed
-context before wiring a backup job; do not enable the entire upstream pipeline
+The managed Wizard selects `.system-bootstrapper/ci.yml` for build/test and any
+installed optional environment jobs. Its preserved upstream `.gitlab-ci.yml`
+is not active. Make the helper available at an explicitly pinned version in
+that managed context before wiring a backup job; do not enable the entire upstream pipeline
 to obtain just one job. A backup job belongs after the required successful
 default-branch checks, with an explicit protected enablement gate and serialized
 resource group. Its failure must remain visible rather than `allow_failure`.
@@ -114,12 +116,13 @@ reviewed order is Wizard merge/checks, Wizard backup, deliberate System gitlink
 update through its normal review process, System merge/checks, then System
 backup. Ensure the referenced Wizard commit is present in its backup before
 claiming the System backup can restore the submodule. No automatic System merge
-or Production deployment is introduced. Production remains a conscious manual
-GitLab Play action under the separate rollout design.
+or Production deployment is introduced. Production remains a deliberate
+operator-confirmed [promotion action](../project-bootstrap/wizard-production/README.md).
 
-## Cutover checklist requiring maintainer approval
+## Activate the selected primary/backup relationship
 
-1. Accept the real GitLab workflow first; the maintainer performs its first run.
+1. Verify the real GitLab review, required-check and deployment workflow on your
+   own infrastructure before changing its role.
 2. Agree mappings and resolve the history prerequisite above. Preserve previous
    refs and record a rollback contact/procedure. Pause competing writes during
    the switch; GitHub becomes backup-only, not another merge destination.
@@ -130,11 +133,11 @@ GitLab Play action under the separate rollout design.
 4. Deliberately update remotes, agent guidance and issue/MR handling to the new
    primary. Preserve old issue references and redirects; Git pushes do not move
    issue metadata. No issue migration is part of this helper.
-5. Review and enable only the intended protected backup jobs, using the existing
-   credentials and approved known-host material. No test should push to a real
-   GitHub or GitLab project to establish that preparation is complete.
-6. Let the maintainer merge a harmless GitLab change. Compare the exact resulting
-   SHA on GitHub, test a visible failure/retry, and verify that no return push or
+5. Review and enable only the intended protected backup jobs, using authorized
+   credentials and verified known-host material. Run the offline regressions
+   before an explicitly controlled integration check.
+6. Merge a harmless GitLab change through the reviewed workflow. Compare the exact
+   resulting SHA on GitHub, test a visible failure/retry, and verify that no return push or
    unintended deployment occurred. Keep the former workflow recoverable until
    a disposable restore rehearsal passes.
 
@@ -153,8 +156,8 @@ backups. GitLab restore requires the matching version and edition and the
 necessary configuration/secrets. Review the actual installation's
 [backup coverage](https://docs.gitlab.com/administration/backup_restore/backup_gitlab/)
 and [restore prerequisites](https://docs.gitlab.com/administration/backup_restore/restore_gitlab/),
-then rehearse on an isolated disposable system. No live backup/restore commands
-are executed by this preparation.
+then rehearse on an isolated disposable system. The branch-forwarding helper
+does not run these service backup/restore operations.
 
 ## Offline regression checks
 

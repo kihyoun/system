@@ -1,12 +1,10 @@
 # Managed Wizard upgrade v1
 
-This operator workflow completes the in-place migration required by
-[System #18](https://github.com/kihyoun/system/issues/18) and
-[System #22](https://github.com/kihyoun/system/issues/22). It updates the existing
+This operator workflow upgrades the source and toolchain of an existing
 private, managed Wizard project. It never registers another project or changes
 the Production UI, proxy, image pin, runner credentials, or environment routes.
 
-## Implementation plan
+## Migration contract
 
 1. Read the signed canonical project configuration and validate its ownership,
    source marker, original source manifest, managed build/environment files and
@@ -29,8 +27,8 @@ the Production UI, proxy, image pin, runner credentials, or environment routes.
    receipt. Preserve previous workflow metadata, stopped generations and
    tombstones. A second adoption is a verified no-op.
 6. Exercise the normal canonical Review, stop, main/Beta, stop and guarded
-   Production promotion/rollback workflows separately. Keep #18/#22 open until
-   their live proof is recorded. Component tests do not substitute for that proof.
+   Production promotion/rollback workflows separately. Verify their actual
+   pipeline and runtime results; component tests do not substitute for them.
 
 The matching modern controller/helper must be built and reviewed first. Do not
 reuse an old helper image: it cannot validate the modern build recipe.
@@ -61,7 +59,7 @@ controller. Keep the pre-pulled helper on the shared runner daemon.
 ```sh
 node project-bootstrap/wizard-upgrade/run.js plan /state/upgrade-options.json
 # Review source revision, project identity, branch, current head and path diff.
-# Acquire the coordinator's bounded CI slot before stage: its last commit starts CI.
+# Reserve a bounded CI slot before stage: its last commit starts CI.
 node project-bootstrap/wizard-upgrade/run.js stage /state/upgrade-options.json PLAN_HASH
 ```
 
@@ -108,7 +106,7 @@ rollback uses its independent retained image/checkpoint.
 ## Build and environment recipes without reimporting source
 
 Use the explicit `build-` actions when an already-modern managed project needs
-the versioned cleanup correction from [System #21](https://github.com/kihyoun/system/issues/21).
+the versioned cleanup correction.
 The ordinary source-upgrade actions still reject edited imported source. This
 separate path accepts existing development, including added or removed source
 files, and changes only the reserved build files, environment helper, managed
@@ -119,7 +117,7 @@ Historical recipe hashes and existing checkpoints remain verifiable.
 ```sh
 node project-bootstrap/wizard-upgrade/run.js build-plan /state/upgrade-options.json
 # Review scope=build-environment, exact head, managed paths and preservedTreeHash.
-# Acquire the coordinator's CI slot before this final MR commit starts CI.
+# Reserve a bounded CI slot before this final MR commit starts CI.
 node project-bootstrap/wizard-upgrade/run.js build-stage /state/upgrade-options.json PLAN_HASH
 # Review required build/browser jobs; fast-forward the MR without squash/rebase.
 node project-bootstrap/wizard-upgrade/run.js build-adoption-plan /state/upgrade-options.json

@@ -1,23 +1,22 @@
 # Managed Wizard build candidate
 
-This is Phase B of the Wizard delivery workflow, tracked in System issue 33
-under issue 18. It enables checks and a candidate registry artifact after an
-explicit preview/activation. It does not deploy Production, Beta or Review.
-The existing public Wizard CI and Dockerfile are preserved.
+The build workflow enables checks and an immutable candidate registry artifact
+after explicit preview/activation. It preserves the running Production Wizard;
+Review/Beta deployment and Production promotion are separate operations. The
+upstream Wizard CI and Dockerfile remain available alongside managed files.
 
-The recipe deliberately uses the existing Node 13.12 / CRA / React baseline
-with its committed lockfile, Jest suite and production build. That runtime is
-obsolete and the legacy dependency graph is not claimed to be security-clean.
-Modernization is tracked separately in System issue 22. The controller remains
-on the supported Node 24 runtime.
+New source imports use the source-appropriate versioned recipe. Vite snapshots
+select the Node 24/Vite profile. Historical Node 13/CRA/Jest recipes remain
+available only so existing reservations and evidence retain their exact hashes.
+The controller runtime uses the supported Node 24 toolchain.
 
 `recipe.js` returns a deterministic version/hash, managed CI and files under
 `.system-bootstrapper/build-v1/`. The managed Dockerfiles use specific context
 ignore files to exclude Git metadata, dotenv overrides and private material.
-Only the source importer's known-safe preflight setting is supplied to CRA.
-The Jest command deliberately sets `CI=true`; the production build retains the
-baseline warning policy. Independent browser checks verify the rendered UI,
-Projects tab and nested SPA route, block external resources and save evidence.
+Modern checks run lint, Vitest, TypeScript/Vite build and configuration export.
+The legacy profile supplies only the source importer's known-safe preflight
+setting to CRA and sets `CI=true` for Jest. Independent browser checks verify
+the rendered UI, Projects tab and nested SPA route, block external resources and save evidence.
 
 Each CI job creates its own named, digest-pinned BuildKit builder and removes
 that builder/cache and its own image references on exit. Candidate containers
@@ -64,14 +63,13 @@ claims while retaining operation/pipeline identities for investigation.
 
 ## Verification gates
 
-Fixtures are `tests/gitlab/wizard-build.rb` and
-`tests/wizard/build-recipe.js`, `tests/wizard/build-workflow.js`. The coordinator
-owns HTTP/UI integration and registering these in the shared test runner.
-Fresh lockfile installation, the actual legacy Jest/production build, candidate
-HTTP/browser checks and real platform GitLab/runner/registry execution are
-separate required gates. Cached build dependencies and fixtures alone do not
-prove the complete workflow. Record each gate's actual result in issue 33;
-keep parent issue 18 open until Review/manual promotion/recovery are delivered.
+Fixtures are `tests/gitlab/wizard-build.rb`, `tests/wizard/build-recipe.js` and
+`tests/wizard/build-workflow.js`; the shared test manifest selects the isolated
+checks. Fresh lockfile installation, actual selected-toolchain checks, candidate
+HTTP/browser checks and real GitLab/runner/registry execution are separate
+integration gates. Cached build dependencies and fixtures alone do not prove
+the complete workflow. Retain matching source/pipeline/image evidence privately
+and verify native job cleanup before promoting a candidate.
 
 ## Supported Wizard toolchain profile
 
@@ -92,10 +90,6 @@ invalidate current deployment checkpoints. An existing imported project's
 in-place source/toolchain upgrade still requires a separately reviewed migration;
 a new snapshot import can use the supported profile directly.
 
-Related implementation and delivery acceptance are tracked in
-[System #22](https://github.com/kihyoun/system/issues/22) and
-[System #18](https://github.com/kihyoun/system/issues/18).
-
 ## Exact default-tag cleanup
 
 The recorded `legacy` and `node24-vite8` recipes remain byte-for-byte available
@@ -114,10 +108,9 @@ forcing image removal. Their distinct recipe hashes make the change explicit.
 
 Installing this controller does not rewrite an existing canonical build or its
 receipt. An already reserved recipe continues selecting its exact historical
-hash. The existing controller/helper must first be replaced by reviewed code
-that recognizes both old and corrected profiles. Moving an active canonical
-project to the corrected profile then requires a separately reviewed managed
-build/environment-only migration and native job cleanup verification. That
-migration must retain current source edits, the source import marker, stopped
+hash. Use a matching controller/helper that recognizes both old and corrected
+profiles. Move an active canonical project to a corrected profile through the
+guarded [build/environment-only migration](../wizard-upgrade/README.md#build-and-environment-recipes-without-reimporting-source)
+and verify native job cleanup. The migration must retain current source edits, the source import marker, stopped
 environment floors and unrelated configuration. The full source-import
 migration is not a shortcut for a cleanup-only change.

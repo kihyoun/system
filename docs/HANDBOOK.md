@@ -31,10 +31,9 @@ git clone --recurse-submodules https://github.com/kihyoun/system.git
 cd system
 ```
 
-The screenshots show the local test setup. The interface runs as a container
-image: updating the Git checkout alone does not update that image. The updated
-Wizard image was built locally for the documented test. Use an image matching
-your checkout for your own tests; section 0.2 below shows how to build it.
+The screenshots illustrate a local setup. The interface runs as a container
+image: updating the Git checkout alone does not update that image. Build an image
+from the pinned Wizard checkout as described in section 0.2.
 
 ### 0.2 Prepare Docker and build the Wizard image
 
@@ -60,40 +59,43 @@ remains limited to the local test.
 This guide uses HTTP exclusively for local testing. A publicly accessible
 instance requires its own domain and HTTPS configuration.
 
-For a reproducible build of the current Wizard test version, use the Node
-version declared in the Wizard project and its existing lockfile:
+The pinned Wizard uses React 19, Vite 8 and Node 24. Its Dockerfile selects the
+exact Node image, installs the committed lockfile, runs its checks and builds the
+interface. Build the local image from the checked-out submodule:
 
 ```bash
-sudo docker run --name wizard-handbook-build \
-  -e CYPRESS_INSTALL_BINARY=0 \
-  -v "$PWD/wizard:/source:ro" \
-  node:13.12.0-alpine sh -c \
-  'mkdir /app; cp -a /source/. /app/; cd /app; npm ci && npm run build'
-```
-
-After the build completes successfully, copy the result into a local Wizard image:
-
-```bash
-build_dir=$(mktemp -d)
-sudo docker cp wizard-handbook-build:/app/build "$build_dir/build"
-cp wizard/nginx/nginx.conf "$build_dir/default.conf"
-cat > "$build_dir/Dockerfile" <<'EOF'
-FROM nginx:stable-alpine
-COPY build/ /usr/share/nginx/html/
-COPY default.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-EOF
-sudo docker build -t systembootstrapper/wizard:latest "$build_dir"
-sudo docker rm wizard-handbook-build
+sudo docker build -t systembootstrapper/wizard:latest wizard
 ```
 
 The image stays local and is not published to Docker Hub. Resolve any build
-failure before continuing. The old build environment is a temporary requirement
-of this project version, not a recommendation for new applications.
+failure before continuing. For development outside Docker, use the Node and npm
+versions declared in `wizard/.nvmrc` and `wizard/package.json`.
 
 ### 0.3 Start the Bootstrapper for the first time
 
-Run this command from the project's root directory:
+Startup requires a separately mounted filesystem for persistent service data.
+Prepare and mount your storage using the [persistent-volume guide](PERSISTENT_VOLUME.md)
+before continuing; an ordinary directory on the root filesystem does not satisfy
+the startup guard. Retain an existing filesystem's contents when reusing it.
+
+Create the host selector file for your own mount. For example, if your filesystem
+is already mounted at `/mnt/bootstrapper`, use:
+
+```bash
+sudo install -d -m 0755 /etc/system-bootstrapper
+sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
+PERSISTENT_MOUNT=/mnt/bootstrapper
+PERSISTENT_DIR=/mnt/bootstrapper/platform
+SEED_DIR=/mnt/bootstrapper/seed
+EOF
+sudo chmod 600 /etc/system-bootstrapper/persistence.env
+```
+
+Replace the example mount path in all three assignments if yours differs. Keep
+`SEED_DIR` and `PERSISTENT_DIR` separate beneath the mounted filesystem. You can
+also set `PERSISTENT_UUID` to require a specific filesystem identity.
+
+Then run this command from the project's root directory:
 
 ```bash
 sudo env \
@@ -104,9 +106,11 @@ sudo env \
   bash start.sh
 ```
 
-These versions select the GitLab and runner images verified for a **fresh local
-test**. This guide does not describe upgrading an old GitLab database. Without
-these explicit settings, the repository still uses its historical GitLab default.
+These selectors pin the GitLab and runner images for a **fresh installation**.
+They are not an upgrade procedure for an existing GitLab database. Without these
+explicit settings, the repository uses its historical GitLab default. When
+reusing an installation, preserve its recorded image selectors and follow the
+GitLab upgrade requirements rather than replacing them with this example.
 
 The Bootstrapper builds its image and initially starts the Wizard and Sync
 access point. GitLab is not fully configured at this stage. The first build
@@ -124,22 +128,36 @@ systemd service alone does not keep the WSL instance alive.
 
 ### 0.4 Find the signature, server address and actual credentials
 
-The original System Cube appears in the Bootstrapper output. The Sync service
-address and credentials appear directly below it:
+The original System Cube and listening address appear in the Bootstrapper output:
 
 ```text
 server listening on http://<internal-container-ip>:8071
-SYNC_USER: <your-actual-username>
-SYNC_PASS: <your-actual-password>
+Sync authentication is configured.
 ```
 
-The example above uses placeholders instead of actual credentials. The UI
-illustrations below are screenshots of the running interface.
+Credentials are not printed in the logs. At first startup, generated credentials
+are saved privately in `PERSISTENT_DIR/configuration/sync-auth.env`. Once a main
+configuration exists, its `SYNC_USER` and `SYNC_PASS` override those initial values.
 
-**Get the actual credentials from your own Bootstrapper process:** run
-`sudo docker logs system_bootstrapper_1` in Ubuntu. Copy the values **after**
-`SYNC_USER:` and `SYNC_PASS:`, excluding those labels and any extra whitespace.
-The placeholders in the image are not valid credentials.
+Run this command locally on your own Docker host to display only the active Sync
+username and password. It uses the same precedence as startup:
+
+```bash
+sudo bash -c '
+  set -euo pipefail
+  source /etc/system-bootstrapper/persistence.env
+  source "$PERSISTENT_DIR/configuration/sync-auth.env"
+  if [[ -f "$PERSISTENT_DIR/configuration/.docker.env" ]]; then
+    source "$PERSISTENT_DIR/configuration/.docker.env"
+  fi
+  printf "Username: %s\nPassword: %s\n" "$SYNC_USER" "$SYNC_PASS"
+'
+```
+
+Use the printed values in the connection dialog. Keep this terminal output
+private. If you selected a custom `PERSISTENCE_ENV_FILE` at startup, use that
+selector file in the command instead. Screenshots and placeholders do not
+supply valid credentials for your installation.
 
 The displayed container IP and port `8071` are the internal Node address. During
 local first startup, access Sync from the browser at **`http://localhost/sync`**.
@@ -171,10 +189,10 @@ Enter the following:
 | Field in the Edit dialog | Source of the value |
 | --- | --- |
 | **Server Address** | For this local first startup: `http://localhost/sync` |
-| **Username** | The actual value after `SYNC_USER:` in your WSL console |
-| **Password** | The actual value after `SYNC_PASS:` in the same output |
+| **Username** | The active Sync username displayed by the private local command in section 0.4 |
+| **Password** | The active Sync password displayed by the same command |
 
-**These credentials come from the Bootstrapper startup output.** They are
+**These credentials come from your own persistent configuration.** They are
 separate from GitLab credentials. Do not copy them from the screenshot.
 
 ### 0.7 Connect after entering all three fields
@@ -224,7 +242,7 @@ Check the **Start**, **SSL**, **Sync** and **Wizard** sections under General:
 
 | Setting | Value for this local test |
 | --- | --- |
-| `SEED_DIR` | Keep the seed path loaded by Fetch; the screenshot shows `/var/lib/system-bootstrapper/seed`, while an unchanged checkout normally uses `/mnt/seed` |
+| `SEED_DIR` | Keep the path selected on the host, for example `/mnt/bootstrapper/seed` |
 | `GITLAB_HOST` | `gitlab.localhost` |
 | `GITLAB_REGISTRY_HOST` | `registry.localhost` |
 | Gitlab Runners | Initially `0`; configure the runner after signing into GitLab |
@@ -243,8 +261,9 @@ means this is a fresh installation.
 
 ### 0.10 Back up, transfer and apply the configuration
 
-1. Select **Backup**, then **Download**. The `bootstrapper.json` file is downloaded
-   to your computer. It includes credentials; keep it private.
+1. Select **Backup → bootstrapper.json → Download** to save the editable
+   configuration, or **Backup → bootstrapper.zip** for JSON plus generated
+   environment files. Both contain credentials; keep them private.
 2. Select **Synchronize → Push** and confirm the transfer. This sends the Wizard
    settings to the instance and automatically restarts services after a successful
    import. The interface is temporarily unavailable while services start.
@@ -266,10 +285,10 @@ The GitLab container should eventually report `healthy`. Then open
 [http://gitlab.localhost/](http://gitlab.localhost/).
 
 The GitLab administrator username is **`root`**. For a fresh database, the
-Bootstrapper generates a random initial password. Before the first startup,
-you can optionally set `GITLAB_INITIAL_ROOT_PASSWORD` to at least 12 characters
-in the private `system/.docker.env` file. The Wizard currently has no input for
-this optional field.
+Bootstrapper generates a random initial password. An installation prepared with
+a complete private configuration may instead set `GITLAB_INITIAL_ROOT_PASSWORD`
+to at least 12 characters in `PERSISTENT_DIR/configuration/.docker.env` before
+GitLab's first startup. The Wizard has no dedicated field for this optional value.
 
 Read the initial password locally after the first startup:
 
@@ -305,9 +324,9 @@ Use the Edit dialog and the Sync credentials you chose in section 0.9. Load the
 saved configuration with **Synchronize → Fetch**. You can change it, save a local
 Backup, then apply it with Push (which restarts automatically).
 
-The steps through Fetch were performed on the fresh local instance shown in the
-images. GitLab and runner setup were tested separately beforehand. This handbook
-does not establish production readiness or validate data migration.
+For public use, configure your own DNS, HTTPS certificates and host certificate
+renewal. Reusing a database or moving persistent storage requires the separate
+[recovery procedure](RECOVERY_CONTRACT.md).
 
 ## 1. Main actions
 
@@ -317,18 +336,19 @@ does not establish production readiness or validate data migration.
 | Submit / Connect | Signs the Wizard into the Sync service |
 | Disconnect | Disconnects the Wizard |
 | Open | Loads a configuration file from your computer into the Wizard |
-| Backup | Downloads the Wizard configuration to your computer as JSON |
+| Backup | Downloads configuration as JSON or a ZIP containing JSON and generated environment files |
 | Fetch | Retrieves saved instance settings; without a configuration, the current version loads marked suggestions |
 | Push | Transfers the Wizard configuration and automatically restarts the instance |
 | Restart | Restarts services using the transferred configuration |
-| Register / Unregister | Registers or unregisters configured runners |
-| Harvest | Copies persistent service data and certificates to the seed directory |
+| Register / Unregister | Checks/registers or unregisters configured runner managers |
+| Harvest | Publishes a cold snapshot of GitLab data, certificates and certificate-renewal state in the seed directory |
 | Seed | Restores data from the seed; existing destination data may be overwritten |
 | Reset | Deletes the main and project configurations through the reset workflow |
 | Update | Updates source code through the existing update workflow |
 
 **Configuration and persistent service data are managed separately.** Open/Backup
-and Push/Fetch manage configuration. Harvest/Seed handle service data. Harvest
+and Push/Fetch manage configuration. Harvest/Seed handle service data. Neither
+configuration download includes the Seed, databases or registry contents. Harvest
 and Seed are not needed to view a configuration with Fetch.
 
 Current implementation detail: the existing Wizard **Seed** action also
@@ -336,8 +356,13 @@ transfers the main configuration from the form before restoring data. Check the
 form before invoking it. First-startup suggestions did not change this coupling.
 Use Push for the initial setup in chapter 0.
 
-Harvest alone has not been demonstrated to produce a consistent GitLab database
-backup. Restore, updates and production operation require additional validation.
+Harvest stops GitLab and requires a clean shutdown before copying its data. It
+coordinates with certificate renewal and publishes a checksummed completion
+manifest only after copying succeeds; previous completed snapshots remain
+available. Seed validates the snapshot and requires the matching GitLab image
+before restoring. Save a matching configuration backup separately and follow the
+[recovery contract](RECOVERY_CONTRACT.md). A Seed on the same volume does not
+protect against losing that volume.
 
 ## 2. Setting up GitLab runners
 
@@ -374,8 +399,10 @@ Use the image settings from chapter 0 for the local test.
 
 The count means **runner containers in a shared instance runner pool**. GitLab
 shows one runner entry with multiple managers, rather than a separate global
-runner entry for each container. The automatically created pool has the tags
-`docker` and `aws` and also accepts untagged jobs.
+runner entry for each container. Open the runner's detail page and inspect
+**Runner managers** for each container's system ID and online status. The
+automatically created pool has the tags `docker` and `aws` and also accepts
+untagged jobs.
 
 ### 2.2 Show the token and download the configuration
 
@@ -405,8 +432,13 @@ neither the Wizard nor the JSON backup. It expires the following day as a fallba
 for abrupt process termination; subsequent setup also revokes leftover setup tokens.
 
 Only the runner authentication token is saved in the Bootstrapper configuration.
-Repeated registration reuses the existing pool. Runners use the `gitlab` service
-name on the shared Docker network so a GitLab restart with a different internal
+Repeated registration reuses the existing pool. Each manager persists its own
+`config.toml` and system ID beneath `PERSISTENT_DIR/runners/<pool>/<index>/`.
+Restarts reuse these identities. Scaling down retains the directories so a
+later scale-up can reuse them; stopped managers can remain visible as offline
+entries in GitLab. Do not delete the whole runner pool to remove one old manager.
+Runners use the `gitlab` service name on the shared Docker network so a GitLab
+restart with a different internal
 IP does not break their connection. Register updates old internal IP endpoints
 in managed runners without changing their tokens or externally configured addresses.
 Recovery after interrupted configuration persistence locates the managed pool by
@@ -422,12 +454,6 @@ This setup does not change the Harvest/Seed cycle. Bootstrapper configuration
 continues to be managed through Push/Fetch and Open/Backup.
 
 ### 2.4 Local functional test
-
-Verified with GitLab CE **19.4.2** and GitLab Runner **19.4.0** on Ubuntu/WSL2:
-automatic pool creation, revoked setup access, fetching the runner token, a
-successful pipeline job with checkout and artifact, and scaling from one to two
-containers and back while preserving the token. The local test ends with one
-runner container.
 
 For an explicitly disposable local test instance, `tests/gitlab-runner/live/runner.py` creates
 a private test project and pipeline, checks the runner and downloads the generated
@@ -488,7 +514,7 @@ before checking the application domain. A repository link alone does not prove
 that an application is running. You can then work directly on the generated
 source; the Dockerfile and pipeline remain editable too. GETTING_STARTED.md in
 the new repository explains the local commands. New Angular and React projects
-build with Node 24; the old Node 13 is only required for the existing System Wizard.
+build with Node 24, as does the System Wizard itself.
 
 An empty repository is not yet a running application. In that workflow, the
 pipeline waits for application source with a Dockerfile. Repository metadata
@@ -512,10 +538,10 @@ After initialization, **Build and verify Wizard** opens a separate read-only
 preview. **Enable build pipeline** explicitly installs the managed recipe and
 starts or recovers its initial pipeline. See the [build workflow guide](WIZARD_BUILD.md)
 for required matching versions, verified candidate evidence and safe recovery.
-The first real GitLab run remains a maintainer-controlled acceptance step;
-the local component tests alone do not establish that it succeeds.
-Beta and Review remain disabled. The existing Wizard
-container and Production route are reused, with no duplicate project proxy.
+Build activation does not deploy the candidate. Optional Review and Beta
+environments require explicit configuration and manual GitLab deployment jobs;
+Production promotion uses its separate guarded operator workflow. The existing
+Wizard container and Production route are reused, with no duplicate project proxy.
 Manage the interface settings under General; the system project is read-only in
 the project list. Its repository links and configuration survive Fetch, Backup,
 Open, Push and restart. Repeated startup reuses the same repository.
@@ -525,11 +551,6 @@ Bootstrapper reports the conflict without overwriting it. A registration failure
 does not replace or stop the working interface. Check the Bootstrapper output,
 resolve the reported conflict/readiness problem and restart to retry.
 
-The current delivery is tracked in [the registration issue](https://github.com/kihyoun/system/issues/19).
-Source initialization and managed build activation are explicit actions.
-Complete local-GitLab acceptance, Review/Beta and controlled Production rollout
-remain tracked in the [workflow issue](https://github.com/kihyoun/system/issues/18).
-
 #### Build and check the Wizard manually
 
 Before starting, use matching System and Wizard versions that expose the source
@@ -538,8 +559,10 @@ source package. GitLab, its project registry and a shared runner accepting the
 `docker` tag must be available. The runner needs the reviewed Docker executor
 setup used by the managed recipe, including Docker/Buildx access and registry
 connectivity. Confirm sufficient physical disk and RAM for the build; avoid
-running competing infrastructure builds at the same time. The legacy Node 13
-builder is still required here; this action does not modernize its dependencies.
+running competing infrastructure builds at the same time. New imports use the
+pinned Node 24/React 19/Vite 8 source and matching modern build recipe. Existing
+legacy imports require the explicit [upgrade procedure](../project-bootstrap/wizard-upgrade/README.md);
+reimporting source is not an upgrade mechanism.
 
 For the local WSL setup, run `sudo bash bootstrapper/prepare-local.sh` again
 after a WSL restart if `registry.localhost` no longer resolves. WSL can regenerate
@@ -569,9 +592,9 @@ the running containers; retry the failed job in the same pipeline afterwards.
    browser response is a reason to inspect/refresh the saved operation, not to
    delete its receipt or create another project.
 6. Choose **Open pipeline** in the build dialog. In GitLab, inspect the same
-   pipeline's `build:wizard` and `test:wizard` jobs. The first runs the existing
-   Jest suite and production build, then publishes a candidate image. The second
-   pulls the immutable image and checks HTTP, rendered UI, Projects and SPA
+   pipeline's `build:wizard` and `test:wizard` jobs. The first runs the
+   pinned application checks and production build, then publishes a candidate
+   image. The second pulls the immutable image and checks HTTP, rendered UI, Projects and SPA
    navigation in an isolated browser candidate. A pending runner or running job
    has not passed these checks.
 7. Return to the Wizard and choose **Refresh status** after the jobs finish.
@@ -586,10 +609,10 @@ the running containers; retry the failed job in the same pipeline afterwards.
    prevent a later verification even when an earlier job was green.
 9. Confirm the existing Wizard still opens at its original address. Fetch again
    and check that the same project/repository and Production address remain.
-   A verified candidate is available for later rollout work; this workflow has
-   no Review, Beta or Production deployment job and does not replace the running
-   interface. A later Production rollout must use the separately reviewed manual
-   GitLab Play job.
+   Build verification does not replace the running interface. To deploy the
+   candidate, configure the [managed Review and Beta environments](../project-bootstrap/wizard-environments/README.md)
+   and use their manual GitLab jobs. Production promotion and rollback use the
+   separate [guarded operator procedure](../project-bootstrap/wizard-production/README.md).
 
 For failures, use the [build status and recovery table](WIZARD_BUILD.md#status-and-safe-continuation).
 Retry failed jobs in the same GitLab pipeline, then refresh status. Resume only
@@ -598,17 +621,6 @@ the current state. **Pipeline creation has an uncertain outcome. Refresh only.**
 only and needs administrator inspection; never clear its durable checkpoint to
 force another pipeline. Keep credentials out of screenshots, issue comments and
 job-log excerpts.
-
-The coordinated local acceptance on 2026-10-18 completed this build/check path
-in the existing private `root/wizard` project: pipeline **13**, `build:wizard`
-job **38** and `test:wizard` job **37** succeeded. Source initialization and
-repeated activation retained the same repository, import commit and initial
-pipeline. Both jobs identified the same immutable candidate image. The existing
-Wizard remained available at its original address, with unchanged service IDs
-and start times; authenticated Fetch passed the unchanged Cube signature checks.
-See [the retained acceptance identities](WIZARD_BUILD.md#local-acceptance-record)
-for the commits and digest. This used an isolated candidate controller; it did
-not upgrade the running management UI or deploy the candidate to Production.
 
 ### 3.3 Shared and additional runners
 
@@ -635,11 +647,13 @@ to the shared instance pool.
 | --- | --- |
 | `localhost` does not open | Keep an Ubuntu console open and check `sudo docker ps` |
 | Connect reports Network Error | Check the address through Edit: `http://localhost/sync` at local first startup, then the configured Sync domain |
-| Login is rejected | Use current values from `sudo docker logs system_bootstrapper_1`; after configuration, use the credentials you chose |
+| Login is rejected | Retrieve the active values using the private local command in section 0.4; saved main settings override first-startup credentials |
 | The form contains Example values | Connect and run Fetch first; an unconnected form is not the server configuration |
 | Fetch returns 404 on a fresh instance | Reload the Wizard; both the Wizard and Sync must use versions supporting suggestions |
 | Saved Example values return | Fetch prioritizes saved settings. Correct them explicitly in the Wizard; suggestions do not overwrite existing configuration |
-| GitLab is not reachable yet | On first startup after Push and Restart, wait for `healthy` and inspect GitLab logs if needed |
+| GitLab is not reachable yet | After Push triggers its automatic restart, wait for `healthy` and inspect GitLab logs if needed |
+| Four configured runner containers appear as one GitLab runner | Open the runner detail page and inspect **Runner managers**; the shared pool has one entry with independent manager system IDs |
+| Startup reports missing persistent storage | Mount the configured filesystem and check `/etc/system-bootstrapper/persistence.env`; do not bypass the guard with a root-disk directory |
 | A pipeline waits for its runner after a GitLab restart | Register checks the pool and updates managed internal IP endpoints to the stable Docker service name |
 | A pipeline cannot resolve `registry.localhost` | Run `sudo bash bootstrapper/prepare-local.sh` again in Ubuntu; WSL may reset local hosts entries at startup |
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |

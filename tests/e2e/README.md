@@ -1,9 +1,10 @@
-# Disposable candidate lifecycle
+# Disposable platform acceptance
 
-This is the remaining integration work for [System issue 21](https://github.com/kihyoun/system/issues/21).
-`candidate.js` is an explicit lifecycle/smoke driver, **not** an isolated-manifest
-entry and not a completed full-platform acceptance suite. Its offline transport
-contract is registered as `shared/disposable-candidate-contract.js`.
+`candidate.js` runs an explicit private-daemon smoke or full-platform scenario.
+It is separate from the isolated manifest; offline transports verify its
+lifecycle contract without starting Docker. The required root CI platform gate
+runs the full scenario, including configuration-plus-Seed recovery, uncached
+private Wizard image retrieval and local ACME renewal.
 
 ## Boundary and prerequisites
 
@@ -30,8 +31,8 @@ limited to four CPUs and 12 GiB RAM. Budget additional headroom on the outer
 host, image archives, image extraction and GitLab's data volume; Docker's volume
 does not enforce a disk quota. Disk/RAM checks and a lease must happen outside
 this driver before invocation. An internal outer network prevents external
-dependency downloads; service images must be preloaded, and later real registry
-or runner scenarios need their own explicit offline image/dependency contract.
+dependency downloads; service images must be preloaded. The full runner/registry
+scenario also needs its declared helper and build-image inputs.
 
 ## Explicit inputs
 
@@ -68,8 +69,10 @@ For example, the shape of one role is:
 ```
 
 `readinessMilliseconds` is optional (1,000–1,200,000; default 1,200,000 per smoke
-readiness gate). The overall lifecycle has a twenty-minute budget, checked between
-bounded Docker/HTTP operations. Each streamed archive load is capped at ten minutes;
+readiness gate). The ordinary lifecycle has a twenty-minute budget; full ACME
+recovery shares one twenty-five-minute budget across all owners. Both are checked
+between bounded Docker/HTTP operations. Each streamed archive load is capped at
+ten minutes;
 other Docker operations at two minutes and individual HTTP requests at ten
 seconds. An explicit event-loop yield before every Docker operation delivers
 queued signal callbacks. Cancellation is observed between operations, so an
@@ -101,8 +104,8 @@ default Wizard registration occurs only inside the disposable candidate.
 `test-results/e2e/<run-id>/results.json` records bounded stage outcomes, exact
 owned resource identities and image IDs; `junit.xml` provides CI test evidence.
 No raw Docker logs, raw HTTP bodies, tokens, credentials or subprocess error
-output are published. This intentionally limits diagnosis until sanitized
-component-specific log adapters are implemented. The receipt is checkpointed
+output are published. Use the sanitized stage/failure codes for diagnosis. The
+receipt is checkpointed
 before each outer resource creation so an interrupted create can be reconciled.
 Each receipt is written completely to a unique same-directory temporary file,
 fsynced, closed and atomically renamed over the previous receipt. An interrupted
@@ -140,7 +143,7 @@ foreign instances are refused. Cleanup does not adopt, copy or destroy an
 existing System installation. Forced process termination cannot guarantee
 immediate cleanup; CI must retain receipts and run an independent cleanup hook.
 
-## Current verification and remaining work
+## Offline lifecycle contracts
 
 Native Node offline fixtures cover command construction, private-daemon socket
 boundary, loopback binding, exact image identity, successful and refused Fetch,
@@ -157,14 +160,10 @@ They invoke neither Docker nor live HTTP:
 node tests/shared/disposable-candidate-contract.js
 ```
 
-The offline fixtures do not establish privileged candidate execution or a real
-GitLab pipeline. The required root CI job now invokes the full driver separately. Real startup compatibility,
-resource budget, Docker cancellation behavior, runner idempotency, registry
-build/push/pull/run, detailed routing, persistent-data harvest/restore and repeated
-full-candidate cleanup require the later resource-leased acceptance run and
-scenario adapters. Existing `*/live/` scripts are not automatically imported;
-their fixed-name assumptions must be adapted explicitly to this private daemon.
-Issue 21 stays open until that evidence and real pipeline gating exist.
+These offline fixtures do not establish privileged candidate execution or a real
+GitLab pipeline. Run the required full-platform gate for those behaviors. Existing
+`*/live/` scripts are not automatically imported; their fixed-name assumptions
+must be adapted explicitly to the owned private daemon.
 
 ## Required full-platform CI
 
@@ -173,7 +172,8 @@ existing publishing stage. Its trusted Node 24 / Alpine parent installs the same
 pinned CLI utilities as System, builds the full System context and the Wizard
 from the validated pinned snapshot, and preloads the pinned service images.
 The job is serialized with a GitLab resource group. Image preparation has a
-separate bounded budget; private execution has an overall twenty-minute limit.
+separate bounded budget; private execution has an ordinary twenty-minute limit, extended to one shared
+twenty-five-minute limit for ACME recovery.
 The runner host needs twelve GiB candidate RAM plus its existing platform/job
 headroom and enough free disk for image archives, extraction and GitLab state.
 
@@ -186,9 +186,9 @@ pull/run pipeline with artifact delivery, and proves a deliberate failed job
 blocks the downstream delivery job. It revokes its temporary API credential
 and confirms HTTP 401 before stopping services for the seed cycle. The seed
 scenario harvests stopped private GitLab files, removes a marker from live data,
-restores, and checks that marker. This proves the current service-data copy
-cycle; it is not the stronger configuration-plus-Seed fresh-server acceptance
-tracked in issue 43. No Production rollout is performed.
+restores, and checks that marker. The additional cold recovery adapter below
+checks stronger configuration-plus-Seed recovery onto an empty second host.
+No Production rollout is performed.
 
 The manifest records individual stage outcomes and sanitized numeric pipeline/
 job/project identities. Failed pipelines retain sanitized job status/reasons,
@@ -199,19 +199,20 @@ retained. No global prune is used. Forced host loss still requires replaying the
 retained receipt once the daemon is reachable.
 
 
-## Backup-only cold recovery adapter (#43)
+## Configuration-plus-Seed cold recovery
 
-When the committed source includes the completed Seed manifest implementation,
-image preparation requires `recovery.js`, enables `recoveryAcceptance`, and extracts
+Image preparation requires `recovery.js` when the committed source includes the
+Seed manifest implementation, enables `recoveryAcceptance`, and extracts
 the actual Wizard configuration-export model bundle from the freshly built Wizard
 image. The exporter is an explicit private file input, checked by SHA-256 and the
 pinned Wizard source revision. Its ZIP uses the same model and generator as Backup;
 it contains configuration only.
 
 The adapter records synthetic GitLab users, repository head, an issue, an encrypted
-CI variable and an existing registry digest. It creates a synthetic TLS certificate
-and account/renewal layout, fetches saved main/project configuration through the
-authenticated API, exports it through the Wizard model, and runs the real controlled
+CI variable and an existing registry digest. Without local ACME it creates a
+synthetic TLS certificate and account/renewal layout; with that phase it uses a
+real fixture-issued certificate. It fetches saved main/project configuration
+through the authenticated API, exports it through the Wizard model, and runs the real controlled
 cold Harvest. Only that ZIP and the completed marked Seed leave the original owned
 DinD daemon. Binary transfers use file descriptors and checksums use bounded buffers.
 Private archives have mode 0600 beneath a mode-0700 temporary directory; they never
@@ -235,9 +236,9 @@ Both lifecycles share the original overall deadline and cancellation flag. Each 
 an independent ownership/checkpoint receipt and cleanup; a cleanup failure fails
 acceptance and retains private inputs for targeted recovery.
 
-This deliberately reports `acmeRenewalVerified: false`: synthetic TLS plus restored
-renewal configuration is not a Certbot/ACME renewal dry-run. Full #43 closure still
-requires a bounded local ACME fixture or separately authorized real renewal proof.
+A synthetic-TLS-only run deliberately reports `acmeRenewalVerified: false`:
+restored renewal files are not evidence of a Certbot/ACME renewal. The local ACME
+scenario below must also pass to establish actual renewal/deployment.
 The offline adapter tests include actual ephemeral HTTPS with a trusted CA,
 wrong-host and foreign-CA rejection, lifecycle ordering, cancellation, stream
 boundaries and failed-cleanup handling. They do not establish a passed cold run.
@@ -260,15 +261,15 @@ the exact image using a temporary project-scoped `read_registry` deploy token.
 The adapter verifies the running Wizard's image ID and marker and verifies that
 no live reserved recovery token remains. Only then may the report state
 `privateWizardPinVerified: true`. The fixture does not supply an old Docker login,
-private image archive or substitute image. This scenario still requires actual
-passing candidate execution; its component contracts are not integration proof.
-#43 remains open until the complete private-image scenario and actual renewal
-proof pass. A fresh host must not depend on an old Docker login, and successful
-local-image recovery alone does not verify the private-pin case.
+private image archive or substitute image. This scenario requires actual passing
+candidate execution; component contracts are not integration proof. A fresh host must not depend on an old Docker login,
+and successful local-image recovery alone does not verify the private-pin case.
 
-## Local ACME follow-up (inactive until reviewed activation)
+## Local ACME issuance and renewal
 
-`local-acme.js` implements the separately enabled `acmeRenewalAcceptance` phase.
+`local-acme.js` implements the `acmeRenewalAcceptance` phase, enabled by image
+preparation when the complete adapter, trust files and host scripts are present.
+A partial contract fails before platform creation.
 `prepare-acme-images.js` prepares only the three exact public image pins declared
 in that module; its return value is the required `spec.acmeImages`. The pinned
 Certbot archive has an explicit image ID and SHA-256. The committed public Pebble
@@ -308,8 +309,8 @@ used. This does not emulate systemd timer scheduling or public Let's Encrypt.
 Offline contracts verify inputs/trust, tiny resource bounds, ownership, cleanup,
 negative-validation gating and real HTTPS trust/SNI. They do not establish a passed
 ACME recovery. `acmeRenewalVerified` can become true only after the actual restored
-account, renewal, deployment and CA-verified HTTPS stages all pass. Image-preparation
-activation and cleanup ordering are reviewed separately before this phase runs.
+account, renewal, deployment and CA-verified HTTPS stages all pass. Cleanup removes heavy platform owners before tiny clients and the authority
+that owns shared fixture resources.
 
 Configuration comparisons decode literal shell assignments without executing
 them. Quoted and unquoted exports are compared by exact values; substrings,

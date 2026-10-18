@@ -209,6 +209,3 @@ deploy:github:
 #   only:
 #     - merge_requests
 #     - master
-
-# Full disposable-platform acceptance remains tracked in System issue 21.
-# Isolated checks above do not claim GitLab/registry/seed integration coverage.

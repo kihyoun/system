@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicitly leased, disposable cold/warm template builds for System issue 26."""
+"""Explicitly leased, disposable cold/warm template build measurements."""
 import argparse
 import hashlib
 import json

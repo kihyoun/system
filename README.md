@@ -16,45 +16,42 @@ The idea grew from a convenient self-hosted setup into an open-source framework 
 
 The original use case is still simple: spend more time building web projects and less time maintaining the infrastructure behind them. But the underlying architecture could eventually support other kinds of infrastructure. **The self-renewal cycle is the project's vision, not a capability already delivered today.**
 
-## Current status
+## Getting started
 
-New here? Start with the illustrated [System Bootstrapper Handbook](docs/HANDBOOK.md),
-including checkout, the first Sync login, configuration suggestions and the
-local setup workflow. The handbook is written in English and documents the
-local test version.
+Start with the [System Bootstrapper Handbook](docs/HANDBOOK.md) for checkout,
+host preparation, the first Sync login, configuration and runner setup.
+[Prepare-Host.md](Prepare-Host.md) covers installation and service-image selection;
+[the persistence guide](docs/PERSISTENT_VOLUME.md) explains the required mounted
+data filesystem. Domain names, storage and credentials belong to your deployment.
 
-**The local platform now runs on Ubuntu/WSL2, including GitLab, a runner and an HTTP registry; production setup remains to be validated.**
+The platform combines GitLab Community Edition, its container registry,
+GitLab Runner managers, NGINX routing, an authenticated Sync API and a React
+configuration Wizard. Shell scripts and Docker Compose coordinate their lifecycle.
+A successful Wizard **Push** imports configuration and automatically restarts the
+platform; **Fetch** reads the saved settings. Runner scale controls independent
+managers in a shared GitLab runner pool, rather than a separate GitLab runner
+registration for every container.
 
-The host installer, wizard, sync API authentication and file-based seed cycle
-have been exercised on Ubuntu 26.04.1 with Docker Engine 29.9.1 and Compose 5.6.0.
-See [Prepare-Host.md](Prepare-Host.md) for the tested first-boot procedure and
-seed behavior. A fresh GitLab CE 19.4.2 / Runner 19.4.0 test also passed repository
-checkout, Docker build, registry push/pull, container execution and artifact
-upload. Production HTTPS, existing-data migration and the UI project's own
-pipeline remain unverified. Framework-aware starter generation covers Angular, React and general web projects. Production
-server setup and the UI project's own build/review/rollout remain separate;
-generation changes are outside the current repair scope. The existing Wizard
-is automatically registered as the first project with its actual Production
-URL, without replacing the interface. Its repository starts as a registration
-scaffold; [explicit pinned-source initialization](docs/WIZARD_SOURCE.md) is
-available separately. The [managed build workflow](docs/WIZARD_BUILD.md) adds
-an explicit recipe preview, activation and verified candidate status. Its real
-GitLab acceptance is still pending; activation is a maintainer action. Review
-and rollout remain tracked in
-[the next-expansion issue](https://github.com/kihyoun/system/issues/18).
+Application starters cover Angular, React and general web projects. The
+[project guide](docs/PROJECT_BOOTSTRAP_GUIDE.md) explains private repository creation,
+editable source, CI and application environments. The Wizard is itself registered
+as a managed project: explicit [source initialization](docs/WIZARD_SOURCE.md),
+[build configuration](docs/WIZARD_BUILD.md),
+[Review/Beta environments](project-bootstrap/wizard-environments/README.md) and
+[controlled Production promotion](project-bootstrap/wizard-production/README.md)
+provide separate, inspectable operations. Building or merging source alone does
+not replace the running management interface.
 
-The idea dates back to 2019. Development did not reach a sustainable renewal cycle and maintenance fell behind. The local Ubuntu/WSL2 baseline, shared runner and private project bootstrap now pass the documented tests; full production operation and platform generation replacement remain unverified.
+Persistent service data lives beneath the configured mounted `PERSISTENT_DIR`.
+The Wizard exports configuration separately; [Harvest/Seed](docs/RECOVERY_CONTRACT.md)
+creates and restores completed service-data snapshots. A retained live data
+filesystem can be reused without first restoring a Seed.
 
-The repository contains the foundations of the platform:
-
-- Shell scripts and Docker Compose definitions for bootstrapping and coordinating services.
-- GitLab Community Edition, container registry configuration, and GitLab Runner setup.
-- NGINX routing and proxy configuration for production, beta, and review environments.
-- A React configuration wizard referenced as a Git submodule.
-- A GitLab CI configuration for building the bootstrapper image and deployment/publishing jobs.
-- Scripts and configuration for synchronizing persistent data.
-
-These are existing implementation pieces, not a claim that the complete workflow currently works. In particular, the repository's CI configuration does not yet implement the full platform review-and-test cycle described below; its test stage remains a TODO.
+[Component and integration checks](tests/README.md) are supplied in the repository.
+The candidate harness runs disposable platform instances with isolated resources;
+its lifecycle checks are distinct from promoting an entire successor platform.
+The self-renewal cycle described below is a design goal, not an automatic
+end-to-end generation-switching feature.
 
 ## Why this project exists
 
@@ -83,7 +80,7 @@ protocol or guarantee continuous connectivity.
 
 The architecture should eventually support a feedback loop: identify a possible improvement, produce a candidate change, build and evaluate it, promote a validated improvement, and repeat from the improved system. The recursive aspect is that the system being improved also supplies the machinery for the next improvement cycle; that machinery can itself evolve.
 
-Rebuilding or replacing a generation alone does not demonstrate improvement. A convincing demonstration needs explicit objectives and evaluation criteria that show what improved and whether required behavior was preserved. The mechanisms for proposing changes, evaluating them and deciding promotion remain to be designed and validated. This is the long-term vision, not a claim of current autonomous capability or an expansion of the present platform-restoration task.
+Rebuilding or replacing a generation alone does not demonstrate improvement. A convincing demonstration needs explicit objectives and evaluation criteria that show what improved and whether required behavior was preserved. The mechanisms for proposing changes, evaluating them and deciding promotion remain to be designed and validated. This is the long-term vision, not a claim of autonomous capability.
 
 The running platform should host its own source code and execute the pipelines that build its next version.
 
@@ -145,28 +142,21 @@ The container definitions can be reproduced; GitLab repositories, database conte
 | `wizard/` | Configuration wizard submodule. |
 | `.gitlab-ci.yml` | Required isolated component checks, image build and deployment/publishing pipeline. |
 | [tests/](tests/README.md) | Component inventory, isolated test commands and explicit live-integration boundaries. |
-| [Prepare-Host.md](Prepare-Host.md) | Historical host preparation notes; not a validated current installation guide. |
+| [Prepare-Host.md](Prepare-Host.md) | Host installation, service-image selection and startup. |
 
-## Restoration and next milestones
+## Building and verifying a deployment
 
-The local baseline and general private-project bootstrap have been restored and tested. Application starters cover Angular, React and general web projects; complete platform renewal remains a future milestone.
+Follow the [handbook](docs/HANDBOOK.md) for local Ubuntu/WSL2 configuration and
+[host preparation](Prepare-Host.md) for installation. Choose service versions and
+configure persistent storage explicitly. The [recovery contract](docs/RECOVERY_CONTRACT.md)
+describes configuration-plus-Seed restoration; the
+[persistence guide](docs/PERSISTENT_VOLUME.md) covers reuse of retained live data.
 
-1. **Maintain the tested local baseline.** Keep the documented Ubuntu/WSL2, GitLab, runner, registry and configuration workflow reproducible.
-2. **Make that baseline reproducible.** Define configuration inputs, pin tested dependencies, and verify a fresh installation.
-3. **Build a second platform from a merge request.** Run a candidate alongside the current platform on the same host, with isolated state and routing.
-4. **Test the candidate and the transition.** Cover service integration, representative data migrations, cleanup, and recovery.
-5. **Complete one generation change.** Promote the validated candidate and use it to build the next candidate.
-6. **Keep the cycle active.** Establish regular update checks and reviewable changes so maintenance happens continuously.
-
-The first decisive milestone is a running platform that can build and validate another working platform from a branch. The complete vision is reached when the validated successor can take over and repeat that process.
-
-## Working with the current code
-
-The [handbook](docs/HANDBOOK.md) documents the tested local Ubuntu/WSL2 setup, including the matching Wizard image, first login, configuration and shared runner. The [project guide](docs/PROJECT_BOOTSTRAP_GUIDE.md) covers private repository creation and CI. These local checks do not establish a production installation or an existing-data upgrade procedure.
-
-Use a dedicated, disposable Ubuntu test VM for restoration. Inspect the scripts before running them: the bootstrapper mounts the Docker socket, and the configuration can change services, networking, ports, and persistent volumes on its host.
-
-See [Prepare-Host.md](Prepare-Host.md) for tested versions, host requirements and the remaining production limitations. Historical remote installers remain historical references.
+Use disposable environments for restoration and candidate tests. The bootstrapper
+mounts the Docker socket and can change services, networks, ports and persistent
+volumes on its host. Run the documented [verification commands](tests/README.md)
+and inspect their results before promoting an image. Host OS/kernel maintenance
+and GitLab major-version database upgrades have their own procedures.
 
 ## Guiding principle
 
@@ -176,4 +166,4 @@ The goal is a maintainable development platform whose own evolution follows the 
 
 ## Application project bootstrap
 
-Projects → Add Project → Save now provisions a private GitLab repository and managed CI through authenticated Sync, with namespace-aware availability and asynchronous status. See the [project bootstrap guide](docs/PROJECT_BOOTSTRAP_GUIDE.md) for the workflow, retry behavior and validation. Angular, React and general web templates add editable source, Dockerfile and an initial build/test/deployment pipeline. Empty repositories remain available. Importing the existing Wizard itself stays optional.
+Projects → Add Project → Save provisions a private GitLab repository and managed CI through authenticated Sync, with namespace-aware availability and asynchronous status. See the [project bootstrap guide](docs/PROJECT_BOOTSTRAP_GUIDE.md) for the workflow, retry behavior and validation. Angular, React and general web templates add editable source, Dockerfile and an initial build/test/deployment pipeline. Empty repositories remain available. Importing the existing Wizard itself stays optional.

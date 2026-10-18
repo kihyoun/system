@@ -30,10 +30,10 @@ disabled `.system-bootstrapper/ci.yml`. No pipeline is started. The known safe
 
 The running interface, routing and Production URL are untouched. Beta and Review
 remain disabled. Source initialization does not start builds or deployment;
-[managed build activation](WIZARD_BUILD.md) is a separate explicit action. The later
-workflow includes a deliberate manual Production job in GitLab, not automatic
-self-improvement. The remaining phases are tracked in
-[the central workflow issue](https://github.com/kihyoun/system/issues/18).
+[managed build activation](WIZARD_BUILD.md) is a separate explicit action.
+Review/Beta deployment and
+[Production promotion](../project-bootstrap/wizard-production/README.md) are
+separate explicit operations. Importing source does not promote an image.
 
 ## Build the immutable source package
 
@@ -91,6 +91,8 @@ ruby tests/wizard/source-import.rb
 The package test creates disposable Git repositories. The workflow test uses a
 temporary private configuration and stubbed Rails transport. The Ruby adapter
 test uses an in-memory GitLab API fixture. These tests never contact the running
-GitLab or mutate the platform. Run the Wizard Jest suite and production build
-with its existing Node 13.12.0 toolchain. The larger runtime migrations remain
-separate central issues.
+GitLab or mutate the platform. Run the Wizard checks with the Node/npm versions
+declared in `wizard/package.json`: `npm ci`, `npm run lint`, `npm test`,
+`npm run build` and `npm run test:config-export`. The managed build recipe selects
+the matching source toolchain profile; historical reservations retain their
+exact recipe hashes.

@@ -1,30 +1,48 @@
 # Repository instructions
 
+## Public documentation boundary
+
+Only commit material that another user can reproduce from a fresh checkout and
+infrastructure they configure themselves. Document architecture, configuration,
+installation, operation and reproducible verification with all required inputs.
+Use generic examples and explain operator-supplied domains, storage and credentials.
+
+Do not put development-status reports, completed work plans, chat handoffs,
+private deployment inventories, machine addresses, instance-specific volume IDs,
+private pipeline/job links or acceptance diaries in the repository. Keep those in
+external project tracking or private operator records. Instructions must not depend
+on a maintainer's existing GitLab state, deleted VM, local files or retained artifacts.
+
+Do not embed this project's issue or pull/merge-request links or task numbers in
+source comments, READMEs, guides or generated documentation. Agent instructions
+may identify the external task tracker; users must not need its contents to use
+the code. Links to source repositories, reproducible tools and relevant upstream
+technical documentation remain appropriate.
+
 ## Start each task
 
-1. Read [HOST_HANDOFF.md](HOST_HANDOFF.md) for the dated operational snapshot,
-   active source of truth, verified checkpoints and the next issue.
+1. Read the README and relevant component documentation for the code's contracts
+   and reproducible workflows. Obtain task status and requirements from the
+   conversation or external tracker, not a repository handoff snapshot.
 2. Inspect the current branch, worktree, remotes and Wizard submodule before
-   changing anything. Recheck live state before deployment or destructive work;
-   a handoff records observations, not a guarantee that nothing changed.
-3. Read the linked issue and relevant component documentation. Keep this file
-   for durable rules, the handoff for current state, and issues for requirements.
-   Update stale guidance instead of accumulating overlapping plan documents.
+   changing anything. Confirm operator-provided infrastructure before deployment
+   or destructive work; repository examples are not live-instance coordinates.
+3. Update stale technical guidance rather than accumulating plans or status files.
 
 ## Working conventions
 
 - Write repository documentation in English. Conversation may be German.
-- Use the active development platform identified in the handoff. Until an
-  explicit cutover is completed, GitHub remains primary and requirements are
-  centralized in `kihyoun/system`, including Wizard work. Preserve references
-  when moving to GitLab; do not maintain competing issue collections.
+- Use the task tracker and source of truth selected by the maintainer. The
+  upstream tracker is https://github.com/kihyoun/system/issues, including Wizard
+  requirements. A deployment may choose its own GitLab workflow; do not assume
+  the maintainer's tracker is part of the product architecture.
 - Reuse existing issues and implement their acceptance criteria. Do not create
   new issues or planning files for routine cleanup when the user says not to.
 - When authorized to coordinate delivery, delegate independent work, review the
   results, merge passing changes and close completed issues. Do not repeatedly
   ask for merge approval already granted in the conversation.
 - Report concrete results or answer status questions; the maintainer cancelled
-  timed progress reports. Keep authorization and scope changes in the handoff.
+  timed progress reports. Keep task status and scope changes outside the repository.
 - Run checks appropriate to code changes. Documentation-only housekeeping does
   not require repeating the full platform suite. Preserve actual test evidence
   and distinguish successful runs from skipped checks or partial failures.
@@ -80,10 +98,9 @@ validators and routing also refer to `sync/src/index.ts`, `wizard/src/api/Main.t
   global Docker pruning, reset Production or overwrite unrelated Git history.
 - The main public UI uses the bare domain; the Cube's fixed www URL stays exact.
   Preserve deliberate upstream publishing roles when changing CI.
-- Coordinate resource-heavy disposable tests: the measured platform host has
-  8 CPUs/32 GB RAM; one 12 GiB/4 CPU candidate lifecycle at a time was qualified.
-  Those limits are ceilings, not reservations or disk quotas. The small Codex VM
-  is a separate machine, not the platform integration-test host.
+- Coordinate resource-heavy disposable tests using the committed harness limits
+  and explicit leases. Check the selected host's capacity; limits are ceilings,
+  not reservations or disk quotas. Do not assume a maintainer-owned test host exists.
 
 ## Long-term design intent
 
