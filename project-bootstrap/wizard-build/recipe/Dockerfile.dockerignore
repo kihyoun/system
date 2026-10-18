@@ -1,0 +1,17 @@
+.git
+**/.git
+**/node_modules
+**/build
+**/dist
+**/.env
+**/.env.*
+**/*.env
+**/*.env/**
+**/.npmrc
+**/.netrc
+**/*.key
+**/*.pem
+**/seed
+**/seeds
+**/credentials*
+!.system-bootstrapper/preflight.env

@@ -49,7 +49,10 @@ begin
     encoded = URI.encode_www_form_component(full_path)
     code, project = api.call(Net::HTTP::Get, 'projects/' + encoded)
     raise BootstrapError, 'Project lookup failed' unless [200, 404].include?(code)
-    if input['action'] == 'wizard-source'
+    if ['wizard-build', 'wizard-build-status'].include?(input['action'])
+      raise BootstrapError, 'Wizard repository missing' unless code == 200
+      result = WizardBuildActivation.new(api, input, project).call
+    elsif input['action'] == 'wizard-source'
       raise BootstrapError, 'Wizard repository missing' unless code == 200
       result = WizardSourceImport.new(api, input, project).call
     elsif input['action'] == 'pipeline'
