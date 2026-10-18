@@ -12,10 +12,10 @@ export function readSettings(data: string): any {
   return settings;
 }
 
-export function wizardConfiguration(settings: any) {
+export function wizardConfiguration(settings: any, environmentSettings?: any) {
   if (!settings.WIZARD_HOST) { throw new Error('Configure the real Wizard host before registering its project.'); }
-  // Only the existing production endpoint is registered in this delivery.
-  // Beta/review and deploying Wizard source are explicitly a subsequent stage.
+  // Production continues to describe the existing interface. Optional managed
+  // environments are server-owned and never regenerated from client projects.
   const values: any = {
     PROJECT_NAME: 'wizard', PROJECT_TEMPLATE: 'wizard',
     PROD_DEPLOY_MODE: '0', BETA_DEPLOY_MODE: '0', REVIEW_DEPLOY_MODE: '0',
@@ -27,6 +27,21 @@ export function wizardConfiguration(settings: any) {
   if (Number(values.PROD_DOMAIN_MODE) > 1) {
     values.PROD_SSL = settings.WIZARD_SSL || '';
     values.PROD_SSL_KEY = settings.WIZARD_SSL_KEY || '';
+  }
+  if (environmentSettings) {
+    for (const name of ['review', 'beta']) {
+      const value = environmentSettings[name];
+      if (!value || typeof value.enabled !== 'boolean' || value.domainMode !== 2 ||
+        typeof value.host !== 'string' || typeof value.ssl !== 'string' || typeof value.sslKey !== 'string') {
+        throw new Error('Invalid server-owned Wizard environment settings.');
+      }
+      const prefix = name.toUpperCase();
+      values['USE_' + prefix + '_HOST'] = String(value.enabled);
+      values[prefix + '_HOST'] = value.host;
+      values[prefix + '_DOMAIN_MODE'] = String(value.domainMode);
+      values[prefix + '_SSL'] = value.ssl;
+      values[prefix + '_SSL_KEY'] = value.sslKey;
+    }
   }
   return Helper.textLogo + '# Existing System Wizard interface; managed from General.\n' +
     Object.entries(values).map(([key, value]) => key + '="' + value + '"').join('\n') + '\n';
@@ -57,12 +72,14 @@ export async function ensureDefaultWizard() {
   if (!fs.existsSync(config)) { return {state: 'not-configured'}; }
   const settings = readSettings(fs.readFileSync(config, 'utf8'));
   if (settings.WIZARD_ENABLE !== 'true') { return {state: 'disabled'}; }
-  const data = wizardConfiguration(settings);
   const file = path.resolve('../system/.projects.env/.wizard.env');
   const previous = fs.existsSync(file) ? readReceipt(fs.readFileSync(file, 'utf8')) : undefined;
   if (fs.existsSync(file) && (!previous?.defaultProject || previous.template !== 'wizard')) {
     throw new Error('The wizard Project Key is already configured. Existing projects are never overwritten.');
   }
+  const environment = previous?.wizardWorkflow?.environments;
+  const installed = environment?.activationCommit ? environment : environment?.previous?.activationCommit ? environment.previous : undefined;
+  const data = wizardConfiguration(settings, installed?.settings);
   let namespaceId = previous?.namespaceId;
   if (!namespaceId) {
     const namespacesResult = await waitForJob(queryGitlab({action: 'namespaces'}));
@@ -71,10 +88,18 @@ export async function ensureDefaultWizard() {
     namespaceId = namespace.id;
   }
   const result = await waitForJob(createProject({projectKey: 'wizard', namespaceId, template: 'wizard', data, ci: wizardCi()}, true));
-  const receipt = readReceipt(fs.readFileSync(file, 'utf8'));
-  // Reflect the real current interface address after a main-configuration change.
-  // Retain ownership and repository identity, including across ordinary Push.
-  writeReceipt(file, data, receipt);
+  const lock = file + '.environments.lock';
+  try { fs.mkdirSync(lock, {mode: 0o700}); }
+  catch (_) { throw new Error('An environment helper owns the Wizard configuration lock. Wait and retry registration.'); }
+  try {
+    const receipt = readReceipt(fs.readFileSync(file, 'utf8'));
+    const latestEnvironment = receipt?.wizardWorkflow?.environments;
+    const latestInstalled = latestEnvironment?.activationCommit ? latestEnvironment :
+      latestEnvironment?.previous?.activationCommit ? latestEnvironment.previous : undefined;
+    // Refresh the real Production address while retaining the latest helper
+    // checkpoints and the last installed optional settings across ordinary Push.
+    writeReceipt(file, wizardConfiguration(settings, latestInstalled?.settings), receipt);
+  } finally { fs.rmdirSync(lock); }
   return {state: 'registered', repository: result.repository};
 }
 

@@ -29,6 +29,7 @@ function generate_nginx_conf {
 }
 
 mkdir -p /templates
+cp ./.templates/acme-http01.conf.template /templates/00-acme-http01.conf.template
 
 generate_nginx_conf $GITLAB_DOMAIN_MODE \
   gitlab \
@@ -37,6 +38,10 @@ generate_nginx_conf $GITLAB_DOMAIN_MODE \
   $GITLAB_HOST \
   $GITLAB_SSL \
   $GITLAB_SSL_KEY > /templates/default.conf.template
+
+# Candidate fragments belong to the versioned managed environment helper.
+# Preserve them when the main configuration is rendered on start/reload.
+printf '\ninclude /etc/nginx/templates/wizard-environments/*.conf;\n' >> /templates/default.conf.template
 
 generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
   registry \

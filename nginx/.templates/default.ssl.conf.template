@@ -6,7 +6,14 @@ server {
     listen      80;
     server_tokens off;
     server_name ${PROXY_HOSTNAME};
-    return 301 https://${PROXY_HOSTNAME}$request_uri;
+    location ^~ /.well-known/acme-challenge/ {
+        root /ssl/acme-http01;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://${PROXY_HOSTNAME}$request_uri;
+    }
 }
 
 server {
