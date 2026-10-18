@@ -40,7 +40,8 @@ On the existing Codex VM, the platform SSH identity selector is
 Verified platform host fingerprint:
 `SHA256:4zV00K0CoXYEjsbsMUjYIjw/Sq0uX7yyUPkuVrSHebw`.
 Existing platform checkout: `/opt/system` ->
-`/mnt/HC_Volume_24222125/platform/source`, clean at the baseline above.
+`/mnt/HC_Volume_24222125/platform/source`; updated to the Push fix below after the
+original baseline above.
 
 The small Codex VM now accepts SSH public-key authentication only, including
 root; port22 remains open. UFW allows incoming22/tcp for IPv4/IPv6, otherwise
@@ -59,13 +60,34 @@ If API access is needed, provision a new owned, scoped, expiring credential thro
 an authorized mechanism, keep it private and revoke it after the operation.
 No GitHub write credential readiness was established in the cutover preflight.
 
+## Push incident follow-up
+
+After the handoff, increasing runner count and pressing Push exposed a lifecycle
+bug: ZIP Push stopped the Wizard and GitLab but required a separate Restart click
+in that stopped interface. System commit `bc7269d4ebc3b1e25eca1334fcf73cf513ee3701`
+fixes ZIP Push to import first, finish its success response, then exit Sync so the
+controller restarts automatically. Failed imports keep the interface running.
+Current desired runner count is four. GitLab cutover remains paused.
+
+The controller now uses
+`sha256:31fbffeda8fbe7e0a5c7a0c2c49540da38b879ee02357f342c9e9fb3b7666653`,
+a source-built patch layer on the retained pipeline45 image below. Lint/TypeScript,
+isolated authenticated ZIP success/failure/rejection tests and configuration API
+checks passed. A real unchanged configuration Push confirmed HTTP acknowledgement,
+automatic controller restart, four running runners, healthy GitLab, Wizard HTTPS
+and unchanged authenticated Fetch. This patch did not repeat the complete
+pipeline45 recovery suite. Private deployment/acceptance receipts and previous
+configuration are under `platform/recovery/push-restart-20261018/`.
+Saved `.docker.env` authentication overrides generated `sync-auth.env` defaults;
+check effective credentials rather than assuming the generated defaults apply.
+
 ## Running state and completed backlog
 
 Fourteen GitHub PRs were merged: System #28/#29/#30/#31/#32/#35/#36/#37/#38/#40/#42
 and Wizard #12/#13/#14. System issues #18/#21/#22/#23/#24/#26/#43 are completed;
 only #34 remained open. There were no open GitHub PRs at final verification.
 
-- Controller and prospective environment-helper image:
+- Previous fully recovery-qualified controller/environment-helper base image:
   `sha256:16474e4858527294414a87b80e3a4874761fb85d796d611864aaca5334aa8a58`.
   It is the clean, validated pipeline45 artifact; no runtime docker commit was used.
 - Production Wizard stays on accepted pipeline44/source
