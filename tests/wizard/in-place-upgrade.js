@@ -18,19 +18,21 @@ function snapshot(revision, files) {
   return {...manifest, manifestHash: hash(JSON.stringify(manifest)), files};
 }
 class Fixture {
-  constructor() {
+  constructor(modern = false) {
     this.root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-upgrade-'));
     this.config = path.join(this.root, '.wizard.env'); this.mainConfig = path.join(this.root, '.docker.env'); this.directory = path.join(this.root, 'checkpoints');
     this.commits = new Map(); this.branches = new Map(); this.posts = []; this.mrs = []; this.serial = 10;
-    const oldSource = snapshot('c'.repeat(40), [sourceFile('package.json', '{"dependencies":{"react-scripts":"4"}}'),
-      sourceFile('src/api/Helper.tsx', logo), sourceFile('.gitlab-ci.yml', '# Upstream roles preserved\n'), sourceFile('obsolete-cra.js', 'old\n')]);
+    const oldSource = snapshot('c'.repeat(40), [sourceFile('package.json', modern ? '{"devDependencies":{"vite":"8.3.4"}}' : '{"dependencies":{"react-scripts":"4"}}'),
+      sourceFile('src/api/Helper.tsx', logo), sourceFile('.gitlab-ci.yml', '# Upstream roles preserved\n'), sourceFile('obsolete-cra.js', 'old\n'),
+      ...(modern ? [sourceFile('src/App.tsx', 'export default function App() {}\n')] : [])]);
     this.snapshot = snapshot(currentSource, [sourceFile('package.json', '{"devDependencies":{"vite":"8.3.4"}}'),
       sourceFile('src/api/Helper.tsx', logo), sourceFile('.gitlab-ci.yml', '# Upstream roles preserved\n'), sourceFile('scripts/check.sh', '#!/bin/sh\ntrue\n', '100755')]);
     const settings = {review: {enabled: true, domainMode: 2, host: 'review.example.test', ssl: '/ssl/cert.pem', sslKey: '/ssl/key.pem'}, beta: {enabled: true, domainMode: 2, host: 'beta.example.test', ssl: '/ssl/cert.pem', sslKey: '/ssl/key.pem'}};
-    const build = builds.generate(logo), environment = {version: 1, operation: 'd'.repeat(48), phase: 'ready', settings,
+    const build = builds.generate(logo, modern ? 'node24-vite8' : 'legacy'), environment = {version: 1, operation: 'd'.repeat(48), phase: 'ready', settings,
       settingsHash: hash(JSON.stringify(settings)), helperImage: oldHelper, controller: 'system_bootstrapper_1',
       deployments: {review: {active: null, pending: null, lastPipelineId: 6, stoppedThroughPipelineId: 6,
         tombstone: {projectId: 1, pipelineId: 6, sourceCommit: 'e'.repeat(40), operation: 'd'.repeat(48)}, retired: []}, beta: {active: null, pending: null, stoppedThroughPipelineId: 7}}};
+    if (modern) environment.buildRecipeHash = build.recipeHash;
     const envRecipe = environments.generate(logo, environment); environment.recipeHash = envRecipe.recipeHash;
     this.receipt = {version: 1, defaultProject: true, template: 'wizard', state: 'complete', operation: 'f'.repeat(48), namespaceId: 1,
       registrationExtra: 'preserve-me', repository: {id: 1, path: 'root/wizard', defaultBranch: 'main', ciPath: '.system-bootstrapper/ci.yml', systemProject: true},
@@ -49,6 +51,17 @@ class Fixture {
     environment.activationCommit = '3'.repeat(40);
     for (const file of [...envRecipe.files, {path: '.system-bootstrapper/wizard-environments.json', content: environmentMarker(environment, '2'.repeat(40))}, {path: '.system-bootstrapper/ci.yml', content: envRecipe.ci}]) oldFiles.set(file.path, this.row(file.content, '3'.repeat(40)));
     this.commits.set('3'.repeat(40), {id: '3'.repeat(40), parent_ids: ['2'.repeat(40)], files: oldFiles}); this.branches.set('main', '3'.repeat(40));
+    if (modern) {
+      // Ordinary user development after import must remain byte-for-byte, with
+      // its last-change identity intact through the recipe-only migration.
+      const files = new Map(oldFiles);
+      files.set('src/App.tsx', this.row('export default function App() {}\n// User development survives\n', '4'.repeat(40)));
+      files.set('local-tool.sh', this.row('#!/bin/sh\ntrue\n', '4'.repeat(40), true));
+      files.delete('obsolete-cra.js');
+      this.commits.set('4'.repeat(40), {id: '4'.repeat(40), parent_ids: ['3'.repeat(40)], files}); this.branches.set('main', '4'.repeat(40));
+      for (const [kind, floor] of [['review', 43], ['beta', 44]]) environment.deployments[kind] = {active: null, pending: null, retired: [],
+        lastPipelineId: floor, stoppedThroughPipelineId: floor, tombstone: {id: 'p' + floor + '-j' + (kind === 'review' ? 132 : 136)}};
+    }
     this.writeReceipt();
     fs.writeFileSync(this.mainConfig, logo + "export GITLAB_HOST='gitlab.example.test'\nexport GITLAB_REGISTRY_URL='https://registry.example.test'\nexport GITLAB_REGISTRY_DOMAIN_MODE='2'\n");
     this.upgrade = new Upgrade({...this, helperImage: helper, request: this.request.bind(this), checkHelper: async () => { if (this.badHelper) throw Error('Helper dependency mismatch'); }});
@@ -112,7 +125,7 @@ class Fixture {
   async adopt() { const plan = await this.upgrade.adoptionPlan(); return this.upgrade.adopt(plan.planHash); }
   destroy() { fs.rmSync(this.root, {recursive: true, force: true}); }
 }
-async function test(name, run) { const f = new Fixture(); try { await run(f); console.log('In-place Wizard upgrade: ' + name + ' passed.'); } finally { f.destroy(); } }
+async function test(name, run, modern = false) { const f = new Fixture(modern); try { await run(f); console.log('In-place Wizard upgrade: ' + name + ' passed.'); } finally { f.destroy(); } }
 (async () => {
   await test('actual Git deletion/recreation and fast-forward retain no-op file provenance', async f => {
     const repository = path.join(f.root, 'git-provenance'); fs.mkdirSync(repository);
@@ -189,4 +202,93 @@ async function test(name, run) { const f = new Fixture(); try { await run(f); co
     const plan = await f.upgrade.adoptionPlan(); fs.mkdirSync(f.upgrade.lock); await assert.rejects(f.upgrade.adopt(plan.planHash), /EEXIST/); fs.rmdirSync(f.upgrade.lock);
     await assert.rejects(f.upgrade.adopt('stale'), /Preview and confirm/);
   });
+  await test('recipe-only upgrade preserves edited/deleted/new source and import-marker history through all three commits', async f => {
+    await assert.rejects(f.upgrade.plan(), /content changed|Missing file/);
+    const original = fs.readFileSync(f.config, 'utf8'), originalWorkflow = structuredClone(f.receipt.wizardWorkflow);
+    const plan = await f.upgrade.plan(true); assert.equal(plan.publicPlan.scope, 'build-environment');
+    assert(!plan.publicPlan.updates.includes('src/App.tsx')); assert.deepEqual(plan.publicPlan.deletes, []);
+    assert.equal(f.posts.length, 0); assert(!fs.existsSync(f.directory));
+    const preserved = await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths);
+    const staged = await f.upgrade.stage(plan.planHash, true), checkpoint = f.upgrade.load(plan.publicPlan.operation);
+    assert.equal(staged.sourceCommit, originalWorkflow.importCommit); assert(!checkpoint.commits.source);
+    assert.deepEqual(f.posts, ['branch', 'preparation', 'build', 'mr', 'environment']);
+    assert.equal(fs.readFileSync(f.config, 'utf8'), original); assert.equal(f.branches.get('main'), '4'.repeat(40));
+    for (const commit of Object.values(checkpoint.commits)) {
+      assert.deepEqual(await f.upgrade.preservedTree(f.receipt, commit, plan.publicPlan.managedPaths), preserved);
+      assert.equal(f.ref(commit).files.get('.system-bootstrapper/wizard-source.json').last_commit_id, originalWorkflow.importCommit);
+    }
+    assert.equal(f.ref(staged.environmentCommit).files.get('.system-bootstrapper/build-v1/Dockerfile').last_commit_id, staged.buildCommit);
+    assert.equal(f.ref(staged.environmentCommit).files.get('.system-bootstrapper/environments-v1/run.sh').last_commit_id, staged.environmentCommit);
+    f.merge(); const adoption = await f.upgrade.adoptionPlan(true); await f.upgrade.adopt(adoption.planHash, true);
+    const workflow = readConfiguration(f.config).receipt.wizardWorkflow;
+    for (const key of ['sourceRevision', 'manifestHash', 'importCommit', 'operation', 'phase']) assert.equal(workflow[key], originalWorkflow[key]);
+    assert.deepEqual(workflow.environments.deployments, originalWorkflow.environments.deployments);
+    assert.equal(workflow.build.recipeHash, builds.generate(logo, 'node24-vite8-cleanup-v2').recipeHash);
+    assert.equal(workflow.upgradeHistory[0].scope, 'build-environment');
+    assert.deepEqual((await f.upgrade.adoptionPlan(true)).publicPlan.alreadyAdopted, true);
+    assert.equal((await f.upgrade.adopt((await f.upgrade.adoptionPlan(true)).planHash, true)).unchanged, true);
+    assert.deepEqual(await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths), preserved);
+  }, true);
+  for (const boundary of ['preparation', 'build', 'environment']) await test('recipe-only lost ' + boundary + ' response reconciles without rewriting source', async f => {
+    const plan = await f.upgrade.plan(true); f.lostResponse = boundary;
+    await assert.rejects(f.upgrade.stage(plan.planHash, true), /Lost commit response/);
+    await f.upgrade.stage(plan.planHash, true);
+    assert.equal(f.posts.filter(name => name === boundary).length, 1); assert.equal(f.posts.filter(name => name === 'source').length, 0);
+    await f.upgrade.verifyPreserved(f.upgrade.load(plan.publicPlan.operation), f.mrs[0].sha);
+  }, true);
+  await test('recipe-only stale preview, mutex, source/history and managed-file conflicts fail closed', async f => {
+    const plan = await f.upgrade.plan(true), config = fs.readFileSync(f.config, 'utf8');
+    fs.appendFileSync(f.config, '# concurrent config\n'); await assert.rejects(f.upgrade.stage(plan.planHash, true), /Preview and confirm/); fs.writeFileSync(f.config, config);
+    fs.mkdirSync(f.upgrade.lock); await assert.rejects(f.upgrade.stage(plan.planHash, true), /EEXIST/); fs.rmdirSync(f.upgrade.lock);
+    assert.equal(f.posts.length, 0); await f.upgrade.stage(plan.planHash, true); f.merge();
+    const files = f.ref('main').files, old = files.get('src/App.tsx');
+    files.set('src/App.tsx', f.row('conflicting source', old.last_commit_id)); await assert.rejects(f.upgrade.adoptionPlan(true), /source or import history/);
+    files.set('src/App.tsx', {...old, last_commit_id: '9'.repeat(40)}); await assert.rejects(f.upgrade.adoptionPlan(true), /source or import history/); files.set('src/App.tsx', {...old, execute_filemode: true}); await assert.rejects(f.upgrade.adoptionPlan(true), /source or import history/); files.set('src/App.tsx', old);
+    files.set('unreviewed.txt', f.row('new source', '9'.repeat(40))); await assert.rejects(f.upgrade.adoptionPlan(true), /source or import history/); files.delete('unreviewed.txt');
+    const managed = '.system-bootstrapper/build-v1/cleanup.sh', oldManaged = files.get(managed);
+    files.set(managed, f.row('unreviewed cleanup', oldManaged.last_commit_id)); await assert.rejects(f.upgrade.adoptionPlan(true), /content changed/); files.set(managed, oldManaged);
+    const adoption = await f.upgrade.adoptionPlan(true); await assert.rejects(f.upgrade.adopt('stale', true), /Preview and confirm/);
+    // A fresh internal adoption preview includes the changed bytes, and refuses
+    // to apply the earlier reviewed hash instead of overwriting them.
+    fs.appendFileSync(f.config, '# changed after review\n'); await assert.rejects(f.upgrade.adopt(adoption.planHash, true), /configuration changed/);
+    assert.equal(readConfiguration(f.config).receipt.wizardWorkflow.build.recipeHash, f.receipt.wizardWorkflow.build.recipeHash);
+  }, true);
+  await test('recipe-only rejects modified import marker and active or pending leases', async f => {
+    const files = f.ref('main').files, name = '.system-bootstrapper/wizard-source.json', old = files.get(name);
+    files.set(name, f.row('changed import marker', '4'.repeat(40))); await assert.rejects(f.upgrade.plan(true), /content changed/); files.set(name, old);
+    for (const state of [{active: {id: 1}}, {pending: {id: 2}}, {retired: [{id: 3}]}]) {
+      const before = f.receipt.wizardWorkflow.environments.deployments.review;
+      f.receipt.wizardWorkflow.environments.deployments.review = {...before, ...state}; f.writeReceipt();
+      await assert.rejects(f.upgrade.plan(true), /leases/); f.receipt.wizardWorkflow.environments.deployments.review = before;
+    }
+    assert.deepEqual(f.posts, []);
+  }, true);
+  await test('historical source-upgrade checkpoint adopts its reserved pre-cleanup recipe', async f => {
+    const choose = builds.forSource;
+    try { builds.forSource = () => builds.generate(logo, 'node24-vite8'); await f.stage(); }
+    finally { builds.forSource = choose; }
+    f.merge(); await f.adopt();
+    assert.equal(readConfiguration(f.config).receipt.wizardWorkflow.build.recipeHash, builds.generate(logo, 'node24-vite8').recipeHash);
+  });
+  await test('recipe-only adoption CAS catches edits during final branch read', async f => {
+    const plan = await f.upgrade.plan(true); await f.upgrade.stage(plan.planHash, true); f.merge();
+    const adoption = await f.upgrade.adoptionPlan(true), request = f.upgrade.request, acquire = f.upgrade.acquire.bind(f.upgrade); let locked = false;
+    f.upgrade.acquire = () => { acquire(); locked = true; };
+    f.upgrade.request = async (...args) => {
+      if (locked && args[1].startsWith('projects/1/repository/branches/main')) fs.appendFileSync(f.config, '# concurrent post-lock edit\n');
+      return request(...args);
+    };
+    await assert.rejects(f.upgrade.adopt(adoption.planHash, true), /changed after adoption preview/);
+    assert(fs.readFileSync(f.config, 'utf8').endsWith('# concurrent post-lock edit\n')); assert(!fs.existsSync(f.upgrade.lock));
+    assert.equal(readConfiguration(f.config).receipt.wizardWorkflow.build.recipeHash, f.receipt.wizardWorkflow.build.recipeHash);
+  }, true);
+  await test('recipe-only adoption repairs checkpoint after a committed config loses its checkpoint response', async f => {
+    const plan = await f.upgrade.plan(true); await f.upgrade.stage(plan.planHash, true); f.merge();
+    const adoption = await f.upgrade.adoptionPlan(true), save = f.upgrade.save.bind(f.upgrade); let lost = false;
+    f.upgrade.save = checkpoint => { if (checkpoint.phase === 'adopted' && !lost) { lost = true; throw Error('Checkpoint write interrupted'); } save(checkpoint); };
+    await assert.rejects(f.upgrade.adopt(adoption.planHash, true), /Checkpoint write interrupted/);
+    const installed = fs.readFileSync(f.config, 'utf8'), retry = await f.upgrade.adoptionPlan(true);
+    assert.equal((await f.upgrade.adopt(retry.planHash, true)).unchanged, true); assert.equal(fs.readFileSync(f.config, 'utf8'), installed);
+    const checkpoint = f.upgrade.load(plan.publicPlan.operation); assert.equal(checkpoint.phase, 'adopted'); assert.equal(checkpoint.adoptedConfigHash, hash(installed));
+  }, true);
 })().catch(error => { console.error(error); process.exitCode = 1; });

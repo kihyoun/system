@@ -104,3 +104,48 @@ automatic overwrite. Before adoption, abandon an unmerged migration by closing
 its MR; main and the old receipt remain valid. After adoption, reverting source
 alone is insufficient: use a separately reviewed inverse migration. Production
 rollback uses its independent retained image/checkpoint.
+
+## Build and environment recipes without reimporting source
+
+Use the explicit `build-` actions when an already-modern managed project needs
+the versioned cleanup correction from [System #21](https://github.com/kihyoun/system/issues/21).
+The ordinary source-upgrade actions still reject edited imported source. This
+separate path accepts existing development, including added or removed source
+files, and changes only the reserved build files, environment helper, managed
+CI entrypoint and their two receipts. It selects `node24-vite8-cleanup-v2`;
+legacy projects still need the separately reviewed source/toolchain upgrade.
+Historical recipe hashes and existing checkpoints remain verifiable.
+
+```sh
+node project-bootstrap/wizard-upgrade/run.js build-plan /state/upgrade-options.json
+# Review scope=build-environment, exact head, managed paths and preservedTreeHash.
+# Acquire the coordinator's CI slot before this final MR commit starts CI.
+node project-bootstrap/wizard-upgrade/run.js build-stage /state/upgrade-options.json PLAN_HASH
+# Review required build/browser jobs; fast-forward the MR without squash/rebase.
+node project-bootstrap/wizard-upgrade/run.js build-adoption-plan /state/upgrade-options.json
+node project-bootstrap/wizard-upgrade/run.js build-adopt /state/upgrade-options.json ADOPTION_HASH
+```
+
+The private checkpoint and migration operation are distinct from a source
+upgrade. The three retained commits are preparation, build and environment.
+Preparation deletes only verified managed recipe files and replaces the build
+marker temporarily; it never writes the source/import marker. Build and
+environment recreate unchanged files so their exact activation-commit proofs
+remain valid. The source import revision, manifest, import commit and source
+marker retain their original identities. Every other repository file is guarded
+by a deterministic fingerprint of bytes, Git mode and last-change commit, checked
+on each staged commit and again before adoption. Unexpected additions, removals,
+content, mode or history changes fail the same operation rather than being
+reimported or overwritten.
+
+The existing ownership, immutable-helper verification, environment mutex,
+configuration/main compare-and-swap, uncertain-write checkpoints, fast-forward
+ancestry and exact required pipeline/artifact checks apply. Review and Beta must
+be fully stopped before planning; their generation floors, tombstones and other
+settings are preserved exactly. Stage keeps the old canonical receipt active.
+Adoption changes only its managed workflow receipts and appends upgrade history;
+configuration bytes outside the receipt remain unchanged. It never promotes the
+candidate or changes the Production image pin. If the config was adopted but the
+checkpoint write was interrupted, a verified repeated adoption repairs that
+checkpoint without rewriting the config. Do not replace `build-stage` with a
+source reimport to bypass a conflicting plan.

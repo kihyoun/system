@@ -144,7 +144,33 @@ class Upgrade {
     files.sort((a, b) => a.path.localeCompare(b.path, 'en'));
     return validate({version: 1, sourceRevision: workflow.sourceRevision, manifestHash: workflow.manifestHash, files});
   }
-  async plan() {
+  operation(receipt, logo, buildOnly = false) {
+    return hash(JSON.stringify(buildOnly ? {version: 1, scope: 'build-environment', registration: receipt.operation,
+      importCommit: receipt.wizardWorkflow.importCommit, helper: this.helperImage,
+      buildRecipeHash: builds.generate(logo, 'node24-vite8-cleanup-v2').recipeHash} :
+      {version: 1, registration: receipt.operation, source: this.snapshot.manifestHash, helper: this.helperImage})).slice(0, 48);
+  }
+  async preservedTree(receipt, ref, managedPaths) {
+    const managed = new Set(managedPaths), files = [];
+    for (const entry of await this.tree(receipt, ref)) {
+      if (entry.type === 'tree' || managed.has(entry.path)) continue;
+      if (!safePath(entry.path)) throw Error('Invalid preserved Wizard path.');
+      if (entry.type === 'commit' && entry.mode === '160000' && sha(entry.id)) {
+        files.push({path: entry.path, mode: entry.mode, commit: entry.id}); continue;
+      }
+      if (entry.type !== 'blob' || !['100644', '100755', '120000'].includes(entry.mode)) throw Error('Unsupported preserved Wizard tree entry.');
+      const row = await this.file(receipt, entry.path, ref);
+      if (!sha(row.last_commit_id)) throw Error('Invalid preserved Wizard file history.');
+      files.push({path: entry.path, mode: entry.mode, sha256: hash(this.content(row)), lastCommit: row.last_commit_id});
+    }
+    return files.sort((a, b) => a.path.localeCompare(b.path, 'en'));
+  }
+  async verifyPreserved(checkpoint, ref) {
+    const actual = await this.preservedTree(checkpoint.receipt, ref, checkpoint.plan.managedPaths);
+    if (hash(JSON.stringify(actual)) !== checkpoint.plan.preservedTreeHash)
+      throw Error('Preserved Wizard source or import history changed.');
+  }
+  async plan(buildOnly = false) {
     const current = readConfiguration(this.config), {receipt, text} = current, workflow = receipt.wizardWorkflow;
     const main = fs.readFileSync(this.mainConfig, 'utf8'); signature(main);
     const project = await this.project(receipt); const head = await this.branch(receipt);
@@ -164,14 +190,16 @@ class Upgrade {
       await this.matching(receipt, file.path, file.content, head, workflow.environments.activationCommit);
     const oldFiles = new Map(original.files.map(file => [file.path, file]));
     const currentTree = new Set((await this.tree(receipt, head)).filter(row => row.type === 'blob').map(row => row.path));
-    for (const file of original.files) {
+    for (const file of buildOnly ? [] : original.files) {
       const row = await this.matching(receipt, file.path, Buffer.from(file.content, 'base64'), head);
       if (!!row.execute_filemode !== (file.mode === '100755')) throw Error('Managed source mode changed: ' + file.path);
     }
-    for (const file of this.snapshot.files) if (!oldFiles.has(file.path) && currentTree.has(file.path)) throw Error('New source path is occupied: ' + file.path);
-    const modern = builds.generate(logo, 'node24-vite8');
-    if (builds.forSource(logo, this.snapshot.sourceRevision).recipeHash !== modern.recipeHash) throw Error('Pinned source does not select the modern profile.');
-    const operation = hash(JSON.stringify({version: 1, registration: receipt.operation, source: this.snapshot.manifestHash, helper: this.helperImage})).slice(0, 48);
+    for (const file of buildOnly ? [] : this.snapshot.files) if (!oldFiles.has(file.path) && currentTree.has(file.path)) throw Error('New source path is occupied: ' + file.path);
+    const modern = buildOnly ? builds.generate(logo, 'node24-vite8-cleanup-v2') : builds.forSource(logo, this.snapshot.sourceRevision);
+    if (!['node24-vite8', 'node24-vite8-cleanup-v2'].includes(modern.profile) ||
+        (buildOnly && !['node24-vite8', 'node24-vite8-cleanup-v2'].includes(oldBuild.profile)))
+      throw Error('The reviewed upgrade requires the modern Wizard profile.');
+    const operation = this.operation(receipt, logo, buildOnly);
     const environment = {...copy(workflow.environments), helperImage: this.helperImage, buildRecipeHash: modern.recipeHash};
     const recipe = this.recipe(logo, environment); environment.recipeHash = recipe.recipeHash;
     const newPaths = new Set(this.snapshot.files.map(file => file.path));
@@ -179,10 +207,19 @@ class Upgrade {
       defaultBranch: receipt.repository.defaultBranch, expectedHead: head, configHash: hash(text),
       mainConfigHash: hash(main), requiresFastForward: true,
       mergeMethod: project.merge_method,
-      sourceRevision: this.snapshot.sourceRevision, manifestHash: this.snapshot.manifestHash,
+      sourceRevision: buildOnly ? workflow.sourceRevision : this.snapshot.sourceRevision, manifestHash: buildOnly ? workflow.manifestHash : this.snapshot.manifestHash,
       buildRecipeHash: modern.recipeHash, environmentRecipeHash: recipe.recipeHash, helperImage: this.helperImage,
       branch: 'system-wizard-upgrade-v1-' + operation.slice(0, 16),
-      updates: this.snapshot.files.map(file => file.path), deletes: original.files.filter(file => !newPaths.has(file.path)).map(file => file.path)};
+      updates: buildOnly ? [...modern.files, ...recipe.files, {path: BUILD}, {path: ENVIRONMENT}, {path: CI}].map(file => file.path) : this.snapshot.files.map(file => file.path),
+      deletes: buildOnly ? [] : original.files.filter(file => !newPaths.has(file.path)).map(file => file.path)};
+    if (buildOnly) {
+      publicPlan.scope = 'build-environment';
+      publicPlan.managedPaths = [...new Set([...oldBuild.files, ...oldEnvironment.files, ...modern.files, ...recipe.files,
+        {path: BUILD}, {path: ENVIRONMENT}, {path: CI}].map(file => file.path))].sort();
+      if (publicPlan.managedPaths.includes(SOURCE) || original.files.some(file => publicPlan.managedPaths.includes(file.path)))
+        throw Error('Managed upgrade paths overlap imported source.');
+      publicPlan.preservedTreeHash = hash(JSON.stringify(await this.preservedTree(receipt, head, publicPlan.managedPaths)));
+    }
     return {...current, original, modern, environment, recipe, publicPlan, planHash: hash(JSON.stringify(publicPlan))};
   }
   checkpointPath(operation) { return path.join(this.directory, operation + '.json'); }
@@ -253,13 +290,13 @@ class Upgrade {
     if (checkpoint.mrIntent) throw Error('Uncertain MR creation requires administrator reconciliation.');
     checkpoint.mrIntent = true; this.save(checkpoint);
     const mr = await this.request('POST', this.prefix(receipt) + 'merge_requests', {source_branch: checkpoint.plan.branch,
-      target_branch: receipt.repository.defaultBranch, title: 'Upgrade managed Wizard source and toolchain in place',
-      description: 'Versioned migration ' + checkpoint.plan.operation + '. Review the pinned public source, required modern build/browser checks and preserved receipt. Merge without squash/rebase; adoption and Production rollout are separate operator steps.',
+      target_branch: receipt.repository.defaultBranch, title: checkpoint.plan.scope === 'build-environment' ? 'Upgrade managed Wizard build and environment recipes' : 'Upgrade managed Wizard source and toolchain in place',
+      description: 'Versioned migration ' + checkpoint.plan.operation + (checkpoint.plan.scope === 'build-environment' ? '. Preserve current source and import history; review only managed recipes and required build/browser checks.' : '. Review the pinned public source, required modern build/browser checks and preserved receipt.') + ' Merge without squash/rebase; adoption and Production rollout are separate operator steps.',
       remove_source_branch: false, squash: false}, 201);
     checkpoint.mr = {iid: mr.iid, webUrl: mr.web_url}; this.save(checkpoint);
   }
-  async stage(confirmedHash) {
-    const value = await this.plan();
+  async stage(confirmedHash, buildOnly = false) {
+    const value = await this.plan(buildOnly);
     if (confirmedHash !== value.planHash) throw Error('Preview and confirm the exact migration plan hash.');
     this.acquire();
     try {
@@ -278,69 +315,76 @@ class Upgrade {
       }
       if (checkpoint.planHash !== value.planHash) throw Error('Existing upgrade checkpoint has a different reviewed plan.');
       await this.ensureBranch(checkpoint);
-      const preparationPaths = [...value.original.files.map(file => file.path),
+      const preparationPaths = [...(buildOnly ? [] : value.original.files.map(file => file.path)),
         ...builds.select(value.text.slice(0, 1184), value.receipt.wizardWorkflow.build.recipeHash).files.map(file => file.path),
-        ...this.recipe(value.text.slice(0, 1184), value.receipt.wizardWorkflow.environments).files.map(file => file.path), BUILD, ENVIRONMENT];
+        ...this.recipe(value.text.slice(0, 1184), value.receipt.wizardWorkflow.environments).files.map(file => file.path), ...(buildOnly ? [] : [BUILD]), ENVIRONMENT];
       const preparationMarker = JSON.stringify({version: 1, operation: value.publicPlan.operation, phase: 'preparation'});
       const preparationActions = [...preparationPaths.map(file_path => ({action: 'delete', file_path})),
-        {action: 'update', file_path: SOURCE, content: preparationMarker}];
+        {action: 'update', file_path: buildOnly ? BUILD : SOURCE, content: preparationMarker}];
       const prepared = await this.exactCommit(checkpoint, 'preparation', value.publicPlan.expectedHead, preparationActions,
-        {path: SOURCE, content: preparationMarker});
+        {path: buildOnly ? BUILD : SOURCE, content: preparationMarker});
+      if (buildOnly) await this.verifyPreserved(checkpoint, prepared);
       const actions = [];
-      for (const file of this.snapshot.files) {
+      for (const file of buildOnly ? [] : this.snapshot.files) {
         actions.push({action: 'create', file_path: file.path, encoding: 'base64', content: file.content});
         if (file.mode === '100755') actions.push({action: 'chmod', file_path: file.path, execute_filemode: true});
       }
       const source = sourceMarker(value.receipt, this.snapshot);
       actions.push({action: 'update', file_path: SOURCE, content: source});
-      const imported = await this.exactCommit(checkpoint, 'source', prepared, actions, {path: SOURCE, content: source});
-      const workflow = {...value.receipt.wizardWorkflow, sourceRevision: this.snapshot.sourceRevision, manifestHash: this.snapshot.manifestHash, importCommit: imported};
+      const imported = buildOnly ? value.receipt.wizardWorkflow.importCommit :
+        await this.exactCommit(checkpoint, 'source', prepared, actions, {path: SOURCE, content: source});
+      const workflow = buildOnly ? value.receipt.wizardWorkflow :
+        {...value.receipt.wizardWorkflow, sourceRevision: this.snapshot.sourceRevision, manifestHash: this.snapshot.manifestHash, importCommit: imported};
       const build = {version: 1, operation: value.publicPlan.operation, recipeHash: value.modern.recipeHash};
       const marker = buildMarker(build, workflow);
       const buildActions = [...value.modern.files, {path: CI, content: value.modern.ci}, {path: BUILD, content: marker}]
-        .map(file => ({action: file.path === CI ? 'update' : 'create', file_path: file.path, content: file.content}));
-      const built = await this.exactCommit(checkpoint, 'build', imported, buildActions, {path: BUILD, content: marker});
+        .map(file => ({action: file.path === CI || (buildOnly && file.path === BUILD) ? 'update' : 'create', file_path: file.path, content: file.content}));
+      const built = await this.exactCommit(checkpoint, 'build', buildOnly ? prepared : imported, buildActions, {path: BUILD, content: marker});
+      if (buildOnly) await this.verifyPreserved(checkpoint, built);
       await this.ensureMr(checkpoint);
       const envMarker = environmentMarker(value.environment, built);
       const envActions = [...value.recipe.files, {path: CI, content: value.recipe.ci}, {path: ENVIRONMENT, content: envMarker}]
         .map(file => ({action: file.path === CI ? 'update' : 'create', file_path: file.path, content: file.content}));
       const installed = await this.exactCommit(checkpoint, 'environment', built, envActions, {path: ENVIRONMENT, content: envMarker});
+      if (buildOnly) await this.verifyPreserved(checkpoint, installed);
       if (await this.branch(value.receipt, value.publicPlan.branch) !== installed) throw Error('Migration branch advanced after its verified environment commit.');
       checkpoint.phase = 'awaiting-reviewed-merge'; this.save(checkpoint);
       return {version: 1, projectId: value.receipt.repository.id, branch: value.publicPlan.branch, mr: checkpoint.mr,
         sourceCommit: imported, buildCommit: built, environmentCommit: installed, phase: checkpoint.phase};
     } finally { this.release(); }
   }
-  async adoptionPlan() {
+  async adoptionPlan(buildOnly = false) {
     const current = readConfiguration(this.config), {receipt, text} = current;
     const main = fs.readFileSync(this.mainConfig, 'utf8'); signature(main);
-    const operation = hash(JSON.stringify({version: 1, registration: receipt.operation, source: this.snapshot.manifestHash, helper: this.helperImage})).slice(0, 48);
+    const operation = this.operation(receipt, text.slice(0, 1184), buildOnly);
     const checkpoint = this.load(operation);
+    if ((checkpoint.plan.scope === 'build-environment') !== buildOnly) throw Error('Migration scope changed.');
     if (!checkpoint.commits.environment) throw Error('Migration has not completed staging.');
     if ((await this.project(receipt)).merge_method !== 'ff') throw Error('Configure the reviewed fast-forward merge method before adoption.');
     const previous = checkpoint.receipt, workflow = previous.wizardWorkflow, logo = text.slice(0, 1184);
-    const modern = builds.generate(logo, 'node24-vite8');
+    const modern = builds.select(logo, checkpoint.plan.buildRecipeHash);
     const environment = {...copy(workflow.environments), helperImage: this.helperImage, buildRecipeHash: modern.recipeHash};
     const recipe = this.recipe(logo, environment); environment.recipeHash = recipe.recipeHash;
-    const importedWorkflow = {...workflow, sourceRevision: this.snapshot.sourceRevision, manifestHash: this.snapshot.manifestHash, importCommit: checkpoint.commits.source};
+    const importedWorkflow = buildOnly ? workflow : {...workflow, sourceRevision: this.snapshot.sourceRevision, manifestHash: this.snapshot.manifestHash, importCommit: checkpoint.commits.source};
     const build = {version: 1, operation, recipeHash: modern.recipeHash, activationCommit: checkpoint.commits.build};
     const head = await this.branch(receipt), prefix = this.prefix(receipt);
     const mr = await this.get(prefix + 'merge_requests/' + checkpoint.mr.iid);
     if (head !== checkpoint.commits.environment || mr.state !== 'merged' || mr.source_project_id !== receipt.repository.id || mr.target_project_id !== receipt.repository.id ||
         mr.target_branch !== receipt.repository.defaultBranch || mr.sha !== checkpoint.commits.environment || mr.squash_commit_sha)
       throw Error('Fast-forward the reviewed migration without squash/rebase before adopting.');
-    for (const name of ['preparation', 'source', 'build', 'environment']) {
+    for (const name of buildOnly ? ['preparation', 'build', 'environment'] : ['preparation', 'source', 'build', 'environment']) {
       const commit = await this.get(prefix + 'repository/commits/' + checkpoint.commits[name]);
-      const expected = name === 'preparation' ? checkpoint.plan.expectedHead : checkpoint.commits[{source: 'preparation', build: 'source', environment: 'build'}[name]];
+      const expected = name === 'preparation' ? checkpoint.plan.expectedHead : checkpoint.commits[{source: 'preparation', build: buildOnly ? 'preparation' : 'source', environment: 'build'}[name]];
       if (JSON.stringify(commit.parent_ids) !== JSON.stringify([expected])) throw Error('Preserve migration commit ancestry.');
     }
-    for (const file of this.snapshot.files) {
+    for (const file of buildOnly ? [] : this.snapshot.files) {
       const row = await this.matching(receipt, file.path, Buffer.from(file.content, 'base64'), head, checkpoint.commits.source);
       if (!!row.execute_filemode !== (file.mode === '100755')) throw Error('Migrated source mode changed.');
     }
     const remaining = new Set((await this.tree(receipt, head)).map(row => row.path));
     if (checkpoint.plan.deletes.some(name => remaining.has(name))) throw Error('Obsolete source remains after merge.');
-    await this.matching(receipt, SOURCE, sourceMarker(receipt, this.snapshot), head, checkpoint.commits.source);
+    if (buildOnly) await this.verifyPreserved(checkpoint, head);
+    else await this.matching(receipt, SOURCE, sourceMarker(receipt, this.snapshot), head, checkpoint.commits.source);
     for (const file of [...modern.files, {path: BUILD, content: buildMarker(build, importedWorkflow)}])
       await this.matching(receipt, file.path, file.content, head, checkpoint.commits.build);
     for (const file of [...recipe.files, {path: CI, content: recipe.ci}, {path: ENVIRONMENT, content: environmentMarker(environment, checkpoint.commits.build)}])
@@ -373,36 +417,40 @@ class Upgrade {
       throw Error('Modern migration evidence is incomplete or disagrees.');
     const adopted = workflow.upgradeHistory?.some(row => row.operation === operation) || receipt.wizardWorkflow.upgradeHistory?.some(row => row.operation === operation);
     if ((!adopted && text !== checkpoint.originalConfiguration) || hash(main) !== checkpoint.plan.mainConfigHash) throw Error('Canonical configuration changed before adoption.');
-    if (adopted && (receipt.wizardWorkflow.sourceRevision !== this.snapshot.sourceRevision || receipt.wizardWorkflow.environments.recipeHash !== recipe.recipeHash))
+    if (adopted && (receipt.wizardWorkflow.sourceRevision !== checkpoint.plan.sourceRevision || receipt.wizardWorkflow.environments.recipeHash !== recipe.recipeHash))
       throw Error('Adopted migration receipt changed.');
     const publicPlan = {version: 1, action: 'adopt', operation, projectId: receipt.repository.id, configHash: hash(text),
       mainConfigHash: hash(main),
-      mainHead: head, sourceRevision: this.snapshot.sourceRevision, pipelineId: pipeline.id,
-      sourceCommit: pipeline.sha, imageRef: built.imageRef, alreadyAdopted: !!adopted};
+      mainHead: head, sourceRevision: checkpoint.plan.sourceRevision, pipelineId: pipeline.id,
+      sourceCommit: pipeline.sha, imageRef: built.imageRef, alreadyAdopted: !!adopted, ...(buildOnly ? {scope: 'build-environment'} : {})};
     return {publicPlan, planHash: hash(JSON.stringify(publicPlan)), checkpoint, current,
       workflow: importedWorkflow, build: {...build, phase: 'candidate-verified', pipeline: {id: pipeline.id, sha: pipeline.sha, status: pipeline.status, webUrl: pipeline.web_url},
         artifact: {imageRef: built.imageRef, sourceCommit: pipeline.sha, pipelineId: pipeline.id}},
       environment: {...environment, activationCommit: checkpoint.commits.environment, phase: 'ready'}};
   }
-  async adopt(confirmedHash) {
-    const value = await this.adoptionPlan();
+  async adopt(confirmedHash, buildOnly = false) {
+    const value = await this.adoptionPlan(buildOnly);
     if (value.planHash !== confirmedHash) throw Error('Preview and confirm the exact adoption plan hash.');
     this.acquire();
     try {
+      const head = await this.branch(value.current.receipt);
       if (fs.readFileSync(this.config, 'utf8') !== value.current.text || hash(fs.readFileSync(this.mainConfig)) !== value.publicPlan.mainConfigHash ||
-          await this.branch(value.current.receipt) !== value.publicPlan.mainHead)
+          head !== value.publicPlan.mainHead)
         throw Error('Canonical configuration or main changed after adoption preview.');
-      if (value.publicPlan.alreadyAdopted) return {phase: 'adopted', unchanged: true};
+      if (value.publicPlan.alreadyAdopted) {
+        value.checkpoint.phase = 'adopted'; value.checkpoint.adoptedConfigHash = hash(value.current.text); this.save(value.checkpoint);
+        return {phase: 'adopted', unchanged: true};
+      }
       const receipt = copy(value.current.receipt), previous = copy(receipt.wizardWorkflow);
       delete previous.upgradeHistory;
       const history = [...(receipt.wizardWorkflow.upgradeHistory || []), {version: 1, operation: value.publicPlan.operation,
-        previous, sourceRevision: this.snapshot.sourceRevision, mrIid: value.checkpoint.mr.iid, pipelineId: value.publicPlan.pipelineId,
+        previous, ...(buildOnly ? {scope: 'build-environment'} : {}), sourceRevision: value.publicPlan.sourceRevision, mrIid: value.checkpoint.mr.iid, pipelineId: value.publicPlan.pipelineId,
         imageRef: value.publicPlan.imageRef}];
       receipt.wizardWorkflow = {...value.workflow, build: value.build, environments: value.environment, upgradeHistory: history};
       const next = value.current.text.split('\n').map(line => line.startsWith(PREFIX) ? PREFIX + Buffer.from(JSON.stringify(receipt)).toString('base64') : line).join('\n');
       signature(next); atomic(this.config, next);
       value.checkpoint.phase = 'adopted'; value.checkpoint.adoptedConfigHash = hash(next); this.save(value.checkpoint);
-      return {phase: 'adopted', projectId: receipt.repository.id, sourceRevision: this.snapshot.sourceRevision, imageRef: value.publicPlan.imageRef};
+      return {phase: 'adopted', projectId: receipt.repository.id, sourceRevision: value.publicPlan.sourceRevision, imageRef: value.publicPlan.imageRef};
     } finally { this.release(); }
   }
 }
@@ -413,9 +461,10 @@ if (require.main === module) (async () => {
   if (Object.keys(options).some(key => !['credentialFile', 'helperImage', 'config', 'mainConfig', 'directory'].includes(key)))
     throw Error('Unknown operator option.');
   const upgrade = new Upgrade(options);
-  if (action === 'plan' || action === 'adoption-plan') {
-    const result = await (action === 'plan' ? upgrade.plan() : upgrade.adoptionPlan());
+  const buildOnly = action.startsWith('build-'), command = buildOnly ? action.slice(6) : action;
+  if (command === 'plan' || command === 'adoption-plan') {
+    const result = await (command === 'plan' ? upgrade.plan(buildOnly) : upgrade.adoptionPlan(buildOnly));
     console.log(JSON.stringify({plan: result.publicPlan, planHash: result.planHash}));
-  } else if (action === 'stage' || action === 'adopt') console.log(JSON.stringify(await upgrade[action](confirmation)));
-  else throw Error('Use plan, stage, adoption-plan or adopt.');
+  } else if (command === 'stage' || command === 'adopt') console.log(JSON.stringify(await upgrade[command](confirmation, buildOnly)));
+  else throw Error('Use plan, stage, adoption-plan or adopt; prefix build- for the source-preserving recipe upgrade.');
 })().catch(() => { console.error('Managed Wizard upgrade failed. Inspect the private checkpoint and reviewed preconditions; uncertain writes are never blindly repeated.'); process.exitCode = 1; });
