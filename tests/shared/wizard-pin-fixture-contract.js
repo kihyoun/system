@@ -22,7 +22,7 @@ function fixture(overrides={}) {
       if(route.endsWith('/artifacts/private-image.txt'))return derived+'\n';
       if(route.endsWith('/artifacts/source-image.txt'))return base+'\n';
       if(route==='/projects/2/registry/repositories')return [{id:5,path:'root/wizard/recovery-wizard',location:'registry.candidate.test:5050/root/wizard/recovery-wizard'}];
-      if(route==='/registry/repositories/5/tags/'+commit)return {name:commit,digest};
+      if(route==='/projects/2/registry/repositories/5/tags/'+commit)return {name:commit,digest};
       throw Error('unexpected-fixture-route');
     },...overrides};
   return {candidate,calls,project};

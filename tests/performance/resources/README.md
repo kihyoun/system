@@ -5,6 +5,13 @@ It observes an already running system. It does not start workloads, containers,
 WSL distributions, pipelines, bootstrap operations or deployments. Python 3.9+
 and, for the Windows wrapper, PowerShell 7+ are required. No packages are installed.
 
+The [native Linux capacity report](native-2026-10-18.md) connects timestamped
+observations to actual CI job queue/execution data, storage reserves and current
+VM comparisons. The separate `benchmark-native.py` workload driver requires an
+explicit coordinator lease and `--execute`; it is not part of passive collection
+or the automatic offline test suite. Its cold/warm procedure and cleanup limits
+are documented in that report.
+
 ## Run
 
 On Windows with Ubuntu already running and Docker accessible there:

@@ -24,6 +24,13 @@ function privateWizardAcceptance(files,exists=filename=>fs.existsSync(path.join(
   if(!helpers.every(filename=>files.includes(filename))||!exists("tests/e2e/recovery.js")||!exists("tests/e2e/wizard-pin-fixture.js"))throw Error("Private Wizard startup requires the complete private-registry recovery contract.");
   return true;
 }
+function acmeAcceptance(files,exists=filename=>fs.existsSync(path.join(root,filename))) {
+  const adapter=['tests/e2e/local-acme.js','tests/e2e/prepare-acme-images.js','tests/e2e/acme-fixture/pebble.minica.pem'];
+  const host=['bootstrapper/certbot-with-volume-lock.sh','bootstrapper/install-volume-certificate.sh','bootstrapper/rebind-renewal.py'];
+  if(!adapter.some(exists))return false;
+  if(!adapter.every(exists)||!host.every(filename=>files.includes(filename)))throw Error('ACME acceptance requires the complete pinned authority and fresh-source host contract.');
+  return true;
+}
 function prepare(){
   if(process.arch!=='x64'||process.platform!=='linux')throw Error('Current pinned candidate images require Linux amd64.');
   const tags=identifiers();
@@ -35,6 +42,8 @@ function prepare(){
   const trackedManifest=JSON.parse(fs.readFileSync(path.join(manifest,'manifest.json'),'utf8'));
   const recoveryAcceptance=trackedManifest.files.includes('system/seed-manifest.js');
   const privateWizardRecovery=privateWizardAcceptance(trackedManifest.files);
+  const acmeRenewalAcceptance=acmeAcceptance(trackedManifest.files);
+  if(acmeRenewalAcceptance&&!recoveryAcceptance)throw Error('ACME acceptance requires marked Seed recovery.');
   if(privateWizardRecovery&&!recoveryAcceptance)throw Error('Private Wizard recovery requires marked Seed recovery.');
   if(recoveryAcceptance&&!fs.existsSync(path.join(__dirname,'recovery.js')))throw Error('Marked Seed requires the complete cold recovery adapter.');
   const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',timeout:600000,...options});
@@ -64,10 +73,12 @@ function prepare(){
     if(!/^sha256:[a-f0-9]{64}$/.test(id))throw Error('Invalid inspected image identity.');
     const filename=path.join(output,role+'.tar');run(['image','save','--output',filename,reference]);images[role]={id,archive:filename};
   }
-  const spec={sourceRevision:process.env.CI_COMMIT_SHA,configurationExporter,recoveryAcceptance,privateWizardRecovery,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>role!=='helper')),
+  const acmeImages=acmeRenewalAcceptance?require('./prepare-acme-images').prepare(output):undefined;
+  if(acmeRenewalAcceptance)require('./local-acme').validate({acmeImages});
+  const spec={sourceRevision:process.env.CI_COMMIT_SHA,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>role!=='helper')),
     supportImages:{helper:images.helper},fullAcceptance:true,readinessMilliseconds:600000};
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});
   console.log('Prepared pinned full-platform candidate images for '+process.env.CI_COMMIT_SHA);
 }
-module.exports={defaults,identifiers,privateWizardAcceptance};
+module.exports={defaults,identifiers,privateWizardAcceptance,acmeAcceptance};
 if(require.main===module){try{prepare();}catch{console.error('Candidate image preparation failed; see public build log.');process.exitCode=1;}}

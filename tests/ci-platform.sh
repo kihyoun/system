@@ -5,10 +5,7 @@ export SYSTEM_DISPOSABLE_CANDIDATE=I_ACCEPT_PRIVILEGED_DISPOSABLE_EXECUTION
 cleanup() {
   failed=0
   # The independent after_script retries only receipts from this job's checkout.
-  for receipt in test-results/e2e/*/results.json; do
-    [ -f "$receipt" ] || continue
-    node tests/e2e/candidate.js cleanup "$receipt" || failed=1
-  done
+  node tests/e2e/candidate.js cleanup-all test-results/e2e || failed=1
   node - <<'JS' || failed=1
 const {execFileSync}=require('child_process');
 const {identifiers}=require('./tests/e2e/prepare-images');

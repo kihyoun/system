@@ -50,14 +50,15 @@ async function node(candidate, action, input, options={}) {
     "let text='';process.stdin.on('data',x=>text+=x);process.stdin.on('end',async()=>{try{const input=JSON.parse(text);const updateConfiguration=("+updateConfiguration.toString()+");await ("+action.toString()+")(input);}catch{process.exitCode=1;}});"],
   {...options,input:JSON.stringify(input)});
 }
-async function syncFetch(candidate) {
-  const login=await candidate.request(candidate.url+'/login',{method:'POST',headers:{Host:'sync.candidate.test','Content-Type':'application/json'},
+async function syncFetch(candidate,connection) {
+  const request=(route,options)=>connection?tlsProbe(candidate,'sync.candidate.test',route,options,connection):candidate.request(candidate.url+route,options);
+  const login=await request('/login',{method:'POST',headers:{Host:'sync.candidate.test','Content-Type':'application/json'},
     body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})});
   if(login.status!==200) throw Error('recovery-sync-login-failed');
   const token=JSON.parse(login.body).accessToken;
   const headers={Host:'sync.candidate.test',Authorization:'Bearer '+token};
-  const main=await candidate.request(candidate.url+'/config/main',{headers});
-  const projects=await candidate.request(candidate.url+'/config/projects',{headers});
+  const main=await request('/config/main',{headers});
+  const projects=await request('/config/projects',{headers});
   if(main.status!==200 || projects.status!==200) throw Error('recovery-fetch-failed');
   const result={main:JSON.parse(main.body),projects:JSON.parse(projects.body)};
   signature(result.main.data);
@@ -80,30 +81,44 @@ async function revoke(candidate,token) {
   try {await candidate.api('/personal_access_tokens/self',token,'DELETE');}
   catch {await candidate.rails("User.find_by_username('root').personal_access_tokens.where(name:'disposable-backup-recovery',revoked:false).find_each(&:revoke!); puts '{}'");}
 }
+async function checkpoint(candidate,name,action){
+  return candidate.stage(name,async()=>{
+    try{return await action();}catch{throw Error(name+'-failed');}
+  });
+}
+async function registryTag(candidate,projectId,repositoryId,tag,token){
+  if(!Number.isInteger(projectId)||projectId<1||!Number.isInteger(repositoryId)||repositoryId<1||!/^[a-f0-9]{40}$/.test(tag))throw Error('registry-tag-identity-invalid');
+  // Tag details are project-scoped; only repository metadata has a global GET.
+  return candidate.api('/projects/'+projectId+'/registry/repositories/'+repositoryId+'/tags/'+tag,token);
+}
+async function recordIdentity(original){
+  const step=(name,action)=>checkpoint(original,'recovery-identity-'+name,action);
+  const auth=await step('credential',()=>rootToken(original));
+  try{
+    const projectId=original.evidence?.projectId;
+    if(!Number.isInteger(projectId))throw Error('successful-original-project-required');
+    const project=await step('project',()=>original.api('/projects/'+projectId,auth.token));
+    const branch=await step('repository-head',()=>original.api('/projects/'+projectId+'/repository/branches/'+encodeURIComponent(project.default_branch),auth.token));
+    const pipeline=await step('pipeline',()=>original.api('/projects/'+projectId+'/pipelines/'+original.evidence.pipelineId,auth.token));
+    const nonce=crypto.randomBytes(24).toString('hex');
+    const issue=await step('issue',()=>original.api('/projects/'+projectId+'/issues',auth.token,'POST',{title:'Backup-only recovery proof',description:nonce}));
+    await step('encrypted-variable',()=>original.api('/projects/'+projectId+'/variables',auth.token,'POST',{key:'RECOVERY_ENCRYPTED_PROOF',value:nonce,masked:true}));
+    const user=await step('user',()=>original.api('/users',auth.token,'POST',{username:'recovery_'+original.id.slice(0,8),name:'Recovery fixture',email:'recovery-'+original.id+'@example.invalid',password:crypto.randomBytes(24).toString('hex'),skip_confirmation:true}));
+    const repositories=await step('registry-repositories',()=>original.api('/projects/'+projectId+'/registry/repositories',auth.token));
+    const repository=repositories.find(item=>item.path.endsWith('/probe'));
+    if(!repository||pipeline.status!=='success')throw Error('original-registry-proof-required');
+    const tag=await step('registry-tag',()=>registryTag(original,projectId,repository.id,pipeline.sha,auth.token));
+    return {rootId:auth.root_id,projectId,path:project.path_with_namespace,branch:project.default_branch,head:branch.commit.id,
+      issueIid:issue.iid,nonce,userId:user.id,userName:user.username,registryId:repository.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
+  }finally{await step('credential-revoked',()=>revoke(original,auth.token));}
+}
 async function capture(original,dependencies={}) {
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'system-recovery-'));
   fs.chmodSync(directory,0o700);
   const inputs={directory,configArchive:path.join(directory,'bootstrapper.zip'),seedArchive:path.join(directory,'seed.tgz'),base:BASE,seed:SEED};
   try {
     await original.stage('recovery-record-service-identity',async()=>{
-      const auth=await rootToken(original);
-      try {
-        const projectId=original.evidence?.projectId;
-        if(!Number.isInteger(projectId))throw Error('successful-original-project-required');
-        const project=await original.api('/projects/'+projectId,auth.token);
-        const branch=await original.api('/projects/'+projectId+'/repository/branches/'+encodeURIComponent(project.default_branch),auth.token);
-        const pipeline=await original.api('/projects/'+projectId+'/pipelines/'+original.evidence.pipelineId,auth.token);
-        const nonce=crypto.randomBytes(24).toString('hex');
-        const issue=await original.api('/projects/'+projectId+'/issues',auth.token,'POST',{title:'Backup-only recovery proof',description:nonce});
-        await original.api('/projects/'+projectId+'/variables',auth.token,'POST',{key:'RECOVERY_ENCRYPTED_PROOF',value:nonce,masked:true});
-        const user=await original.api('/users',auth.token,'POST',{username:'recovery_'+original.id.slice(0,8),name:'Recovery fixture',email:'recovery-'+original.id+'@example.invalid',password:crypto.randomBytes(24).toString('hex'),skip_confirmation:true});
-        const repositories=await original.api('/projects/'+projectId+'/registry/repositories',auth.token);
-        const registry=repositories.find(item=>item.path.endsWith('/probe'));
-        if(!registry || pipeline.status!=='success')throw Error('original-registry-proof-required');
-        const tag=await original.api('/registry/repositories/'+registry.id+'/tags/'+pipeline.sha,auth.token);
-        inputs.expected={rootId:auth.root_id,projectId,path:project.path_with_namespace,branch:project.default_branch,head:branch.commit.id,
-          issueIid:issue.iid,nonce,userId:user.id,userName:user.username,registryId:registry.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
-      } finally {await revoke(original,auth.token);}
+      inputs.expected=await recordIdentity(original);
     });
     if(original.spec.privateWizardRecovery)await original.stage('recovery-publish-uncached-private-wizard',async()=>{
       const publish=dependencies.publishWizard||require('./wizard-pin-fixture').publish;
@@ -126,6 +141,7 @@ async function capture(original,dependencies={}) {
         fs.writeFileSync('/ssl/live/recovery-fixture/fullchain.pem',leaf,{mode:0o644});
         fs.writeFileSync('/ssl/live/recovery-fixture/privkey.pem',key,{mode:0o600});
         const state='/host-letsencrypt';
+        if(!input.realAcme){
         for(const name of ['archive/recovery-fixture','live/recovery-fixture','accounts/fixture','renewal'])fs.mkdirSync(path.join(state,name),{recursive:true,mode:0o700});
         fs.writeFileSync(state+'/archive/recovery-fixture/fullchain1.pem',leaf);
         fs.writeFileSync(state+'/archive/recovery-fixture/privkey1.pem',key,{mode:0o600});
@@ -133,6 +149,7 @@ async function capture(original,dependencies={}) {
         fs.symlinkSync('../../archive/recovery-fixture/privkey1.pem',state+'/live/recovery-fixture/privkey.pem');
         fs.writeFileSync(state+'/accounts/fixture/account.json',JSON.stringify({testOnly:true,identity:input.identity}),{mode:0o600});
         fs.writeFileSync(state+'/renewal/recovery-fixture.conf','[renewalparams]\nauthenticator = webroot\nwebroot_path = /candidate-data/platform/ssl/acme-http01,\n[[webroot_map]]\nwizard.candidate.test = /candidate-data/platform/ssl/acme-http01\n');
+        }
         let config=updateConfiguration(fs.readFileSync('/state/.docker.env','utf8'),input.settings);
         if(input.privateWizard){
           // Deliberately promote this scenario's actual CI-published artifact
@@ -142,10 +159,11 @@ async function capture(original,dependencies={}) {
           config=expression.test(config)?config.replace(expression,()=>assignment):config+'\n'+assignment+'\n';
         }
         fs.writeFileSync('/state/.docker.env',config,{mode:0o600});
-      },{settings,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef});
+      },{settings,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef,realAcme:!!dependencies.acme});
+      if(dependencies.acme)inputs.expected.acme=await dependencies.acme.issue(original);
       inputs.expected.certificateHash=await node(original,function(){process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync('/ssl/live/recovery-fixture/fullchain.pem')).digest('hex'));},{});
-      inputs.expected.accountIdentity=original.id;
-      const fetched=await syncFetch(original);
+      if(!dependencies.acme)inputs.expected.accountIdentity=original.id;
+      const fetched=await syncFetch(original,dependencies.acme?{certificate:require('./local-acme').ISSUANCE_CA}:undefined);
       await node(original,function(input){require('fs').writeFileSync('/tmp/recovery-fetch.json',JSON.stringify(input),{mode:0o600});},fetched);
       await transferToController(original,exporter(original.spec),'/tmp/export-configuration.cjs');
       await original.inner(['exec','system_bootstrapper_1','node','/tmp/export-configuration.cjs','/tmp/recovery-fetch.json','/tmp/bootstrapper.zip']);
@@ -222,8 +240,9 @@ async function tlsProbe(candidate,host,route,options={},connection={}) {
       const request=https.request({hostname:input.host,servername:input.host,port:input.port,path:input.route,
         lookup:(_host,options,done)=>options.all?done(null,[{address:input.gateway,family:4}]):done(null,input.gateway,4),ca:fs.readFileSync(input.certificate),rejectUnauthorized:true,
         method:input.options.method||'GET',headers:input.options.headers||{},timeout:10000},response=>{
+        const serial=response.socket.getPeerCertificate().serialNumber;
         const chunks=[];let size=0;response.on('data',chunk=>{size+=chunk.length;if(size>524288){request.destroy();reject(Error());}else chunks.push(chunk);});
-        response.on('end',()=>resolve({status:response.statusCode,body:Buffer.concat(chunks).toString('utf8')}));
+        response.on('end',()=>resolve({status:response.statusCode,body:Buffer.concat(chunks).toString('utf8'),serial}));
       });
       request.on('error',reject);request.on('timeout',()=>request.destroy(Error()));
       request.end(input.options.body);
@@ -233,26 +252,28 @@ async function tlsProbe(candidate,host,route,options={},connection={}) {
   return JSON.parse(raw);
 }
 async function verifyRestore(candidate,input) {
-  await candidate.stage('recovery-synthetic-tls-and-config',async()=>{
+  const realAcme=!!input.expected.acme;
+  const connection=realAcme?{certificate:require('./local-acme').ISSUANCE_CA}:{};
+  await candidate.stage(realAcme?'recovery-acme-tls-and-config':'recovery-synthetic-tls-and-config',async()=>{
     await candidate.wait(async()=>{
-      const page=await tlsProbe(candidate,'wizard.candidate.test','/');
+      const page=await tlsProbe(candidate,'wizard.candidate.test','/',{},connection);
       return page.status===200&&/<html/i.test(page.body);
     },candidate.spec.readinessMilliseconds||600000);
     const login=await tlsProbe(candidate,'sync.candidate.test','/login',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})});
+      body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})},connection);
     if(login.status!==200)throw Error('restored-sync-credentials-failed');
-    const response=await tlsProbe(candidate,'sync.candidate.test','/config/main',{headers:{Authorization:'Bearer '+JSON.parse(login.body).accessToken}});
+    const response=await tlsProbe(candidate,'sync.candidate.test','/config/main',{headers:{Authorization:'Bearer '+JSON.parse(login.body).accessToken}},connection);
     if(response.status!==200)throw Error('restored-configuration-fetch-failed');
     const config=JSON.parse(response.body).data;signature(config);
     if(!config.includes("export SEED_DIR='"+SEED+"'") || !config.includes('RECOVERY_RUNTIME_PROOF='))throw Error('restored-runtime-configuration-mismatch');
-    const proof=JSON.parse(await node(candidate,function(){
+    const proof=JSON.parse(await node(candidate,function(input){
       const fs=require('fs'),crypto=require('crypto');
       process.stdout.write(JSON.stringify({certificate:crypto.createHash('sha256').update(fs.readFileSync('/ssl/live/recovery-fixture/fullchain.pem')).digest('hex'),
-        account:JSON.parse(fs.readFileSync('/host-letsencrypt/accounts/fixture/account.json','utf8')).identity,
+        account:input.realAcme?undefined:JSON.parse(fs.readFileSync('/host-letsencrypt/accounts/fixture/account.json','utf8')).identity,
         renewal:fs.readFileSync('/host-letsencrypt/renewal/recovery-fixture.conf','utf8'),
         oldLivePresent:fs.existsSync('/candidate-data/platform')}));
-    },{}));
-    if(proof.certificate!==input.expected.certificateHash || proof.account!==input.expected.accountIdentity || proof.oldLivePresent ||
+    },{realAcme}));
+    if(proof.certificate!==input.expected.certificateHash || (!realAcme&&proof.account!==input.expected.accountIdentity) || proof.oldLivePresent ||
       !proof.renewal.includes(BASE+'/ssl/acme-http01') || proof.renewal.includes('/candidate-data/platform'))throw Error('restored-renewal-path-or-identity-mismatch');
   });
   if(input.expected.privateWizard)await verifyPrivateWizard(candidate,input.expected.privateWizard);
@@ -266,7 +287,7 @@ async function verifyRestore(candidate,input) {
       const issue=await candidate.api('/projects/'+expected.projectId+'/issues/'+expected.issueIid,auth.token);
       const variable=await candidate.api('/projects/'+expected.projectId+'/variables/RECOVERY_ENCRYPTED_PROOF',auth.token);
       const user=await candidate.api('/users/'+expected.userId,auth.token);
-      const tag=await candidate.api('/registry/repositories/'+expected.registryId+'/tags/'+expected.imageCommit,auth.token);
+      const tag=await checkpoint(candidate,'recovery-restored-registry-tag',()=>registryTag(candidate,expected.projectId,expected.registryId,expected.imageCommit,auth.token));
       if(auth.root_id!==expected.rootId || project.path_with_namespace!==expected.path || branch.commit.id!==expected.head || issue.description!==expected.nonce ||
         variable.value!==expected.nonce || user.username!==expected.userName || tag.digest!==expected.registryDigest)throw Error('restored-service-identity-mismatch');
     } finally {await revoke(candidate,auth.token);}
@@ -294,15 +315,19 @@ async function verifyRegistryBlob(candidate,input) {
       if(pipeline.status!=='success')throw Error('restored-registry-ci-failed');
       const jobs=await candidate.api('/projects/'+expected.projectId+'/pipelines/'+pipeline.id+'/jobs',auth.token);
       if(jobs.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id)throw Error('restored-registry-job-not-successful');
-      candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:candidate.privateWizardPinVerified===true};
+      candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:!input.expected.acme,acmeRenewalVerified:false,privateWizardPinVerified:candidate.privateWizardPinVerified===true};
     } finally {await revoke(candidate,auth.token);}
   });
 }
 async function run(original,reportDirectory,dependencies={}) {
-  const input=await (dependencies.capture || capture)(original);
-  let second;
+  let input,second,acme,originalRemoved=false;
   try {
-    await original.stage('recovery-original-host-removed',async()=>{if(!original.cleanup())throw Error('original-host-cleanup-failed');});
+    if(original.spec.acmeRenewalAcceptance===true){
+      const LocalAcme=dependencies.LocalAcme||require('./local-acme').LocalAcme;
+      acme=new LocalAcme(original,reportDirectory);await acme.start();
+    }
+    input=await (dependencies.capture || capture)(original,{acme});
+    await original.stage('recovery-original-host-removed',async()=>{if(!original.cleanup())throw Error('original-host-cleanup-failed');originalRemoved=true;});
     const Candidate=dependencies.Candidate || require('../shared/disposable-candidate').Candidate;
     second=new Candidate({...original.spec,recoveryAcceptance:true,restore:input},{checkpoint:instance=>instance.report(reportDirectory(instance))});
     second.deadline=original.deadline;
@@ -316,12 +341,17 @@ async function run(original,reportDirectory,dependencies={}) {
     await (dependencies.verifyRestore || verifyRestore)(second,input);
     await second.platform();
     await (dependencies.verifyRegistryBlob || verifyRegistryBlob)(second,input);
-    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:second.privateWizardPinVerified===true};
+    if(acme)await acme.renew(second,input.expected.acme);
+    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true};
   } finally {
     let clean=true;
     if(second){clean=second.cleanup();second.report(reportDirectory(second));}
-    if(clean)fs.rmSync(input.directory,{recursive:true,force:true});
+    if(acme){
+      if(!originalRemoved&&!original.cleanup())clean=false;
+      if(clean&&!acme.cleanup())clean=false;
+    }
+    if(input&&clean)fs.rmSync(input.directory,{recursive:true,force:true});
     if(!clean)throw Error('restored-host-cleanup-failed');
   }
 }
-module.exports={capture,bootstrapRestore,verifyRestore,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,hashFile,updateConfiguration,privateWizardDescriptor,BASE,SEED};
+module.exports={capture,bootstrapRestore,verifyRestore,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,BASE,SEED};

@@ -145,6 +145,7 @@ test('actual TLS probe validates its CA, SNI and host using Node 24 DNS lookup s
   const connection={certificate:cert,port:server.address().port};
   const response=await recovery.tlsProbe(candidate,'wizard.candidate.test','/',{},connection);
   assert.equal(response.status,200);assert.equal(response.body,'verified synthetic TLS');
+  assert.equal(response.serial,new (require('crypto').X509Certificate)(fs.readFileSync(cert)).serialNumber);
   await assert.rejects(()=>recovery.tlsProbe(candidate,'wrong.candidate.test','/',{},connection),/tls-rejected/);
   await assert.rejects(()=>recovery.tlsProbe(candidate,'wizard.candidate.test','/',{},{...connection,certificate:foreignCert}),/tls-rejected/);
 });
@@ -199,5 +200,93 @@ test('private-image proof requires the restored container identity, marker and z
   for(const fault of ['image','marker','credential']){
     const bad={...candidate,privateWizardPinVerified:false,inner:async args=>args[0]==='inspect'?(fault==='image'?'sha256:'+'f'.repeat(64):expected.imageId):(fault==='marker'?'different-marker':expected.marker),rails:async()=>({active:fault==='credential'?1:0})};
     await assert.rejects(()=>recovery.verifyPrivateWizard(bad,expected),/restoration-or-credential-cleanup-failed/);assert.equal(bad.privateWizardPinVerified,false);
+  }
+});
+test('an independent ACME authority survives the host switch and is removed after both heavy hosts',async t=>{
+  const input=fixture(t),first=original();first.spec.acmeRenewalAcceptance=true;input.expected.acme={account:'oracle'};
+  const deps=dependencies(first,input);
+  deps.LocalAcme=class{
+    constructor(owner){assert.equal(owner,first);}
+    async start(){first.events.push('authority-start');}
+    async renew(second,expected){assert.equal(expected,input.expected.acme);first.events.push('actual-renewal-proof');second.acmeRenewalVerified=true;}
+    cleanup(){first.events.push('authority-cleanup');return true;}
+  };
+  await recovery.run(first,()=>'/unused',deps);
+  assert(first.events.indexOf('authority-start')<first.events.indexOf('backups-captured'));
+  assert(first.events.indexOf('new-host-started')<first.events.indexOf('actual-renewal-proof'));
+  assert(first.events.indexOf('new-host-cleanup')<first.events.indexOf('authority-cleanup'));
+  assert.equal(first.evidence.recovery.acmeRenewalVerified,true);assert.equal(first.evidence.recovery.syntheticTlsVerified,false);
+});
+test('authority startup failure cleans the original owned host before removing tiny fixture dependencies',async t=>{
+  const input=fixture(t),first=original();first.spec.acmeRenewalAcceptance=true;
+  const deps=dependencies(first,input);
+  deps.LocalAcme=class{
+    async start(){throw Error('authority-start-failed');}
+    cleanup(){first.events.push('authority-cleanup');return true;}
+  };
+  await assert.rejects(()=>recovery.run(first,()=>'/unused',deps),/authority-start-failed/);
+  assert(first.events.indexOf('original-cleanup')<first.events.indexOf('authority-cleanup'));
+  assert(!first.events.includes('new-host-created'));
+});
+test('failed restored-host cleanup retains authority dependencies and private archives',async t=>{
+  const input=fixture(t),first=original();first.spec.acmeRenewalAcceptance=true;
+  const deps=dependencies(first,input,{failCleanup:true});
+  deps.LocalAcme=class{async start(){}async renew(){}cleanup(){first.events.push('authority-cleanup');return true;}};
+  await assert.rejects(()=>recovery.run(first,()=>'/unused',deps),/restored-host-cleanup-failed/);
+  assert(!first.events.includes('authority-cleanup'));assert(fs.existsSync(input.configArchive));
+});
+test('Fetch after ACME activation uses authenticated CA-verified HTTPS for all configuration requests',async()=>{
+  const requests=[],logo=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184);
+  const candidate={secrets:{user:'synthetic-user',password:'synthetic-password'},request:async()=>{throw Error('unsafe HTTP request');},inner:async(args,options)=>{
+    if(args[0]==='inspect')return JSON.stringify({bridge:{Gateway:'127.0.0.1'}});
+    const input=JSON.parse(options.input);requests.push(input);assert.equal(input.host,'sync.candidate.test');assert.equal(input.certificate,'/ssl/fixture-ca.pem');
+    if(input.route==='/login')return JSON.stringify({status:200,body:JSON.stringify({accessToken:'synthetic-token'})});
+    assert.equal(input.options.headers.Authorization,'Bearer synthetic-token');
+    return JSON.stringify({status:200,body:JSON.stringify(input.route==='/config/main'?{data:logo}:[{filename:'.wizard.env'}])});
+  }};
+  const result=await recovery.syncFetch(candidate,{certificate:'/ssl/fixture-ca.pem'});
+  assert.equal(result.main.data,logo);assert.deepEqual(requests.map(input=>input.route),['/login','/config/main','/config/projects']);
+});
+function identityFixture(failRoute){
+  const requests=[],stages=[],sha='a'.repeat(40),digest='sha256:'+'b'.repeat(64);
+  const candidate={id:'c'.repeat(24),evidence:{projectId:12,pipelineId:21},rails:async()=>({token:'private-fixture-token',root_id:1}),
+    stage:async(name,action)=>{try{const value=await action();stages.push({name,status:'passed'});return value;}catch(error){stages.push({name,status:'failed',reason:error.message});throw error;}},
+    api:async(route,token,method='GET',body)=>{
+      assert.equal(token,'private-fixture-token');requests.push({route,method});
+      if(route===failRoute)throw Error('private-upstream-body-token-must-not-escape');
+      if(route==='/projects/12')return {default_branch:'main',path_with_namespace:'root/recovery'};
+      if(route==='/projects/12/repository/branches/main')return {commit:{id:sha}};
+      if(route==='/projects/12/pipelines/21')return {status:'success',sha};
+      if(route==='/projects/12/issues'){assert.equal(method,'POST');return {iid:7};}
+      if(route==='/projects/12/variables'){assert.equal(method,'POST');return {};}
+      if(route==='/users'){assert.equal(method,'POST');return {id:9,username:body.username};}
+      if(route==='/projects/12/registry/repositories')return [{id:14,path:'root/recovery/probe'}];
+      if(route==='/projects/12/registry/repositories/14/tags/'+sha)return {digest};
+      if(route==='/personal_access_tokens/self'){assert.equal(method,'DELETE');return null;}
+      throw Error('unexpected API route');
+    }};
+  return {candidate,requests,stages,sha,digest};
+}
+test('identity capture uses the documented project-scoped tag endpoint and journals every data boundary',async()=>{
+  const f=identityFixture();const result=await recovery.recordIdentity(f.candidate);
+  assert.equal(result.registryDigest,f.digest);assert.equal(result.imageCommit,f.sha);assert.equal(result.registryId,14);
+  assert(f.requests.some(item=>item.route==='/projects/12/registry/repositories/14/tags/'+f.sha));
+  assert(!f.requests.some(item=>item.route.startsWith('/registry/repositories/')));
+  assert.deepEqual(f.stages.map(item=>item.name),['credential','project','repository-head','pipeline','issue','encrypted-variable','user','registry-repositories','registry-tag','credential-revoked'].map(name=>'recovery-identity-'+name));
+  assert(f.stages.every(item=>item.status==='passed'));
+});
+test('capture failures identify the precise operation, revoke credentials and suppress upstream private errors',async()=>{
+  for(const [route,label]of [['/projects/12','project'],['/projects/12/issues','issue'],['/projects/12/registry/repositories/14/tags/'+'a'.repeat(40),'registry-tag']]){
+    const f=identityFixture(route);
+    await assert.rejects(()=>recovery.recordIdentity(f.candidate),new RegExp('recovery-identity-'+label+'-failed'));
+    assert(f.requests.some(item=>item.route==='/personal_access_tokens/self'&&item.method==='DELETE'));
+    assert(f.stages.some(item=>item.name==='recovery-identity-'+label&&item.status==='failed'));
+    assert(!JSON.stringify(f.stages).includes('private-'));
+  }
+});
+test('tag-detail lookup refuses malformed project/repository/source identities without an API call',async()=>{
+  const candidate={api:async()=>{throw Error('must not call API');}};
+  for(const [project,repository,tag]of [[0,14,'a'.repeat(40)],[12,-1,'a'.repeat(40)],[12,14,'../other']]){
+    await assert.rejects(()=>recovery.registryTag(candidate,project,repository,tag,'private-token'),/tag-identity-invalid/);
   }
 });

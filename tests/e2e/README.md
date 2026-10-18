@@ -265,3 +265,43 @@ passing candidate execution; its component contracts are not integration proof.
 #43 remains open until the complete private-image scenario and actual renewal
 proof pass. A fresh host must not depend on an old Docker login, and successful
 local-image recovery alone does not verify the private-pin case.
+
+## Local ACME follow-up (inactive until reviewed activation)
+
+`local-acme.js` implements the separately enabled `acmeRenewalAcceptance` phase.
+`prepare-acme-images.js` prepares only the three exact public image pins declared
+in that module; its return value is the required `spec.acmeImages`. The pinned
+Certbot archive has an explicit image ID and SHA-256. The committed public Pebble
+TLS trust certificate has separate provenance/hash documentation in
+`acme-fixture/README.md`; it is never installed in a general trust store.
+
+The authority and DNS server use 192 MiB and 64 MiB on an independently owned
+internal Docker bridge with no published port. They survive the original platform
+daemon's deletion. Each uses the existing ownership journal and guarded cleanup,
+with at most one container/network/volume per owner. A short initializer runs
+without network and overrides image-declared volumes with tmpfs. Every owner
+inherits the original candidate's deadline and cancellation. Forced-kill cleanup
+must remove heavy platform owners before these fixture owners.
+
+The DNS fixture points the test domains at each owned daemon's private bridge
+address. Pebble validates real HTTP-01 requests against NGINX port 80; authorization
+reuse is disabled and validation is never bypassed. A real certificate/account is
+created before configuration Backup and cold Harvest. After the host switch, the
+same account key and certificate are verified, an invalid DNS target must cause
+renewal to fail, then the correct new target must allow actual renewal and produce
+a different certificate serial. Verified HTTPS uses the independently generated
+issuance root fetched over the authenticated fixture control channel.
+
+The actual fresh-source renewal lease and certificate installation/reload scripts
+run in a shell-only GitLab-image host harness with real bind mounts and mount
+utilities. Its sole client adapter transports Certbot through Docker; the real
+Certbot deploy event triggers the unchanged source installation hook. The Docker
+CLI and its musl loader come from the declared fresh controller image. No old
+host executable, package installation, Production path or Production socket is
+used. This does not emulate systemd timer scheduling or public Let's Encrypt.
+
+Offline contracts verify inputs/trust, tiny resource bounds, ownership, cleanup,
+negative-validation gating and real HTTPS trust/SNI. They do not establish a passed
+ACME recovery. `acmeRenewalVerified` can become true only after the actual restored
+account, renewal, deployment and CA-verified HTTPS stages all pass. Image-preparation
+activation and cleanup ordering are reviewed separately before this phase runs.

@@ -323,3 +323,18 @@ This compatibility setting applies only to the affected GitLab publishing paths.
 Registry digest, pull/run and artifact verification remain required; these jobs
 do not claim attestation verification. Source-only candidate image builds retain
 their existing metadata behavior.
+
+`node tests/e2e/candidate.js cleanup-all test-results/e2e` validates each
+receipt and removes full platform daemons first, tiny container-only clients
+second, and fixture owners holding shared networks last. Failed or malformed
+receipts preserve dependent authority resources for a targeted retry. The same
+ordering runs on normal exit and in the independent GitLab after_script; it
+never discovers or deletes resources by a global Docker prune.
+
+The separate ACME activation requires every pinned-authority adapter/trust file
+and all three declared host scripts; partial contracts fail before platform
+creation. Image preparation verifies explicit public pins and the Certbot
+archive/trust hashes, then sets `acmeRenewalAcceptance: true`. This scenario
+uses a local authority and HTTP-01 validation, with no public ACME requests or
+outer published port. It proves issuance/account recovery and renewal/deploy
+scripts; it does not claim systemd timer installation on a fresh VM.

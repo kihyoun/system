@@ -70,7 +70,7 @@ async function publish(candidate) {
     const repositories=await candidate.api('/projects/'+project.id+'/registry/repositories',token);
     const repository=repositories.find(item=>item.path===project.path_with_namespace+'/recovery-wizard');
     if(!repository)throw Error('private-wizard-registry-required');
-    const tag=await candidate.api('/registry/repositories/'+repository.id+'/tags/'+commit,token);
+    const tag=await candidate.api('/projects/'+project.id+'/registry/repositories/'+repository.id+'/tags/'+commit,token);
     if(tag.name!==commit)throw Error('private-wizard-registry-tag-mismatch');
     const imageRef=immutableImage(repository,tag);
     return {projectId:project.id,projectPath:project.path_with_namespace,imageRef,imageDigest:tag.digest,imageId,sourceImageId,marker:candidate.id,markerPath,
