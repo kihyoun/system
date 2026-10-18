@@ -96,8 +96,8 @@ validators and routing also refer to `sync/src/index.ts`, `wizard/src/api/Main.t
   to bypass a conflicting migration plan.
 - Remove only exactly owned resources after checking their identity. Do not use
   global Docker pruning, reset Production or overwrite unrelated Git history.
-- The main public UI uses the bare domain; the Cube's fixed www URL stays exact.
-  Preserve deliberate upstream publishing roles when changing CI.
+- Use the operator's configured public Wizard hostname. Keep the Cube's fixed
+  www URL exact. Preserve deliberate upstream publishing roles when changing CI.
 - Coordinate resource-heavy disposable tests using the committed harness limits
   and explicit leases. Check the selected host's capacity; limits are ceilings,
   not reservations or disk quotas. Do not assume a maintainer-owned test host exists.
