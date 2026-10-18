@@ -22,7 +22,9 @@ COPY gitlab-runner/*.js gitlab-runner/*.sh gitlab-runner/*.rb gitlab-runner/dock
 COPY nginx/*.sh ./nginx/
 COPY nginx/.templates ./nginx/.templates
 COPY nginx-proxy/*.sh ./nginx-proxy/
-COPY system/.docker.env.example system/start-intermediate.sh ./system/
+COPY start.sh ./
+COPY sync/start.sh ./sync/
+COPY system/.docker.env.example system/.seed.env system/start-intermediate.sh ./system/
 COPY bootstrapper/persistence.sh ./bootstrapper/
 COPY system/persistence-init.js system/push.sh ./system/
 COPY tests ./tests

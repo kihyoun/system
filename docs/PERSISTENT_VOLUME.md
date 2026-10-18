@@ -169,13 +169,14 @@ Verified on the current host on 2026-10-18:
   returned the expected 401. Both certificate lineages passed Certbot's simulated
   renewal using the new persistent webroot. Certbot state itself is retained at
   `host/letsencrypt`.
-- 38 isolated component checks passed, plus the runner lifecycle regression in
-  the actual Alpine controller runtime. The retained runtime archive is about
+- 39 isolated component checks passed, plus the runner lifecycle regression in
+  the actual Alpine controller runtime. Fresh/reset startup also retains the
+  selected volume seed and exports bare host selector assignments. The retained runtime archive is about
   185 MiB; checksums, pinned public images and private operational evidence live
   under `recovery` on the volume.
 
-Deployed code tree: `4555202b291c31ff6b83781a8655c1df46bfbbb9`
-(GitHub revision `469e8b83a54de975a1bba15b4dc6fc3534ecbedc`). The documentation
+Deployed code tree: `67f7aa8fef15fda54f757602f28b4db5f33f7b56`
+(GitHub revision `6cc4527bbd13ffa587c33c03d1c3d9192f2c64f2`). The documentation
 update after acceptance does not change that deployed code.
 
 This validates migration and controller recreation on the current VM. A complete
