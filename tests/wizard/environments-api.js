@@ -12,7 +12,8 @@ const listen = express.application.listen;
 let server;
 express.application.listen = function (_, callback) {server = listen.call(this, 0, '127.0.0.1', callback); return server;};
 const child = require('child_process');
-child.execSync = child.execFile = child.spawn = () => {throw Error('Environment API fixture forbids shell calls');};
+let forbiddenTransports = 0;
+child.execSync = child.execFile = child.spawn = () => {forbiddenTransports++; throw Error('Environment API fixture forbids shell calls');};
 process.env.SYNC_USER = 'fixture'; process.env.SYNC_PASS = 'fixture-password';
 process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE = 'sha256:' + 'f'.repeat(64);
 const bootstrap = require(path.join(source, 'sync/dist/ProjectBootstrap'));
@@ -52,6 +53,48 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 3));
   const headers = {Authorization: 'Bearer ' + (await login.json()).accessToken, 'Content-Type': 'application/json'};
   const response = await request('/projects/wizard/environments', {headers}); assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
   const preview = await response.json(); assert(preview.capabilities.canActivate);
+  // A separate CI helper owns only a filesystem lock, not this process's
+  // in-memory projectBusy set. Ordinary mutations must still be excluded.
+  assert.equal(bootstrap.projectBusy(), false);
+  const helperLock = file + '.environments.lock';
+  const untouchedProject = fs.readFileSync(file, 'utf8');
+  const mainFile = path.join(root, 'system/.docker.env');
+  const untouchedMain = fs.readFileSync(mainFile, 'utf8');
+  const ownerData = 'fixture-only-private-owner-not-json';
+  fs.mkdirSync(helperLock); fs.writeFileSync(path.join(helperLock, 'owner'), ownerData);
+  try {
+    const mutations = [
+      ['/config/project', 'POST', {projectKey: 'fixtureproject', data: Helper.textLogo}],
+      ['/config/projects', 'DELETE'], ['/config/main', 'DELETE'],
+      ['/command/restart', 'PATCH'], ['/command/seed', 'PATCH'], ['/command/harvest', 'PATCH'],
+      ['/command/system/patch', 'PATCH'], ['/command/runners/register', 'PATCH'],
+      ['/projects', 'POST', {}], ['/projects/wizard/source', 'POST', {}],
+      ['/projects/wizard/build', 'POST', {}], ['/projects/wizard/environments', 'POST', {}]
+    ];
+    for (const [route, method, body] of mutations) {
+      const blocked = await request(route, {method, headers, ...(body ? {body: JSON.stringify(body)} : {})});
+      assert.equal(blocked.status, 409, route + ' ignored the separate-process helper lock');
+      assert(!(await blocked.text()).includes(ownerData), 'Mutex owner data was exposed');
+      assert.equal(forbiddenTransports, 0, route + ' reached a forbidden transport');
+      assert.equal(calls, 0, route + ' started a Rails mutation');
+    }
+    for (const [route, field, filename] of [['/config/main', '.docker.env', '.docker.env'], ['/config/zip', 'bootstrapper.zip', 'bootstrapper.zip']]) {
+      const multipart = new FormData();
+      multipart.append(field, new Blob(['synthetic fixture payload']), filename);
+      const blocked = await request(route, {method: 'POST', headers: {Authorization: headers.Authorization}, body: multipart});
+      assert.equal(blocked.status, 409, route + ' allowed configuration upload during helper operation');
+      assert.equal(forbiddenTransports, 0);
+    }
+    assert.equal((await request('/projects', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'})).status, 401);
+    assert.equal((await request('/command/restart', {headers})).status, 404, 'GET must not invoke the restart exit fallback');
+    assert.equal((await request('/config/main', {headers})).status, 200);
+    assert.equal((await request('/config/projects', {headers})).status, 200);
+    assert.equal(fs.readFileSync(file, 'utf8'), untouchedProject);
+    assert.equal(fs.readFileSync(mainFile, 'utf8'), untouchedMain);
+    assert.equal(fs.readFileSync(path.join(helperLock, 'owner'), 'utf8'), ownerData);
+    assert.equal(forbiddenTransports, 0); assert.equal(calls, 0);
+  } finally { fs.unlinkSync(path.join(helperLock, 'owner')); fs.rmdirSync(helperLock); }
+
   const idle = await request('/projects/wizard/environments/status', {headers}); assert.equal(idle.status, 200); assert.equal((await idle.json()).state, 'not-activated'); assert.equal(calls, 0);
   const settings = preview.settings; settings.review.enabled = true;
   settings.beta = {enabled: false, host: '', domainMode: 2, ssl: '', sslKey: ''};
@@ -72,6 +115,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 3));
   bootstrap.rails = async value => {calls++; assert.equal(value.action, 'wizard-environments-status'); return {environments: {...value.environments, phase: 'recipe-installed'}, message: 'Read-only status'};};
   const status = await request('/projects/wizard/environments/status', {headers}); assert.equal(status.status, 202); assert.equal((await poll((await status.json()).id)).environments.phase, 'ready'); assert.equal(applied, 0);
   const historical = await request('/projects/wizard/build/status', {headers}); const history = await historical.json(); assert.equal(history.state, 'historical'); assert.match(history.build.message, /historical/); assert.equal(calls, 2);
-  log('Wizard environments API: authentication, read-only preview, explicit confirmation, own-operation deduplication, mutation exclusion and safe status passed.');
+  assert.equal(forbiddenTransports, 0);
+  log('Wizard environments API: authentication, separate-process mutex exclusion, read-only Fetch, explicit confirmation, own-operation deduplication and safe status passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;}).finally(() => {console.log = log; server.close(); process.chdir(source); fs.rmSync(root, {recursive: true, force: true});});
 

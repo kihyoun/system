@@ -54,9 +54,13 @@ const status = {
   defaultWizardProject: {state: 'not-started', message: ''}
 };
 
+// The CI helper runs in another process; its canonical filesystem mutex
+// must also protect ordinary Push, deletion and system-control mutations.
+const environmentHelperBusy = () => fs.existsSync(path.resolve('../system/.projects.env/.wizard.env.environments.lock'));
+
 // Keep the configuration stable while the asynchronous setup saves its token.
 app.use(['/config', '/command'], (req, res, next) => {
-  if ((status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy()) && req.method !== 'GET') {
+  if ((status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy()) && req.method !== 'GET') {
     res.status(409).json({message: "Runner or project setup is in progress. Wait before changing the configuration."});
     return;
   }
@@ -182,7 +186,7 @@ app.get('/projects/wizard/source', authenticateJWT, (req, res) => {
   catch (error) { res.status(409).json({message: error.message}); }
 });
 app.post('/projects/wizard/source', authenticateJWT, (req, res) => {
-  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || environmentHelperBusy()) {
     res.status(409).json({message: 'Wait for system setup to finish.'}); return;
   }
   try { res.status(202).json(initializeWizardSource(req.body)); }
@@ -194,7 +198,7 @@ app.get('/projects/wizard/build', authenticateJWT, (req, res) => {
   catch (error) { res.status(409).json({message: error.message}); }
 });
 app.post('/projects/wizard/build', authenticateJWT, (req, res) => {
-  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || environmentHelperBusy()) {
     res.status(409).json({message: 'Wait for system setup to finish.'}); return;
   }
   // The module deduplicates its own running job and rejects other project locks.
@@ -217,7 +221,7 @@ app.get('/projects/wizard/environments', authenticateJWT, (req, res) => {
   catch (error) { res.status(409).json({message: error.message}); }
 });
 app.post('/projects/wizard/environments', authenticateJWT, (req, res) => {
-  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress) {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || environmentHelperBusy()) {
     res.status(409).json({message: 'Wait for system setup to finish.'}); return;
   }
   try { res.status(202).json(configureWizardEnvironments(req.body)); }
@@ -248,7 +252,7 @@ app.get('/projects/availability', authenticateJWT, (req, res) => {
   catch (error) { res.status(503).json({message: error.message}); }
 });
 app.post('/projects', authenticateJWT, (req, res) => {
-  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy()) {
+  if (status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy()) {
     res.status(409).json({message: 'Wait for runner or project setup to finish.'}); return;
   }
   try { validateProject(req.body); }
@@ -407,7 +411,7 @@ app.patch( "/command/restart", authenticateJWT, async ( req, res, next ) => {
     }
 });
 
-app.use( "/command/restart", authenticateJWT, stopExecution);
+app.patch( "/command/restart", authenticateJWT, stopExecution);
 
 app.patch( "/command/harvest", authenticateJWT, async ( req, res ) => {
     try {
