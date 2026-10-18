@@ -280,7 +280,12 @@ internal Docker bridge with no published port. They survive the original platfor
 daemon's deletion. Each uses the existing ownership journal and guarded cleanup,
 with at most one container/network/volume per owner. A short initializer runs
 without network and overrides image-declared volumes with tmpfs. Every owner
-inherits the original candidate's deadline and cancellation. Forced-kill cleanup
+inherits the original candidate's absolute deadline and cancellation. The expanded
+`acmeRenewalAcceptance: true` scenario has one shared 1,500-second lifecycle
+budget, including both platform hosts and these fixture owners. Ordinary
+candidates retain their 1,200-second budget; no individual stage resets it.
+The existing 28-minute script and 30-minute CI-job limits retain preparation
+and cleanup reserve. Forced-kill cleanup
 must remove heavy platform owners before these fixture owners.
 
 The DNS fixture points the test domains at each owned daemon's private bridge
@@ -305,3 +310,8 @@ negative-validation gating and real HTTPS trust/SNI. They do not establish a pas
 ACME recovery. `acmeRenewalVerified` can become true only after the actual restored
 account, renewal, deployment and CA-verified HTTPS stages all pass. Image-preparation
 activation and cleanup ordering are reviewed separately before this phase runs.
+
+Configuration comparisons decode literal shell assignments without executing
+them. Quoted and unquoted exports are compared by exact values; substrings,
+duplicate assignments, shell expansion and shell commands cannot satisfy an
+assertion. Only explicit source-owned failure codes survive cleanup retries.

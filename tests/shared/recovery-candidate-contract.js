@@ -290,3 +290,103 @@ test('tag-detail lookup refuses malformed project/repository/source identities w
     await assert.rejects(()=>recovery.registryTag(candidate,project,repository,tag,'private-token'),/tag-identity-invalid/);
   }
 });
+
+function restoredConfigurationFixture(changes={}) {
+  const {Candidate}=require('./disposable-candidate');
+  let time=0;
+  const stages=[],requests=[];
+  const config=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184)+
+    "export SEED_DIR='"+recovery.SEED+"'\nexport RECOVERY_RUNTIME_PROOF=\"literal=one=two \\$HOME\"\n";
+  const input={expected:{certificateHash:'a'.repeat(64),accountIdentity:'test-account'}};
+  const candidate={spec:{readinessMilliseconds:5000},secrets:{user:'restored-user',password:'restored-password'},
+    results:stages,now:()=>time,deadline:10000,sleep:async value=>{time+=value;},checkpoint:()=>{},
+    stage:Candidate.prototype.stage,wait:Candidate.prototype.wait};
+  const dependencies={tlsProbe:async(_candidate,host,route,options)=>{
+    requests.push({host,route,options});
+    if(route==='/')return {status:200,body:'<html>Wizard ready</html>'};
+    if(route==='/login'){
+      assert.deepEqual(JSON.parse(options.body),{username:candidate.secrets.user,password:candidate.secrets.password});
+      return {status:200,body:JSON.stringify({accessToken:'private-fixture-token'})};
+    }
+    assert.equal(options.headers.Authorization,'Bearer private-fixture-token');
+    return {status:200,body:JSON.stringify({data:changes.config??config})};
+  },node:async()=>JSON.stringify({certificate:input.expected.certificateHash,account:input.expected.accountIdentity,
+    renewal:'webroot_path = '+recovery.BASE+'/ssl/acme-http01,\n',oldLivePresent:false,...changes.proof})};
+  return {candidate,input,dependencies,requests,stages,config};
+}
+test('restored Wizard availability may precede Sync; authenticated readiness retries only startup failures',async()=>{
+  const f=restoredConfigurationFixture(),probe=f.dependencies.tlsProbe;
+  let login=0,fetch=0;
+  f.dependencies.tlsProbe=async(...args)=>{
+    if(args[2]==='/login'){
+      login++;
+      if(login===1)throw Error('private-upstream-transport-details');
+      if(login===2)return {status:502,body:'private-proxy-response'};
+      if(login===3)return {status:503,body:'private-proxy-response'};
+    }
+    if(args[2]==='/config/main'&&++fetch===1)return {status:504,body:'private-proxy-response'};
+    return probe(...args);
+  };
+  await recovery.verifyConfiguration(f.candidate,f.input,f.dependencies);
+  assert.equal(login,4);assert.equal(fetch,2);
+  assert.deepEqual(f.stages.map(stage=>stage.name),['wizard-tls','sync-login','configuration-fetch','config-signature','seed-directory','runtime-extension','certificate-state','renewal-path'].map(name=>'recovery-restored-'+name));
+  assert(f.stages.every(stage=>stage.status==='passed'));
+  assert(!JSON.stringify(f.stages).includes('private-'));
+});
+test('reachable Sync rejects wrong credentials immediately instead of hiding them behind readiness retries',async()=>{
+  for(const status of [400,401,403,404,500]){
+    const f=restoredConfigurationFixture(),probe=f.dependencies.tlsProbe;let login=0;
+    f.dependencies.tlsProbe=(...args)=>args[2]==='/login'?(login++,Promise.resolve({status,body:'private-response-with-secrets'})):probe(...args);
+    await assert.rejects(()=>recovery.verifyConfiguration(f.candidate,f.input,f.dependencies),/recovery-restored-sync-login-failed/);
+    assert.equal(login,1);assert.equal(f.stages.at(-1).reason,'recovery-restored-sync-login-failed');
+    assert(!JSON.stringify(f.stages).includes('private-'));
+  }
+});
+test('restored configuration failures have distinct safe checkpoints without leaking upstream data',async()=>{
+  for(const [changes,checkpoint]of [
+    [{config:'not-a-signed-configuration'},'config-signature'],
+    [{config:restoredConfigurationFixture().config.replace(recovery.SEED,'/wrong-seed')},'seed-directory'],
+    [{config:restoredConfigurationFixture().config.replace('RECOVERY_RUNTIME_PROOF','WRONG_RUNTIME_PROOF')},'runtime-extension'],
+    [{config:restoredConfigurationFixture().config.replace('literal=one=two','wrong=one=two')},'runtime-extension'],
+    [{proof:{certificate:'b'.repeat(64)}},'certificate-state'],
+    [{proof:{renewal:'private-old-path /candidate-data/platform'}},'renewal-path']
+  ]){
+    const f=restoredConfigurationFixture(changes);
+    await assert.rejects(()=>recovery.verifyConfiguration(f.candidate,f.input,f.dependencies),new RegExp('recovery-restored-'+checkpoint+'-failed'));
+    assert.equal(f.stages.at(-1).name,'recovery-restored-'+checkpoint);
+    assert(!JSON.stringify(f.stages).includes('private-old-path'));
+  }
+});
+test('restored TLS readiness retains explicit global budget and stage timeout reasons',async()=>{
+  for(const reason of ['canceled-or-overall-timeout','readiness-timeout']){
+    const f=restoredConfigurationFixture();f.candidate.wait=async()=>{throw Error(reason);};
+    await assert.rejects(()=>recovery.verifyConfiguration(f.candidate,f.input,f.dependencies),{message:reason});
+    assert.equal(f.stages.at(-1).reason,reason);assert.equal(f.stages.at(-1).name,'recovery-restored-wizard-tls');
+  }
+});
+
+test('restored path and runtime proofs compare shell values rather than the export quoting style',async()=>{
+  const initial=restoredConfigurationFixture();
+  const config=initial.config.replace("SEED_DIR='"+recovery.SEED+"'",'SEED_DIR="'+recovery.SEED+'"');
+  const f=restoredConfigurationFixture({config});
+  await recovery.verifyConfiguration(f.candidate,f.input,f.dependencies);
+  assert(f.stages.every(stage=>stage.status==='passed'));
+});
+test('persistent Sync startup failure remains bounded by readiness and shared cancellation',async()=>{
+  const f=restoredConfigurationFixture(),probe=f.dependencies.tlsProbe;let count=0;
+  f.dependencies.tlsProbe=(...args)=>args[2]==='/login'?(count++,Promise.resolve({status:502})):probe(...args);
+  await assert.rejects(()=>recovery.verifyConfiguration(f.candidate,f.input,f.dependencies),{message:'readiness-timeout'});
+  assert.equal(count,5);assert.equal(f.stages.at(-1).name,'recovery-restored-sync-login');
+  const canceled=restoredConfigurationFixture();canceled.candidate.canceled=true;
+  await assert.rejects(()=>recovery.verifyConfiguration(canceled.candidate,canceled.input,canceled.dependencies),{message:'canceled-or-overall-timeout'});
+  assert.equal(canceled.requests.length,0);
+});
+test('restored configuration Fetch rejects missing or invalid application data at its own checkpoint',async()=>{
+  for(const response of [{status:404,body:'private-missing-config-response'},{status:200,body:'private-malformed-json'},{status:200,body:JSON.stringify({data:null})}]){
+    const f=restoredConfigurationFixture(),probe=f.dependencies.tlsProbe;let fetch=0;
+    f.dependencies.tlsProbe=(...args)=>args[2]==='/config/main'?(fetch++,Promise.resolve(response)):probe(...args);
+    await assert.rejects(()=>recovery.verifyConfiguration(f.candidate,f.input,f.dependencies),{message:'recovery-restored-configuration-fetch-failed'});
+    assert.equal(fetch,1);assert.equal(f.stages.at(-1).name,'recovery-restored-configuration-fetch');
+    assert(!JSON.stringify(f.stages).includes('private-'));
+  }
+});

@@ -3,7 +3,7 @@ const assert=require('assert');
 const fs=require('fs');
 const path=require('path');
 const os=require('os');
-const {Candidate,configuration,signature,recover,LABEL}=require('./disposable-candidate');
+const {Candidate,configuration,signature,configurationValues,recover,LABEL}=require('./disposable-candidate');
 // Git's committed LF bytes are the signed contract; Windows checkout conversion
 // must not lead this fixture to rewrite or relax the Cube validator.
 let example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
@@ -19,6 +19,17 @@ assert(config.includes('https://www.system-bootstrapper.com'));
 assert.throws(()=>configuration(example.replace('https://www.system-bootstrapper.com','http://www.system-bootstrapper.com'),{}));
 assert.throws(()=>new Candidate({...spec,daemonImage:'docker:latest'}));
 assert.throws(()=>new Candidate({...spec,images:{}}));
+for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},1200000],[{acmeRenewalAcceptance:true},1500000]]) {
+  const bounded=new Candidate({...spec,...options},{now:()=>123});
+  assert.equal(bounded.deadline,123+budget);
+}
+for(const quote of ['',"'",'"'])assert.deepEqual(configurationValues(`export SYNC_USER=${quote}fixture${quote}\nSYNC_PASS=${quote}password${quote}`,['SYNC_USER','SYNC_PASS']),{SYNC_USER:'fixture',SYNC_PASS:'password'});
+const literalConfig="VALUE='literal=one=two $HOME'\nOTHER=\"escaped\\$HOME \\\"quote\\\" \\`tick\\`\"\nMULTILINE='first\nSYNC_USER=fake\nlast'\nSYNC_USER=actual\n";
+const parsed=configurationValues(literalConfig,['VALUE','OTHER','MULTILINE','SYNC_USER']);
+assert.equal(parsed.VALUE,'literal=one=two $HOME');assert.equal(parsed.SYNC_USER,'actual');
+const native=require('child_process').execFileSync('bash',['-s'],{input:literalConfig+"printf '%s\\0' \"$VALUE\" \"$OTHER\" \"$MULTILINE\" \"$SYNC_USER\"\n",encoding:'utf8',timeout:2000}).split('\0').slice(0,-1);
+assert.deepEqual(Object.values(parsed),native);
+for(const text of ['VALUE=$(touch /should-not-run)','VALUE=$HOME','VALUE=$[1+2]','VALUE="$[1+2]"','VALUE=$','VALUE=`id`','VALUE="unterminated','VALUE=first\nVALUE=second','OTHER=missing'])assert.throws(()=>configurationValues(text,['VALUE']));
 
 function fixture() {
   const commands=[]; const records=new Map(); let instance; let clock=0; let failRemoval=false; let offline=false;
@@ -46,6 +57,23 @@ function fixture() {
   return {instance,commands,records,failRemoval:()=>{failRemoval=true;},offline:()=>{offline=true;}};
 }
 (async()=>{
+  for(const quoted of [false,true]) {
+    const serialized=fixture();const previous=serialized.instance.request;
+    serialized.instance.request=async(url,options)=>{
+      if(url.endsWith('/config/main')) {
+        let text=configuration(example,serialized.instance.secrets);
+        if(quoted)for(const [key,value]of [['SYNC_USER',serialized.instance.secrets.user],['SYNC_PASS',serialized.instance.secrets.password]])text=text.replace(key+'='+value,key+'="'+value+'"');
+        return {status:200,body:JSON.stringify({data:text})};
+      }
+      return previous(url,options);
+    };
+    await serialized.instance.smoke();
+  }
+  const wrong=fixture(),originalRequest=wrong.instance.request;
+  wrong.instance.request=async(url,options)=>url.endsWith('/config/main')?
+    {status:200,body:JSON.stringify({data:configuration(example,wrong.instance.secrets).replace('SYNC_PASS='+wrong.instance.secrets.password,'SYNC_PASS='+wrong.instance.secrets.password+'suffix')})}:
+    originalRequest(url,options);
+  await assert.rejects(wrong.instance.smoke(),/configuration-round-trip-mismatch/);
   const streams=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-stream-'));
   const previousPath=process.env.PATH;
   try {
@@ -163,6 +191,15 @@ function fixture() {
   const recovered=recover({runId:test.instance.id,resources:test.instance.resources,results:[{name:'authenticated-fetch',status:'failed',private:'must-not-copy'}]},()=>{throw new Error('offline');});
   assert.equal(recovered.cleanup(),false);
   assert.deepEqual(recovered.results[0],{name:'authenticated-fetch',status:'failed'});
+  const errors=fixture();
+  await assert.rejects(errors.instance.stage('recovery-acme-tls-and-config',async()=>{throw Error('restored-runtime-configuration-mismatch');}));
+  await assert.rejects(errors.instance.stage('authenticated-fetch',async()=>{throw Error('secret-fixture-token');}));
+  const sanitized=recover({runId:errors.instance.id,resources:[],results:errors.instance.results});
+  assert.deepEqual(sanitized.results.map(item=>item.reason),['restored-runtime-configuration-mismatch','stage-error']);
+  const twice=recover({runId:errors.instance.id,resources:[],results:sanitized.results});
+  assert.deepEqual(twice.results,sanitized.results); // Independent after_script retries retain diagnostic identity.
+  assert(!JSON.stringify(twice.results).includes('secret-fixture-token'));
+  assert.equal(recover({runId:errors.instance.id,resources:[],results:[{name:'authenticated-fetch',status:'failed',reason:'secret-fixture-token'}]}).results[0].reason,'stage-error');
   const fullReceipt={runId:test.instance.id,resources:test.instance.resources,startedAt:'2026-10-18T00:00:00Z',
     images:{candidate:'sha256:'+hash},daemonImage:spec.daemonImage,fullAcceptance:true,
     results:[{name:'registry-build-push-pull-run',status:'passed',milliseconds:123,private:'never retain'}],

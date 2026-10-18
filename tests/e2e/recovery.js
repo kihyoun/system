@@ -5,7 +5,7 @@ const fs=require('fs');
 const path=require('path');
 const os=require('os');
 const crypto=require('crypto');
-const {signature}=require('../shared/disposable-candidate');
+const {signature,configurationValues}=require('../shared/disposable-candidate');
 const BASE='/recovered-data/platform';
 const SEED='/recovered-data/seed';
 const LEAF='/ssl/live/recovery-fixture/fullchain.pem';
@@ -83,7 +83,10 @@ async function revoke(candidate,token) {
 }
 async function checkpoint(candidate,name,action){
   return candidate.stage(name,async()=>{
-    try{return await action();}catch{throw Error(name+'-failed');}
+    try{return await action();}catch(error){
+      if(['canceled-or-overall-timeout','readiness-timeout'].includes(error?.message))throw error;
+      throw Error(name+'-failed');
+    }
   });
 }
 async function registryTag(candidate,projectId,repositoryId,tag,token){
@@ -251,31 +254,61 @@ async function tlsProbe(candidate,host,route,options={},connection={}) {
   },{host,gateway,route,options,certificate:connection.certificate||LEAF,port:connection.port||443},{timeout:20000});
   return JSON.parse(raw);
 }
-async function verifyRestore(candidate,input) {
+// Wizard is started before the Sync listener. Retry only proxy/transport
+// startup failures; a reachable application's rejected credentials remain fatal.
+async function readyResponse(candidate,request) {
+  let response;
+  await candidate.wait(async()=>{
+    try {response=await request();}catch{return false;}
+    return ![502,503,504].includes(response.status);
+  },candidate.spec.readinessMilliseconds||600000);
+  return response;
+}
+async function verifyConfiguration(candidate,input,dependencies={}) {
+  const probe=dependencies.tlsProbe||tlsProbe;
+  const execute=dependencies.node||node;
   const realAcme=!!input.expected.acme;
   const connection=realAcme?{certificate:require('./local-acme').ISSUANCE_CA}:{};
-  await candidate.stage(realAcme?'recovery-acme-tls-and-config':'recovery-synthetic-tls-and-config',async()=>{
-    await candidate.wait(async()=>{
-      const page=await tlsProbe(candidate,'wizard.candidate.test','/',{},connection);
-      return page.status===200&&/<html/i.test(page.body);
-    },candidate.spec.readinessMilliseconds||600000);
-    const login=await tlsProbe(candidate,'sync.candidate.test','/login',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})},connection);
-    if(login.status!==200)throw Error('restored-sync-credentials-failed');
-    const response=await tlsProbe(candidate,'sync.candidate.test','/config/main',{headers:{Authorization:'Bearer '+JSON.parse(login.body).accessToken}},connection);
-    if(response.status!==200)throw Error('restored-configuration-fetch-failed');
-    const config=JSON.parse(response.body).data;signature(config);
-    if(!config.includes("export SEED_DIR='"+SEED+"'") || !config.includes('RECOVERY_RUNTIME_PROOF='))throw Error('restored-runtime-configuration-mismatch');
-    const proof=JSON.parse(await node(candidate,function(input){
+  const step=(name,action)=>checkpoint(candidate,'recovery-restored-'+name,action);
+  await step('wizard-tls',()=>candidate.wait(async()=>{
+    const page=await probe(candidate,'wizard.candidate.test','/',{},connection);
+    return page.status===200&&/<html/i.test(page.body);
+  },candidate.spec.readinessMilliseconds||600000));
+  const token=await step('sync-login',async()=>{
+    const login=await readyResponse(candidate,()=>probe(candidate,'sync.candidate.test','/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})},connection));
+    if(login.status!==200)throw Error();
+    const token=JSON.parse(login.body).accessToken;
+    if(typeof token!=='string'||!token)throw Error();
+    return token;
+  });
+  const config=await step('configuration-fetch',async()=>{
+    const response=await readyResponse(candidate,()=>probe(candidate,'sync.candidate.test','/config/main',{headers:{Authorization:'Bearer '+token}},connection));
+    if(response.status!==200)throw Error();
+    const config=JSON.parse(response.body).data;
+    if(typeof config!=='string')throw Error();
+    return config;
+  });
+  await step('config-signature',()=>signature(config));
+  await step('seed-directory',()=>{if(configurationValues(config,['SEED_DIR']).SEED_DIR!==SEED)throw Error();});
+  await step('runtime-extension',()=>{if(configurationValues(config,['RECOVERY_RUNTIME_PROOF']).RECOVERY_RUNTIME_PROOF!=='literal=one=two $HOME')throw Error();});
+  const proof=await step('certificate-state',async()=>{
+    const proof=JSON.parse(await execute(candidate,function(input){
       const fs=require('fs'),crypto=require('crypto');
       process.stdout.write(JSON.stringify({certificate:crypto.createHash('sha256').update(fs.readFileSync('/ssl/live/recovery-fixture/fullchain.pem')).digest('hex'),
         account:input.realAcme?undefined:JSON.parse(fs.readFileSync('/host-letsencrypt/accounts/fixture/account.json','utf8')).identity,
         renewal:fs.readFileSync('/host-letsencrypt/renewal/recovery-fixture.conf','utf8'),
         oldLivePresent:fs.existsSync('/candidate-data/platform')}));
     },{realAcme}));
-    if(proof.certificate!==input.expected.certificateHash || (!realAcme&&proof.account!==input.expected.accountIdentity) || proof.oldLivePresent ||
-      !proof.renewal.includes(BASE+'/ssl/acme-http01') || proof.renewal.includes('/candidate-data/platform'))throw Error('restored-renewal-path-or-identity-mismatch');
+    if(proof.certificate!==input.expected.certificateHash||(!realAcme&&proof.account!==input.expected.accountIdentity)||proof.oldLivePresent)throw Error();
+    return proof;
   });
+  await step('renewal-path',()=>{
+    if(typeof proof.renewal!=='string'||!proof.renewal.includes(BASE+'/ssl/acme-http01')||proof.renewal.includes('/candidate-data/platform'))throw Error();
+  });
+}
+async function verifyRestore(candidate,input) {
+  await candidate.stage(input.expected.acme?'recovery-acme-tls-and-config':'recovery-synthetic-tls-and-config',()=>verifyConfiguration(candidate,input));
   if(input.expected.privateWizard)await verifyPrivateWizard(candidate,input.expected.privateWizard);
   await candidate.stage('recovery-gitlab-data-identity',async()=>{
     await candidate.wait(async()=>{await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness']);return true;},candidate.spec.readinessMilliseconds||600000);
@@ -354,4 +387,4 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!clean)throw Error('restored-host-cleanup-failed');
   }
 }
-module.exports={capture,bootstrapRestore,verifyRestore,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,BASE,SEED};
+module.exports={capture,bootstrapRestore,verifyRestore,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,BASE,SEED};

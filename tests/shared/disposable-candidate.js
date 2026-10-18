@@ -4,6 +4,8 @@ const path = require('path');
 const crypto = require('crypto');
 const {spawnSync} = require('child_process');
 const jobDiagnostics = require('./job-diagnostics');
+const stageDiagnostics = require('./stage-diagnostics');
+const {configurationValues} = require('./literal-configuration');
 
 const LABEL = 'com.system-bootstrapper.test-run';
 const SIGNATURE = 'bd4a8426355824593a5e21ad759830c1';
@@ -103,7 +105,8 @@ class Candidate {
     this.sleep=options.sleep || (ms=>new Promise(resolve=>setTimeout(resolve,ms)));
     this.now=options.now || Date.now;
     this.id=crypto.randomBytes(12).toString('hex'); this.name='system-candidate-'+this.id;
-    this.resources=[]; this.canceled=false; this.startedAt=this.now(); this.deadline=this.startedAt+1200000;
+    this.resources=[]; this.canceled=false; this.startedAt=this.now();
+    this.deadline=this.startedAt+(spec.acmeRenewalAcceptance===true?1500000:1200000);
     this.checkpoint=options.checkpoint || (()=>{});
     this.secrets={user:'test'+crypto.randomBytes(8).toString('hex'),
       password:crypto.randomBytes(24).toString('hex'),root:crypto.randomBytes(24).toString('hex')};
@@ -120,7 +123,7 @@ class Candidate {
   async stage(name, action) {
     const start=this.now();
     try { const value=await action(); this.results.push({name,status:'passed',milliseconds:this.now()-start}); this.checkpoint(this); return value; }
-    catch(error) { this.results.push({name,status:'failed',milliseconds:this.now()-start,reason:/^[a-z][a-z0-9-]{0,80}$/.test(error.message)?error.message:'stage-error'}); this.checkpoint(this); throw error; }
+    catch(error) { this.results.push({name,status:'failed',milliseconds:this.now()-start,reason:stageDiagnostics.failureReason(error.message)}); this.checkpoint(this); throw error; }
   }
   async wait(check, milliseconds) {
     const until=this.now()+milliseconds;
@@ -213,7 +216,8 @@ class Candidate {
       const config=JSON.parse(response.body).data;
       if(typeof config!=='string') throw new Error('missing-configuration');
       signature(config);
-      if(!config.includes('SYNC_USER='+this.secrets.user) || !config.includes('SYNC_PASS='+this.secrets.password)) throw new Error('configuration-round-trip-mismatch');
+      const values=configurationValues(config,['SYNC_USER','SYNC_PASS']);
+      if(values.SYNC_USER!==this.secrets.user || values.SYNC_PASS!==this.secrets.password) throw new Error('configuration-round-trip-mismatch');
     });
   }
   async rails(script) {
@@ -444,7 +448,8 @@ function recover(report,exec=docker) {
   const results=(Array.isArray(report.results)?report.results:[]).filter(item=>
     /^[a-z][a-z0-9-]{0,80}$/.test(item.name||'') && ['passed','failed'].includes(item.status))
     .map(item=>({name:item.name,status:item.status,
-      ...(Number.isFinite(item.milliseconds)&&item.milliseconds>=0?{milliseconds:item.milliseconds}:{})}));
+      ...(Number.isFinite(item.milliseconds)&&item.milliseconds>=0?{milliseconds:item.milliseconds}:{}),
+      ...(item.status==='failed'&&item.reason!==undefined?{reason:stageDiagnostics.failureReason(item.reason)}:{})}));
   const images=Object.fromEntries(Object.entries(report.images||{}).filter(([role,id])=>
     ['candidate','wizard','gitlab','runner','nginx'].includes(role)&&/^sha256:[a-f0-9]{64}$/.test(id)).map(([role,id])=>[role,{id}]));
   const evidence={};
@@ -467,4 +472,4 @@ function recover(report,exec=docker) {
     spec:{images,sourceRevision:/^[a-f0-9]{40}$/.test(report.sourceRevision||'')?report.sourceRevision:undefined,daemonImage:/^[a-z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(report.daemonImage||'')?report.daemonImage:undefined,fullAcceptance:report.fullAcceptance===true}});
   return instance;
 }
-module.exports={Candidate,configuration,signature,recover,atomicReplace,LABEL};
+module.exports={Candidate,configuration,signature,configurationValues,recover,atomicReplace,LABEL};
