@@ -33,9 +33,14 @@ technical documentation remain appropriate.
 
 - Write repository documentation in English. Conversation may be German.
 - Use the task tracker and source of truth selected by the maintainer. The
-  upstream tracker is https://github.com/kihyoun/system/issues, including Wizard
-  requirements. A deployment may choose its own GitLab workflow; do not assume
-  the maintainer's tracker is part of the product architecture.
+  maintainer-selected GitLab-primary workflow uses the central tracker at
+  https://gitlab.system-bootstrapper.com/system-bootstrapper/system/-/issues,
+  including Wizard requirements, and GitLab merge requests in each source
+  project. Confirm activation from the operator's external cutover record;
+  these instructions do not establish that the cutover has passed acceptance.
+  After activation, create new tasks there; GitHub is the public code mirror
+  and historical tracker, not a parallel issue/merge destination. A deployment
+  may choose its own workflow; the maintainer's tracker is not product architecture.
 - Reuse existing issues and implement their acceptance criteria. Do not create
   new issues or planning files for routine cleanup when the user says not to.
 - When authorized to coordinate delivery, delegate independent work, review the

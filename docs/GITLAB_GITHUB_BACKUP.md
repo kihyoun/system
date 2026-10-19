@@ -22,6 +22,13 @@ protected default-branch pipeline then forwards that exact merged commit to the
 mapped GitHub branch. GitHub is a public code mirror, not a second merge target.
 Contributors and agents use the same issue, branch, review and merge workflow.
 
+GitHub availability is not a prerequisite for source checks, merge-request work
+or private delivery. If the enabled mirror job fails, its pipeline remains
+visibly failed and the job is retryable. Required source-check evidence and
+delivery evidence remain independently usable; do not hide the mirror failure
+with `allow_failure` or require that job to succeed before continuing internal
+work. Configure merge permissions and required source checks accordingly.
+
 A successful mirror job does not promote Production. In particular, Wizard
 Production remains a separate deliberate action using verified pipeline, source
 and immutable image evidence. Moving development does not extend the Wizard's
@@ -58,9 +65,16 @@ source branch would publish those commits too, even if the resulting files
 look identical. Retain the existing project, refs, receipts, managed recipes
 and deployment generation floors when establishing the clean source project.
 
-The source-to-delivery handoff is explicit and reviewed. Record the accepted
-`sourceCommit`, current delivery base and resulting `deliveryCommit` in external
-tracking or private operator records. Transfer only the reviewed application
+The source-to-delivery handoff is explicit and reviewed. For the accepted merged
+`sourceCommit`, verify that the required `build:source` and `test:browser` jobs
+succeeded for that exact SHA. Record those job identities, the source SHA,
+current delivery base and resulting `deliveryCommit` in external tracking or
+private operator records. Overall pipeline success is not the source gate:
+an optional GitHub mirror outage can leave the pipeline failed while those
+required jobs succeeded. No GitHub read or mirror-job success is required for
+the private delivery build, its tests or the reviewed handoff.
+
+Transfer only the reviewed application
 changes from that source commit, inspect any differing destination files, and
 use the destination's normal branch/MR process or guarded managed operation.
 Never replace its managed CI, ownership markers or history by reimporting the
@@ -79,18 +93,22 @@ git config submodule.wizard.url '<operator-selected GitLab Wizard clone URL>'
 git submodule update --init wizard
 ```
 
-Use an authenticated clone URL without embedded credentials. Configure the same
-mapping before the CI runner fetches submodules; an override made later in a job
-cannot repair an earlier checkout failure. `git submodule sync` replaces a local
-override with `.gitmodules`, so reapply the private mapping if syncing is needed.
+Use an authenticated clone URL without embedded credentials. `git submodule
+sync` replaces a local override with `.gitmodules`, so reapply the private
+mapping if syncing is needed. In System CI, `prepare:wizard-source` disables
+automatic runner submodule checkout with `GIT_SUBMODULE_STRATEGY: none`.
+`gitlab/prepare-wizard-source.js` then initializes and verifies the exact gitlink
+using the configured private selector before source packaging. An override
+applied only after this preparation step would be too late.
 Verify that the selected Wizard repository contains the exact System gitlink.
 The development and test path must not need a successful GitHub read to proceed.
 
 ## Helper contract
 
 `gitlab/github-backup.sh` runs in a checkout with an `origin` pointing to the
-intended primary GitLab project. The production runtime requires supported Node
-24, Git and a POSIX shell with `mkdir` and `rmdir`. Keep the companion
+intended primary GitLab project. The CI integration provides its pinned Node 24
+runtime, Git, OpenSSH client/agent and a POSIX shell with `mkdir` and `rmdir`.
+Keep the companion
 `github-backup-transport.js` beside the shell helper. Configuration comes from
 the protected CI job:
 
@@ -149,9 +167,11 @@ The helper suppresses transport output, disables shell tracing and local Git
 hooks, and logs only fixed outcome messages. Transport output is discarded,
 terminal/credential-manager prompts are disabled and SSH uses BatchMode with
 strict host-key checking. The job must pre-provision verified `known_hosts`;
-unknown keys fail rather than prompt or bypass verification. It does not read a private-key
-variable, print a remote URL or install credentials. The existing job's SSH
-setup must use protected/masked credentials and verified host keys; do not enable
+unknown keys fail rather than prompt or bypass verification. The core helper
+does not read a private-key variable, print a remote URL or install credentials.
+The CI wrapper reads the selected private key and starts an owned temporary
+SSH agent. That setup must use protected/masked credentials and verified host
+keys; do not enable
 CI debug tracing or echo secrets in surrounding commands. Retain the existing
 protected `GITHUB_SSH_PRIVATE_KEY` identity unless separately authorized.
 
@@ -185,15 +205,21 @@ host keys in `GITHUB_SSH_KNOWN_HOSTS` after independent verification, never a
 runtime key scan. System CI can use `WIZARD_PRIMARY_REPOSITORY_URL` to fetch its
 exact gitlink from the operator-selected Wizard project on the same HTTPS
 origin as `CI_SERVER_URL`, using the job token. Authorize the System project to
-read that Wizard project through GitLab's job-token permissions. The public
+read that Wizard project through GitLab's job-token permissions. The URL is a
+nonsecret selector and must also be available to ordinary MR pipelines; making
+only this variable protected would leave those pipelines on the public fallback.
+The job token remains process-local and redirects are refused. The public
 `.gitmodules` mapping remains available for fresh public recursive checkouts.
 
 The upstream Wizard also has `deploy:system`, which updates the System gitlink
 and uses a legacy hardcoded GitLab host. Do not reactivate it blindly. The
-reviewed order is Wizard merge/checks, Wizard backup, deliberate System gitlink
-update through its normal review process, System merge/checks, then System
-backup. Ensure the referenced Wizard commit is present in its backup before
-claiming the System backup can restore the submodule. No automatic System merge
+internal order is Wizard merge/checks and exact commit availability in the
+GitLab source project, then a deliberate System gitlink update and System checks
+through the normal review process. Public mirroring has a separate restoration
+ordering: ensure the referenced Wizard commit is present on its GitHub mirror
+before claiming the System mirror supports a fresh public recursive checkout.
+A lagging public mirror does not block internal gitlink work or private delivery.
+No automatic System merge
 or Production deployment is introduced. Production remains a deliberate
 operator-confirmed [promotion action](../project-bootstrap/wizard-production/README.md).
 
@@ -268,13 +294,15 @@ Use a harmless change and private verification records for each source project:
    an isolated mapping with a dedicated test credential, confirm visible
    failure, restore access and retry. Never break a shared production key or
    manufacture divergent history on the public branch for this test.
-5. For System, first prove its referenced Wizard commit is mirrored, then check
-   both fresh public recursive checkout and GitLab-primary checkout with its
-   internal submodule mapping. Confirm the latter's required work can run while
-   GitHub is unavailable; an enabled mirror job may fail visibly until retry.
+5. For System, verify GitLab-primary checkout with its internal submodule mapping.
+   Confirm its required work and private Wizard delivery can run while GitHub is
+   unavailable, using exact successful required-job evidence rather than overall
+   pipeline success; the enabled mirror job remains visibly failed until retry.
+   After the referenced Wizard commit is mirrored, verify fresh public recursive
+   checkout separately before reporting the public System mirror restore-ready.
 6. Capture a completed Harvest and matching configuration export using the
    existing recovery contract. In a disposable restoration, verify the fixture
-   user, repository head, issue text/state, MR discussion/merge metadata and an
+   user, repository head, issue description marker, draft MR/discussion metadata and an
    encrypted CI setting, then execute a runner job. Keep restored mirror writes
    disabled until the recovered state and mappings have been reviewed.
 
@@ -283,7 +311,9 @@ a discussion and reply, in addition to its user, repository/issue identity,
 encrypted CI variable and registry data. It checks the exact source commit,
 MR identity, title, description, state, author and creation time, plus both
 notes' identities, text, authors, timestamps and resolution state after restore.
-The MR stays open and the fixture leaves the default branch unchanged. Offline
+The issue check compares its description marker, not its title or state. The MR
+stays open with null merge-commit/time fields, so this is not proof of restoring
+an already merged MR. The fixture leaves the default branch unchanged. Offline
 contract success alone does not establish a passed real cold restore, live
 cutover or a successful Production rollout; run the
 [disposable recovery scenario](../tests/e2e/README.md) on sufficient capacity.
