@@ -1,10 +1,31 @@
-# Configure GitLab as primary and GitHub as an optional backup
+# Use GitLab as primary with an optional GitHub code mirror
 
 The guarded backup helper forwards a protected GitLab default-branch commit
 to an explicitly mapped GitHub branch. It is opt-in: adding the helper to a
 checkout does not change remotes, activate synchronization or migrate project
 metadata. Select a primary repository and integrate the helper into its chosen
 CI configuration before enabling it.
+
+## Development and tracking roles
+
+Select the GitLab projects for System and Wizard and a central issue tracker.
+An operator may keep their issues together in the System project while reviewing
+Wizard changes in the Wizard project. Record the selected identities in agent
+instructions and external project tracking; the product does not require one
+maintainer's GitLab host or issue history.
+
+After activation, create work in that GitLab tracker, branch from the intended
+GitLab default branch, and open the merge request in the affected source project.
+Reference cross-project issues with their project-qualified GitLab reference.
+Run the project's required checks, review the final diff and merge there. The
+protected default-branch pipeline then forwards that exact merged commit to the
+mapped GitHub branch. GitHub is a public code mirror, not a second merge target.
+Contributors and agents use the same issue, branch, review and merge workflow.
+
+A successful mirror job does not promote Production. In particular, Wizard
+Production remains a separate deliberate action using verified pipeline, source
+and immutable image evidence. Moving development does not extend the Wizard's
+existing rollout mechanism into automatic deployment of the whole platform.
 
 ## Resolve history before enabling anything
 
@@ -26,6 +47,45 @@ and destination pair. Do not force-push, synthesize an automatic merge or
 quietly switch the backup target. The helper requires an existing destination
 branch with compatible ancestry.
 
+### Source projects and managed delivery projects
+
+If the managed Wizard repository has independent private history, a clean
+source-primary project can preserve the public source ancestry while the
+existing managed repository continues to build and deliver the application.
+These are distinct roles, even when both projects live in the same GitLab.
+Keep managed delivery history private: merging its ancestors into a public
+source branch would publish those commits too, even if the resulting files
+look identical. Retain the existing project, refs, receipts, managed recipes
+and deployment generation floors when establishing the clean source project.
+
+The source-to-delivery handoff is explicit and reviewed. Record the accepted
+`sourceCommit`, current delivery base and resulting `deliveryCommit` in external
+tracking or private operator records. Transfer only the reviewed application
+changes from that source commit, inspect any differing destination files, and
+use the destination's normal branch/MR process or guarded managed operation.
+Never replace its managed CI, ownership markers or history by reimporting the
+whole source tree to bypass a conflict. Verify the transferred files against
+the selected source revision and run the delivery build and browser tests.
+Production proof identifies the actual delivery commit and image digest;
+the handoff mapping links it to the reviewed source commit. This procedure
+does not imply an automatic source-to-delivery synchronizer or automatic
+System deployment.
+
+Keep the upstream public submodule URL portable. Inside a GitLab-primary System
+checkout, explicitly select the matching private Wizard source before updating:
+
+```sh
+git config submodule.wizard.url '<operator-selected GitLab Wizard clone URL>'
+git submodule update --init wizard
+```
+
+Use an authenticated clone URL without embedded credentials. Configure the same
+mapping before the CI runner fetches submodules; an override made later in a job
+cannot repair an earlier checkout failure. `git submodule sync` replaces a local
+override with `.gitmodules`, so reapply the private mapping if syncing is needed.
+Verify that the selected Wizard repository contains the exact System gitlink.
+The development and test path must not need a successful GitHub read to proceed.
+
 ## Helper contract
 
 `gitlab/github-backup.sh` runs in a checkout with an `origin` pointing to the
@@ -41,6 +101,7 @@ the protected CI job:
 | `GITHUB_BACKUP_REMOTE` | Approved GitHub SSH repository, without credentials |
 | `GITHUB_BACKUP_BRANCH` | Approved existing backup branch |
 | `GITHUB_BACKUP_TIMEOUT_SECONDS` | Optional per-transport deadline, integer 1–300; default 30 |
+| `GITHUB_SSH_KNOWN_HOSTS` | Protected file variable containing independently verified GitHub SSH host keys |
 
 GitLab supplies `GITLAB_CI`, `CI_PIPELINE_SOURCE`, `CI_PROJECT_PATH`,
 `CI_DEFAULT_BRANCH`, `CI_COMMIT_BRANCH`, `CI_COMMIT_REF_PROTECTED` and
@@ -96,19 +157,36 @@ protected `GITHUB_SSH_PRIVATE_KEY` identity unless separately authorized.
 
 ## Integrate with the selected CI configuration
 
-System and Wizard already contain `deploy:github` jobs. Adapt those jobs to call
-this common helper rather than adding another mirror. Their old assumptions
-(`master`, mutable `node:alpine`, remote rewriting and runtime key scanning)
-need review against the chosen branch mapping and supported runtime. The
-helper is not wired into these upstream jobs automatically.
+System's `deploy:github` job uses this helper after its required checks. It is
+explicitly opt-in and uses the selected default branch, supported pinned Node
+runtime, verified `GITHUB_SSH_KNOWN_HOSTS` file and existing protected SSH identity.
+Configure all mapped values before enabling it. The job is serialized by
+`github-backup-$CI_PROJECT_ID`; its failure remains a failed pipeline result.
 
 The managed Wizard selects `.system-bootstrapper/ci.yml` for build/test and any
 installed optional environment jobs. Its preserved upstream `.gitlab-ci.yml`
-is not active. Make the helper available at an explicitly pinned version in
-that managed context before wiring a backup job; do not enable the entire upstream pipeline
-to obtain just one job. A backup job belongs after the required successful
-default-branch checks, with an explicit protected enablement gate and serialized
-resource group. Its failure must remain visible rather than `allow_failure`.
+is not active. When using separate source and delivery projects, select the
+Wizard's committed `.gitlab/primary.yml` as the clean source project's CI
+configuration path. Keep the private delivery project's managed CI path and
+recipe unchanged. The source pipeline runs `build:source` (locked install,
+lint, unit tests, TypeScript, production build and configuration-export bundle),
+then `test:browser` against that exact build artifact using Playwright Chromium
+and a loopback preview. It needs no host Docker access or deployment. Only the
+eligible protected default-branch pipeline reaches `deploy:github` afterward.
+Do not enable the preserved upstream pipeline merely to obtain its legacy
+publishing jobs. A source mirror job belongs after the source project's
+required checks, with the same protected enablement gate, serialized resource
+group and visible failure behavior. Delivery build/test remains a separate
+gate before controlled Production promotion.
+
+Use the existing protected `GITHUB_SSH_PRIVATE_KEY` identity; a file variable is
+preferred, while existing masked multiline values remain supported. Supply SSH
+host keys in `GITHUB_SSH_KNOWN_HOSTS` after independent verification, never a
+runtime key scan. System CI can use `WIZARD_PRIMARY_REPOSITORY_URL` to fetch its
+exact gitlink from the operator-selected Wizard project on the same HTTPS
+origin as `CI_SERVER_URL`, using the job token. Authorize the System project to
+read that Wizard project through GitLab's job-token permissions. The public
+`.gitmodules` mapping remains available for fresh public recursive checkouts.
 
 The upstream Wizard also has `deploy:system`, which updates the System gitlink
 and uses a legacy hardcoded GitLab host. Do not reactivate it blindly. The
@@ -131,8 +209,8 @@ operator-confirmed [promotion action](../project-bootstrap/wizard-production/REA
    byte-identical commit cannot be given a new skip marker without changing its
    identity. Audit the Wizard-to-System job separately to prevent a return loop.
 4. Deliberately update remotes, agent guidance and issue/MR handling to the new
-   primary. Preserve old issue references and redirects; Git pushes do not move
-   issue metadata. No issue migration is part of this helper.
+   primary. Transfer active work using the procedure below; Git pushes do not
+   move issue metadata. Issue migration is separate from this helper.
 5. Review and enable only the intended protected backup jobs, using authorized
    credentials and verified known-host material. Run the offline regressions
    before an explicitly controlled integration check.
@@ -140,6 +218,75 @@ operator-confirmed [promotion action](../project-bootstrap/wizard-production/REA
    resulting SHA on GitHub, test a visible failure/retry, and verify that no return push or
    unintended deployment occurred. Keep the former workflow recoverable until
    a disposable restore rehearsal passes.
+
+## Transfer active work without losing its origin
+
+Inventory active issues and pull requests before changing the tracker. Include
+the original repository identity, item type/number, URL, title, description,
+state, labels, ownership, timestamps, relevant discussion and acceptance
+criteria. Keep that inventory, old-to-new identifiers and cutover verification
+in external tracking or private operator records, not source documentation.
+Never include tokens, private logs or deployment credentials in an issue export.
+
+For each active issue, search the destination for its exact original URL before
+creating a replacement. Put that URL and original identity in the new item's
+description, preserve its requirements, and attribute copied comments to their
+original author and timestamp rather than presenting them as new statements by
+the importer. Validate the resulting text and links. Record the destination URL
+back on the old item before closing it as moved. Retry by the recorded mapping
+and source identity, so an interrupted transfer does not create duplicates.
+
+Closed historical discussions may remain readable in the old tracker. Record
+that choice explicitly; a Git source mirror does not migrate that history.
+Retain an operator export if those records must remain accessible without the
+old service. Already merged commits and historical commit messages need no
+rewriting to replace old issue references. New discussions use the selected
+GitLab tracker. Disable new issue creation and competing merge paths on the
+mirror when supported, and publish the new contribution destination externally.
+
+An open pull request requires its branch, target and review state to be checked
+separately before recreating a GitLab merge request. Original reviews are
+historical context, not fresh approval of a changed diff. Do not import a branch
+by overwriting managed files or rewriting the destination's existing history.
+
+## Verify the cutover on operator-owned infrastructure
+
+Use a harmless change and private verification records for each source project:
+
+1. Create a GitLab issue with a unique marker. Make a branch and merge request
+   referring to it; for Wizard, verify the cross-project central issue link.
+   Check that agents can read the issue and submit/review the merge request.
+2. Prove an MR pipeline cannot publish the code mirror and a required-check
+   failure cannot pass the merge/delivery gate. Review and merge the corrected
+   diff through the protected branch's intended permissions.
+3. Record the resulting full GitLab commit SHA. Confirm the eligible default-
+   branch pipeline succeeds and GitHub contains that exact commit, without
+   synthetic merge commits, reverse pushes or Production changes. Compare the
+   final branch tip when no newer merges are queued; older queued jobs must
+   not rewind a destination that already contains their commit.
+4. Re-run the mirror job to prove idempotence. Exercise denied write access in
+   an isolated mapping with a dedicated test credential, confirm visible
+   failure, restore access and retry. Never break a shared production key or
+   manufacture divergent history on the public branch for this test.
+5. For System, first prove its referenced Wizard commit is mirrored, then check
+   both fresh public recursive checkout and GitLab-primary checkout with its
+   internal submodule mapping. Confirm the latter's required work can run while
+   GitHub is unavailable; an enabled mirror job may fail visibly until retry.
+6. Capture a completed Harvest and matching configuration export using the
+   existing recovery contract. In a disposable restoration, verify the fixture
+   user, repository head, issue text/state, MR discussion/merge metadata and an
+   encrypted CI setting, then execute a runner job. Keep restored mirror writes
+   disabled until the recovered state and mappings have been reviewed.
+
+The committed cold recovery scenario creates a source branch and draft MR with
+a discussion and reply, in addition to its user, repository/issue identity,
+encrypted CI variable and registry data. It checks the exact source commit,
+MR identity, title, description, state, author and creation time, plus both
+notes' identities, text, authors, timestamps and resolution state after restore.
+The MR stays open and the fixture leaves the default branch unchanged. Offline
+contract success alone does not establish a passed real cold restore, live
+cutover or a successful Production rollout; run the
+[disposable recovery scenario](../tests/e2e/README.md) on sufficient capacity.
 
 ## Coverage and restore limits
 
@@ -149,15 +296,23 @@ repositories; define those policies explicitly before claiming wider coverage.
 It does not back up issues, MRs, discussions, users, CI secrets, registry images,
 artifacts or service configuration.
 
-A platform recovery plan must separately protect GitLab's database/repositories,
-configuration and secrets, plus applicable object storage and registry data.
-Keep secret material appropriately protected and separate from ordinary source
-backups. GitLab restore requires the matching version and edition and the
-necessary configuration/secrets. Review the actual installation's
+The platform's existing [persistent volume](PERSISTENT_VOLUME.md) and
+[cold Harvest/Seed recovery](RECOVERY_CONTRACT.md) handle service state separately
+from this code mirror. GitLab's retained `config` and `data` trees include its
+configuration/secrets, database, repositories and local registry/artifact data.
+Issues, MR discussions, users and CI settings depend on that GitLab state, not
+just Git commits. Harvest captures these trees while GitLab is cleanly stopped;
+the separate Wizard configuration export supplies Bootstrapper settings. A
+retained live volume can also be reused without applying an older Seed.
+
+No second backup service is required by selecting GitLab as primary. Review any
+operator-configured external object storage against the Seed's actual local
+coverage. Protect secret material and preserve the matching version/edition
+and image identity required by the recovery contract. Review the installation's
 [backup coverage](https://docs.gitlab.com/administration/backup_restore/backup_gitlab/)
 and [restore prerequisites](https://docs.gitlab.com/administration/backup_restore/restore_gitlab/),
 then rehearse on an isolated disposable system. The branch-forwarding helper
-does not run these service backup/restore operations.
+does not run Harvest/Seed or GitLab-native backup/restore operations.
 
 ## Offline regression checks
 
