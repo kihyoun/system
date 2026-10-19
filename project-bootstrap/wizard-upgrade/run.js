@@ -464,7 +464,7 @@ module.exports = {Upgrade, readConfiguration, sourceMarker, buildMarker, environ
 if (require.main === module) (async () => {
   const [action, optionsFile, confirmation] = process.argv.slice(2);
   const options = JSON.parse(fs.readFileSync(optionsFile, 'utf8'));
-  if (Object.keys(options).some(key => !['credentialFile', 'helperImage', 'config', 'mainConfig', 'directory'].includes(key)))
+  if (Object.keys(options).some(key => !['credentialFile', 'helperImage', 'config', 'mainConfig', 'directory', 'buildProfile'].includes(key)))
     throw Error('Unknown operator option.');
   const upgrade = new Upgrade(options);
   const buildOnly = action.startsWith('build-'), command = buildOnly ? action.slice(6) : action;
