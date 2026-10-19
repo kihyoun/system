@@ -84,7 +84,7 @@ class Promotion {
     });
   }
   async inspect(name) {
-    return JSON.parse(await this.command(['inspect', '--format', '{"id":{{json .Id}},"imageId":{{json .Image}},"labels":{{json .Config.Labels}},"networks":{{json .NetworkSettings.Networks}}}', name]));
+    return JSON.parse(await this.command(['inspect', '--format', '{"id":{{json .Id}},"imageId":{{json .Image}},"labels":{{json .Config.Labels}},"networks":{{json .NetworkSettings.Networks}},"mounts":{{json .Mounts}}}', name]));
   }
   address(container) {
     const networks = Object.entries(container.networks || {}).filter(([, network]) => ipv4(network.IPAddress));
@@ -93,6 +93,40 @@ class Promotion {
   }
   async image(reference) {
     return JSON.parse(await this.command(['image', 'inspect', '--format', '{"id":{{json .Id}},"digests":{{json .RepoDigests}},"labels":{{json .Config.Labels}}}', reference]));
+  }
+  async publicConfiguration(current) {
+    const controller = await this.inspect('system_bootstrapper_1');
+    if (controller.labels?.['com.docker.compose.project'] !== 'system' ||
+        controller.labels?.['com.docker.compose.service'] !== 'bootstrapper') throw Error('Canonical controller ownership changed.');
+    const mount = (destination, name) => {
+      const found = controller.mounts?.filter(row => row.Destination === destination);
+      if (found?.length !== 1 || found[0].Type !== 'volume' || found[0].Name !== name || found[0].RW !== true)
+        throw Error('Provision the dedicated persistent public Wizard mount on the canonical controller.');
+      return found[0];
+    };
+    const state = mount('/state', 'system_configuration'), published = mount('/wizard-public', 'system_wizardPublic');
+    const metadata = async name => JSON.parse(await this.command(['volume', 'inspect', '--format', '{{json .}}', name]));
+    const [configuration, publication] = await Promise.all([metadata(state.Name), metadata(published.Name)]);
+    const device = (value, name, basename) => {
+      const target = value.Options?.device;
+      if (value.Name !== name || value.Driver !== 'local' || value.Options?.type !== 'none' || value.Options?.o !== 'bind' ||
+          typeof target !== 'string' || !path.isAbsolute(target) || path.normalize(target) !== target ||
+          /[,\r\n\0]/.test(target) || path.basename(target) !== basename)
+        throw Error('Public Wizard storage must use the verified persistent bind-volume layout.');
+      return target;
+    };
+    const stateDevice = device(configuration, state.Name, 'configuration');
+    const publicDevice = device(publication, published.Name, 'wizard-public');
+    if (path.dirname(stateDevice) !== path.dirname(publicDevice)) throw Error('Public Wizard storage escaped the configuration filesystem layout.');
+    const existing = current.mounts?.filter(row => row.Destination === '/usr/share/nginx/wizard-public') || [];
+    // An old canonical image may not have this mount yet. The already-mounted
+    // new controller supplies the checked volume during that first transition.
+    if (existing.length && (existing.length !== 1 || existing[0].Type !== 'volume' || existing[0].Name !== published.Name || existing[0].RW !== false))
+      throw Error('Canonical Wizard public storage must be read-only and owned.');
+    const verified = await this.command(['exec', 'system_bootstrapper_1', 'node', '-e',
+      "require('/system/system/wizard-public').verifyPublication('/state','/wizard-public'); process.stdout.write(JSON.stringify({ok:true}));"]);
+    if (JSON.parse(verified).ok !== true) throw Error('Public Wizard publication was not verified.');
+    return {source: publicDevice, target: '/usr/share/nginx/wizard-public'};
   }
   async plan(input, rollback = false) {
     const proof = rollback ? input : proofInput(input);
@@ -104,14 +138,16 @@ class Promotion {
     if (!imageId(current.imageId) || current.labels?.['com.docker.compose.project'] !== 'system' ||
         current.labels?.['com.docker.compose.service'] !== 'wizard') throw new Error('Canonical Wizard ownership changed.');
     const network = this.address(current);
+    const publicConfiguration = await this.publicConfiguration(current);
     replaceUpstream(template, network.address, network.address);
     const target = await this.image(proof.imageRef);
     if (!imageId(target.id) || (!rollback && (!target.digests?.includes(proof.imageRef) ||
         target.labels?.['org.opencontainers.image.revision'] !== proof.sourceCommit)))
       throw new Error('Pre-pull the exact verified image; its digest and source label must agree.');
     const publicPlan = {version: 1, action: rollback ? 'rollback' : 'promote', proof,
-      previousImageId: current.imageId, targetImageId: target.id, configHash: hash(config), templateHash: hash(template), network: network.network};
-    return {publicPlan, planHash: hash(JSON.stringify(publicPlan)), config, template, current, network, target, proof};
+      previousImageId: current.imageId, targetImageId: target.id, configHash: hash(config), templateHash: hash(template), network: network.network,
+      publicMountHash: hash(JSON.stringify(publicConfiguration))};
+    return {publicPlan, planHash: hash(JSON.stringify(publicPlan)), config, template, current, network, target, proof, publicConfiguration};
   }
   acquire() {
     fs.mkdirSync(this.directory, {recursive: true, mode: 0o700});
@@ -199,14 +235,19 @@ class Promotion {
       if (plan.planHash !== confirmation) throw new Error('Preview and confirm the current exact plan before applying.');
       if (!rollback) await this.verify(plan.proof);
       this.compare(this.config, plan.config); this.compare(this.template, plan.template);
-      if ((await this.inspect('system_wizard_1')).imageId !== plan.current.imageId) throw new Error('Current Wizard image changed.');
+      const current = await this.inspect('system_wizard_1');
+      if (current.imageId !== plan.current.imageId) throw new Error('Current Wizard image changed.');
+      if (hash(JSON.stringify(await this.publicConfiguration(current))) !== plan.publicPlan.publicMountHash)
+        throw Error('Public Wizard storage changed after preview.');
       checkpoint = {version: 1, operation: this.token, plan: plan.publicPlan, previousImageId: plan.current.imageId,
         previousAddress: plan.network.address, previousConfig: plan.config, previousTemplate: plan.template,
         liveConfig: plan.config, liveTemplate: plan.template, targetImageId: plan.target.id};
       this.save(checkpoint, 'prepared');
       const candidate = 'wizard-production-' + this.token;
       checkpoint.candidateId = await this.command(['create', '--name', candidate, '--network', plan.network.network,
-        '--memory', '128m', '--cpus', '0.5', '--label', 'system.wizard.production.operation=' + this.token, plan.proof.imageRef]);
+        '--memory', '128m', '--cpus', '0.5',
+        '--mount', 'type=bind,src=' + plan.publicConfiguration.source + ',dst=' + plan.publicConfiguration.target + ',readonly',
+        '--label', 'system.wizard.production.operation=' + this.token, plan.proof.imageRef]);
       this.save(checkpoint, 'candidate-created'); await this.command(['start', checkpoint.candidateId]);
       await this.health(checkpoint.candidateId);
       const candidateAddress = this.address(await this.inspect(checkpoint.candidateId)).address;

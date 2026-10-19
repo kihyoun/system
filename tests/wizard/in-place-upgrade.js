@@ -3,7 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {execFileSync} = require('child_process');
+const {execFileSync, spawnSync} = require('child_process');
 const {Upgrade, sourceMarker, buildMarker, environmentMarker, readConfiguration} = require('../../project-bootstrap/wizard-upgrade/run');
 const {hash, signature} = require('../../project-bootstrap/wizard-production/run');
 const builds = require('../../project-bootstrap/wizard-build/recipe');
@@ -28,7 +28,7 @@ class Fixture {
     this.snapshot = snapshot(currentSource, [sourceFile('package.json', '{"devDependencies":{"vite":"8.3.4"}}'),
       sourceFile('src/api/Helper.tsx', logo), sourceFile('.gitlab-ci.yml', '# Upstream roles preserved\n'), sourceFile('scripts/check.sh', '#!/bin/sh\ntrue\n', '100755')]);
     const settings = {review: {enabled: true, domainMode: 2, host: 'review.example.test', ssl: '/ssl/cert.pem', sslKey: '/ssl/key.pem'}, beta: {enabled: true, domainMode: 2, host: 'beta.example.test', ssl: '/ssl/cert.pem', sslKey: '/ssl/key.pem'}};
-    const build = builds.generate(logo, modern ? 'node24-vite8' : 'legacy'), environment = {version: 1, operation: 'd'.repeat(48), phase: 'ready', settings,
+    const build = builds.generate(logo, typeof modern === 'string' ? modern : modern ? 'node24-vite8' : 'legacy'), environment = {version: 1, operation: 'd'.repeat(48), phase: 'ready', settings,
       settingsHash: hash(JSON.stringify(settings)), helperImage: oldHelper, controller: 'system_bootstrapper_1',
       deployments: {review: {active: null, pending: null, lastPipelineId: 6, stoppedThroughPipelineId: 6,
         tombstone: {projectId: 1, pipelineId: 6, sourceCommit: 'e'.repeat(40), operation: 'd'.repeat(48)}, retired: []}, beta: {active: null, pending: null, stoppedThroughPipelineId: 7}}};
@@ -270,6 +270,70 @@ async function test(name, run, modern = false) { const f = new Fixture(modern); 
     f.merge(); await f.adopt();
     assert.equal(readConfiguration(f.config).receipt.wizardWorkflow.build.recipeHash, builds.generate(logo, 'node24-vite8').recipeHash);
   });
+  for (const profile of ['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3']) await test('explicit overview recipe upgrade from ' + profile + ' preserves source and stopped generations', async f => {
+    const previous = structuredClone(f.receipt.wizardWorkflow);
+    const historicalOperation = f.upgrade.operation(f.receipt, logo, true);
+    f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile: 'node24-vite8-overview-v3', request: f.request.bind(f), checkHelper: async () => {}});
+    const plan = await f.upgrade.plan(true);
+    assert.equal(plan.publicPlan.buildRecipeHash, builds.generate(logo, 'node24-vite8-overview-v3').recipeHash);
+    assert.notEqual(plan.publicPlan.operation, historicalOperation, 'Distinct recipe targets must not reuse old checkpoints');
+    const preserved = await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths);
+    await f.upgrade.stage(plan.planHash, true); f.merge();
+    await f.upgrade.adopt((await f.upgrade.adoptionPlan(true)).planHash, true);
+    const workflow = readConfiguration(f.config).receipt.wizardWorkflow;
+    assert.equal(workflow.build.recipeHash, plan.publicPlan.buildRecipeHash);
+    for (const key of ['sourceRevision', 'manifestHash', 'importCommit']) assert.equal(workflow[key], previous[key]);
+    assert.deepEqual(workflow.environments.deployments, previous.environments.deployments);
+    assert.deepEqual(await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths), preserved);
+    assert.equal((await f.upgrade.adopt((await f.upgrade.adoptionPlan(true)).planHash, true)).unchanged, true);
+  }, profile);
+  await test('overview recipe rejects unknown upgrade target and accidental default downgrade', async f => {
+    assert.throws(() => new Upgrade({...f, helperImage: helper, buildProfile: 'unknown'}), /known modern/);
+    await assert.rejects(f.upgrade.plan(true), /Retain the overview-compatible/);
+    assert.deepEqual(f.posts, []);
+  }, 'node24-vite8-overview-v3');
+  await test('native operator CLI accepts the explicit overview profile and rejects unknown options or profiles before requests', async f => {
+    const responses = {}, request = f.request.bind(f);
+    f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile: 'node24-vite8-overview-v3',
+      request: async (method, route, ...args) => {
+        assert.equal(method, 'GET', 'A preview must remain read-only');
+        const result = await request(method, route, ...args); responses[route] = result; return result;
+      }});
+    const preview = await f.upgrade.plan(true), before = fs.readFileSync(f.config, 'utf8');
+    const credential = path.join(f.root, 'credential.json'), options = path.join(f.root, 'options.json');
+    const fixture = path.join(f.root, 'responses.json'), preload = path.join(f.root, 'fetch-fixture.js'), trace = path.join(f.root, 'requests.jsonl');
+    fs.writeFileSync(credential, JSON.stringify({baseUrl: 'https://gitlab.example.test/api/v4', token: 'synthetic-fixture-token'}), {mode: 0o600});
+    fs.writeFileSync(fixture, JSON.stringify(responses));
+    fs.writeFileSync(preload, `'use strict';
+const fs = require('fs'), responses = JSON.parse(fs.readFileSync(${JSON.stringify(fixture)}, 'utf8'));
+global.fetch = async (target, options) => {
+  const url = new URL(target);
+  if (options.method !== 'GET' || url.origin !== 'https://gitlab.example.test' || !url.pathname.startsWith('/api/v4/')) throw Error('Unexpected fixture request');
+  const route = url.pathname.slice('/api/v4/'.length) + url.search;
+  if (!Object.hasOwn(responses, route)) throw Error('Unknown fixture request');
+  fs.appendFileSync(${JSON.stringify(trace)}, JSON.stringify({method: options.method, route}) + '\\n');
+  return {status: 200, text: async () => JSON.stringify(responses[route])};
+};\n`);
+    const invoke = extra => {
+      fs.writeFileSync(trace, '');
+      fs.writeFileSync(options, JSON.stringify({credentialFile: credential, helperImage: helper,
+        config: f.config, mainConfig: f.mainConfig, directory: f.directory, ...extra}), {mode: 0o600});
+      return spawnSync(process.execPath, ['--require', preload, path.resolve(__dirname, '../../project-bootstrap/wizard-upgrade/run.js'), 'build-plan', options],
+        {encoding: 'utf8', timeout: 30000});
+    };
+    const accepted = invoke({buildProfile: 'node24-vite8-overview-v3'});
+    assert.equal(accepted.status, 0, accepted.stderr);
+    assert.deepEqual(JSON.parse(accepted.stdout), {plan: preview.publicPlan, planHash: preview.planHash});
+    assert(fs.readFileSync(trace, 'utf8').trim());
+    const historical = invoke({}); assert.equal(historical.status, 0, historical.stderr);
+    assert.equal(JSON.parse(historical.stdout).plan.buildRecipeHash, builds.generate(logo, 'node24-vite8-cleanup-v2').recipeHash);
+    for (const invalid of [{buildProfile: 'unknown'}, {buildProfile: 'node24-vite8-overview-v3', unknownOption: true}]) {
+      const rejected = invoke(invalid); assert.equal(rejected.status, 1); assert.match(rejected.stderr, /Managed Wizard upgrade failed/);
+      assert.equal(rejected.stdout, ''); assert.equal(fs.readFileSync(trace, 'utf8'), '', 'Reject invalid operator options before GitLab requests');
+    }
+    assert.equal(fs.readFileSync(f.config, 'utf8'), before); assert(!fs.existsSync(f.directory));
+    assert(!fs.existsSync(f.upgrade.lock)); assert.deepEqual(f.posts, []);
+  }, 'node24-vite8-cleanup-v2');
   await test('recipe-only adoption CAS catches edits during final branch read', async f => {
     const plan = await f.upgrade.plan(true); await f.upgrade.stage(plan.planHash, true); f.merge();
     const adoption = await f.upgrade.adoptionPlan(true), request = f.upgrade.request, acquire = f.upgrade.acquire.bind(f.upgrade); let locked = false;

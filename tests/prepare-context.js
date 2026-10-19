@@ -21,9 +21,10 @@ function included(name) {
     /^gitlab\/[^/]+\.(js|sh)$/.test(name) || name === 'gitlab/gitlab.rb' ||
     /^gitlab-runner\/[^/]+\.(js|sh|rb)$/.test(name) || /^nginx\/[^/]+\.sh$/.test(name) ||
     name.startsWith('nginx/.templates/') || /^nginx-proxy\/[^/]+\.sh$/.test(name) ||
-    ['tests/prepare-candidate.js','start.sh','sync/start.sh','bootstrapper/persistence.sh',
+    ['.gitlab-ci.yml','tests/prepare-candidate.js','start.sh','sync/start.sh','bootstrapper/persistence.sh',
       'gitlab-runner/docker-compose.yml','system/.docker.env.example','system/.seed.env',
-      'system/start-intermediate.sh','system/persistence-init.js','system/push.sh',
+      'system/start-intermediate.sh','system/start.sh','system/docker-compose.yml',
+      'system/persistence-init.js','system/wizard-public.js','system/push.sh',
       'system/harvest.sh','system/seed.sh','system/seed-manifest.js','bootstrapper/rebind-renewal.py'].includes(name);
 }
 function prepareContext(root) {

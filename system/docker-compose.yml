@@ -20,6 +20,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - configuration:/state
+      - wizardPublic:/wizard-public
       - type: bind
         source: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/host/letsencrypt
         target: /host-letsencrypt
@@ -60,6 +61,8 @@ services:
   wizard:
     restart: always
     image: ${WIZARD_IMAGE:-systembootstrapper/wizard}
+    volumes:
+      - wizardPublic:/usr/share/nginx/wizard-public:ro
     # build:
     #   context: ../wizard
 
@@ -129,6 +132,13 @@ volumes:
       type: none
       o: bind
       device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/configuration"
+  wizardPublic:
+    name: system_wizardPublic
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/wizard-public"
 
 networks:
   gitlab:

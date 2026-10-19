@@ -39,6 +39,7 @@ PERSISTENT_MOUNT/
 ├── seed/                     # Harvest snapshots and Seed restore input
 └── platform/                 # PERSISTENT_DIR
     ├── configuration/        # Main settings, project receipts and Sync auth
+    ├── wizard-public/        # Generated public operator/privacy details only
     ├── gitlab/
     │   ├── config/           # GitLab secrets and service configuration
     │   ├── logs/
@@ -78,6 +79,14 @@ The controller mounts `configuration` at `/state` and uses
 the same saved configuration and receipts. The attached configuration takes
 precedence over files baked into an image. Main configuration retains the exact
 System Cube signature and intentional port 8071.
+
+The controller writes only the six public Website settings to
+`wizard-public/privacy-instance.json` after validating saved configuration. The
+Wizard mounts that directory read-only and serves the JSON without Sync login.
+Its directory mount sees atomic file replacement after a normal Push/restart.
+Private configuration, Sync credentials and GitLab tokens are never copied
+there. Missing core settings use clearly marked setup examples; saved empty
+values stay empty. This derived file can be regenerated from configuration.
 
 Configuration backup and Harvest are separate operations. The Wizard exports
 configuration; Harvest captures a verified cold service-data snapshot, including

@@ -40,6 +40,38 @@ cache:
     - cache/Cypress
     - node_modules
 
+# GitLab 19.2+: any path outside this small documentation allowlist keeps all
+# runtime checks. Anchors include newlines safely; mixed/unknown changes run full.
+.runtime-selection:
+  rules: &runtime-rules
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &runtime-changes
+        regexp: '\A(?!(?:AGENTS\.md|README\.md|Prepare-Host\.md|docs/[^\r\n]*\.(?:md|png|jpe?g|svg))\z)[\s\S]*\z'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *runtime-changes
+
+# This check uses committed Git objects, without a Docker service or submodules.
+check:documentation:
+  stage: prepare
+  image: node:24.22.0-bookworm@sha256:14078204b6bb268c107ceff6d3c43f45a888105e5c2b18b14c32b3409d93a1b0
+  services: []
+  tags: [system-source-lightweight]
+  variables:
+    GIT_DEPTH: "0"
+    GIT_SUBMODULE_STRATEGY: none
+  cache: []
+  timeout: 3m
+  allow_failure: false
+  script:
+    - node gitlab/check-documentation.js
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths: [test-results/documentation/]
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
 # Package the exact gitlink while the trusted checkout still contains Git data.
 # Only the validated source snapshot is passed to downstream candidate builds.
 prepare:wizard-source:
@@ -60,9 +92,7 @@ prepare:wizard-source:
   artifacts:
     expire_in: 1 day
     paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/]
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  rules: *runtime-rules
 
 # The existing trusted socket runner launches a socket-free test child.
 # The current build/deploy jobs retain their upstream publishing behavior.
@@ -93,9 +123,7 @@ test:isolated:
     paths: [test-results/]
     reports:
       junit: test-results/*/junit.xml
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  rules: *runtime-rules
 
 # Build the complete runtime and packaged Sync/Wizard source before publishing.
 test:candidate-image:
@@ -122,9 +150,7 @@ test:candidate-image:
     paths: [test-results/candidate-image/]
     reports:
       junit: test-results/candidate-image/junit.xml
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  rules: *runtime-rules
 
 # One required resource-heavy candidate after all socket-free checks pass.
 test:platform-candidate:
@@ -154,9 +180,7 @@ test:platform-candidate:
     paths: [test-results/e2e/]
     reports:
       junit: test-results/e2e/*/junit.xml
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  rules: *runtime-rules
 
 build:
   stage: build
@@ -166,9 +190,7 @@ build:
     - docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper
     - docker tag $IMAGE_TAG systembootstrapper/system:latest
     - docker push $IMAGE_TAG
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  rules: *runtime-rules
 
 deploy:dockerhub:
   stage: deploy
@@ -179,6 +201,7 @@ deploy:dockerhub:
     - docker push systembootstrapper/system:latest
   rules:
     - if: '$DOCKERHUB_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+      changes: *runtime-changes
       when: on_success
     - when: never
 

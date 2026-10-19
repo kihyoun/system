@@ -184,8 +184,10 @@ function fixture() {
   const bootstrap=test.commands.find(x=>x.args.includes('SYSTEM_CONFIG_DIR=/state')).args;
   assert(bootstrap.includes('PERSISTENT_DIR=/candidate-data/platform'));
   assert(bootstrap.includes('system_configuration:/state'));
+  assert(bootstrap.includes('system_wizardPublic:/wizard-public'));
   assert(bootstrap.includes('/candidate-data/platform/runners:/candidate-data/platform/runners'));
   assert(test.commands.some(x=>x.args.includes('device=/candidate-data/platform/gitlab/data')));
+  assert(test.commands.some(x=>x.args.includes('device=/candidate-data/platform/wizard-public')));
   assert.equal(test.instance.cleanup(),true); assert.equal(test.records.size,0);
   assert(test.commands.some(x=>x.args[0]==='container' && x.args[1]==='ls' && x.args.includes('--all')));
   assert.equal(test.instance.cleanup(),true); // confirmed absent resources

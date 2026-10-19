@@ -106,12 +106,19 @@ rollback uses its independent retained image/checkpoint.
 ## Build and environment recipes without reimporting source
 
 Use the explicit `build-` actions when an already-modern managed project needs
-the versioned cleanup correction.
+the versioned cleanup correction or overview-compatible browser checks.
 The ordinary source-upgrade actions still reject edited imported source. This
 separate path accepts existing development, including added or removed source
 files, and changes only the reserved build files, environment helper, managed
-CI entrypoint and their two receipts. It selects `node24-vite8-cleanup-v2`;
-legacy projects still need the separately reviewed source/toolchain upgrade.
+CI entrypoint and their two receipts. Without a `buildProfile` option it retains
+the `node24-vite8-cleanup-v2` target and operation identity for existing
+checkpoints. To prepare delivery of source with top-level Overview / Wizard
+navigation, set `"buildProfile": "node24-vite8-overview-v3"` in the private
+options file before previewing. This profile also verifies earlier modern source
+that opens directly in the workspace, so recipe migration can precede the UI
+change. Keep the same explicit target for stage, adoption and retries. Unknown
+targets and accidental downgrades from the overview profile are rejected.
+Legacy projects still need the separately reviewed source/toolchain upgrade.
 Historical recipe hashes and existing checkpoints remain verifiable.
 
 ```sh

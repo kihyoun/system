@@ -55,6 +55,8 @@ esac
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.data / 'runners').is_dir())
         self.assertTrue((self.data / 'gitlab/data').is_dir())
+        self.assertTrue((self.data / 'wizard-public').is_dir())
+        self.assertEqual((self.data / 'wizard-public').stat().st_mode & 0o777, 0o755)
         self.assertEqual((self.data / 'configuration').stat().st_mode & 0o777, 0o700)
         self.assertEqual(self.run_guard().returncode, 0)
 
@@ -68,6 +70,12 @@ esac
         self.data.mkdir()
         (self.data / '.system-bootstrapper-volume').write_text('unknown\n')
         self.assertNotEqual(self.run_guard().returncode, 0)
+
+    def test_public_directory_cannot_escape_the_volume(self):
+        self.data.mkdir()
+        (self.data / 'wizard-public').symlink_to(self.root / 'outside-public')
+        self.assertNotEqual(self.run_guard().returncode, 0)
+        self.assertFalse((self.root / 'outside-public').exists())
 
 
 if __name__ == '__main__':

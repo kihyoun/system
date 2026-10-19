@@ -15,6 +15,13 @@ class Fixture {
     this.config = path.join(this.root, '.docker.env'); this.template = path.join(this.root, 'default.conf.template');
     this.wizardEnv = path.join(this.root, 'wizard.env'); this.directory = path.join(this.root, 'recovery');
     this.lock = path.join(this.root, 'operation.lock'); this.events = []; this.containers = new Map();
+    this.storageRoot = '/mnt/operator-volume/platform';
+    this.controller = {labels: {'com.docker.compose.project': 'system', 'com.docker.compose.service': 'bootstrapper'}, mounts: [
+      {Destination: '/state', Type: 'volume', Name: 'system_configuration', RW: true},
+      {Destination: '/wizard-public', Type: 'volume', Name: 'system_wizardPublic', RW: true}
+    ]};
+    this.publicVolume = {Name: 'system_wizardPublic', Driver: 'local', Options: {type: 'none', o: 'bind', device: this.storageRoot + '/wizard-public'}};
+    this.stateVolume = {Name: 'system_configuration', Driver: 'local', Options: {type: 'none', o: 'bind', device: this.storageRoot + '/configuration'}};
     this.containers.set('system_wizard_1', this.container('canonical-id', oldId, '172.18.0.2', {
       'com.docker.compose.project': 'system', 'com.docker.compose.service': 'wizard'}));
     this.originalConfig = logo + "\nexport WIZARD_ENABLE='true'\nexport WIZARD_HOST='system-bootstrapper.com'\nexport WIZARD_IMAGE='old-tag'\n";
@@ -25,13 +32,16 @@ class Fixture {
   container(id, imageId, address, labels) { return {id, imageId, labels, networks: {system_default: {IPAddress: address}}}; }
   async command(args) {
     if (args[0] === 'inspect') {
+      if (args.at(-1) === 'system_bootstrapper_1') return JSON.stringify(this.controller);
       const row = this.containers.get(args[args.length - 1]); if (!row) throw Error('Container not found'); return JSON.stringify(row);
     }
+    if (args[0] === 'volume' && args[1] === 'inspect') return JSON.stringify(args.at(-1) === 'system_wizardPublic' ? this.publicVolume : this.stateVolume);
     if (args[0] === 'image') {
       const reference = args[args.length - 1];
       return JSON.stringify({id: reference === oldId ? oldId : nextId, digests: [ref], labels: {'org.opencontainers.image.revision': proof.sourceCommit}});
     }
     if (args[0] === 'create') {
+      this.candidateArguments = args;
       const operation = args[args.indexOf('--label') + 1].split('=')[1]; this.events.push('candidate-created');
       const id = operation + '1'.repeat(16), target = args[args.length - 1] === oldId ? oldId : nextId;
       this.containers.set(id, this.container(id, target, '172.18.0.4', {'system.wizard.production.operation': operation}));
@@ -51,10 +61,15 @@ class Fixture {
       return '<title>System Bootstrapper</title><div id="root"></div>';
     }
     if (args[0] === 'exec' && args[1] === 'system_bootstrapper_1') {
+      if (args[2] === 'node') {
+        if (this.badPublication) throw Error('Public publication filesystem or content check failed');
+        return JSON.stringify({ok: true});
+      }
       const snapshot = args[args.indexOf('--') + 1]; const data = fs.readFileSync(snapshot, 'utf8');
       const references = [...data.matchAll(/export WIZARD_IMAGE='([^']+)'/g)];
       const image = references.pop()[1] === oldId ? oldId : nextId; this.events.push('compose-' + (image === oldId ? 'old' : 'new'));
       this.containers.get('system_wizard_1').imageId = image;
+      this.containers.get('system_wizard_1').mounts = [{Type: 'volume', Name: 'system_wizardPublic', Destination: '/usr/share/nginx/wizard-public', RW: false}];
       this.containers.get('system_wizard_1').networks.system_default.IPAddress = image === oldId ? '172.18.0.9' : '172.18.0.8';
       if (this.afterCompose) this.afterCompose(image);
       return '';
@@ -93,6 +108,36 @@ async function test(name, callback) { const fixture = new Fixture(); try { await
     assert(fs.readFileSync(f.template, 'utf8').includes('upstream gitlab { server 172.18.0.3:80; }'));
     const rollback = await f.promotion.rollbackPlan(); const restored = await f.promotion.apply(rollback.proof, rollback.planHash, true);
     assert.equal(restored.imageId, oldId); assert.equal(f.containers.size, 1);
+  });
+  await test('first transition keeps old unmounted Wizard until a validated read-only public candidate is healthy', async f => {
+    assert.equal(f.containers.get('system_wizard_1').mounts, undefined);
+    await f.apply();
+    const argument = f.candidateArguments[f.candidateArguments.indexOf('--mount') + 1];
+    assert.equal(argument, 'type=bind,src=' + f.storageRoot + '/wizard-public,dst=/usr/share/nginx/wizard-public,readonly');
+    assert(!argument.includes('type=volume'), 'A missing publication path must fail instead of creating a root-disk volume');
+    assert(f.events.indexOf('candidate-healthy') < f.events.indexOf('compose-new'));
+    assert.equal(f.containers.get('system_wizard_1').mounts[0].RW, false);
+  });
+  await test('missing, writable or unrelated public storage fails before candidate creation', async f => {
+    const originalController = structuredClone(f.controller), originalPublic = structuredClone(f.publicVolume);
+    f.controller.mounts.pop(); await assert.rejects(f.promotion.plan(proof), /dedicated persistent/);
+    f.controller = structuredClone(originalController); f.publicVolume.Options.device = '/elsewhere/wizard-public';
+    await assert.rejects(f.promotion.plan(proof), /escaped/);
+    f.publicVolume = structuredClone(originalPublic); f.publicVolume.Driver = 'foreign';
+    await assert.rejects(f.promotion.plan(proof), /bind-volume/);
+    f.publicVolume = structuredClone(originalPublic); f.badPublication = true;
+    await assert.rejects(f.promotion.plan(proof), /filesystem or content/); f.badPublication = false;
+    f.containers.get('system_wizard_1').mounts = [{Type: 'volume', Name: 'system_wizardPublic', Destination: '/usr/share/nginx/wizard-public', RW: true}];
+    await assert.rejects(f.promotion.plan(proof), /read-only/);
+    assert(!f.events.includes('candidate-created'));
+    assert.equal(fs.readFileSync(f.config, 'utf8'), f.originalConfig);
+  });
+  await test('public volume replacement after proof fails without changing the existing service', async f => {
+    f.afterProof = () => { f.publicVolume.Options.device = '/different/wizard-public'; };
+    await assert.rejects(f.apply(), /escaped/);
+    assert(!f.events.includes('candidate-created'));
+    assert.equal(f.containers.get('system_wizard_1').imageId, oldId);
+    assert.equal(fs.readFileSync(f.template, 'utf8'), f.originalTemplate);
   });
   await test('failed candidate leaves the original canonical container untouched', async f => {
     f.badCandidate = true; await assert.rejects(f.apply(), /health gate/);

@@ -27,6 +27,7 @@ COPY sync/start.sh ./sync/
 COPY system/ ./system/
 COPY bootstrapper/ ./bootstrapper/
 COPY tests ./tests
+COPY .gitlab-ci.yml ./
 RUN node project-bootstrap/wizard-source/package.js --verify \
  && cd sync && npm run build
 ENV SYSTEM_TEST_ISOLATED=1

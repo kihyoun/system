@@ -46,6 +46,12 @@ technical documentation remain appropriate.
 - When authorized to coordinate delivery, delegate independent work, review the
   results, merge passing changes and close completed issues. Do not repeatedly
   ask for merge approval already granted in the conversation.
+- After a reviewed merge succeeds, delete its remote working branch, preferably
+  using the merge request's **Delete source branch** option, then prune local
+  remote-tracking refs. Delete a local working branch only when its worktree is
+  clean and its changes are safely merged; never force-delete it. Keep default
+  and protected branches, explicitly required release/build/recovery refs and
+  unmerged or draft work.
 - Report concrete results or answer status questions; the maintainer cancelled
   timed progress reports. Keep task status and scope changes outside the repository.
 - Run checks appropriate to code changes. Documentation-only housekeeping does

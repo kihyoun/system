@@ -7,6 +7,7 @@ const {spawnSync} = require('node:child_process');
 const {test} = require('node:test');
 
 const script = path.resolve(__dirname, '../../system/push.sh');
+const {publish} = require('../../system/wizard-public');
 // Small stored ZIP fixtures keep this acceptance test independent of Python or
 // a zip writer package. Production unzip and rsync execute without stubs.
 function zip(entries) {
@@ -111,4 +112,26 @@ test('failed main copy does not report success or replace the saved file', t => 
   assert.doesNotMatch(result.stdout, /Ready\./);
   assert.equal(fs.readFileSync(path.join(state, '.docker.env'), 'utf8'), 'original');
   assert.deepEqual(fs.readdirSync(state).filter(name => name.startsWith('.push-config.')), []);
+});
+
+test('normal ZIP Push preserves public settings for startup generation and explicit clearing', t => {
+  const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+  const source = cube + '\nexport WIZARD_OPERATOR_NAME="Published Operator"\n' +
+    'export WIZARD_OPERATOR_ADDRESS="Line 1\nLine 2"\nexport WIZARD_OPERATOR_EMAIL="operator@example.test"\n' +
+    'export WIZARD_PRIVACY_TEXT="Quoted \\"text\\" and literal \\$HOME"\nexport SYNC_PASS="never-public"\n';
+  const f = fixture(t, {'.docker.env': source}), publicDir = path.join(f.root, 'public');
+  fs.mkdirSync(publicDir);
+  const result = f.run(); assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(path.join(f.state, '.docker.env'), 'utf8'), source);
+  publish(path.join(f.state, '.docker.env'), publicDir);
+  let published = JSON.parse(fs.readFileSync(path.join(publicDir, 'privacy-instance.json'), 'utf8'));
+  assert.equal(published.operatorName, 'Published Operator');
+  assert.equal(published.operatorAddress, 'Line 1\nLine 2');
+  assert.equal(published.additionalPrivacyText, 'Quoted "text" and literal $HOME');
+  assert.doesNotMatch(JSON.stringify(published), /never-public|SYNC_PASS/);
+  fs.writeFileSync(path.join(f.root, 'bootstrapper.zip'), zip({'.docker.env': cube + '\nexport WIZARD_OPERATOR_NAME=""\n'}));
+  const cleared = f.run(); assert.equal(cleared.status, 0, cleared.stderr);
+  publish(path.join(f.state, '.docker.env'), publicDir);
+  published = JSON.parse(fs.readFileSync(path.join(publicDir, 'privacy-instance.json'), 'utf8'));
+  assert.equal(published.operatorName, '');
 });
