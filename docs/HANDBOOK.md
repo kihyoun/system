@@ -168,6 +168,14 @@ whenever the container restarts.
 
 Open [http://localhost/](http://localhost/).
 
+The **Overview** opens with **Getting Started**, a short introduction and links
+to the handbook. Choose **Open Wizard** or the top **Wizard** tab to reach the
+configuration workspace shown below. Switching between Overview, Wizard and
+the footer's legal pages preserves your connection and unsent form values;
+reloading the browser resets that local state.
+
+![Getting Started overview with entry points to the Wizard and handbook](images/getting-started/00-overview.png)
+
 If an older version is already open, reload the page. Use **Ctrl+F5** if the
 interface looks outdated; the browser cache may still contain the previous version.
 
@@ -258,6 +266,30 @@ Check the **Start**, **SSL**, **Sync** and **Wizard** sections under General:
 The seed path is a directory on the Docker host. Keep it consistent with the
 directory mounted at startup. A missing seed is normal on first startup and
 means this is a fresh installation.
+
+#### Public website and operator information
+
+In **General → Website**, review the information displayed by the footer's
+**Imprint** and **Privacy** pages. Operator name, postal address and contact email
+start with the visible setup examples **Max Mustermann**, **Musterstraße 1,
+12345 Musterstadt, Deutschland** and **kontakt@example.com**. These are actual
+form values as well as input placeholders: replace them with your own public
+details, or clear them. The public pages identify unchanged examples as such.
+An explicitly cleared field stays empty; absent fields in older configurations
+receive the setup examples.
+
+![Website settings with public operator setup examples and optional privacy fields](images/getting-started/08-website-settings.png)
+
+Optional fields provide a link to an additional privacy notice, the access-log
+retention actually used by your deployment and additional privacy text. The
+retention description does not change logging or rotation. All six fields are
+public; do not enter passwords, tokens or other confidential information there.
+
+**Backup**, **Open**, **Fetch** and **Push** include these settings. A successful
+Push applies them through the normal platform restart, without an image rebuild
+or CI pipeline. Startup writes only these six public strings to
+`privacy-instance.json` on dedicated persistent storage. The Wizard reads that
+publication without retrieving the authenticated Sync configuration.
 
 ### 0.10 Back up, transfer and apply the configuration
 
