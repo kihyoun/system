@@ -150,6 +150,8 @@ const REASONS = new Set([
   'harvest-gitlab-unclean',
   'harvest-phase-certificate-lock',
   'harvest-phase-gitlab-inspect',
+  'harvest-phase-gitlab-quiesce',
+  'harvest-phase-gitlab-services-down',
   'harvest-phase-gitlab-stop',
   'harvest-phase-gitlab-stopped-check',
   'harvest-phase-gitlab-clean-exit',

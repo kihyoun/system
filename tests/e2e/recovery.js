@@ -21,7 +21,7 @@ const HARVEST_FAILURE_CODES={
   'GitLab restart failed after Harvest.':'harvest-gitlab-restart-failed',
   'GitLab did not shut down cleanly; no Seed published.':'harvest-gitlab-unclean'
 };
-for(const phase of ['certificate-lock','gitlab-inspect','gitlab-stop','gitlab-stopped-check','gitlab-clean-exit','stage-create','srv-copy','ssl-copy','certbot-copy','manifest-create','snapshot-publish']){
+for(const phase of ['certificate-lock','gitlab-inspect','gitlab-quiesce','gitlab-services-down','gitlab-stop','gitlab-stopped-check','gitlab-clean-exit','stage-create','srv-copy','ssl-copy','certbot-copy','manifest-create','snapshot-publish']){
   HARVEST_FAILURE_CODES['Harvest phase failed: '+phase+'.']='harvest-phase-'+phase;
 }
 
