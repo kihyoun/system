@@ -264,15 +264,15 @@ async function bootstrapRestore(candidate,dependencies={}) {
   const privateWizard=input.expected?.privateWizard;
   if(!!candidate.spec.privateWizardRecovery!==!!privateWizard)throw Error('private-wizard-recovery-scenario-mismatch');
   if(privateWizard)privateWizardDescriptor(privateWizard,candidate.spec);
-  const directories=['configuration','templates','synctemplates','ssl','runners','gitlab/config','gitlab/logs','gitlab/data','host/letsencrypt'];
+  const directories=['configuration','wizard-public','templates','synctemplates','ssl','runners','gitlab/config','gitlab/logs','gitlab/data','host/letsencrypt'];
   await candidate.call(['exec',candidate.daemon,'mkdir','-p',SEED,...directories.map(name=>BASE+'/'+name)]);
-  const mounts={configuration:'configuration',templates:'templates',synctemplates:'synctemplates',ssl:'ssl',gitlabConfig:'gitlab/config',gitlabLogs:'gitlab/logs',gitlabData:'gitlab/data'};
+  const mounts={configuration:'configuration',wizardPublic:'wizard-public',templates:'templates',synctemplates:'synctemplates',ssl:'ssl',gitlabConfig:'gitlab/config',gitlabLogs:'gitlab/logs',gitlabData:'gitlab/data'};
   for(const [name,directory]of Object.entries(mounts))await candidate.inner(['volume','create','--driver','local','--opt','type=none','--opt','o=bind','--opt','device='+BASE+'/'+directory,'system_'+name]);
   const args=['create','--name','system_bootstrapper_1','--env','SEED_DIR='+SEED,'--env','PERSISTENT_DIR='+BASE,'--env','SYSTEM_CONFIG_DIR=/state','--env','COMPOSE_COMPATIBILITY=1',
     '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--env','GITLAB_RUNNER_IMAGE=candidate-runner:under-test','--env','NGINX_IMAGE=nginx:latest','--env','WIZARD_IMAGE=systembootstrapper/wizard',
     '--env','GITLAB_SSH_BIND=2222','--env','GITLAB_REGISTRY_BIND=5050','--volume','/var/run/docker.sock:/var/run/docker.sock',
     '--volume',SEED+':/seed','--volume',BASE+'/runners:'+BASE+'/runners','--volume',BASE+'/host/letsencrypt:/host-letsencrypt',
-    '--volume','system_configuration:/state','--volume','system_templates:/templates','--volume','system_synctemplates:/synctemplates','--volume','system_ssl:/ssl',
+    '--volume','system_configuration:/state','--volume','system_wizardPublic:/wizard-public','--volume','system_templates:/templates','--volume','system_synctemplates:/synctemplates','--volume','system_ssl:/ssl',
     '--volume','system_gitlabConfig:/srv/gitlab/config','--volume','system_gitlabLogs:/srv/gitlab/log','--volume','system_gitlabData:/srv/gitlab/data'];
   await candidate.inner([...args,'--entrypoint','/bin/sh','system-candidate:under-test','-c','sleep infinity']);
   await candidate.inner(['start','system_bootstrapper_1']);

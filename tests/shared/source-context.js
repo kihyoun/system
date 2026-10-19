@@ -37,7 +37,8 @@ try {
   write('system/.docker.env.example','public example\n');
   const runtimeInputs=['start.sh','sync/start.sh','bootstrapper/persistence.sh',
     'gitlab-runner/docker-compose.yml','gitlab-runner/provision.rb','system/.seed.env',
-    'system/persistence-init.js','system/push.sh','system/harvest.sh','system/seed.sh',
+    'system/persistence-init.js','system/wizard-public.js','system/start.sh','system/docker-compose.yml',
+    'system/push.sh','system/harvest.sh','system/seed.sh',
     'system/seed-manifest.js','bootstrapper/rebind-renewal.py'];
   for(const filename of runtimeInputs) write(filename,'committed runtime input\n');
   write('project-bootstrap/private.env','must not enter the context\n');

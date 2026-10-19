@@ -6,6 +6,7 @@ if [ -e /srv/gitlab/data/.system-bootstrapper-restore-incomplete ]; then
   exit 1
 fi
 node ./persistence-init.js
+node ./wizard-public.js
 source "${SYSTEM_CONFIG_DIR:-/state}/sync-auth.env"
 
 ENV_FILE=../.docker.env

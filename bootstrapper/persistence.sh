@@ -22,7 +22,7 @@ fi
 existing=$storage_dir
 while [[ ! -e $existing ]]; do existing=$(dirname -- "$existing"); done
 [[ $(findmnt -rn -o TARGET --target "$existing") == "$storage_mount" ]] || fail 'data directory resolves to another filesystem.'
-for relative in configuration templates synctemplates ssl runners host/letsencrypt gitlab/config gitlab/logs gitlab/data; do
+for relative in configuration wizard-public templates synctemplates ssl runners host/letsencrypt gitlab/config gitlab/logs gitlab/data; do
   target=$(realpath -m -- "$storage_dir/$relative")
   [[ $target == "$storage_dir/"* ]] || fail "unsafe data path: $relative"
   if [[ -e $target ]]; then
@@ -36,9 +36,10 @@ if [[ -e $marker ]]; then
   [[ $(cat -- "$marker") == system-bootstrapper-persistence-v1 ]] || fail 'unsupported volume marker.'
 fi
 umask 077
-mkdir -p -- "$storage_dir" "$storage_dir/configuration" "$storage_dir/templates" \
+mkdir -p -- "$storage_dir" "$storage_dir/configuration" "$storage_dir/wizard-public" "$storage_dir/templates" \
   "$storage_dir/synctemplates" "$storage_dir/host/letsencrypt" "$storage_dir/ssl" "$storage_dir/runners" "$storage_dir/gitlab/config" \
   "$storage_dir/gitlab/logs" "$storage_dir/gitlab/data"
 chmod 0700 -- "$storage_dir/configuration"
+chmod 0755 -- "$storage_dir/wizard-public"
 printf '%s\n' system-bootstrapper-persistence-v1 > "$marker"
 printf 'Persistent storage verified: %s\n' "$storage_dir"

@@ -68,6 +68,34 @@ restores the old route. A later failure recreates the previous immutable image,
 uses its actual resulting address and restores the old configuration. Keep the
 previous image and private checkpoint until deliberate rollback has been tested.
 
+## Public operator details during cutover
+
+Normal startup publishes only the six public website fields from signed saved
+configuration into the persistent `wizard-public/privacy-instance.json` file.
+The controller writes that directory; the canonical Wizard mounts it read-only
+and serves `/privacy-instance.json` without Sync authentication. Edit these
+values through **General → Website**, then Push normally. They remain
+part of the ordinary JSON/environment/ZIP configuration backup. The sample
+operator name, address and email are examples until replaced; explicitly cleared
+values remain empty. Optional privacy text, notice URL and access-log retention
+have no invented defaults.
+
+Before promotion, prepare the updated persistent layout and replace the
+controller with the matching reviewed image. This step does not require
+replacing the current Wizard first. The promotion plan inspects the controller's
+existing configuration and public bind-volume metadata, verifies that they are
+siblings on the same mounted filesystem, and checks that the public JSON matches
+the saved configuration. An existing canonical public mount must be read-only.
+
+The temporary candidate receives only the validated public host directory as a
+read-only bind mount. It receives no private configuration, credentials or
+Docker socket. A missing source directory fails rather than creating a new
+Docker-managed volume on the root disk. The first transition also supports an
+older canonical Wizard without this public mount; the updated controller is
+the authority for its already-provisioned public directory. Canonical recreation
+and rollback retain the normal Compose mount. Prepare storage through the host
+preflight; never bypass the mounted-volume/UUID checks to create this directory.
+
 ## Deliberate rollback
 
 ```sh

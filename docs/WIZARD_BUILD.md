@@ -102,12 +102,21 @@ refresh does not install files or create pipelines.
 
 ## Toolchain profiles
 
-New source imports with Vite select the `node24-vite8-cleanup-v2` profile: the
+New source imports with Vite select the `node24-vite8-overview-v3` profile: the
 pinned Node 24/npm toolchain, locked install, lint, Vitest, TypeScript/Vite build,
 configuration-export checks and Playwright browser checks. Browser evidence
 includes rendered UI, Projects, SPA navigation, a configuration ZIP and exact
 Cube validation. Use `wizard/package.json` and the managed recipe for the exact
 pinned versions.
+
+The overview profile preserves the modern cleanup-v2 toolchain and changes only
+browser navigation. It verifies **Getting Started**, Overview/Wizard switching,
+preserved workspace selection and the **Open Wizard** action when those controls
+are present; earlier modern source keeps its direct-workspace checks. To deliver
+the new navigation from an existing managed project, first perform its guarded
+build/environment-only upgrade with the explicit private option
+`"buildProfile": "node24-vite8-overview-v3"`. Both cleanup-v2 profiles and their
+predecessors retain their exact historical hashes.
 
 Reserved historical recipes remain verifiable by their exact hash, including
 legacy Node 13/CRA/Jest recipes. Historical compatibility does not make that

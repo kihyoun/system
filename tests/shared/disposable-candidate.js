@@ -185,9 +185,9 @@ class Candidate {
       // These paths live on the owned private daemon's writable layer, never
       // on the outer host. Compose service volumes resolve to the same paths.
       const base='/candidate-data/platform';
-      const directories=['configuration','templates','synctemplates','ssl','runners','gitlab/config','gitlab/logs','gitlab/data','host/letsencrypt'];
+      const directories=['configuration','wizard-public','templates','synctemplates','ssl','runners','gitlab/config','gitlab/logs','gitlab/data','host/letsencrypt'];
       await this.call(['exec',this.daemon,'mkdir','-p','/candidate-data/seed',...directories.map(name=>base+'/'+name)]);
-      const mounts={configuration:'configuration',templates:'templates',synctemplates:'synctemplates',ssl:'ssl',
+      const mounts={configuration:'configuration',wizardPublic:'wizard-public',templates:'templates',synctemplates:'synctemplates',ssl:'ssl',
         gitlabConfig:'gitlab/config',gitlabLogs:'gitlab/logs',gitlabData:'gitlab/data'};
       for(const [name,directory] of Object.entries(mounts)) {
         await this.inner(['volume','create','--driver','local','--opt','type=none','--opt','o=bind',
@@ -201,7 +201,7 @@ class Candidate {
         '--volume','/var/run/docker.sock:/var/run/docker.sock',
         '--volume','/candidate-data/seed:/seed','--volume',base+'/runners:'+base+'/runners',
         '--volume',base+'/host/letsencrypt:/host-letsencrypt',
-        '--volume','system_configuration:/state','--volume','system_templates:/templates',
+        '--volume','system_configuration:/state','--volume','system_wizardPublic:/wizard-public','--volume','system_templates:/templates',
         '--volume','system_synctemplates:/synctemplates','--volume','system_ssl:/ssl',
         '--volume','system_gitlabConfig:/srv/gitlab/config','--volume','system_gitlabLogs:/srv/gitlab/log',
         '--volume','system_gitlabData:/srv/gitlab/data'];
