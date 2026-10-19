@@ -60,6 +60,27 @@ for (const file of modern.files) assert.equal(crypto.createHash('sha256').update
 const sourceSnapshot = JSON.parse(fs.readFileSync(path.join(root, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8'));
 const packageJson = JSON.parse(Buffer.from(sourceSnapshot.files.find(file => file.path === 'package.json').content, 'base64'));
 assert.equal(recipes.forSource(logo, sourceSnapshot.sourceRevision).recipeHash,
-  recipes.generate(logo, packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-cleanup-v2' : 'legacy-cleanup-v2').recipeHash);
+  recipes.generate(logo, packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-overview-v3' : 'legacy-cleanup-v2').recipeHash);
 assert.equal(recipes.forSource(logo, 'f'.repeat(40)).recipeHash, recipes.generate(logo, 'legacy-cleanup-v2').recipeHash, 'New historical-source reservations retain the legacy toolchain with corrected cleanup');
 console.log('Modern Wizard profile: Node 24, exact browser lock, honest Vitest evidence, strict reservation and backward-compatible legacy hashes passed.');
+const historical = {
+  legacy: 'd6f99917add408077ad732621f717bb545566e75c98c896624bd606c00a0c406',
+  'node24-vite8': 'd0d8fcd0e325cdf806f2f5fec6aec59481f13dea78c475f7f69c8764db947360',
+  'legacy-cleanup-v2': 'f25ac5294694ff96eb2baf150d064162f66b11967caa69c984a472abd21dd991',
+  'node24-vite8-cleanup-v2': '2032f68f7c84f100ac97fe783a857108d03a668f8c09427241f9cad8b55f543a'
+};
+for (const [profile, hash] of Object.entries(historical)) assert.equal(recipes.generate(logo, profile).recipeHash, hash);
+const overview = recipes.generate(logo, 'node24-vite8-overview-v3');
+const previous = recipes.generate(logo, 'node24-vite8-cleanup-v2');
+assert.deepEqual(recipes.select(logo, overview.recipeHash), overview);
+assert.notEqual(overview.recipeHash, previous.recipeHash);
+assert.equal(overview.ci, previous.ci);
+for (const file of previous.files.filter(file => !file.path.endsWith('/smoke/check.js'))) {
+  assert.deepEqual(overview.files.find(other => other.path === file.path), file, 'Overview profile changes only browser navigation');
+}
+for (const file of overview.files) assert.equal(crypto.createHash('sha256').update(file.content).digest('hex'), file.sha256);
+const navigation = overview.files.find(file => file.path.endsWith('/smoke/check.js')).content;
+assert(navigation.includes("name: 'Main navigation'") && navigation.includes("name: 'Getting Started'") && navigation.includes("name: 'Wizard'"));
+assert(navigation.includes("name: 'Connect'") && navigation.includes("name: 'Projects'") && navigation.includes("name: 'Backup'"));
+assert(navigation.includes("name: 'Overview'") && navigation.includes('cubeSignature: true'));
+console.log('Overview browser profile: versioned navigation checks, unchanged required evidence and four exact historical recipe hashes passed.');

@@ -75,7 +75,7 @@ and verify native job cleanup before promoting a candidate.
 
 The legacy `build-v1` recipe is retained byte-for-byte for its recorded hashes
 and historical GitLab evidence. New source imports whose verified snapshot uses
-Vite select the Node 24 / Vite 8 family (`node24-vite8-cleanup-v2` for new
+Vite select the Node 24 / Vite 8 family (`node24-vite8-overview-v3` for new
 reservations): Node 24.22.0/npm 11.19.1, locked install,
 lint, Vitest, TypeScript/Vite build and Playwright 1.64.1 browser checks. Both
 profiles use the same bounded job names and artifact/digest contract; modern
@@ -98,9 +98,10 @@ limitation: an untagged browser image is recorded by Docker as `:latest`, and
 that older cleanup comparison can leave its job tag behind while reporting
 success.
 
-New, unreserved builds use `legacy-cleanup-v2` or `node24-vite8-cleanup-v2`.
+New, unreserved builds use `legacy-cleanup-v2` or `node24-vite8-overview-v3`.
 These profiles share the corrected cleanup implementation and otherwise retain
-their original toolchain, build checks, browser checks and CI definition. The
+their original toolchain, build checks and CI definition. The modern overview
+profile adds the navigation checks described below. The
 cleanup adds `:latest` only when the final repository path component has no tag;
 a registry port is preserved, and explicit tags and digest references are not
 changed. Removal targets only that exact tag/reference, without pruning or
@@ -114,3 +115,23 @@ guarded [build/environment-only migration](../wizard-upgrade/README.md#build-and
 and verify native job cleanup. The migration must retain current source edits, the source import marker, stopped
 environment floors and unrelated configuration. The full source-import
 migration is not a shortcut for a cleanup-only change.
+
+## Overview navigation compatibility
+
+The `node24-vite8-overview-v3` profile retains the exact modern cleanup-v2
+toolchain, CI, required job names and artifact contract. Only its browser script
+changes: when the top-level **Overview** / **Wizard** tabs are present, it checks
+the initial **Getting Started** heading and selected Overview tab, then opens
+Wizard before exercising Connect, Projects, configuration ZIP/Cube validation
+and the nested SPA fallback. It verifies that switching to Overview and back
+retains the selected Projects tab and that the **Open Wizard** action works.
+The overview and workspace screenshots are retained.
+Earlier modern source without those tabs keeps its direct-workspace browser path.
+
+All four earlier profiles, including both cleanup-v2 profiles, remain selectable
+by their exact reserved hashes. A new controller does not replace an installed
+recipe or rewrite its receipt. Before delivering source that adds the default
+Overview, perform the guarded build/environment-only migration with an explicit
+`buildProfile` of `node24-vite8-overview-v3` and a matching immutable helper.
+Keep the selected profile in the private operator options for later adoption or
+retry; Production promotion remains a separate deliberate operation.
