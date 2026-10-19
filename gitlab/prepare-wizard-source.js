@@ -1,6 +1,8 @@
 'use strict';
 // Keep public submodule coordinates portable while allowing a private primary.
 const {execFileSync} = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 function selection(environment) {
   const value = environment.WIZARD_PRIMARY_REPOSITORY_URL;
@@ -32,6 +34,15 @@ function prepare(environment = process.env, run = execFileSync) {
       GIT_CONFIG_KEY_2: 'http.followRedirects', GIT_CONFIG_VALUE_2: 'false',
       GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never'};
     args.push('-c', 'submodule.wizard.url=' + selected.url);
+    // update --init only uses that selector for a fresh clone. A previously
+    // initialized/deinitialized submodule can retain its old origin in Git's
+    // module cache; repair all cached fetch URLs before any possible fetch.
+    const cache = git(['rev-parse', '--git-path', 'modules/wizard']);
+    const directories = new Set(fs.existsSync(cache) ? [path.resolve(cache)] : []);
+    if (fs.existsSync(path.join('wizard', '.git')))
+      directories.add(git(['-C', 'wizard', 'rev-parse', '--absolute-git-dir']));
+    for (const directory of directories)
+      git(['--git-dir=' + directory, 'config', '--replace-all', 'remote.origin.url', selected.url]);
   }
   git([...args, 'submodule', 'update', '--init', '--checkout', '--', 'wizard'], env);
   if (git(['-C', 'wizard', 'rev-parse', 'HEAD']) !== row[1]) throw Error('Wizard checkout differs from its exact gitlink.');

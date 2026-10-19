@@ -48,5 +48,39 @@ try {
   process.chdir(system);
   assert.equal(prepare({...process.env, WIZARD_PRIMARY_REPOSITORY_URL: '', GIT_ALLOW_PROTOCOL: 'file'}), revision);
   assert.equal(fs.readFileSync(path.join(system, 'wizard/source.txt'), 'utf8'), 'exact source');
+
+  const primary = path.join(directory, 'wizard-primary');
+  git(directory, 'clone', '-q', wizard, primary);
+  git(primary, 'config', 'user.name', 'Fixture'); git(primary, 'config', 'user.email', 'fixture@example.test');
+  fs.writeFileSync(path.join(primary, 'new-source.txt'), 'available only in the primary');
+  git(primary, 'add', '.'); git(primary, 'commit', '-qm', 'Primary-only source');
+  const advanced = git(primary, 'rev-parse', 'HEAD');
+  git(system, 'remote', 'add', 'origin', 'https://gitlab.example.test/team/system.git');
+  git(system, 'update-index', '--cacheinfo', '160000,' + advanced + ',wizard'); git(system, 'commit', '-qm', 'Advance exact Wizard pin');
+  assert.throws(() => prepare({...process.env, WIZARD_PRIMARY_REPOSITORY_URL: '', GIT_ALLOW_PROTOCOL: 'file'}),
+    'the old cached origin cannot supply the primary-only commit');
+  git(path.join(system, 'wizard'), 'config', '--add', 'remote.origin.url', 'https://old-mirror.example.test/wizard.git');
+  const internalUrl = 'https://gitlab.example.test/team/wizard.git', writes = [];
+  // The adapter maps the selected HTTPS endpoint onto an owned file fixture;
+  // actual Git still performs cache reconfiguration and fetches the exact pin.
+  const offline = (command, args, options) => {
+    if (args.includes('remote.origin.url')) writes.push([...args]);
+    const mapped = args.map(arg => arg === internalUrl ? primary : arg === 'submodule.wizard.url=' + internalUrl ?
+      'submodule.wizard.url=' + primary : arg);
+    return execFileSync(command, mapped, options);
+  };
+  const selectedEnv = {...process.env, ...base, WIZARD_PRIMARY_REPOSITORY_URL: internalUrl, GIT_ALLOW_PROTOCOL: 'file'};
+  assert.equal(prepare(selectedEnv, offline), advanced, 'reused checkout obtains a primary-only commit');
+  assert.equal(git(system, 'remote', 'get-url', 'origin'), 'https://gitlab.example.test/team/system.git', 'superproject origin unchanged');
+  assert.equal(git(path.join(system, 'wizard'), 'remote', 'get-url', 'origin'), primary);
+  assert.equal(git(path.join(system, 'wizard'), 'config', '--get-all', 'remote.origin.url'), primary, 'all stale fetch URL values are replaced');
+  assert(writes.some(args => args.includes('--replace-all') && args.includes(internalUrl)), 'old module origin explicitly replaced without credentials');
+  assert(!JSON.stringify(writes).includes(base.CI_JOB_TOKEN));
+
+  git(system, 'submodule', 'deinit', '-f', '--', 'wizard');
+  const cache = git(system, 'rev-parse', '--git-path', 'modules/wizard');
+  git(system, '--git-dir=' + cache, 'config', '--replace-all', 'remote.origin.url', wizard);
+  assert.equal(prepare(selectedEnv, offline), advanced, 'deinitialized module cache is also reconciled before checkout');
+  assert.equal(git(path.join(system, 'wizard'), 'remote', 'get-url', 'origin'), primary);
 } finally { process.chdir(previous); fs.rmSync(directory, {recursive: true, force: true}); }
-console.log('PASS: public fallback, same-instance authenticated selector, secret-free argv and exact gitlink checkout');
+console.log('PASS: public fallback, internal authenticated selector, exact gitlink, reused/deinitialized caches and unchanged superproject origin');

@@ -173,11 +173,14 @@ build:
 deploy:dockerhub:
   stage: deploy
   before_script:
+    - 'test -n "$DOCKERHUB_USER" && test -n "$DOCKERHUB_PASS" || { echo "Docker Hub publishing credentials missing" >&2; exit 1; }'
     - echo "$DOCKERHUB_PASS" | docker login --username $DOCKERHUB_USER --password-stdin
   script:
     - docker push systembootstrapper/system:latest
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$DOCKERHUB_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+      when: on_success
+    - when: never
 
 deploy:github:
   stage: deploy
