@@ -129,8 +129,31 @@ async function main() {
   pass(result); assert.equal(f.tip(), f.sha);
   assert(!`${result.stdout}${result.stderr}`.includes(privateKey), 'private key never enters CI output');
   assert.deepEqual(fs.readdirSync(privateTemp), [], 'ephemeral CI credential directory removed');
+  for (const permissions of [0o644, 0o666]) {
+    fs.chmodSync(credential, permissions);
+    result = f.ci(ciEnvironment);
+    pass(result);
+    assert.equal(fs.statSync(credential).mode & 0o777, permissions, 'runner-owned key permissions remain unchanged');
+    assert.equal(fs.readFileSync(credential, 'utf8'), privateKey, 'runner-owned key content remains unchanged');
+    assert(!`${result.stdout}${result.stderr}`.includes(privateKey), 'copied key never enters CI output');
+    assert.deepEqual(fs.readdirSync(privateTemp), [], 'owned private key copy removed after successful load');
+  }
+  fs.chmodSync(credential, 0o600);
+  const crlfCredential = path.join(f.dir, 'fixture-identity-crlf'), crlfKey = privateKey.replace(/\n/g, '\r\n');
+  fs.writeFileSync(crlfCredential, crlfKey, {mode: 0o644});
+  pass(f.ci({...ciEnvironment, GITHUB_SSH_PRIVATE_KEY: crlfCredential}));
+  assert.equal(fs.readFileSync(crlfCredential, 'utf8'), crlfKey, 'runner-owned CRLF key content remains unchanged');
+  assert.equal(fs.statSync(crlfCredential).mode & 0o777, 0o644);
+  assert.deepEqual(fs.readdirSync(privateTemp), [], 'normalized private copy removed after loading a CRLF file');
+  const invalidCredential = path.join(f.dir, 'invalid-identity');
+  fs.writeFileSync(invalidCredential, 'invalid-key-material', {mode: 0o644});
+  fail(f.ci({...ciEnvironment, GITHUB_SSH_PRIVATE_KEY: invalidCredential}), /SSH identity could not be loaded/);
+  assert.equal(fs.readFileSync(invalidCredential, 'utf8'), 'invalid-key-material');
+  assert.deepEqual(fs.readdirSync(privateTemp), [], 'invalid copied key is also removed on failure');
   result = f.ci({...ciEnvironment, GITHUB_SSH_PRIVATE_KEY: privateKey});
   pass(result); assert.deepEqual(fs.readdirSync(privateTemp), [], 'legacy multiline identity supported without retained credentials');
+  pass(f.ci({...ciEnvironment, GITHUB_SSH_PRIVATE_KEY: crlfKey}));
+  assert.deepEqual(fs.readdirSync(privateTemp), [], 'legacy CRLF multiline identity remains supported');
   fs.writeFileSync(knownHosts, 'other.example ' + publicKey + '\n');
   fail(f.ci(ciEnvironment), /verified GitHub host key missing/);
   assert.deepEqual(fs.readdirSync(privateTemp), [], 'host-key failure also cleans owned state');

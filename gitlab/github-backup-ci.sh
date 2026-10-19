@@ -24,7 +24,7 @@ private_dir=$(mktemp -d "${TMPDIR:-/tmp}/system-github-backup.XXXXXXXX") || fail
 agent_started=false
 cleanup() {
   if [ "$agent_started" = true ]; then ssh-agent -k >/dev/null 2>&1 || :; fi
-  rm -f "$private_dir/known_hosts"
+  rm -f "$private_dir/known_hosts" "$private_dir/identity"
   rmdir "$private_dir" 2>/dev/null || :
 }
 trap cleanup EXIT
@@ -35,7 +35,11 @@ ssh-keygen -F github.com -f "$private_dir/known_hosts" >/dev/null 2>&1 || fail '
 eval "$(ssh-agent -s 2>/dev/null)" >/dev/null || fail 'SSH agent unavailable'
 agent_started=true
 if [ -f "$GITHUB_SSH_PRIVATE_KEY" ]; then
-  ssh-add "$GITHUB_SSH_PRIVATE_KEY" >/dev/null 2>&1 || fail 'SSH identity could not be loaded'
+  # Runner-created file variables can have permissions OpenSSH rejects. Own a
+  # private copy instead of changing the runner's source file or its lifetime.
+  tr -d '\r' <"$GITHUB_SSH_PRIVATE_KEY" >"$private_dir/identity" 2>/dev/null || fail 'SSH identity could not be copied'
+  chmod 600 "$private_dir/identity"
+  ssh-add "$private_dir/identity" >/dev/null 2>&1 || fail 'SSH identity could not be loaded'
 else
   # Existing protected multiline variables remain supported; prefer file type.
   printf '%s\n' "$GITHUB_SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - >/dev/null 2>&1 || fail 'SSH identity could not be loaded'
