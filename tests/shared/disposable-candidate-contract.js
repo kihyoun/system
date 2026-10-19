@@ -233,9 +233,9 @@ function fixture() {
   assert.equal(fullRecovery.results[0].name,'registry-build-push-pull-run');
   assert.equal(fullRecovery.results[0].milliseconds,123);
   const durable=recover({...fullReceipt,evidence:{jobs:[{id:3,name:'registry-round-trip',status:'failed',diagnostics:{...classified,private:'secret-fixture-token'}}],
-    recovery:{runId:'a'.repeat(24),backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false,private:'secret-fixture-token'}}});
+    recovery:{runId:'a'.repeat(24),backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false,mergeRequestRecoveryVerified:true,private:'secret-fixture-token'}}});
   assert.deepEqual(durable.evidence.jobs[0].diagnostics,classified);
-  assert.deepEqual(durable.evidence.recovery,{runId:'a'.repeat(24),backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false});
+  assert.deepEqual(durable.evidence.recovery,{runId:'a'.repeat(24),backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:true,acmeRenewalVerified:false,privateWizardPinVerified:false,mergeRequestRecoveryVerified:true});
   assert(!JSON.stringify(durable.evidence).includes('secret-fixture-token'));
   assert.deepEqual(fullRecovery.evidence,{projectId:1,pipelineId:2,jobs:[{id:3,name:'registry-round-trip',status:'success',runnerId:4,duration:5}]});
   assert(!JSON.stringify(fullRecovery).includes('never retain'));

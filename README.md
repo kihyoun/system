@@ -42,6 +42,12 @@ as a managed project: explicit [source initialization](docs/WIZARD_SOURCE.md),
 provide separate, inspectable operations. Building or merging source alone does
 not replace the running management interface.
 
+An operator can also select GitLab as the development and issue-tracking
+platform with an optional [GitHub code mirror](docs/GITLAB_GITHUB_BACKUP.md).
+That guide covers source-history mapping, reviewed merges, tracker migration
+and verification. The mirror forwards merged code; the existing persistent
+volume and recovery contract retain GitLab's service state.
+
 Persistent service data lives beneath the configured mounted `PERSISTENT_DIR`.
 The Wizard exports configuration separately; [Harvest/Seed](docs/RECOVERY_CONTRACT.md)
 creates and restores completed service-data snapshots. A retained live data

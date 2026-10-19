@@ -1,6 +1,7 @@
 // Private transport boundary for github-backup.sh. Never emit Git/SSH output.
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
+const quote = value => "'" + value.replace(/'/g, "'\"'\"'") + "'";
 
 function startTransport(args, seconds = 30) {
   if (!Number.isInteger(seconds) || seconds < 1 || seconds > 300) {
@@ -9,11 +10,15 @@ function startTransport(args, seconds = 30) {
   const windows = process.platform === 'win32';
   const shell = windows ? process.env.GITHUB_BACKUP_TEST_SHELL : '/bin/sh';
   if (!shell) throw new Error('Windows offline fixture shell missing');
+  const hostsFile = process.env.GITHUB_BACKUP_KNOWN_HOSTS_FILE;
+  if (hostsFile && /[\r\n\0]/.test(hostsFile)) throw new Error('Invalid known-hosts selector');
+  const ssh = 'ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=2' +
+    (hostsFile ? ' -o ' + quote('UserKnownHostsFile=' + hostsFile) + ' -o GlobalKnownHostsFile=/dev/null' : '');
   const child = spawn(shell, ['-c', 'exec git -c core.hooksPath=/dev/null "$@"', 'git', ...args], {
     detached: !windows, windowsHide: true, stdio: 'ignore',
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never',
       GIT_SSH_VARIANT: 'ssh',
-      GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=2' },
+      GIT_SSH_COMMAND: ssh },
   });
   let stopping = false;
   let finished = false;
@@ -62,7 +67,7 @@ if (require.main === module) {
       Number(process.env.GITHUB_BACKUP_TIMEOUT_SECONDS || 30));
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, transport.cancel);
     transport.done.then(code => { process.exitCode = code; });
-  } catch (_) {
+  } catch {
     // Configuration/spawn details can contain credentials: keep errors fixed.
     process.exitCode = 1;
   }

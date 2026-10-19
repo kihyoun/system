@@ -21,7 +21,7 @@ const HARVEST_FAILURE_CODES={
   'GitLab restart failed after Harvest.':'harvest-gitlab-restart-failed',
   'GitLab did not shut down cleanly; no Seed published.':'harvest-gitlab-unclean'
 };
-for(const phase of ['certificate-lock','gitlab-inspect','gitlab-stop','gitlab-stopped-check','gitlab-clean-exit','stage-create','srv-copy','ssl-copy','certbot-copy','manifest-create','snapshot-publish']){
+for(const phase of ['certificate-lock','gitlab-inspect','gitlab-quiesce','gitlab-services-down','gitlab-stop','gitlab-stopped-check','gitlab-clean-exit','stage-create','srv-copy','ssl-copy','certbot-copy','manifest-create','snapshot-publish']){
   HARVEST_FAILURE_CODES['Harvest phase failed: '+phase+'.']='harvest-phase-'+phase;
 }
 
@@ -111,6 +111,51 @@ async function registryTag(candidate,projectId,repositoryId,tag,token){
   // Tag details are project-scoped; only repository metadata has a global GET.
   return candidate.api('/projects/'+projectId+'/registry/repositories/'+repositoryId+'/tags/'+tag,token);
 }
+function reviewIdentity(review){
+  return {id:review.id,iid:review.iid,projectId:review.project_id,title:review.title,description:review.description,
+    state:review.state,sourceBranch:review.source_branch,targetBranch:review.target_branch,
+    sourceProjectId:review.source_project_id,targetProjectId:review.target_project_id,authorId:review.author?.id,
+    createdAt:review.created_at,sha:review.sha,mergeCommitSha:review.merge_commit_sha,mergedAt:review.merged_at};
+}
+function discussionIdentity(discussion){
+  if(!Array.isArray(discussion.notes))throw Error('recovery-discussion-notes-required');
+  return {id:discussion.id,individualNote:discussion.individual_note,notes:discussion.notes.map(note=>({
+    id:note.id,body:note.body,authorId:note.author?.id,createdAt:note.created_at,updatedAt:note.updated_at,
+    resolvable:note.resolvable,resolved:note.resolved
+  })).sort((a,b)=>a.id-b.id)};
+}
+async function recordReview(original,projectId,targetBranch,head,issueIid,nonce,token){
+  const step=(name,action)=>checkpoint(original,'recovery-identity-'+name,action);
+  const branch='recovery-review-'+original.id.slice(0,8);
+  const commit=await step('review-branch',()=>original.api('/projects/'+projectId+'/repository/commits',token,'POST',{
+    branch,start_sha:head,commit_message:'Preserve recovery review proof [skip ci]',
+    actions:[{action:'create',file_path:'recovery-proof.txt',content:nonce+'\n'}]
+  }));
+  const created=await step('merge-request',()=>original.api('/projects/'+projectId+'/merge_requests',token,'POST',{
+    source_branch:branch,target_branch:targetBranch,title:'Draft: Backup-only recovery review',
+    description:'Recovery proof for #'+issueIid+'\n\n'+nonce,remove_source_branch:false
+  }));
+  const route='/projects/'+projectId+'/merge_requests/'+created.iid;
+  const discussion=await step('review-discussion',()=>original.api(route+'/discussions',token,'POST',{body:'Recovery discussion '+nonce}));
+  await step('review-reply',()=>original.api(route+'/discussions/'+discussion.id+'/notes',token,'POST',{body:'Recovery reply '+nonce}));
+  const expected=await step('review-metadata',async()=>{
+    let review;
+    await original.wait(async()=>{
+      review=await original.api(route,token);
+      return review.sha===commit.id;
+    },60000);
+    const thread=await original.api(route+'/discussions/'+discussion.id,token);
+    const identity=reviewIdentity(review),notes=discussionIdentity(thread);
+    if(!Number.isInteger(identity.id)||identity.id<1||!Number.isInteger(identity.iid)||identity.iid<1||identity.projectId!==projectId||
+      identity.sourceProjectId!==projectId||identity.targetProjectId!==projectId||identity.sourceBranch!==branch||identity.targetBranch!==targetBranch||
+      identity.state!=='opened'||!Number.isInteger(identity.authorId)||typeof identity.createdAt!=='string'||!/^[a-f0-9]{40}$/.test(identity.sha)||
+      identity.mergeCommitSha!==null||identity.mergedAt!==null||notes.id!==discussion.id||notes.individualNote!==false||notes.notes.length!==2||
+      notes.notes.some(note=>!Number.isInteger(note.id)||!Number.isInteger(note.authorId)||typeof note.createdAt!=='string'||typeof note.updatedAt!=='string')||
+      !notes.notes.some(note=>note.body==='Recovery discussion '+nonce)||!notes.notes.some(note=>note.body==='Recovery reply '+nonce))throw Error('recovery-review-identity-invalid');
+    return {review:identity,discussion:notes};
+  });
+  return expected;
+}
 async function recordIdentity(original){
   const step=(name,action)=>checkpoint(original,'recovery-identity-'+name,action);
   const auth=await step('credential',()=>rootToken(original));
@@ -122,6 +167,7 @@ async function recordIdentity(original){
     const pipeline=await step('pipeline',()=>original.api('/projects/'+projectId+'/pipelines/'+original.evidence.pipelineId,auth.token));
     const nonce=crypto.randomBytes(24).toString('hex');
     const issue=await step('issue',()=>original.api('/projects/'+projectId+'/issues',auth.token,'POST',{title:'Backup-only recovery proof',description:nonce}));
+    const mergeRequest=await recordReview(original,projectId,project.default_branch,branch.commit.id,issue.iid,nonce,auth.token);
     await step('encrypted-variable',()=>original.api('/projects/'+projectId+'/variables',auth.token,'POST',{key:'RECOVERY_ENCRYPTED_PROOF',value:nonce,masked:true}));
     const user=await step('user',()=>original.api('/users',auth.token,'POST',{username:'recovery_'+original.id.slice(0,8),name:'Recovery fixture',email:'recovery-'+original.id+'@example.invalid',password:crypto.randomBytes(24).toString('hex'),skip_confirmation:true}));
     const repositories=await step('registry-repositories',()=>original.api('/projects/'+projectId+'/registry/repositories',auth.token));
@@ -129,7 +175,7 @@ async function recordIdentity(original){
     if(!repository||pipeline.status!=='success')throw Error('original-registry-proof-required');
     const tag=await step('registry-tag',()=>registryTag(original,projectId,repository.id,pipeline.sha,auth.token));
     return {rootId:auth.root_id,projectId,path:project.path_with_namespace,branch:project.default_branch,head:branch.commit.id,
-      issueIid:issue.iid,nonce,userId:user.id,userName:user.username,registryId:repository.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
+      issueIid:issue.iid,mergeRequest,nonce,userId:user.id,userName:user.username,registryId:repository.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
   }finally{await step('credential-revoked',()=>revoke(original,auth.token));}
 }
 async function capture(original,dependencies={}) {
@@ -338,19 +384,33 @@ async function verifyRestore(candidate,input) {
   if(input.expected.privateWizard)await verifyPrivateWizard(candidate,input.expected.privateWizard);
   await candidate.stage('recovery-gitlab-data-identity',async()=>{
     await candidate.wait(async()=>{await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness']);return true;},candidate.spec.readinessMilliseconds||600000);
-    const auth=await rootToken(candidate);
-    try {
-      const expected=input.expected;
-      const project=await candidate.api('/projects/'+expected.projectId,auth.token);
-      const branch=await candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),auth.token);
-      const issue=await candidate.api('/projects/'+expected.projectId+'/issues/'+expected.issueIid,auth.token);
-      const variable=await candidate.api('/projects/'+expected.projectId+'/variables/RECOVERY_ENCRYPTED_PROOF',auth.token);
-      const user=await candidate.api('/users/'+expected.userId,auth.token);
-      const tag=await checkpoint(candidate,'recovery-restored-registry-tag',()=>registryTag(candidate,expected.projectId,expected.registryId,expected.imageCommit,auth.token));
-      if(auth.root_id!==expected.rootId || project.path_with_namespace!==expected.path || branch.commit.id!==expected.head || issue.description!==expected.nonce ||
-        variable.value!==expected.nonce || user.username!==expected.userName || tag.digest!==expected.registryDigest)throw Error('restored-service-identity-mismatch');
-    } finally {await revoke(candidate,auth.token);}
+    await verifyServiceIdentity(candidate,input.expected);
   });
+}
+async function verifyServiceIdentity(candidate,expected){
+  candidate.mergeRequestRecoveryVerified=false;
+  const auth=await rootToken(candidate);
+  try {
+    const project=await candidate.api('/projects/'+expected.projectId,auth.token);
+    const branch=await candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),auth.token);
+    const issue=await candidate.api('/projects/'+expected.projectId+'/issues/'+expected.issueIid,auth.token);
+    const variable=await candidate.api('/projects/'+expected.projectId+'/variables/RECOVERY_ENCRYPTED_PROOF',auth.token);
+    const user=await candidate.api('/users/'+expected.userId,auth.token);
+    const tag=await checkpoint(candidate,'recovery-restored-registry-tag',()=>registryTag(candidate,expected.projectId,expected.registryId,expected.imageCommit,auth.token));
+    if(auth.root_id!==expected.rootId || project.path_with_namespace!==expected.path || branch.commit.id!==expected.head || issue.description!==expected.nonce ||
+      variable.value!==expected.nonce || user.username!==expected.userName || tag.digest!==expected.registryDigest)throw Error('restored-service-identity-mismatch');
+    await checkpoint(candidate,'recovery-restored-merge-request',async()=>{
+      const expectedReview=expected.mergeRequest;
+      if(!expectedReview?.review||!expectedReview?.discussion)throw Error('recovery-review-proof-required');
+      const route='/projects/'+expected.projectId+'/merge_requests/'+expectedReview.review.iid;
+      const review=await candidate.api(route,auth.token);
+      const discussion=await candidate.api(route+'/discussions/'+expectedReview.discussion.id,auth.token);
+      const source=await candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expectedReview.review.sourceBranch),auth.token);
+      if(JSON.stringify(reviewIdentity(review))!==JSON.stringify(expectedReview.review)||
+        JSON.stringify(discussionIdentity(discussion))!==JSON.stringify(expectedReview.discussion)||source.commit.id!==expectedReview.review.sha)throw Error('restored-review-identity-mismatch');
+    });
+  } finally {await revoke(candidate,auth.token);}
+  candidate.mergeRequestRecoveryVerified=true;
 }
 async function verifyPrivateWizard(candidate,expected){
   await candidate.stage('recovery-private-wizard-image-and-credential-cleanup',async()=>{
@@ -374,7 +434,7 @@ async function verifyRegistryBlob(candidate,input) {
       if(pipeline.status!=='success')throw Error('restored-registry-ci-failed');
       const jobs=await candidate.api('/projects/'+expected.projectId+'/pipelines/'+pipeline.id+'/jobs',auth.token);
       if(jobs.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id)throw Error('restored-registry-job-not-successful');
-      candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:!input.expected.acme,acmeRenewalVerified:false,privateWizardPinVerified:candidate.privateWizardPinVerified===true};
+      candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:!input.expected.acme,acmeRenewalVerified:false,privateWizardPinVerified:candidate.privateWizardPinVerified===true,mergeRequestRecoveryVerified:candidate.mergeRequestRecoveryVerified===true};
     } finally {await revoke(candidate,auth.token);}
   });
 }
@@ -401,7 +461,7 @@ async function run(original,reportDirectory,dependencies={}) {
     await second.platform();
     await (dependencies.verifyRegistryBlob || verifyRegistryBlob)(second,input);
     if(acme)await acme.renew(second,input.expected.acme);
-    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true};
+    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true,mergeRequestRecoveryVerified:second.mergeRequestRecoveryVerified===true};
   } finally {
     let clean=true;
     if(second){clean=second.cleanup();second.report(reportDirectory(second));}
@@ -413,4 +473,4 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!clean)throw Error('restored-host-cleanup-failed');
   }
 }
-module.exports={capture,bootstrapRestore,verifyRestore,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,BASE,SEED};
+module.exports={capture,bootstrapRestore,verifyRestore,verifyServiceIdentity,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,BASE,SEED};

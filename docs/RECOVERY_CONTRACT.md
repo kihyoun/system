@@ -21,8 +21,11 @@ use the same wrapper, for example `system-certbot renew --dry-run`. It shares a
 filesystem lease with Harvest. Do not run an unmanaged Certbot command or modify
 certificate state manually during Harvest.
 
-Harvest obtains an operation lease, obtains the renewal lease, stops GitLab with
-a 120-second grace period, and requires its container exit status to be zero.
+Harvest obtains an operation lease and the renewal lease, explicitly stops
+GitLab's services with a bounded longer runit wait, independently verifies that
+every enabled service is down, then stops the container. Inspection, service
+quiescence and container shutdown share a 120-second budget. The final container
+exit must be zero and Docker must not report an OOM kill.
 A forced shutdown is rejected rather than described as a consistent database copy.
 While GitLab is stopped, the authenticated Sync status/Fetch API remains available;
 configuration and other control mutations are rejected. GitLab/registry writes are
@@ -36,7 +39,12 @@ payload is verified before publishing `seed/current`, an atomic link to a comple
 `seed/snapshots/<generation>`. Previous snapshots and historical `seed/srv` /
 `seed/ssl` trees are retained. They are not automatically pruned; provide room for
 the new snapshot. Copy failure leaves the previous completed snapshot selected.
-GitLab is resumed on normal completion, failure or handled termination.
+GitLab is resumed on normal completion, failure or handled termination. If a
+service stop fails while the container is still running, Harvest requests every
+enabled service to run again; starting an already running container would not
+resume those services. An uncertain remote stop is allowed to reach its bounded
+deadline before resumption, so an old stop cannot race the restart. On failure,
+Harvest prints only the container's running state, exit code and OOM flag.
 
 SIGKILL, a lost host or power failure cannot execute cleanup. A remaining
 `.operation-lock` / `.system-bootstrapper-certificate-lock` is deliberate evidence

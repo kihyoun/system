@@ -139,6 +139,47 @@ Without that flag it loads archives, pulls missing public references, installs
 host integration and starts without rebuilding. Never treat an unavailable local
 tag or an undeclared archive as a recovery guarantee.
 
+### Preparing the optional image archives
+
+Prepare these inputs deliberately on a host where the intended images are
+available, before relying on archive-based replacement. Create a private
+`PERSISTENT_DIR/recovery/images/` directory. For each custom image, stream
+`docker image save <recorded-image-reference> | gzip` into a file in that
+directory, check that both commands succeed, then record the compressed file's
+`sha256sum`. Keep the original image tag in the archive, or explicitly tag the
+image with the selector that the saved main configuration uses before saving.
+For immutable helper image IDs, preserve the exact original image content.
+
+Write `PERSISTENT_DIR/recovery/images.json` with these two lists. Replace the
+placeholders with the archive's actual checksum and public image references:
+
+```json
+{
+  "archives": [
+    {
+      "file": "images/controller.tar.gz",
+      "sha256": "<64 hexadecimal characters from sha256sum>"
+    }
+  ],
+  "publicImages": [
+    {
+      "reference": "nginx@sha256:<recorded digest>",
+      "tag": "nginx:retained"
+    }
+  ]
+}
+```
+
+Include every required custom archive and public GitLab, Runner and proxy image,
+using references compatible with the retained installation. Each public entry is
+pulled if absent and given its declared local alias; this does not change the
+saved configuration. Ensure its selected reference or alias matches that
+configuration. The private Wizard image can remain an exact registry digest and
+be recovered from the retained registry during startup. Protect the manifest and
+archives, retain an independent record of their expected checksums and verify
+them with `recover-volume.sh --verify` before startup. Image archives do not
+replace the live filesystem, complete saved configuration or Certbot state.
+
 Before migrating root-disk volumes to these directories, stop writers, copy data
 consistently and retain a rollback copy. Recreate Docker volume metadata only
 after verifying its exact identity and destination. Do not delete unrelated

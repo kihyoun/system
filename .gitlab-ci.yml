@@ -48,10 +48,11 @@ prepare:wizard-source:
   services: []
   tags: [docker]
   variables:
-    GIT_SUBMODULE_STRATEGY: recursive
+    GIT_SUBMODULE_STRATEGY: none
   cache: []
   timeout: 5m
   script:
+    - node gitlab/prepare-wizard-source.js
     - node project-bootstrap/wizard-source/package.js
     - node project-bootstrap/wizard-source/package.js --verify
     - node tests/prepare-context.js
@@ -59,9 +60,9 @@ prepare:wizard-source:
   artifacts:
     expire_in: 1 day
     paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/]
-  only:
-    - merge_requests
-    - master
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 # The existing trusted socket runner launches a socket-free test child.
 # The current build/deploy jobs retain their upstream publishing behavior.
@@ -92,9 +93,9 @@ test:isolated:
     paths: [test-results/]
     reports:
       junit: test-results/*/junit.xml
-  only:
-    - merge_requests
-    - master
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 # Build the complete runtime and packaged Sync/Wizard source before publishing.
 test:candidate-image:
@@ -121,9 +122,9 @@ test:candidate-image:
     paths: [test-results/candidate-image/]
     reports:
       junit: test-results/candidate-image/junit.xml
-  only:
-    - merge_requests
-    - master
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 # One required resource-heavy candidate after all socket-free checks pass.
 test:platform-candidate:
@@ -153,9 +154,9 @@ test:platform-candidate:
     paths: [test-results/e2e/]
     reports:
       junit: test-results/e2e/*/junit.xml
-  only:
-    - merge_requests
-    - master
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 build:
   stage: build
@@ -165,37 +166,40 @@ build:
     - docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper
     - docker tag $IMAGE_TAG systembootstrapper/system:latest
     - docker push $IMAGE_TAG
-  only:
-    - merge_requests
-    - master
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 deploy:dockerhub:
   stage: deploy
   before_script:
+    - 'test -n "$DOCKERHUB_USER" && test -n "$DOCKERHUB_PASS" || { echo "Docker Hub publishing credentials missing" >&2; exit 1; }'
     - echo "$DOCKERHUB_PASS" | docker login --username $DOCKERHUB_USER --password-stdin
   script:
     - docker push systembootstrapper/system:latest
-  only:
-    - master
+  rules:
+    - if: '$DOCKERHUB_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+      when: on_success
+    - when: never
 
 deploy:github:
   stage: deploy
-  image: node:alpine
-  before_script:
-    - 'which ssh-agent || ( apk update && apk add openssh-client git)'
-    - eval $(ssh-agent -s)
-    - echo "$GITHUB_SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - ssh-keyscan github.com >> ~/.ssh/known_hosts
-    - chmod 644 ~/.ssh/known_hosts
-    - git config --global user.email "systembootstrapper@gmail.com"
-    - git config --global user.name "Ki=Hyoun Kim"
+  image: node:24.22.0-bookworm@sha256:14078204b6bb268c107ceff6d3c43f45a888105e5c2b18b14c32b3409d93a1b0
+  services: []
+  tags: [docker]
+  cache: []
+  dependencies: []
+  timeout: 10m
+  interruptible: false
+  resource_group: 'github-backup-$CI_PROJECT_ID'
+  allow_failure: false
+  before_script: []
+  rules:
+    - if: '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+      when: on_success
+    - when: never
   script:
-    - git remote rm origin && git remote add origin git@github.com:kihyoun/system.git
-    - git push origin HEAD:master
-  only:
-    - master
+    - sh gitlab/github-backup-ci.sh
 
 
 
@@ -208,4 +212,4 @@ deploy:github:
 #     - docker push $IMAGE_TAG_BOOTSTRAPPER
 #   only:
 #     - merge_requests
-#     - master
+#     - $CI_DEFAULT_BRANCH
