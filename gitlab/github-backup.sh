@@ -1,5 +1,5 @@
 #!/bin/sh
-# Preparation only: CI must explicitly enable this after the approved cutover.
+# Opt-in CI backup of the exact reviewed default-branch commit.
 # Never trace transport commands: credentials may be carried by SSH environment.
 set +x
 set -eu

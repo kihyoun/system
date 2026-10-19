@@ -5,7 +5,8 @@ const path = require('path');
 const { spawnSync, execFile } = require('child_process');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'system-github-backup-'));
-const helper = path.resolve(__dirname, '../../gitlab/github-backup.sh').replace(/\\/g, '/');
+const helper = path.resolve(process.env.GITHUB_BACKUP_TEST_HELPER || path.resolve(__dirname, '../../gitlab/github-backup.sh')).replace(/\\/g, '/');
+const ciHelper = path.join(path.dirname(helper), 'github-backup-ci.sh').replace(/\\/g, '/');
 const shell = process.env.GITHUB_BACKUP_TEST_SHELL || 'sh';
 const posix = value => value.replace(/\\/g, '/');
 const quote = value => `'${posix(value).replace(/'/g, `'"'"'`)}'`;
@@ -51,13 +52,13 @@ function fixture() {
     GITHUB_BACKUP_BRANCH: 'master', GITHUB_BACKUP_REMOTE: posix(backup),
     GITHUB_BACKUP_OFFLINE_FIXTURE: '1' };
   const tip = () => git(dir, '--git-dir', backup, 'rev-parse', 'refs/heads/master');
-  function run(extra = {}, cwd = work) {
-    const result = spawnSync(shell, [helper], { cwd, env: { ...env, PATH: shellPath, ...extra }, encoding: 'utf8' });
+  function run(extra = {}, cwd = work, selectedHelper = helper) {
+    const result = spawnSync(shell, [selectedHelper], { cwd, env: { ...env, PATH: shellPath, ...extra }, encoding: 'utf8' });
     if (result.error) throw result.error;
     assert(!`${result.stdout}${result.stderr}`.includes('FIXTURE_SECRET_DO_NOT_LOG'));
     return result;
   }
-  return { dir, source, backup, work, base, sha, env, tip, run };
+  return { dir, source, backup, work, base, sha, env, tip, run, ci: extra => run(extra, work, ciHelper) };
 }
 function pass(result) { assert.equal(result.status, 0, result.stderr); }
 function fail(result, text) { assert.notEqual(result.status, 0); assert.match(result.stderr, text); }
@@ -109,6 +110,36 @@ exec ${quote(gitPath)} "$@"
 
 async function main() {
   let f = fixture();
+  if (process.platform !== 'win32') {
+  // The CI wrapper must skip ineligible contexts before touching credentials.
+  pass(f.ci({GITHUB_BACKUP_ENABLED: 'false'}));
+  pass(f.ci({CI_PIPELINE_SOURCE: 'merge_request_event'}));
+  pass(f.ci({CI_COMMIT_TAG: 'v1'}));
+  fail(f.ci({CI_COMMIT_REF_PROTECTED: 'false'}), /protected default branch/);
+  fail(f.ci({GITHUB_SSH_PRIVATE_KEY: ''}), /protected SSH key/);
+  const credential = path.join(f.dir, 'fixture-identity');
+  const generated = spawnSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', credential], {encoding: 'utf8'});
+  assert.equal(generated.status, 0, generated.stderr);
+  const privateKey = fs.readFileSync(credential, 'utf8'), publicKey = fs.readFileSync(credential + '.pub', 'utf8').trim();
+  const knownHosts = path.join(f.dir, 'verified-hosts'), privateTemp = path.join(f.dir, 'credential-temporary');
+  fs.mkdirSync(privateTemp);
+  fs.writeFileSync(knownHosts, 'github.com ' + publicKey + '\n');
+  const ciEnvironment = {GITHUB_SSH_PRIVATE_KEY: credential, GITHUB_SSH_KNOWN_HOSTS: knownHosts, TMPDIR: privateTemp};
+  let result = f.ci(ciEnvironment);
+  pass(result); assert.equal(f.tip(), f.sha);
+  assert(!`${result.stdout}${result.stderr}`.includes(privateKey), 'private key never enters CI output');
+  assert.deepEqual(fs.readdirSync(privateTemp), [], 'ephemeral CI credential directory removed');
+  result = f.ci({...ciEnvironment, GITHUB_SSH_PRIVATE_KEY: privateKey});
+  pass(result); assert.deepEqual(fs.readdirSync(privateTemp), [], 'legacy multiline identity supported without retained credentials');
+  fs.writeFileSync(knownHosts, 'other.example ' + publicKey + '\n');
+  fail(f.ci(ciEnvironment), /verified GitHub host key missing/);
+  assert.deepEqual(fs.readdirSync(privateTemp), [], 'host-key failure also cleans owned state');
+  fs.writeFileSync(knownHosts, 'github.com ' + publicKey + '\n');
+  fail(f.ci({...ciEnvironment, GITHUB_SSH_PRIVATE_KEY: 'invalid-key-material'}), /SSH identity could not be loaded/);
+  assert.deepEqual(fs.readdirSync(privateTemp), [], 'key-loading failure also cleans owned state');
+  console.log('PASS: protected CI eligibility, verified file host keys, file/text identities, redaction and owned credential cleanup');
+  }
+  f = fixture();
   git(f.work, 'config', 'push.followTags', 'true');
   git(f.work, 'tag', '-a', 'unrelated-tag', '-m', 'not part of branch backup');
   pass(f.run());
@@ -219,7 +250,7 @@ async function main() {
   const savedDirectory = process.cwd();
   process.env = { ...f.env, ...extra };
   process.chdir(f.work);
-  const { startTransport } = require('../../gitlab/github-backup-transport');
+  const { startTransport } = require(path.join(path.dirname(helper), 'github-backup-transport.js'));
   const transport = startTransport(['fetch', 'origin'], 30);
   process.env = savedEnv;
   process.chdir(savedDirectory);
