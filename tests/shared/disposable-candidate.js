@@ -477,7 +477,7 @@ function recover(report,exec=docker) {
       ...(jobDiagnostics.sanitize(job.diagnostics)?{diagnostics:jobDiagnostics.sanitize(job.diagnostics)}:{})}));
   if(report.evidence?.recovery && /^[a-f0-9]{24}$/.test(report.evidence.recovery.runId||'')) {
     const recovery={runId:report.evidence.recovery.runId};
-    for(const key of ['backupOnly','originalHostRemoved','syntheticTlsVerified','acmeRenewalVerified','privateWizardPinVerified'])if(typeof report.evidence.recovery[key]==='boolean')recovery[key]=report.evidence.recovery[key];
+    for(const key of ['backupOnly','originalHostRemoved','syntheticTlsVerified','acmeRenewalVerified','privateWizardPinVerified','mergeRequestRecoveryVerified'])if(typeof report.evidence.recovery[key]==='boolean')recovery[key]=report.evidence.recovery[key];
     evidence.recovery=recovery;
   }
   Object.assign(instance,{id:report.runId,name,resources:report.resources,results,exec,
