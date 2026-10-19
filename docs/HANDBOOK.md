@@ -328,6 +328,113 @@ For public use, configure your own DNS, HTTPS certificates and host certificate
 renewal. Reusing a database or moving persistent storage requires the separate
 [recovery procedure](RECOVERY_CONTRACT.md).
 
+### 0.13 Replace a public host while retaining its data volume
+
+This procedure reuses the current live data, including GitLab, configuration and
+certificates. It does **not** restore an older Seed. Keep the volume when removing
+the old VM, and stop its writers cleanly before detaching it when possible. Use
+the [configuration-plus-Seed procedure](RECOVERY_CONTRACT.md) instead when only a
+completed Seed and configuration backup are available.
+
+Before starting, obtain your recorded System source revision, filesystem UUID,
+mount and data paths, complete saved configuration and exact service-image
+selectors. Choose enough host resources for GitLab and any simultaneous builds or
+disposable tests. Keep the configured DNS names; update their A/AAAA records if
+the public address changes. Public HTTPS requires ports 80 and 443 to reach this
+host. Do not apply the local HTTP preparation from section 0.2 to this deployment.
+
+1. On the replacement Ubuntu host, fetch source as in section 0.1. Check out the
+   recorded System revision and initialize its pinned submodules, rather than
+   updating them to their newest branches. A configured source mirror can provide
+   this checkout while the platform's own GitLab is unavailable:
+
+   ```bash
+   SYSTEM_REVISION=REPLACE_WITH_RECORDED_COMMIT
+   git checkout --detach "$SYSTEM_REVISION"
+   git submodule update --init --recursive
+   sudo bash bootstrapper/install.sh
+   sudo apt-get install -y certbot
+   ```
+
+2. Inspect `lsblk -f` and mount the **existing** filesystem at its previous
+   absolute mount path. Replace the example assignments below with the retained
+   installation's values. Do not format the attached volume:
+
+   ```bash
+   PERSISTENT_MOUNT=/mnt/bootstrapper-data
+   PERSISTENT_DIR=/mnt/bootstrapper-data/platform
+   SEED_DIR=/mnt/bootstrapper-data/seed
+   PERSISTENT_UUID=REPLACE_WITH_EXISTING_UUID
+   sudo install -d -m 0755 "$PERSISTENT_MOUNT"
+   sudo mount "UUID=$PERSISTENT_UUID" "$PERSISTENT_MOUNT"
+   findmnt --mountpoint "$PERSISTENT_MOUNT"
+   ```
+
+   If it is already mounted, verify its UUID and target instead of mounting it
+   again. Recreate the host selector with only these storage settings; inspect
+   any retained selector before reusing it, since unrelated old image overrides
+   can select the wrong services:
+
+   ```bash
+   sudo install -d -m 0700 /etc/system-bootstrapper
+   sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<EOF
+   PERSISTENT_MOUNT=$PERSISTENT_MOUNT
+   PERSISTENT_DIR=$PERSISTENT_DIR
+   SEED_DIR=$SEED_DIR
+   PERSISTENT_UUID=$PERSISTENT_UUID
+   EOF
+   sudo chmod 0600 /etc/system-bootstrapper/persistence.env
+   sudo bash bootstrapper/install-volume-host.sh
+   ```
+
+   Host integration validates storage, adds the persistent mount dependency and
+   reconnects `/etc/letsencrypt` to the retained complete Certbot tree. It installs
+   the renewal timer, shared renewal/Harvest lease and certificate deploy hook.
+   Conflicting active host and volume certificate state requires deliberate
+   reconciliation; do not overwrite either tree to make startup continue.
+
+3. Select one image-recovery path from the
+   [persistent-volume guide](PERSISTENT_VOLUME.md#replacing-a-vm-while-retaining-live-data).
+   Normally, rebuild the controller from the chosen clean source, make the exact
+   public service images available, then run `sudo bash start.sh`. Preserve the
+   saved GitLab version/edition and immutable private Wizard reference. The fresh
+   installation's image examples are not an upgrade path for an existing database.
+   A missing custom local tag must be rebuilt or restored explicitly. Managed
+   helper identities require the guide's explicit reprovisioning when rebuilt.
+
+   Alternatively, if you deliberately prepared the declared image manifest and
+   checksum-verified archives described in that guide, reuse those exact images:
+
+   ```bash
+   sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+     bash bootstrapper/recover-volume.sh --verify
+   sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+     bash bootstrapper/recover-volume.sh
+   ```
+
+   This alternative loads the declared archives and public references and starts
+   without rebuilding the controller. It neither restores a Seed nor supplies
+   recovery archives from the checkout. Keep additional image selectors in the
+   complete saved main configuration, or pass the recorded selectors explicitly
+   when invoking startup; never substitute example image defaults.
+
+4. Wait for GitLab readiness. If the saved Wizard image is absent from the new
+   Docker cache and lives in this GitLab's registry, startup first exposes only
+   GitLab/registry routing and pulls that exact digest using a temporary scoped
+   credential. No old Docker login or replacement Wizard build is required. See
+   [private Wizard recovery](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image)
+   for validation, cleanup and interrupted-operation handling.
+5. Open your configured public Wizard and Sync addresses, connect and Fetch.
+   Confirm the saved projects and settings, GitLab health, registry authentication
+   and online runner managers. Inspect each service's mount destination and each
+   named volume's backing device against the attached filesystem. Finally verify
+   retained TLS and renewal without stopping the proxy:
+
+   ```bash
+   sudo docker ps
+   sudo system-certbot renew --dry-run
+   ```
+
 ## 1. Main actions
 
 | Action | What happens |
