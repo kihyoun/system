@@ -249,40 +249,124 @@ test('Fetch after ACME activation uses authenticated CA-verified HTTPS for all c
 });
 function identityFixture(failRoute){
   const requests=[],stages=[],sha='a'.repeat(40),digest='sha256:'+'b'.repeat(64);
+  const reviewSha='d'.repeat(40),reviewBranch='recovery-review-cccccccc',createdAt='2026-01-01T00:00:00.000Z';
+  const state={review:null,discussion:null,nonce:null,username:null};
   const candidate={id:'c'.repeat(24),evidence:{projectId:12,pipelineId:21},rails:async()=>({token:'private-fixture-token',root_id:1}),
+    wait:async action=>assert.equal(await action(),true),
     stage:async(name,action)=>{try{const value=await action();stages.push({name,status:'passed'});return value;}catch(error){stages.push({name,status:'failed',reason:error.message});throw error;}},
     api:async(route,token,method='GET',body)=>{
       assert.equal(token,'private-fixture-token');requests.push({route,method});
       if(route===failRoute)throw Error('private-upstream-body-token-must-not-escape');
       if(route==='/projects/12')return {default_branch:'main',path_with_namespace:'root/recovery'};
       if(route==='/projects/12/repository/branches/main')return {commit:{id:sha}};
+      if(route==='/projects/12/repository/branches/'+reviewBranch)return {commit:{id:reviewSha}};
       if(route==='/projects/12/pipelines/21')return {status:'success',sha};
-      if(route==='/projects/12/issues'){assert.equal(method,'POST');return {iid:7};}
+      if(route==='/projects/12/issues'){assert.equal(method,'POST');state.nonce=body.description;return {iid:7};}
+      if(route==='/projects/12/issues/7')return {iid:7,description:state.nonce};
+      if(route==='/projects/12/repository/commits'){
+        assert.equal(method,'POST');assert.equal(body.branch,reviewBranch);assert.equal(body.start_sha,sha);
+        assert.match(body.commit_message,/\[skip ci\]/);assert.deepEqual(body.actions,[{action:'create',file_path:'recovery-proof.txt',content:state.nonce+'\n'}]);
+        return {id:reviewSha};
+      }
+      if(route==='/projects/12/merge_requests'){
+        assert.equal(method,'POST');assert.equal(body.source_branch,reviewBranch);assert.equal(body.target_branch,'main');
+        assert.match(body.description,/Recovery proof for #7/);assert.match(body.title,/^Draft:/);
+        state.review={id:31,iid:3,project_id:12,title:body.title,description:body.description,state:'opened',
+          source_branch:body.source_branch,target_branch:body.target_branch,source_project_id:12,target_project_id:12,
+          author:{id:1},created_at:createdAt,sha:reviewSha,merge_commit_sha:null,merged_at:null};
+        return state.review;
+      }
+      if(route==='/projects/12/merge_requests/3')return state.review;
+      const discussionRoute='/projects/12/merge_requests/3/discussions';
+      if(route===discussionRoute){
+        assert.equal(method,'POST');state.discussion={id:'e'.repeat(40),individual_note:false,
+          notes:[{id:41,body:body.body,author:{id:1},created_at:createdAt,updated_at:createdAt,resolvable:true,resolved:false}]};
+        return state.discussion;
+      }
+      if(route===discussionRoute+'/'+'e'.repeat(40)+'/notes'){
+        assert.equal(method,'POST');const note={id:42,body:body.body,author:{id:1},created_at:createdAt,updated_at:createdAt,resolvable:true,resolved:false};
+        state.discussion.notes.push(note);return note;
+      }
+      if(route===discussionRoute+'/'+'e'.repeat(40))return state.discussion;
       if(route==='/projects/12/variables'){assert.equal(method,'POST');return {};}
-      if(route==='/users'){assert.equal(method,'POST');return {id:9,username:body.username};}
+      if(route==='/projects/12/variables/RECOVERY_ENCRYPTED_PROOF')return {value:state.nonce};
+      if(route==='/users'){assert.equal(method,'POST');state.username=body.username;return {id:9,username:body.username};}
+      if(route==='/users/9')return {id:9,username:state.username};
       if(route==='/projects/12/registry/repositories')return [{id:14,path:'root/recovery/probe'}];
       if(route==='/projects/12/registry/repositories/14/tags/'+sha)return {digest};
       if(route==='/personal_access_tokens/self'){assert.equal(method,'DELETE');return null;}
       throw Error('unexpected API route');
     }};
-  return {candidate,requests,stages,sha,digest};
+  return {candidate,requests,stages,sha,digest,reviewSha,state};
 }
 test('identity capture uses the documented project-scoped tag endpoint and journals every data boundary',async()=>{
   const f=identityFixture();const result=await recovery.recordIdentity(f.candidate);
   assert.equal(result.registryDigest,f.digest);assert.equal(result.imageCommit,f.sha);assert.equal(result.registryId,14);
   assert(f.requests.some(item=>item.route==='/projects/12/registry/repositories/14/tags/'+f.sha));
   assert(!f.requests.some(item=>item.route.startsWith('/registry/repositories/')));
-  assert.deepEqual(f.stages.map(item=>item.name),['credential','project','repository-head','pipeline','issue','encrypted-variable','user','registry-repositories','registry-tag','credential-revoked'].map(name=>'recovery-identity-'+name));
+  assert.deepEqual(f.stages.map(item=>item.name),['credential','project','repository-head','pipeline','issue','review-branch','merge-request','review-discussion','review-reply','review-metadata','encrypted-variable','user','registry-repositories','registry-tag','credential-revoked'].map(name=>'recovery-identity-'+name));
+  assert.equal(result.head,f.sha,'review fixture must not move the default branch');
+  assert.equal(result.mergeRequest.review.sha,f.reviewSha);assert.equal(result.mergeRequest.review.state,'opened');
+  assert.equal(result.mergeRequest.discussion.notes.length,2);assert.equal(result.mergeRequest.discussion.notes[1].body,'Recovery reply '+result.nonce);
   assert(f.stages.every(item=>item.status==='passed'));
 });
 test('capture failures identify the precise operation, revoke credentials and suppress upstream private errors',async()=>{
-  for(const [route,label]of [['/projects/12','project'],['/projects/12/issues','issue'],['/projects/12/registry/repositories/14/tags/'+'a'.repeat(40),'registry-tag']]){
+  const {failureReason}=require('./stage-diagnostics');
+  for(const [route,label]of [['/projects/12','project'],['/projects/12/issues','issue'],['/projects/12/repository/commits','review-branch'],
+    ['/projects/12/merge_requests','merge-request'],['/projects/12/merge_requests/3/discussions','review-discussion'],
+    ['/projects/12/merge_requests/3/discussions/'+'e'.repeat(40)+'/notes','review-reply'],
+    ['/projects/12/registry/repositories/14/tags/'+'a'.repeat(40),'registry-tag']]){
     const f=identityFixture(route);
     await assert.rejects(()=>recovery.recordIdentity(f.candidate),new RegExp('recovery-identity-'+label+'-failed'));
+    assert.equal(failureReason('recovery-identity-'+label+'-failed'),'recovery-identity-'+label+'-failed');
     assert(f.requests.some(item=>item.route==='/personal_access_tokens/self'&&item.method==='DELETE'));
     assert(f.stages.some(item=>item.name==='recovery-identity-'+label&&item.status==='failed'));
     assert(!JSON.stringify(f.stages).includes('private-'));
   }
+});
+test('restored service identity includes review branch, MR metadata and both attributed discussion notes',async()=>{
+  const f=identityFixture(),expected=await recovery.recordIdentity(f.candidate);
+  f.requests.length=0;f.stages.length=0;
+  await recovery.verifyServiceIdentity(f.candidate,expected);
+  assert.equal(f.candidate.mergeRequestRecoveryVerified,true);
+  assert(f.requests.some(item=>item.route==='/projects/12/repository/branches/'+expected.mergeRequest.review.sourceBranch));
+  assert(f.stages.some(item=>item.name==='recovery-restored-merge-request'&&item.status==='passed'));
+  assert.equal(f.requests.at(-1).route,'/personal_access_tokens/self');
+  assert(!JSON.stringify(f.stages).includes(expected.nonce));
+});
+test('missing or changed MR state, source commit, author, timestamp and discussion fail recovery and revoke the credential',async()=>{
+  const {failureReason}=require('./stage-diagnostics');
+  assert.equal(failureReason('recovery-restored-merge-request-failed'),'recovery-restored-merge-request-failed');
+  const changes=[
+    f=>{f.state.review.state='closed';},
+    f=>{f.state.review.source_branch='other-review';},
+    f=>{f.state.review.target_branch='other-target';},
+    f=>{f.state.review.sha='f'.repeat(40);},
+    f=>{f.state.review.merge_commit_sha='f'.repeat(40);},
+    f=>{f.state.review.author.id=2;},
+    f=>{f.state.review.created_at='2026-01-02T00:00:00.000Z';},
+    f=>{f.state.discussion.notes[0].body='changed review';},
+    f=>{f.state.discussion.notes[1].author.id=2;},
+    f=>{f.state.discussion.notes[1].created_at='2026-01-02T00:00:00.000Z';},
+    f=>{f.state.discussion.notes[0].resolved=true;},
+    f=>{f.state.discussion.notes.pop();}
+  ];
+  for(const change of changes){
+    const f=identityFixture(),expected=await recovery.recordIdentity(f.candidate);
+    change(f);f.requests.length=0;f.stages.length=0;
+    await assert.rejects(()=>recovery.verifyServiceIdentity(f.candidate,expected),/recovery-restored-merge-request-failed/);
+    assert.notEqual(f.candidate.mergeRequestRecoveryVerified,true);
+    assert.equal(f.requests.at(-1).route,'/personal_access_tokens/self');
+    assert(!JSON.stringify(f.stages).includes(expected.nonce));
+  }
+  const missing=identityFixture(),expected=await recovery.recordIdentity(missing.candidate);delete expected.mergeRequest;
+  await assert.rejects(()=>recovery.verifyServiceIdentity(missing.candidate,expected),/recovery-restored-merge-request-failed/);
+  assert.equal(missing.requests.at(-1).route,'/personal_access_tokens/self');
+  const wrongBranch=identityFixture(),branchExpected=await recovery.recordIdentity(wrongBranch.candidate),api=wrongBranch.candidate.api;
+  wrongBranch.candidate.api=(route,...args)=>route.endsWith('/repository/branches/'+branchExpected.mergeRequest.review.sourceBranch)?Promise.resolve({commit:{id:'f'.repeat(40)}}):api(route,...args);
+  await assert.rejects(()=>recovery.verifyServiceIdentity(wrongBranch.candidate,branchExpected),/recovery-restored-merge-request-failed/);
+  assert.notEqual(wrongBranch.candidate.mergeRequestRecoveryVerified,true);
+  assert.equal(wrongBranch.requests.at(-1).route,'/personal_access_tokens/self');
 });
 test('tag-detail lookup refuses malformed project/repository/source identities without an API call',async()=>{
   const candidate={api:async()=>{throw Error('must not call API');}};

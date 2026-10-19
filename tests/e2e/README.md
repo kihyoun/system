@@ -209,7 +209,9 @@ pinned Wizard source revision. Its ZIP uses the same model and generator as Back
 it contains configuration only.
 
 The adapter records synthetic GitLab users, repository head, an issue, an encrypted
-CI variable and an existing registry digest. Without local ACME it creates a
+CI variable and an existing registry digest. It also creates a separate source
+branch and draft MR with a discussion and reply; the default branch is unchanged
+and its small fixture commit skips CI. Without local ACME it creates a
 synthetic TLS certificate and account/renewal layout; with that phase it uses a
 real fixture-issued certificate. It fetches saved main/project configuration
 through the authenticated API, exports it through the Wizard model, and runs the real controlled
@@ -230,6 +232,10 @@ identities remain verification oracles; they are never written as recovery input
 The restored instance must pass CA-verified HTTPS with the expected host/SNI,
 authenticated configuration Fetch, account/certificate/renewal-path preservation,
 and GitLab user/project/repository/issue/encrypted-setting/registry identity checks.
+MR recovery checks the exact source-branch commit, MR identity, title, description,
+state, author and creation timestamp, and both discussion notes' IDs, text, authors,
+timestamps and resolution flags. The report exposes only the boolean
+`mergeRequestRecoveryVerified`; the private fixture content is not a public artifact.
 It repeats actual runner/registry CI and its failure gate, then runs a further real
 CI job that pulls and executes the original registry blob captured before Harvest.
 Both lifecycles share the original overall deadline and cancellation flag. Each has
