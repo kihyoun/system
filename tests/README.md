@@ -86,7 +86,50 @@ identity, clean shutdown, certificate leases and durable restore markers.
 
 ## GitLab CI boundaries
 
-The root pipeline prepares the exact recursive Wizard gitlink and both minimal
+The root pipeline uses two categories on merge requests and the default branch:
+
+- **Documentation:** changes limited to root `AGENTS.md`, `README.md`,
+  `Prepare-Host.md`, or Markdown/PNG/JPG/JPEG/SVG files beneath `docs/` run
+  `check:documentation`. It checks the committed diff with `git diff --check`
+  and validates changed Markdown as regular UTF-8 text. It does not initialize
+  submodules, install packages, publish runtime images or start a test platform.
+- **Runtime:** every other path, mixed documentation/code changes and unknown
+  paths retain the complete component, image and cold-recovery checks below.
+  CI configuration and helpers, infrastructure, tests and the Wizard gitlink
+  belong to this category. Renames include the old and new paths; deleting
+  runtime files also retains full coverage.
+
+Native `rules:changes:regexp` requires GitLab 19.2 or later. The shared rule matches
+any path outside the documentation allowlist; a matching README never overrides
+a runtime change. MR comparisons use the target diff base, and default-branch
+pushes use the previous branch head. First pushes and events without a change
+comparison conservatively select full checks. Scheduled/manual default-branch
+runs also keep the full lane. Protected merges still require a successful current
+pipeline and resolved review discussions. A protected default-branch push can
+mirror either category to GitHub when enabled; runtime image publishing remains
+conditional and Production promotion remains manual.
+
+Provide a `system-source-lightweight` runner for `check:documentation`, using an
+unprivileged executor without a mounted host Docker socket or DinD service. The
+job refuses a mounted `/var/run/docker.sock`, uses the pinned Node image and Git
+already present there, and requires no runtime-job artifacts. Existing `docker`
+runner tags and resource bounds remain unchanged for full checks. These tags
+describe operator-provided runner profiles, not a pre-existing test host.
+
+Reproduce the selection and documentation regressions with existing Ruby/Psych,
+Node and Git, without Docker or additional lint packages:
+
+```sh
+ruby tests/gitlab/ci-selection.rb
+node tests/gitlab/check-documentation.js
+```
+
+These fixtures cover changed paths, event/publishing roles and real Git diffs;
+they do not substitute for GitLab CI Lint or the required runtime pipeline when
+CI itself changes. MR and merged default-branch commits receive their own checks;
+the pipeline does not reuse an earlier cold-recovery result based on tree identity.
+
+The runtime lane prepares the exact recursive Wizard gitlink and both minimal
 build contexts in `prepare:wizard-source`. Downstream jobs require the archive
 checksum and recorded revision to match `CI_COMMIT_SHA`; missing, damaged or
 stale artifacts fail before Docker execution.

@@ -27,6 +27,7 @@ try {
   wizardGit('add','.'); wizardGit('commit','-m','Committed Wizard fixture');
   const wizardRevision=wizardGit('rev-parse','HEAD');
   write('tests/Dockerfile','FROM scratch\n');
+  write('.gitlab-ci.yml','stages: [test]\n');
   write('system/Dockerfile','FROM scratch\n');
   write('sync/package.json','{}\n');
   write('sync/src/public.ts','committed source\n');
@@ -46,11 +47,13 @@ try {
   const snapshot=pack(root);
   for (const name of ['.docker.env','system/.docker.env','tests/credentials.json','project-bootstrap/untracked-secret.txt','seed/data','test-results/old.xml']) write(name,'untracked-private-marker');
   write('sync/src/public.ts','dirty-private-marker');
+  write('.gitlab-ci.yml','dirty-uncommitted-ci\n');
   write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify({...snapshot,unrecognizedSecret:'never copy this metadata'}));
   const result = prepareContext(root);
   const archive=path.join(root,'.test-context/context.tar');
   assert(!result.files.some(name=>/private\.env|credentials|untracked-secret|seed\/data|old\.xml/.test(name)));
   assert(result.files.includes('system/.docker.env.example'));
+  assert.equal(execFileSync('tar',['-xOf',archive,'.gitlab-ci.yml'],{encoding:'utf8'}),'stages: [test]\n');
   for(const filename of runtimeInputs) assert(result.files.includes(filename), 'Missing runtime input: '+filename);
   assert.equal(execFileSync('tar',['-xOf',archive,'sync/src/public.ts'],{encoding:'utf8'}),'committed source\n');
   assert(execFileSync('tar',['-xOf',archive,'tests/binary.png']).equals(binary),'preserve binary source bytes');
