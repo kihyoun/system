@@ -58,3 +58,29 @@ assert.throws(() => generate(logo, {...options, buildRecipeHash: '0'.repeat(64)}
 assert.strictEqual(generate(logo, {...options, buildRecipeHash: require('../../project-bootstrap/wizard-build/recipe').generate(logo).recipeHash}).recipeHash,
   recipe.recipeHash, 'Explicit legacy profile must not change existing environment recipes');
 console.log('Review/Beta recipe retains the explicitly selected, canonical modern or historical toolchain.');
+
+const primary = require('../../project-bootstrap/wizard-environments/source-primary');
+const stopped = {version: 1, phase: 'ready', operation: '1'.repeat(48), settings,
+  settingsHash: crypto.createHash('sha256').update(JSON.stringify(settings)).digest('hex'),
+  deployments: {review: {lastPipelineId: 43, stoppedThroughPipelineId: 43,
+    tombstone: {projectId: 1, pipelineId: 43, operation: '1'.repeat(48), state: 'stopped'}},
+  beta: {lastPipelineId: 44, stoppedThroughPipelineId: 44}}};
+const selected = {operation: '2'.repeat(48), helperImage: 'sha256:' + '3'.repeat(64), activationCommit: '4'.repeat(40),
+  ciFiles: ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map(path => ({path, sha256: '5'.repeat(64)}))};
+const adopted = primary.sourcePrimaryEnvironment(stopped, selected);
+assert.deepStrictEqual(adopted.deployments, {review: {lastPipelineId: 43, stoppedThroughPipelineId: 43},
+  beta: {lastPipelineId: 44, stoppedThroughPipelineId: 44}});
+assert.deepStrictEqual(adopted.historicalDeployments[0], {operation: stopped.operation, deployments: stopped.deployments});
+assert.deepStrictEqual(adopted.settings, stopped.settings);
+assert.strictEqual(primary.reservation(adopted).recipeHash, adopted.recipeHash);
+assert.throws(() => primary.sourcePrimaryEnvironment(stopped, {...selected, operation: stopped.operation}));
+assert.throws(() => primary.sourcePrimaryEnvironment({...stopped, deployments: {review: {active: {projectId: 1}}}}, selected), /Stop/);
+assert.throws(() => primary.sourcePrimaryEnvironment({...stopped, deployments: {beta: {pending: {projectId: 1}}}}, selected), /Stop/);
+assert.throws(() => primary.sourcePrimaryEnvironment({...stopped, deployments: {review: {lastPipelineId: -1}}}, selected), /floor/);
+assert.throws(() => primary.sourcePrimaryEnvironment(stopped, {...selected, ciFiles: selected.ciFiles.slice(0, 1)}), /manifest/);
+assert.throws(() => primary.sourcePrimaryEnvironment(stopped, {...selected, ciFiles: [...selected.ciFiles, selected.ciFiles[0]]}), /manifest/);
+assert.throws(() => primary.sourcePrimaryEnvironment(stopped, {...selected, ciFiles: [...selected.ciFiles,
+  {path: '.gitlab/../credentials', sha256: '5'.repeat(64)}]}), /manifest/);
+assert.throws(() => primary.reservation({...adopted, settingsHash: '0'.repeat(64)}), /reservation/);
+assert.deepStrictEqual(stopped.deployments.review.tombstone.projectId, 1, 'Migration mutated an old-project tombstone');
+console.log('Source-primary environments: strict CI binding, new ownership, exact historical tombstones and preserved generation floors passed.');

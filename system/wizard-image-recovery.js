@@ -31,8 +31,16 @@ function projectForImage(content,image,registryUrl,domainMode=2) {
   let receipt;
   try {receipt=JSON.parse(Buffer.from(line.slice(marker.length),'base64').toString('utf8'));}catch{throw Error('Managed Wizard receipt is missing.');}
   const repository=receipt.repository;
-  if(receipt.defaultProject!==true||receipt.state!=='complete'||receipt.template!=='wizard'||repository?.systemProject!==true||!Number.isInteger(repository?.id)||repository.id<1||typeof repository.path!=='string'||
-    (match[2]!==repository.path&&!match[2].startsWith(repository.path+'/')))throw Error('Registry image does not belong to the managed Wizard project.');
+  if(receipt.defaultProject!==true||receipt.state!=='complete'||receipt.template!=='wizard'||repository?.systemProject!==true||!Number.isInteger(repository?.id)||repository.id<1||typeof repository.path!=='string')throw Error('Registry image does not belong to the managed Wizard project.');
+  if(repository.managementMode==='source-primary')require('../project-bootstrap/wizard-source-primary/binding').validate(receipt);
+  if(match[2]!==repository.path&&!match[2].startsWith(repository.path+'/')){
+    if(repository.managementMode!=='source-primary')throw Error('Registry image does not belong to the managed Wizard project.');
+    const aliases=repository.recoveryImages||[];
+    const allowed=aliases.filter(row=>row.imageRef===image&&Number.isSafeInteger(row.projectId)&&row.projectId>0&&
+      typeof row.projectPath==='string'&&match[2]===row.projectPath);
+    if(allowed.length!==1)throw Error('Registry image does not belong to the managed Wizard project.');
+    return {projectId:allowed[0].projectId,projectPath:allowed[0].projectPath,registry:registry.host,image};
+  }
   return {projectId:repository.id,projectPath:repository.path,registry:registry.host,image};
 }
 async function recoverImage(settings=process.env,dependencies={}) {

@@ -45,6 +45,16 @@ contents are printed. The current config, route, canonical container identity,
 image and plan hash must still agree. The original 1184-character Cube stays
 unchanged; image overrides are appended as literal assignments after it.
 
+For an explicitly adopted [source-primary repository](../wizard-source-primary/README.md),
+the native `.gitlab/primary.yml` path is accepted only for the exact canonical
+project ID/path/namespace binding, enabled merge gates and approved CI-file hashes.
+Its pipeline must be a native default-branch push at the current head, with all
+required source and delivery jobs successful. A non-green `deploy:github`
+publisher alone does not block the private workflow; other required failures,
+skipped checks, unrelated jobs or missing evidence are rejected.
+An unrelated project with similarly named jobs or an API-created pipeline is
+rejected. Existing legacy `.system-bootstrapper/ci.yml` verification is unchanged.
+
 ## Cutover and retained state
 
 The command acquires the existing persistent Wizard environment mutex. Sync

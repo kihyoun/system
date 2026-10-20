@@ -265,6 +265,16 @@ class Runtime {
     if (Number(this.context.publicSettings.GITLAB_REGISTRY_DOMAIN_MODE || 0) < 2) registry.port = '5050';
     const workflow = this.context.receipt.wizardWorkflow;
     const build = workflow?.build;
+    if (this.context.receipt.repository.managementMode === 'source-primary') {
+      const proof = require('./source-primary').reservation(this.environment);
+      if (proof.recipeHash !== this.environment.recipeHash || build?.version !== 1 || build.mode !== 'source-primary' ||
+          this.context.receipt.sourcePrimary?.version !== 1 ||
+          JSON.stringify(this.context.receipt.sourcePrimary.ciFiles) !== JSON.stringify(this.environment.ciFiles))
+        throw new Error('Canonical source-primary CI reservation changed.');
+      return this.verifyInput({repository: this.context.receipt.repository, sourcePrimary: this.context.receipt.sourcePrimary,
+        request: this.request, registryPrefix: registry.host + '/' + this.context.receipt.repository.path,
+        environments: this.environment});
+    }
     const legacy = canonicalLegacyRecipe(build?.recipeHash);
     if (build?.version !== 1 || build.recipeHash !== legacy.recipeHash ||
         (this.environment.buildRecipeHash && this.environment.buildRecipeHash !== build.recipeHash) || !/^[a-f0-9]{40}$/.test(build.activationCommit || ''))
@@ -275,6 +285,9 @@ class Runtime {
       request: this.request, registryPrefix: registry.host + '/' + this.context.receipt.repository.path,
       environments: this.environment, recipe: canonicalRecipe(this.environment),
       legacyFiles: legacy.files, legacyMarker, buildActivationCommit: build.activationCommit};
+    return this.verifyInput(input);
+  }
+  async verifyInput(input) {
     const script = "BOOTSTRAPPER_ENVIRONMENT_INPUT = '" + Buffer.from(JSON.stringify(input)).toString('base64') + "'\n" + verifier;
     const result = await this.json(['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'], script, {timeout: 180000});
     if (!result.ok) throw new Error('Canonical GitLab job, source, or candidate checks failed.');

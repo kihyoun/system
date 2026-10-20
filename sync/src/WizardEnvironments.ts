@@ -7,6 +7,7 @@ import {rails, readReceipt, writeReceipt, startJob, lookupJob, withProjectLock, 
 import {wizardCi, readSettings, wizardConfiguration} from './DefaultWizard';
 import Helper from './Helper';
 
+const primaryEnvironments = require('../../project-bootstrap/wizard-environments/source-primary');
 const legacyRecipes = require('../../project-bootstrap/wizard-build/recipe');
 const configPath = () => wizardConfigPath();
 const mainPath = () => mainConfigPath();
@@ -105,14 +106,16 @@ function hasDeployments(value: any): boolean {
 function context() {
   const content = fs.readFileSync(configPath(), 'utf8');
   const receipt = readReceipt(content);
+  const primary = receipt?.repository?.managementMode === 'source-primary';
   if (!receipt?.defaultProject || receipt.template !== 'wizard' || receipt.state !== 'complete' ||
     !receipt.repository?.systemProject || !receipt.repository.id || !receipt.namespaceId || !receipt.operation ||
-    receipt.repository.ciPath !== '.system-bootstrapper/ci.yml' || receipt.repository.generatedCi !== wizardCi() ||
-    receipt.wizardWorkflow?.version !== 1 || receipt.wizardWorkflow.phase !== 'source-imported' ||
-    !/^[a-f0-9]{40}$/.test(receipt.wizardWorkflow.importCommit || '')) {
+    (primary ? (receipt.repository.ciPath !== '.gitlab/primary.yml' || receipt.wizardWorkflow?.phase !== 'source-primary' ||
+      receipt.sourcePrimary?.version !== 1) : (receipt.repository.ciPath !== '.system-bootstrapper/ci.yml' ||
+      receipt.repository.generatedCi !== wizardCi() || receipt.wizardWorkflow?.version !== 1 ||
+      receipt.wizardWorkflow.phase !== 'source-imported' || !/^[a-f0-9]{40}$/.test(receipt.wizardWorkflow.importCommit || '')))) {
     throw new Error('Initialize the managed Wizard source before configuring Review and Beta.');
   }
-  validateProject({projectKey: 'wizard', namespaceId: receipt.namespaceId, template: 'wizard', data: content, ci: wizardCi()});
+  if (!primary) validateProject({projectKey: 'wizard', namespaceId: receipt.namespaceId, template: 'wizard', data: content, ci: wizardCi()});
   const mainContent = fs.readFileSync(mainPath(), 'utf8');
   const platform = readSettings(mainContent);
   const current = receipt.wizardWorkflow.environments;
@@ -125,7 +128,7 @@ function context() {
   const helperImage = process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE || '';
   const controller = process.env.SYSTEM_WIZARD_CANONICAL_CONTROLLER || 'system_bootstrapper_1';
   const build = receipt.wizardWorkflow.build;
-  const legacyRecipe = build ? legacyRecipes.select(Helper.textLogo, build.recipeHash) :
+  const legacyRecipe = primary ? undefined : build ? legacyRecipes.select(Helper.textLogo, build.recipeHash) :
     legacyRecipes.forSource(Helper.textLogo, receipt.wizardWorkflow.sourceRevision);
   let registry: URL;
   try { registry = new URL(platform.GITLAB_REGISTRY_URL); }
@@ -141,7 +144,12 @@ function context() {
   }
   const artifact = build?.artifact;
   const expectedRef = registryPrefix + '@sha256:';
-  const initialVerified = build?.version === 1 && build.recipeHash === legacyRecipe.recipeHash &&
+  const initialVerified = primary ? (build?.version === 1 && build.mode === 'source-primary' &&
+    build.phase === 'candidate-verified' && (build.pipeline?.status === 'success' ||
+      ['created', 'pending', 'running', 'failed', 'canceled', 'manual', 'scheduled', 'waiting_for_resource', 'preparing'].includes(build.publishing?.status)) &&
+    build.artifact?.sourceCommit === build.pipeline?.sha && build.artifact?.pipelineId === build.pipeline?.id &&
+    !!current && primaryEnvironments.reservation(current).recipeHash === current.recipeHash &&
+    same(current.ciFiles, receipt.sourcePrimary.ciFiles)) : build?.version === 1 && build.recipeHash === legacyRecipe.recipeHash &&
     build.phase === 'candidate-verified' && /^[a-f0-9]{40}$/.test(build.activationCommit || '') &&
     build.pipeline?.status === 'success' && build.pipeline.sha === build.activationCommit &&
     artifact?.sourceCommit === build.activationCommit && artifact.pipelineId === build.pipeline.id &&
@@ -149,13 +157,14 @@ function context() {
     /^[a-f0-9]{64}$/.test(artifact.imageRef.slice(expectedRef.length));
   const reasons: string[] = [];
   if (!current && !initialVerified) { reasons.push('Verify the Phase B candidate before enabling environments.'); }
+  if (primary && !initialVerified) { reasons.push('Verify the adopted source-primary build and CI binding before configuring environments.'); }
   if (!imageId(helperImage)) { reasons.push('The operator must configure an immutable clean System helper image ID.'); }
   if (!safeController(controller)) { reasons.push('The canonical System controller is not configured safely.'); }
   if (current?.phase === 'requires-reconciliation') { reasons.push('Reconcile the recorded environment operation before another activation.'); }
   const canUpdate = !!current && current.phase === 'ready' && !hasDeployments(current);
   if (hasDeployments(current)) { reasons.push('Stop all active or pending Review and Beta deployments before changing settings.'); }
   const previewHash = digest(JSON.stringify({version: 1, content, mainContent, helperImage, controller}));
-  return {content, receipt, mainContent, platform, current, settings, settingsHash, helperImage,
+  return {primary, content, receipt, mainContent, platform, current, settings, settingsHash, helperImage,
     controller, legacyRecipe, registryPrefix, initialVerified, reasons, canUpdate, previewHash};
 }
 export function previewWizardEnvironments() {
@@ -191,6 +200,7 @@ async function preflight(settings: any, platform: any) {
   }
 }
 function recipeFor(environments: any) {
+  if (environments.managementMode === 'source-primary') return primaryEnvironments.reservation(environments);
   return environmentAdapters.recipe(Helper.textLogo, {settings: environments.settings, settingsHash: environments.settingsHash,
     helperImage: environments.helperImage, operation: environments.operation, controller: environments.controller,
     buildRecipeHash: environments.buildRecipeHash});
@@ -236,7 +246,11 @@ function operation(mode: 'activate' | 'status', input?: any) {
   if (!environments || updating) {
     const previous = value.current ? {...value.current} : undefined;
     if (previous) { delete previous.previous; }
-    environments = {version: 1, operation: crypto.randomBytes(24).toString('hex'), settings: selected,
+    environments = value.primary ? {...primaryEnvironments.sourcePrimaryEnvironment(
+      {...value.current, phase: 'ready', settings: selected, settingsHash: selectedHash},
+      {operation: crypto.randomBytes(24).toString('hex'), helperImage: value.helperImage,
+        activationCommit: value.current.activationCommit, ciFiles: value.current.ciFiles}), phase: 'pending', previous} :
+      {version: 1, operation: crypto.randomBytes(24).toString('hex'), settings: selected,
       settingsHash: selectedHash, phase: 'pending', helperImage: value.helperImage, controller: value.controller,
       ...(value.legacyRecipe.profile ? {buildRecipeHash: value.legacyRecipe.recipeHash} : {}),
       ...(previous ? {previous, deployments: previous.deployments || {}} : {})};
@@ -302,12 +316,13 @@ function operation(mode: 'activate' | 'status', input?: any) {
           reserved = true;
         }
         const previousEnvironments = environments.previous;
-        const result = await rails({action: mode === 'activate' ? 'wizard-environments' : 'wizard-environments-status',
+        const result = await rails({action: value.primary ? (mode === 'activate' ? 'wizard-environments-primary' : 'wizard-environments-primary-status') :
+            (mode === 'activate' ? 'wizard-environments' : 'wizard-environments-status'),
           projectKey: 'wizard', namespaceId: receipt.namespaceId, operation: receipt.operation,
           repository: receipt.repository, workflow: receipt.wizardWorkflow, build: receipt.wizardWorkflow.build,
           environments, expectedCi: wizardCi(), legacyRecipe: value.legacyRecipe, recipe,
           previousEnvironments, previousRecipe: previousEnvironments ? recipeFor(previousEnvironments) : undefined,
-          controller: environments.controller, registryPrefix: value.registryPrefix});
+          sourcePrimary: receipt.sourcePrimary, controller: environments.controller, registryPrefix: value.registryPrefix});
         if (result.state === 'failed') { throw new Error(result.message || 'Environment operation failed.'); }
         const next = {...environments, ...result.environments};
         // Rails can report readiness but cannot change ownership or immutable settings.
@@ -317,7 +332,7 @@ function operation(mode: 'activate' | 'status', input?: any) {
           (environments.activationCommit && next.activationCommit !== environments.activationCommit)) {
           throw new Error('The environment operation returned a different reservation identity.');
         }
-        const installed = /^[a-f0-9]{40}$/.test(next.activationCommit || '');
+        const installed = /^[a-f0-9]{40}$/.test(next.activationCommit || '') && (!value.primary || next.phase === 'ready');
         if (next.phase === 'ready' && !installed) { throw new Error('Environment readiness has no verified installation commit.'); }
         if (value.current?.phase === 'requires-reconciliation' &&
           !(installed && ['recipe-installed', 'ready'].includes(next.phase))) {

@@ -1,5 +1,12 @@
 # Initialize the Wizard repository from pinned source
 
+This is the legacy managed-source workflow. An explicitly adopted
+[source-primary repository](../project-bootstrap/wizard-source-primary/README.md)
+develops directly through its own merge requests and does not import source.
+Generic `.system-bootstrapper/build-v1/` producers committed by such a repository
+are excluded from legacy source snapshots: managed build activation installs its
+own reviewed recipe in that reserved namespace.
+
 The registered Wizard project represents the existing interface. Source
 initialization is a separate, explicit operation; automatic registration,
 startup, Fetch and configuration Push never import application source.

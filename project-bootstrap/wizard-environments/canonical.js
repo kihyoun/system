@@ -18,7 +18,8 @@ function read() {
   if (lines.length !== 1) throw new Error('receipt');
   const receipt = JSON.parse(Buffer.from(lines[0].slice(prefix.length), 'base64').toString());
   if (!receipt.defaultProject || receipt.template !== 'wizard' || receipt.state !== 'complete' || !receipt.repository?.systemProject ||
-      receipt.repository.ciPath !== '.system-bootstrapper/ci.yml') throw new Error('ownership');
+      !((receipt.repository.managementMode === 'source-primary' && receipt.repository.ciPath === '.gitlab/primary.yml') ||
+        (!receipt.repository.managementMode && receipt.repository.ciPath === '.system-bootstrapper/ci.yml'))) throw new Error('ownership');
   const allowed = new Set(['WIZARD_HOST', 'GITLAB_HOST', 'GITLAB_REGISTRY_HOST', 'GITLAB_REGISTRY_URL', 'GITLAB_REGISTRY_DOMAIN_MODE']);
   const publicSettings = {};
   for (const line of fs.readFileSync(path.join(configDirectory, '.docker.env'), 'utf8').split('\n')) {
@@ -82,7 +83,9 @@ async function run(action, payload) {
     const receipt = current.receipt;
     return {receipt: {operation: receipt.operation, namespaceId: receipt.namespaceId,
       repository: {id: receipt.repository.id, path: receipt.repository.path, defaultBranch: receipt.repository.defaultBranch,
-        ciPath: receipt.repository.ciPath, systemProject: receipt.repository.systemProject}, wizardWorkflow: receipt.wizardWorkflow},
+        ciPath: receipt.repository.ciPath, systemProject: receipt.repository.systemProject,
+        managementMode: receipt.repository.managementMode, namespaceId: receipt.repository.namespaceId},
+      sourcePrimary: receipt.sourcePrimary, wizardWorkflow: receipt.wizardWorkflow},
       publicSettings: current.publicSettings, contentHash: current.contentHash};
   }
   const environment = current.receipt.wizardWorkflow?.environments;

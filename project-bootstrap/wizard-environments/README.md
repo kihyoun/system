@@ -115,3 +115,50 @@ guarded GitLab upgrades, helper ownership/recovery and proxy preservation.
 Also verify real GitLab manual-job execution, HTTPS/browser behavior and
 preservation of Production on a disposable platform. Fixture success alone
 does not prove those integration gates.
+
+## One source-primary repository
+
+An explicitly adopted source-primary Wizard project keeps its application source,
+ordinary reviews and native build/environment jobs in one repository. It selects
+`.gitlab/primary.yml`; it does not require a second application repository or
+instance-specific committed marker files. The server-owned adoption receipt
+binds the exact project ID, namespace, default branch and SHA-256 manifest of the
+approved generic CI and build scripts. Jobs independently verify those files at
+their actual pipeline commit. Editing the CI producers requires another reviewed
+adoption; application changes follow the normal merge-request workflow.
+
+The generic job launcher is `source-primary.sh`, installed in the application as
+`.gitlab/delivery/environment.sh`. It accepts `deploy review`, `stop review`,
+`deploy beta` or `stop beta`. Configure the following project CI variables with
+the ordinary environment scope `*`, raw values, and no masking or protection:
+
+| Variable | Operator-supplied value |
+| --- | --- |
+| `SYSTEM_WIZARD_ENVIRONMENT_IMAGE` | Exact preprovisioned clean System helper image ID, `sha256:…` |
+| `SYSTEM_WIZARD_ENVIRONMENT_OPERATION` | New server-owned 48-character hexadecimal reservation identity |
+| `WIZARD_REVIEW_HOST` | Exact configured Review HTTPS host, or empty when disabled |
+| `WIZARD_BETA_HOST` | Exact configured Beta HTTPS host, or empty when disabled |
+
+`WIZARD_DELIVERY_ENABLED=true` opts this instance into its native image build and
+environment jobs. These configuration values are not credentials. They must be
+available to same-project merge-request jobs; the canonical helper still rejects
+jobs from other projects, forks, superseded reservations or unverified pipelines.
+Production remains a separate deliberate promotion.
+
+Before adopting an existing managed project, stop both optional environments and
+use the existing owned stopped-route cleanup. Inspect its plan and confirm that
+both old route fragments and their owned resources are absent. Adoption refuses
+active, pending or retired generations. Keep the complete old deployment snapshot
+in immutable history, and carry its generation floors into the new reservation.
+Do not reset floors or rewrite old project tombstones as new project records.
+An unexpected remaining route is rejected by the new helper.
+
+The authenticated environment dialog continues to validate DNS and certificates
+and update settings through an explicit preview. For a source-primary project it
+updates only the four owned CI variables, without a source commit, new pipeline
+or Production restart. Exact prior values and variable metadata are checked under
+the existing lock. Interrupted partial updates retain the same operation; status
+inspects them without writes, and explicit confirmation reconciles only known old
+or target values. Unexpected variable changes require operator reconciliation.
+The existing single Review lease, generation guards, bounded helper cleanup,
+rollback and stopped-host behavior apply unchanged.

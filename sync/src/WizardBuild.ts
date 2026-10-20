@@ -7,10 +7,21 @@ import {wizardCi, readSettings} from './DefaultWizard';
 import Helper from './Helper';
 
 const recipes = require('../../project-bootstrap/wizard-build/recipe');
+const sourcePrimary = require('../../project-bootstrap/wizard-source-primary/binding');
 const configPath = () => wizardConfigPath();
 function context() {
   const content = fs.readFileSync(configPath(), 'utf8');
   const receipt = readReceipt(content);
+  if (sourcePrimary.primary(receipt)) {
+    if (sourcePrimary.read(configPath()).text !== content) throw new Error('Canonical Wizard configuration changed during inspection.');
+    sourcePrimary.validate(receipt);
+    const settings = readSettings(fs.readFileSync(mainConfigPath(), 'utf8'));
+    const registry = new URL(settings.GITLAB_REGISTRY_URL);
+    if (!['http:', 'https:'].includes(registry.protocol) || registry.username || registry.password || registry.pathname !== '/' || registry.search || registry.hash) throw new Error('Invalid local GitLab registry configuration.');
+    if (Number(settings.GITLAB_REGISTRY_DOMAIN_MODE || 0) < 2) registry.port = '5050';
+    return {content, data: content.split('\n').filter(line => !line.startsWith('# BOOTSTRAPPER_PROJECT=')).join('\n'), receipt,
+      recipe: recipes.select(Helper.textLogo, receipt.wizardWorkflow.build.recipeHash), registryPrefix: registry.host + '/' + receipt.repository.path};
+  }
   if (!receipt?.defaultProject || receipt.state !== 'complete' || receipt.template !== 'wizard' ||
     !receipt.repository?.systemProject || !receipt.repository.id || !receipt.namespaceId || !receipt.operation ||
     receipt.repository.ciPath !== '.system-bootstrapper/ci.yml' || receipt.repository.generatedCi !== wizardCi() ||
@@ -52,6 +63,11 @@ function historicalBuild(build: any) {
 }
 export function previewWizardBuild() {
   const {receipt, recipe} = context();
+  if (sourcePrimary.primary(receipt)) {
+    return {version: 1, mode: 'source-primary', repository: receipt.repository, sourceRevision: receipt.wizardWorkflow.sourceRevision,
+      build: receipt.wizardWorkflow.build,
+      message: 'Develop and review in the canonical repository. Native pipeline status is read-only; source import and legacy activation are disabled.'};
+  }
   const historical = migrationOwnsCi(receipt);
   return {version: recipe.version, recipeHash: recipe.recipeHash, sourceRevision: receipt.wizardWorkflow.sourceRevision,
     importCommit: receipt.wizardWorkflow.importCommit, repository: receipt.repository,
@@ -61,6 +77,21 @@ export function previewWizardBuild() {
 }
 function operation(mode: 'activate' | 'status', input?: any) {
   const {content, data, receipt, recipe, registryPrefix} = context();
+  if (sourcePrimary.primary(receipt)) {
+    if (mode === 'activate') throw new Error('Source-primary Wizard builds run through native repository pipelines.');
+    return withProjectLock('source-primary-' + receipt.repository.id, () => startJob('source-primary-' + receipt.repository.id, async () => {
+      const result = await rails({action: 'wizard-source-primary-status', projectKey: 'wizard', namespaceId: receipt.namespaceId,
+        operation: receipt.operation, repository: receipt.repository, sourcePrimary: receipt.sourcePrimary, build: receipt.wizardWorkflow.build, registryPrefix});
+      if (result.state === 'failed') throw new Error(result.message);
+      const lock = configPath() + '.environments.lock'; fs.mkdirSync(lock, {mode: 0o700});
+      try {
+        if (fs.readFileSync(configPath(), 'utf8') !== content) throw new Error('Canonical Wizard configuration changed while reading native pipeline status.');
+        const next = {...receipt, wizardWorkflow: {...receipt.wizardWorkflow, sourceRevision: result.sourceRevision, build: result.build}};
+        writeReceipt(configPath(), data, next);
+      } finally { fs.rmdirSync(lock); }
+      return {build: result.build, sourceRevision: result.sourceRevision, message: result.message};
+    }));
+  }
   if (migrationOwnsCi(receipt)) {
     if (mode === 'activate') {
       throw new Error('Environment CI migration owns the current recipe. Phase B build activation is disabled; refresh environment status instead.');
@@ -69,11 +100,14 @@ function operation(mode: 'activate' | 'status', input?: any) {
   }
   let expectedContent = content;
   const persist = (nextReceipt: any) => {
-    if (fs.readFileSync(configPath(), 'utf8') !== expectedContent) {
-      throw new Error('Wizard configuration or receipt changed during the build operation. Fetch and inspect before retrying.');
-    }
-    writeReceipt(configPath(), data, nextReceipt);
-    expectedContent = fs.readFileSync(configPath(), 'utf8');
+    const lock = configPath() + '.environments.lock'; fs.mkdirSync(lock, {mode: 0o700});
+    try {
+      if (fs.readFileSync(configPath(), 'utf8') !== expectedContent) {
+        throw new Error('Wizard configuration or receipt changed during the build operation. Fetch and inspect before retrying.');
+      }
+      writeReceipt(configPath(), data, nextReceipt);
+      expectedContent = fs.readFileSync(configPath(), 'utf8');
+    } finally { fs.rmdirSync(lock); }
   };
   const workflow = receipt.wizardWorkflow;
   if (mode === 'activate' && input?.recipeHash !== recipe.recipeHash) { throw new Error('Preview the current build recipe before activation.'); }

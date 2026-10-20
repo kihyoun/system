@@ -54,6 +54,8 @@
   {"component":"gitlab","file":"gitlab/check-documentation.js","timeoutSeconds":20},
   {"component":"performance","file":"performance/resources/test_collect.py","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/in-place-upgrade.js","timeoutSeconds":30},
+  {"component":"wizard","file":"wizard/source-primary-adoption.js","timeoutSeconds":30},
+  {"component":"gitlab","file":"gitlab/wizard-source-primary.rb","timeoutSeconds":25},
   {"component":"shared","file":"shared/local-acme-contract.js","timeoutSeconds":20},
   {"component":"shared","file":"shared/candidate-cleanup-contract.js","timeoutSeconds":15}
 ]

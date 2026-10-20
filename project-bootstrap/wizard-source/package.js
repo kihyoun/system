@@ -6,7 +6,7 @@ const {execFileSync} = require('child_process');
 const hash = data => crypto.createHash('sha256').update(data).digest('hex');
 const safePath = value => typeof value === 'string' && /^[A-Za-z0-9_.@+/-]+$/.test(value) &&
   !value.split('/').some(part => !part || part === '.' || part === '..' || part === '.git');
-const excluded = value => value !== '.system-bootstrapper/preflight.env' && value.split('/').some(part =>
+const excluded = value => value.startsWith('.system-bootstrapper/build-v1/') || value !== '.system-bootstrapper/preflight.env' && value.split('/').some(part =>
   /(?:^|\.)env(?:\.|$)/i.test(part) || /^(?:node_modules|build|dist|coverage|seed|seeds|\.npmrc|\.netrc|credentials(?:\..*)?|id_rsa|id_ed25519)$/i.test(part) || /\.(?:key|pem|p12|pfx)$/i.test(part));
 function validate(snapshot) {
   if (snapshot.version !== 1 || !/^[a-f0-9]{40}$/.test(snapshot.sourceRevision) || !Array.isArray(snapshot.files)) throw Error('Invalid Wizard source manifest.');

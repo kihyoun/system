@@ -55,6 +55,7 @@ function proofInput(value) {
 class Promotion {
   constructor(options = {}) {
     this.config = options.config || '/state/.docker.env';
+    this.projectConfig = options.projectConfig || path.join(path.dirname(this.config), '.projects.env/.wizard.env');
     this.template = options.template || '/templates/default.conf.template';
     this.wizardEnv = options.wizardEnv || '/system/wizard/.docker.env';
     this.directory = options.directory || '/state/wizard-production';
@@ -211,7 +212,17 @@ class Promotion {
   }
   async verify(proof) {
     const ruby = fs.readFileSync(path.join(__dirname, 'verify.rb'), 'utf8');
-    const script = "WIZARD_PRODUCTION_PROOF = '" + Buffer.from(JSON.stringify(proof)).toString('base64') + "'\n" + ruby;
+    let binding = null;
+    if (fs.existsSync(this.projectConfig)) {
+      const sourcePrimary = require('../wizard-source-primary/binding');
+      const current = sourcePrimary.read(this.projectConfig);
+      if (sourcePrimary.primary(current.receipt)) {
+        sourcePrimary.validate(current.receipt);
+        binding = {namespaceId: current.receipt.namespaceId, repository: current.receipt.repository, sourcePrimary: current.receipt.sourcePrimary};
+      }
+    }
+    const script = "WIZARD_PRODUCTION_PROOF = '" + Buffer.from(JSON.stringify(proof)).toString('base64') + "'\n" +
+      "WIZARD_PRODUCTION_BINDING = '" + Buffer.from(JSON.stringify(binding)).toString('base64') + "'\n" + ruby;
     const result = JSON.parse((await this.command(['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'], script, 180000)).split('\n').pop());
     if (!result.ok) throw new Error('GitLab source, pipeline, required jobs or matching artifacts were not verified.');
   }

@@ -25,6 +25,8 @@ try {
   fs.writeFileSync(path.join(wizard, 'README.md'), 'source readme\n');
   fs.writeFileSync(path.join(wizard, 'binary.png'), Buffer.from([0, 255, 128, 13, 10]));
   fs.writeFileSync(path.join(wizard, 'script.sh'), '#!/bin/sh\nexit 0\n');
+  fs.mkdirSync(path.join(wizard, '.system-bootstrapper/build-v1'), {recursive: true});
+  fs.writeFileSync(path.join(wizard, '.system-bootstrapper/build-v1/build.sh'), '# Generic native producer; the controller installs its managed recipe separately.\n');
   for (const name of ['private.env', '.docker.env', '.env', '.env.local', '.npmrc', 'credentials.json']) fs.writeFileSync(path.join(wizard, name), 'secret');
   git(wizard, 'add', '.'); git(wizard, 'update-index', '--chmod=+x', 'script.sh'); git(wizard, 'commit', '-m', 'Pinned source');
   const revision = git(wizard, 'rev-parse', 'HEAD');
@@ -37,6 +39,7 @@ try {
   assert.equal(files.get('script.sh').mode, '100755');
   assert.equal(Buffer.from(files.get('src/api/Helper.tsx').content, 'base64').compare(helper), 0);
   assert(files.has('.system-bootstrapper/SOURCE_README.md')); assert(!files.has('README.md'));
+  assert(!files.has('.system-bootstrapper/build-v1/build.sh'), 'Legacy source import occupied the controller-owned build recipe namespace');
   for (const name of ['private.env', '.docker.env', '.env', '.env.local', '.npmrc', 'credentials.json', 'untracked-token.txt']) assert(!files.has(name));
   assert.equal(Buffer.from(files.get('.system-bootstrapper/preflight.env').content, 'base64').toString(), 'SKIP_PREFLIGHT_CHECK=true\n');
   assert.equal(pack(root).manifestHash, snapshot.manifestHash, 'snapshot ignores dirty checkout');
