@@ -1,10 +1,20 @@
 # System Bootstrapper Handbook
 
+Choose the complete installation path for your environment:
+
+- [Local Ubuntu / WSL2 with HTTP](#0-getting-started): try the platform on your
+  own computer, without public DNS or a certificate.
+- [Public Ubuntu server with your domain and HTTPS](#public-server-own-domain-and-https):
+  prepare DNS, issue certificates with Certbot and configure the services.
+- [Replacement host with a retained data volume](#replace-a-host-while-retaining-its-data-volume):
+  reuse an existing installation, rather than initializing it again.
+
 ## 0. Getting Started
 
-This chapter takes you from checkout to your first configured local platform.
-You do not need Kubernetes experience. Run commands in Ubuntu, then configure
-the platform in your browser.
+This is the **local Ubuntu / WSL2 HTTP** installation. Keep it on a trusted local
+computer; do not expose this unencrypted setup as a public service. You do not
+need Kubernetes experience. Run commands in Ubuntu, then configure the platform
+in your browser. Native Ubuntu users can skip the Windows installation step.
 
 The **Bootstrapper** starts and manages the services. The **Wizard** is its
 React interface. The **Sync service** connects the interface to the Bootstrapper
@@ -168,8 +178,8 @@ whenever the container restarts.
 
 Open [http://localhost/](http://localhost/).
 
-The **Overview** opens with **Getting Started**, a short introduction and links
-to the handbook. Choose **Open Wizard** or the top **Wizard** tab to reach the
+The **Overview** opens with the project introduction, **Getting Started**
+instructions and links to the handbook. Choose **Open Wizard** or the top **Wizard** tab to reach the
 configuration workspace shown below. Switching between Overview, Wizard and
 the footer's legal pages preserves your connection and unsent form values;
 reloading the browser resets that local state.
@@ -360,7 +370,325 @@ For public use, configure your own DNS, HTTPS certificates and host certificate
 renewal. Reusing a database or moving persistent storage requires the separate
 [recovery procedure](RECOVERY_CONTRACT.md).
 
-### 0.13 Replace a public host while retaining its data volume
+## Public server: own domain and HTTPS
+
+This path installs a **fresh** platform on an Ubuntu 24.04 LTS server with sudo
+access, a separately mounted ext4 data volume and a domain you control. Reusing
+GitLab data requires the [replacement-host procedure](#replace-a-host-while-retaining-its-data-volume)
+instead. Allocate memory, CPU and disk for GitLab plus the runner jobs you intend
+to run; the Docker installation check does not establish that capacity.
+
+The example uses `www.example.com` for the Wizard, `sync.example.com` for Sync,
+`gitlab.example.com` for GitLab and `registry.example.com` for the registry.
+Replace these names, the server address, administrator account and contact email
+throughout. No service is configured on the bare `example.com` name in this
+example; obtaining a certificate alone does not create routing for an alias.
+
+### Public 1. Prepare DNS, ports and the host
+
+Create these DNS records at your DNS provider. `203.0.113.10` is a documentation
+address: use your server's real public IPv4 address.
+
+| DNS name | Type | Value |
+| --- | --- | --- |
+| `www.example.com` | A | `203.0.113.10` |
+| `sync.example.com` | A | `203.0.113.10` |
+| `gitlab.example.com` | A | `203.0.113.10` |
+| `registry.example.com` | A | `203.0.113.10` |
+
+Publish AAAA records only if this server actually serves these names over IPv6.
+Remove stale IPv6 records before requesting certificates. Check all four names
+from a computer outside the server, for example with `dig +short A NAME` and
+`dig +short AAAA NAME`. They must resolve to this host; allow DNS changes to
+propagate before proceeding.
+
+Configure the **provider's external firewall** for this fresh server:
+
+| Inbound traffic | Initial certificate issuance | Initial Wizard setup | Finished HTTPS installation |
+| --- | --- | --- | --- |
+| Your SSH port, normally TCP 22 | Allow from your administration address | Keep allowed | Keep allowed |
+| TCP 80 | Allow publicly for HTTP-01 | Block public access | Allow publicly for redirects and HTTP-01 renewal |
+| TCP 443 | Keep closed | Keep closed until HTTPS is configured | Allow publicly |
+| TCP 8071, 5050 and 2222 | No public rule required | No public rule required | No public rule required for this example |
+
+Apply the same restrictions in any host firewall. Keep your working SSH session
+open while changing rules. The later SSH tunnel secures your browser connection;
+it does **not** restrict the Bootstrapper's port-80 listener. The external rule
+is therefore required during its temporary HTTP setup.
+
+Connect with SSH and run these commands on the server:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git certbot dnsutils openssl
+certbot --version
+git clone --recurse-submodules https://github.com/kihyoun/system.git
+cd system
+sudo bash bootstrapper/install.sh
+sudo docker build -t systembootstrapper/wizard:latest wizard
+```
+
+Use Certbot **2.3.0 or newer**, which supports `reconfigure`; the Ubuntu 24.04
+[package provides that interface](https://packages.ubuntu.com/noble/certbot).
+The host integration below invokes
+`/usr/bin/certbot` and `certbot.timer`, so this recipe uses the distribution
+package, rather than a separate Snap installation. Do not run
+`bootstrapper/prepare-local.sh`: public DNS and a trusted HTTPS registry replace
+its local hosts-file and insecure-registry changes.
+
+### Public 2. Mount storage and install certificate integration
+
+Identify and mount your data filesystem with `lsblk -f`, `mount` and `findmnt`.
+Follow [persistent-volume preparation](PERSISTENT_VOLUME.md#paths-and-selectors)
+and use the actual ext4 mount point and UUID. Do not format an existing volume.
+For an already mounted filesystem at `/mnt/bootstrapper-data`, create:
+
+```bash
+sudo install -d -m 0700 /etc/system-bootstrapper
+sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
+PERSISTENT_MOUNT=/mnt/bootstrapper-data
+PERSISTENT_DIR=/mnt/bootstrapper-data/platform
+SEED_DIR=/mnt/bootstrapper-data/seed
+EOF
+sudo chmod 0600 /etc/system-bootstrapper/persistence.env
+sudo bash bootstrapper/install-volume-host.sh
+sudo systemctl stop certbot.timer
+```
+
+Optionally add `PERSISTENT_UUID` with the actual filesystem UUID to require that
+identity. The integration validates the mount, persists its fstab dependency,
+connects `/etc/letsencrypt` to `PERSISTENT_DIR/host/letsencrypt`, installs the
+`system-certbot` lock wrapper and certificate deploy hook. A conflicting active
+Certbot tree is an error to reconcile, not a reason to delete certificate state.
+The timer is temporarily stopped while we change the renewal method below.
+
+### Public 3. Obtain the first certificate before starting the platform
+
+At this point **nothing may occupy host port 80**. Inspect `sudo ss -ltnp` and
+resolve any existing host web server or container deliberately. Keep public TCP
+80 open for this step. Certbot's standalone server can then answer HTTP-01
+without needing NGINX or a certificate first:
+
+```bash
+sudo system-certbot certonly --standalone --non-interactive --agree-tos \
+  --email YOUR_CONTACT_EMAIL --cert-name example.com \
+  -d www.example.com -d sync.example.com \
+  -d gitlab.example.com -d registry.example.com
+sudo system-certbot certificates --cert-name example.com
+sudo env RENEWED_LINEAGE=/etc/letsencrypt/live/example.com \
+  /usr/local/sbin/system-install-certificate
+```
+
+Use a real contact email. The certificate must list all four service names and
+must come from the production CA, rather than a staging certificate. If issuance
+fails, check DNS/AAAA records, TCP 80 reachability and an occupied port before
+retrying; do not repeatedly request new certificates to diagnose routing.
+
+`--cert-name example.com` fixes the lineage directory name; it does not add the
+bare domain to the certificate. The installed deploy hook copies the certificate
+and private key to `PERSISTENT_DIR/ssl/live/example.com/`. The explicit command
+also makes that first copy available before a proxy exists.
+
+| Purpose | Path |
+| --- | --- |
+| Complete retained Certbot state | `PERSISTENT_DIR/host/letsencrypt/`, exposed on the host as `/etc/letsencrypt` |
+| Host source certificate and key | `/etc/letsencrypt/live/example.com/fullchain.pem` and `privkey.pem` |
+| Deployed copies on the data volume | `PERSISTENT_DIR/ssl/live/example.com/fullchain.pem` and `privkey.pem` |
+| Paths to enter in the Wizard, inside NGINX | `/ssl/live/example.com/fullchain.pem` and `/ssl/live/example.com/privkey.pem` |
+
+Keep the whole Certbot tree, including `archive`, account and renewal state.
+Copying just its `live` symlinks is insufficient. The Wizard does not issue a
+certificate, and NGINX does not read a host `/etc/letsencrypt` path directly.
+
+### Public 4. Configure the first startup through an SSH tunnel
+
+**Block public TCP 80 again at the provider firewall before starting the
+Bootstrapper.** Keep TCP 443 closed for now. From the project directory on the
+server, start the fresh installation:
+
+```bash
+sudo env \
+  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.2-ce.0 \
+  GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0 \
+  GITLAB_SSH_BIND=127.0.0.1:2222 \
+  GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
+  bash start.sh
+sudo docker ps
+sudo docker logs system_bootstrapper_1
+```
+
+These image versions are a fresh-install example, **not an upgrade procedure**
+for an existing GitLab database. GitLab SSH stays on loopback port 2222, so it
+cannot take the host's administration port. Registry clients will use its HTTPS
+name on port 443; direct host port 5050 stays private.
+
+On **your own computer**, open another terminal and keep this tunnel running:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:8080:127.0.0.1:80 ADMIN_USER@SERVER_IP
+```
+
+Use your SSH account, server address and `-p PORT` if needed. Open
+`http://localhost:8080/`, choose **Wizard**, then use the pencil/Edit dialog with
+Server Address **`http://localhost:8080/sync`**. Read the generated Sync credentials
+on the server using the private command in [section 0.4](#04-find-the-signature-server-address-and-actual-credentials).
+Submit the connection and select **Synchronize → Fetch**. For a fresh instance,
+Fetch returns suggestions: verify and replace them with this table.
+
+| Section / Wizard field | Value for this public example |
+| --- | --- |
+| General → Start: `SEED_DIR` | `/mnt/bootstrapper-data/seed`, matching the host selector |
+| General → Start: `GITLAB_HOST` | `gitlab.example.com` |
+| General → Start: `GITLAB_REGISTRY_HOST` | `registry.example.com` |
+| General → Start: Gitlab Runners / Runner authentication token | Initially `0` / empty; register after GitLab is healthy |
+| General → SSL: `GITLAB_DOMAIN_MODE`, `GITLAB_REGISTRY_DOMAIN_MODE` | **SSL encrypted**, value `2`, for both |
+| General → SSL: `GITLAB_SSL`, `GITLAB_REGISTRY_SSL` | `/ssl/live/example.com/fullchain.pem` for both |
+| General → SSL: `GITLAB_SSL_KEY`, `GITLAB_REGISTRY_SSL_KEY` | `/ssl/live/example.com/privkey.pem` for both |
+| General → Sync: Enable Synchronization Server / `SYNC_HOST` | Enable / `sync.example.com` |
+| General → Sync: `SYNC_USER`, `SYNC_PASS` | Your own non-default username and strong password |
+| General → Sync: `SYNC_DOMAIN_MODE` | **SSL encrypted**, value `2` |
+| General → Sync: `SYNC_SSL`, `SYNC_SSL_KEY` | `/ssl/live/example.com/fullchain.pem`, `/ssl/live/example.com/privkey.pem` |
+| General → Wizard: Enable Wizard / `WIZARD_HOST` | Enable / `www.example.com` |
+| General → Wizard: `WIZARD_DOMAIN_MODE` | **SSL encrypted**, value `2` |
+| General → Wizard: `WIZARD_SSL`, `WIZARD_SSL_KEY` | `/ssl/live/example.com/fullchain.pem`, `/ssl/live/example.com/privkey.pem` |
+
+The fields require the **full container paths**, including `/ssl`; any path
+adornment displayed beside an input is not a replacement for that prefix. Use
+hostnames without a scheme in the `*_HOST` fields. The generated GitLab and
+registry external URLs must be `https://gitlab.example.com` and
+`https://registry.example.com`, without `:5050`. The historical
+`system/.docker.env.example` contains `/live/...` paths without the `/ssl` mount
+prefix; those paths are inactive in HTTP mode and must not be copied unchanged
+when enabling HTTPS. Review **General → Website** and
+replace the public operator examples before publishing your site.
+
+Save **Backup → bootstrapper.json** or **bootstrapper.zip** privately, then use
+**Synchronize → Push**. A successful Push applies the configuration and restarts
+the platform; the temporary `/sync` tunnel endpoint stops working as configured
+HTTPS routing takes over. Do not invoke Seed to perform this fresh setup.
+
+### Public 5. Check HTTPS, then allow public traffic
+
+Keep SSH access and the external restriction while services start. On the server:
+
+```bash
+sudo docker ps
+sudo docker exec system_web_1 nginx -t
+curl --resolve www.example.com:443:127.0.0.1 -I https://www.example.com/
+curl --resolve gitlab.example.com:443:127.0.0.1 -I https://gitlab.example.com/users/sign_in
+curl --resolve registry.example.com:443:127.0.0.1 -I https://registry.example.com/v2/
+```
+
+Wait for GitLab to report `healthy`. The Wizard must return HTTP 200, GitLab's
+sign-in page must be reachable, and an unauthenticated registry request normally
+returns HTTP 401 with an authentication challenge. Do not use `curl -k`: a
+hostname mismatch or untrusted certificate needs correction.
+
+Now allow **public TCP 80 and 443** at the provider and host firewalls. From your
+computer, open `https://www.example.com/`. Connect the Wizard to
+**`https://sync.example.com`** with the Sync credentials you saved, then Fetch and
+check the saved hostnames, modes and projects. HTTP requests for the four service
+names should redirect to HTTPS, while HTTP-01 challenge files remain available
+on port 80. Close the temporary SSH tunnel when it is no longer needed.
+
+Read the initial GitLab `root` password on the server using
+[section 0.11](#011-open-gitlab-and-sign-in-for-the-first-time), then sign into
+`https://gitlab.example.com/` and change it. For a runner, follow
+[chapter 2](#2-setting-up-gitlab-runners) using the public Wizard and Sync URLs:
+set the count to `1`, keep the token empty, Push, wait for registration and check
+the online manager under **Admin → CI/CD → Runners**. Git clones and registry
+access in this example use HTTPS; publicly enabling GitLab SSH needs a separate,
+deliberate port and firewall configuration.
+
+### Public 6. Switch unattended renewal to the running proxy
+
+Initial issuance saved **standalone** as the authenticator. Leaving that setting
+unchanged would make later renewal compete with NGINX for port 80. The current
+mode-2 proxy serves HTTP-01 from the shared webroot; the initial startup proxy
+and ordinary HTTP mode do not provide that route for each configured host.
+
+On the server, create a harmless probe in the actual webroot:
+
+```bash
+sudo bash -c '
+  set -euo pipefail
+  source /etc/system-bootstrapper/persistence.env
+  chmod 0711 "$PERSISTENT_DIR/ssl"
+  install -d -m 0755 "$PERSISTENT_DIR/ssl/acme-http01" \
+    "$PERSISTENT_DIR/ssl/acme-http01/.well-known" \
+    "$PERSISTENT_DIR/ssl/acme-http01/.well-known/acme-challenge"
+  printf "%s\n" bootstrapper-acme-check > "$PERSISTENT_DIR/ssl/acme-http01/.well-known/acme-challenge/bootstrapper-check"
+  chmod 0644 "$PERSISTENT_DIR/ssl/acme-http01/.well-known/acme-challenge/bootstrapper-check"
+'
+```
+
+The restricted storage initializer creates private directories. These commands
+permit NGINX workers to traverse the mounted `/ssl` root and read only the ACME
+webroot; they do not open `ssl/live` lineage directories or private keys. Do not
+apply a recursive permission change to the certificate tree.
+
+From **outside** the server, request
+`http://www.example.com/.well-known/acme-challenge/bootstrapper-check` and repeat
+for `sync`, `gitlab` and `registry`. All four must return `bootstrapper-acme-check`
+with HTTP 200, without a redirect. For example:
+
+```bash
+for name in www sync gitlab registry; do
+  curl --fail --silent --show-error "http://$name.example.com/.well-known/acme-challenge/bootstrapper-check"
+done
+```
+
+After the probe succeeds, run on the server:
+
+```bash
+sudo bash -c '
+  set -euo pipefail
+  source /etc/system-bootstrapper/persistence.env
+  /usr/local/sbin/system-certbot reconfigure --cert-name example.com \
+    --authenticator webroot --webroot-path "$PERSISTENT_DIR/ssl/acme-http01"
+  /usr/local/sbin/system-certbot renew --cert-name example.com --dry-run --run-deploy-hooks
+  RENEWED_LINEAGE=/etc/letsencrypt/live/example.com /usr/local/sbin/system-install-certificate
+  cmp /etc/letsencrypt/live/example.com/fullchain.pem "$PERSISTENT_DIR/ssl/live/example.com/fullchain.pem"
+  cmp /etc/letsencrypt/live/example.com/privkey.pem "$PERSISTENT_DIR/ssl/live/example.com/privkey.pem"
+  docker exec system_web_1 nginx -t
+  curl --fail --silent --show-error --output /dev/null \
+    --resolve www.example.com:443:127.0.0.1 https://www.example.com/
+  rm "$PERSISTENT_DIR/ssl/acme-http01/.well-known/acme-challenge/bootstrapper-check"
+  systemctl enable --now certbot.timer
+'
+systemctl list-timers certbot.timer
+```
+
+`reconfigure` tests against the CA staging service, then saves the successful
+webroot method for future renewals. `install-volume-host.sh` rebinds existing
+**webroot** paths on recovery; it does not convert a standalone lineage into
+webroot renewal for you. Do not finish setup if reconfiguration or the dry-run
+fails. If a lock reports an active/interrupted renewal or Harvest, resolve the
+owned operation rather than deleting its lock while it may still be running.
+
+The dry-run above explicitly runs deploy hooks using the **active trusted
+certificate**, not the staging certificate. The hook copies the renewed files,
+runs `nginx -t` and reloads the existing proxy. Check for a hook returning a
+nonzero status: Certbot can report that failure without making renewal itself
+fail. Normal `nginx -t` success messages use stderr and alone do not indicate
+failure. The direct installer invocation additionally checks the installed deploy
+operation with the proxy running; `cmp` confirms both deployed files match the
+active lineage without printing their contents. Resolve any actual hook failure
+before treating renewal as ready. The block stops on a failed
+command before enabling the timer. A plain `renew --dry-run` omits deploy hooks
+and is not the complete deployment check. Inspect a failure with
+`sudo journalctl -u certbot.service` and `/var/log/letsencrypt/letsencrypt.log`;
+check the timer and served certificate expiry periodically. Keep TCP 80 and
+correct DNS available for future HTTP-01 renewals. No recurring proxy shutdown
+or manual certificate copy is needed after this webroot setup.
+
+See Certbot's upstream guides for
+[standalone issuance](https://eff-certbot.readthedocs.io/en/stable/using.html#standalone),
+[changing renewal configuration](https://eff-certbot.readthedocs.io/en/stable/using.html#modifying-the-renewal-configuration-of-existing-certificates)
+and [deploy hooks during testing](https://eff-certbot.readthedocs.io/en/stable/using.html#testing).
+
+## Replace a host while retaining its data volume
 
 This procedure reuses the current live data, including GitLab, configuration and
 certificates. It does **not** restore an older Seed. Keep the volume when removing
@@ -464,7 +792,7 @@ host. Do not apply the local HTTP preparation from section 0.2 to this deploymen
 
    ```bash
    sudo docker ps
-   sudo system-certbot renew --dry-run
+   sudo system-certbot renew --dry-run --run-deploy-hooks
    ```
 
 ## 1. Main actions
