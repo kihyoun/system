@@ -191,21 +191,34 @@ API or tag pipelines. Enabling it without credentials fails visibly. This
 flag is independent of `GITHUB_BACKUP_ENABLED`; neither publication enables
 Production promotion or bypasses the resource-heavy System candidate checks.
 
-The managed Wizard selects `.system-bootstrapper/ci.yml` for build/test and any
+The legacy managed Wizard selects `.system-bootstrapper/ci.yml` for build/test and any
 installed optional environment jobs. Its preserved upstream `.gitlab-ci.yml`
-is not active. When using separate source and delivery projects, select the
-Wizard's committed `.gitlab/primary.yml` as the clean source project's CI
-configuration path. Keep the private delivery project's managed CI path and
-recipe unchanged. The source pipeline runs `build:source` (locked install,
-lint, unit tests, TypeScript, production build and configuration-export bundle),
-then `test:browser` against that exact build artifact using Playwright Chromium
-and a loopback preview. It needs no host Docker access or deployment. Only the
-eligible protected default-branch pipeline reaches `deploy:github` afterward.
-Do not enable the preserved upstream pipeline merely to obtain its legacy
-publishing jobs. A source mirror job belongs after the source project's
-required checks, with the same protected enablement gate, serialized resource
-group and visible failure behavior. Delivery build/test remains a separate
-gate before controlled Production promotion.
+is not active. A source-primary repository uses the committed
+`.gitlab/primary.yml` instead. It always runs `build:source` (locked install,
+lint, unit tests, TypeScript, production build and configuration-export bundle)
+and `test:browser` against that exact build artifact using Playwright Chromium
+and a loopback preview. These two source checks need no host Docker access.
+
+With `WIZARD_DELIVERY_ENABLED=true`, that same source-primary pipeline also runs
+required `build:wizard` and `test:wizard` jobs using its committed generic build
+recipe. Those jobs require a trusted Docker runner, publish the immutable image
+in the same project's registry and verify that exact image. Configured optional
+Review/Beta jobs then use the same project; Production remains a separate
+controlled promotion. Follow the [source-primary adoption guide](../project-bootstrap/wizard-source-primary/README.md)
+when replacing an existing managed delivery project. Do not delete the old
+project until its live dependencies and required recovery data are migrated.
+
+Installations retaining separate source and delivery projects can leave this
+flag unset. Keep their private delivery project's managed CI path and recipe
+unchanged. Do not enable the preserved upstream pipeline merely to obtain its
+legacy publishing jobs.
+
+Only the eligible protected default-branch pipeline reaches `deploy:github`.
+The publisher retains its protected enablement gate, serialized resource group
+and visible failure result. Source-primary delivery verifies all required
+native source/image checks independently: a pending, running, failed or canceled
+public mirror alone does not prevent private environment or Production promotion. Source
+merges still respect the project's successful-pipeline and discussion gates.
 
 Use the existing protected `GITHUB_SSH_PRIVATE_KEY` identity; a file variable is
 preferred, while existing masked multiline values remain supported. Supply SSH
