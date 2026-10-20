@@ -16,10 +16,26 @@ The idea grew from a convenient self-hosted setup into an open-source framework 
 
 The original use case is still simple: spend more time building web projects and less time maintaining the infrastructure behind them. But the underlying architecture could eventually support other kinds of infrastructure. **The self-renewal cycle is the project's vision, not a capability already delivered today.**
 
+### Born before AI. Built to evolve.
+
+The original architecture and core principles of System Bootstrapper were developed and implemented in **2019**, before AI coding agents became part of its development workflow.
+
+Its architectural principle is simple: **the source code is the DNA; the running infrastructure is a reconstructible instance of it.** Infrastructure definitions can be reproduced from source, while persistent state is preserved independently. Rebuilding an existing installation requires its saved configuration and secrets as well as persistent service data, such as databases and repositories.
+
+Today, AI expands the possibilities of that original architecture. Agents can help develop and validate changes to the source code from which future system generations are built. Fully autonomous generation-to-generation renewal remains a goal rather than an already delivered capability.
+
+**AI did not create the architecture. It expands what the architecture can achieve.**
+
 ## Getting started
 
-Start with the [System Bootstrapper Handbook](docs/HANDBOOK.md) for checkout,
-host preparation, the first Sync login, configuration and runner setup.
+Choose a complete installation path in the [System Bootstrapper Handbook](docs/HANDBOOK.md):
+
+- [Local Ubuntu / WSL2 with HTTP](docs/HANDBOOK.md#0-getting-started): prepare your local environment, start the platform and configure it through the Wizard.
+- [Public Ubuntu root server with your own domain and HTTPS](docs/HANDBOOK.md#public-server-own-domain-and-https): prepare DNS and firewall rules, issue the first certificate with Certbot, configure the services and verify certificate renewal.
+
+Each path covers checkout, host preparation, the first Sync login, configuration
+and runner setup. Moving an existing installation to another host is covered
+separately in [host replacement with a retained data volume](docs/HANDBOOK.md#replace-a-host-while-retaining-its-data-volume).
 [Prepare-Host.md](Prepare-Host.md) covers installation and service-image selection;
 [the persistence guide](docs/PERSISTENT_VOLUME.md) explains the required mounted
 data filesystem. Domain names, storage and credentials belong to your deployment.
@@ -152,7 +168,7 @@ The container definitions can be reproduced; GitLab repositories, database conte
 
 ## Building and verifying a deployment
 
-Follow the [handbook](docs/HANDBOOK.md) for local Ubuntu/WSL2 configuration and
+Choose the local or public-server installation path in the [handbook](docs/HANDBOOK.md) and follow
 [host preparation](Prepare-Host.md) for installation. Choose service versions and
 configure persistent storage explicitly. The [recovery contract](docs/RECOVERY_CONTRACT.md)
 describes configuration-plus-Seed restoration; the
