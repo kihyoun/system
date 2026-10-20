@@ -58,6 +58,12 @@ as a managed project: explicit [source initialization](docs/WIZARD_SOURCE.md),
 provide separate, inspectable operations. Building or merging source alone does
 not replace the running management interface.
 
+An operator with an existing Wizard development repository can instead adopt
+[one source-primary Wizard project](project-bootstrap/wizard-source-primary/README.md)
+for source, native checks, candidate environments and production images. This
+keeps development and delivery in one repository without importing over user
+changes. The legacy managed initialization remains available for other setups.
+
 An operator can also select GitLab as the development and issue-tracking
 platform with an optional [GitHub code mirror](docs/GITLAB_GITHUB_BACKUP.md).
 That guide covers source-history mapping, reviewed merges, tracker migration

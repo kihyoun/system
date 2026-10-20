@@ -24,6 +24,8 @@ function readConfiguration(file) {
   const markers = text.split('\n').filter(line => line.startsWith(PREFIX));
   if (markers.length !== 1) throw Error('Expected one canonical project receipt.');
   const receipt = JSON.parse(Buffer.from(markers[0].slice(PREFIX.length), 'base64').toString());
+  if (receipt.repository?.managementMode === 'source-primary')
+    throw Error('Source-primary Wizard changes use native repository merge requests; legacy import/upgrade is disabled.');
   if (!receipt.defaultProject || receipt.template !== 'wizard' || receipt.state !== 'complete' ||
       !receipt.repository?.systemProject || receipt.repository.ciPath !== CI || !sha(receipt.wizardWorkflow?.importCommit))
     throw Error('Canonical managed Wizard ownership changed.');

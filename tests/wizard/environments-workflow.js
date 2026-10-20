@@ -228,6 +228,46 @@ const installed = () => ({environments: {...input.environments, activationCommit
   resolveDns(['203.0.113.1']); await wait(validating);
   assert.equal(validating.state, 'failed'); assert.match(validating.message, /changed during local validation/);
   assert.equal(saved().wizardWorkflow.environments, undefined); assert.equal(externalCalls, 0);
+  // A source-primary project keeps the same authenticated dialog without a managed CI commit.
+  reset();
+  const nativeSettings = enabled(env.previewWizardEnvironments());
+  const nativeFiles = ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map(path => ({path, sha256: '5'.repeat(64)}));
+  const nativeEnvironment = require(path.join(source, 'project-bootstrap/wizard-environments/source-primary')).sourcePrimaryEnvironment(
+    {phase: 'ready', operation: '1'.repeat(48), settings: nativeSettings, settingsHash: hash(nativeSettings),
+      deployments: {review: {lastPipelineId: 43, stoppedThroughPipelineId: 43}, beta: {lastPipelineId: 44, stoppedThroughPipelineId: 44}}},
+    {operation: '2'.repeat(48), helperImage: process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE,
+      activationCommit: '3'.repeat(40), ciFiles: nativeFiles});
+  receipt = clone(baseReceipt);
+  receipt.repository = {...receipt.repository, id: 5, path: 'group/wizard', namespaceId: 3,
+    managementMode: 'source-primary', ciPath: '.gitlab/primary.yml'};
+  receipt.namespaceId = 3;
+  receipt.sourcePrimary = {version: 1, adoptionCommit: '3'.repeat(40), ciFiles: nativeFiles};
+  receipt.wizardWorkflow = {version: 1, phase: 'source-primary', sourceRevision: '3'.repeat(40),
+    build: {...build, mode: 'source-primary'}, environments: nativeEnvironment};
+  bootstrap.writeReceipt(file, data, receipt);
+  env.environmentAdapters.resolve = async () => ['203.0.113.1'];
+  bootstrap.rails = async value => {
+    input = value;
+    assert(['wizard-environments-primary', 'wizard-environments-primary-status'].includes(value.action));
+    assert.deepEqual(value.sourcePrimary, receipt.sourcePrimary);
+    assert.equal(value.legacyRecipe, undefined, 'Native settings must not install a managed legacy recipe');
+    return {environments: {...value.environments, phase: 'ready'}, message: 'Native settings verified'};
+  };
+  receipt.wizardWorkflow.build.pipeline.status = 'failed';
+  receipt.wizardWorkflow.build.publishing = {mirrorFailed: true, status: 'failed'};
+  bootstrap.writeReceipt(file, data, receipt);
+  preview = env.previewWizardEnvironments(); assert(preview.capabilities.canUpdate, 'Publisher-only failure blocked native settings');
+  const nativeChanged = clone(nativeSettings); nativeChanged.review.host = 'new-native.example';
+  const nativeUpdate = env.configureWizardEnvironments({previewHash: preview.previewHash, settings: nativeChanged});
+  await wait(nativeUpdate); assert.equal(nativeUpdate.state, 'complete', nativeUpdate.message);
+  assert.equal(input.action, 'wizard-environments-primary');
+  assert.equal(nativeUpdate.environments.managementMode, 'source-primary');
+  assert.equal(saved().wizardWorkflow.environments.deployments.review.stoppedThroughPipelineId, 43);
+  assert.equal(saved().wizardWorkflow.environments.deployments.beta.stoppedThroughPipelineId, 44);
+  assert(fs.readFileSync(file, 'utf8').includes('REVIEW_HOST="new-native.example"'));
+  const nativeStatus = env.refreshWizardEnvironments(); await wait(nativeStatus);
+  assert.equal(nativeStatus.state, 'complete', nativeStatus.message);
+  assert.equal(input.action, 'wizard-environments-primary-status');
   console.log('Wizard environments workflow: explicit preview, immutable operation identity, HTTPS/DNS guards, singleton lease/update guard, helper-lock/CAS merging, interrupted recovery, startup preservation and historical Phase B passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;}).finally(() => {process.chdir(source); fs.rmSync(root, {recursive: true, force: true}); fs.rmSync(tlsFixture, {recursive: true, force: true});});
 

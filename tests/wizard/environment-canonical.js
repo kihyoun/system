@@ -65,5 +65,16 @@ const run = moduleValue.exports.run;
   await assert.rejects(() => run('lock', {operation: current.wizardWorkflow.environments.operation, token: replaced, helper: 'old-owner'}));
   assert(directories.has(lock), 'old acquisition removed a replacement mutex');
   assert.strictEqual(JSON.parse(files.get(lock + '/owner')).token, foreign);
+  current.repository = {...current.repository, id: 5, namespaceId: 3, path: 'group/wizard',
+    managementMode: 'source-primary', ciPath: '.gitlab/primary.yml'};
+  current.sourcePrimary = {version: 1, ciFiles: [{path: '.gitlab/primary.yml', sha256: 'a'.repeat(64)}]};
+  files.set(file, encode());
+  const nativeRead = await run('read', {});
+  assert.strictEqual(nativeRead.receipt.repository.id, 5);
+  assert.strictEqual(nativeRead.receipt.repository.managementMode, 'source-primary');
+  assert.strictEqual(nativeRead.receipt.repository.namespaceId, 3);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(nativeRead.receipt.sourcePrimary)), current.sourcePrimary);
+  current.repository.managementMode = 'unknown'; files.set(file, encode());
+  await assert.rejects(() => run('read', {}), /ownership/);
   console.log('Canonical receipt: under-lock reservation check, token-owned unlock, exact-byte deployment CAS, hash conflicts and public-setting allowlist passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

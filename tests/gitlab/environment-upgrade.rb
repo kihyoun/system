@@ -192,3 +192,137 @@ managed.each do |file|
 end
 verify.call
 puts 'Environment candidate proof: actual pipeline SHA, all preserved build scripts/Dockerfiles/Phase B marker, original activation identity, edited/restored recipe refusal and editable application source passed.'
+
+native_files = ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map do |name|
+  {'path' => name, 'sha256' => Digest::SHA256.hexdigest(name)}
+end
+native_files.each { |row| repo[row.fetch('path')] = {'content' => Base64.strict_encode64(row.fetch('path'))} }
+native_project = {'id' => 5, 'path_with_namespace' => 'group/wizard', 'default_branch' => 'master', 'namespace' => {'id' => 3},
+  'visibility' => 'private', 'ci_config_path' => '.gitlab/primary.yml', 'only_allow_merge_if_pipeline_succeeds' => true,
+  'only_allow_merge_if_all_discussions_are_resolved' => true}
+native_repository = {'id' => 5, 'path' => 'group/wizard', 'defaultBranch' => 'master', 'namespaceId' => 3,
+  'managementMode' => 'source-primary', 'ciPath' => '.gitlab/primary.yml'}
+native_binding = {'version' => 1, 'adoptionCommit' => activation, 'ciFiles' => native_files}
+native_environment = {'managementMode' => 'source-primary', 'activationCommit' => activation, 'ciFiles' => native_files}
+verify_native = lambda do
+  WizardEnvironmentProof.source_primary!(get, 'projects/5/', native_repository, native_binding, native_environment, native_project, pipeline_sha)
+end
+verify_native.call
+native_project['ci_config_path'] = '.system-bootstrapper/ci.yml'
+begin; verify_native.call; raise 'Old CI accepted'; rescue RuntimeError => error; raise unless error.message == 'source-primary-ownership'; end
+native_project['ci_config_path'] = '.gitlab/primary.yml'
+native_project['only_allow_merge_if_pipeline_succeeds'] = false
+begin; verify_native.call; raise 'Disabled gate accepted'; rescue RuntimeError => error; raise unless error.message == 'source-primary-ownership'; end
+native_project['only_allow_merge_if_pipeline_succeeds'] = true
+repo['.gitlab/delivery/environment.sh'] = {'content' => Base64.strict_encode64('edited helper invocation')}
+begin; verify_native.call; raise 'Edited launcher accepted'; rescue RuntimeError => error; raise unless error.message == 'source-primary-content'; end
+repo['.gitlab/delivery/environment.sh'] = {'content' => Base64.strict_encode64('.gitlab/delivery/environment.sh')}
+verify_native.call
+puts 'Source-primary environment proof: exact canonical namespace, selected CI, preserved merge gates and pipeline-commit CI bytes passed.'
+
+require_relative '../../project-bootstrap/wizard-environments/source-primary-activate'
+class NativeEnvironmentVariablesFixture
+  attr_reader :mutations, :variables
+  attr_accessor :lose_response
+  def initialize(files, head, variables)
+    @files, @head, @variables, @mutations = files, head, variables, []
+  end
+  def call(method, route, body = nil)
+    if method == Net::HTTP::Get
+      return [200, {'commit' => {'id' => @head}}] if route.include?('/repository/branches/')
+      if route.include?('/repository/files/')
+        name = URI.decode_www_form_component(route.split('/files/').last.split('?').first)
+        return [200, @files.fetch(name)]
+      end
+      if route.include?('/variables/')
+        name = route.split('/variables/').last.split('?').first
+        return [200, @variables.fetch(name)]
+      end
+    elsif method == Net::HTTP::Put && route.include?('/variables/')
+      name = route.split('/variables/').last.split('?').first
+      @mutations << name
+      @variables[name] = @variables.fetch(name).merge(body.to_h.transform_keys(&:to_s))
+      if @lose_response
+        @lose_response = false
+        raise 'Applied write with lost response'
+      end
+      return [200, @variables.fetch(name)]
+    end
+    raise 'Unexpected native environment mutation'
+  end
+end
+previous_environment = {'version' => 1, 'managementMode' => 'source-primary', 'operation' => '1' * 48,
+  'helperImage' => 'sha256:' + '2' * 64, 'activationCommit' => activation, 'ciFiles' => native_files,
+  'settings' => {'review' => {'enabled' => true, 'host' => 'review.example.test'}, 'beta' => {'enabled' => false, 'host' => ''}},
+  'deployments' => {'review' => {'lastPipelineId' => 43, 'stoppedThroughPipelineId' => 43}}}
+next_environment = JSON.parse(JSON.generate(previous_environment))
+next_environment['operation'] = '3' * 48
+next_environment['controller'] = 'system_bootstrapper_1'
+next_environment['settings']['review']['host'] = 'new-review.example.test'
+values = {'SYSTEM_WIZARD_ENVIRONMENT_IMAGE' => previous_environment.fetch('helperImage'),
+  'SYSTEM_WIZARD_ENVIRONMENT_OPERATION' => previous_environment.fetch('operation'),
+  'WIZARD_REVIEW_HOST' => 'review.example.test', 'WIZARD_BETA_HOST' => ''}
+variables = values.to_h { |key, value| [key, {'key' => key, 'value' => value, 'environment_scope' => '*',
+  'variable_type' => 'env_var', 'protected' => false, 'masked' => false, 'raw' => true}] }
+fixture = NativeEnvironmentVariablesFixture.new(repo, pipeline_sha, variables)
+native_input = {'action' => 'wizard-environments-primary', 'repository' => native_repository, 'sourcePrimary' => native_binding,
+  'environments' => next_environment, 'previousEnvironments' => previous_environment, 'controller' => 'system_bootstrapper_1'}
+native_run = -> { WizardSourcePrimaryEnvironments.new(fixture.method(:call), native_input, native_project).call }
+fixture.lose_response = true
+assert(native_run.call[:environments]['phase'] == 'pending')
+assert(fixture.mutations == ['SYSTEM_WIZARD_ENVIRONMENT_OPERATION'])
+native_input['action'] = 'wizard-environments-primary-status'
+assert(native_run.call[:environments]['phase'] == 'pending')
+assert(fixture.mutations.length == 1, 'Status mutated a partially applied variable transaction')
+native_input['action'] = 'wizard-environments-primary'
+assert(native_run.call[:environments]['phase'] == 'ready')
+assert(fixture.mutations == ['SYSTEM_WIZARD_ENVIRONMENT_OPERATION', 'WIZARD_REVIEW_HOST'])
+assert(next_environment['deployments'] == previous_environment['deployments'], 'Settings update lost generation floors')
+native_input['action'] = 'wizard-environments-primary-status'
+assert(native_run.call[:environments]['phase'] == 'ready' && fixture.mutations.length == 2)
+fixture.variables['WIZARD_REVIEW_HOST']['value'] = 'foreign.example.test'
+assert(native_run.call[:environments]['phase'] == 'requires-reconciliation')
+assert(fixture.mutations.length == 2, 'Unexpected variable value was overwritten')
+puts 'Source-primary environment settings: owned variables only, preserved floors, lost-response reconciliation, read-only status and foreign-value refusal passed.'
+
+native_pipeline = {'id' => 99, 'sha' => pipeline_sha, 'status' => 'running'}
+native_jobs = ['build:source', 'test:browser', 'build:wizard', 'test:wizard'].each_with_index.map do |name, index|
+  {'id' => index + 101, 'project_id' => 5, 'name' => name, 'allow_failure' => false, 'status' => 'success',
+    'commit' => {'id' => pipeline_sha}, 'pipeline' => {'id' => 99}}
+end
+verify_jobs = -> { WizardEnvironmentProof.native_jobs!(native_jobs, native_pipeline, 5) }
+assert(verify_jobs.call.map { |row| row['name'] } == ['build:wizard', 'test:wizard'])
+mirror_job = {'id' => 105, 'project_id' => 5, 'name' => 'deploy:github', 'allow_failure' => false,
+  'status' => 'failed', 'commit' => {'id' => pipeline_sha}, 'pipeline' => {'id' => 99}}
+native_jobs << mirror_job
+native_pipeline['status'] = 'failed'
+verify_jobs.call
+%w[failed canceled skipped pending].each do |state|
+  native_jobs[0]['status'] = state
+  begin; verify_jobs.call; raise 'Failed native required check accepted'; rescue RuntimeError => error; raise unless error.message == 'native-required-jobs'; end
+end
+native_jobs[0]['status'] = 'success'
+mirror_job['allow_failure'] = true
+begin; verify_jobs.call; raise 'Optional fake mirror accepted'; rescue RuntimeError => error; raise unless error.message == 'native-publisher'; end
+mirror_job['allow_failure'] = false
+mirror_job['commit']['id'] = '0' * 40
+begin; verify_jobs.call; raise 'Wrong-SHA mirror accepted'; rescue RuntimeError => error; raise unless error.message == 'native-publisher'; end
+mirror_job['commit']['id'] = pipeline_sha
+native_jobs << mirror_job.dup
+begin; verify_jobs.call; raise 'Duplicate mirror accepted'; rescue RuntimeError => error; raise unless error.message == 'native-publisher'; end
+native_jobs.pop
+mirror_job['status'] = 'success'
+native_pipeline['status'] = 'canceled'
+begin; verify_jobs.call; raise 'Canceled pipeline accepted'; rescue RuntimeError => error; raise unless error.message == 'native-pipeline'; end
+mirror_job['status'] = 'failed'
+%w[pending running canceled].each do |state|
+  mirror_job['status'] = state
+  native_pipeline['status'] = state
+  verify_jobs.call
+end
+mirror_job['status'] = 'failed'
+native_pipeline['status'] = 'failed'
+native_jobs << {'id' => 106, 'project_id' => 5, 'name' => 'additional-native-check', 'allow_failure' => false,
+  'status' => 'failed', 'commit' => {'id' => pipeline_sha}, 'pipeline' => {'id' => 99}}
+begin; verify_jobs.call; raise 'Unrelated check failure accepted'; rescue RuntimeError => error; raise unless error.message == 'native-other-job'; end
+puts 'Source-primary deployment jobs: all native gates required, publisher-only failure accepted, false publisher/duplicate/wrong-SHA/canceled/native failures rejected.'

@@ -259,5 +259,31 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   await rejects(() => proof.verify(), /managed build recipe identity changed/);
   assert.strictEqual(proofRequests, 2, 'mismatched environment/build profile reached external verification');
 
+  const native = require('../../project-bootstrap/wizard-environments/source-primary');
+  const ciFiles = ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map(path => ({path, sha256: '7'.repeat(64)}));
+  const nativeEnvironment = native.sourcePrimaryEnvironment({phase: 'ready', operation: '8'.repeat(48),
+    settings: options.settings, settingsHash: state.hash(JSON.stringify(options.settings)), deployments: {}},
+    {operation: op, helperImage: options.helperImage, activationCommit: '9'.repeat(40), ciFiles});
+  proof.environment = nativeEnvironment;
+  proof.context.receipt.repository = {...proof.context.receipt.repository, id: 5, namespaceId: 3,
+    path: 'group/wizard', managementMode: 'source-primary', ciPath: '.gitlab/primary.yml'};
+  proof.context.receipt.sourcePrimary = {version: 1, adoptionCommit: '9'.repeat(40), ciFiles};
+  proof.context.receipt.wizardWorkflow.build = {version: 1, mode: 'source-primary', phase: 'candidate-verified'};
+  proof.json = async (_args, script) => {
+    const input = JSON.parse(Buffer.from(script.match(/^BOOTSTRAPPER_ENVIRONMENT_INPUT = '([A-Za-z0-9+/=]+)'/)[1], 'base64'));
+    assert.deepStrictEqual(input.sourcePrimary.ciFiles, ciFiles);
+    assert.strictEqual(input.repository.id, 5);
+    assert.strictEqual(input.legacyFiles, undefined, 'Native proof must not depend on old instance markers');
+    return {ok: true, imageRef: digest};
+  };
+  await proof.verify();
+  proof.context.receipt.wizardWorkflow.build.phase = 'checks-failed';
+  proof.request = {...proof.request, action: 'stop'};
+  await proof.verify(); // Historical owned candidates remain stoppable while main is red.
+  proof.context.receipt.wizardWorkflow.build.phase = 'pipeline-running';
+  proof.request = {...proof.request, action: 'deploy', kind: 'review'};
+  await proof.verify(); // The exact MR pipeline is verified independently of pending main.
+  proof.context.receipt.sourcePrimary.ciFiles = [];
+  await rejects(() => proof.verify(), /source-primary CI reservation/);
   console.log('Environment helper: singleton MR lease, stale jobs/stops, owned resources, health gates, CAS/reload rollback, tombstones and interrupted cutover recovery passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

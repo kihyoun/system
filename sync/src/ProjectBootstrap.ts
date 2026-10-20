@@ -77,7 +77,10 @@ function runRails(input: any): Promise<any> {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
     const modules: {[key: string]: string} = {'wizard-source': 'wizard-source/import.rb',
       'wizard-build': 'wizard-build/activate.rb', 'wizard-build-status': 'wizard-build/activate.rb',
-      'wizard-environments': 'wizard-environments/activate.rb', 'wizard-environments-status': 'wizard-environments/activate.rb'};
+      'wizard-environments': 'wizard-environments/activate.rb', 'wizard-environments-status': 'wizard-environments/activate.rb',
+      'wizard-source-primary-status': 'wizard-source-primary/status.rb',
+      'wizard-environments-primary': 'wizard-environments/source-primary-activate.rb',
+      'wizard-environments-primary-status': 'wizard-environments/source-primary-activate.rb'};
     const importer = modules[input.action] ? fs.readFileSync(path.join(__dirname, '../../project-bootstrap', modules[input.action]), 'utf8') + '\n' : '';
     const script = `BOOTSTRAPPER_INPUT = '${encoded}'\n` + importer + fs.readFileSync(path.join(__dirname, '../../project-bootstrap/provision.rb'), 'utf8');
     const child = spawn('docker', ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-']);

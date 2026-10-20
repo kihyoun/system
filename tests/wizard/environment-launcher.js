@@ -36,5 +36,19 @@ esac
   assert(calls.includes('stop --time 120 ' + 'd'.repeat(64)));
   assert(calls.includes('rm -f ' + 'd'.repeat(64)));
   assert(!calls.includes('rm -f wizard-environment-'));
+  fs.writeFileSync(script, fs.readFileSync(require.resolve('../../project-bootstrap/wizard-environments/source-primary.sh'), 'utf8'));
+  fs.writeFileSync(trace, '');
+  const nativeEnvironment = {...environment, MODE: 'owned', SYSTEM_WIZARD_ENVIRONMENT_IMAGE: options.helperImage,
+    SYSTEM_WIZARD_ENVIRONMENT_OPERATION: options.operation};
+  result = spawnSync('/bin/sh', [script, 'stop', 'review'], {env: nativeEnvironment, encoding: 'utf8'});
+  assert.strictEqual(result.status, 0, result.stderr);
+  calls = fs.readFileSync(trace, 'utf8');
+  assert(calls.includes('--operation ' + options.operation));
+  assert(calls.includes('rm -f ' + 'd'.repeat(64)));
+  fs.writeFileSync(trace, '');
+  result = spawnSync('/bin/sh', [script, 'stop', 'review'], {env: {...nativeEnvironment,
+    SYSTEM_WIZARD_ENVIRONMENT_IMAGE: 'latest'}, encoding: 'utf8'});
+  assert.notStrictEqual(result.status, 0);
+  assert.strictEqual(fs.readFileSync(trace, 'utf8'), '', 'Invalid native helper identity reached Docker');
   console.log('Environment launcher: occupied names remain untouched; cleanup verifies immutable image/task ownership and uses only the created full container ID.');
 } finally { fs.rmSync(fixture, {recursive: true, force: true}); }
