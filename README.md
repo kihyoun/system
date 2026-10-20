@@ -20,6 +20,10 @@ The original use case is still simple: spend more time building web projects and
 
 Start with the [System Bootstrapper Handbook](docs/HANDBOOK.md) for checkout,
 host preparation, the first Sync login, configuration and runner setup.
+For an implementation-based explanation of real Ubuntu startup, Let's Encrypt,
+certificate renewal and moving to a new VM **with a retained live data volume**,
+read the [current operations chapter](docs/HANDBOOK.md#5-current-operations-startup-https-and-server-replacement).
+It distinguishes automated script behavior from manual prerequisites.
 [Prepare-Host.md](Prepare-Host.md) covers installation and service-image selection;
 [the persistence guide](docs/PERSISTENT_VOLUME.md) explains the required mounted
 data filesystem. Domain names, storage and credentials belong to your deployment.
