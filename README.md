@@ -16,10 +16,24 @@ The idea grew from a convenient self-hosted setup into an open-source framework 
 
 The original use case is still simple: spend more time building web projects and less time maintaining the infrastructure behind them. But the underlying architecture could eventually support other kinds of infrastructure. **The self-renewal cycle is the project's vision, not a capability already delivered today.**
 
+### Born before AI. Built to evolve.
+
+System Bootstrapper began in 2019 with a simple architectural principle: **the source code is the DNA; the running infrastructure is merely an instance of it.**
+
+The system was designed to be reproducible rather than irreplaceable. Its infrastructure can be rebuilt from source, while persistent state is preserved independently. The original architecture and its core principles were conceived and implemented before AI coding agents became part of the development workflow.
+
+Today, AI introduces a new possibility: agents can help develop and validate changes to the very source code from which future system generations are built. Fully autonomous generation-to-generation renewal remains a goal rather than an already delivered capability.
+
+**AI did not create the architecture. It expands what the architecture can achieve.**
+
 ## Getting started
 
 Start with the [System Bootstrapper Handbook](docs/HANDBOOK.md) for checkout,
 host preparation, the first Sync login, configuration and runner setup.
+For an implementation-based explanation of real Ubuntu startup, Let's Encrypt,
+certificate renewal and moving to a new VM **with a retained live data volume**,
+read the [current operations chapter](docs/HANDBOOK.md#5-current-operations-startup-https-and-server-replacement).
+It distinguishes automated script behavior from manual prerequisites.
 [Prepare-Host.md](Prepare-Host.md) covers installation and service-image selection;
 [the persistence guide](docs/PERSISTENT_VOLUME.md) explains the required mounted
 data filesystem. Domain names, storage and credentials belong to your deployment.
