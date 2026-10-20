@@ -879,11 +879,19 @@ that the public HTTPS setup is finished by the final command.
    fresh-test pins and optional loopback SSH/registry port bindings:
 
    ~~~bash
-   sudo bash start.sh
+   sudo env \
+     GITLAB_IMAGE=gitlab/gitlab-ce:19.4.2-ce.0 \
+     GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0 \
+     GITLAB_SSH_BIND=127.0.0.1:2222 \
+     GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
+     bash start.sh
    sudo docker ps
    sudo docker logs system_bootstrapper_1
    ~~~
 
+   These are the **fresh local test image and binding examples from section
+   0.3**, not universal production settings or a GitLab upgrade command.
+   Select host-appropriate SSH/registry bindings before public deployment.
    Host `start.sh` sources the storage selector, validates the volume, prefers
    `PERSISTENT_DIR/configuration/.docker.env` when present, and then starts
    the controller using `system/docker-compose.yml`. The controller initializes
