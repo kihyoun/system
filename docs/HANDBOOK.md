@@ -56,8 +56,11 @@ hostnames later stop resolving, run this preparation step again. It reloads the
 Docker configuration without restarting the containers. The HTTP exception
 remains limited to the local test.
 
-This guide uses HTTP exclusively for local testing. A publicly accessible
-instance requires its own domain and HTTPS configuration.
+This chapter uses HTTP exclusively for local testing. For a source-based
+account of the **currently implemented** Ubuntu startup, public TLS wiring
+and retained-volume server replacement, see
+[chapter 5](#5-current-operations-startup-https-and-server-replacement).
+Public first-time certificate issuance still requires operator preparation.
 
 The pinned Wizard uses React 19, Vite 8 and Node 24. Its Dockerfile selects the
 exact Node image, installs the committed lockfile, runs its checks and builds the
@@ -356,8 +359,11 @@ Use the Edit dialog and the Sync credentials you chose in section 0.9. Load the
 saved configuration with **Synchronize → Fetch**. You can change it, save a local
 Backup, then apply it with Push (which restarts automatically).
 
-For public use, configure your own DNS, HTTPS certificates and host certificate
-renewal. Reusing a database or moving persistent storage requires the separate
+For public use, DNS and first-time HTTPS certificate issuance still require
+operator preparation. The exact behavior of the existing startup, renewal
+integration and server replacement scripts is described in
+[chapter 5](#5-current-operations-startup-https-and-server-replacement).
+Reusing a database or moving persistent storage also requires the separate
 [recovery procedure](RECOVERY_CONTRACT.md).
 
 ### 0.13 Replace a public host while retaining its data volume
@@ -798,3 +804,286 @@ to the shared instance pool.
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
 
 See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
+
+## 5. Current operations: startup, HTTPS and server replacement
+
+This chapter describes the **implementation in this repository**, not a future
+one-command installer or a procedure performed by an AI agent. Chapter 0 is a
+working local WSL2/HTTP walkthrough. The scripts provide an Ubuntu host boot path
+and a retained-volume recovery path; they do **not** independently register
+domains, change public DNS, issue every initial certificate or provision a new
+virtual machine.
+
+### 5.1 What happens automatically and what remains an operator task
+
+| Operation | Current implementation |
+| --- | --- |
+| Install Docker/Compose on Ubuntu | `bootstrapper/install.sh` performs this when invoked by an operator |
+| Select, mount and identify the data filesystem | **Operator** mounts and selects it; `bootstrapper/persistence.sh` then validates it |
+| Start the controller | `start.sh` builds/starts `system_bootstrapper_1` with the mounted state |
+| Initial setup before main configuration | Controller starts the Wizard and Sync access point for the first configuration |
+| Apply Wizard configuration | Authenticated **Push** saves it and triggers the platform restart |
+| Start configured services | `system/start.sh` orchestrates GitLab, optional Wizard image recovery, proxies, runners, Wizard and Sync |
+| Create DNS records and expose 80/443 | **Operator / DNS provider / firewall**; no DNS provisioning in the startup scripts |
+| Issue the first public TLS certificate | **Operator**; there is no general automatic issuance step in `start.sh` |
+| Install/renew an existing Certbot lineage | Host integration, renewal timer and deploy hook are implemented; successful renewal still depends on valid ACME routing and existing renewal configuration |
+| Move to a new VM with the **same retained volume** | Operator supplies VM, source, volume, compatible images and DNS; scripts reconnect state and start services |
+| Restore from a **Seed without the live volume** | A separate, explicit restore procedure; not performed by an ordinary `start.sh` |
+
+### 5.2 Fresh Ubuntu start: commands and execution order
+
+These steps describe the source-controlled entry points. Replace example paths,
+image pins and hostnames with those of your deployment. This is **not** a promise
+that the public HTTPS setup is finished by the final command.
+
+1. Provision Ubuntu, prepare **and mount** a separate persistent filesystem,
+   and select enough storage/memory for GitLab and CI. Public DNS A/AAAA records,
+   firewall rules and certificate issuance are separate tasks. Check the mount
+   with `findmnt --mountpoint /mnt/bootstrapper-data`. Do not point
+   `PERSISTENT_MOUNT` at the host's root filesystem.
+2. Check out the intended, pinned source including submodules. Install Docker
+   and, for public TLS renewal, the host Certbot package. Build the Wizard image
+   as documented in section 0.2:
+
+   ~~~bash
+   git clone --recurse-submodules https://github.com/kihyoun/system.git
+   cd system
+   sudo bash bootstrapper/install.sh
+   sudo apt-get install -y certbot
+   sudo docker build -t systembootstrapper/wizard:latest wizard
+   ~~~
+
+3. Record the **actual mounted** volume paths in the root-owned selector. This
+   example assumes the filesystem is already mounted at the shown path:
+
+   ~~~bash
+   sudo install -d -m 0700 /etc/system-bootstrapper
+   sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
+   PERSISTENT_MOUNT=/mnt/bootstrapper-data
+   PERSISTENT_DIR=/mnt/bootstrapper-data/platform
+   SEED_DIR=/mnt/bootstrapper-data/seed
+   EOF
+   sudo chmod 0600 /etc/system-bootstrapper/persistence.env
+   sudo bash bootstrapper/install-volume-host.sh
+   ~~~
+
+   Optionally pin `PERSISTENT_UUID` to the UUID of that filesystem.
+   `persistence.sh` checks mount identity, directories, filesystem boundaries
+   and a volume marker before Docker services may use the state directory.
+   `install-volume-host.sh` configures the fstab entry, Docker's mount
+   dependency, persistent Certbot state and renewal integration. Neither script
+   creates or mounts an unprepared block device.
+
+4. Start from the source root with the **selected, compatible GitLab and Runner
+   image references** for this installation. Section 0.3 provides current
+   fresh-test pins and optional loopback SSH/registry port bindings:
+
+   ~~~bash
+   sudo bash start.sh
+   sudo docker ps
+   sudo docker logs system_bootstrapper_1
+   ~~~
+
+   Host `start.sh` sources the storage selector, validates the volume, prefers
+   `PERSISTENT_DIR/configuration/.docker.env` when present, and then starts
+   the controller using `system/docker-compose.yml`. The controller initializes
+   its persistent configuration, generates initial Sync credentials if absent,
+   and checks for an incomplete Seed restore. **Without a main configuration**,
+   it starts the initial Wizard/Sync HTTP access point instead of the full
+   configured GitLab landscape.
+
+5. Connect to the first-start HTTP Wizard as in sections 0.4–0.10. The
+   credentials live in `PERSISTENT_DIR/configuration/sync-auth.env`; do not
+   assume the example password is real. For a remote VM, protect initial HTTP
+   access from untrusted networks; an SSH local port forward can be used for
+   operator setup. Use **Fetch** for suggestions, verify every hostname and
+   setting, then **Push**. Suggestions do not provision DNS or certificates.
+   Push writes the main configuration and restarts services; once configured,
+   the controller follows `system/start-intermediate.sh` and
+   `system/start-main.sh`.
+
+On configured startup, `gitlab/start.sh` renders GitLab's configuration from
+the saved URL/registry settings. Next,
+`system/ensure-wizard-image.sh` checks the exact configured Wizard image,
+`nginx-proxy/start.sh` starts project environment proxies, and the runner and
+Wizard scripts run. `nginx/start.sh` renders and starts the main entry proxy
+using the chosen domain modes; Sync then starts through the main configuration.
+GitLab itself serves internal HTTP behind the entry NGINX proxy (see
+`gitlab/gitlab.rb`). The public registry route proxies to internal GitLab
+port 5050; registry listener and GitLab SSH binding are independent of 443.
+
+### 5.3 Current HTTPS / Let's Encrypt integration
+
+The **host** maintains Certbot state, while the NGINX container terminates
+public HTTPS:
+
+- `PERSISTENT_DIR/host/letsencrypt` contains Certbot accounts, `archive`,
+  `live`, renewal configuration and hooks. `install-volume-host.sh` makes
+  `/etc/letsencrypt` a symlink to that tree and refuses conflicting active
+  state on the host and volume.
+- `PERSISTENT_DIR/ssl` is bind-mounted as `/ssl` inside the entry NGINX
+  container. `PERSISTENT_DIR/ssl/acme-http01` is the shared HTTP-01 webroot.
+- `bootstrapper/install-volume-certificate.sh` copies the current
+  `fullchain.pem` and `privkey.pem` of a Certbot lineage into
+  `PERSISTENT_DIR/ssl/live/<lineage>/`, then validates and reloads a
+  running `system_web_1` NGINX container.
+- `nginx/start.sh` selects templates by domain mode:
+  **0 = exact-host HTTP, 1 = wildcard HTTP, 2 = exact-host HTTPS,
+  3 = wildcard HTTPS**. Mode 2 serves an HTTP-to-HTTPS redirect plus a
+  certificate-backed listener on port 443.
+
+**Initial issuance is not performed by the Bootstrapper.** First establish
+working DNS and ACME validation for every requested hostname, obtain the
+certificates with an appropriate Certbot authenticator, and configure the
+correct paths in the Wizard *before enabling HTTPS mode*. The HTTP-01 default
+NGINX server serves `/.well-known/acme-challenge/` for otherwise unmatched
+hosts. The dedicated HTTPS template also serves that challenge path. However,
+the ordinary **mode 0 HTTP virtual-host template proxies the request upstream**
+and does not add the challenge exception. Likewise, the initial setup Sync
+proxy is not a general ACME webroot endpoint. Thus, a simple
+`certbot certonly --webroot` against an already matching mode-0 hostname is
+**not guaranteed to work**. Verify the entire external HTTP-01 path first or
+use a separately configured DNS-01 authenticator.
+
+Once a lineage exists, you can explicitly place its initial certificate into
+the NGINX-mounted tree using the installed deploy helper (example lineage
+`platform`):
+
+~~~bash
+sudo env RENEWED_LINEAGE=/etc/letsencrypt/live/platform \
+  /usr/local/sbin/system-install-certificate
+~~~
+
+Then configure each required NGINX SSL/key path to the files **inside the
+container**. For a shared multi-domain `platform` lineage, the Wizard paths
+would be:
+
+~~~text
+/ssl/live/platform/fullchain.pem
+/ssl/live/platform/privkey.pem
+~~~
+
+Use the appropriate HTTPS domain mode (normally 2), and set the public GitLab
+and registry external URLs to their real `https://` addresses. The certificate
+must cover every hostname to which its paths are assigned. The checked-in
+`system/.docker.env.example` still illustrates `/live/...` paths; those are
+**not the mounted NGINX paths** in `system/docker-compose.yml`. Similarly,
+do not copy host-only `/etc/letsencrypt/...` paths into a proxy setting
+without mounting them in that container.
+
+After initial Certbot configuration is valid, `install-volume-host.sh` enables
+`certbot.timer` if that unit exists. The host service runs renewals via
+`/usr/local/sbin/system-certbot`, which verifies the retained mount and
+serializes with Harvest through a certificate lock. The deploy hook copies new
+certificates and reloads NGINX; it does **not** discover domains or repair ACME
+routing. Test the configured renewal mechanism after the proxy is reachable:
+
+~~~bash
+sudo systemctl status certbot.timer
+sudo system-certbot renew --dry-run
+sudo docker exec system_web_1 nginx -t
+~~~
+
+Wildcard certificates require DNS-01 validation; the HTTP-01 route does not
+issue a wildcard. Issuance/renewal of project Review/Beta certificates remains
+an operator responsibility; see
+[Managed Wizard Review/Beta](../project-bootstrap/wizard-environments/README.md#certificates-without-proxy-downtime).
+
+### 5.4 Restarting an existing instance with its live volume
+
+If the same host and filesystem still exist, no Seed restore or new certificate
+issuance is normally necessary. Mount the retained volume, use the same selector,
+configuration, checked-out System revision and compatible image references.
+Then from the source root:
+
+~~~bash
+sudo bash bootstrapper/install-volume-host.sh
+sudo bash start.sh
+sudo docker ps
+sudo system-certbot renew --dry-run
+~~~
+
+The host integration can be rerun to reconnect renewal and mount dependencies.
+Startup reuses `configuration/.docker.env` and persistent GitLab/SSL volumes;
+it does not automatically apply a historical Seed. Do not replace the GitLab
+image with an arbitrary newer major version against its existing database.
+
+### 5.5 Replacing a VM while retaining the same live filesystem
+
+This is the **retained-volume path** already detailed in section 0.13, not an
+automatic network transfer and not the `Seed` restoration path.
+
+1. Stop old writers before detaching storage, preserve the disk instead of
+   deleting or formatting it, and retain the original source revision, main
+   configuration, mount path, optional UUID and image references/digests.
+2. Install Ubuntu, Docker and Certbot on the replacement VM. Attach and mount
+   that existing filesystem at the original absolute path, and recreate
+   `/etc/system-bootstrapper/persistence.env`. Update public A/AAAA records
+   when the host IP changes and ensure external ports 80/443 reach the new host.
+3. Run `sudo bash bootstrapper/install-volume-host.sh`. It relinks
+   `/etc/letsencrypt` to the volume, rebinds webroot renewal paths when necessary,
+   installs the deploy hook and renew timer and checks for conflicting host
+   certificate state.
+4. Make the **same required images** available. Either rebuild the controller
+   and required custom helper from the recorded source and obtain compatible
+   pinned public images, or use the existing
+   [optional archive-based recovery](PERSISTENT_VOLUME.md#replacing-a-vm-while-retaining-live-data).
+   The latter needs an operator-prepared
+   `PERSISTENT_DIR/recovery/images.json` plus checksum-verified archives;
+   that manifest is **not** generated by the recovery command.
+5. Start normally with `sudo bash start.sh`, or, **only if the archive
+   manifest and exact image archives already exist**, run:
+
+   ~~~bash
+   sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+     bash bootstrapper/recover-volume.sh --verify
+   sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+     bash bootstrapper/recover-volume.sh
+   ~~~
+
+   `recover-volume.sh` verifies archive checksums, loads declared images,
+   pulls/tags declared public images, reinstalls host integration and starts
+   the controller without rebuilding it. It neither moves a volume nor
+   recovers a missing unlisted image.
+6. If a pinned private Wizard image is absent from the new Docker daemon but
+   still exists in the **retained GitLab registry**, configured startup can
+   automatically bring up GitLab/registry-only routing, wait for GitLab,
+   create a restricted short-lived registry token, pull and verify the exact
+   image digest, revoke the token and continue. This is implemented by
+   `system/wizard-image-recovery.js`. It is conditional on a valid saved Wizard
+   receipt, registry/project identity and accessible registry; it is **not**
+   general reconstruction of any missing image.
+7. Verify the Wizard and Sync through their retained domains, GitLab data and
+   registry, runner managers, proxy certificates, mount mappings and
+   `system-certbot renew --dry-run`. See section 0.13 for the detailed
+   retained-volume recovery checklist.
+
+If the **live volume is gone** and you only have a completed Harvest Seed plus
+a separate Wizard configuration backup, **do not follow these steps**. Use
+[Configuration and Seed recovery](RECOVERY_CONTRACT.md#restoring-without-the-old-live-platform):
+the GitLab image identity must match, restore is explicit and interrupted
+restores block startup. An AI-driven host migration may orchestrate these
+operations, but the repository scripts themselves do not provision the new
+VM, transfer the disk or change DNS.
+
+### 5.6 Operator checks before calling a boot or migration successful
+
+~~~bash
+findmnt --mountpoint /mnt/bootstrapper-data
+sudo docker ps
+sudo docker logs system_bootstrapper_1
+sudo docker exec system_web_1 nginx -t
+sudo systemctl status certbot.timer
+sudo system-certbot renew --dry-run
+~~~
+
+Check the live `PERSISTENT_DIR` and NGINX's mounted `/ssl` paths before
+investigating application errors. On an initial unconfigured start,
+`system_web_1` does not exist yet; the first-stage Sync proxy is used instead.
+For a restored host, confirm that saved DNS names match the current public
+routing, that the stored certificate covers those names, and that the
+correct GitLab image and persistent filesystem are in use. The
+[disposable ACME and recovery tests](../tests/e2e/README.md) validate key
+integration paths in isolation, **not** real-world DNS, initial production
+certificate issuance, Ubuntu VM provisioning or systemd timer scheduling.
+
