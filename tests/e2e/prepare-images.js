@@ -6,9 +6,11 @@ const crypto=require('crypto');
 const {execFileSync}=require('child_process');
 const {validate}=require('../../project-bootstrap/wizard-source/package');
 const root=path.resolve(__dirname,'../..');
+const securityRelease=require('../../gitlab/security-release.json');
 const defaults={
   daemon:'docker:29.9.1-dind@sha256:3e5756e2b6dad6a5f1f5deacf0a19f9eaa2581b76ae092b2d4a118162e1d4d4e',
-  gitlab:'gitlab/gitlab-ce:19.4.2-ce.0@sha256:b65c3ece044d125254b4c4a99b10676bbd2502f05f8c628cb60628f44f4df11b',
+  gitlab:securityRelease.toImage,
+  previousGitlab:securityRelease.fromImage,
   runner:'gitlab/gitlab-runner:v19.4.0@sha256:e859bcedae25987bdaf0aa79145eb5e50a0195d80a2eda7532e7a9841bb9d9a8',
   nginx:'nginx@sha256:332d0beea97cff8c0d5d27976c0778a4b00345b9d74c2feaaf8efde548314948',
   helper:'registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v19.4.0@sha256:13188cca15a2d44fc621d42da4efb42b81c9527e072d07aab29468dea15af831'
@@ -48,7 +50,7 @@ function prepare(){
   if(recoveryAcceptance&&!fs.existsSync(path.join(__dirname,'recovery.js')))throw Error('Marked Seed requires the complete cold recovery adapter.');
   const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',timeout:600000,...options});
   let fd=fs.openSync(archive,'r');
-  try{run(['build','--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','system/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
+  try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','system/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
   const snapshot=validate(JSON.parse(fs.readFileSync(path.join(root,'project-bootstrap/wizard-source/snapshot.json'),'utf8')));
   const context=path.join(output,'wizard-context');fs.mkdirSync(context,{recursive:true});
   for(const file of snapshot.files){const name=path.join(context,file.path);fs.mkdirSync(path.dirname(name),{recursive:true});fs.writeFileSync(name,Buffer.from(file.content,'base64'),{mode:file.mode==='100755'?0o755:0o644});}
@@ -75,8 +77,8 @@ function prepare(){
   }
   const acmeImages=acmeRenewalAcceptance?require('./prepare-acme-images').prepare(output):undefined;
   if(acmeRenewalAcceptance)require('./local-acme').validate({acmeImages});
-  const spec={sourceRevision:process.env.CI_COMMIT_SHA,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>role!=='helper')),
-    supportImages:{helper:images.helper},fullAcceptance:true,readinessMilliseconds:600000};
+  const spec={sourceRevision:process.env.CI_COMMIT_SHA,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab'].includes(role))),
+    supportImages:{helper:images.helper,previousGitlab:images.previousGitlab},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});
   console.log('Prepared pinned full-platform candidate images for '+process.env.CI_COMMIT_SHA);
 }

@@ -57,5 +57,11 @@
   {"component":"wizard","file":"wizard/source-primary-adoption.js","timeoutSeconds":30},
   {"component":"gitlab","file":"gitlab/wizard-source-primary.rb","timeoutSeconds":25},
   {"component":"shared","file":"shared/local-acme-contract.js","timeoutSeconds":20},
-  {"component":"shared","file":"shared/candidate-cleanup-contract.js","timeoutSeconds":15}
+  {"component":"shared","file":"shared/candidate-cleanup-contract.js","timeoutSeconds":15},
+  {"component":"gitlab","file":"gitlab/upgrade.js","timeoutSeconds":25},
+  {"component":"shared","file":"shared/gitlab-upgrade-contract.js","timeoutSeconds":20},
+  {"component":"sync","file":"sync/upgrade-maintenance-api.js","timeoutSeconds":25,"port":8071},
+  {"component":"bootstrapper","file":"bootstrapper/native-initialization.py","timeoutSeconds":45},
+  {"component":"gitlab","file":"gitlab/candidate-capacity.js","timeoutSeconds":15},
+  {"component":"gitlab","file":"gitlab/publish-successor.js","timeoutSeconds":20}
 ]
