@@ -1252,8 +1252,8 @@ migration results for an upgrade.
 A focused evolution can replace GitLab CE **19.4.2** with **19.4.3** while keeping
 the rest of the platform's declared behavior. GitLab's
 [October 2026 patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-1-released/)
-identifies security fixes in 19.4.3 and states that it includes regular database
-migrations. This is a specific version-transition example, not a rule that
+identifies security fixes in 19.4.3 and states that it includes regular and
+post-deployment database migrations. This is a specific version-transition example, not a rule that
 19.4.3 is the right target for every later installation. Check the upstream
 upgrade path and patch notes for the actual source and target before each change.
 
@@ -1283,6 +1283,62 @@ candidate results and exact existing installation. Run it from the host or an
 independent management connection, rather than relying on a CI job to survive
 stopping the GitLab that coordinates it.
 
+For the declared CE 19.4.2 → 19.4.3 transition,
+[`gitlab/security-release.json`](../gitlab/security-release.json) contains the
+allowed source and target image pins. Make both images available before the
+outage. First deploy the **exact tested full controller image** containing the
+accepted tools, while preserving the saved 19.4.2 GitLab selection. Do not rebuild
+another image from the same tag and assume it has the tested identity. The helper
+requires the running controller to match the image recorded by the accepted
+candidate evidence; publishing a runtime base alone does not meet this condition.
+
+Store the accepted candidate's sanitized `results.json` privately as
+`accepted-candidate-results.json` in the persistent configuration directory,
+which the controller mounts at `/state`. Create a private `upgrade-options.json`
+there with the following fields, replacing the example path, operation ID and
+commit with your deployment's accepted values:
+
+```json
+{
+  "sourceRevision": "REPLACE_WITH_ACCEPTED_40_CHARACTER_SYSTEM_COMMIT",
+  "evidence": "/state/accepted-candidate-results.json",
+  "stateDir": "/state",
+  "persistentDir": "/mnt/bootstrapper-data/platform",
+  "checkpointDir": "/state/gitlab-upgrades/REPLACE_WITH_UNIQUE_OPERATION_ID",
+  "readyTimeoutSeconds": 900
+}
+```
+
+Keep both input files at mode 0600. `sourceRevision` must be the exact accepted
+revision in the evidence. `persistentDir` is the **host** path used by the
+installation's volume bindings; `/state` and `checkpointDir` are controller paths.
+Use a new checkpoint directory, with space for a full cold GitLab copy and reserve,
+for each attempt. No API token is part of this options object.
+
+From an independent host terminal, request the read-only plan:
+
+```bash
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js plan /state/upgrade-options.json
+```
+
+Inspect the returned plan and `planSha256`. It binds the accepted evidence,
+source, current container and configuration to the exact old and new images and
+the checkpoint location. Resolve failed preconditions before continuing; do not
+edit the evidence to make a plan pass. After authorization for that exact plan,
+use its hash as the confirmation:
+
+```bash
+PLAN_SHA256=REPLACE_WITH_REVIEWED_PLAN_SHA256
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js promote /state/upgrade-options.json "$PLAN_SHA256"
+```
+
+Run this host command outside the GitLab CI job that will lose its server.
+Retain the output, including `checkpointSha256`, privately. The checkpoint and
+phase receipt are written beneath the configured `checkpointDir`; a shell or
+network disconnection is not evidence that promotion succeeded or failed.
+
 The production sequence must serialize against configuration writes,
 Harvest/restore, certificate-state changes and other deployments. Quiesce writers,
 capture the final compatible checkpoint, stop the affected services, apply the
@@ -1295,14 +1351,48 @@ authentication, repository and issue access, registry authentication and pulls,
 fresh runner-manager contact, authenticated configuration Fetch, Wizard routing,
 mounted storage and certificate renewal. Retain the private promotion receipt
 with the accepted commit, exact image IDs/digests, checkpoint identity and check
-outcomes. Once B passes acceptance, it can host the next reviewed evolution.
+outcomes. Publish a matching recovery manifest and declared image archives using
+the committed preparation procedure before retiring the previous recovery inputs.
+The next replacement host must select B's accepted controller and GitLab images,
+rather than an old manifest that still describes A. Once B passes acceptance, it
+can host the next reviewed evolution.
 
 ### 5.6 Failure, recovery and the autonomy boundary
 
-If migration or acceptance fails, stop B's writers and preserve the failure
-receipt. Do not simply start the old GitLab image on a database already migrated
-by B. Recovery requires the compatible pre-upgrade state, configuration/secrets
-and exact old images through the committed recovery procedure. Keep the failed
+If migration or acceptance fails, inspect the committed helper's recorded phase:
+
+```bash
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js status /state/upgrade-options.json
+```
+
+Before a completed checkpoint exists, the helper's `abort` action accepts the
+reviewed plan hash and can recover that pre-migration attempt. After a completed
+checkpoint exists, use `rollback` with its recorded hash to restore the compatible
+old state. Do not choose between these actions from a disconnected terminal's
+exit code; inspect the durable receipt and ensure no original operation is still
+running.
+
+```bash
+# Only for a confirmed pre-checkpoint failure:
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js abort /state/upgrade-options.json "$PLAN_SHA256"
+
+# For a confirmed completed-checkpoint recovery:
+CHECKPOINT_SHA256=REPLACE_WITH_VERIFIED_CHECKPOINT_SHA256
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
+```
+
+Use only the action appropriate to the recorded phase; the commands are
+alternatives, not a sequence to run unconditionally. Keep interrupted-operation
+leases and incomplete-restore markers for the helper to reconcile. Do not delete
+one manually to bypass a refusal.
+
+Stop B's writers and preserve the failure receipt. Do not simply start the old
+GitLab image on a database already migrated by B. Recovery requires the compatible
+pre-upgrade state, configuration/secrets and exact old images through the
+committed recovery procedure. Keep the failed
 candidate data separate until diagnosis is complete; do not overwrite the only
 usable checkpoint. See [Harvest/Seed recovery](RECOVERY_CONTRACT.md) for the cold
 snapshot contract and incomplete-restore guard.
