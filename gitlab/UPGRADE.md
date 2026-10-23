@@ -44,6 +44,16 @@ The checkpoint contains private database, repositories, registry and GitLab
 secrets plus the original saved configuration and Sync authentication file.
 Ensure enough data-volume space for it and retain an independent off-volume backup.
 
+Options and pipeline evidence JSON are limited to 4 MiB each. The checkpoint
+manifest has a separate 64 MiB limit because its checksum inventory grows with
+the number and path lengths of retained files. The same bound is enforced before
+publishing and when reading the manifest; file contents remain separate copied
+data, not embedded JSON. An oversized inventory stops promotion before the new
+image starts and before a completed checkpoint is recorded. Keep the partial
+copy for inspection and use the interrupted-operation procedure below to resume
+the old generation; do not remove its leases manually or retry with an
+unreviewed larger limit.
+
 Pull both exact `fromImage` and `toImage` references from the committed release
 metadata before promotion. The helper verifies their local immutable identities;
 it does not download a new version during downtime.

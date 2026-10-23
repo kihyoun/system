@@ -139,9 +139,83 @@ def checkpoint_copy(config, checkpoint, image):
     successor.directory_barrier(checkpoint)
     successor.directory_barrier(checkpoint.parent)
     successor.directory_barrier(checkpoint.parent.parent)
-    successor.atomic_json(checkpoint / 'cold-checkpoint.json', {'format': 'system-controller-cold-checkpoint-v1',
+    successor.atomic_controller_checkpoint(checkpoint / 'cold-checkpoint.json', {'format': 'system-controller-cold-checkpoint-v1',
                                                               'at': runtime.now(), 'entries': manifests})
-    return recovery.sha(checkpoint / 'cold-checkpoint.json')
+    digest = recovery.sha(checkpoint / 'cold-checkpoint.json')
+    verify_cold_checkpoint(checkpoint, digest)
+    return digest
+
+
+def verify_cold_checkpoint(checkpoint, expected):
+    receipt = Path(checkpoint) / 'cold-checkpoint.json'
+    raw = successor.controller_checkpoint_input(receipt)
+    require(isinstance(expected, str) and len(expected) == 64 and
+            hashlib.sha256(raw).hexdigest() == expected, 'controller-cold-checkpoint-hash-mismatch')
+    contents = json.loads(raw)
+    require(contents.get('format') == 'system-controller-cold-checkpoint-v1' and
+            isinstance(contents.get('entries'), dict) and set(contents['entries']) == {'gitlab', 'configuration'},
+            'controller-cold-checkpoint-format-invalid')
+    for name, entries in contents['entries'].items():
+        require((Path(checkpoint) / name).is_dir() and not (Path(checkpoint) / name).is_symlink(),
+                'controller-cold-checkpoint-directory-required')
+        require(inventory(Path(checkpoint) / name, ('.gitlab-upgrade-lock', '.wizard.env.environments.lock')) == entries,
+                'controller-cold-checkpoint-content-mismatch')
+
+
+def staged_manifest(config, manifest, services, api, security, checkpoint, target):
+    """Authorize one completed staging receipt without publishing a recovery image.
+
+    Only this in-memory validation view declares the already accepted controller.
+    Its original archive-backed recovery manifest remains untouched until migration.
+    """
+    checkpoint = Path(checkpoint)
+    boundary = config['_root'] / 'recovery/controller-promotions'
+    require(checkpoint.is_absolute() and checkpoint.resolve(strict=True) == checkpoint and
+            boundary in checkpoint.parents and checkpoint.is_dir(), 'retained-staged-promotion-directory-required')
+    operation_bytes = successor.private_input(checkpoint / 'operation.json')
+    record = json.loads(operation_bytes)
+    release, evidence = successor.verify_completed_promotion(api, record, security)
+    require(release['projectId'] == target['projectId'] and
+            release['registryRepository'] == target['registryRepository'], 'staged-controller-project-mismatch')
+    successor.verify_source_objects(release, successor.HERE.parent)
+    successor.verify_ancestry(manifest.get('sourceCommit'), release['sourceRevision'], successor.HERE.parent)
+    successor.verify_ancestry(release['sourceRevision'], target['sourceRevision'], successor.HERE.parent)
+    before = successor.private_input(checkpoint / 'main-before.env')
+    current = config['_main'].read_bytes()
+    alias = successor.controller_alias(release)
+    require(hashlib.sha256(before).hexdigest() == record.get('configurationBeforeSha256') and
+            hashlib.sha256(current).hexdigest() == record.get('configurationAfterSha256') and
+            successor.assignment(before, 'BOOTSTRAPPER_IMAGE', alias) == current and
+            config['BOOTSTRAPPER_IMAGE'] == alias and record.get('controllerAlias') == alias,
+            'staged-controller-configuration-mismatch')
+    manifest_bytes = successor.private_input(checkpoint / 'manifest-before.json')
+    require(manifest_bytes ==
+            (config['_root'] / 'recovery/images.json').read_bytes(), 'staged-controller-recovery-manifest-changed')
+    controller, gitlab = services['system_bootstrapper_1'], services['system_gitlab_1']
+    owned(controller, 'bootstrapper')
+    owned(gitlab, 'gitlab')
+    image = recovery.inspect_image(alias)
+    labels = image.get('Config', {}).get('Labels', {})
+    require(controller['Id'] == record.get('newControllerId') and controller['Image'] == release['imageId'] and
+            controller['State']['Running'] and not controller['State'].get('Paused') and
+            not controller['State'].get('OOMKilled') and image['Id'] == release['imageId'] and
+            release['registryReference'] in image.get('RepoDigests', []) and
+            labels.get('org.opencontainers.image.revision') == release['sourceRevision'] and
+            labels.get('org.system-bootstrapper.test-job') == str(release['candidateJobId']),
+            'staged-controller-running-image-mismatch')
+    require(gitlab['Image'] == evidence['evidence']['gitlabUpgrade']['fromImageId'] ==
+            record.get('oldGitLab', {}).get('imageId'), 'staged-controller-old-GitLab-image-changed')
+    if record['coldMaintenance']:
+        verify_cold_checkpoint(checkpoint, record.get('coldCheckpointSha256'))
+    view = copy.deepcopy(manifest)
+    require(recovery.declared_image(view, alias) is None, 'staged-controller-already-declared-in-recovery')
+    view['localImages'].append({'tag': alias, 'imageId': release['imageId']})
+    view['currentController'].update(reference=alias, imageId=release['imageId'],
+                                     sourceCommit=release['sourceRevision'], sourceTree=release['sourceTree'])
+    recovery.validate_selected_images(view, config['_main'])
+    return view, {'checkpoint': str(checkpoint), 'operationSha256': hashlib.sha256(operation_bytes).hexdigest(),
+                  'manifestSha256': hashlib.sha256(manifest_bytes).hexdigest(),
+                  'sourceRevision': release['sourceRevision'], 'candidateJobId': release['candidateJobId']}
 
 
 def main_runner_rows(config):
@@ -332,18 +406,22 @@ def wait_for_staged(config, original, baseline, release, expected_gitlab_id, tim
 
 
 def promote(config, release, evidence, api, release_bytes, evidence_bytes, security, checkpoint,
-            cold=False, timeout=1200):
+            cold=False, timeout=1200, staged=None):
     require(api.base == runtime.origin(config, 'GITLAB'), 'GitLab-origin-does-not-match-saved-config')
     successor.verify_checkout(release, successor.HERE.parent)
     pipeline = successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
     original = runtime.inspect_services(config)
     runtime.verify_mounts(config, original)
-    runtime.verify_images(config, recovery.load_manifest(config['_root'] / 'recovery', successor.HERE.parent), original)
+    manifest = recovery.load_manifest(config['_root'] / 'recovery', successor.HERE.parent)
+    staged_receipt = None
+    if staged:
+        manifest, staged_receipt = staged_manifest(config, manifest, original, api, security, staged, release)
+    runtime.verify_images(config, manifest, original)
     controller, gitlab, web = (original[name] for name in ('system_bootstrapper_1', 'system_gitlab_1', 'system_web_1'))
     owned(controller, 'bootstrapper')
     require(gitlab['Image'] == evidence['evidence']['gitlabUpgrade']['fromImageId'], 'old-GitLab-image-mismatch')
     gitlab_preflight(security, gitlab)
-    baseline = runtime.capture(config, successor.HERE.parent)
+    baseline = runtime.capture(config, successor.HERE.parent, manifest=manifest)
     raw = config['_main'].read_bytes()
     alias = successor.controller_alias(release)
     updated = successor.assignment(raw, 'BOOTSTRAPPER_IMAGE', alias)
@@ -372,11 +450,21 @@ def promote(config, release, evidence, api, release_bytes, evidence_bytes, secur
               'previousController': {'id': controller['Id'], 'imageId': controller['Image'],
                                      'restartPolicy': controller['HostConfig']['RestartPolicy']},
               'oldGitLab': {'id': gitlab['Id'], 'imageId': gitlab['Image'], 'startedAt': gitlab['State']['StartedAt']}}
+    if staged_receipt:
+        record['previousStagedPromotion'] = staged_receipt
     successor.atomic_json(checkpoint / 'operation.json', record)
     with successor.Lease(config) as lease:
         record['leaseOperation'] = lease.operation
         successor.atomic_json(checkpoint / 'operation.json', record)
         require(config['_main'].read_bytes() == raw, 'configuration-changed-before-controller-promotion')
+        if staged_receipt:
+            require(recovery.sha(config['_root'] / 'recovery/images.json') == staged_receipt['manifestSha256'],
+                    'staged-controller-recovery-manifest-changed')
+            require(recovery.sha(Path(staged) / 'operation.json') == staged_receipt['operationSha256'],
+                    'staged-controller-operation-changed')
+            require(inspect('system_bootstrapper_1')['Id'] == controller['Id'] and
+                    inspect('system_gitlab_1')['Image'] == gitlab['Image'], 'staged-controller-services-changed')
+            runtime.assert_baseline(config, baseline)
         # Recheck external acceptance immediately before entering maintenance.
         successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
         if cold:
@@ -472,12 +560,7 @@ def abort_promotion(config, checkpoint, timeout=1200):
                         'checkpoint-helper-ownership-changed')
                 run([*DOCKER, 'rm', '--force', remaining['Id']])
         if record.get('coldCheckpointSha256'):
-            receipt = checkpoint / 'cold-checkpoint.json'
-            require(recovery.sha(receipt) == record['coldCheckpointSha256'], 'controller-abort-checkpoint-hash-mismatch')
-            contents = json.loads(successor.private_input(receipt))
-            for name, expected in contents['entries'].items():
-                require(inventory(checkpoint / name, ('.gitlab-upgrade-lock', '.wizard.env.environments.lock')) == expected,
-                        'controller-abort-checkpoint-content-mismatch')
+            verify_cold_checkpoint(checkpoint, record['coldCheckpointSha256'])
         deadline = record.get('remoteCommandDeadlineUptime')
         boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
         if deadline and boot == record.get('remoteCommandBootId'):
@@ -568,10 +651,12 @@ def main():
     parser.add_argument('--checkpoint-dir', required=True)
     parser.add_argument('--cold-maintenance', action='store_true',
                         help='Required legacy bridge: actual web/controller freeze, remote drain and cold GitLab checkpoint.')
+    parser.add_argument('--staged-promotion', help='Completed prior controller checkpoint; authenticate its accepted image while GitLab is still old.')
     parser.add_argument('--timeout', type=int, default=1200)
     parser.add_argument('--check-only', action='store_true', help='Verify source, CI and local inputs without changing services.')
     args = parser.parse_args()
     require(os.geteuid() == 0 and 60 <= args.timeout <= 3600, 'root-and-bounded-readiness-timeout-required')
+    require(not args.staged_promotion or args.operation == 'promote', 'staged-promotion-is-only-for-promotion')
     config = runtime.settings(args.persistence_env)
     config['_persistence_env'] = args.persistence_env
     if args.operation == 'status':
@@ -590,10 +675,16 @@ def main():
     if args.check_only:
         successor.verify_checkout(release, successor.HERE.parent)
         successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
+        if args.staged_promotion:
+            rows = runtime.inspect_services(config)
+            runtime.verify_mounts(config, rows)
+            manifest = recovery.load_manifest(config['_root'] / 'recovery', successor.HERE.parent)
+            manifest, _ = staged_manifest(config, manifest, rows, api, security, args.staged_promotion, release)
+            runtime.verify_images(config, manifest, rows)
         print('Successor source and required GitLab pipeline evidence verified; no services changed.')
         return
     promote(config, release, evidence, api, release_bytes, evidence_bytes, security,
-            args.checkpoint_dir, args.cold_maintenance, args.timeout)
+            args.checkpoint_dir, args.cold_maintenance, args.timeout, args.staged_promotion)
     print('Accepted controller promoted; old GitLab preserved. Run the reviewed GitLab migration separately.')
 
 

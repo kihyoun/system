@@ -31,6 +31,7 @@ REQUIRED_JOBS = {'check:documentation', 'prepare:wizard-source', 'test:candidate
 COMPONENTS = {'gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'}
 STAGES = {'gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci',
           'gitlab-upgrade-restored-checkpoint', 'cleanup'}
+CONTROLLER_CHECKPOINT_LIMIT = 128 * 1024 ** 2
 
 
 def run(arguments, **kwargs):
@@ -67,12 +68,29 @@ def group_live(pgid):
     return False
 
 
-def private_input(path):
+def _private_bytes(path, maximum):
     path = Path(path)
     require(path.is_file() and not path.is_symlink() and not path.stat().st_mode & 0o077,
             'private-regular-input-required')
-    require(path.stat().st_size <= 8 * 1024 ** 2, 'input-is-too-large')
-    return path.read_bytes()
+    require(path.stat().st_size <= maximum, 'input-is-too-large')
+    with path.open('rb') as stream:
+        value = stream.read(maximum + 1)
+    require(len(value) <= maximum, 'input-is-too-large')
+    return value
+
+
+def private_input(path):
+    return _private_bytes(path, 8 * 1024 ** 2)
+
+
+def controller_checkpoint_input(path):
+    return _private_bytes(path, CONTROLLER_CHECKPOINT_LIMIT)
+
+
+def atomic_controller_checkpoint(path, value):
+    raw = (json.dumps(value, indent=2) + '\n').encode()
+    require(len(raw) <= CONTROLLER_CHECKPOINT_LIMIT, 'controller-checkpoint-is-too-large')
+    atomic_bytes(path, raw)
 
 
 def atomic_bytes(path, value, mode=0o600):
@@ -191,15 +209,28 @@ def release_inputs(release_bytes, evidence_bytes, security_release):
     return release, evidence
 
 
+def verify_source_objects(release, checkout):
+    checkout = str(checkout)
+    require(run(['git', '-C', checkout, 'rev-parse', release['sourceRevision'] + '^{tree}']).decode().strip() == release['sourceTree'],
+            'successor-checkout-tree-mismatch')
+    require(run(['git', '-C', checkout, 'ls-tree', release['sourceRevision'], 'wizard']).decode().strip() ==
+            '160000 commit ' + release['wizardRevision'] + '\twizard', 'successor-checkout-gitlink-mismatch')
+
+
 def verify_checkout(release, checkout):
     checkout = str(checkout)
     require(not run(['git', '-C', checkout, 'status', '--porcelain']).strip(), 'successor-checkout-is-modified')
     require(run(['git', '-C', checkout, 'rev-parse', 'HEAD']).decode().strip() == release['sourceRevision'],
             'successor-checkout-revision-mismatch')
-    require(run(['git', '-C', checkout, 'rev-parse', 'HEAD^{tree}']).decode().strip() == release['sourceTree'],
-            'successor-checkout-tree-mismatch')
-    require(run(['git', '-C', checkout, 'ls-tree', 'HEAD', 'wizard']).decode().strip() ==
-            '160000 commit ' + release['wizardRevision'] + '\twizard', 'successor-checkout-gitlink-mismatch')
+    verify_source_objects(release, checkout)
+
+
+def verify_ancestry(earlier, later, checkout):
+    require(recovery.git_id(earlier) and recovery.git_id(later), 'staged-controller-source-identity-invalid')
+    try:
+        run(['git', '--no-replace-objects', '-C', str(checkout), 'merge-base', '--is-ancestor', earlier, later])
+    except recovery.RecoveryError:
+        raise recovery.RecoveryError('staged-controller-source-is-not-descendant') from None
 
 
 def normalized_job(name):
@@ -208,6 +239,32 @@ def normalized_job(name):
 
 
 def verify_pipeline(api, release, release_bytes, evidence_bytes):
+    return _verify_pipeline(api, release, release_bytes, evidence_bytes, current=True)
+
+
+def verify_completed_promotion(api, record, security):
+    require(record.get('format') == 'system-controller-promotion-v1' and
+            record.get('phase') == 'controller-promoted-old-GitLab-preserved' and
+            record.get('GitLabMigrationStarted') is False and
+            type(record.get('coldMaintenance')) is bool and
+            all(record.get(key) is True for key in ('oldGitLabImagePreserved',
+                'configurationChangedOnlyControllerImage', 'managerIdentitiesPreserved')),
+            'completed-staged-controller-promotion-required')
+    retained = record.get('release', {})
+    require(isinstance(retained, dict) and
+            all(type(retained.get(key)) is int and retained[key] > 0 for key in ('projectId', 'candidateJobId')),
+            'invalid-staged-controller-release')
+    artifact = '/projects/' + str(retained['projectId']) + '/jobs/' + str(retained['candidateJobId']) + '/artifacts/'
+    release_bytes = api.raw(artifact + RELEASE_PATH)[0]
+    evidence_bytes = api.raw(artifact + EVIDENCE_PATH)[0]
+    release, evidence = release_inputs(release_bytes, evidence_bytes, security)
+    require(release == retained, 'staged-controller-release-does-not-match-CI')
+    pipeline = _verify_pipeline(api, release, release_bytes, evidence_bytes, current=False)
+    require(pipeline == record.get('pipeline'), 'staged-controller-pipeline-receipt-mismatch')
+    return release, evidence
+
+
+def _verify_pipeline(api, release, release_bytes, evidence_bytes, current):
     project = api.get('/projects/' + str(release['projectId']))
     branch = project.get('default_branch')
     require(isinstance(branch, str) and bool(branch), 'GitLab-default-branch-required')
@@ -219,9 +276,10 @@ def verify_pipeline(api, release, release_bytes, evidence_bytes):
     require(pipeline.get('sha') == release['sourceRevision'] and pipeline.get('ref') == branch and
             pipeline.get('source') in ('push', 'web', 'schedule'),
             'successor-default-branch-pipeline-required')
-    current = api.get(prefix + '/repository/branches/' + urllib.parse.quote(branch, safe=''))
-    require(current.get('protected') is True, 'GitLab-default-branch-is-not-protected')
-    require(current.get('commit', {}).get('id') == release['sourceRevision'], 'successor-default-branch-advanced')
+    branch_state = api.get(prefix + '/repository/branches/' + urllib.parse.quote(branch, safe=''))
+    require(branch_state.get('protected') is True, 'GitLab-default-branch-is-not-protected')
+    if current:
+        require(branch_state.get('commit', {}).get('id') == release['sourceRevision'], 'successor-default-branch-advanced')
     jobs = api.pages(prefix + '/pipelines/' + str(release['pipelineId']) + '/jobs?include_retried=false')
     selected = {}
     for row in jobs:

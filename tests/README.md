@@ -109,12 +109,26 @@ pipeline and resolved review discussions. A protected default-branch push can
 mirror either category to GitHub when enabled; runtime image publishing remains
 conditional and Production promotion remains manual.
 
-Provide a `system-source-lightweight` runner for `check:documentation`, using an
-unprivileged executor without a mounted host Docker socket or DinD service. The
-job refuses a mounted `/var/run/docker.sock`, uses the pinned Node image and Git
-already present there, and requires no runtime-job artifacts. Existing `docker`
-runner tags and resource bounds remain unchanged for full checks. These tags
-describe operator-provided runner profiles, not a pre-existing test host.
+`check:documentation` uses the platform's existing trusted `docker` runner pool;
+no separate documentation runner or coordinator registration is required. Its
+committed `tests/ci-documentation.sh` parent uses that runner's Docker authority
+to launch a short-lived, digest-pinned Node child as user 1000 with no network,
+host socket, bind mounts, extra capabilities or inherited CI credentials. This
+isolates the actual checker, not the trusted parent: arbitrary unreviewed code
+must not be scheduled on a shared socket runner.
+
+The child receives only the two required committed snapshots' Git objects, a
+fresh repository config and the committed checker. Private remote URLs, Git
+credentials/config/hooks, unrelated local refs, dirty files and parent environment
+are not copied. Only explicit non-secret CI diff selectors and a fixed Git
+safe-directory setting enter the child; an empty Docker client configuration
+prevents implicit proxy-variable injection. The checker retains its strict socket
+refusal. The parent pulls the pinned public image using its normal credentials,
+copies the existing `test-results/documentation/` report back and removes only its
+identity-checked job container. A separate `after_script` repeats bounded cleanup.
+The documentation lane keeps its three-minute job budget and has no runtime
+artifacts, builds, platform tests or long-lived resources. Existing `docker` runner
+tags and resource bounds remain unchanged for full checks.
 
 Reproduce the selection and documentation regressions with existing Ruby/Psych,
 Node and Git, without Docker or additional lint packages:

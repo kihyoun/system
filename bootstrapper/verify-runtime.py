@@ -102,12 +102,15 @@ def configuration_files(root):
     return {str(path.relative_to(root)): recovery.sha(path) for path in files if path.is_file()}
 
 
-def capture(config, checkout):
+def capture(config, checkout, manifest=None):
     root = config['_root']
     cube(config['_main'].read_bytes())
     require(not run(['git', '-C', str(checkout), 'status', '--porcelain']).strip(),
             'initialization-checkout-is-modified')
-    manifest = recovery.load_manifest(root / 'recovery', checkout)
+    # Promotion may provide its authenticated, completed staging validation view.
+    # Ordinary recovery/baseline callers always load the archive-backed manifest.
+    if manifest is None:
+        manifest = recovery.load_manifest(root / 'recovery', checkout)
     recovery.validate_selected_images(manifest, config['_main'])
     identities = {}
     for index in range(1, runner_count(config) + 1):

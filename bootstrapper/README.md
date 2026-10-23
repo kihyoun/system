@@ -247,6 +247,54 @@ replacement. A cold checkpoint requires free space for another copy of GitLab da
 An uncertain drain, stop, copy or startup leaves its exact owned leases and private
 operation record for recovery; it never guesses that the database is safe.
 
+### Replacing an accepted controller before GitLab migration
+
+If a controller was successfully staged while GitLab still runs the old reviewed
+image, the recovery manifest deliberately still describes the original archived
+generation. A newer accepted candidate can replace that staged controller through
+the same entry point, without editing saved selectors or the recovery manifest:
+
+```sh
+sudo python3 bootstrapper/promote-controller.py \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --release /root/successor/release.json \
+  --evidence /root/successor/candidate-results.json \
+  --gitlab-url https://gitlab.example.com \
+  --token-file /root/gitlab-operator-token \
+  --staged-promotion /mnt/bootstrapper-data/platform/recovery/controller-promotions/previous \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/replacement
+```
+
+Use `--check-only` with these inputs to verify both candidates and current staged
+state before service changes. The prior directory must contain a completed native
+promotion record, its original saved configuration and recovery manifest, and its
+verified cold checkpoint when the prior operation used cold maintenance. The tool
+downloads the prior release and evidence again from its authenticated candidate
+job, checks all required jobs, the protected default branch and enabled merge gate,
+then verifies the running container identity, image, source/job labels, immutable
+registry digest, local alias and exact configuration hashes. The archived source
+must be an ancestor of the staged source, which must be an ancestor of the new
+candidate. The old GitLab image and original recovery manifest must remain exact.
+Only this completed prior candidate may be historical: the new candidate must
+still match the current protected default branch and all normal acceptance gates.
+
+The proof supplies an in-memory image declaration for host validation; it does
+not publish an archive or alter `recovery/images.json`. The new operation retains
+the prior receipt identity and previous controller for interrupted-operation
+recovery. When the staged controller reports the required Sync quiescence fields,
+omit `--cold-maintenance`: normal native leases and idle checks replace it without
+another full GitLab/configuration copy. The old GitLab continues running. An
+unfinished upgrade, migration, mismatched receipt or changed configuration refuses
+replacement. Publish final recovery inputs only after the separate reviewed GitLab
+migration succeeds, through the existing strict recovery-export workflow.
+
+Controller cold inventories have a separate 128 MiB JSON limit, checked before
+atomic publication and on verification/recovery reads. Files, ownership, modes and
+symlinks are reverified before a new cold checkpoint is accepted. Ordinary private
+operator inputs and authenticated API responses retain their 8 MiB limits. The
+GitLab migration helper uses its own checkpoint format and limits; the controller
+checkpoint is not an input to that helper's rollback action.
+
 Inspect or abort an interrupted controller operation with the committed entry point:
 
 ```sh

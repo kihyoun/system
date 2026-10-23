@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Release, cold maintenance, abort and offline successor recovery contracts."""
 import copy
+from contextlib import ExitStack
 import hashlib
 import importlib.util
 import io
@@ -149,6 +150,297 @@ class ReleaseContracts(unittest.TestCase):
                           (200, b'{"needRestart":false,"runnerSetupInProgress":false}', {})]):
             with self.assertRaisesRegex(successor.recovery.RecoveryError, 'versioned-quiescence-bridge-required'):
                 successor.sync_idle(config)
+
+
+class StagedControllerContracts(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix='system-staged-controller-')
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.release, self.evidence, self.security = fixture()
+        self.api = API(self.release, self.evidence)
+        self.alias = successor.controller_alias(self.release)
+        self.checkpoint = self.root / 'recovery/controller-promotions/prior'
+        self.checkpoint.mkdir(parents=True)
+        (self.root / 'configuration').mkdir()
+        raw = (ROOT / 'system/.docker.env.example').read_bytes().replace(b'export WIZARD_ENABLE=true', b'export WIZARD_ENABLE=false')
+        raw += ("\nexport BOOTSTRAPPER_IMAGE='controller:old'\nexport NGINX_IMAGE='nginx:retained'\n"
+                "export GITLAB_RUNNER_IMAGE='runner:retained'\nexport GITLAB_IMAGE='" + self.security['fromImage'] + "'\n").encode()
+        self.before = raw
+        self.current = successor.assignment(raw, 'BOOTSTRAPPER_IMAGE', self.alias)
+        self.config = {'_root': self.root, '_main': self.root / 'configuration/.docker.env',
+                       'BOOTSTRAPPER_IMAGE': self.alias, 'GITLAB_HOST': 'gitlab.example.invalid', 'GITLAB_DOMAIN_MODE': '2'}
+        successor.atomic_bytes(self.config['_main'], self.current)
+        successor.atomic_bytes(self.checkpoint / 'main-before.env', raw)
+        self.manifest = {'sourceCommit': '1' * 40, 'localImages': [{'tag': 'controller:old', 'imageId': 'sha256:' + '7' * 64},
+                                       {'tag': 'runner:retained', 'imageId': 'sha256:' + '8' * 64}],
+                         'publicImages': [{'reference': self.security['fromImage'], 'tag': 'gitlab/gitlab-ce:old'},
+                                          {'reference': 'nginx@sha256:' + '9' * 64, 'tag': 'nginx:retained'}],
+                         'currentController': {'reference': 'controller:old', 'imageId': 'sha256:' + '7' * 64}}
+        self.manifest_bytes = json.dumps(self.manifest).encode()
+        successor.atomic_bytes(self.root / 'recovery/images.json', self.manifest_bytes)
+        successor.atomic_bytes(self.checkpoint / 'manifest-before.json', self.manifest_bytes)
+        for name in ('gitlab', 'configuration'):
+            (self.checkpoint / name).mkdir()
+            (self.checkpoint / name / 'data').write_bytes(b'original durable bytes')
+        successor.atomic_controller_checkpoint(self.checkpoint / 'cold-checkpoint.json', {
+            'format': 'system-controller-cold-checkpoint-v1',
+            'entries': {name: promoter.inventory(self.checkpoint / name) for name in ('gitlab', 'configuration')}})
+        self.record = {'format': 'system-controller-promotion-v1',
+                       'phase': 'controller-promoted-old-GitLab-preserved', 'GitLabMigrationStarted': False,
+                       'coldMaintenance': True, 'oldGitLabImagePreserved': True,
+                       'configurationChangedOnlyControllerImage': True, 'managerIdentitiesPreserved': True,
+                       'release': self.release, 'controllerAlias': self.alias,
+                       'pipeline': successor.verify_pipeline(self.api, self.release, json.dumps(self.release).encode(), json.dumps(self.evidence).encode()),
+                       'configurationBeforeSha256': hashlib.sha256(raw).hexdigest(),
+                       'configurationAfterSha256': hashlib.sha256(self.current).hexdigest(),
+                       'coldCheckpointSha256': successor.recovery.sha(self.checkpoint / 'cold-checkpoint.json'),
+                       'newControllerId': 'running-staged-controller',
+                       'oldGitLab': {'imageId': self.evidence['evidence']['gitlabUpgrade']['fromImageId']}}
+        self.rows = {name: {'Id': identifier, 'Image': image,
+                           'State': {'Running': True, 'Paused': False, 'OOMKilled': False, 'StartedAt': 'fixture'},
+                           'HostConfig': {'RestartPolicy': {'Name': 'always'}},
+                           'Config': {'Labels': {'com.docker.compose.project': 'system', 'com.docker.compose.service': service}}}
+                     for name, identifier, image, service in (
+                         ('system_bootstrapper_1', 'running-staged-controller', self.release['imageId'], 'bootstrapper'),
+                         ('system_web_1', 'running-web', 'sha256:' + '9' * 64, 'web'),
+                         ('system_gitlab_1', 'running-old-gitlab', self.record['oldGitLab']['imageId'], 'gitlab'))}
+        self.image = {'Id': self.release['imageId'], 'RepoDigests': [self.release['registryReference']],
+                      'Config': {'Labels': {'org.opencontainers.image.revision': self.release['sourceRevision'],
+                                             'org.system-bootstrapper.test-job': str(self.release['candidateJobId'])}}}
+        self.target = copy.deepcopy(self.release)
+        self.target.update(sourceRevision='6' * 40, pipelineId=18, candidateJobId=30, imageId='sha256:' + '5' * 64)
+        self.api.branch['commit']['id'] = self.target['sourceRevision']
+        self.source = patch.object(successor, 'verify_source_objects')
+        self.source.start()
+        self.addCleanup(self.source.stop)
+        ancestry = patch.object(successor, 'verify_ancestry')
+        self.ancestry = ancestry.start()
+        self.addCleanup(ancestry.stop)
+        images = patch.object(successor.recovery, 'inspect_image', side_effect=lambda reference: self.image)
+        images.start()
+        self.addCleanup(images.stop)
+        self.save()
+
+    def save(self):
+        successor.atomic_json(self.checkpoint / 'operation.json', self.record)
+
+    def verify(self):
+        return promoter.staged_manifest(self.config, self.manifest, self.rows, self.api, self.security, self.checkpoint, self.target)
+
+    def test_completed_staging_authenticates_historical_CI_without_rewriting_recovery(self):
+        view, receipt = self.verify()
+        self.assertEqual(view['currentController']['imageId'], self.release['imageId'])
+        self.assertEqual(self.manifest['currentController']['reference'], 'controller:old')
+        self.assertEqual((self.root / 'recovery/images.json').read_bytes(), self.manifest_bytes)
+        self.assertEqual(self.config['_main'].read_bytes(), self.current)
+        self.assertEqual(receipt['operationSha256'], successor.recovery.sha(self.checkpoint / 'operation.json'))
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'branch-advanced'):
+            successor.verify_pipeline(self.api, self.release, json.dumps(self.release).encode(), json.dumps(self.evidence).encode())
+
+    def test_completed_normal_staging_can_be_replaced_again_without_a_new_cold_checkpoint(self):
+        self.record['coldMaintenance'] = False
+        del self.record['coldCheckpointSha256']
+        self.save()
+        (self.checkpoint / 'cold-checkpoint.json').unlink()
+        self.verify()
+
+    def test_incomplete_or_migrated_promotion_cannot_authorize_an_override(self):
+        for key, value in (('phase', 'controller-start-started'), ('GitLabMigrationStarted', True),
+                           ('oldGitLabImagePreserved', False), ('managerIdentitiesPreserved', False)):
+            previous = self.record[key]
+            self.record[key] = value
+            self.save()
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'completed-staged'):
+                self.verify()
+            self.record[key] = previous
+
+    def test_rewritten_or_unrelated_source_history_cannot_authorize_staging(self):
+        for outcomes in ([successor.recovery.RecoveryError('source-is-not-descendant')],
+                         [None, successor.recovery.RecoveryError('source-is-not-descendant')]):
+            self.ancestry.side_effect = outcomes
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'not-descendant'):
+                self.verify()
+            self.assertEqual((self.root / 'recovery/images.json').read_bytes(), self.manifest_bytes)
+
+    def test_prior_pipeline_still_requires_protection_merge_gate_jobs_and_original_artifacts(self):
+        for owner, key, value, reason in ((self.api.branch, 'protected', False, 'not-protected'),
+                (self.api.project, 'only_allow_merge_if_pipeline_succeeds', False, 'merge-gate-disabled'),
+                (self.api.jobs[0], 'status', 'skipped', 'required-job-not-successful'),
+                (self.api.evidence, 'fullAcceptance', False, 'hash-or-path')):
+            previous = owner[key]
+            owner[key] = value
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, reason):
+                self.verify()
+            owner[key] = previous
+
+    def test_image_alias_source_job_and_running_container_identity_are_all_required(self):
+        for owner, key, value in ((self.image, 'Id', 'sha256:' + '0' * 64),
+                (self.image, 'RepoDigests', []),
+                (self.image['Config']['Labels'], 'org.opencontainers.image.revision', '0' * 40),
+                (self.image['Config']['Labels'], 'org.system-bootstrapper.test-job', '999'),
+                (self.rows['system_bootstrapper_1'], 'Id', 'unrecorded-controller'),
+                (self.rows['system_bootstrapper_1'], 'Image', 'sha256:' + '0' * 64)):
+            previous = owner[key]
+            owner[key] = value
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'running-image-mismatch'):
+                self.verify()
+            owner[key] = previous
+
+    def test_changed_configuration_manifest_old_GitLab_or_checkpoint_is_rejected(self):
+        successor.atomic_bytes(self.config['_main'], self.current + b'\n# changed\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'configuration-mismatch'):
+            self.verify()
+        successor.atomic_bytes(self.config['_main'], self.current)
+        successor.atomic_bytes(self.root / 'recovery/images.json', self.manifest_bytes + b'\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'manifest-changed'):
+            self.verify()
+        successor.atomic_bytes(self.root / 'recovery/images.json', self.manifest_bytes)
+        self.rows['system_gitlab_1']['Image'] = 'sha256:' + '0' * 64
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'old-GitLab-image-changed'):
+            self.verify()
+        self.rows['system_gitlab_1']['Image'] = self.record['oldGitLab']['imageId']
+        (self.checkpoint / 'gitlab/data').write_bytes(b'corrupted durable bytes')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'checkpoint-content-mismatch'):
+            self.verify()
+
+    def test_unrelated_project_or_nonretained_checkpoint_cannot_authorize_staging(self):
+        self.target['projectId'] = 99
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'project-mismatch'):
+            self.verify()
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'retained-staged'):
+            promoter.staged_manifest(self.config, self.manifest, self.rows, self.api, self.security, self.root, self.target)
+
+    def normal_promotion(self, change_manifest=False):
+        evidence = copy.deepcopy(self.evidence)
+        evidence['sourceRevision'] = self.target['sourceRevision']
+        evidence['images']['candidate'] = self.target['imageId']
+        self.target['candidateEvidenceSha256'] = hashlib.sha256(json.dumps(evidence).encode()).hexdigest()
+        target_api = API(self.target, evidence)
+        prior_api = self.api
+        class HistoryAPI:
+            base = prior_api.base
+            def get(self, path):
+                return (prior_api if '/pipelines/17' in path else target_api).get(path)
+            def pages(self, path):
+                return (prior_api if '/pipelines/17/' in path else target_api).pages(path)
+            def raw(self, path):
+                return (prior_api if '/jobs/29/' in path else target_api).raw(path)
+        class Lease:
+            operation = 'fixture-lease'
+            def __init__(self, config): pass
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        alias = successor.controller_alias(self.target)
+        self.config['_persistence_env'] = str(self.root / 'persistence.env')
+        rows = self.rows
+        self.commands = []
+        def command(args, **kwargs):
+            self.commands.append(args)
+            if 'stop' in args:
+                rows['system_bootstrapper_1']['State']['Running'] = False
+            if 'compose' in args:
+                rows['system_bootstrapper_1'].update(Id='new-tested-controller', Image=self.target['imageId'])
+                rows['system_bootstrapper_1']['State']['Running'] = True
+            return b''
+        def image(reference):
+            return {'Id': self.target['imageId']} if reference == alias else self.image
+        def selected(config, manifest, services):
+            self.assertEqual(manifest['currentController']['imageId'], self.release['imageId'])
+        def baseline(*args, **kwargs):
+            if change_manifest:
+                successor.atomic_bytes(self.root / 'recovery/images.json', self.manifest_bytes + b'\n')
+            return {'configurationFiles': {'configuration/.docker.env': hashlib.sha256(self.current).hexdigest()},
+                    'manifestSha256': successor.recovery.sha(self.root / 'recovery/images.json')}
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(successor, 'verify_checkout'))
+            stack.enter_context(patch.object(successor, 'Lease', Lease))
+            stack.enter_context(patch.object(successor, 'environment', return_value={}))
+            idle = stack.enter_context(patch.object(successor, 'sync_idle'))
+            stack.enter_context(patch.object(successor.recovery, 'load_manifest', return_value=self.manifest))
+            stack.enter_context(patch.object(successor.recovery, 'inspect_image', side_effect=image))
+            stack.enter_context(patch.object(promoter, 'pull_accepted'))
+            stack.enter_context(patch.object(promoter, 'gitlab_preflight'))
+            stack.enter_context(patch.object(promoter, 'inspect', side_effect=lambda name:
+                rows[name] if name in rows else next(row for row in rows.values() if row['Id'] == name)))
+            stack.enter_context(patch.object(promoter, 'run', side_effect=command))
+            cold = stack.enter_context(patch.object(promoter, 'ColdMaintenance'))
+            stack.enter_context(patch.object(promoter, 'wait_for_staged'))
+            stack.enter_context(patch.object(successor.runtime, 'inspect_services', return_value=rows))
+            stack.enter_context(patch.object(successor.runtime, 'verify_mounts'))
+            stack.enter_context(patch.object(successor.runtime, 'verify_images', side_effect=selected))
+            capture = stack.enter_context(patch.object(successor.runtime, 'capture', side_effect=baseline))
+            stack.enter_context(patch.object(successor.runtime, 'assert_baseline'))
+            stack.enter_context(patch.object(successor.runtime, 'settings', return_value=self.config))
+            result = promoter.promote(self.config, self.target, evidence, HistoryAPI(),
+                json.dumps(self.target).encode(), json.dumps(evidence).encode(), self.security,
+                self.root / 'recovery/controller-promotions/next', staged=self.checkpoint)
+            cold.assert_not_called()
+            self.assertEqual(idle.call_count, 2)
+            self.assertEqual(capture.call_args.kwargs['manifest']['currentController']['imageId'], self.release['imageId'])
+        return result
+
+    def test_normal_successor_promotion_keeps_old_GitLab_and_original_manifest_without_cold_copy(self):
+        result = self.normal_promotion()
+        self.assertEqual(result['phase'], 'controller-promoted-old-GitLab-preserved')
+        self.assertFalse(result['coldMaintenance'])
+        self.assertFalse(result['GitLabMigrationStarted'])
+        self.assertEqual(result['previousController']['imageId'], self.release['imageId'])
+        self.assertEqual(result['previousStagedPromotion']['sourceRevision'], self.release['sourceRevision'])
+        self.assertEqual(self.rows['system_gitlab_1']['Image'], self.record['oldGitLab']['imageId'])
+        self.assertEqual(self.config['_main'].read_bytes(), successor.assignment(self.current, 'BOOTSTRAPPER_IMAGE', successor.controller_alias(self.target)))
+        self.assertEqual((self.root / 'recovery/images.json').read_bytes(), self.manifest_bytes)
+        self.assertFalse((self.root / 'recovery/controller-promotions/next/cold-checkpoint.json').exists())
+
+    def test_manifest_changed_after_binding_cannot_be_legitimized_by_a_new_baseline(self):
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'staged-controller-recovery-manifest-changed'):
+            self.normal_promotion(change_manifest=True)
+        self.assertEqual(self.config['_main'].read_bytes(), self.current)
+        self.assertTrue(self.rows['system_bootstrapper_1']['State']['Running'])
+        self.assertFalse(any('stop' in command or 'compose' in command for command in self.commands))
+
+
+class ControllerCheckpointBounds(unittest.TestCase):
+    def test_native_ancestry_checks_real_commits_and_refuses_an_unrelated_orphan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            def git(*args):
+                return subprocess.check_output(['git', '-C', directory, *args], stderr=subprocess.DEVNULL).decode().strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Fixture')
+            git('config', 'user.email', 'fixture@example.invalid')
+            git('commit', '--allow-empty', '-qm', 'Original')
+            original = git('rev-parse', 'HEAD')
+            git('commit', '--allow-empty', '-qm', 'Accepted controller')
+            staged = git('rev-parse', 'HEAD')
+            git('commit', '--allow-empty', '-qm', 'Next candidate')
+            target = git('rev-parse', 'HEAD')
+            successor.verify_ancestry(original, staged, directory)
+            successor.verify_ancestry(staged, target, directory)
+            git('checkout', '--orphan', 'unrelated')
+            git('commit', '--allow-empty', '-qm', 'Rewritten history')
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'not-descendant'):
+                successor.verify_ancestry(staged, git('rev-parse', 'HEAD'), directory)
+
+    def test_large_inventory_roundtrips_but_remains_forbidden_as_an_operator_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'cold-checkpoint.json'
+            value = {'format': 'system-controller-cold-checkpoint-v1', 'entries': {'gitlab': [], 'configuration': []},
+                     'inventoryFixture': 'x' * (8 * 1024 ** 2)}
+            successor.atomic_controller_checkpoint(path, value)
+            self.assertEqual(json.loads(successor.controller_checkpoint_input(path)), value)
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'input-is-too-large'):
+                successor.private_input(path)
+
+    def test_writer_refuses_unreadable_checkpoint_before_atomic_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'cold-checkpoint.json'
+            with patch.object(successor, 'CONTROLLER_CHECKPOINT_LIMIT', 1024):
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'checkpoint-is-too-large'):
+                    successor.atomic_controller_checkpoint(path, {'entries': 'x' * 1024})
+                self.assertFalse(path.exists())
+                successor.atomic_bytes(path, b'x' * 1025)
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'input-is-too-large'):
+                    successor.controller_checkpoint_input(path)
 
 
 class ColdMaintenanceContracts(unittest.TestCase):

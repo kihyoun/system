@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {Upgrade,release,hash,atomic,run}=require('../../gitlab/upgrade');
+const {Upgrade,release,hash,atomic,run,json,INPUT_JSON_MAX_BYTES,CHECKPOINT_JSON_MAX_BYTES}=require('../../gitlab/upgrade');
 const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
 const old='sha256:'+'b'.repeat(64),next='sha256:'+'c'.repeat(64);
 function fixture(t){
@@ -42,6 +42,48 @@ test('cold checkpoint is verified before B starts, and an exit1/OOM successor ca
 test('corrupt cold checkpoint fails before restoring or acquiring operation leases',async t=>{
   const f=fixture(t);f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);fs.writeFileSync(path.join(f.engine.checkpoints,'gitlab/data/original'),'corrupted');
   await assert.rejects(()=>f.engine.rollback(migrated.checkpointSha256),/verification/);assert(!fs.existsSync(path.join(f.state,'.gitlab-upgrade-lock')));
+});
+test('a real copied inventory larger than 4MiB is readable and still rejects changed checkpoint data',t=>{
+  const f=fixture(t);let directory=path.join(f.serviceData,'data');
+  // Long but valid retained paths exercise a realistic inventory size with fewer
+  // filesystem operations than tens of thousands of short-path files.
+  for(let depth=0;depth<9;depth++){directory=path.join(directory,'retained-'+String(depth)+'-'+'x'.repeat(180));fs.mkdirSync(directory);}
+  for(let index=0;index<2400;index++)fs.writeFileSync(path.join(directory,'entry-'+String(index).padStart(4,'0')),'saved');
+  const receipt=f.engine.snapshot(f.plan),file=path.join(f.engine.checkpoints,'checkpoint.json');
+  assert(fs.statSync(file).size>INPUT_JSON_MAX_BYTES,'The regression requires a genuine >4MiB filesystem inventory.');
+  assert(fs.statSync(file).size<CHECKPOINT_JSON_MAX_BYTES);
+  assert.deepEqual(f.engine.checkpoint(receipt.checkpointSha256),receipt.checkpoint);
+  fs.writeFileSync(path.join(f.engine.checkpoints,'gitlab/data/original'),'wrong-data');
+  assert.throws(()=>f.engine.checkpoint(receipt.checkpointSha256),/checkpoint-verification-failed/);
+});
+test('checkpoint size is bounded before reading or publishing, while options and evidence retain the 4MiB limit',t=>{
+  const f=fixture(t),large=path.join(f.state,'large-input.json');
+  atomic(large,'{}'+' '.repeat(INPUT_JSON_MAX_BYTES));
+  assert.throws(()=>json(large),/upgrade-input-too-large/,'The CLI options reader keeps the small private-input budget.');
+  f.engine.options.evidence=large;assert.throws(()=>f.engine.evidence(),/upgrade-input-too-large/);
+  fs.mkdirSync(f.engine.checkpoints,{recursive:true});const checkpoint=path.join(f.engine.checkpoints,'checkpoint.json');
+  atomic(checkpoint,'{}');fs.truncateSync(checkpoint,CHECKPOINT_JSON_MAX_BYTES+1);
+  let read=false;const originalRead=fs.readSync;fs.readSync=(...args)=>{read=true;return originalRead(...args);};
+  try{assert.throws(()=>f.engine.checkpoint('a'.repeat(64)),/upgrade-checkpoint-too-large/);}finally{fs.readSync=originalRead;}
+  assert(!read,'An oversized checkpoint must be refused from metadata before reading payload bytes.');
+  fs.rmSync(f.engine.checkpoints,{recursive:true});
+  assert.throws(()=>f.engine.snapshot({...f.plan,oversized:'x'.repeat(CHECKPOINT_JSON_MAX_BYTES)}),/upgrade-checkpoint-too-large/);
+  assert(!fs.existsSync(checkpoint),'An unreadable checkpoint must not be published.');
+});
+test('evidence validation and its plan hash use the same bounded bytes even if the pathname is replaced',t=>{
+  const f=fixture(t),filename=path.join(f.state,'accepted-evidence.json'),candidate='sha256:'+'e'.repeat(64);
+  const raw=JSON.stringify({sourceRevision:f.plan.sourceRevision,fullAcceptance:true,
+    results:['gitlab-upgrade-migrated-data','gitlab-upgrade-registry-ci','gitlab-upgrade-restored-checkpoint'].map(name=>({name,status:'passed'})),
+    images:{candidate,gitlab:next},evidence:{gitlabUpgrade:{fromImage:release.fromImage,toImage:release.toImage,fromImageId:old,toImageId:next,migrationVerified:true,rollbackVerified:true,registryVerified:true,checkpointVerified:true}}});
+  atomic(filename,raw);f.engine.options.evidence=filename;f.engine.inspect=()=>({Image:candidate});
+  let replaced=false;const originalRead=fs.readSync;
+  fs.readSync=(descriptor,...args)=>{
+    const count=originalRead(descriptor,...args);
+    if(count>0&&!replaced&&fs.readlinkSync('/proc/self/fd/'+descriptor)===filename){replaced=true;atomic(filename,' '.repeat(INPUT_JSON_MAX_BYTES+1));}
+    return count;
+  };
+  try{assert.deepEqual(f.engine.evidence(),{sha256:hash(raw),candidateImage:candidate});}finally{fs.readSync=originalRead;}
+  assert(replaced);assert.throws(()=>f.engine.evidence(),/upgrade-input-too-large/);
 });
 test('failed restore preserves the durable startup barrier and owned leases',async t=>{
   const f=fixture(t);f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);f.failRestore();f.crash();

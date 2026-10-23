@@ -52,6 +52,7 @@
   {"component":"gitlab","file":"gitlab/prepare-wizard-source.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/ci-selection.rb","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/check-documentation.js","timeoutSeconds":20},
+  {"component":"gitlab","file":"gitlab/documentation-child.py","timeoutSeconds":30},
   {"component":"performance","file":"performance/resources/test_collect.py","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/in-place-upgrade.js","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/source-primary-adoption.js","timeoutSeconds":30},
