@@ -712,8 +712,9 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
 
 1. On the replacement Ubuntu host, fetch source as in section 0.1. Select a
    reviewed tools revision containing the initialization entry point and initialize
-   its exact submodules. A prepublished accepted source mirror or archive can
-   provide this checkout while the platform's own GitLab is unavailable:
+   its exact submodules. A prepublished accepted source mirror or Git bundle
+   containing the required commits can provide this checkout while the platform's
+   own GitLab is unavailable:
 
    ```bash
    SYSTEM_TOOLS_REVISION=REPLACE_WITH_REVIEWED_TOOLS_COMMIT
@@ -721,8 +722,10 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
    git submodule update --init --recursive
    ```
 
-   Keep the checkout clean. The recorded controller source in the image manifest
-   may be an earlier accepted revision; the tool checks its tree and Wizard
+   A plain source ZIP without Git history does not satisfy the initialization
+   tool's commit/tree verification. Keep the checkout clean. The recorded
+   controller source in the image manifest may be an earlier accepted revision;
+   the tool checks its tree and Wizard
    gitlink separately and records the host-tools revision too. Do not update a
    submodule to its latest branch or change saved service versions to match the
    fresh-install examples.
@@ -1177,7 +1180,7 @@ Before opening the change, prepare the following:
 | Candidate resources | A trusted runner/host with capacity for Production and a separate disposable platform, including image archives and database copies. Obtain the resource lease before starting the heavy job. The current harness allows 12 GiB candidate RAM; this is not the total host requirement. |
 | Isolated state | Separate candidate containers, networks, Docker daemon and data directories. Never attach A's writable database or registry directories to B while A is running. |
 | Recovery checkpoint | A completed, checksum-verified cold Harvest or an equivalently consistent supported backup, matching configuration, GitLab secrets and the exact previous images. Preserve the full Certbot account/renewal tree and any separately configured external storage. |
-| Independent recovery access | SSH/console access, the accepted checkout or source archive, required image archives, private storage selectors and credentials remain available while the platform's own GitLab is down. |
+| Independent recovery access | SSH/console access, the accepted checkout or Git bundle, required image archives, private storage selectors and credentials remain available while the platform's own GitLab is down. |
 | Promotion authority | An authorized maintenance window, a named operator/coordinator, the exact candidate evidence and a recovery decision point. A successful merge alone does not authorize arbitrary Production changes. |
 
 Use your own domains, mounted filesystem and private credentials. Keep
@@ -1274,8 +1277,9 @@ Before stopping A, retain the accepted source and required tools outside the
 GitLab service being upgraded. Preserve the exact image evidence and a verified
 checkpoint on storage that remains accessible during maintenance. Preload the
 required images if their registry will be unavailable during the switch. A
-prepublished accepted mirror or source archive breaks the dependency on needing
-GitLab to recover GitLab; a private local script does not.
+prepublished accepted mirror or Git bundle, including the required pinned
+submodule sources, breaks the dependency on needing GitLab to recover GitLab; a
+private local script does not.
 
 Production promotion uses the committed operator entry point from that accepted
 checkout. It must bind its actions to the reviewed source, image pins, successful
