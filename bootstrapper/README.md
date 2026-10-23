@@ -300,6 +300,6 @@ it. Do not delete the host until the exporter and `recover-volume.sh --verify` p
 Isolated contracts run with `python3 tests/bootstrapper/native-initialization.py` and
 `python3 tests/bootstrapper/successor-host-tools.py`. The explicit tiny Docker
 primitive test is separate from the socket-free component suite:
-`python3 tests/bootstrapper/paused-controller-docker.py --allow-local-daemon`.
+`node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`.
 It uses one exactly labeled, limited, disposable local container and never a live
 GitLab installation.
