@@ -171,6 +171,7 @@ test:platform-candidate:
   before_script:
     - sh bootstrapper/install-runtime.sh
   script:
+    - node gitlab/check-candidate-capacity.js
     - sh tests/ci-platform.sh
   after_script:
     - sh tests/ci-platform.sh cleanup
