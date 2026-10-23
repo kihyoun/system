@@ -1530,15 +1530,16 @@ sudo docker exec -w /system system_bootstrapper_1 \
   node gitlab/upgrade.js status /state/upgrade-options.json
 ```
 
-Before a completed checkpoint exists, the helper's `abort` action accepts the
-reviewed plan hash and can recover that pre-migration attempt. After a completed
-checkpoint exists, use `rollback` with its recorded hash to restore the compatible
-old state. Do not choose between these actions from a disconnected terminal's
-exit code; inspect the durable receipt and ensure no original operation is still
-running.
+Before the helper records an accepted checkpoint hash, its `abort` action accepts
+the reviewed plan hash and can recover a confirmed pre-migration failure. A
+`checkpoint.json` file alone does not establish acceptance: its verification may
+have failed before that hash was recorded. After checkpoint acceptance, use
+`rollback` with the recorded hash to restore the compatible old state. Do not
+choose between these actions from a disconnected terminal's exit code; inspect
+the durable receipt and ensure no original operation is still running.
 
 ```bash
-# Only for a confirmed pre-checkpoint failure:
+# Only for a confirmed failure before checkpoint acceptance:
 sudo docker exec -w /system system_bootstrapper_1 \
   node gitlab/upgrade.js abort /state/upgrade-options.json "$PLAN_SHA256"
 
@@ -1553,7 +1554,15 @@ alternatives, not a sequence to run unconditionally. Keep interrupted-operation
 leases and incomplete-restore markers for the helper to reconcile. Do not delete
 one manually to bypass a refusal.
 
-Stop B's writers and preserve the failure receipt. Do not simply start the old
+If GitLab is restored to the old image while an accepted controller remains
+staged, develop any correction through a new merge request and its required
+checks. Use the documented [staged-controller replacement](../bootstrapper/README.md#replacing-an-accepted-controller-before-gitlab-migration)
+with the previous completed controller checkpoint and a new operation directory.
+The tool authenticates the prior candidate separately while keeping the new
+candidate's current-default-branch gates strict. Do not edit saved selectors or
+the old recovery manifest to make the replacement pass.
+
+If the target GitLab has started, stop its writers and preserve the failure receipt. Do not simply start the old
 GitLab image on a database already migrated by B. Recovery requires the compatible
 pre-upgrade state, configuration/secrets and exact old images through the
 committed recovery procedure. Keep the failed
