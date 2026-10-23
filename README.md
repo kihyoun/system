@@ -78,8 +78,11 @@ filesystem can be reused without first restoring a Seed.
 [Component and integration checks](tests/README.md) are supplied in the repository.
 The candidate harness runs disposable platform instances with isolated resources;
 its lifecycle checks are distinct from promoting an entire successor platform.
-The self-renewal cycle described below is a design goal, not an automatic
-end-to-end generation-switching feature.
+The [evolution chapter](docs/HANDBOOK.md#5-evolving-a-running-system) describes
+the bounded workflow for a reviewed successor: committed tools, isolated migration
+checks, accepted source/image evidence and deliberate promotion. A particular
+version transition is accepted only after its required tests and post-deployment
+checks pass. Open-ended recursive self-improvement remains a design goal.
 
 ## Why this project exists
 
@@ -108,7 +111,7 @@ protocol or guarantee continuous connectivity.
 
 The architecture should eventually support a feedback loop: identify a possible improvement, produce a candidate change, build and evaluate it, promote a validated improvement, and repeat from the improved system. The recursive aspect is that the system being improved also supplies the machinery for the next improvement cycle; that machinery can itself evolve.
 
-Rebuilding or replacing a generation alone does not demonstrate improvement. A convincing demonstration needs explicit objectives and evaluation criteria that show what improved and whether required behavior was preserved. The mechanisms for proposing changes, evaluating them and deciding promotion remain to be designed and validated. This is the long-term vision, not a claim of autonomous capability.
+Rebuilding or replacing a generation alone does not demonstrate improvement. A convincing demonstration needs explicit objectives and evaluation criteria that show what improved and whether required behavior was preserved. Changes use the GitLab merge-request workflow, and each supported transition needs explicit migration evidence and a deliberate promotion. The [handbook](docs/HANDBOOK.md#5-evolving-a-running-system) documents that bounded cycle. Automatically selecting arbitrary improvements and promoting them recursively remains the long-term vision, not a delivered autonomous capability.
 
 The running platform should host its own source code and execute the pipelines that build its next version.
 
@@ -133,7 +136,7 @@ The intended design does not require a separate VM for every review environment.
 
 Each candidate needs its own container identities, networks, state, and routing so that multiple generations can run without interfering with one another. NGINX and the review network provide the basis for making those environments reachable.
 
-The existing architecture uses an entry-point NGINX service and separate production, beta, and review proxies. Dynamic application routing uses `VIRTUAL_HOST`. Extending and validating this model for complete platform instances is part of the work ahead.
+The existing architecture uses an entry-point NGINX service and separate production, beta, and review proxies. Dynamic application routing uses `VIRTUAL_HOST`. The disposable platform harness supplies a separate candidate daemon and state for complete platform tests. This test boundary is distinct from automatically routing a complete successor into Production; each supported promotion still needs its declared migration and recovery procedure.
 
 A single host keeps the infrastructure footprint small, but it remains a shared resource and failure domain. Containers share the host kernel; they are not independent virtual machines. Host-level Ubuntu, kernel, and Docker Engine updates require their own maintenance path.
 

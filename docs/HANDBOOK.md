@@ -8,6 +8,8 @@ Choose the complete installation path for your environment:
   prepare DNS, issue certificates with Certbot and configure the services.
 - [Replacement host with a retained data volume](#replace-a-host-while-retaining-its-data-volume):
   reuse an existing installation, rather than initializing it again.
+- [Evolve a running system](#5-evolving-a-running-system): use one generation
+  to build and test a reviewed successor, then promote it with a recovery path.
 
 ## 0. Getting Started
 
@@ -109,7 +111,7 @@ Then run this command from the project's root directory:
 
 ```bash
 sudo env \
-  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.2-ce.0 \
+  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.3-ce.0@sha256:483fb4cc5c75237a7a6c7c8b8b2a1832ed790d86e0449ff55e8b6f6d62d2d5f5 \
   GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0 \
   GITLAB_SSH_BIND=127.0.0.1:2222 \
   GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
@@ -508,7 +510,7 @@ server, start the fresh installation:
 
 ```bash
 sudo env \
-  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.2-ce.0 \
+  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.3-ce.0@sha256:483fb4cc5c75237a7a6c7c8b8b2a1832ed790d86e0449ff55e8b6f6d62d2d5f5 \
   GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0 \
   GITLAB_SSH_BIND=127.0.0.1:2222 \
   GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
@@ -1126,3 +1128,166 @@ to the shared instance pool.
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
 
 See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
+
+
+## 5. Evolving a running system
+
+System evolution uses the development platform to change the source from which
+its successor is built. Generation **A** hosts the source, requirements, merge
+request, runner and image registry. Its pipeline builds and tests generation
+**B**. After review and a deliberate promotion, B supplies the same machinery
+for the next change. Merely restarting A or rebuilding an unchanged image does
+not demonstrate an improvement.
+
+The source is the DNA; service state is a separate input. Neither a public code
+mirror nor a container image contains an installation's users, repositories,
+issues, merge requests, registry blobs or encryption secrets. A successor must
+preserve those inputs as well as reproduce the container definitions.
+
+### 5.1 Prerequisites and ownership
+
+Before opening the change, prepare the following:
+
+| Input | Requirement |
+| --- | --- |
+| Accepted source | A clean, reviewed System revision and its exact recursive Wizard submodule commit. Every initialization, recovery, verification and deployment entry point must be versioned in that checkout. |
+| Existing generation | Record the GitLab version and edition, immutable service-image references and controller/Wizard source identities. Saved configuration takes precedence over first-install examples. |
+| Candidate resources | A trusted runner/host with capacity for Production and a separate disposable platform, including image archives and database copies. Obtain the resource lease before starting the heavy job. The current harness allows 12 GiB candidate RAM; this is not the total host requirement. |
+| Isolated state | Separate candidate containers, networks, Docker daemon and data directories. Never attach A's writable database or registry directories to B while A is running. |
+| Recovery checkpoint | A completed, checksum-verified cold Harvest or an equivalently consistent supported backup, matching configuration, GitLab secrets and the exact previous images. Preserve the full Certbot account/renewal tree and any separately configured external storage. |
+| Independent recovery access | SSH/console access, the accepted checkout or source archive, required image archives, private storage selectors and credentials remain available while the platform's own GitLab is down. |
+| Promotion authority | An authorized maintenance window, a named operator/coordinator, the exact candidate evidence and a recovery decision point. A successful merge alone does not authorize arbitrary Production changes. |
+
+Use your own domains, mounted filesystem and private credentials. Keep
+installation-specific selectors, backups, logs and receipts outside Git. The
+repository owns the logic that produces and validates them; it does not contain
+an operator's passwords or data. Transfer secrets through the entry point's
+private inputs, never through a public pipeline specification or job log.
+
+The [candidate harness](../tests/e2e/README.md) uses a privileged private Docker
+daemon and therefore requires trusted code. Its resource limits are ceilings,
+not a reservation or a disk quota. A small host capable of serving the Wizard
+and GitLab is not necessarily capable of testing a second full platform.
+
+### 5.2 Develop B through A's merge-request workflow
+
+1. Record the intended improvement and acceptance criteria in the installation's
+   selected tracker. Create a branch from the accepted default branch.
+2. Change the committed image selectors, build recipes, tools and documentation
+   together. Pin the exact GitLab edition/version and image digest. Do not use a
+   floating tag to select the successor. Retain the previous accepted pins.
+3. Open a GitLab merge request. Test the committed revision; uncommitted local
+   edits or private wrappers are not part of the candidate. A missing operation
+   must be implemented and reviewed here before it is used on a live host.
+4. Keep the required merge gates enabled. Documentation-only changes use the
+   short documentation lane; image, CI, script and infrastructure changes use
+   the complete runtime lane. Do not classify an upgrade as documentation to
+   avoid migration testing.
+5. Review the implementation and its evidence, merge only when the required
+   current pipeline succeeds, and delete the merged working branch. The merged
+   default-branch revision receives its own applicable checks before promotion.
+
+The pipeline stages and their evidence are described in the
+[test guide](../tests/README.md#full-system-and-platform-gates). Component checks
+run without the host socket or network inside their child containers.
+`test:candidate-image` builds the complete System image from committed inputs.
+`test:platform-candidate` serializes the resource-heavy real platform checks and
+must pass before runtime publishing. The pipeline's resource group complements,
+but does not replace, host capacity checks and the operator's resource lease.
+
+### 5.3 Validate existing-state migration, not only first startup
+
+A blank B starting successfully does not prove that A can be upgraded. Validate
+the transition using representative state created at A's GitLab version, then
+move only a consistent copy into the isolated candidate:
+
+1. Establish representative users, repositories, issues, merge requests and
+   discussions, encrypted settings and a registry image. Record identities and
+   repository/image hashes as private test oracles.
+2. Stop all writers through the supported backup procedure and verify the
+   checkpoint before copying. Keep the original generation or its recoverable
+   checkpoint separate from the candidate's writable data.
+3. Start the candidate with the proposed GitLab image and allow required regular
+   and background migrations to complete. Check GitLab's readiness and migration
+   state; a running Docker container alone is insufficient.
+4. Verify preserved identities, encrypted settings and registry pulls, then run
+   a real runner build/push/pull pipeline. Exercise a deliberately failing job
+   to prove that downstream delivery is blocked. Verify authenticated Sync
+   Fetch, the exact System Cube, Wizard routing and persistent mount boundaries.
+5. Exercise failure and recovery. Remove only exactly owned candidate resources;
+   retain sanitized source/image/stage evidence and cleanup receipts. Candidate
+   data archives and secrets must not become public CI artifacts.
+
+The existing configuration-plus-Seed scenario provides representative state and
+cold-recovery checks; see its
+[verification boundary](RECOVERY_CONTRACT.md#verification-boundaries). A check
+that restores to the same GitLab version is not, by itself, evidence of a
+cross-version migration. Require explicit source-version and target-version
+migration results for an upgrade.
+
+### 5.4 Example: a GitLab security patch is a system evolution
+
+A focused evolution can replace GitLab CE **19.4.2** with **19.4.3** while keeping
+the rest of the platform's declared behavior. GitLab's
+[October 2026 patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-1-released/)
+identifies security fixes in 19.4.3 and states that it includes regular database
+migrations. This is a specific version-transition example, not a rule that
+19.4.3 is the right target for every later installation. Check the upstream
+upgrade path and patch notes for the actual source and target before each change.
+
+Here the improvement is measurable: the accepted target image contains the
+specified upstream fixes, the previous database migrates successfully, and
+projects, credentials and the platform's build/delivery behavior remain usable.
+A hosts the merge request and runs these tests for B; changing the image directly
+on the live host first would bypass that evolution process.
+
+A single-node GitLab has downtime during this patch's database migration. The
+Wizard's two-container proxy switch does not turn a GitLab database upgrade into
+a zero-downtime rollout. Do not run old and new GitLab versions against the same
+live data or promise that switching NGINX back reverses a database migration.
+
+### 5.5 Promote the accepted successor
+
+Before stopping A, retain the accepted source and required tools outside the
+GitLab service being upgraded. Preserve the exact image evidence and a verified
+checkpoint on storage that remains accessible during maintenance. Preload the
+required images if their registry will be unavailable during the switch. A
+prepublished accepted mirror or source archive breaks the dependency on needing
+GitLab to recover GitLab; a private local script does not.
+
+Production promotion uses the committed operator entry point from that accepted
+checkout. It must bind its actions to the reviewed source, image pins, successful
+candidate results and exact existing installation. Run it from the host or an
+independent management connection, rather than relying on a CI job to survive
+stopping the GitLab that coordinates it.
+
+The production sequence must serialize against configuration writes,
+Harvest/restore, certificate-state changes and other deployments. Quiesce writers,
+capture the final compatible checkpoint, stop the affected services, apply the
+accepted configuration/image selection, migrate and verify B. Keep service
+identity and public routing explicit. Do not enable a candidate's test credentials
+or private test hostnames in Production.
+
+After startup, verify the actual GitLab version and migration state,
+authentication, repository and issue access, registry authentication and pulls,
+fresh runner-manager contact, authenticated configuration Fetch, Wizard routing,
+mounted storage and certificate renewal. Retain the private promotion receipt
+with the accepted commit, exact image IDs/digests, checkpoint identity and check
+outcomes. Once B passes acceptance, it can host the next reviewed evolution.
+
+### 5.6 Failure, recovery and the autonomy boundary
+
+If migration or acceptance fails, stop B's writers and preserve the failure
+receipt. Do not simply start the old GitLab image on a database already migrated
+by B. Recovery requires the compatible pre-upgrade state, configuration/secrets
+and exact old images through the committed recovery procedure. Keep the failed
+candidate data separate until diagnosis is complete; do not overwrite the only
+usable checkpoint. See [Harvest/Seed recovery](RECOVERY_CONTRACT.md) for the cold
+snapshot contract and incomplete-restore guard.
+
+The platform automates the declared, tested sequence. It does not grant an agent
+permission to invent new infrastructure changes, bypass review or weaken merge
+gates. In this chapter, autonomous execution means carrying out the authorized
+version transition and its verification using repository-owned tools. Choosing
+arbitrary improvements and recursively promoting them without acceptance remains
+a separate capability that must not be inferred from a successful patch upgrade.
