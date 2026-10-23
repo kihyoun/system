@@ -64,5 +64,6 @@
   {"component":"bootstrapper","file":"bootstrapper/native-initialization.py","timeoutSeconds":45},
   {"component":"gitlab","file":"gitlab/candidate-capacity.js","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/publish-successor.js","timeoutSeconds":20},
-  {"component":"gitlab","file":"gitlab/upgrade-recovery.js","timeoutSeconds":25}
+  {"component":"gitlab","file":"gitlab/upgrade-recovery.js","timeoutSeconds":25},
+  {"component":"gitlab","file":"gitlab/upgrade-child.js","timeoutSeconds":20}
 ]

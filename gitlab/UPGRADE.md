@@ -93,7 +93,11 @@ docker exec -w /system system_bootstrapper_1 \
 ```
 
 The helper rejects an active owner or foreign operation. An owned interrupted
-operation is adopted only after its process has exited. Do not remove locks or
+operation is adopted only after its process and any journaled local child process
+group have exited. A separate bounded watchdog finishes or terminates local copy
+work even if the invoking helper is killed. Remote GitLab service quiescence has
+a recorded monotonic deadline; recovery waits for that deadline before resuming
+services. Do not remove locks or
 startup barriers manually. Investigate unavailable/corrupt ownership records
 before making another change.
 
