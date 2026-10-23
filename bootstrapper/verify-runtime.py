@@ -189,13 +189,10 @@ def verify_images(config, manifest, services):
         expected[name] = inspected['Id']
         if '@sha256:' in image:
             require(recovery.canonical_digest(image) in inspected.get('RepoDigests', []), 'running-image-digest-not-verified')
-    declared = {row['tag']: row for row in manifest['publicImages'] + manifest['localImages']}
     for key, fallback in [('BOOTSTRAPPER_IMAGE', 'system_bootstrapper'), ('NGINX_IMAGE', 'nginx'),
                           ('GITLAB_IMAGE', ''), ('GITLAB_RUNNER_IMAGE', '')]:
         reference = config[key] or fallback
-        match = declared.get(reference)
-        if match is None:
-            match = next((row for row in manifest['publicImages'] if row['reference'] == reference), None)
+        match = recovery.declared_image(manifest, reference)
         require(match is not None, 'saved-image-is-not-declared-in-manifest')
         inspected = recovery.inspect_image(reference)
         if match.get('imageId'):
