@@ -173,6 +173,9 @@ mutable public image references and duplicate or unbacked aliases. Normal recove
 loads each declared archive, verifies its exact image ID and reconstructs **all**
 `localImages` aliases before starting services. It never guesses an instance's old
 local tag. Saved configuration is not rewritten to accommodate a missing image.
+An omitted image tag has Docker's normal `:latest` meaning, so the NGINX fallback
+`nginx` matches a declared `nginx:latest` alias. Other tags, repository paths,
+registry ports, digest references and exact image-ID checks remain distinct.
 
 An older two-list checksum manifest can be audited explicitly with
 `python3 bootstrapper/recovery.py verify --directory /path/to/recovery --checksums-only`.

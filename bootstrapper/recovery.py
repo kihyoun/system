@@ -73,6 +73,23 @@ def reference(value):
     return isinstance(value, str) and bool(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/@-]{0,500}', value))
 
 
+def canonical_selector(value):
+    """Apply Docker's implicit :latest only to an untagged repository selector."""
+    require(reference(value), 'invalid-image-selector')
+    # A colon in the registry host/port is not an image tag. Digest selectors
+    # already identify their content and must never acquire an implicit tag.
+    if '@' in value or ':' in value.rsplit('/', 1)[-1]:
+        return value
+    return value + ':latest'
+
+
+def declared_image(manifest, selected):
+    declared = {canonical_selector(row['tag']): row
+                for row in manifest['publicImages'] + manifest['localImages']}
+    declared.update({canonical_selector(row['reference']): row for row in manifest['publicImages']})
+    return declared.get(canonical_selector(selected))
+
+
 def load_manifest(directory, checkout, expected_sha=None, checksums_only=False, manifest_bytes=None):
     directory = Path(directory)
     require(directory.is_dir() and not directory.is_symlink(), 'recovery-directory-must-not-be-symlink')
@@ -112,8 +129,9 @@ def load_manifest(directory, checkout, expected_sha=None, checksums_only=False, 
                 'public-image-must-be-digest-pinned')
         if image.get('imageId') is not None:
             require(image_id(image['imageId']), 'invalid-public-image-id')
-        require(image['tag'] not in tags, 'duplicate-image-alias')
-        tags[image['tag']] = image.get('imageId', image['reference'])
+        alias = canonical_selector(image['tag'])
+        require(alias not in tags, 'duplicate-image-alias')
+        tags[alias] = image.get('imageId', image['reference'])
     if checksums_only:
         return manifest
     require(isinstance(manifest.get('localImages'), list) and bool(manifest['localImages']),
@@ -122,8 +140,9 @@ def load_manifest(directory, checkout, expected_sha=None, checksums_only=False, 
         require(isinstance(image, dict) and local_alias(image.get('tag')) and image_id(image.get('imageId')),
                 'invalid-local-image')
         require(image['imageId'] in ids, 'local-alias-has-no-declared-archive')
-        require(image['tag'] not in tags, 'duplicate-image-alias')
-        tags[image['tag']] = image['imageId']
+        alias = canonical_selector(image['tag'])
+        require(alias not in tags, 'duplicate-image-alias')
+        tags[alias] = image['imageId']
     commit, tree, wizard = (manifest.get(key) for key in ('sourceCommit', 'sourceTree', 'wizardSourceRevision'))
     require(all(git_id(value) for value in (commit, tree, wizard)), 'recorded-source-identities-required')
     checkout = str(Path(checkout).resolve(strict=True))
@@ -136,7 +155,7 @@ def load_manifest(directory, checkout, expected_sha=None, checksums_only=False, 
     controller = manifest.get('currentController', {})
     require(isinstance(controller, dict) and controller.get('imageId') in ids and
             controller.get('reference') in {image['tag'] for image in manifest['localImages']} and
-            tags.get(controller.get('reference')) == controller.get('imageId'), 'declared-controller-required')
+            tags.get(canonical_selector(controller['reference'])) == controller.get('imageId'), 'declared-controller-required')
     require(controller.get('sourceCommit') == commit and controller.get('sourceTree') == tree,
             'controller-source-mismatch')
     matches = [row for row in manifest['archives'] if row['imageId'] == controller['imageId']]
@@ -154,21 +173,21 @@ def validate_selected_images(manifest, configuration):
     values = run(['bash', '-c', script, 'read-image-selectors', str(configuration)]).split(b'\0')
     require(len(values) == len(keys) + 1, 'image-selector-format')
     selected = dict(zip(keys, (value.decode() for value in values[:-1])))
-    declared = {row['tag']: row for row in manifest['publicImages'] + manifest['localImages']}
-    declared.update({row['reference']: row for row in manifest['publicImages']})
     for key, fallback in [('BOOTSTRAPPER_IMAGE', 'system_bootstrapper'), ('NGINX_IMAGE', 'nginx'),
                           ('GITLAB_IMAGE', ''), ('GITLAB_RUNNER_IMAGE', '')]:
         value = selected[key] or fallback
-        require(value in declared, 'saved-image-is-not-declared-in-manifest')
+        declared = declared_image(manifest, value)
+        require(declared is not None, 'saved-image-is-not-declared-in-manifest')
         if key == 'BOOTSTRAPPER_IMAGE':
-            require(declared[value].get('imageId') == manifest['currentController']['imageId'],
+            require(declared.get('imageId') == manifest['currentController']['imageId'],
                     'saved-controller-is-not-declared-current-controller')
     if selected['WIZARD_ENABLE'] == 'true':
         value = selected['WIZARD_IMAGE']
         candidates = [row.get('imageRef') for row in manifest['archives']]
         candidates += [row['reference'] for row in manifest['publicImages']]
         candidates += [manifest['currentController'].get('productionWizardReference')]
-        require(value in declared or value in candidates, 'saved-wizard-image-is-not-declared')
+        require(declared_image(manifest, value) is not None or value in candidates,
+                'saved-wizard-image-is-not-declared')
 
 
 def inspect_image(value):

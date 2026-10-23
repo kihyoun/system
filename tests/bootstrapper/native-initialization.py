@@ -90,6 +90,22 @@ class RecoveryManifest(unittest.TestCase):
         self.assertNotEqual(recovery.canonical_digest('other/repository:release@' + digest),
                             'gitlab/gitlab-ce@' + digest)
 
+    def test_only_missing_image_tags_acquire_Docker_latest_semantics(self):
+        digest = 'sha256:' + 'a' * 64
+        for selected, canonical in [
+            ('nginx', 'nginx:latest'),
+            ('group/nginx', 'group/nginx:latest'),
+            ('registry.example.invalid:5050/group/nginx', 'registry.example.invalid:5050/group/nginx:latest'),
+            ('registry.example.invalid:5050/group/nginx:stable', 'registry.example.invalid:5050/group/nginx:stable'),
+            ('registry.example.invalid:5050/group/nginx@' + digest, 'registry.example.invalid:5050/group/nginx@' + digest),
+            ('nginx:stable@' + digest, 'nginx:stable@' + digest),
+            (digest, digest),
+        ]:
+            with self.subTest(selected=selected):
+                self.assertEqual(recovery.canonical_selector(selected), canonical)
+        self.assertNotEqual(recovery.canonical_selector('nginx:stable'), recovery.canonical_selector('nginx'))
+        self.assertNotEqual(recovery.canonical_selector('group/nginx'), recovery.canonical_selector('nginx'))
+
     def test_independent_manifest_checksum_is_checked(self):
         with self.assertRaisesRegex(recovery.RecoveryError, 'manifest-checksum-mismatch'):
             self.verify(expected_sha='f' * 64)
@@ -136,6 +152,13 @@ class RecoveryManifest(unittest.TestCase):
         self.manifest['publicImages'][0]['reference'] = 'nginx:latest'
         self.save()
         with self.assertRaisesRegex(recovery.RecoveryError, 'digest-pinned'):
+            self.verify()
+
+    def test_equivalent_implicit_and_explicit_latest_aliases_are_duplicates(self):
+        self.manifest['publicImages'][0]['tag'] = 'nginx:latest'
+        self.manifest['localImages'].append({'tag': 'nginx', 'imageId': self.image})
+        self.save()
+        with self.assertRaisesRegex(recovery.RecoveryError, 'duplicate-image-alias'):
             self.verify()
 
     def test_legacy_manifest_can_only_be_audited_not_started(self):
@@ -203,6 +226,56 @@ class RecoveryManifest(unittest.TestCase):
         config.write_text(config.read_text() + 'GITLAB_IMAGE=unrecorded:latest\n')
         with self.assertRaisesRegex(recovery.RecoveryError, 'not-declared'):
             recovery.validate_selected_images(self.manifest, config)
+
+    def test_unset_nginx_selection_uses_declared_latest_without_rewriting_inputs(self):
+        self.manifest['publicImages'][0]['tag'] = 'nginx:latest'
+        self.save()
+        config = self.root / 'settings.env'
+        config.write_text('BOOTSTRAPPER_IMAGE=controller:retained\nunset NGINX_IMAGE\n'
+                          'GITLAB_IMAGE=nginx:latest\nGITLAB_RUNNER_IMAGE=nginx:latest\nWIZARD_ENABLE=false\n')
+        before = config.read_bytes(), self.path.read_bytes()
+        recovery.validate_selected_images(self.verify(), config)
+        runtime_config = {'BOOTSTRAPPER_IMAGE': 'controller:retained', 'NGINX_IMAGE': '',
+                          'GITLAB_IMAGE': 'nginx:latest', 'GITLAB_RUNNER_IMAGE': 'nginx:latest',
+                          'GITLAB_RUNNER_SCALE': '1', 'WIZARD_ENABLE': 'false'}
+        public_image = self.manifest['publicImages'][0]['imageId']
+        services = {'system_bootstrapper_1': {'Image': self.image},
+                    **{name: {'Image': public_image} for name in
+                       ('system_web_1', 'system_gitlab_1', 'runner_docker_1')}}
+        def inspect(selected):
+            return {'Id': self.image if selected == 'controller:retained' else public_image}
+        with patch.object(runtime.recovery, 'inspect_image', side_effect=inspect):
+            runtime.verify_images(runtime_config, self.manifest, services)
+        self.assertEqual((config.read_bytes(), self.path.read_bytes()), before)
+
+        # Matching the default tag does not relax the declared exact image ID.
+        def retargeted(selected):
+            return {'Id': 'sha256:' + 'f' * 64} if selected == 'nginx' else inspect(selected)
+        with patch.object(runtime.recovery, 'inspect_image', side_effect=retargeted):
+            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'image-alias-retargeted'):
+                runtime.verify_images(runtime_config, self.manifest, services)
+
+        services['system_web_1']['Image'] = 'sha256:' + 'f' * 64
+        with patch.object(runtime.recovery, 'inspect_image', side_effect=inspect):
+            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'service-image-selection-mismatch'):
+                runtime.verify_images(runtime_config, self.manifest, services)
+
+    def test_default_tag_matching_does_not_accept_other_tags_repositories_or_ports(self):
+        self.manifest['publicImages'][0]['tag'] = 'registry.example.invalid:5050/group/nginx:latest'
+        config = self.root / 'settings.env'
+        base = ('BOOTSTRAPPER_IMAGE=controller:retained\n'
+                'GITLAB_IMAGE=registry.example.invalid:5050/group/nginx:latest\n'
+                'GITLAB_RUNNER_IMAGE=registry.example.invalid:5050/group/nginx:latest\n'
+                'WIZARD_ENABLE=false\n')
+        config.write_text(base + 'NGINX_IMAGE=registry.example.invalid:5050/group/nginx\n')
+        recovery.validate_selected_images(self.manifest, config)
+        for selected in ('nginx', 'registry.example.invalid:5050/group/nginx:stable',
+                         'registry.example.invalid:5051/group/nginx',
+                         'registry.example.invalid:5050/other/nginx'):
+            with self.subTest(selected=selected):
+                config.write_text(base + 'NGINX_IMAGE=' + selected + '\n')
+                with self.assertRaisesRegex(recovery.RecoveryError, 'not-declared'):
+                    recovery.validate_selected_images(self.manifest, config)
 
 
 class RuntimeVerification(unittest.TestCase):
