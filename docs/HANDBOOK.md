@@ -693,34 +693,43 @@ and [deploy hooks during testing](https://eff-certbot.readthedocs.io/en/stable/u
 ## Replace a host while retaining its data volume
 
 This procedure reuses the current live data, including GitLab, configuration and
-certificates. It does **not** restore an older Seed. Keep the volume when removing
-the old VM, and stop its writers cleanly before detaching it when possible. Use
-the [configuration-plus-Seed procedure](RECOVERY_CONTRACT.md) instead when only a
-completed Seed and configuration backup are available.
+certificates. It does **not** restore an older Seed or upgrade the saved GitLab
+version. Keep the volume when removing the old VM, and stop its writers cleanly
+before detaching it when possible. Use the
+[configuration-plus-Seed procedure](RECOVERY_CONTRACT.md) instead when only a
+completed Seed and configuration backup are available. A version change follows
+the separate [evolution procedure](#5-evolving-a-running-system).
 
-Before starting, obtain your recorded System source revision, filesystem UUID,
-mount and data paths, complete saved configuration and exact service-image
-selectors. Choose enough host resources for GitLab and any simultaneous builds or
-disposable tests. Keep the configured DNS names; update their A/AAAA records if
-the public address changes. Public HTTPS requires ports 80 and 443 to reach this
-host. Do not apply the local HTTP preparation from section 0.2 to this deployment.
+Before starting, obtain your accepted host-tools revision, recorded runtime
+source/image identities, filesystem UUID, mount/data paths and complete saved
+configuration. The recovery manifest and declared image archives must already
+have been prepared through the
+[image-recovery procedure](PERSISTENT_VOLUME.md#replacing-a-vm-while-retaining-live-data).
+Choose enough host resources for GitLab and any simultaneous builds or disposable
+tests. Keep the configured DNS names; update their A/AAAA records if the public
+address changes. Public HTTPS requires ports 80 and 443 to reach this host. Do
+not apply the local HTTP preparation from section 0.2 to this deployment.
 
-1. On the replacement Ubuntu host, fetch source as in section 0.1. Check out the
-   recorded System revision and initialize its pinned submodules, rather than
-   updating them to their newest branches. A configured source mirror can provide
-   this checkout while the platform's own GitLab is unavailable:
+1. On the replacement Ubuntu host, fetch source as in section 0.1. Select a
+   reviewed tools revision containing the initialization entry point and initialize
+   its exact submodules. A prepublished accepted source mirror or archive can
+   provide this checkout while the platform's own GitLab is unavailable:
 
    ```bash
-   SYSTEM_REVISION=REPLACE_WITH_RECORDED_COMMIT
-   git checkout --detach "$SYSTEM_REVISION"
+   SYSTEM_TOOLS_REVISION=REPLACE_WITH_REVIEWED_TOOLS_COMMIT
+   git checkout --detach "$SYSTEM_TOOLS_REVISION"
    git submodule update --init --recursive
-   sudo bash bootstrapper/install.sh
-   sudo apt-get install -y certbot
    ```
 
+   Keep the checkout clean. The recorded controller source in the image manifest
+   may be an earlier accepted revision; the tool checks its tree and Wizard
+   gitlink separately and records the host-tools revision too. Do not update a
+   submodule to its latest branch or change saved service versions to match the
+   fresh-install examples.
+
 2. Inspect `lsblk -f` and mount the **existing** filesystem at its previous
-   absolute mount path. Replace the example assignments below with the retained
-   installation's values. Do not format the attached volume:
+   absolute mount path. Replace these example assignments with your installation's
+   values. Do not format the attached volume:
 
    ```bash
    PERSISTENT_MOUNT=/mnt/bootstrapper-data
@@ -733,9 +742,8 @@ host. Do not apply the local HTTP preparation from section 0.2 to this deploymen
    ```
 
    If it is already mounted, verify its UUID and target instead of mounting it
-   again. Recreate the host selector with only these storage settings; inspect
-   any retained selector before reusing it, since unrelated old image overrides
-   can select the wrong services:
+   again. Recreate the private selector with only these storage settings; unrelated
+   old image overrides could select the wrong services:
 
    ```bash
    sudo install -d -m 0700 /etc/system-bootstrapper
@@ -746,56 +754,70 @@ host. Do not apply the local HTTP preparation from section 0.2 to this deploymen
    PERSISTENT_UUID=$PERSISTENT_UUID
    EOF
    sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-   sudo bash bootstrapper/install-volume-host.sh
    ```
 
-   Host integration validates storage, adds the persistent mount dependency and
-   reconnects `/etc/letsencrypt` to the retained complete Certbot tree. It installs
-   the renewal timer, shared renewal/Harvest lease and certificate deploy hook.
-   Conflicting active host and volume certificate state requires deliberate
-   reconciliation; do not overwrite either tree to make startup continue.
+3. Verify that `platform/recovery/images.json` describes the recorded source,
+   exact image IDs, local aliases and checksummed archives. The full manifest
+   schema and input requirements are in the
+   [initialization tool documentation](../bootstrapper/README.md). Missing source
+   identities or aliases are a preparation failure, not permission to substitute
+   a different image or copy a private recovery script onto the host.
 
-3. Select one image-recovery path from the
-   [persistent-volume guide](PERSISTENT_VOLUME.md#replacing-a-vm-while-retaining-live-data).
-   Normally, rebuild the controller from the chosen clean source, make the exact
-   public service images available, then run `sudo bash start.sh`. Preserve the
-   saved GitLab version/edition and immutable private Wizard reference. The fresh
-   installation's image examples are not an upgrade path for an existing database.
-   A missing custom local tag must be rebuilt or restored explicitly. Managed
-   helper identities require the guide's explicit reprovisioning when rebuilt.
-
-   Alternatively, if you deliberately prepared the declared image manifest and
-   checksum-verified archives described in that guide, reuse those exact images:
+4. Run the committed initialization coordinator from this reviewed checkout:
 
    ```bash
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/recover-volume.sh --verify
-   sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/recover-volume.sh
+     bash bootstrapper/initialize.sh \
+       --install-host \
+       --receipt-dir /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID \
+       --timeout 1200
    ```
 
-   This alternative loads the declared archives and public references and starts
-   without rebuilding the controller. It neither restores a Seed nor supplies
-   recovery archives from the checkout. Keep additional image selectors in the
-   complete saved main configuration, or pass the recorded selectors explicitly
-   when invoking startup; never substitute example image defaults.
+   Choose a new receipt directory for each attempt. `--install-host` installs the
+   documented Ubuntu dependencies, Docker and Certbot. Omit it if the host is
+   already prepared. The coordinator validates storage, source and archives,
+   captures a baseline, loads the declared images, installs volume/TLS host
+   integration, starts the services and checks their actual application readiness.
+   It never formats a filesystem, restores Seed or changes the saved configuration.
 
-4. Wait for GitLab readiness. If the saved Wizard image is absent from the new
-   Docker cache and lives in this GitLab's registry, startup first exposes only
-   GitLab/registry routing and pulls that exact digest using a temporary scoped
-   credential. No old Docker login or replacement Wizard build is required. See
-   [private Wizard recovery](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image)
-   for validation, cleanup and interrupted-operation handling.
-5. Open your configured public Wizard and Sync addresses, connect and Fetch.
-   Confirm the saved projects and settings, GitLab health, registry authentication
-   and online runner managers. Inspect each service's mount destination and each
-   named volume's backing device against the attached filesystem. Finally verify
-   retained TLS and renewal without stopping the proxy:
+   For a small host with sufficient **root-disk** space, explicitly add
+   `--swap-gib 8` if you want the tool to create swap. It refuses an existing
+   `/swapfile` or insufficient free space; swap does not replace RAM needed for
+   simultaneous candidate tests. Add `--renewal-dry-run` on a retained public
+   HTTPS installation to test Certbot through the shared renewal lease without
+   stopping the proxy. Add `--redirect-from https://example.com` only when that
+   origin is configured to redirect to the public Wizard.
+
+   For fresh GitLab runner-manager contact verification, provide
+   `--gitlab-token-file /root/REPLACE_WITH_PRIVATE_API_TOKEN_FILE`. The file must
+   be private (mode 0600) and contain a token with the documented administrator
+   `read_api` access. It is not a command-line token value. Without that input,
+   the receipt marks the API contact check as skipped; running containers alone
+   must not be reported as proof that managers are online.
+
+5. Inspect the private operation status and structured verification receipt. The
+   checks cover unchanged saved configuration, exact service images and Cube,
+   persistent mount backing, authenticated Sync Fetch, Wizard/GitLab/registry
+   routing and configured host TLS integration. Missing private Wizard images
+   are pulled at the saved immutable digest through
+   [temporary scoped registry recovery](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image).
+   Do not publish the private configuration, token file or raw logs.
+
+   To repeat runtime verification against the captured baseline, use the same
+   committed verifier and add the optional token/redirect arguments as needed:
 
    ```bash
-   sudo docker ps
-   sudo system-certbot renew --dry-run --run-deploy-hooks
+   sudo python3 bootstrapper/verify-runtime.py check \
+     --persistence-env /etc/system-bootstrapper/persistence.env \
+     --baseline /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/baseline.json \
+     --output /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/recheck.json \
+     --timeout 1200
    ```
+
+If a required entry point fails because behavior is missing, fix that behavior
+through a merge request and its applicable checks before deploying the corrected
+tools. Keep incomplete-operation markers and receipts for diagnosis; do not
+bypass guards or restore a stale Seed to make a host replacement continue.
 
 ## 1. Main actions
 
