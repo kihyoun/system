@@ -22,6 +22,7 @@ function fixture(t){
   }});
   engine.state=state;engine.config=path.join(state,'.docker.env');engine.checkpoints=path.join(state,'gitlab-upgrades/operation');
   engine.image=reference=>reference===release.fromImage?old:next;engine.verifyMounts=()=>{};
+  engine.quiesceScheduling=async()=>{events.push(['scheduling-quiesced']);};
   engine.stop=()=>{events.push(['cold-stop']);current.State={Running:false,ExitCode:0,OOMKilled:false};};
   engine.start=(reference,restore)=>{events.push(['start',reference]);if(!restore)atomic(engine.config,require('../../gitlab/upgrade').imageAssignment(engine.configuration(),reference));current={...current,Image:reference===release.fromImage?old:next,State:{Running:true,ExitCode:0,OOMKilled:false}};};
   engine.ready=async(version,id)=>{assert.equal(current.Image,id);events.push(['ready',version]);};
@@ -67,7 +68,7 @@ test('every copied checkpoint directory and its ancestors are durable before the
 });
 
 test('restore replaces changed bytes even when file size and modification time equal the cold checkpoint',async t=>{
-  const f=fixture(t);f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);
+  const f=fixture(t);fs.utimesSync(path.join(f.serviceData,'data/original'),1700000000,1700000000);f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);
   const live=path.join(f.serviceData,'data/original'),saved=path.join(f.engine.checkpoints,'gitlab/data/original'),metadata=fs.statSync(saved);
   const old=fs.readFileSync(saved);fs.writeFileSync(live,Buffer.alloc(old.length,88));fs.utimesSync(live,metadata.atime,metadata.mtime);
   assert.equal(fs.statSync(live).size,metadata.size);assert.equal(Math.floor(fs.statSync(live).mtimeMs),Math.floor(metadata.mtimeMs));
@@ -82,4 +83,25 @@ test('a completed worker group does not permit adoption while its journal-writin
   atomic(path.join(f.state,'.gitlab-upgrade-lock/child.json'),JSON.stringify({format:'system-gitlab-upgrade-child-v1',operation:owner.operation,group:99999999,watchdogPid:process.pid,watchdogStart:stat(process.pid).start,phase:'completed'}));
   assert.throws(()=>f.engine.adopt(migrated.checkpointSha256,'checkpointSha256'),/child-still-running/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(f.state,'.gitlab-upgrade-lock/upgrade-owner.json'),'utf8')).pid,99999999);
+});
+
+test('API scheduling quiescence and final job check precede full GitLab stop and cold checkpoint',async t=>{
+  const f=fixture(t);f.engine.lock('a'.repeat(64));
+  f.engine.quiesceScheduling=require('../../gitlab/upgrade').Upgrade.prototype.quiesceScheduling.bind(f.engine);
+  f.engine.docker=args=>{assert(args.includes(require('../../gitlab/upgrade').SCHEDULING_QUIESCE_SCRIPT));f.events.push(['ingress-services-down']);return '';};
+  f.engine.preflight=async()=>{assert.equal(f.events.at(-1)[0],'ingress-services-down');f.events.push(['final-job-check']);return {};};
+  await f.engine.migrate(f.plan);
+  const names=f.events.map(event=>event[0]);assert(names.indexOf('ingress-services-down')<names.indexOf('final-job-check'));assert(names.indexOf('final-job-check')<names.indexOf('cold-stop'));
+});
+
+test('a job assigned before HTTP ingress drains resumes old API without stopping GitLab, backing up or cancelling jobs',async t=>{
+  const f=fixture(t);f.engine.lock('a'.repeat(64));
+  f.engine.quiesceScheduling=require('../../gitlab/upgrade').Upgrade.prototype.quiesceScheduling.bind(f.engine);
+  f.engine.docker=args=>{assert(args.includes(require('../../gitlab/upgrade').SCHEDULING_QUIESCE_SCRIPT));f.events.push(['ingress-services-down']);return '';};
+  f.engine.preflight=async()=>{f.events.push(['job-assignment-discovered']);throw Error('upgrade-jobs-active');};
+  f.engine.resumeScheduling=async()=>{f.events.push(['previous-ingress-resumed']);};
+  await assert.rejects(()=>f.engine.migrate(f.plan),/jobs-active/);
+  const names=f.events.map(event=>event[0]);assert(names.includes('previous-ingress-resumed'));assert(!names.includes('cold-stop'));assert(!names.includes('start'));
+  assert(!fs.existsSync(f.engine.checkpoints));assert(!fs.existsSync(path.join(f.state,'.gitlab-upgrade-lock')));
+  assert.equal(fs.readFileSync(f.engine.config,'utf8'),f.originalConfig);assert.equal(fs.readFileSync(path.join(f.serviceData,'data/original'),'utf8'),'saved-data');
 });

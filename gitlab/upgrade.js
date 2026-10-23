@@ -8,6 +8,7 @@ const release=require('./security-release.json');
 const ROOT=path.resolve(__dirname,'..');
 const childJournal=require('./upgrade-child');
 const QUIESCE_SCRIPT='read -r uptime rest </proc/uptime; remaining=$(($1 - ${uptime%%.*})); if [ "$remaining" -le 0 ] || [ "$remaining" -gt 110 ]; then exit 124; fi; timeout -k 2 "$remaining" gitlab-ctl stop';
+const SCHEDULING_QUIESCE_SCRIPT='for service in nginx gitlab-workhorse puma; do read -r uptime rest </proc/uptime; remaining=$(($1 - ${uptime%%.*})); if [ "$remaining" -le 0 ] || [ "$remaining" -gt 110 ]; then exit 124; fi; timeout -k 2 "$remaining" gitlab-ctl stop "$service"; state=$(/opt/gitlab/embedded/bin/sv status "/opt/gitlab/service/$service"); case "$state" in down:*) ;; *) exit 1 ;; esac; done';
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const cube=text=>{if(text[807]!=='$'||crypto.createHash('md5').update(text.slice(0,1184)).digest('hex')!=='bd4a8426355824593a5e21ad759830c1')throw Error('upgrade-cube-invalid');};
 function regular(filename){const s=fs.lstatSync(filename);if(!s.isFile()||s.isSymbolicLink()||(s.mode&0o077)!==0)throw Error('upgrade-private-regular-file-required');return filename;}
@@ -43,7 +44,7 @@ class Upgrade {
   image(reference){const prepared=this.imageIds?.[reference];const image=JSON.parse(this.docker(['image','inspect',prepared||reference]))[0];if(prepared){if(image.Id!==prepared)throw Error('upgrade-image-pin-mismatch');return prepared;}if(!/^sha256:[a-f0-9]{64}$/.test(image.Id||'')||!image.RepoDigests?.some(ref=>ref.split('@')[1]===reference.split('@')[1]))throw Error('upgrade-image-pin-mismatch');return image.Id;}
   configuration(){regular(this.config);const text=fs.readFileSync(this.config,'utf8');cube(text);return text;}
   verifyMounts(container){for(const [target,suffix,volume] of [['/etc/gitlab','gitlab/config','system_gitlabConfig'],['/var/log/gitlab','gitlab/logs','system_gitlabLogs'],['/var/opt/gitlab','gitlab/data','system_gitlabData']]){const mount=container.Mounts?.find(m=>m.Destination===target),expected=path.posix.join(this.options.persistentDir,suffix);if(!mount||mount.RW!==true)throw Error('upgrade-persistent-mount-mismatch');if(mount.Type==='volume'){const v=JSON.parse(this.docker(['volume','inspect',mount.Name]))[0];if(mount.Name!==volume||v.Options?.device!==expected||v.Options?.type!=='none'||v.Options?.o!=='bind')throw Error('upgrade-persistent-mount-mismatch');}else if(mount.Type!=='bind'||mount.Source!==expected)throw Error('upgrade-persistent-mount-mismatch');}if(container.Config?.Labels?.['com.docker.compose.project']!=='system'||container.Config.Labels['com.docker.compose.service']!=='gitlab')throw Error('upgrade-owned-gitlab-required');}
-  async preflight(version){const gitlab=this.inspect('system_gitlab_1');this.verifyMounts(gitlab);if(!gitlab.State?.Running||gitlab.State?.OOMKilled)throw Error('upgrade-running-gitlab-required');const raw=this.docker(['exec','-i','system_gitlab_1','gitlab-rails','runner','-'],{input:fs.readFileSync(path.join(__dirname,'upgrade-preflight.rb'),'utf8')});const proof=JSON.parse(raw.split('\n').at(-1));if(proof.version!==version||proof.edition!=='CE'||proof.runningJobs!==0||proof.unfinishedBackgroundMigrations!==0)throw Error('upgrade-preflight-refused');return gitlab;}
+  async preflight(version){const gitlab=this.inspect('system_gitlab_1');this.verifyMounts(gitlab);if(!gitlab.State?.Running||gitlab.State?.OOMKilled)throw Error('upgrade-running-gitlab-required');const raw=this.docker(['exec','-i','system_gitlab_1','gitlab-rails','runner','-'],{input:fs.readFileSync(path.join(__dirname,'upgrade-preflight.rb'),'utf8')});const proof=JSON.parse(raw.split('\n').at(-1));if(proof.version!==version||proof.edition!=='CE'||!Number.isInteger(proof.runningJobs)||proof.runningJobs<0||proof.unfinishedBackgroundMigrations!==0)throw Error('upgrade-preflight-refused');if(proof.runningJobs!==0)throw Error('upgrade-jobs-active');return gitlab;}
   evidence(){const value=json(this.options.evidence),p=value.evidence?.gitlabUpgrade;if(value.sourceRevision!==this.options.sourceRevision||!Array.isArray(value.results)||!value.results.length||value.results.some(r=>r.status!=='passed')||value.fullAcceptance!==true||p?.fromImage!==release.fromImage||p?.toImage!==release.toImage||p.migrationVerified!==true||p.rollbackVerified!==true||p.registryVerified!==true||p.checkpointVerified!==true||!/^sha256:[a-f0-9]{64}$/.test(value.images?.candidate||'')||(value.images.gitlab!==this.image(release.toImage)||p.toImageId!==value.images.gitlab||p.fromImageId!==this.image(release.fromImage)))throw Error('upgrade-passing-successor-evidence-required');for(const stage of ['gitlab-upgrade-migrated-data','gitlab-upgrade-registry-ci','gitlab-upgrade-restored-checkpoint'])if(!value.results.some(r=>r.name===stage&&r.status==='passed'))throw Error('upgrade-passing-successor-evidence-required');if(this.inspect('system_bootstrapper_1').Image!==value.images.candidate)throw Error('upgrade-tested-controller-required');return {sha256:hash(fs.readFileSync(this.options.evidence)),candidateImage:value.images.candidate};}
   async plan(){const evidence=this.evidence(),old=this.image(release.fromImage),target=this.image(release.toImage),current=await this.preflight(release.fromVersion);if(current.Image!==old)throw Error('upgrade-current-image-mismatch');const value={format:'system-gitlab-upgrade-plan-v1',sourceRevision:this.options.sourceRevision,releaseSha256:hash(fs.readFileSync(path.join(__dirname,'security-release.json'))),evidence,containerId:current.Id,fromImageId:old,toImageId:target,configurationSha256:hash(this.configuration()),checkpointDir:this.checkpoints};return {plan:value,planSha256:hash(JSON.stringify(value))};}
   stop(){
@@ -51,7 +52,7 @@ class Upgrade {
     if(this.owner){this.owner.quiesceDeadline=deadline;this.updateOwner(this.owner.checkpointSha256);}
     const quiesce=QUIESCE_SCRIPT;
     this.docker(['exec','--env','SVWAIT=90','system_gitlab_1','/bin/sh','-ec',quiesce,'sh',String(deadline-90)],{timeout:120000});
-    this.docker(['exec','system_gitlab_1','/bin/sh','-ec','found=false; for service in /opt/gitlab/service/*; do [ -L "$service" ] || continue; found=true; state=$(/opt/gitlab/embedded/bin/sv status "$service"); case "$state" in down:\ *) ;; *) exit 1 ;; esac; done; [ "$found" = true ]'],{timeout:10000});
+    this.docker(['exec','system_gitlab_1','/bin/sh','-ec','found=false; for service in /opt/gitlab/service/*; do [ -L "$service" ] || continue; found=true; state=$(/opt/gitlab/embedded/bin/sv status "$service"); case "$state" in down:*) ;; *) exit 1 ;; esac; done; [ "$found" = true ]'],{timeout:10000});
     const remaining=Math.min(60,deadline-Math.floor(childJournal.uptime()));if(remaining<1)throw Error('upgrade-quiesce-deadline-exceeded');
     this.docker(['stop','--time',String(remaining),'system_gitlab_1'],{timeout:remaining*1000+10000});
     const state=this.inspect('system_gitlab_1').State;if(state.Running||state.ExitCode!==0||state.OOMKilled)throw Error('upgrade-clean-stop-required');
@@ -86,7 +87,29 @@ class Upgrade {
     const value=JSON.parse(this.run('bash',['-ec','set -a; source "$1"; source "$2"; node "$3" sync-status','bash',path.join(this.state,'sync-auth.env'),this.config,__filename],{timeout:15000}));
     if(value.idle!==true)throw Error('upgrade-sync-operation-running');
   }
+  async resumeScheduling(){
+    this.docker(['exec','--env','SVWAIT=30','system_gitlab_1','/bin/sh','-ec','for service in nginx gitlab-workhorse puma; do timeout -k 2 45 gitlab-ctl start "$service"; done'],{timeout:150000});
+    const until=this.now()+Math.min(this.options.readyTimeoutSeconds,300)*1000;
+    while(this.now()<until){try{this.docker(['exec','system_gitlab_1','curl','-fsS','--max-time','5','http://127.0.0.1/-/readiness'],{timeout:10000});return;}catch{await this.sleep(1000);}}
+    throw Error('upgrade-previous-ingress-not-ready');
+  }
+  async quiesceScheduling(){
+    this.owner.phase='quiescing-scheduling';this.owner.quiesceDeadline=Math.floor(childJournal.uptime())+110;this.updateOwner(this.owner.checkpointSha256);
+    // Once all three HTTP entry/handler services are down, native and external
+    // managers cannot claim a new job or register a new runner. Existing runner
+    // paused flags and manager containers are untouched.
+    this.docker(['exec','--env','SVWAIT=90','system_gitlab_1','/bin/sh','-ec',SCHEDULING_QUIESCE_SCRIPT,'sh',String(this.owner.quiesceDeadline)],{timeout:120000});
+    this.owner.phase='scheduling-quiesced';this.updateOwner(this.owner.checkpointSha256);
+    try{await this.preflight(release.fromVersion);}
+    catch(error){
+      // An assignment already in flight may have committed before Puma drained.
+      // Restore the old HTTP service without stopping DB/runners or taking a
+      // checkpoint; do not cancel or kill that active job.
+      await this.resumeScheduling();this.owner.phase='scheduling-aborted';this.updateOwner(this.owner.checkpointSha256);this.unlock();throw error;
+    }
+  }
   async migrate(plan){
+    await this.quiesceScheduling();
     this.stop();const receipt=this.snapshot(plan);this.checkpoint(receipt.checkpointSha256);this.updateOwner(receipt.checkpointSha256);
     atomic(path.join(this.checkpoints,'operation.json'),JSON.stringify({format:'system-gitlab-upgrade-operation-v1',phase:'checkpoint-complete',checkpointSha256:receipt.checkpointSha256}));
     this.start(release.toImage);await this.ready(release.toVersion,plan.toImageId);this.run('bash',['start.sh'],{cwd:path.join(ROOT,'nginx')});
@@ -106,7 +129,7 @@ class Upgrade {
     if(!current.State.Running)this.docker(['start','system_gitlab_1']);else this.docker(['exec','system_gitlab_1','gitlab-ctl','start']);
     await this.ready(release.fromVersion,current.Image);this.run('bash',['start.sh'],{cwd:path.join(ROOT,'nginx')});this.unlock();return {status:'previous-generation-resumed'};
   }
-  status(){const name=path.join(this.checkpoints,'operation.json'),lock=path.join(this.state,'.gitlab-upgrade-lock/upgrade-owner.json');const operation=fs.existsSync(name)?json(name):{};const owner=fs.existsSync(lock)?json(lock):{};return {phase:operation.phase||'not-checkpointed',locked:!!owner.operation,checkpointSha256:operation.checkpointSha256||owner.checkpointSha256,planSha256:owner.planSha256};}
+  status(){const name=path.join(this.checkpoints,'operation.json'),lock=path.join(this.state,'.gitlab-upgrade-lock/upgrade-owner.json');const operation=fs.existsSync(name)?json(name):{};const owner=fs.existsSync(lock)?json(lock):{};return {phase:operation.phase||owner.phase||'not-checkpointed',locked:!!owner.operation,checkpointSha256:operation.checkpointSha256||owner.checkpointSha256,planSha256:owner.planSha256};}
   async rollback(expected){
     const checkpoint=this.checkpoint(expected);this.adopt(expected,'checkpointSha256');await this.quiesceFinished();
     const current=this.inspect('system_gitlab_1');this.verifyMounts(current);if(![checkpoint.plan.fromImageId,checkpoint.plan.toImageId].includes(current.Image))throw Error('upgrade-current-image-mismatch');
@@ -148,5 +171,5 @@ async function main(){
   if(!['plan','promote','rollback','abort','status'].includes(action)||!filename||(['plan','status'].includes(action)?confirmation!==undefined:!/^[a-f0-9]{64}$/.test(confirmation||'')))throw Error('upgrade-usage-invalid');
   const engine=new Upgrade(json(filename));console.log(JSON.stringify(await engine[action](confirmation)));
 }
-module.exports={Upgrade,release,QUIESCE_SCRIPT,options,imageAssignment,inventory,hash,cube,atomic,run,inventoryAt,durableDirectory,durableAncestors};
+module.exports={Upgrade,release,QUIESCE_SCRIPT,SCHEDULING_QUIESCE_SCRIPT,options,imageAssignment,inventory,hash,cube,atomic,run,inventoryAt,durableDirectory,durableAncestors};
 if(require.main===module)main().catch(()=>{console.error('GitLab upgrade stopped. Inspect the private operation/checkpoint; do not retry an uncertain migration or start an old image on migrated data.');process.exitCode=1;});

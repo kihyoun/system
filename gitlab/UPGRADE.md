@@ -59,7 +59,13 @@ docker exec -w /system system_bootstrapper_1 \
 The plan binds the source and evidence hashes, existing container identity,
 configuration hash and exact image IDs. Promotion acquires owned upgrade,
 Harvest/Seed, certificate and Wizard environment leases before checking that
-Sync and GitLab have no active work. Sync blocks mutations while retaining login,
+Sync and GitLab have no active work. It then drains and stops GitLab’s internal
+NGINX, Workhorse and Puma HTTP services. With API ingress confirmed down, native
+and external managers cannot claim new jobs or register another runner. A final
+Rails job check detects an assignment already in flight: in that case the old
+HTTP service is resumed without stopping the database, cancelling jobs or taking
+a checkpoint. Existing runner paused states remain unchanged. Sync blocks
+mutations while retaining login,
 Fetch and status. A clean GitLab shutdown precedes the checksum-inventoried cold
 checkpoint. The copied directories and checkpoint ancestors are made durable
 before the completion receipt and before the new image can write any data.
