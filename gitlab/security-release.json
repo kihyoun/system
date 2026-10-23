@@ -1,0 +1,16 @@
+{
+  "format": "system-gitlab-security-release-v1",
+  "edition": "CE",
+  "fromVersion": "19.4.2",
+  "toVersion": "19.4.3",
+  "fromImage": "gitlab/gitlab-ce:19.4.2-ce.0@sha256:b65c3ece044d125254b4c4a99b10676bbd2502f05f8c628cb60628f44f4df11b",
+  "toImage": "gitlab/gitlab-ce:19.4.3-ce.0@sha256:483fb4cc5c75237a7a6c7c8b8b2a1832ed790d86e0449ff55e8b6f6d62d2d5f5",
+  "published": "2026-10-21",
+  "advisory": "https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-1-released/",
+  "upgradeDocumentation": "https://docs.gitlab.com/update/docker/",
+  "criticalCve": "CVE-2026-110264",
+  "databaseMigrations": true,
+  "postDeploymentMigrations": true,
+  "singleNodeDowntime": true,
+  "rollbackRequiresColdCheckpoint": true
+}
