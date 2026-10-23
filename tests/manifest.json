@@ -63,5 +63,6 @@
   {"component":"sync","file":"sync/upgrade-maintenance-api.js","timeoutSeconds":25,"port":8071},
   {"component":"bootstrapper","file":"bootstrapper/native-initialization.py","timeoutSeconds":45},
   {"component":"gitlab","file":"gitlab/candidate-capacity.js","timeoutSeconds":15},
-  {"component":"gitlab","file":"gitlab/publish-successor.js","timeoutSeconds":20}
+  {"component":"gitlab","file":"gitlab/publish-successor.js","timeoutSeconds":20},
+  {"component":"gitlab","file":"gitlab/upgrade-recovery.js","timeoutSeconds":25}
 ]

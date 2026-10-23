@@ -21,7 +21,7 @@ platform acceptance are separate steps.
 ### Local integration test
 
 Select compatible GitLab and Runner releases explicitly. The example below uses
-GitLab CE 19.4.2 and Runner 19.4.0, also pinned by the disposable integration
+GitLab CE 19.4.3 and Runner 19.4.0, also pinned by the disposable integration
 suite. Do not point a new major version at existing GitLab data without following
 GitLab's supported upgrade path.
 
@@ -33,7 +33,7 @@ link to the saved configuration; the persistent copy takes precedence over
 configuration embedded in an image:
 
 ```bash
-export GITLAB_IMAGE=gitlab/gitlab-ce:19.4.2-ce.0
+export GITLAB_IMAGE=gitlab/gitlab-ce:19.4.3-ce.0
 export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0
 export GITLAB_SSH_BIND=127.0.0.1:2222
 export GITLAB_REGISTRY_BIND=127.0.0.1:5050

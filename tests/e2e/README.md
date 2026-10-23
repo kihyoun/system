@@ -322,3 +322,39 @@ Configuration comparisons decode literal shell assignments without executing
 them. Quoted and unquoted exports are compared by exact values; substrings,
 duplicate assignments, shell expansion and shell commands cannot satisfy an
 assertion. Only explicit source-owned failure codes survive cleanup retries.
+
+
+## GitLab successor migration acceptance
+
+The committed security-release profile adds `supportImages.previousGitlab` to
+its explicit archive inputs. The ordinary `images.gitlab` identifies the patched
+successor; the isolated baseline and cold-recovery phases deliberately start the
+previous pinned image. Both archives are pulled by immutable public reference,
+inspected and loaded before the internal daemon is created. No production data,
+network, socket or credentials are inputs to the candidate platform.
+
+After existing runner, registry, cold recovery and ACME scenarios pass,
+`gitlab-upgrade.js` creates additional synthetic pre-upgrade user/project/issue,
+merge-request/discussion and encrypted-variable identities. It invokes the same
+repository upgrade engine as production, using only archive-verified aliases
+inside the private daemon. The production CLI does not accept these aliases.
+It checkpoints a cleanly stopped old database, migrates the real state to the
+patched version and verifies those identities. A new runner job pulls and runs
+an image blob published before the upgrade. Finally it restores the exact cold
+checkpoint and old image and repeats the identity checks.
+
+The restored candidate's receipt contains the three required stages
+`gitlab-upgrade-migrated-data`, `gitlab-upgrade-registry-ci` and
+`gitlab-upgrade-restored-checkpoint`, plus bounded `evidence.gitlabUpgrade`
+image identities and completion flags. Its final cleanup must also pass.
+The outer receipt copies the bounded migration proof; the detailed migration
+stages belong to the restored candidate receipt. Raw private checkpoints,
+configuration, credentials and database logs are never public CI artifacts.
+
+The optional successor scenario shares a finite 40-minute overall candidate
+budget, including the preceding cold-recovery scenarios and both version
+transitions. It uses the existing serialized resource group and 12-GiB private
+daemon ceiling; check actual host headroom before starting it. The job timeout
+is separate from that operation budget and must leave time for image preparation,
+publication and ownership-checked cleanup. A passing mocked adapter contract is
+not a successful real migration; use the complete platform CI gate for that proof.
