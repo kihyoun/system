@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const {context, validateEvidence, publish} = require('../../gitlab/publish-successor');
+const {context, validateEvidence, candidates, publish} = require('../../gitlab/publish-successor');
 const release = require('../../gitlab/security-release.json');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'successor-publication-test-'));
 const sha = 'a'.repeat(40), tree = 'b'.repeat(40), wizard = 'c'.repeat(40);
@@ -29,6 +29,28 @@ try {
   const dir = path.join(root, 'test-results/e2e', proof.runId);
   fs.mkdirSync(dir, {recursive: true});
   const original = Buffer.from(JSON.stringify(proof));
+  fs.writeFileSync(path.join(dir, 'results.json'), original);
+  const summary = {...proof, runId: '1'.repeat(24),
+    results: ['recovery-original-host-removed', 'cleanup'].map(name => ({name, status: 'passed'})),
+    evidence: {...proof.evidence, recovery: {runId: proof.runId, backupOnly: true, originalHostRemoved: true}}};
+  const summaryDir = path.join(root, 'test-results/e2e', summary.runId);
+  fs.mkdirSync(summaryDir);
+  const writeSummary = value => fs.writeFileSync(path.join(summaryDir, 'results.json'), JSON.stringify(value));
+  writeSummary(summary);
+  assert.deepEqual(candidates(path.join(root, 'test-results/e2e'), ci).map(item => item.proof.runId), [proof.runId],
+    'the original host summary resolves to the complete restored migration receipt');
+  writeSummary({...summary, evidence: {...summary.evidence, recovery: {...summary.evidence.recovery, runId: '2'.repeat(24)}}});
+  assert.throws(() => candidates(path.join(root, 'test-results/e2e'), ci), /matching complete successor receipt/);
+  writeSummary({...summary, images: {candidate: registryDigest}});
+  assert.throws(() => candidates(path.join(root, 'test-results/e2e'), ci), /matching complete successor receipt/);
+  writeSummary({...summary, results: [{name: 'cleanup', status: 'failed'}]});
+  assert.throws(() => candidates(path.join(root, 'test-results/e2e'), ci), /complete passing/);
+  writeSummary({...summary, evidence: {...summary.evidence,
+    gitlabUpgrade: {...summary.evidence.gitlabUpgrade, toImageId: registryDigest}}});
+  assert.throws(() => candidates(path.join(root, 'test-results/e2e'), ci), /matching complete successor receipt/);
+  writeSummary(summary);
+  fs.writeFileSync(path.join(dir, 'results.json'), JSON.stringify({...proof, results: proof.results.slice(1)}));
+  assert.throws(() => candidates(path.join(root, 'test-results/e2e'), ci), /required successor acceptance stage/);
   fs.writeFileSync(path.join(dir, 'results.json'), original);
   let privateAuth, wrongImage = false, pushFails = false;
   const calls = [];
@@ -61,6 +83,12 @@ try {
   assert.equal(result.candidateEvidenceSha256, crypto.createHash('sha256').update(frozen).digest('hex'));
   assert.equal(calls.some(call => call.includes(env.CI_REGISTRY_PASSWORD)), false);
   assert.equal(calls.some(call => call[1] === 'build'), false, 'publication never rebuilds the accepted image');
+  const duplicateDir = path.join(root, 'test-results/e2e', '3'.repeat(24));
+  fs.mkdirSync(duplicateDir);
+  fs.writeFileSync(path.join(duplicateDir, 'results.json'), JSON.stringify({...proof, runId: '3'.repeat(24)}));
+  assert.throws(() => publish(env, root, execute), /Exactly one full successor acceptance receipt/,
+    'two complete migration receipts still refuse ambiguous publication');
+  fs.rmSync(duplicateDir, {recursive: true});
   pushFails = true;
   assert.throws(() => publish(env, root, execute));
   assert.equal(fs.existsSync(privateAuth), false, 'private registry config is cleaned after push failure');

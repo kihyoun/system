@@ -24,7 +24,7 @@ function context(env) {
     registryRepository: env.CI_REGISTRY_IMAGE + '/successor'};
 }
 
-function validateEvidence(proof, ci) {
+function validateReceipt(proof, ci) {
   const upgrade = proof.evidence?.gitlabUpgrade;
   if (!/^[a-f0-9]{24}$/.test(proof.runId || '') || proof.sourceRevision !== ci.sourceRevision ||
     proof.fullAcceptance !== true || !Array.isArray(proof.results) || !proof.results.length ||
@@ -32,25 +32,52 @@ function validateEvidence(proof, ci) {
     upgrade?.fromImage !== release.fromImage || upgrade?.toImage !== release.toImage ||
     !['migrationVerified', 'rollbackVerified', 'registryVerified', 'checkpointVerified'].every(k => upgrade[k] === true))
     throw Error('A complete passing successor migration receipt is required.');
+  return proof.images.candidate;
+}
+
+function validateEvidence(proof, ci) {
+  const acceptedImage = validateReceipt(proof, ci);
   for (const name of ['gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci',
     'gitlab-upgrade-restored-checkpoint', 'cleanup']) {
     if (!proof.results.some(stage => stage.name === name && stage.status === 'passed'))
       throw Error('A required successor acceptance stage is missing.');
   }
-  return proof.images.candidate;
+  return acceptedImage;
 }
 
 function candidates(directory, ci) {
-  return fs.readdirSync(directory).filter(name => /^[a-f0-9]{24}$/.test(name)).flatMap(name => {
+  const receipts = fs.readdirSync(directory).filter(name => /^[a-f0-9]{24}$/.test(name)).flatMap(name => {
     const dir = path.join(directory, name), filename = path.join(dir, 'results.json');
     if (!fs.lstatSync(dir).isDirectory() || fs.lstatSync(dir).isSymbolicLink() ||
       !fs.lstatSync(filename).isFile() || fs.lstatSync(filename).isSymbolicLink())
       throw Error('Candidate evidence must be regular job-owned files.');
     const bytes = fs.readFileSync(filename), proof = JSON.parse(bytes);
     if (proof.fullAcceptance !== true || !proof.evidence?.gitlabUpgrade) return [];
-    validateEvidence(proof, ci);
+    validateReceipt(proof, ci);
     if (proof.runId !== name) throw Error('Candidate evidence directory mismatch.');
     return [{proof, bytes}];
+  });
+  return receipts.filter(({proof}) => {
+    const restoredRun = proof.evidence?.recovery?.runId;
+    if (restoredRun !== undefined) {
+      // The original host summarizes the restored host's result; only that
+      // restored receipt contains the migration stages performed on real data.
+      // Bind the summary to its actual complete receipt instead of counting it
+      // as a second independently tested successor.
+      const restored = receipts.find(item => item.proof.runId === restoredRun)?.proof;
+      const sameUpgrade = restored && ['fromImage', 'toImage', 'fromImageId', 'toImageId',
+        'checkpointVerified', 'migrationVerified', 'registryVerified', 'rollbackVerified']
+        .every(key => proof.evidence.gitlabUpgrade[key] === restored.evidence.gitlabUpgrade[key]);
+      if (!/^[a-f0-9]{24}$/.test(restoredRun) || restoredRun === proof.runId ||
+        proof.evidence.recovery.backupOnly !== true || proof.evidence.recovery.originalHostRemoved !== true ||
+        !restored || restored.evidence?.recovery?.runId !== undefined ||
+        restored.images.candidate !== proof.images.candidate || !sameUpgrade)
+        throw Error('Recovery summary must reference its matching complete successor receipt.');
+      validateEvidence(restored, ci);
+      return false;
+    }
+    validateEvidence(proof, ci);
+    return true;
   });
 }
 
