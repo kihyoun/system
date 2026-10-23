@@ -154,7 +154,9 @@ class RecoveryManifest(unittest.TestCase):
         calls = []
         class Unpack:
             stdout = __import__('io').BytesIO(b'archive')
-            def wait(self):
+            def wait(self, timeout=None):
+                return 0
+            def poll(self):
                 return 0
         def execute(args, **kwargs):
             calls.append(args)
@@ -163,12 +165,35 @@ class RecoveryManifest(unittest.TestCase):
             if value.startswith('nginx'):
                 return {'Id': 'sha256:' + 'c' * 64, 'RepoDigests': [recovery.canonical_digest(self.manifest['publicImages'][0]['reference'])]}
             return {'Id': self.image}
-        with patch.object(recovery.subprocess, 'Popen', return_value=Unpack()), \
-             patch.object(recovery.subprocess, 'run', return_value=type('Result', (), {'returncode': 0})()), \
+        with patch.object(recovery.subprocess, 'Popen', side_effect=[Unpack(), Unpack()]), \
              patch.object(recovery, 'run', side_effect=execute), patch.object(recovery, 'inspect_image', side_effect=inspected):
             recovery.restore_images(self.directory, self.manifest)
         tags = [args[-1] for args in calls if 'tag' in args]
         self.assertEqual(set(tags), {'system_bootstrapper', 'controller:retained', 'nginx:retained'})
+
+    def test_timed_out_archive_load_kills_and_reaps_both_children(self):
+        children = []
+        class Process:
+            def __init__(self, hanging):
+                self.stdout = __import__('io').BytesIO(b'archive')
+                self.hanging, self.killed, self.waited = hanging, False, False
+            def wait(self, timeout=None):
+                if self.hanging and not self.killed:
+                    raise subprocess.TimeoutExpired('docker', timeout)
+                self.waited = True
+                return -9 if self.killed else 0
+            def poll(self):
+                return -9 if self.killed else None
+            def kill(self):
+                self.killed = True
+        def child(*args, **kwargs):
+            value = Process(hanging=len(children) == 1)
+            children.append(value)
+            return value
+        with patch.object(recovery.subprocess, 'Popen', side_effect=child):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'archive-load-timeout'):
+                recovery.restore_images(self.directory, self.manifest)
+        self.assertTrue(all(value.killed and value.waited for value in children))
 
     def test_configuration_cannot_select_an_unrecorded_image(self):
         config = self.root / 'settings.env'
@@ -192,6 +217,47 @@ class RuntimeVerification(unittest.TestCase):
                        'WIZARD_HOST': 'wizard.example.invalid', 'WIZARD_DOMAIN_MODE': '2'}
         self.services = {'system_wizard_1': {'NetworkSettings': {'Networks': {'system_default': {'IPAddress': '172.19.0.3'}}}}}
         self.baseline = {'startedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+
+    def test_missing_GitLab_data_mount_is_not_masked_by_other_persistent_mounts(self):
+        mount = self.root / 'mounted'
+        root, seed = mount / 'platform', mount / 'seed'
+        for path in (root / 'gitlab/config', root / 'gitlab/logs', seed):
+            path.mkdir(parents=True, exist_ok=True)
+        config = dict(self.config, _root=root, PERSISTENT_MOUNT=str(mount), SEED_DIR=str(seed))
+        gitlab = {'Mounts': [
+            {'Type': 'bind', 'Source': str(root / 'gitlab/config'), 'Destination': '/etc/gitlab'},
+            {'Type': 'bind', 'Source': str(root / 'gitlab/logs'), 'Destination': '/var/log/gitlab'},
+            {'Type': 'bind', 'Source': str(seed), 'Destination': '/seed'}]}
+        with patch.object(runtime, 'run', return_value=b'8:1'):
+            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'essential-persistent-mount-missing'):
+                runtime.verify_mounts(config, {'system_gitlab_1': gitlab})
+
+    def test_named_volume_cannot_redirect_an_essential_mount_within_the_data_root(self):
+        mount = self.root / 'mounted'
+        root, seed = mount / 'platform', mount / 'seed'
+        for path in (root / 'gitlab/config', root / 'gitlab/logs', root / 'gitlab/data', seed):
+            path.mkdir(parents=True, exist_ok=True)
+        config = dict(self.config, _root=root, PERSISTENT_MOUNT=str(mount), SEED_DIR=str(seed))
+        gitlab = {'Mounts': [
+            {'Type': 'volume', 'Name': 'misdirected', 'Source': '/docker/volume', 'Destination': '/etc/gitlab'},
+            {'Type': 'bind', 'Source': str(root / 'gitlab/logs'), 'Destination': '/var/log/gitlab'},
+            {'Type': 'bind', 'Source': str(root / 'gitlab/data'), 'Destination': '/var/opt/gitlab'},
+            {'Type': 'bind', 'Source': str(seed), 'Destination': '/seed'}]}
+        def execute(args, **kwargs):
+            if 'volume' in args:
+                return json.dumps([{'Options': {'type': 'none', 'o': 'bind', 'device': str(root / 'gitlab/logs')}}]).encode()
+            return b'8:1'
+        with patch.object(runtime, 'run', side_effect=execute):
+            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'essential-persistent-mount-is-misdirected'):
+                runtime.verify_mounts(config, {'system_gitlab_1': gitlab})
+
+    def test_readiness_budget_caps_blocking_commands(self):
+        runtime.recovery.OPERATION_DEADLINE = __import__('time').monotonic() + 0.02
+        try:
+            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'command-failed'):
+                runtime.run(['python3', '-c', 'import time;time.sleep(2)'])
+        finally:
+            runtime.recovery.OPERATION_DEADLINE = None
 
     def test_example_configuration_preserves_exact_cube(self):
         raw = (ROOT / 'system/.docker.env.example').read_bytes()

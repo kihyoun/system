@@ -176,3 +176,130 @@ An older two-list checksum manifest can be audited explicitly with
 `python3 bootstrapper/recovery.py verify --directory /path/to/recovery --checksums-only`.
 That compatibility audit cannot load images or start services; complete the source
 and alias declarations through the normal reviewed operator workflow first.
+
+## Promoting a tested successor controller
+
+`promote-controller.py` consumes the frozen `release.json` and
+`candidate-results.json` artifacts published by the same successful full candidate
+job. It verifies their exact bytes through the configured GitLab API, the protected
+default branch and source tree/gitlink, all required internal jobs and the exact
+candidate job ID. The configured required merge gate must remain enabled. The only
+permitted unrelated pipeline failure is the existing optional public GitHub mirror
+job; an internal failed, missing, skipped or allowed-to-fail required job refuses
+promotion. API and registry credentials are read from the private operator token
+file, never from a public artifact.
+
+Prepare an unchanged reviewed checkout at the artifact's exact source revision and
+keep downloaded inputs mode 0600. The token needs project/artifact read permission
+and read access to the published registry image. The command first pulls the
+published immutable registry reference into a new private temporary Docker login
+and verifies its exact image ID and source/job labels. It then records the local
+selector `system-successor:<source-revision>-job<candidate-job-id>`. This local alias
+is not immutable by itself: the accepted CI proof, image ID and recorded archive
+checksum establish its identity. Using it allows a new host to start the controller
+before the controller's own GitLab registry is running.
+
+```sh
+sudo python3 bootstrapper/promote-controller.py \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --release /root/successor/release.json \
+  --evidence /root/successor/candidate-results.json \
+  --gitlab-url https://gitlab.example.com \
+  --token-file /root/gitlab-operator-token \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example \
+  --cold-maintenance
+```
+
+Use `--check-only` with the same inputs for source/CI inspection without changing
+services. Normal promotion requires a Sync API that reports project-operation
+quiescence. An older API cannot establish this by omitting a field; it requires
+`--cold-maintenance`, which performs an actual maintenance protocol:
+
+1. Acquire the native controller, Seed, certificate and environment leases; retain
+   the current controller/image/restart policy and exact saved configuration.
+2. Stop the owned public proxy, disable automatic restart of the old controller and
+   pause its processes. Drain outstanding remote GitLab execs with a finite budget.
+3. Stop GitLab NGINX, Workhorse and Puma ingress. Only after those services are
+   confirmed down, use the shared committed GitLab preflight to prove no executing
+   jobs or unfinished background migrations remain. If a job raced the first check,
+   resume the old ingress/controller/proxy without stopping the job or database and
+   defer promotion.
+4. Stop the owned retained runner managers, cleanly stop GitLab's services and
+   verify the container exit is zero without OOM. Kill the frozen old controller
+   without an explicit unpause; its disabled restart policy prevents old code from
+   returning. A tiny explicit Docker fixture covers this primitive.
+5. Copy and verify the cold GitLab and configuration state with the accepted image's
+   own `rsync`, preserving ownership, permissions and symlinks. Fsync copied files,
+   directories and checkpoint publication before proceeding.
+6. Change only the saved controller selector, preserving the Cube and old GitLab
+   image setting. Start the exact accepted controller through Compose. Its normal
+   committed startup may reconcile the proxy, Wizard and runners. Verify saved Fetch,
+   routing, required data mounts and retained manager identities, while GitLab still
+   runs its old image/version. Perform the reviewed GitLab migration separately.
+
+This is a maintenance operation with downtime, not a zero-downtime controller
+replacement. A cold checkpoint requires free space for another copy of GitLab data.
+An uncertain drain, stop, copy or startup leaves its exact owned leases and private
+operation record for recovery; it never guesses that the database is safe.
+
+Inspect or abort an interrupted controller operation with the committed entry point:
+
+```sh
+sudo python3 bootstrapper/promote-controller.py --operation status \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
+sudo python3 bootstrapper/promote-controller.py --operation abort \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
+```
+
+Abort adopts only the recorded stale leases, waits out bounded remote commands,
+checks backup/current configuration hashes and the old GitLab image, and verifies a
+completed cold checkpoint when present. Before database shutdown it resumes the
+unmodified old generation. After a failed controller start it can restore the
+previous controller and configuration on the same old GitLab data; it never rewinds
+that database. A changed GitLab image or a completed migration refuses this path:
+use the GitLab upgrade helper's verified database checkpoint recovery instead.
+Completed controller promotions are not treated as interrupted operations.
+Host commands run through the committed `host-child.py` guardian: it inherits a
+stable filesystem guard, records PID/start/process-group identity before releasing
+a worker start barrier, and bounds and reaps the entire owned command group.
+Adoption refuses a live coordinator, guardian or worker group, including after a
+coordinator SIGKILL. The guard file remains on disk and is never unlinked/recreated
+to bypass a held lock.
+
+## Recording the successor for the next host
+
+After successful GitLab migration, refresh retained recovery inputs before deleting
+the VM or relying on a later host replacement:
+
+```sh
+sudo python3 bootstrapper/record-recovery-images.py \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --release /root/successor/release.json \
+  --evidence /root/successor/candidate-results.json \
+  --gitlab-url https://gitlab.example.com \
+  --token-file /root/gitlab-operator-token \
+  --output /root/successor/recovery-export.json
+```
+
+The exporter rechecks accepted CI/source/image identities and the actual migrated
+GitLab image/configuration. It streams the exact running controller to a uniquely
+named gzip archive with a bounded Docker-save deadline, then validates the complete
+new source/image/alias manifest against actual files **before** atomically publishing
+it. It retains the preceding manifest's exact bytes, old archives/versioned aliases
+and the existing Wizard image configuration/archive. The canonical published
+controller registry reference remains provenance metadata; fresh-host recovery uses
+the verified offline local alias. The new public GitLab declaration matches the
+running migrated image, so recovery cannot silently select the preceding version.
+
+An interrupted export leaves prior inputs selected and any completed extra archive
+retained. A retry creates another operation archive instead of overwriting or deleting
+it. Do not delete the host until the exporter and `recover-volume.sh --verify` pass.
+
+Isolated contracts run with `python3 tests/bootstrapper/native-initialization.py` and
+`python3 tests/bootstrapper/successor-host-tools.py`. The explicit tiny Docker
+primitive test is separate from the socket-free component suite:
+`python3 tests/bootstrapper/paused-controller-docker.py --allow-local-daemon`.
+It uses one exactly labeled, limited, disposable local container and never a live
+GitLab installation.

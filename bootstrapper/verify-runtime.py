@@ -133,7 +133,7 @@ def http(url, body=None, headers=None):
     request = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
                                      headers=selected)
     try:
-        response = urllib.request.build_opener(NoRedirect()).open(request, timeout=10)
+        response = urllib.request.build_opener(NoRedirect()).open(request, timeout=recovery.budget(10))
     except urllib.error.HTTPError as error:
         response = error
     except (urllib.error.URLError, OSError):
@@ -210,20 +210,46 @@ def verify_mounts(config, services):
     require(mount in seed.parents and root not in seed.parents and seed not in root.parents and seed != root,
             'unsafe-seed-directory')
     device = run(['findmnt', '-rn', '-T', str(mount), '-o', 'MAJ:MIN']).strip()
+    required = {
+        'system_bootstrapper_1': {
+            '/var/run/docker.sock': None, '/state': root / 'configuration', '/wizard-public': root / 'wizard-public',
+            '/host-letsencrypt': root / 'host/letsencrypt', str(root / 'runners'): root / 'runners',
+            '/seed': seed, '/templates': root / 'templates', '/synctemplates': root / 'synctemplates',
+            '/ssl': root / 'ssl', '/srv/gitlab/config': root / 'gitlab/config',
+            '/srv/gitlab/log': root / 'gitlab/logs', '/srv/gitlab/data': root / 'gitlab/data'},
+        'system_web_1': {'/etc/nginx/templates': root / 'templates', '/ssl': root / 'ssl'},
+        'system_gitlab_1': {'/etc/gitlab': root / 'gitlab/config', '/var/log/gitlab': root / 'gitlab/logs',
+                            '/var/opt/gitlab': root / 'gitlab/data', '/seed': seed}}
+    if config['WIZARD_ENABLE'] == 'true':
+        required['system_wizard_1'] = {'/usr/share/nginx/wizard-public': root / 'wizard-public'}
+    for index in range(1, runner_count(config) + 1):
+        required[f'runner_docker_{index}'] = {
+            '/var/run/docker.sock': None, '/etc/gitlab-runner': root / f'runners/runner/{index}/config',
+            '/home/gitlab-runner': root / f'runners/runner/{index}/home'}
     volumes, count = {}, 0
-    for row in services.values():
+    for name, row in services.items():
+        destinations = [entry['Destination'] for entry in row['Mounts']]
+        require(len(destinations) == len(set(destinations)), 'duplicate-service-mount-destination')
+        require(set(required.get(name, {})) <= set(destinations), 'essential-persistent-mount-missing')
         for entry in row['Mounts']:
-            if entry['Type'] == 'tmpfs' or entry['Destination'] == '/var/run/docker.sock':
+            if entry['Destination'] == '/var/run/docker.sock':
+                require(entry['Type'] == 'bind' and Path(entry['Source']).resolve() == Path('/var/run/docker.sock').resolve() and
+                        entry.get('RW') is True, 'service-Docker-socket-mismatch')
+                continue
+            if entry['Type'] == 'tmpfs':
+                require(entry['Destination'] not in required.get(name, {}), 'essential-data-mounted-as-tmpfs')
                 continue
             source = entry['Source']
             if entry.get('Name'):
-                name = entry['Name']
-                if name not in volumes:
-                    volumes[name] = json.loads(run([*DOCKER, 'volume', 'inspect', name]))[0]
-                options = volumes[name].get('Options') or {}
+                volume_name = entry['Name']
+                if volume_name not in volumes:
+                    volumes[volume_name] = json.loads(run([*DOCKER, 'volume', 'inspect', volume_name]))[0]
+                options = volumes[volume_name].get('Options') or {}
                 require(options.get('type') == 'none' and options.get('o') == 'bind', 'persistent-volume-not-bind')
                 source = options.get('device', '')
             path = Path(source).resolve(strict=True)
+            expected = required.get(name, {}).get(entry['Destination'])
+            require(expected is None or path == expected.resolve(strict=True), 'essential-persistent-mount-is-misdirected')
             require(path == root or root in path.parents or (path == seed and entry['Destination'] == '/seed'),
                     'persistent-mount-escapes-selected-data')
             require(run(['findmnt', '-rn', '-T', str(path), '-o', 'MAJ:MIN']).strip() == device,
@@ -375,6 +401,7 @@ def main():
     require(bool(args.baseline), 'pre-start-baseline-required')
     baseline = json.loads(Path(args.baseline).read_bytes())
     deadline = time.monotonic() + args.timeout
+    recovery.OPERATION_DEADLINE = deadline if args.timeout else None
     while True:
         try:
             result = verify(config, baseline, checkout, args.gitlab_token_file, args.redirect_from)

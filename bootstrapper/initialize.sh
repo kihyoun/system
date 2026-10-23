@@ -50,6 +50,9 @@ receipt_path=$(realpath -m -- "$receipt_dir")
 case "$receipt_path" in "$PWD"|"$PWD"/*) fail 'receipt directory must be outside the checkout.' ;; esac
 [[ $timeout =~ ^(0|[1-9][0-9]*)$ ]] && (( timeout <= 3600 )) || fail 'invalid timeout.'
 [[ $swap_gib =~ ^([0-9]|[12][0-9]|3[0-2])$ ]] || fail 'swap size must be 0..32 GiB.'
+for prerequisite in python3 git flock mountpoint findmnt; do
+    command -v "$prerequisite" >/dev/null || fail "missing bootstrap prerequisite: $prerequisite"
+done
 : "${PERSISTENCE_ENV_FILE:?Set PERSISTENCE_ENV_FILE to your private storage selector}"
 # Validate storage before touching packages, configuration or service containers.
 set -a

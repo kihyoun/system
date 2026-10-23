@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import time
 
 
 class RecoveryError(RuntimeError):
@@ -17,9 +18,21 @@ def require(condition, label):
         raise RecoveryError(label)
 
 
+OPERATION_DEADLINE = None
+
+
+def budget(seconds):
+    if OPERATION_DEADLINE is None:
+        return seconds
+    remaining = OPERATION_DEADLINE - time.monotonic()
+    require(remaining > 0, 'operation-readiness-deadline-expired')
+    return min(seconds, remaining)
+
+
 def run(arguments, **kwargs):
     try:
-        return subprocess.run(arguments, capture_output=True, check=True, timeout=300, **kwargs).stdout
+        return subprocess.run(arguments, capture_output=True, check=True,
+                              timeout=budget(kwargs.pop('timeout', 300)), **kwargs).stdout
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         raise RecoveryError('command-failed:' + arguments[0]) from None
 
@@ -34,6 +47,10 @@ def sha(path):
 
 def image_id(value):
     return isinstance(value, str) and bool(re.fullmatch(r'sha256:[0-9a-f]{64}', value))
+
+
+def local_alias(value):
+    return reference(value) and '@' not in value and not value.startswith('sha256:')
 
 
 def canonical_digest(value):
@@ -56,7 +73,7 @@ def reference(value):
     return isinstance(value, str) and bool(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/@-]{0,500}', value))
 
 
-def load_manifest(directory, checkout, expected_sha=None, checksums_only=False):
+def load_manifest(directory, checkout, expected_sha=None, checksums_only=False, manifest_bytes=None):
     directory = Path(directory)
     require(directory.is_dir() and not directory.is_symlink(), 'recovery-directory-must-not-be-symlink')
     require((directory / 'images').is_dir() and not (directory / 'images').is_symlink(),
@@ -67,7 +84,7 @@ def load_manifest(directory, checkout, expected_sha=None, checksums_only=False):
     if expected_sha:
         require(re.fullmatch(r'[0-9a-f]{64}', expected_sha) and sha(path) == expected_sha,
                 'manifest-checksum-mismatch')
-    manifest = json.loads(path.read_bytes())
+    manifest = json.loads(path.read_bytes() if manifest_bytes is None else manifest_bytes)
     require(isinstance(manifest, dict), 'invalid-manifest')
     for key in ('archives', 'publicImages'):
         require(isinstance(manifest.get(key), list), 'invalid-manifest-' + key)
@@ -91,7 +108,7 @@ def load_manifest(directory, checkout, expected_sha=None, checksums_only=False):
             ids.add(archive['imageId'])
     for image in manifest['publicImages']:
         require(isinstance(image, dict) and reference(image.get('reference')) and
-                re.search(r'@sha256:[0-9a-f]{64}$', image['reference']) and reference(image.get('tag')),
+                re.search(r'@sha256:[0-9a-f]{64}$', image['reference']) and local_alias(image.get('tag')),
                 'public-image-must-be-digest-pinned')
         if image.get('imageId') is not None:
             require(image_id(image['imageId']), 'invalid-public-image-id')
@@ -102,7 +119,7 @@ def load_manifest(directory, checkout, expected_sha=None, checksums_only=False):
     require(isinstance(manifest.get('localImages'), list) and bool(manifest['localImages']),
             'local-image-aliases-required')
     for image in manifest['localImages']:
-        require(isinstance(image, dict) and reference(image.get('tag')) and image_id(image.get('imageId')),
+        require(isinstance(image, dict) and local_alias(image.get('tag')) and image_id(image.get('imageId')),
                 'invalid-local-image')
         require(image['imageId'] in ids, 'local-alias-has-no-declared-archive')
         require(image['tag'] not in tags, 'duplicate-image-alias')
@@ -118,6 +135,7 @@ def load_manifest(directory, checkout, expected_sha=None, checksums_only=False):
     require(gitlink == '160000 commit ' + wizard + '\twizard', 'recorded-wizard-gitlink-mismatch')
     controller = manifest.get('currentController', {})
     require(isinstance(controller, dict) and controller.get('imageId') in ids and
+            controller.get('reference') in {image['tag'] for image in manifest['localImages']} and
             tags.get(controller.get('reference')) == controller.get('imageId'), 'declared-controller-required')
     require(controller.get('sourceCommit') == commit and controller.get('sourceTree') == tree,
             'controller-source-mismatch')
@@ -164,10 +182,20 @@ def restore_images(directory, manifest):
         # Stream decompression; never materialize another full archive on root disk.
         unpack = subprocess.Popen(['gzip', '-dc', str(Path(directory) / archive['file'])], stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL)
-        loaded = subprocess.run(['docker', '--host=unix:///var/run/docker.sock', 'load'], stdin=unpack.stdout,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        unpack.stdout.close()
-        require(unpack.wait() == 0 and loaded.returncode == 0, 'archive-load-failed')
+        loaded = None
+        try:
+            loaded = subprocess.Popen(['docker', '--host=unix:///var/run/docker.sock', 'load'], stdin=unpack.stdout,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            unpack.stdout.close()
+            require(loaded.wait(timeout=budget(900)) == 0 and unpack.wait(timeout=budget(30)) == 0,
+                    'archive-load-failed')
+        except subprocess.TimeoutExpired:
+            raise RecoveryError('archive-load-timeout') from None
+        finally:
+            for process in (loaded, unpack):
+                if process is not None and process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=10)
         require(inspect_image(archive['imageId'])['Id'] == archive['imageId'], 'loaded-image-id-mismatch')
     for image in manifest['localImages']:
         run(['docker', '--host=unix:///var/run/docker.sock', 'tag', image['imageId'], image['tag']])
