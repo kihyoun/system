@@ -8,6 +8,8 @@ Choose the complete installation path for your environment:
   prepare DNS, issue certificates with Certbot and configure the services.
 - [Replacement host with a retained data volume](#replace-a-host-while-retaining-its-data-volume):
   reuse an existing installation, rather than initializing it again.
+- [Evolve a running system](#5-evolving-a-running-system): use one generation
+  to build and test a reviewed successor, then promote it with a recovery path.
 
 ## 0. Getting Started
 
@@ -109,7 +111,7 @@ Then run this command from the project's root directory:
 
 ```bash
 sudo env \
-  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.2-ce.0 \
+  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.3-ce.0@sha256:483fb4cc5c75237a7a6c7c8b8b2a1832ed790d86e0449ff55e8b6f6d62d2d5f5 \
   GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0 \
   GITLAB_SSH_BIND=127.0.0.1:2222 \
   GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
@@ -508,7 +510,7 @@ server, start the fresh installation:
 
 ```bash
 sudo env \
-  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.2-ce.0 \
+  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.3-ce.0@sha256:483fb4cc5c75237a7a6c7c8b8b2a1832ed790d86e0449ff55e8b6f6d62d2d5f5 \
   GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0 \
   GITLAB_SSH_BIND=127.0.0.1:2222 \
   GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
@@ -691,34 +693,46 @@ and [deploy hooks during testing](https://eff-certbot.readthedocs.io/en/stable/u
 ## Replace a host while retaining its data volume
 
 This procedure reuses the current live data, including GitLab, configuration and
-certificates. It does **not** restore an older Seed. Keep the volume when removing
-the old VM, and stop its writers cleanly before detaching it when possible. Use
-the [configuration-plus-Seed procedure](RECOVERY_CONTRACT.md) instead when only a
-completed Seed and configuration backup are available.
+certificates. It does **not** restore an older Seed or upgrade the saved GitLab
+version. Keep the volume when removing the old VM, and stop its writers cleanly
+before detaching it when possible. Use the
+[configuration-plus-Seed procedure](RECOVERY_CONTRACT.md) instead when only a
+completed Seed and configuration backup are available. A version change follows
+the separate [evolution procedure](#5-evolving-a-running-system).
 
-Before starting, obtain your recorded System source revision, filesystem UUID,
-mount and data paths, complete saved configuration and exact service-image
-selectors. Choose enough host resources for GitLab and any simultaneous builds or
-disposable tests. Keep the configured DNS names; update their A/AAAA records if
-the public address changes. Public HTTPS requires ports 80 and 443 to reach this
-host. Do not apply the local HTTP preparation from section 0.2 to this deployment.
+Before starting, obtain your accepted host-tools revision, recorded runtime
+source/image identities, filesystem UUID, mount/data paths and complete saved
+configuration. The recovery manifest and declared image archives must already
+have been prepared through the
+[image-recovery procedure](PERSISTENT_VOLUME.md#replacing-a-vm-while-retaining-live-data).
+Choose enough host resources for GitLab and any simultaneous builds or disposable
+tests. Keep the configured DNS names; update their A/AAAA records if the public
+address changes. Public HTTPS requires ports 80 and 443 to reach this host. Do
+not apply the local HTTP preparation from section 0.2 to this deployment.
 
-1. On the replacement Ubuntu host, fetch source as in section 0.1. Check out the
-   recorded System revision and initialize its pinned submodules, rather than
-   updating them to their newest branches. A configured source mirror can provide
-   this checkout while the platform's own GitLab is unavailable:
+1. On the replacement Ubuntu host, fetch source as in section 0.1. Select a
+   reviewed tools revision containing the initialization entry point and initialize
+   its exact submodules. A prepublished accepted source mirror or Git bundle
+   containing the required commits can provide this checkout while the platform's
+   own GitLab is unavailable:
 
    ```bash
-   SYSTEM_REVISION=REPLACE_WITH_RECORDED_COMMIT
-   git checkout --detach "$SYSTEM_REVISION"
+   SYSTEM_TOOLS_REVISION=REPLACE_WITH_REVIEWED_TOOLS_COMMIT
+   git checkout --detach "$SYSTEM_TOOLS_REVISION"
    git submodule update --init --recursive
-   sudo bash bootstrapper/install.sh
-   sudo apt-get install -y certbot
    ```
 
+   A plain source ZIP without Git history does not satisfy the initialization
+   tool's commit/tree verification. Keep the checkout clean. The recorded
+   controller source in the image manifest may be an earlier accepted revision;
+   the tool checks its tree and Wizard
+   gitlink separately and records the host-tools revision too. Do not update a
+   submodule to its latest branch or change saved service versions to match the
+   fresh-install examples.
+
 2. Inspect `lsblk -f` and mount the **existing** filesystem at its previous
-   absolute mount path. Replace the example assignments below with the retained
-   installation's values. Do not format the attached volume:
+   absolute mount path. Replace these example assignments with your installation's
+   values. Do not format the attached volume:
 
    ```bash
    PERSISTENT_MOUNT=/mnt/bootstrapper-data
@@ -731,9 +745,8 @@ host. Do not apply the local HTTP preparation from section 0.2 to this deploymen
    ```
 
    If it is already mounted, verify its UUID and target instead of mounting it
-   again. Recreate the host selector with only these storage settings; inspect
-   any retained selector before reusing it, since unrelated old image overrides
-   can select the wrong services:
+   again. Recreate the private selector with only these storage settings; unrelated
+   old image overrides could select the wrong services:
 
    ```bash
    sudo install -d -m 0700 /etc/system-bootstrapper
@@ -744,56 +757,70 @@ host. Do not apply the local HTTP preparation from section 0.2 to this deploymen
    PERSISTENT_UUID=$PERSISTENT_UUID
    EOF
    sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-   sudo bash bootstrapper/install-volume-host.sh
    ```
 
-   Host integration validates storage, adds the persistent mount dependency and
-   reconnects `/etc/letsencrypt` to the retained complete Certbot tree. It installs
-   the renewal timer, shared renewal/Harvest lease and certificate deploy hook.
-   Conflicting active host and volume certificate state requires deliberate
-   reconciliation; do not overwrite either tree to make startup continue.
+3. Verify that `platform/recovery/images.json` describes the recorded source,
+   exact image IDs, local aliases and checksummed archives. The full manifest
+   schema and input requirements are in the
+   [initialization tool documentation](../bootstrapper/README.md). Missing source
+   identities or aliases are a preparation failure, not permission to substitute
+   a different image or copy a private recovery script onto the host.
 
-3. Select one image-recovery path from the
-   [persistent-volume guide](PERSISTENT_VOLUME.md#replacing-a-vm-while-retaining-live-data).
-   Normally, rebuild the controller from the chosen clean source, make the exact
-   public service images available, then run `sudo bash start.sh`. Preserve the
-   saved GitLab version/edition and immutable private Wizard reference. The fresh
-   installation's image examples are not an upgrade path for an existing database.
-   A missing custom local tag must be rebuilt or restored explicitly. Managed
-   helper identities require the guide's explicit reprovisioning when rebuilt.
-
-   Alternatively, if you deliberately prepared the declared image manifest and
-   checksum-verified archives described in that guide, reuse those exact images:
+4. Run the committed initialization coordinator from this reviewed checkout:
 
    ```bash
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/recover-volume.sh --verify
-   sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/recover-volume.sh
+     bash bootstrapper/initialize.sh \
+       --install-host \
+       --receipt-dir /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID \
+       --timeout 1200
    ```
 
-   This alternative loads the declared archives and public references and starts
-   without rebuilding the controller. It neither restores a Seed nor supplies
-   recovery archives from the checkout. Keep additional image selectors in the
-   complete saved main configuration, or pass the recorded selectors explicitly
-   when invoking startup; never substitute example image defaults.
+   Choose a new receipt directory for each attempt. `--install-host` installs the
+   documented Ubuntu dependencies, Docker and Certbot. Omit it if the host is
+   already prepared. The coordinator validates storage, source and archives,
+   captures a baseline, loads the declared images, installs volume/TLS host
+   integration, starts the services and checks their actual application readiness.
+   It never formats a filesystem, restores Seed or changes the saved configuration.
 
-4. Wait for GitLab readiness. If the saved Wizard image is absent from the new
-   Docker cache and lives in this GitLab's registry, startup first exposes only
-   GitLab/registry routing and pulls that exact digest using a temporary scoped
-   credential. No old Docker login or replacement Wizard build is required. See
-   [private Wizard recovery](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image)
-   for validation, cleanup and interrupted-operation handling.
-5. Open your configured public Wizard and Sync addresses, connect and Fetch.
-   Confirm the saved projects and settings, GitLab health, registry authentication
-   and online runner managers. Inspect each service's mount destination and each
-   named volume's backing device against the attached filesystem. Finally verify
-   retained TLS and renewal without stopping the proxy:
+   For a small host with sufficient **root-disk** space, explicitly add
+   `--swap-gib 8` if you want the tool to create swap. It refuses an existing
+   `/swapfile` or insufficient free space; swap does not replace RAM needed for
+   simultaneous candidate tests. Add `--renewal-dry-run` on a retained public
+   HTTPS installation to test Certbot through the shared renewal lease without
+   stopping the proxy. Add `--redirect-from https://example.com` only when that
+   origin is configured to redirect to the public Wizard.
+
+   For fresh GitLab runner-manager contact verification, provide
+   `--gitlab-token-file /root/REPLACE_WITH_PRIVATE_API_TOKEN_FILE`. The file must
+   be private (mode 0600) and contain a token with the documented administrator
+   `read_api` access. It is not a command-line token value. Without that input,
+   the receipt marks the API contact check as skipped; running containers alone
+   must not be reported as proof that managers are online.
+
+5. Inspect the private operation status and structured verification receipt. The
+   checks cover unchanged saved configuration, exact service images and Cube,
+   persistent mount backing, authenticated Sync Fetch, Wizard/GitLab/registry
+   routing and configured host TLS integration. Missing private Wizard images
+   are pulled at the saved immutable digest through
+   [temporary scoped registry recovery](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image).
+   Do not publish the private configuration, token file or raw logs.
+
+   To repeat runtime verification against the captured baseline, use the same
+   committed verifier and add the optional token/redirect arguments as needed:
 
    ```bash
-   sudo docker ps
-   sudo system-certbot renew --dry-run --run-deploy-hooks
+   sudo python3 bootstrapper/verify-runtime.py check \
+     --persistence-env /etc/system-bootstrapper/persistence.env \
+     --baseline /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/baseline.json \
+     --output /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/recheck.json \
+     --timeout 1200
    ```
+
+If a required entry point fails because behavior is missing, fix that behavior
+through a merge request and its applicable checks before deploying the corrected
+tools. Keep incomplete-operation markers and receipts for diagnosis; do not
+bypass guards or restore a stale Seed to make a host replacement continue.
 
 ## 1. Main actions
 
@@ -1126,3 +1153,417 @@ to the shared instance pool.
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
 
 See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
+
+
+## 5. Evolving a running system
+
+System evolution uses the development platform to change the source from which
+its successor is built. Generation **A** hosts the source, requirements, merge
+request, runner and image registry. Its pipeline builds and tests generation
+**B**. After review and a deliberate promotion, B supplies the same machinery
+for the next change. Merely restarting A or rebuilding an unchanged image does
+not demonstrate an improvement.
+
+The source is the DNA; service state is a separate input. Neither a public code
+mirror nor a container image contains an installation's users, repositories,
+issues, merge requests, registry blobs or encryption secrets. A successor must
+preserve those inputs as well as reproduce the container definitions.
+
+### 5.1 Prerequisites and ownership
+
+The host promotion commands below target the Ubuntu installation with a
+configured GitLab HTTPS origin. The local WSL/HTTP first-install path is separate.
+Before opening the change, prepare the following:
+
+| Input | Requirement |
+| --- | --- |
+| Accepted source | A clean, reviewed System revision and its exact recursive Wizard submodule commit. Every initialization, recovery, verification and deployment entry point must be versioned in that checkout. |
+| Existing generation | Record the GitLab version and edition, immutable service-image references and controller/Wizard source identities. Saved configuration takes precedence over first-install examples. |
+| Candidate resources | A trusted runner/host with capacity for Production and a separate disposable platform, including image archives and database copies. Obtain the resource lease before starting the heavy job. The current harness allows 12 GiB candidate RAM; this is not the total host requirement. |
+| Isolated state | Separate candidate containers, networks, Docker daemon and data directories. Never attach A's writable database or registry directories to B while A is running. |
+| Recovery checkpoint | A completed, checksum-verified cold Harvest or an equivalently consistent supported backup, matching configuration, GitLab secrets and the exact previous images. Preserve the full Certbot account/renewal tree and any separately configured external storage. |
+| Independent recovery access | SSH/console access, the accepted checkout or Git bundle, required image archives, private storage selectors and credentials remain available while the platform's own GitLab is down. |
+| Promotion authority | An authorized maintenance window, a named operator/coordinator, the exact candidate evidence and a recovery decision point. A successful merge alone does not authorize arbitrary Production changes. |
+
+Use your own domains, mounted filesystem and private credentials. Keep
+installation-specific selectors, backups, logs and receipts outside Git. The
+repository owns the logic that produces and validates them; it does not contain
+an operator's passwords or data. Transfer secrets through the entry point's
+private inputs, never through a public pipeline specification or job log.
+
+The [candidate harness](../tests/e2e/README.md) uses a privileged private Docker
+daemon and therefore requires trusted code. Its resource limits are ceilings,
+not a reservation or a disk quota. A small host capable of serving the Wizard
+and GitLab is not necessarily capable of testing a second full platform.
+
+### 5.2 Develop B through A's merge-request workflow
+
+1. Record the intended improvement and acceptance criteria in the installation's
+   selected tracker. Create a branch from the accepted default branch.
+2. Change the committed image selectors, build recipes, tools and documentation
+   together. Pin the exact GitLab edition/version and image digest. Do not use a
+   floating tag to select the successor. Retain the previous accepted pins.
+3. Open a GitLab merge request. Test the committed revision; uncommitted local
+   edits or private wrappers are not part of the candidate. A missing operation
+   must be implemented and reviewed here before it is used on a live host.
+4. Keep the required merge gates enabled. Documentation-only changes use the
+   short documentation lane; image, CI, script and infrastructure changes use
+   the complete runtime lane. Do not classify an upgrade as documentation to
+   avoid migration testing.
+5. Review the implementation and its evidence, merge only when the required
+   current pipeline succeeds, and delete the merged working branch. The merged
+   default-branch revision receives its own applicable checks before promotion.
+
+The pipeline stages and their evidence are described in the
+[test guide](../tests/README.md#full-system-and-platform-gates). Component checks
+run without the host socket or network inside their child containers.
+`test:candidate-image` builds the complete System image from committed inputs.
+`test:platform-candidate` serializes the resource-heavy real platform checks and
+must pass before runtime publishing. The pipeline's resource group complements,
+but does not replace, host capacity checks and the operator's resource lease.
+
+For the declared GitLab migration, the disposable candidate has one shared
+40-minute execution budget; the CI job has a 45-minute deadline including image
+preparation, publication and cleanup. These are upper bounds, not a prediction
+that every change takes that long. Documentation-only changes retain their short
+lane. No earlier passing fixture or MR run replaces the required acceptance for
+the exact merged source being promoted.
+
+### 5.3 Validate existing-state migration, not only first startup
+
+A blank B starting successfully does not prove that A can be upgraded. Validate
+the transition using representative state created at A's GitLab version, then
+move only a consistent copy into the isolated candidate:
+
+1. Establish representative users, repositories, issues, merge requests and
+   discussions, encrypted settings and a registry image. Record identities and
+   repository/image hashes as private test oracles.
+2. Stop all writers through the supported backup procedure and verify the
+   checkpoint before copying. Keep the original generation or its recoverable
+   checkpoint separate from the candidate's writable data.
+3. Start the candidate with the proposed GitLab image and allow required regular
+   and background migrations to complete. Check GitLab's readiness and migration
+   state; a running Docker container alone is insufficient.
+4. Verify preserved identities, encrypted settings and registry pulls, then run
+   a real runner build/push/pull pipeline. Exercise a deliberately failing job
+   to prove that downstream delivery is blocked. Verify authenticated Sync
+   Fetch, the exact System Cube, Wizard routing and persistent mount boundaries.
+5. Exercise failure and recovery. Remove only exactly owned candidate resources;
+   retain sanitized source/image/stage evidence and cleanup receipts. Candidate
+   data archives and secrets must not become public CI artifacts.
+
+The existing configuration-plus-Seed scenario provides representative state and
+cold-recovery checks; see its
+[verification boundary](RECOVERY_CONTRACT.md#verification-boundaries). A check
+that restores to the same GitLab version is not, by itself, evidence of a
+cross-version migration. Require explicit source-version and target-version
+migration results for an upgrade.
+
+### 5.4 Example: a GitLab security patch is a system evolution
+
+A focused evolution can replace GitLab CE **19.4.2** with **19.4.3** while keeping
+the rest of the platform's declared behavior. GitLab's
+[October 2026 patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-1-released/)
+identifies security fixes in 19.4.3 and states that it includes regular and
+post-deployment database migrations. This is a specific version-transition example, not a rule that
+19.4.3 is the right target for every later installation. Check the upstream
+upgrade path and patch notes for the actual source and target before each change.
+
+Here the improvement is measurable: the accepted target image contains the
+specified upstream fixes, the previous database migrates successfully, and
+projects, credentials and the platform's build/delivery behavior remain usable.
+A hosts the merge request and runs these tests for B; changing the image directly
+on the live host first would bypass that evolution process.
+
+A single-node GitLab has downtime during this patch's database migration. The
+Wizard's two-container proxy switch does not turn a GitLab database upgrade into
+a zero-downtime rollout. Do not run old and new GitLab versions against the same
+live data or promise that switching NGINX back reverses a database migration.
+
+### 5.5 Promote the accepted successor
+
+Before stopping A, retain the accepted source and required tools outside the
+GitLab service being upgraded. Preserve the exact image evidence and a verified
+checkpoint on storage that remains accessible during maintenance. Preload the
+required images if their registry will be unavailable during the switch. A
+prepublished accepted mirror or Git bundle, including the required pinned
+submodule sources, breaks the dependency on needing GitLab to recover GitLab; a
+private local script does not.
+
+To retain source independently, run these standard Git commands from the clean
+accepted checkout on your management host while its sources are available:
+
+```bash
+umask 077
+git submodule update --init --recursive
+SOURCE_BUNDLE_DIR=/root/system-successor/source
+install -d -m 0700 "$SOURCE_BUNDLE_DIR"
+git bundle create "$SOURCE_BUNDLE_DIR/system.bundle" HEAD
+git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
+git bundle verify "$SOURCE_BUNDLE_DIR/system.bundle"
+git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+git rev-parse HEAD
+```
+
+Keep the recorded System revision and the verified bundles outside the GitLab
+service. A later replacement host can clone `system.bundle`, check out that
+recorded revision and initialize the Wizard without contacting GitLab or GitHub:
+
+```bash
+git clone "$SOURCE_BUNDLE_DIR/system.bundle" /opt/system
+git -C /opt/system checkout --detach "$SYSTEM_TOOLS_REVISION"
+git -C /opt/system \
+  -c protocol.file.allow=always \
+  -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
+  submodule update --init --recursive
+```
+
+Transfer the private bundles to that host first and set `SOURCE_BUNDLE_DIR` and
+`SYSTEM_TOOLS_REVISION` deliberately. The file-protocol override applies only to
+this invocation using the verified local bundles. These commands cover the repository's Wizard
+submodule; include equivalent recorded bundles if your fork adds more submodules.
+A plain source ZIP does not contain the Git objects needed by initialization.
+
+Production promotion uses the committed operator entry point from that accepted
+checkout. It must bind its actions to the reviewed source, image pins, successful
+candidate results and exact existing installation. Run it from the host or an
+independent management connection, rather than relying on a CI job to survive
+stopping the GitLab that coordinates it.
+
+For the declared CE 19.4.2 → 19.4.3 transition,
+[`gitlab/security-release.json`](../gitlab/security-release.json) contains the
+allowed source and target image pins. Make both images available before the
+outage. First deploy the **exact tested full controller image** containing the
+accepted tools, while preserving the saved 19.4.2 GitLab selection. Do not rebuild
+another image from the same tag and assume it has the tested identity. The helper
+requires the running controller to match the image recorded by the accepted
+candidate evidence; publishing a runtime base alone does not meet this condition.
+
+#### Stage the accepted controller from the host
+
+Check out the accepted merged source with its pinned submodules. Download these
+**frozen** artifacts from its `test:platform-candidate` job:
+
+- `test-results/successor/release.json`
+- `test-results/successor/candidate-results.json`
+
+Keep them in a private directory, for example `/root/system-successor/`, at mode
+0600. Do not substitute the working `test-results/e2e/` receipt: independent cleanup
+can append results there after publication, while the frozen copy's bytes are
+bound to the release hash.
+
+Provide a private token file that can read the source project's pipeline, jobs
+and artifacts and pull its private registry image. Suitable `read_api` and
+`read_registry` access is sufficient when the account's project permissions allow
+those operations. The token value is never a command argument. The host helper
+checks the configured GitLab HTTPS origin, current default-branch revision,
+required successful internal jobs, exact candidate-job identity, authenticated
+artifact bytes and published image/source labels. An optional GitHub mirror
+failure alone is recorded separately; it does not substitute for or weaken any
+internal runtime test. Other pipeline failures block promotion.
+
+First run the source/CI input check:
+
+```bash
+sudo python3 bootstrapper/promote-controller.py \
+  --operation promote \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --release /root/system-successor/release.json \
+  --evidence /root/system-successor/candidate-results.json \
+  --gitlab-url https://gitlab.example.com \
+  --token-file /root/system-successor/gitlab-api-token \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \
+  --cold-maintenance --timeout 1200 --check-only
+```
+
+Replace the origin and paths with your deployment's values. After review, run
+the same command **without `--check-only`** to perform the authorized controller
+promotion. `--cold-maintenance` is the bridge for an older controller whose Sync
+API cannot prove the project queue is idle: the committed helper stops public
+traffic, freezes the old controller with restart disabled, drains its remote
+work, cleanly stops the old GitLab and takes a verified cold checkpoint before
+starting the accepted controller. This is a maintenance interruption. Do not
+replace this proof with an operator assertion that an old API is idle.
+
+For a controller already supporting the required idle/lease protocol, omit
+`--cold-maintenance` only when the helper accepts that protocol. Normal native
+startup may reconcile NGINX and the Wizard; the acceptance condition is that
+GitLab remains on the recorded old image/version and no GitLab migration has
+started. The controller is selected through a source/job-specific local alias
+bound to the accepted image ID. Its immutable registry reference remains release
+metadata; the local alias allows a later cold start from an archive before the
+platform's own registry is available.
+
+If this **controller** operation is interrupted, use its same checkpoint with
+the committed status and, when appropriate, abort actions:
+
+```bash
+sudo python3 bootstrapper/promote-controller.py \
+  --operation status \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID
+
+sudo python3 bootstrapper/promote-controller.py \
+  --operation abort \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \
+  --timeout 1200
+```
+
+Inspect status before choosing an action. Controller abort verifies its owned
+operation, restores the previous controller configuration and resumes the old
+controller on the **same GitLab image**. It does not rewind the database and
+refuses a changed GitLab image. After GitLab migration has begun, use the separate
+GitLab checkpoint recovery below. The host controller tool has no `resume` action;
+database rollback requires restoration through the GitLab upgrade helper.
+
+#### Migrate GitLab through the accepted controller
+
+Copy the frozen `candidate-results.json` privately as
+`accepted-candidate-results.json` into the persistent configuration directory,
+which the controller mounts at `/state`. Create a private `upgrade-options.json`
+there with the following fields, replacing the example path, operation ID and
+commit with your deployment's accepted values:
+
+```json
+{
+  "sourceRevision": "REPLACE_WITH_ACCEPTED_40_CHARACTER_SYSTEM_COMMIT",
+  "evidence": "/state/accepted-candidate-results.json",
+  "stateDir": "/state",
+  "persistentDir": "/mnt/bootstrapper-data/platform",
+  "checkpointDir": "/state/gitlab-upgrades/REPLACE_WITH_UNIQUE_OPERATION_ID",
+  "readyTimeoutSeconds": 900
+}
+```
+
+Keep both input files at mode 0600. `sourceRevision` must be the exact accepted
+revision in the evidence. `persistentDir` is the **host** path used by the
+installation's volume bindings; `/state` and `checkpointDir` are controller paths.
+Use a new checkpoint directory, with space for a full cold GitLab copy and reserve,
+for each attempt. No API token is part of this options object.
+
+From an independent host terminal, request the read-only plan:
+
+```bash
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js plan /state/upgrade-options.json
+```
+
+Inspect the returned plan and `planSha256`. It binds the accepted evidence,
+source, current container and configuration to the exact old and new images and
+the checkpoint location. Resolve failed preconditions before continuing; do not
+edit the evidence to make a plan pass. After authorization for that exact plan,
+use its hash as the confirmation:
+
+```bash
+PLAN_SHA256=REPLACE_WITH_REVIEWED_PLAN_SHA256
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js promote /state/upgrade-options.json "$PLAN_SHA256"
+```
+
+Run this host command outside the GitLab CI job that will lose its server.
+Retain the output, including `checkpointSha256`, privately. The checkpoint and
+phase receipt are written beneath the configured `checkpointDir`; a shell or
+network disconnection is not evidence that promotion succeeded or failed.
+
+The production sequence serializes against configuration writes, Harvest/restore,
+certificate-state changes and other deployments. The GitLab helper drains its HTTP
+entry services before the final idle-job check, so native and external runners
+cannot claim new work during checkpoint creation. If an in-flight job claim is
+discovered, it restores the old HTTP service and stops before the database
+shutdown/checkpoint. Otherwise, it quiesces writers, captures the final compatible
+checkpoint, applies the accepted image selection, migrates and verifies B. Keep
+service identity and public routing explicit. Do not enable a candidate's test
+credentials or private test hostnames in Production.
+
+After startup, verify the actual GitLab version and migration state,
+authentication, repository and issue access, registry authentication and pulls,
+fresh runner-manager contact, authenticated configuration Fetch, Wizard routing,
+mounted storage and certificate renewal. Retain the private promotion receipt
+with the accepted commit, exact image IDs/digests, checkpoint identity and check
+outcomes.
+
+#### Export B's matching recovery inputs
+
+After GitLab migration and acceptance, run the committed recovery exporter from
+the same clean accepted checkout:
+
+```bash
+sudo python3 bootstrapper/record-recovery-images.py \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --release /root/system-successor/release.json \
+  --evidence /root/system-successor/candidate-results.json \
+  --gitlab-url https://gitlab.example.com \
+  --token-file /root/system-successor/gitlab-api-token \
+  --output /root/system-successor/recovery-export.json
+```
+
+The exporter verifies the accepted CI/source evidence and running controller and
+GitLab identities, writes a checksummed controller archive and updates the declared
+source, aliases and public service-image selectors. It preserves previous manifest
+history, versioned controller aliases and existing Wizard recovery inputs rather
+than pruning them. The local controller alias is restored from its verified image
+archive on the next host; no old Docker login is required to boot the registry.
+
+Retain the export receipt and independently record its manifest checksum. Preserve
+the accepted System Git objects and pinned Wizard sources outside the GitLab
+service as well, especially when its optional public mirror is unavailable. Verify
+the new manifest before relying on it:
+
+```bash
+sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+  bash bootstrapper/recover-volume.sh --verify
+```
+
+This check validates inputs without restarting services. The next
+replacement host must select B's controller and GitLab images, rather than an old
+manifest describing A. Keep the pre-upgrade checkpoint until B and its matching
+recovery inputs have been accepted. Only then is B ready to host the next reviewed
+evolution.
+
+### 5.6 Failure, recovery and the autonomy boundary
+
+If migration or acceptance fails, inspect the committed helper's recorded phase:
+
+```bash
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js status /state/upgrade-options.json
+```
+
+Before a completed checkpoint exists, the helper's `abort` action accepts the
+reviewed plan hash and can recover that pre-migration attempt. After a completed
+checkpoint exists, use `rollback` with its recorded hash to restore the compatible
+old state. Do not choose between these actions from a disconnected terminal's
+exit code; inspect the durable receipt and ensure no original operation is still
+running.
+
+```bash
+# Only for a confirmed pre-checkpoint failure:
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js abort /state/upgrade-options.json "$PLAN_SHA256"
+
+# For a confirmed completed-checkpoint recovery:
+CHECKPOINT_SHA256=REPLACE_WITH_VERIFIED_CHECKPOINT_SHA256
+sudo docker exec -w /system system_bootstrapper_1 \
+  node gitlab/upgrade.js rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
+```
+
+Use only the action appropriate to the recorded phase; the commands are
+alternatives, not a sequence to run unconditionally. Keep interrupted-operation
+leases and incomplete-restore markers for the helper to reconcile. Do not delete
+one manually to bypass a refusal.
+
+Stop B's writers and preserve the failure receipt. Do not simply start the old
+GitLab image on a database already migrated by B. Recovery requires the compatible
+pre-upgrade state, configuration/secrets and exact old images through the
+committed recovery procedure. Keep the failed
+candidate data separate until diagnosis is complete; do not overwrite the only
+usable checkpoint. See [Harvest/Seed recovery](RECOVERY_CONTRACT.md) for the cold
+snapshot contract and incomplete-restore guard.
+
+The platform automates the declared, tested sequence. It does not grant an agent
+permission to invent new infrastructure changes, bypass review or weaken merge
+gates. In this chapter, autonomous execution means carrying out the authorized
+version transition and its verification using repository-owned tools. Choosing
+arbitrary improvements and recursively promoting them without acceptance remains
+a separate capability that must not be inferred from a successful patch upgrade.

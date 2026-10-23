@@ -60,6 +60,17 @@ const status = {
 // must also protect ordinary Push, deletion and system-control mutations.
 const environmentHelperBusy = () => fs.existsSync(wizardConfigPath() + '.environments.lock');
 
+// The repository-owned GitLab evolution helper holds this filesystem lease.
+// Authentication and read-only status remain available throughout maintenance.
+app.use((req, res, next) => {
+  if (fs.existsSync(path.join(process.env.SYSTEM_CONFIG_DIR || '/state', '.gitlab-upgrade-lock')) &&
+      (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path.startsWith('/projects')) && !['/login', '/token', '/logout'].includes(req.path)) {
+    res.status(409).json({message: 'A GitLab upgrade is in progress. Wait before changing the platform.'});
+    return;
+  }
+  next();
+});
+
 // Keep the configuration stable while the asynchronous setup saves its token.
 app.use(['/config', '/command'], (req, res, next) => {
   if ((fs.existsSync('/seed/.operation-lock') || status.harvestInProgress || status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy()) && req.method !== 'GET') {
@@ -144,7 +155,7 @@ app.post('/logout', authenticateJWT, (req, res) => {
 });
 
 app.get( "/status", authenticateJWT, async ( req, res ) => {
-  res.status(200).json(status)
+  res.status(200).json({...status, projectOperationInProgress: projectBusy()})
 });
 
 app.get( "/config/main", authenticateJWT, async ( req, res ) => {

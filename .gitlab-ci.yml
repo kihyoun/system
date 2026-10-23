@@ -162,22 +162,23 @@ test:platform-candidate:
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 28m
+    RUNNER_SCRIPT_TIMEOUT: 43m
     RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
   cache: []
   dependencies: [prepare:wizard-source]
-  timeout: 30m
+  timeout: 45m
   allow_failure: false
   before_script:
     - sh bootstrapper/install-runtime.sh
   script:
+    - node gitlab/check-candidate-capacity.js
     - sh tests/ci-platform.sh
   after_script:
     - sh tests/ci-platform.sh cleanup
   artifacts:
     when: always
     expire_in: 7 days
-    paths: [test-results/e2e/]
+    paths: [test-results/e2e/, test-results/successor/]
     reports:
       junit: test-results/e2e/*/junit.xml
   rules: *runtime-rules

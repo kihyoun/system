@@ -33,5 +33,9 @@ on_exit() {
 trap on_exit EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+mkdir -p test-results/successor
+node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon > test-results/successor/controller-stop-primitive.json
+cat test-results/successor/controller-stop-primitive.json
 node tests/e2e/prepare-images.js
 node tests/e2e/candidate.js .candidate-images/spec.json
+node gitlab/publish-successor.js

@@ -461,6 +461,10 @@ async function run(original,reportDirectory,dependencies={}) {
     await second.platform();
     await (dependencies.verifyRegistryBlob || verifyRegistryBlob)(second,input);
     if(acme)await acme.renew(second,input.expected.acme);
+    if(original.spec.gitlabUpgradeAcceptance===true){
+      await require('./gitlab-upgrade').run(second);
+      original.evidence.gitlabUpgrade=second.evidence.gitlabUpgrade;
+    }
     original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true,mergeRequestRecoveryVerified:second.mergeRequestRecoveryVerified===true};
   } finally {
     let clean=true;

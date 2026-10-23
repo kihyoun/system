@@ -111,7 +111,7 @@ class Candidate {
       if (!/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-image-input');
     }
     for(const [role,image] of Object.entries(spec.supportImages || {})) {
-      if(role!=='helper' || !/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-support-image');
+      if(!['helper','previousGitlab'].includes(role) || !/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-support-image');
     }
     this.spec=spec; this.exec=options.docker || docker;
     this.request=options.request || ((url,requestOptions)=>this.httpFromCandidate(url,requestOptions));
@@ -119,7 +119,7 @@ class Candidate {
     this.now=options.now || Date.now;
     this.id=crypto.randomBytes(12).toString('hex'); this.name='system-candidate-'+this.id;
     this.resources=[]; this.canceled=false; this.startedAt=this.now();
-    this.deadline=this.startedAt+(spec.acmeRenewalAcceptance===true?1500000:1200000);
+    this.deadline=this.startedAt+(spec.gitlabUpgradeAcceptance===true?2400000:spec.acmeRenewalAcceptance===true?1500000:1200000);
     this.checkpoint=options.checkpoint || (()=>{});
     this.secrets={user:'test'+crypto.randomBytes(8).toString('hex'),
       password:crypto.randomBytes(24).toString('hex'),root:crypto.randomBytes(24).toString('hex')};
@@ -170,13 +170,18 @@ class Candidate {
       this.url='http://candidate.invalid';
     });
     await this.stage('candidate-images',async()=>{
-      const tags={candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test'};
+      const tags={candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous'};
       for (const [role,image] of Object.entries({...this.spec.images,...this.spec.supportImages})) {
         // Stream the explicit archive from an open descriptor. No buffering a
         // multi-gigabyte image in Node and no outer-host bind path assumptions.
         await this.inner(['load'],{inputFile:image.archive,timeout:600000});
         if(await this.inner(['image','inspect','--format','{{.Id}}',image.id])!==image.id) throw new Error('image-identity-mismatch');
         await this.inner(['tag',image.id,tags[role]]);
+      }
+      if(this.spec.gitlabUpgradeAcceptance===true){
+        if(!this.spec.supportImages?.previousGitlab)throw Error('upgrade-previous-image-required');
+        await this.inner(['tag',this.spec.images.gitlab.id,'candidate-gitlab:target']);
+        await this.inner(['tag',this.spec.supportImages.previousGitlab.id,'candidate-gitlab:under-test']);
       }
     });
     await this.stage('bootstrap',async()=>{
@@ -480,6 +485,7 @@ function recover(report,exec=docker) {
     for(const key of ['backupOnly','originalHostRemoved','syntheticTlsVerified','acmeRenewalVerified','privateWizardPinVerified','mergeRequestRecoveryVerified'])if(typeof report.evidence.recovery[key]==='boolean')recovery[key]=report.evidence.recovery[key];
     evidence.recovery=recovery;
   }
+  if(report.evidence?.gitlabUpgrade){const clean=require('../e2e/gitlab-upgrade').sanitizeEvidence(report.evidence.gitlabUpgrade);if(clean)evidence.gitlabUpgrade=clean;}
   Object.assign(instance,{id:report.runId,name,resources:report.resources,results,exec,
     startedAt:typeof report.startedAt==='string'&&Number.isFinite(Date.parse(report.startedAt))?Date.parse(report.startedAt):undefined,
     evidence:Object.keys(evidence).length?evidence:undefined,
