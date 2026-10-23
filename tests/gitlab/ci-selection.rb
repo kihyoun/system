@@ -101,7 +101,11 @@ full.each do |name|
   Array(job['dependencies']).each { |dependency| raise 'Inconsistent artifact selection' unless full.include?(dependency) }
 end
 documentation = jobs.fetch('check:documentation')
-raise 'Documentation lane must be socket/service-free' unless documentation['services'] == [] && documentation['tags'] == ['system-source-lightweight']
+raise 'Documentation lane must reuse the native trusted Docker pool without DinD' unless documentation['services'] == [] && documentation['tags'] == ['docker']
+raise 'Documentation checker must run through its isolated child launcher' unless documentation['script'] == ['sh tests/ci-documentation.sh'] &&
+  documentation['after_script'] == ['sh tests/ci-documentation.sh cleanup']
+raise 'Documentation lane must retain its short bounded budget' unless documentation['timeout'] == '3m' &&
+  documentation.dig('variables', 'RUNNER_SCRIPT_TIMEOUT') == '2m' && documentation.dig('variables', 'RUNNER_AFTER_SCRIPT_TIMEOUT') == '30s'
 raise 'Documentation lane must not require runtime artifacts' if documentation['needs'] || documentation['dependencies']
 raise 'Documentation lane must be required' unless documentation['allow_failure'] == false
 raise 'Unexpected mirror dependencies' unless jobs.fetch('deploy:github')['dependencies'] == []

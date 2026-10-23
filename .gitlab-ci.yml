@@ -50,20 +50,25 @@ cache:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       changes: *runtime-changes
 
-# This check uses committed Git objects, without a Docker service or submodules.
+# The native trusted parent exports public Git objects to a socket-free child.
 check:documentation:
   stage: prepare
-  image: node:24.22.0-bookworm@sha256:14078204b6bb268c107ceff6d3c43f45a888105e5c2b18b14c32b3409d93a1b0
+  image: docker:29.9.1-cli@sha256:6fae2214c3121a28d5aa639d09032f61310b7c9c75ffbad1025f261a1b621800
   services: []
-  tags: [system-source-lightweight]
+  tags: [docker]
   variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
     GIT_DEPTH: "0"
     GIT_SUBMODULE_STRATEGY: none
+    RUNNER_SCRIPT_TIMEOUT: 2m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 30s
   cache: []
   timeout: 3m
   allow_failure: false
   script:
-    - node gitlab/check-documentation.js
+    - sh tests/ci-documentation.sh
+  after_script:
+    - sh tests/ci-documentation.sh cleanup
   artifacts:
     when: always
     expire_in: 7 days
