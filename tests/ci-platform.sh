@@ -35,3 +35,4 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 node tests/e2e/prepare-images.js
 node tests/e2e/candidate.js .candidate-images/spec.json
+node gitlab/publish-successor.js
