@@ -19,12 +19,13 @@ async function watchdog(directory){
   const witness={format:'system-gitlab-upgrade-child-v1',operation:owner.operation,watchdogPid:process.pid,watchdogStart:stat(process.pid).start,
     group:child.pid,workerStart:stat(child.pid).start,deadline:uptime()+job.timeout/1000+3,phase:'running'};
   const filename=path.join(directory,'child.json');record(filename,witness);
-  const kill=signal=>{try{process.kill(-child.pid,signal);}catch(error){if(error.code!=='ESRCH')throw error;}};
-  const timeout=setTimeout(()=>{expired=true;kill('SIGTERM');setTimeout(()=>kill('SIGKILL'),2000);},job.timeout);
+  const kill=signal=>{if(!activeGroup(child.pid))return;const leader=stat(child.pid);if(leader&&leader.start!==witness.workerStart)throw Error('operation-group-identity-changed');try{process.kill(-child.pid,signal);}catch(error){if(error.code!=='ESRCH')throw error;}};
+  let hardKillTimer;
+  const timeout=setTimeout(()=>{expired=true;kill('SIGTERM');hardKillTimer=setTimeout(()=>kill('SIGKILL'),2000);},job.timeout);
   child.stdout.pipe(process.stdout);child.stderr.pipe(process.stderr);
   const completion=new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',code=>resolve(code));});
   child.stdin.end(JSON.stringify(job));
-  const code=await completion;clearTimeout(timeout);
+  const code=await completion;clearTimeout(timeout);if(hardKillTimer)clearTimeout(hardKillTimer);
   if(activeGroup(child.pid)){kill('SIGTERM');await new Promise(resolve=>setTimeout(resolve,100));if(activeGroup(child.pid))kill('SIGKILL');}
   witness.phase='completed';witness.exitCode=code===0&&!expired?0:1;record(filename,witness);process.exitCode=witness.exitCode;
 }

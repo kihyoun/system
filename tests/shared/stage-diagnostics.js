@@ -2,6 +2,7 @@
 // Only committed, source-owned diagnostic codes may reach receipts. A regex
 // alone would also admit a credential shaped like a hyphenated error string.
 const REASONS = new Set([
+  'upgrade-restored-payload-mismatch',
   'upgrade-operation-child-still-running',
   'upgrade-quiesce-deadline-exceeded',
 

@@ -65,3 +65,21 @@ test('every copied checkpoint directory and its ancestors are durable before the
   };
   try{f.engine.lock('a'.repeat(64));await f.engine.migrate(f.plan);}finally{fs.fsyncSync=originalSync;}
 });
+
+test('restore replaces changed bytes even when file size and modification time equal the cold checkpoint',async t=>{
+  const f=fixture(t);f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);
+  const live=path.join(f.serviceData,'data/original'),saved=path.join(f.engine.checkpoints,'gitlab/data/original'),metadata=fs.statSync(saved);
+  const old=fs.readFileSync(saved);fs.writeFileSync(live,Buffer.alloc(old.length,88));fs.utimesSync(live,metadata.atime,metadata.mtime);
+  assert.equal(fs.statSync(live).size,metadata.size);assert.equal(Math.floor(fs.statSync(live).mtimeMs),Math.floor(metadata.mtimeMs));
+  f.crash();await f.engine.rollback(migrated.checkpointSha256);assert(fs.readFileSync(live).equals(old));
+});
+
+test('a completed worker group does not permit adoption while its journal-writing watchdog is alive',async t=>{
+  const f=fixture(t);f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);f.engine.adopt(migrated.checkpointSha256,'checkpointSha256');
+  const owner={...f.engine.owner,pid:99999999,start:'0'};
+  for(const lock of f.engine.held)atomic(path.join(lock,'upgrade-owner.json'),JSON.stringify(owner));
+  const {stat}=require('../../gitlab/upgrade-child');
+  atomic(path.join(f.state,'.gitlab-upgrade-lock/child.json'),JSON.stringify({format:'system-gitlab-upgrade-child-v1',operation:owner.operation,group:99999999,watchdogPid:process.pid,watchdogStart:stat(process.pid).start,phase:'completed'}));
+  assert.throws(()=>f.engine.adopt(migrated.checkpointSha256,'checkpointSha256'),/child-still-running/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.state,'.gitlab-upgrade-lock/upgrade-owner.json'),'utf8')).pid,99999999);
+});

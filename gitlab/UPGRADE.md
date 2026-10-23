@@ -107,7 +107,9 @@ configuration, secrets, repository/registry/database data and the saved settings
 with the corresponding old image. A failed successor that exited with an error
 or OOM is recoverable; a still-running writer is not. During an interrupted copy,
 the durable restore marker prevents ordinary startup. The marker is removed only
-after all copies and destination-directory durability barriers finish.
+after checksum-based copies, an exact SHA-256/metadata inventory comparison and
+destination-directory durability barriers finish. Equal file sizes and timestamps
+do not establish that migrated database bytes match the checkpoint.
 
 A successful GitLab promotion does not by itself update the independent host
 recovery manifest. Publish the new tested controller/source and GitLab image

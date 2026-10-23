@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {Upgrade,release,options,imageAssignment,inventory,hash,atomic,run}=require('../../gitlab/upgrade');
+const {Upgrade,release,QUIESCE_SCRIPT,options,imageAssignment,inventory,hash,atomic,run}=require('../../gitlab/upgrade');
 const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
 const base={sourceRevision:'a'.repeat(40),evidence:'/state/evidence.json',stateDir:'/state',persistentDir:'/operator/platform',checkpointDir:'/state/gitlab-upgrades/test',readyTimeoutSeconds:600};
 const ids={old:'sha256:'+'b'.repeat(64),next:'sha256:'+'c'.repeat(64)};
@@ -23,5 +23,12 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
   const planEngine=new Upgrade(base);let entered=false,unlocked=false;
   planEngine.lock=()=>{};planEngine.unlock=()=>{unlocked=true;};planEngine.syncIdle=()=>{};planEngine.plan=async()=>({planSha256:'d'.repeat(64)});planEngine.migrate=async()=>{entered=true;};
   await assert.rejects(()=>planEngine.promote('e'.repeat(64)),/reviewed-plan/);assert(!entered);assert(unlocked);
+  const timerDirectory=path.join(root,'bin');fs.mkdirSync(timerDirectory);const reached=path.join(root,'timeout-invoked');
+  fs.writeFileSync(path.join(timerDirectory,'timeout'),'#!/bin/sh\ntouch '+reached+'\n',{mode:0o755});
+  for(const remaining of [0,-1,111]){
+    const script=QUIESCE_SCRIPT.replace('read -r uptime rest </proc/uptime','uptime=100');
+    const result=require('child_process').spawnSync('sh',['-ec',script,'sh',String(100+remaining)],{env:{...process.env,PATH:timerDirectory+path.delimiter+process.env.PATH},encoding:'utf8'});
+    assert.equal(result.status,124,'An expired/out-of-budget remote quiesce must not invoke timeout, including timeout0.');assert(!fs.existsSync(reached));
+  }
   console.log('PASS: approved CE pins, exact Cube/config edits, component cwd, private/checksummed checkpoints, clean-stop requirement and review-plan gate.');
 }finally{fs.rmSync(root,{recursive:true,force:true});}})().catch(error=>{console.error(error);process.exitCode=1;});
