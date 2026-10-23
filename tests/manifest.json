@@ -66,5 +66,6 @@
   {"component":"gitlab","file":"gitlab/publish-successor.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/upgrade-recovery.js","timeoutSeconds":25},
   {"component":"gitlab","file":"gitlab/upgrade-child.js","timeoutSeconds":20},
-  {"component":"gitlab","file":"gitlab/upgrade-preflight.rb","timeoutSeconds":15}
+  {"component":"gitlab","file":"gitlab/upgrade-preflight.rb","timeoutSeconds":15},
+  {"component":"bootstrapper","file":"bootstrapper/successor-host-tools.py","timeoutSeconds":45}
 ]
