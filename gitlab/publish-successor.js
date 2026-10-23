@@ -3,6 +3,7 @@
 // Publish the image that passed the full candidate job, without rebuilding it.
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const crypto = require('crypto');
 const {spawnSync} = require('child_process');
 const release = require('./security-release.json');
@@ -49,7 +50,7 @@ function candidates(directory, ci) {
     if (proof.fullAcceptance !== true || !proof.evidence?.gitlabUpgrade) return [];
     validateEvidence(proof, ci);
     if (proof.runId !== name) throw Error('Candidate evidence directory mismatch.');
-    return [{proof, bytes, relative: 'test-results/e2e/' + name + '/results.json'}];
+    return [{proof, bytes}];
   });
 }
 
@@ -64,7 +65,7 @@ function publish(env = process.env, root = process.cwd(), execute = command) {
   const ci = context(env);
   const receipts = candidates(path.join(root, 'test-results/e2e'), ci);
   if (receipts.length !== 1) throw Error('Exactly one full successor acceptance receipt is required.');
-  const {proof, bytes, relative} = receipts[0];
+  const {proof, bytes} = receipts[0];
   const expectedId = validateEvidence(proof, ci);
   const tag = ci.registryRepository + ':pipeline-' + ci.pipelineId + '-job-' + ci.candidateJobId;
   const local = 'system-platform-candidate:ci-' + ci.projectId + '-' + ci.candidateJobId;
@@ -76,7 +77,9 @@ function publish(env = process.env, root = process.cwd(), execute = command) {
   if (!env.CI_REGISTRY_USER || !env.CI_REGISTRY_PASSWORD) throw Error('Scoped CI registry credentials are required.');
   const output = path.join(root, 'test-results/successor');
   fs.mkdirSync(output, {recursive: true, mode: 0o700});
-  const auth = fs.mkdtempSync(path.join(output, '.registry-auth-'));
+  // This directory MUST stay outside every artifact path. Finally cannot run
+  // after SIGKILL; even then a job must never upload its registry credentials.
+  const auth = fs.mkdtempSync(path.join(os.tmpdir(), 'system-successor-registry-'));
   fs.chmodSync(auth, 0o700);
   const dockerEnv = {...env, DOCKER_CONFIG: auth};
   let tagged = false;
@@ -96,7 +99,11 @@ function publish(env = process.env, root = process.cwd(), execute = command) {
       throw Error('Publication checkout/source mismatch.');
     const receipt = {format: 'system-successor-release-v1', ...ci,
       sourceTree: tree, wizardRevision: gitlink[1], imageId: expectedId,
-      registryReference: refs[0], candidateEvidenceSha256: digest(bytes), candidateEvidencePath: relative};
+      registryReference: refs[0], candidateEvidenceSha256: digest(bytes),
+      candidateEvidencePath: 'test-results/successor/candidate-results.json'};
+    // E2E after_script cleanup rewrites its working receipts. Freeze exactly
+    // the accepted bytes used here so the uploaded release hash stays valid.
+    fs.writeFileSync(path.join(output, 'candidate-results.json'), bytes, {mode: 0o600});
     fs.writeFileSync(path.join(output, 'release.json'), JSON.stringify(receipt, null, 2) + '\n', {mode: 0o600});
     return receipt;
   } finally {
@@ -111,5 +118,5 @@ function publish(env = process.env, root = process.cwd(), execute = command) {
 module.exports = {context, validateEvidence, candidates, publish};
 if (require.main === module) {
   try { const value = publish(); console.log('Published the accepted successor image: ' + value.registryReference); }
-  catch (error) { console.error(error.message); process.exitCode = 1; }
+  catch (_) { console.error('Successor publication refused; inspect candidate, source and image identity checks.'); process.exitCode = 1; }
 }
