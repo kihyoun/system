@@ -1171,6 +1171,8 @@ preserve those inputs as well as reproduce the container definitions.
 
 ### 5.1 Prerequisites and ownership
 
+The host promotion commands below target the Ubuntu installation with a
+configured GitLab HTTPS origin. The local WSL/HTTP first-install path is separate.
 Before opening the change, prepare the following:
 
 | Input | Requirement |
@@ -1219,6 +1221,13 @@ run without the host socket or network inside their child containers.
 `test:platform-candidate` serializes the resource-heavy real platform checks and
 must pass before runtime publishing. The pipeline's resource group complements,
 but does not replace, host capacity checks and the operator's resource lease.
+
+For the declared GitLab migration, the disposable candidate has one shared
+40-minute execution budget; the CI job has a 45-minute deadline including image
+preparation, publication and cleanup. These are upper bounds, not a prediction
+that every change takes that long. Documentation-only changes retain their short
+lane. No earlier passing fixture or MR run replaces the required acceptance for
+the exact merged source being promoted.
 
 ### 5.3 Validate existing-state migration, not only first startup
 
@@ -1281,6 +1290,40 @@ prepublished accepted mirror or Git bundle, including the required pinned
 submodule sources, breaks the dependency on needing GitLab to recover GitLab; a
 private local script does not.
 
+To retain source independently, run these standard Git commands from the clean
+accepted checkout on your management host while its sources are available:
+
+```bash
+umask 077
+git submodule update --init --recursive
+SOURCE_BUNDLE_DIR=/root/system-successor/source
+install -d -m 0700 "$SOURCE_BUNDLE_DIR"
+git bundle create "$SOURCE_BUNDLE_DIR/system.bundle" HEAD
+git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
+git bundle verify "$SOURCE_BUNDLE_DIR/system.bundle"
+git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+git rev-parse HEAD
+```
+
+Keep the recorded System revision and the verified bundles outside the GitLab
+service. A later replacement host can clone `system.bundle`, check out that
+recorded revision and initialize the Wizard without contacting GitLab or GitHub:
+
+```bash
+git clone "$SOURCE_BUNDLE_DIR/system.bundle" /opt/system
+git -C /opt/system checkout --detach "$SYSTEM_TOOLS_REVISION"
+git -C /opt/system \
+  -c protocol.file.allow=always \
+  -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
+  submodule update --init --recursive
+```
+
+Transfer the private bundles to that host first and set `SOURCE_BUNDLE_DIR` and
+`SYSTEM_TOOLS_REVISION` deliberately. The file-protocol override applies only to
+this invocation using the verified local bundles. These commands cover the repository's Wizard
+submodule; include equivalent recorded bundles if your fork adds more submodules.
+A plain source ZIP does not contain the Git objects needed by initialization.
+
 Production promotion uses the committed operator entry point from that accepted
 checkout. It must bind its actions to the reviewed source, image pins, successful
 candidate results and exact existing installation. Run it from the host or an
@@ -1296,8 +1339,88 @@ another image from the same tag and assume it has the tested identity. The helpe
 requires the running controller to match the image recorded by the accepted
 candidate evidence; publishing a runtime base alone does not meet this condition.
 
-Store the accepted candidate's sanitized `results.json` privately as
-`accepted-candidate-results.json` in the persistent configuration directory,
+#### Stage the accepted controller from the host
+
+Check out the accepted merged source with its pinned submodules. Download these
+**frozen** artifacts from its `test:platform-candidate` job:
+
+- `test-results/successor/release.json`
+- `test-results/successor/candidate-results.json`
+
+Keep them in a private directory, for example `/root/system-successor/`, at mode
+0600. Do not substitute the working `test-results/e2e/` receipt: independent cleanup
+can append results there after publication, while the frozen copy's bytes are
+bound to the release hash.
+
+Provide a private token file that can read the source project's pipeline, jobs
+and artifacts and pull its private registry image. Suitable `read_api` and
+`read_registry` access is sufficient when the account's project permissions allow
+those operations. The token value is never a command argument. The host helper
+checks the configured GitLab HTTPS origin, current default-branch revision,
+required successful internal jobs, exact candidate-job identity, authenticated
+artifact bytes and published image/source labels. An optional GitHub mirror
+failure alone is recorded separately; it does not substitute for or weaken any
+internal runtime test. Other pipeline failures block promotion.
+
+First run the source/CI input check:
+
+```bash
+sudo python3 bootstrapper/promote-controller.py \
+  --operation promote \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --release /root/system-successor/release.json \
+  --evidence /root/system-successor/candidate-results.json \
+  --gitlab-url https://gitlab.example.com \
+  --token-file /root/system-successor/gitlab-api-token \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \
+  --cold-maintenance --timeout 1200 --check-only
+```
+
+Replace the origin and paths with your deployment's values. After review, run
+the same command **without `--check-only`** to perform the authorized controller
+promotion. `--cold-maintenance` is the bridge for an older controller whose Sync
+API cannot prove the project queue is idle: the committed helper stops public
+traffic, freezes the old controller with restart disabled, drains its remote
+work, cleanly stops the old GitLab and takes a verified cold checkpoint before
+starting the accepted controller. This is a maintenance interruption. Do not
+replace this proof with an operator assertion that an old API is idle.
+
+For a controller already supporting the required idle/lease protocol, omit
+`--cold-maintenance` only when the helper accepts that protocol. Normal native
+startup may reconcile NGINX and the Wizard; the acceptance condition is that
+GitLab remains on the recorded old image/version and no GitLab migration has
+started. The controller is selected through a source/job-specific local alias
+bound to the accepted image ID. Its immutable registry reference remains release
+metadata; the local alias allows a later cold start from an archive before the
+platform's own registry is available.
+
+If this **controller** operation is interrupted, use its same checkpoint with
+the committed status and, when appropriate, abort actions:
+
+```bash
+sudo python3 bootstrapper/promote-controller.py \
+  --operation status \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID
+
+sudo python3 bootstrapper/promote-controller.py \
+  --operation abort \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \
+  --timeout 1200
+```
+
+Inspect status before choosing an action. Controller abort verifies its owned
+operation, restores the previous controller configuration and resumes the old
+controller on the **same GitLab image**. It does not rewind the database and
+refuses a changed GitLab image. After GitLab migration has begun, use the separate
+GitLab checkpoint recovery below. The host controller tool has no `resume` action;
+database rollback requires restoration through the GitLab upgrade helper.
+
+#### Migrate GitLab through the accepted controller
+
+Copy the frozen `candidate-results.json` privately as
+`accepted-candidate-results.json` into the persistent configuration directory,
 which the controller mounts at `/state`. Create a private `upgrade-options.json`
 there with the following fields, replacing the example path, operation ID and
 commit with your deployment's accepted values:
@@ -1343,23 +1466,60 @@ Retain the output, including `checkpointSha256`, privately. The checkpoint and
 phase receipt are written beneath the configured `checkpointDir`; a shell or
 network disconnection is not evidence that promotion succeeded or failed.
 
-The production sequence must serialize against configuration writes,
-Harvest/restore, certificate-state changes and other deployments. Quiesce writers,
-capture the final compatible checkpoint, stop the affected services, apply the
-accepted configuration/image selection, migrate and verify B. Keep service
-identity and public routing explicit. Do not enable a candidate's test credentials
-or private test hostnames in Production.
+The production sequence serializes against configuration writes, Harvest/restore,
+certificate-state changes and other deployments. The GitLab helper drains its HTTP
+entry services before the final idle-job check, so native and external runners
+cannot claim new work during checkpoint creation. If an in-flight job claim is
+discovered, it restores the old HTTP service and stops before the database
+shutdown/checkpoint. Otherwise, it quiesces writers, captures the final compatible
+checkpoint, applies the accepted image selection, migrates and verifies B. Keep
+service identity and public routing explicit. Do not enable a candidate's test
+credentials or private test hostnames in Production.
 
 After startup, verify the actual GitLab version and migration state,
 authentication, repository and issue access, registry authentication and pulls,
 fresh runner-manager contact, authenticated configuration Fetch, Wizard routing,
 mounted storage and certificate renewal. Retain the private promotion receipt
 with the accepted commit, exact image IDs/digests, checkpoint identity and check
-outcomes. Publish a matching recovery manifest and declared image archives using
-the committed preparation procedure before retiring the previous recovery inputs.
-The next replacement host must select B's accepted controller and GitLab images,
-rather than an old manifest that still describes A. Once B passes acceptance, it
-can host the next reviewed evolution.
+outcomes.
+
+#### Export B's matching recovery inputs
+
+After GitLab migration and acceptance, run the committed recovery exporter from
+the same clean accepted checkout:
+
+```bash
+sudo python3 bootstrapper/record-recovery-images.py \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --release /root/system-successor/release.json \
+  --evidence /root/system-successor/candidate-results.json \
+  --gitlab-url https://gitlab.example.com \
+  --token-file /root/system-successor/gitlab-api-token \
+  --output /root/system-successor/recovery-export.json
+```
+
+The exporter verifies the accepted CI/source evidence and running controller and
+GitLab identities, writes a checksummed controller archive and updates the declared
+source, aliases and public service-image selectors. It preserves previous manifest
+history, versioned controller aliases and existing Wizard recovery inputs rather
+than pruning them. The local controller alias is restored from its verified image
+archive on the next host; no old Docker login is required to boot the registry.
+
+Retain the export receipt and independently record its manifest checksum. Preserve
+the accepted System Git objects and pinned Wizard sources outside the GitLab
+service as well, especially when its optional public mirror is unavailable. Verify
+the new manifest before relying on it:
+
+```bash
+sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+  bash bootstrapper/recover-volume.sh --verify
+```
+
+This check validates inputs without restarting services. The next
+replacement host must select B's controller and GitLab images, rather than an old
+manifest describing A. Keep the pre-upgrade checkpoint until B and its matching
+recovery inputs have been accepted. Only then is B ready to host the next reviewed
+evolution.
 
 ### 5.6 Failure, recovery and the autonomy boundary
 
