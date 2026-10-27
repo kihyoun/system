@@ -880,6 +880,134 @@ This validates repository read access, not push permission. The
 checks the platform's other application/storage contracts; it does not replace
 these SSH and firewall checks.
 
+## Optional weekly host maintenance from a trusted Codex host
+
+An operator can authorize a trusted, always-on administration host to run the
+following Ubuntu maintenance procedure weekly. Codex is optional; the platform
+does not depend on it. This updates host packages, with a reboot only when
+`/var/run/reboot-required` exists; it does not change service images, source,
+saved configuration or Seed. Keep recoverable backups and provider-console access.
+
+Supply private operator inputs: target hostname, administrative SSH port (2222
+for [Public 7](#public-7-separate-administrative-and-gitlab-ssh)), key path and
+independently verified host-key file; accepted clean remote tools checkout and
+revision; persistence selector and expected mount/UUID; private receipt root;
+and, optionally, the verifier's administrator `read_api` token-file selector.
+Record the authorized package sources and reboot policy. Never put credentials
+in the task text or public documentation.
+
+Perform each run as follows; preserve receipts outside the source checkout:
+
+1. Use SSH with `BatchMode=yes`, `IdentitiesOnly=yes`, `StrictHostKeyChecking=yes`
+   and the supplied `UserKnownHostsFile`, port and key. Verify the remote checkout,
+   persistent mount/UUID and free space; record `/proc/sys/kernel/random/boot_id`,
+   kernel, held packages and existing failed units. Defer on unexpected identity,
+   storage, package-lock, `dpkg --audit` or unfinished platform-operation state.
+2. From the remote accepted checkout, capture a new private baseline and run
+   `bootstrapper/verify-runtime.py check` against it before changes. Use its
+   [documented options](../bootstrapper/README.md#reviewed-replacement-host-initialization).
+   Keep saved configuration/auth hashes and exact image identities unchanged.
+   Refresh indexes with `sudo apt-get update`, then inspect
+   `sudo apt-get -s --with-new-pkgs --no-remove upgrade`. Respect package holds
+   and Ubuntu phasing; do not force phased updates, remove packages or upgrade
+   the Ubuntu release. Docker/containerd, OpenSSH and firewall packages need
+   particular review. If no upgrade or reboot is needed, report and finish.
+3. Before any installation that can restart services, authenticate to Sync and
+   inspect `/status`: require `needRestart`, `harvestInProgress`,
+   `runnerSetupInProgress`, `defaultWizardSetupInProgress` and
+   `projectOperationInProgress` explicitly false. Existing native operation leases,
+   including environment leases, must be absent. Run the committed GitLab check:
+
+   ```bash
+   sudo docker exec -i system_gitlab_1 gitlab-rails runner - < gitlab/upgrade-preflight.rb
+   ```
+
+   Its JSON must show the accepted CE version, `runningJobs: 0` and
+   `unfinishedBackgroundMigrations: 0`; exit zero alone is insufficient. If busy,
+   leave jobs running and defer this maintenance without upgrades or reboot.
+4. Reserve downtime against other operators; stop the owned public web proxy.
+   In the existing GitLab container, use `gitlab-ctl stop` separately for `sshd`,
+   `nginx`, `gitlab-workhorse`, `puma` and `sidekiq`; confirm they are down, then
+   repeat the preflight before stopping databases. A raced job means resume the
+   same GitLab services/proxy and defer with runners/controller untouched.
+   Only after this final jobs-zero proof, stop the main runner pool through
+   `docker exec -w /system/gitlab-runner system_bootstrapper_1 bash -e ./stop.sh main`,
+   preserving registrations. Privately record the original controller/GitLab
+   restart policies, then `docker update --restart=no system_bootstrapper_1 system_gitlab_1`
+   so a package-triggered Docker restart cannot revive these writers
+   ([restart-policy semantics](https://docs.docker.com/engine/containers/start-containers-automatically/)). Stop the
+   retained controller with `docker stop --time 30 system_bootstrapper_1`;
+   wait for outstanding GitLab Docker execs to drain.
+   Do not use top-level `stop.sh` or `bootstrapper/stop.sh`, which remove containers.
+   Stop all GitLab services with `gitlab-ctl stop`, verify every runit service is
+   down, then `docker stop --time 60 system_gitlab_1`; require exit zero and no OOM.
+5. Install only the reviewed plan, keeping modified package configuration files:
+
+   ```bash
+   sudo env DEBIAN_FRONTEND=noninteractive apt-get -y --with-new-pkgs --no-remove \
+     -o Dpkg::Options::=--force-confold upgrade
+   ```
+
+   Recheck `dpkg --audit` and package-manager completion. Preserve Docker's mounted
+   volume dependency, SSH socket overrides and firewall policy. Restore the exact
+   recorded restart policies before authorized reboot or explicit container start.
+   Reboot only if the marker exists. Otherwise start the retained GitLab/controller
+   containers so native startup reconciles runners and routing. On failure, retain
+   the stopped state and policy receipts for recovery; do not reboot blindly.
+   Do not rebuild, restore Seed, patch code or change image selectors.
+   See [APT upgrade options](https://manpages.ubuntu.com/manpages/noble/man8/apt-get.8.html)
+   and [Ubuntu phasing](https://ubuntu.com/server/docs/explanation/software/about-apt-upgrade-and-phased-updates/).
+6. If rebooted, wait for a fresh pinned SSH connection and a changed boot ID;
+   require the original mount and automatic Docker/controller startup. In both
+   reboot and no-reboot paths, run the
+   native verifier against the original baseline, with `--timeout 1200` and the
+   optional token file for fresh runner-contact proof. Check `dpkg --audit`, failed
+   units, SSH/firewall and Docker bindings separately: administrative 2222 remains
+   source-restricted, GitLab SSH 22 public, HTTP/HTTPS 80/443 unchanged and direct
+   registry 5050 loopback. Record failures and deferred/phased packages accurately.
+
+If cloud-init fails to find a primary interface during a rename, inspect the
+journal, `ip -br link`, Netplan's actual `match`/`set-name` and udev properties.
+Correct an incorrect network definition first. For a confirmed startup race,
+verify the installed unit is `cloud-init-main.service` and systemd supports
+`udevadm wait` before adding
+`/etc/systemd/system/cloud-init-main.service.d/10-wait-for-primary-interface.conf`:
+
+```ini
+[Unit]
+Wants=systemd-udev-trigger.service
+After=systemd-udev-trigger.service
+[Service]
+ExecStartPre=/usr/bin/udevadm wait --timeout=30 --initialized=yes /sys/class/net/REPLACE_WITH_CONFIGURED_INTERFACE
+```
+
+Replace the interface selector with Netplan's configured final name, then reload
+systemd and verify the next boot. This waits for that specific initialized device;
+it does not add a global udev settle or justify `cloud-init clean` on an existing
+installation. See [udevadm wait](https://www.freedesktop.org/software/systemd/man/latest/udevadm.html).
+
+To schedule the procedure, first test Codex authentication in a read-only run
+and test pinned SSH from the actual cron account. The private task file should
+reference this section and supply the inputs, authorization and failure policy.
+Create its directory mode 0700 and inputs/reports mode 0600. Give each remote
+run a new receipt directory and archive its result; `latest.md` is only a summary.
+An optional **root user's crontab** entry below runs Sunday at 03:00 on a host
+whose cron timezone is UTC. Substitute your absolute CLI, checkout and private
+paths; verify the scheduler's timezone rather than assuming `TZ` changes cron.
+
+```cron
+0 3 * * 0 umask 077; /usr/bin/flock -n /private/maintenance/weekly.lock /usr/bin/timeout --kill-after=2m 90m /absolute/path/codex exec -C /path/to/reviewed/checkout --sandbox danger-full-access -c 'approval_policy="never"' --color never -o /private/maintenance/latest.md - < /private/maintenance/task.txt >> /private/maintenance/cron.log 2>&1
+```
+
+This explicitly grants unattended shell/network access: use only a trusted task,
+checkout and host. The lock prevents overlapping cron runs; it is not a platform
+lease. A timeout cannot prove a remote APT operation stopped: inspect its state
+before recovery, never kill package managers or delete locks to force a retry.
+Cron starts a separate agent run and saves local reports; it does not promise a
+message in an existing chat. Check each run's time, exit result and log: an old
+`latest.md` is not evidence of a new successful run. See the official
+[Codex non-interactive documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
+
 ## Replace a host while retaining its data volume
 
 This procedure reuses the current live data, including GitLab, configuration and
