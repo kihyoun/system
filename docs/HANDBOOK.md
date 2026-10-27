@@ -416,7 +416,11 @@ Configure the **provider's external firewall** for this fresh server:
 Apply the same restrictions in any host firewall. Keep your working SSH session
 open while changing rules. The later SSH tunnel secures your browser connection;
 it does **not** restrict the Bootstrapper's port-80 listener. The external rule
-is therefore required during its temporary HTTP setup.
+is therefore required during its temporary HTTP setup. Docker-published bridge
+ports bypass UFW's ordinary INPUT rules and need separate attention.
+The optional [separate SSH ports](#public-7-separate-administrative-and-gitlab-ssh)
+procedure explains that boundary; this first-start example keeps GitLab SSH and
+the direct registry port on loopback.
 
 Connect with SSH and run these commands on the server:
 
@@ -601,7 +605,9 @@ Read the initial GitLab `root` password on the server using
 set the count to `1`, keep the token empty, Push, wait for registration and check
 the online manager under **Admin → CI/CD → Runners**. Git clones and registry
 access in this example use HTTPS; publicly enabling GitLab SSH needs a separate,
-deliberate port and firewall configuration.
+deliberate port and firewall configuration. See
+[Public 7](#public-7-separate-administrative-and-gitlab-ssh) after completing HTTPS
+and renewal setup.
 
 ### Public 6. Switch unattended renewal to the running proxy
 
@@ -690,6 +696,190 @@ See Certbot's upstream guides for
 [changing renewal configuration](https://eff-certbot.readthedocs.io/en/stable/using.html#modifying-the-renewal-configuration-of-existing-certificates)
 and [deploy hooks during testing](https://eff-certbot.readthedocs.io/en/stable/using.html#testing).
 
+### Public 7. Separate administrative and GitLab SSH
+
+This optional procedure changes an existing HTTPS installation to this layout:
+
+| Service | Host port | Intended inbound access |
+| --- | --- | --- |
+| Ubuntu administration | TCP 2222 | Only the trusted administrator's public source address |
+| GitLab SSH | TCP 22 | Public; GitLab authenticates repository users |
+| HTTP and HTTPS | TCP 80 and 443 | Public, as configured above |
+| Direct registry listener | `127.0.0.1:5050` | Loopback only; external registry clients use HTTPS 443 |
+
+`ssh -p 2222 root@server.example.com` reaches the host administration account;
+use your sudo account if root login is disabled. A repository URL such as
+`git@gitlab.example.com:namespace/project.git` reaches GitLab on its standard
+port 22. GitLab's `git` account does not provide a root administration shell.
+Register repository SSH public keys with the intended GitLab user or deploy key;
+host `authorized_keys` and GitLab permissions are separate. The two SSH services
+also have separate host keys. Verify fingerprints independently instead of
+accepting an unexpected key after the port changes.
+
+The Bootstrapper does not configure the host's SSH daemon or firewalls. The
+following OS configuration examples use the locally assigned server IPv4
+`203.0.113.10` and trusted administrator source `198.51.100.25/32`; replace both.
+For a server behind NAT, bind an address actually assigned to the host and adapt
+the external forwarding rules. Keep the current authenticated session open and
+have provider-console recovery available throughout the change.
+
+#### Stage and test the new administrative listener
+
+First allow TCP 2222 from the trusted source in the provider firewall and UFW,
+while retaining the rule for the working administrative port. Keep the existing
+80/443 rules. Use a default-deny incoming policy, with no broader allowance for
+2222. If UFW is inactive, allow the working SSH path **before** enabling it;
+review existing rules rather than resetting the firewall:
+
+```bash
+sudo ufw allow from 198.51.100.25/32 to any port 2222 proto tcp
+sudo ufw status numbered
+sudo systemctl status ssh.socket ssh.service --no-pager
+sudo systemctl cat ssh.socket
+sudo systemctl show ssh.service -p KillMode
+sudo ss -lntp
+```
+
+Ubuntu commonly uses [SSH socket activation](https://discourse.ubuntu.com/t/sshd-now-uses-socket-based-activation-ubuntu-22-10-and-later/30189).
+On Ubuntu 24.04, a generator reads `sshd_config`; earlier migrated or custom
+installations may also have socket drop-ins. Inspect both the SSH configuration
+and effective units. A daemon reload alone does not replace listening sockets.
+
+In `/etc/ssh/sshd_config.d/`, consolidate the intended listeners with any existing
+`Port`/`ListenAddress` entries. During staging, retain administration on 22 and add
+only the server's explicit IPv4 on 2222:
+
+```text
+Port 22
+Port 2222
+ListenAddress 203.0.113.10:22
+ListenAddress 203.0.113.10:2222
+```
+
+For a socket-activated installation, make its listeners agree in a local drop-in,
+for example `/etc/systemd/system/ssh.socket.d/zz-bootstrapper-admin.conf`. Create
+the directory if necessary and edit that file; inspect existing drop-ins and the
+effective unit so a later override cannot restore unwanted listeners:
+
+```ini
+[Socket]
+ListenStream=
+ListenStream=203.0.113.10:22
+ListenStream=203.0.113.10:2222
+```
+
+The empty assignment clears inherited listeners. Do not use a wildcard on 2222
+while Docker still publishes GitLab SSH at `127.0.0.1:2222`: those binds conflict.
+Keep authentication policy unchanged and validate it with `sudo sshd -t` before
+applying anything. Inspect `sudo sshd -T` as well as the effective socket unit.
+
+The following socket replacement assumes the installed SSH service reports
+`KillMode=process`, which preserves established session processes when its main
+daemon stops; see [systemd process handling](https://www.freedesktop.org/software/systemd/man/latest/systemd.kill.html).
+If it does not, use the provider console instead of assuming the SSH session
+will survive. After successful configuration validation:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl stop ssh.socket ssh.service
+sudo systemctl start ssh.socket
+sudo systemctl status ssh.socket --no-pager
+sudo ss -lntp
+```
+
+With service-based SSH, validate the same daemon configuration and restart
+`ssh.service` instead. Confirm the actual listeners before proceeding. From a
+**new client connection** at the trusted source, disable connection reuse and
+require key authentication:
+
+```bash
+ssh -S none -o PreferredAuthentications=publickey \
+  -p 2222 root@server.example.com
+```
+
+Verify the expected host fingerprint and that the intended administration/sudo
+access works. Do not remove the old listener or firewall access until this fresh
+connection succeeds. Remove any broad 2222 allow rule that would defeat the
+source restriction. Handle IPv6 explicitly too: this example binds administrative
+SSH only on IPv4, rather than leaving an unrestricted IPv6 listener.
+
+#### Give port 22 to GitLab and reconcile saved configuration
+
+In the daemon configuration and socket override, remove the staged port-22
+listener, leaving only `Port 2222`, `ListenAddress 203.0.113.10:2222` and the
+corresponding socket listener. Retain the empty `ListenStream=` reset. Repeat
+`sshd -t`, the applicable restart sequence and the fresh key-login check above.
+Use `ss -lntp` to confirm **both IPv4 and IPv6 port 22 are free of host SSH**.
+Then permit public TCP 22 at the provider firewall; the administration restriction
+continues to apply to TCP 2222.
+
+After reviewing access needed by any other services, the following UFW commands
+express this layout's host policy. Do not reset existing rules. Remove broader
+2222 allowances, including IPv6 rules; adding a source-specific allow rule does
+not narrow an existing allow-from-anywhere rule. If UFW is inactive, enable it
+only after the working 2222 administration path has been allowed and freshly
+tested above:
+
+```bash
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow from 198.51.100.25/32 to any port 2222 proto tcp
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw enable
+sudo ufw status verbose
+```
+
+Repeat the fresh administrative key login after applying the rules. Keep IPv6
+policy consistent with the addresses actually served; do not add a broad IPv6
+2222 allowance to this IPv4-only administration example.
+
+In the saved `$PERSISTENT_DIR/configuration/.docker.env`, change only the SSH
+binding and retain the private registry binding:
+
+```bash
+export GITLAB_SSH_BIND='22'
+export GITLAB_REGISTRY_BIND='127.0.0.1:5050'
+```
+
+Preserve the exact Cube/header, image pins, secrets and all other settings. A
+one-time shell override does not replace saved configuration. Schedule the GitLab
+restart when jobs are idle; this operation recreates its container while retaining
+the same image and persistent data. From the host, run the existing entry points
+inside the accepted controller:
+
+```bash
+sudo docker exec -w /system/gitlab system_bootstrapper_1 bash -e ./start.sh
+sudo docker exec -w /system/nginx system_bootstrapper_1 bash -e ./start.sh reload
+```
+
+The NGINX reload regenerates HTTPS/registry upstreams if GitLab's container IP
+changed. This is a configuration change, with no image build, Seed restore or
+database-version migration. Wait for GitLab readiness and verify Wizard, Sync,
+HTTPS and registry access again. Fetch the saved settings in an already open
+Wizard before its next Push so an old form cannot restore the previous binding.
+
+Docker-published bridge ports can bypass UFW's INPUT rules; a default incoming
+deny policy does not by itself protect a published container port. Public GitLab
+22 is intentional here. Keep other bindings, especially 5050, on loopback; inspect
+`docker port system_gitlab_1` and test reachability externally. Preserve Docker's
+firewall management: do not set its `iptables`/`ip6tables` options to false. See
+[Docker and UFW](https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw)
+and the [socket-unit reference](https://www.freedesktop.org/software/systemd/man/latest/systemd.socket.html).
+
+Finally, confirm host key login still uses 2222 and test repository access from
+an intended GitLab user:
+
+```bash
+git ls-remote git@gitlab.example.com:namespace/project.git HEAD
+```
+
+This validates repository read access, not push permission. The
+[native runtime verifier](../bootstrapper/README.md#reviewed-replacement-host-initialization)
+checks the platform's other application/storage contracts; it does not replace
+these SSH and firewall checks.
+
 ## Replace a host while retaining its data volume
 
 This procedure reuses the current live data, including GitLab, configuration and
@@ -766,7 +956,17 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
    identities or aliases are a preparation failure, not permission to substitute
    a different image or copy a private recovery script onto the host.
 
-4. Run the committed initialization coordinator from this reviewed checkout:
+4. If the retained configuration uses `GITLAB_SSH_BIND='22'`, first prepare and
+   freshly test administration on port 2222 as described in
+   [Public 7](#public-7-separate-administrative-and-gitlab-ssh), then free the host's
+   port 22. A fresh Ubuntu host commonly reserves 22 for its own SSH service;
+   the initializer will not move that listener for you. Perform the host/firewall
+   steps before initialization and let the initializer start GitLab; the
+   in-controller reconciliation commands in Public 7 are for an already running
+   installation. Preserve the retained GitLab binding instead of reverting saved
+   configuration to a first-install example.
+
+   Run the committed initialization coordinator from this reviewed checkout:
 
    ```bash
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
