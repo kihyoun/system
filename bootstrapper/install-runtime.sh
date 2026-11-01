@@ -11,7 +11,7 @@ apk add --no-cache \
   bash=5.3.9-r1 \
   git=2.54.0-r0 \
   unzip=6.0-r16 \
-  curl=8.22.0-r0 \
+  curl=8.23.0-r0 \
   zlib=1.3.2-r1
 docker --version
 docker-compose --version

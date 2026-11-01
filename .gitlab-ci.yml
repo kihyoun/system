@@ -194,22 +194,8 @@ build:
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
   script:
     - docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper
-    - docker tag $IMAGE_TAG systembootstrapper/system:latest
     - docker push $IMAGE_TAG
   rules: *runtime-rules
-
-deploy:dockerhub:
-  stage: deploy
-  before_script:
-    - 'test -n "$DOCKERHUB_USER" && test -n "$DOCKERHUB_PASS" || { echo "Docker Hub publishing credentials missing" >&2; exit 1; }'
-    - echo "$DOCKERHUB_PASS" | docker login --username $DOCKERHUB_USER --password-stdin
-  script:
-    - docker push systembootstrapper/system:latest
-  rules:
-    - if: '$DOCKERHUB_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
-      changes: *runtime-changes
-      when: on_success
-    - when: never
 
 deploy:github:
   stage: deploy
