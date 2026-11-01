@@ -11,7 +11,7 @@ config = YAML.safe_load(text, aliases: true)
 jobs = config.select { |name, value| !name.start_with?('.') && value.is_a?(Hash) && value.key?('script') }
 full = %w[prepare:wizard-source test:isolated test:candidate-image test:platform-candidate build]
 baseline = {'CI_PIPELINE_SOURCE' => 'merge_request_event', 'CI_DEFAULT_BRANCH' => 'master',
-            'GITHUB_BACKUP_ENABLED' => 'true', 'DOCKERHUB_PUBLISH_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'false'}
+            'GITHUB_BACKUP_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'false'}
 condition = lambda do |expression, environment|
   expression.split('&&').all? do |term|
     match = /\A\s*\$([A-Z_]+) == (?:\$([A-Z_]+)|"([^"]*)"|(null))\s*\z/.match(term)
@@ -63,11 +63,13 @@ assert_jobs.call('empty MR', [], light)
 assert_jobs.call('large comparison', Array.new(50_001, 'README.md'), runtime)
 push = baseline.merge('CI_PIPELINE_SOURCE' => 'push', 'CI_COMMIT_BRANCH' => 'master', 'CI_COMMIT_REF_PROTECTED' => 'true')
 assert_jobs.call('protected docs push mirrors but does not publish images', ['AGENTS.md'], light + ['deploy:github'], push)
-assert_jobs.call('protected runtime push', ['system/start.sh'], runtime + %w[deploy:github deploy:dockerhub], push)
-assert_jobs.call('disabled publishing roles', ['system/start.sh'], runtime,
-                 push.merge('GITHUB_BACKUP_ENABLED' => 'false', 'DOCKERHUB_PUBLISH_ENABLED' => 'false'))
+assert_jobs.call('protected runtime push', ['system/start.sh'], runtime + ['deploy:github'], push)
+assert_jobs.call('disabled GitHub mirror', ['system/start.sh'], runtime,
+                 push.merge('GITHUB_BACKUP_ENABLED' => 'false'))
+assert_jobs.call('legacy Docker Hub settings cannot enable publication', ['system/start.sh'], runtime + ['deploy:github'],
+                 push.merge('DOCKERHUB_PUBLISH_ENABLED' => 'true', 'DOCKERHUB_USER' => 'fixture-user', 'DOCKERHUB_PASS' => 'fixture-password'))
 assert_jobs.call('unprotected default push', ['system/start.sh'], runtime, push.merge('CI_COMMIT_REF_PROTECTED' => 'false'))
-assert_jobs.call('first push is conservative', ['README.md'], runtime + %w[deploy:github deploy:dockerhub], push, false)
+assert_jobs.call('first push is conservative', ['README.md'], runtime + ['deploy:github'], push, false)
 assert_jobs.call('other branch push', ['system/start.sh'], [], push.merge('CI_COMMIT_BRANCH' => 'feature'))
 assert_jobs.call('tag push', ['system/start.sh'], [], push.merge('CI_COMMIT_BRANCH' => nil, 'CI_COMMIT_TAG' => 'v1'))
 assert_jobs.call('manual/scheduled default runs remain full', ['README.md'], runtime, push.merge('CI_PIPELINE_SOURCE' => 'web'), false)
@@ -108,7 +110,15 @@ raise 'Documentation lane must retain its short bounded budget' unless documenta
   documentation.dig('variables', 'RUNNER_SCRIPT_TIMEOUT') == '2m' && documentation.dig('variables', 'RUNNER_AFTER_SCRIPT_TIMEOUT') == '30s'
 raise 'Documentation lane must not require runtime artifacts' if documentation['needs'] || documentation['dependencies']
 raise 'Documentation lane must be required' unless documentation['allow_failure'] == false
+raise 'Removed Docker Hub publisher must not be configured' if config.key?('deploy:dockerhub') || text.match?(/DOCKERHUB_|systembootstrapper\/system(?=[:\s])/)
+build = jobs.fetch('build')
+raise 'Private registry base publication changed' unless build['script'] == [
+  'docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper',
+  'docker push $IMAGE_TAG'
+] && build['before_script'] == [
+  'echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY'
+] && config.dig('variables', 'IMAGE_TAG') == '$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG'
 raise 'Unexpected mirror dependencies' unless jobs.fetch('deploy:github')['dependencies'] == []
 raise 'Mirror context was weakened' unless jobs.fetch('deploy:github')['script'] == ['sh gitlab/github-backup-ci.sh'] &&
   jobs.fetch('deploy:github').fetch('rules').first.fetch('if') == '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
-puts 'PASS: native YAML docs/runtime/mixed/unknown/CI/event selection, real renames/deletions, large/newline paths, artifact closure and protected publishing roles'
+puts 'PASS: native YAML event/path selection, artifact closure, required gates, private registry publication, protected GitHub mirror and removed Docker Hub publisher'

@@ -183,13 +183,15 @@ runtime, verified `GITHUB_SSH_KNOWN_HOSTS` file and existing protected SSH ident
 Configure all mapped values before enabling it. The job is serialized by
 `github-backup-$CI_PROJECT_ID`; its failure remains a failed pipeline result.
 
-System's separate `deploy:dockerhub` publishing role is also opt-in. Set the
-protected `DOCKERHUB_PUBLISH_ENABLED=true`, `DOCKERHUB_USER` and `DOCKERHUB_PASS`
-variables only when that publication is intended. It runs after the existing
-required System gates on protected default-branch push pipelines, never MR,
-API or tag pipelines. Enabling it without credentials fails visibly. This
-flag is independent of `GITHUB_BACKUP_ENABLED`; neither publication enables
-Production promotion or bypasses the resource-heavy System candidate checks.
+System's `build` job publishes the standalone runtime base to its own GitLab
+registry as `$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG` after the required runtime
+checks. The complete successor controller is published separately by the
+candidate acceptance job to the same project's `/successor` repository, with
+an immutable digest and acceptance evidence. Follow the
+[successor promotion guide](../bootstrapper/README.md#promoting-a-tested-successor-controller)
+to deploy that complete image. Neither publication requires Docker Hub publishing
+credentials, enables Production promotion or bypasses the resource-heavy System
+candidate checks. GitHub mirroring remains independently opt-in.
 
 The legacy managed Wizard selects `.system-bootstrapper/ci.yml` for build/test and any
 installed optional environment jobs. Its preserved upstream `.gitlab-ci.yml`
