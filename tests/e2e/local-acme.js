@@ -185,16 +185,21 @@ class LocalAcme {
   }
   async issue(candidate){
     return candidate.stage('acme-initial-webroot-issuance',async()=>{
-      await this.attach(candidate);await this.prepareClient(candidate,'/candidate-data/platform');
+      await candidate.stage('acme-initial-authority-attach',()=>this.attach(candidate));
+      await candidate.stage('acme-initial-client-prepare',()=>this.prepareClient(candidate,'/candidate-data/platform'));
       // Real TLS routing is active using the short-lived bootstrap certificate;
       // Certbot's HTTP-01 webroot will replace it through the actual deploy hook.
-      await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
-      await this.certbot(candidate,'/candidate-data/platform',['certonly','--server',DIRECTORY,'--non-interactive','--agree-tos','--register-unsafely-without-email',
-        '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture','-d','wizard.candidate.test','-d','sync.candidate.test']);
-      const root=await request(candidate,'https://pebble:15000/roots/0',{trust:this.trust,address:this.caAddress});
-      if(root.status!==200||!root.body.startsWith('-----BEGIN CERTIFICATE-----'))throw Error('acme-issuance-trust-required');
-      await controller(candidate,input=>require('fs').writeFileSync(input.path,input.root,{mode:0o600}),{path:ISSUANCE_CA,root:root.body});
-      return this.identity(candidate);
+      await candidate.stage('acme-initial-proxy-reload',()=>
+        candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']));
+      await candidate.stage('acme-initial-certbot-issuance',()=>this.certbot(candidate,'/candidate-data/platform',
+        ['certonly','--server',DIRECTORY,'--non-interactive','--agree-tos','--register-unsafely-without-email',
+        '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture','-d','wizard.candidate.test','-d','sync.candidate.test']));
+      await candidate.stage('acme-initial-root-certificate',async()=>{
+        const root=await request(candidate,'https://pebble:15000/roots/0',{trust:this.trust,address:this.caAddress});
+        if(root.status!==200||!root.body.startsWith('-----BEGIN CERTIFICATE-----'))throw Error('acme-issuance-trust-required');
+        await controller(candidate,input=>require('fs').writeFileSync(input.path,input.root,{mode:0o600}),{path:ISSUANCE_CA,root:root.body});
+      });
+      return candidate.stage('acme-initial-issued-identity',()=>this.identity(candidate));
     });
   }
   async renew(candidate,expected){

@@ -149,6 +149,34 @@ test('negative HTTP validation must fail before real renewal can establish evide
   }};
   await assert.rejects(()=>x.instance.renew(stale,expected),/fresh-certificate-not-served/);assert.equal(stale.acmeRenewalVerified,false);
 });
+test('initial issuance exposes fixed subphases and stops at the exact failing operation',async t=>{
+  const phases=['acme-initial-authority-attach','acme-initial-client-prepare','acme-initial-proxy-reload',
+    'acme-initial-certbot-issuance','acme-initial-root-certificate','acme-initial-issued-identity'];
+  for(const failed of [undefined,...phases]){
+    const f=fixture(t),x=owners(f),started=[],failures=[];
+    const fault=phase=>{if(failed===phase)throw Object.assign(Error('docker-exec-failed'),{exitCode:1});};
+    x.original.stage=async(name,action)=>{
+      started.push(name);
+      try{return await action();}catch(error){failures.push(name);throw error;}
+    };
+    x.instance.attach=async()=>fault(phases[0]);x.instance.prepareClient=async()=>fault(phases[1]);
+    x.instance.certbot=async()=>fault(phases[3]);
+    x.instance.identity=async()=>{fault(phases[5]);return {serial:'fixture-issued'};};
+    x.original.inner=async args=>{
+      if(args[1]==='-w'){fault(phases[2]);return '';}
+      fault(phases[4]);
+      return JSON.stringify({status:200,body:'-----BEGIN CERTIFICATE-----\nfixture-public-root\n-----END CERTIFICATE-----'});
+    };
+    if(failed){
+      await assert.rejects(()=>x.instance.issue(x.original),error=>error.message==='docker-exec-failed'&&error.exitCode===1);
+      assert.deepEqual(started,['acme-initial-webroot-issuance',...phases.slice(0,phases.indexOf(failed)+1)]);
+      assert.deepEqual(failures,[failed,'acme-initial-webroot-issuance']);
+    }else{
+      assert.deepEqual(await x.instance.issue(x.original),{serial:'fixture-issued'});
+      assert.deepEqual(started,['acme-initial-webroot-issuance',...phases]);assert.deepEqual(failures,[]);
+    }
+  }
+});
 test('the independent authority HTTPS client validates its trust and SNI without a bypass',async t=>{
   const f=fixture(t),https=require('node:https'),cert=path.join(f.directory,'cert.pem'),key=path.join(f.directory,'key.pem');
   const wrong=path.join(f.directory,'wrong.pem'),wrongKey=path.join(f.directory,'wrong.key');
