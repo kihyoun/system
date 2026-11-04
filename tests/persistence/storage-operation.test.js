@@ -134,6 +134,25 @@ test('real configuration ZIP entries accept Wizard JSON and refuse symlinks or t
   create('../outside'); assert.throws(()=>operation.validateBackup(zip),/invalid-configuration-backup/);
   assert(!fs.existsSync(path.join(f.root,'outside')));
 });
+test('unchanged Wizard JSZip DOS backups and mixed Unix entries retain strict metadata checks',t=>{
+  const f=fixture(t),zip=path.join(f.root,'bootstrapper.zip');
+  const original=fs.readFileSync(path.join(__dirname,'fixtures/wizard-dos.zip'));
+  const reset=()=>fs.writeFileSync(zip,original);
+  const append=(name,mode,size=7)=>execFileSync('python3',['-c',
+    'import zipfile,sys\nwith zipfile.ZipFile(sys.argv[1],"a",compression=zipfile.ZIP_DEFLATED) as z:\n i=zipfile.ZipInfo(sys.argv[2]); i.create_system=3; i.external_attr=int(sys.argv[3])<<16; i.compress_type=zipfile.ZIP_DEFLATED; z.writestr(i,b"x"*int(sys.argv[4]))',
+    zip,name,String(mode),String(size)],{stdio:'pipe'});
+  reset();operation.validateBackup(zip);
+  assert.deepEqual(fs.readFileSync(zip),original,'validation never rewrites DOS metadata');
+  append('.projects.env/mixed.env',0o100600);operation.validateBackup(zip);
+  for(const mode of [0o120777,0o010600,0o020600,0o060600,0o140600]){
+    reset();append('.projects.env/unsafe.env',mode);
+    assert.throws(()=>operation.validateBackup(zip),/unsafe-configuration-backup-entry/);
+  }
+  reset();append('.docker.env',0o100600);assert.throws(()=>operation.validateBackup(zip),/invalid-configuration-backup/);
+  reset();append('../outside.env',0o100600);assert.throws(()=>operation.validateBackup(zip),/invalid-configuration-backup/);
+  reset();append('.projects.env/large.env',0o100600,50000001);
+  assert.throws(()=>operation.validateBackup(zip),/configuration-backup-is-too-large/);
+});
 test('a real configuration import preserves the acquired server-owned environment mutex',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',system=f.root+'/source/system';
   fs.mkdirSync(system,{recursive:true});fs.mkdirSync(f.root+'/source/project-bootstrap');

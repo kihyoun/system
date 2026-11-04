@@ -85,6 +85,7 @@ function prepare(){
     const filename=path.join(output,'export-configuration.cjs');const descriptor=fs.openSync(filename,'wx',0o600);
     try{run(['run','--rm','--network','none','--entrypoint','cat',tags.wizard,'/opt/system-bootstrapper/test-tools/export-configuration.cjs'],{stdio:['ignore',descriptor,'inherit']});}finally{fs.closeSync(descriptor);}
     configurationExporter={archive:filename,sha256:crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex'),sourceRevision:snapshot.sourceRevision};
+    require('../persistence/native-restore-docker').run({helperImage:tags.candidate,configurationExporter});
   }
   for(const image of Object.values(defaults))run(['pull',image]);
   verifyPreparedTrust(tags);

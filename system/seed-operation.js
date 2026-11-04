@@ -349,12 +349,16 @@ function validateBackup(filename) {
     listed.includes('.docker.env') && listed.every(name=>
     /^(?:bootstrapper\.json|\.docker\.env|\.projects\.env\/(?:[A-Za-z0-9_.-]+\.env)?)$/.test(name)), 'invalid-configuration-backup');
   const metadata=spawnSync('unzip',['-Z','-l',filename],{encoding:'utf8',maxBuffer:1024*1024});
-  const entries=(metadata.stdout || '').split('\n').filter(line=>/^\S[rwxstST-]{9}\s/.test(line));
+  const entries=(metadata.stdout || '').split('\n').map(line=>
+    /^(\S[rwxstST-]{6}(?:[rwxstST-]{3})?)\s+\d+\.\d+\s+(\S+)\s+([0-9]+)\s/.exec(line)).filter(Boolean);
   requireValue(!metadata.error && metadata.status === 0 && entries.length === listed.length &&
+    // Info-ZIP reports DOS/FAT entries with type + six permission characters;
+    // Unix entries have type + nine. Do not infer safe types from filenames.
+    entries.every(entry=>entry[1].length === 10 || (entry[1].length === 7 && entry[2] === 'fat')) &&
     // ZIP writers may omit Unix file-type bits ('?'); unzip treats those as
     // ordinary files. Explicit symlink/device/FIFO types are always refused.
-    entries.every(line=>['-','d','?'].includes(line[0])), 'unsafe-configuration-backup-entry');
-  const total=entries.reduce((sum,line)=>sum+Number(line.trim().split(/\s+/)[3]),0);
+    entries.every(entry=>['-','d','?'].includes(entry[1][0])), 'unsafe-configuration-backup-entry');
+  const total=entries.reduce((sum,entry)=>sum+Number(entry[3]),0);
   requireValue(Number.isFinite(total) && total <= 50000000,'configuration-backup-is-too-large');
 }
 class StorageLease {
