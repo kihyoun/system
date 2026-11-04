@@ -25,7 +25,7 @@ function included(name) {
       'gitlab-runner/docker-compose.yml','system/.docker.env.example','system/.seed.env',
       'system/start-intermediate.sh','system/start.sh','system/docker-compose.yml',
       'system/persistence-init.js','system/wizard-public.js','system/push.sh',
-      'system/harvest.sh','system/seed.sh','system/seed-manifest.js','bootstrapper/rebind-renewal.py'].includes(name);
+      'system/harvest.sh','system/seed.sh','system/seed-manifest.js','system/seed-operation.js','bootstrapper/rebind-renewal.py'].includes(name);
 }
 function prepareContext(root) {
   root = path.resolve(root);

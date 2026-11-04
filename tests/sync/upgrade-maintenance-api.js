@@ -11,5 +11,13 @@ const request=(route,method='GET',token,body)=>new Promise((resolve,reject)=>{co
   assert.equal((await request('/status','GET',token)).status,200);assert.equal(typeof JSON.parse((await request('/status','GET',token)).body).projectOperationInProgress,'boolean');
   for(const [route,method] of [['/config/zip','POST'],['/command/restart','POST'],['/projects','POST'],['/projects/wizard/source','POST'],['/config/main','DELETE'],['/projects/wizard/environments/status','GET']])assert.equal((await request(route,method,token,'{}')).status,409,route+' must not mutate during migration');
   fs.rmdirSync(path.join(state,'.gitlab-upgrade-lock'));assert.notEqual((await request('/config/zip','POST',token,'{}')).status,409);
-  console.log('PASS: GitLab evolution lease blocks configuration and project mutations while authentication and status remain available.');
+  // The mutex lives with working state, so an absent or changed Seed target
+  // cannot bypass it. Authentication and configuration reads stay usable.
+  fs.mkdirSync(path.join(state,'.storage-operation-lock'));
+  assert.equal((await request('/login','POST',undefined,JSON.stringify({username:'fixture',password:'fixture-password'}))).status,200);
+  assert.equal((await request('/status','GET',token)).status,200);
+  assert.notEqual((await request('/config/main','GET',token)).status,409);
+  for(const [route,method] of [['/config/zip','POST'],['/command/restart','PATCH'],['/command/harvest','PATCH'],['/command/seed','PATCH'],['/projects','POST'],['/projects/wizard/source','POST'],['/config/main','DELETE'],['/projects/wizard/environments/status','GET']])assert.equal((await request(route,method,token,'{}')).status,409,route+' must respect the live-state storage lease');
+  fs.rmdirSync(path.join(state,'.storage-operation-lock'));assert.notEqual((await request('/config/zip','POST',token,'{}')).status,409);
+  console.log('PASS: Evolution and live-state storage leases block configuration and project mutations while authentication and reads remain available.');
 }finally{child.kill();await new Promise(resolve=>child.once('exit',resolve));fs.rmSync(root,{recursive:true,force:true});}})().catch(error=>{console.error(error);process.exitCode=1;});

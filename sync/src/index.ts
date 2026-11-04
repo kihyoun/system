@@ -59,13 +59,17 @@ const status = {
 // The CI helper runs in another process; its canonical filesystem mutex
 // must also protect ordinary Push, deletion and system-control mutations.
 const environmentHelperBusy = () => fs.existsSync(wizardConfigPath() + '.environments.lock');
+const storageOperationBusy = () => fs.existsSync(path.join(process.env.SYSTEM_CONFIG_DIR || '/state', '.storage-operation-lock'));
 
 // The repository-owned GitLab evolution helper holds this filesystem lease.
 // Authentication and read-only status remain available throughout maintenance.
 app.use((req, res, next) => {
-  if (fs.existsSync(path.join(process.env.SYSTEM_CONFIG_DIR || '/state', '.gitlab-upgrade-lock')) &&
+  const upgrading = fs.existsSync(path.join(process.env.SYSTEM_CONFIG_DIR || '/state', '.gitlab-upgrade-lock'));
+  if ((upgrading || storageOperationBusy()) &&
       (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path.startsWith('/projects')) && !['/login', '/token', '/logout'].includes(req.path)) {
-    res.status(409).json({message: 'A GitLab upgrade is in progress. Wait before changing the platform.'});
+    res.status(409).json({message: upgrading
+      ? 'A GitLab upgrade is in progress. Wait before changing the platform.'
+      : 'A backup or recovery operation is in progress. Wait before changing the platform.'});
     return;
   }
   next();
@@ -73,7 +77,7 @@ app.use((req, res, next) => {
 
 // Keep the configuration stable while the asynchronous setup saves its token.
 app.use(['/config', '/command'], (req, res, next) => {
-  if ((fs.existsSync('/seed/.operation-lock') || status.harvestInProgress || status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy()) && req.method !== 'GET') {
+  if ((storageOperationBusy() || status.harvestInProgress || status.runnerSetupInProgress || status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy()) && req.method !== 'GET') {
     res.status(409).json({message: "A backup, recovery, runner or project operation is in progress. Wait before changing the configuration."});
     return;
   }
