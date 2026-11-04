@@ -146,8 +146,8 @@ recipe. The version and recipe hash bind these changes to their exact inputs.
 
 Existing reservations retain their original bytes and evidence. Upgrade an
 already-managed project through the guarded build/environment-only migration,
-using an explicit `buildProfile` of `node24-vite8-ca-v4` (or `legacy-ca-v4` for
-legacy source) and the accepted immutable helper, then rebuild and test the job
+using an explicit `buildProfile` of `node24-vite8-ca-v4` and the accepted immutable
+helper, then rebuild and test the job
 images. Replacing a controller alone does not update a reserved project's recipe.
 This refresh is for generated images and CI jobs; it is not a host trust-store
 maintenance command. Review deployment-specific custom CAs separately.

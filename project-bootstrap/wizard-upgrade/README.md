@@ -125,8 +125,10 @@ For the current public CA refresh, explicitly select
 previewing. This profile inherits the overview and cleanup checks and rebuilds
 the affected build/browser images with the reviewed bundled trust data. Keep
 the explicit profile through stage, adoption and retries; the omitted-option
-historical target is not automatically changed. Legacy source can select
-`"buildProfile": "legacy-ca-v4"` when its guarded migration permits that profile.
+historical target is not automatically changed. This guarded build-only migration
+accepts modern profiles. `legacy-ca-v4` is available for new legacy-source
+reservations; an existing legacy project follows the source/toolchain migration
+to the supported modern profile.
 Legacy projects still need the separately reviewed source/toolchain upgrade.
 Historical recipe hashes and existing checkpoints remain verifiable.
 

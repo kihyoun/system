@@ -453,7 +453,7 @@ def promote(config, release, evidence, api, release_bytes, evidence_bytes, secur
     if staged_receipt:
         record['previousStagedPromotion'] = staged_receipt
     successor.atomic_json(checkpoint / 'operation.json', record)
-    with successor.Lease(config) as lease:
+    with successor.Lease(config, legacy_controller=controller) as lease:
         record['leaseOperation'] = lease.operation
         successor.atomic_json(checkpoint / 'operation.json', record)
         require(config['_main'].read_bytes() == raw, 'configuration-changed-before-controller-promotion')
