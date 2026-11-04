@@ -114,6 +114,15 @@ verified image archives. The former live data directory is not an input.
    a fresh local `PERSISTENT_DIR`, or explicitly select a mounted live volume.
    Mount the retained backup filesystem and set its `SEED_MOUNT`, `SEED_DIR`
    and expected UUID in the private host selector. Do not start GitLab yet.
+   Prepare only the live directories and persistence marker from this selector:
+
+   ```sh
+   sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+     bash -euc 'set -a; source "$PERSISTENCE_ENV_FILE"; source bootstrapper/storage-env.sh; set +a; exec bash bootstrapper/persistence.sh'
+   ```
+
+   This step neither starts containers nor requires the backup medium. It must
+   precede `--check-only` on a fresh target: that preflight does not create paths.
 2. Make the accepted complete controller image and exact harvested GitLab image
    available. Rebuild source-built images from their recorded source and pull
    public images at their recorded references. A custom mutable tag is not a
@@ -164,6 +173,13 @@ verified image archives. The former live data directory is not an input.
 
 Startup never applies a Seed automatically. Merely reattaching an old live-data
 volume is a separate reuse path, not this backup-to-fresh-local restore.
+
+If a controller restarts with a storage or upgrade lease and no incomplete-restore
+marker, it pauses before starting writers and remains available to native recovery through
+`docker exec`. It does not resume automatically when the lease disappears.
+After completing the applicable recovery and confirming the live target is safe,
+restart it deliberately with `sudo docker restart system_bootstrapper_1`.
+An incomplete Seed restore still requires a different fresh target as above.
 
 ### Pulling a restored private Wizard image
 

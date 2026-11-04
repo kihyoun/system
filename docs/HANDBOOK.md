@@ -1912,6 +1912,16 @@ alternatives, not a sequence to run unconditionally. Keep interrupted-operation
 leases and incomplete-restore markers for the helper to reconcile. Do not delete
 one manually to bypass a refusal.
 
+If the controller restarted with an unfinished storage or upgrade lease and no
+incomplete-restore marker, it waits in maintenance before starting writers. `docker exec` remains available
+for the native status, abort or rollback commands above. It does not leave this
+state automatically when recovery removes the lease. Only after the selected
+recovery succeeds and its barriers are released, resume controller startup:
+
+```bash
+sudo docker restart system_bootstrapper_1
+```
+
 If GitLab is restored to the old image while an accepted controller remains
 staged, develop any correction through a new merge request and its required
 checks. Use the documented [staged-controller replacement](../bootstrapper/README.md#replacing-an-accepted-controller-before-gitlab-migration)

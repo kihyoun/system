@@ -53,7 +53,10 @@ live-data/TLS leases. An unavailable Seed target cannot become a root-disk
 fallback or block ordinary services and renewal.
 
 For a completed external Seed and matching private configuration ZIP, use the
-committed host entry point before starting writers:
+committed host entry point before starting writers. First prepare the empty live
+scaffolds with `bootstrapper/persistence.sh` and the private host selector as
+shown in the [fresh-target procedure](../docs/RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation).
+The read-only preflight requires those directories to exist:
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
