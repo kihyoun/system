@@ -43,10 +43,16 @@ function validateReceipt(proof, ci) {
 function validateEvidence(proof, ci) {
   const acceptedImage = validateReceipt(proof, ci);
   for (const name of ['gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci',
-    'gitlab-upgrade-restored-checkpoint', 'gitlab-upgrade-security-trust', 'cleanup']) {
+    'gitlab-upgrade-restored-checkpoint', 'gitlab-upgrade-security-trust',
+    'storage-global-live-lease', 'storage-refuse-nonempty-and-corrupt-restore',
+    'storage-detached-backup-normal-operation', 'cleanup']) {
     if (!proof.results.some(stage => stage.name === name && stage.status === 'passed'))
       throw Error('A required successor acceptance stage is missing.');
   }
+  if (!['localLiveVerified', 'externalSeedRestored', 'backupDetached',
+    'missingBackupGuardVerified', 'globalLeaseVerified', 'invalidRestoreGuardVerified']
+    .every(key => proof.evidence?.storage?.[key] === true))
+    throw Error('Passing local storage and external Seed recovery evidence is required.');
   return acceptedImage;
 }
 

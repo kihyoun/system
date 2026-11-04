@@ -15,11 +15,15 @@ const env = {CI_COMMIT_SHA: sha, CI_PROJECT_ID: '4', CI_PIPELINE_ID: '10', CI_JO
   CI_REGISTRY_USER: 'fixture', CI_REGISTRY_PASSWORD: 'fixture-not-a-real-secret'};
 const proof = {runId: 'f'.repeat(24), sourceRevision: sha, fullAcceptance: true, images: {candidate: id, runner: registryDigest},
   results: ['gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci',
-    'gitlab-upgrade-restored-checkpoint', 'gitlab-upgrade-security-trust', 'cleanup'].map(name => ({name, status: 'passed'})),
+    'gitlab-upgrade-restored-checkpoint', 'gitlab-upgrade-security-trust',
+    'storage-global-live-lease', 'storage-refuse-nonempty-and-corrupt-restore',
+    'storage-detached-backup-normal-operation', 'cleanup'].map(name => ({name, status: 'passed'})),
   evidence: {gitlabUpgrade: {fromImage: release.fromImage, toImage: release.toImage,
     migrationVerified: true, rollbackVerified: true, registryVerified: true, checkpointVerified: true,
     runnerImage: release.runner.toImage, runnerImageId: registryDigest, fromRunnerImageId: 'sha256:'+'6'.repeat(64), helperImageId: 'sha256:'+'7'.repeat(64), fromHelperImageId: 'sha256:'+'5'.repeat(64), runnerUpgradeVerified: true, runnerManagerIdentityPreserved: true, runnerVersion: release.runner.toVersion,
-    helperImage: release.runner.helperImage, jobCaBundleSha256: release.jobCaBundleSha256, securityTrustVerified: true}}};
+    helperImage: release.runner.helperImage, jobCaBundleSha256: release.jobCaBundleSha256, securityTrustVerified: true},
+    storage: {localLiveVerified: true, externalSeedRestored: true, backupDetached: true,
+      missingBackupGuardVerified: true, globalLeaseVerified: true, invalidRestoreGuardVerified: true}}};
 const ci = context(env);
 assert.throws(() => context({...env, CI_REGISTRY_IMAGE: 'other.example.test/foreign/project'}));
 assert.throws(() => validateEvidence({...proof, sourceRevision: tree}, ci));
@@ -27,6 +31,8 @@ assert.throws(() => validateEvidence({...proof, results: proof.results.slice(1)}
 assert.throws(() => validateEvidence({...proof, results: [{name: 'cleanup', status: 'failed'}]}, ci));
 assert.throws(() => validateEvidence({...proof, evidence: {gitlabUpgrade: {...proof.evidence.gitlabUpgrade, rollbackVerified: false}}}, ci));
 for(const patch of [{runnerVersion:'19.4.0'},{runnerImageId:id},{jobCaBundleSha256:'0'.repeat(64)},{securityTrustVerified:false}])assert.throws(()=>validateEvidence({...proof,evidence:{gitlabUpgrade:{...proof.evidence.gitlabUpgrade,...patch}}},ci),/Runner and effective CA/);
+for(const key of Object.keys(proof.evidence.storage))assert.throws(()=>validateEvidence({...proof,
+  evidence:{...proof.evidence,storage:{...proof.evidence.storage,[key]:false}}},ci),/local storage and external Seed/);
 
 try {
   const dir = path.join(root, 'test-results/e2e', proof.runId);
