@@ -75,7 +75,7 @@ and verify native job cleanup before promoting a candidate.
 
 The legacy `build-v1` recipe is retained byte-for-byte for its recorded hashes
 and historical GitLab evidence. New source imports whose verified snapshot uses
-Vite select the Node 24 / Vite 8 family (`node24-vite8-overview-v3` for new
+Vite select the Node 24 / Vite 8 family (`node24-vite8-ca-v4` for new
 reservations): Node 24.22.0/npm 11.19.1, locked install,
 lint, Vitest, TypeScript/Vite build and Playwright 1.64.1 browser checks. Both
 profiles use the same bounded job names and artifact/digest contract; modern
@@ -98,10 +98,9 @@ limitation: an untagged browser image is recorded by Docker as `:latest`, and
 that older cleanup comparison can leave its job tag behind while reporting
 success.
 
-New, unreserved builds use `legacy-cleanup-v2` or `node24-vite8-overview-v3`.
-These profiles share the corrected cleanup implementation and otherwise retain
-their original toolchain, build checks and CI definition. The modern overview
-profile adds the navigation checks described below. The
+Current unreserved builds use `legacy-ca-v4` or `node24-vite8-ca-v4`.
+These inherit the corrected cleanup implementation from the versioned cleanup-v2
+profiles, and the modern profile also inherits the navigation checks below. The
 cleanup adds `:latest` only when the final repository path component has no tag;
 a registry port is preserved, and explicit tags and digest references are not
 changed. Removal targets only that exact tag/reference, without pruning or
@@ -128,10 +127,27 @@ retains the selected Projects tab and that the **Open Wizard** action works.
 The overview and workspace screenshots are retained.
 Earlier modern source without those tabs keeps its direct-workspace browser path.
 
-All four earlier profiles, including both cleanup-v2 profiles, remain selectable
+Earlier profiles, including both cleanup-v2 profiles, remain selectable
 by their exact reserved hashes. A new controller does not replace an installed
 recipe or rewrite its receipt. Before delivering source that adds the default
 Overview, perform the guarded build/environment-only migration with an explicit
-`buildProfile` of `node24-vite8-overview-v3` and a matching immutable helper.
+`buildProfile` of `node24-vite8-ca-v4` and a matching immutable helper.
 Keep the selected profile in the private operator options for later adoption or
 retry; Production promotion remains a separate deliberate operation.
+
+## Reviewed public CA trust
+
+The `legacy-ca-v4` and `node24-vite8-ca-v4` recipes add the repository's reviewed
+public Mozilla CA bundle and checksum-verified refresh script to their managed
+files. Build and browser images install that bundle offline; Node uses OpenSSL
+CA trust, so its embedded historical CA list does not reintroduce removed trust.
+The modern profile also uses the reviewed Node base recorded in the generated
+recipe. The version and recipe hash bind these changes to their exact inputs.
+
+Existing reservations retain their original bytes and evidence. Upgrade an
+already-managed project through the guarded build/environment-only migration,
+using an explicit `buildProfile` of `node24-vite8-ca-v4` (or `legacy-ca-v4` for
+legacy source) and the accepted immutable helper, then rebuild and test the job
+images. Replacing a controller alone does not update a reserved project's recipe.
+This refresh is for generated images and CI jobs; it is not a host trust-store
+maintenance command. Review deployment-specific custom CAs separately.
