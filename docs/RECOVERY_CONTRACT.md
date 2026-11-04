@@ -144,8 +144,10 @@ verified image archives. The former live data directory is not an input.
    `gitlab/data/.system-bootstrapper-restore-incomplete` before copying and
    durably removes it after verifying the restored payload. A failed copy keeps
    this guard; controller/GitLab startup refuses partly restored state. Inspect
-   the failed operation and follow its guarded continuation rather than deleting
-   the marker or starting writers manually.
+   the failed operation and preserve its partial target and marker for diagnosis.
+   After confirming its helper has ended, select another fresh live directory
+   and restore the same verified Seed there. The native entry point refuses to
+   resume over partial data; do not delete its marker or start writers manually.
 5. Install Certbot as needed and run
    `sudo bash bootstrapper/install-volume-host.sh`. This rebinds webroot renewal
    paths to the new live directory and installs the renewal/deploy integration.
@@ -190,8 +192,8 @@ before Wizard and project services rather than substituting a different image.
 
 `tests/seed/recovery-contract.py` exercises the real shell scripts and rsync with a
 fixture Docker command, including failed copies, forced shutdown, version mismatch,
-corruption, missing completion markers, active writers, renewal locking and retry
-of an interrupted restore. Wizard model regressions cover literal assignments,
+corruption, missing completion markers, active writers, renewal locking and
+interrupted-copy durability. Wizard model regressions cover literal assignments,
 JSON/ENV/ZIP equivalence and the immutable signature.
 
 The required [disposable platform scenario](../tests/e2e/README.md) additionally
