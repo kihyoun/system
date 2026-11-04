@@ -99,32 +99,6 @@ class ReleaseContracts(unittest.TestCase):
                 release['candidateEvidenceSha256'] = hashlib.sha256(raw).hexdigest()
                 with self.assertRaisesRegex(successor.recovery.RecoveryError, 'storage-acceptance-required'):
                     successor.release_inputs(json.dumps(release).encode(), raw, self.security)
-    def test_security_acceptance_requires_distinct_verified_runner_and_helper_images(self):
-        security = copy.deepcopy(self.security)
-        security.update(runner={'toVersion': '19.5.1', 'toImage': 'runner:accepted', 'helperImage': 'helper:accepted'},
-                        jobCaBundleSha256='9' * 64)
-        evidence = copy.deepcopy(self.evidence)
-        evidence['results'].append({'name': 'gitlab-upgrade-security-trust', 'status': 'passed'})
-        evidence['images']['runner'] = 'sha256:' + '5' * 64
-        proof = evidence['evidence']['gitlabUpgrade']
-        proof.update(runnerImage='runner:accepted', runnerVersion='19.5.1', runnerImageId=evidence['images']['runner'],
-                     helperImage='helper:accepted', helperImageId='sha256:' + '6' * 64,
-                     fromRunnerImageId='sha256:' + '7' * 64, fromHelperImageId='sha256:' + '8' * 64,
-                     jobCaBundleSha256=security['jobCaBundleSha256'], securityTrustVerified=True,
-                     runnerUpgradeVerified=True, runnerManagerIdentityPreserved=True)
-        def validate():
-            raw = json.dumps(evidence).encode()
-            release = copy.deepcopy(self.release)
-            release['candidateEvidenceSha256'] = hashlib.sha256(raw).hexdigest()
-            return successor.release_inputs(json.dumps(release).encode(), raw, security)
-        validate()
-        for old, current in [('fromRunnerImageId', 'runnerImageId'), ('fromHelperImageId', 'helperImageId')]:
-            with self.subTest(key=old):
-                before = proof[old]
-                proof[old] = proof[current]
-                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'runner-security-evidence-mismatch'):
-                    validate()
-                proof[old] = before
     def test_pipeline_running_or_changed_default_branch_is_rejected(self):
         self.api.pipeline['status'] = 'running'
         with self.assertRaisesRegex(successor.recovery.RecoveryError, 'not-complete'):
@@ -184,13 +158,14 @@ class ReleaseContracts(unittest.TestCase):
 
     def test_runner_security_profile_requires_real_upgrade_and_manager_identity_evidence(self):
         security = copy.deepcopy(self.security)
-        security.update(runner={'toImage': 'runner:fixed', 'helperImage': 'helper:fixed'}, jobCaBundleSha256='9' * 64)
+        security.update(runner={'toVersion': '19.5.1', 'toImage': 'runner:fixed', 'helperImage': 'helper:fixed'}, jobCaBundleSha256='9' * 64)
         evidence = copy.deepcopy(self.evidence)
         evidence['images']['runner'] = 'sha256:' + '5' * 64
         evidence['results'].append({'name': 'gitlab-upgrade-security-trust', 'status': 'passed'})
         evidence['evidence']['gitlabUpgrade'].update(runnerImage='runner:fixed', runnerImageId=evidence['images']['runner'],
             runnerVersion='19.5.1', helperImage='helper:fixed', helperImageId='sha256:' + '6' * 64,
-            fromRunnerImageId='sha256:' + '7' * 64, jobCaBundleSha256=security['jobCaBundleSha256'],
+            fromRunnerImageId='sha256:' + '7' * 64, fromHelperImageId='sha256:' + '8' * 64,
+            jobCaBundleSha256=security['jobCaBundleSha256'],
             securityTrustVerified=True, runnerUpgradeVerified=True, runnerManagerIdentityPreserved=True)
         def verify(value):
             raw = json.dumps(value).encode()
@@ -198,14 +173,19 @@ class ReleaseContracts(unittest.TestCase):
             successor.release_inputs(json.dumps(release).encode(), raw, security)
         verify(evidence)
         for key in ('runnerUpgradeVerified', 'runnerManagerIdentityPreserved', 'securityTrustVerified',
-                    'fromRunnerImageId', 'helperImageId', 'jobCaBundleSha256'):
+                    'fromRunnerImageId', 'fromHelperImageId', 'helperImageId', 'jobCaBundleSha256'):
             invalid = copy.deepcopy(evidence)
             invalid['evidence']['gitlabUpgrade'].pop(key)
             with self.assertRaisesRegex(successor.recovery.RecoveryError, 'runner-security-evidence-mismatch'):
                 verify(invalid)
-        evidence['evidence']['gitlabUpgrade']['fromRunnerImageId'] = evidence['images']['runner']
-        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'runner-security-evidence-mismatch'):
-            verify(evidence)
+        proof = evidence['evidence']['gitlabUpgrade']
+        for old, current in [('fromRunnerImageId', 'runnerImageId'), ('fromHelperImageId', 'helperImageId')]:
+            with self.subTest(key=old):
+                before = proof[old]
+                proof[old] = proof[current]
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'runner-security-evidence-mismatch'):
+                    verify(evidence)
+                proof[old] = before
     def test_old_Sync_cannot_claim_project_quiescence_by_omission(self):
         config = {'SYNC_HOST': 'sync.example.invalid', 'SYNC_DOMAIN_MODE': '2', 'SYNC_USER': 'fixture', 'SYNC_PASS': 'fixture'}
         with patch.object(successor.runtime, 'http', side_effect=[(200, b'{"accessToken":"private"}', {}),
@@ -390,7 +370,9 @@ class StagedControllerContracts(unittest.TestCase):
                 return (prior_api if '/jobs/29/' in path else target_api).raw(path)
         class Lease:
             operation = 'fixture-lease'
-            def __init__(self, config): pass
+            def __init__(self, config, legacy_controller=None):
+                if legacy_controller is not rows['system_bootstrapper_1']:
+                    raise AssertionError('promotion must serialize the inspected legacy controller')
             def __enter__(self): return self
             def __exit__(self, *args): return False
         alias = successor.controller_alias(self.target)
