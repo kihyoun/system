@@ -69,16 +69,18 @@ async function node(candidate, action, input, options={}) {
     "let text='';process.stdin.on('data',x=>text+=x);process.stdin.on('end',async()=>{try{const input=JSON.parse(text);const updateConfiguration=("+updateConfiguration.toString()+");await ("+action.toString()+")(input);}catch{process.exitCode=1;}});"],
   {...options,input:JSON.stringify(input)});
 }
-async function syncFetch(candidate,connection) {
-  const request=(route,options)=>connection?tlsProbe(candidate,'sync.candidate.test',route,options,connection):candidate.request(candidate.url+route,options);
+async function syncFetch(candidate,connection,{waitForReady=false}={}) {
+  const send=(route,options)=>connection?tlsProbe(candidate,'sync.candidate.test',route,options,connection):candidate.request(candidate.url+route,options);
+  const request=(route,options)=>waitForReady?readyResponse(candidate,()=>send(route,options)):send(route,options);
   const login=await request('/login',{method:'POST',headers:{Host:'sync.candidate.test','Content-Type':'application/json'},
     body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})});
   if(login.status!==200) throw Error('recovery-sync-login-failed');
   const token=JSON.parse(login.body).accessToken;
   const headers={Host:'sync.candidate.test',Authorization:'Bearer '+token};
   const main=await request('/config/main',{headers});
+  if(main.status!==200) throw Error('recovery-fetch-failed');
   const projects=await request('/config/projects',{headers});
-  if(main.status!==200 || projects.status!==200) throw Error('recovery-fetch-failed');
+  if(projects.status!==200) throw Error('recovery-fetch-failed');
   const result={main:JSON.parse(main.body),projects:JSON.parse(projects.body)};
   signature(result.main.data);
   if(!Array.isArray(result.projects)||!result.projects.some(project=>project.filename==='.wizard.env')) throw Error('recovery-project-export-missing');

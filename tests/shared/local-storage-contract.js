@@ -1,5 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
 const {test}=require('node:test');
 const storage=require('../e2e/local-storage');
 const {Candidate,LABEL}=require('./disposable-candidate');
@@ -96,4 +98,62 @@ test('fresh restore checks the same live lease even before a GitLab container ex
   assert.equal(calls.filter(args=>args[0]==='ps').length,2);
   assert.equal(calls.filter(args=>args.includes('mkdir')).length,1);
   assert.equal(calls.filter(args=>args.includes('rmdir')).length,1);
+});
+
+function restartedControlFixture(responses={},readinessMilliseconds=5000,deadline=20000) {
+  let time=0,restarted=false;
+  const requests=[],results=[],config=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+  const candidate={daemon:'owned',spec:{readinessMilliseconds},secrets:{user:'fixture-user',password:'private-fixture-password'},
+    now:()=>time,deadline,sleep:async milliseconds=>{time+=milliseconds;},checkpoint:()=>{},results,
+    stage:Candidate.prototype.stage,wait:Candidate.prototype.wait,call:async()=>'absent',
+    inner:async(args,options)=>{
+      if(args[0]==='inspect')return args.includes('{{.RestartCount}}')?(restarted?'1':'0'):JSON.stringify({bridge:{Gateway:'172.17.0.1'}});
+      const input=JSON.parse(options.input);
+      if(Object.hasOwn(input,'user')){
+        assert.equal(input.user,candidate.secrets.user);assert.equal(input.password,candidate.secrets.password);
+        restarted=true;return 'accepted';
+      }
+      requests.push({host:input.host,route:input.route});
+      assert.equal(input.certificate,'/ssl/live/recovery-fixture/fullchain.pem');
+      if(input.route==='/')return JSON.stringify({status:200,body:'<html>Wizard ready</html>'});
+      if(input.route==='/login')assert.deepEqual(JSON.parse(input.options.body),{username:candidate.secrets.user,password:candidate.secrets.password});
+      else assert.equal(input.options.headers.Authorization,'Bearer private-fixture-token');
+      const pending=responses[input.route],reply=typeof pending==='function'?pending():pending?.shift();
+      if(reply instanceof Error)throw reply;
+      if(reply!==undefined)return JSON.stringify(typeof reply==='number'?{status:reply,body:'private-response-with-secrets'}:reply);
+      return JSON.stringify({status:200,body:JSON.stringify(input.route==='/login'?{accessToken:'private-fixture-token'}:
+        input.route==='/config/main'?{data:config}:[{filename:'.wizard.env'}])});
+    }};
+  return {candidate,requests,results,time:()=>time,run:()=>candidate.stage('storage-detached-backup-normal-operation',()=>storage.verifyControlWithoutBackup(candidate))};
+}
+
+test('detached backup Push waits for Sync after Wizard becomes ready and retries each configuration endpoint',async()=>{
+  const f=restartedControlFixture({'/login':[502,new Error('private-transport-details')],'/config/main':[503],'/config/projects':[504]});
+  await f.run();
+  assert.equal(f.candidate.backupDetached,true);assert.equal(f.time(),4000);
+  assert.deepEqual(f.requests.map(({route})=>route),['/','/login','/login','/login','/config/main','/config/main','/config/projects','/config/projects']);
+  assert.equal(f.requests[0].host,'wizard.candidate.test');
+  assert(f.requests.slice(1).every(request=>request.host==='sync.candidate.test'));
+  assert.equal(f.results.at(-1).status,'passed');assert(!JSON.stringify(f.results).includes('private-'));
+});
+
+test('post-restart Sync rejects bad credentials and forbidden configuration immediately without exposing response data',async()=>{
+  for(const route of ['/login','/config/main','/config/projects'])for(const status of [401,403]){
+    const f=restartedControlFixture({[route]:[status]});
+    await assert.rejects(f.run, {message:route==='/login'?'recovery-sync-login-failed':'recovery-fetch-failed'});
+    assert.equal(f.requests.filter(request=>request.route===route).length,1);
+    assert.equal(f.requests.at(-1).route,route);assert.equal(f.time(),0);
+    assert.notEqual(f.candidate.backupDetached,true);assert.equal(f.results.at(-1).status,'failed');
+    assert(!JSON.stringify(f.results).includes('private-'));
+  }
+});
+
+test('post-restart Sync readiness retains its finite retry window and shared cancellation deadline',async()=>{
+  for(const [deadline,reason,expectedTime]of [[20000,'readiness-timeout',3000],[1500,'canceled-or-overall-timeout',2000]]){
+    const f=restartedControlFixture({'/login':()=>({status:502,body:'private-proxy-response'})},3000,deadline);
+    await assert.rejects(f.run,{message:reason});
+    assert.equal(f.time(),expectedTime);assert.equal(f.requests.filter(request=>request.route==='/login').length,expectedTime/1000);
+    assert.equal(f.results.at(-1).reason,reason);assert.notEqual(f.candidate.backupDetached,true);
+    assert(!JSON.stringify(f.results).includes('private-'));
+  }
 });

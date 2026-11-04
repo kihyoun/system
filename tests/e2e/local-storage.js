@@ -131,7 +131,8 @@ async function verifyControlWithoutBackup(candidate) {
   await candidate.wait(async()=>{
     const page=await recovery.tlsProbe(candidate,'wizard.candidate.test','/',{},{certificate});return page.status===200&&/<html/i.test(page.body);
   },candidate.spec.readinessMilliseconds||600000);
-  await recovery.syncFetch(candidate,{certificate});
+  // Wizard routing can return before Sync has reopened its listener.
+  await recovery.syncFetch(candidate,{certificate},{waitForReady:true});
   await assertAbsent(candidate);
   candidate.backupDetached=true;
 }
