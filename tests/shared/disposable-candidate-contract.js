@@ -28,7 +28,8 @@ assert(config.includes('https://www.system-bootstrapper.com'));
 assert.throws(()=>configuration(example.replace('https://www.system-bootstrapper.com','http://www.system-bootstrapper.com'),{}));
 assert.throws(()=>new Candidate({...spec,daemonImage:'docker:latest'}));
 assert.throws(()=>new Candidate({...spec,images:{}}));
-for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},1200000],[{acmeRenewalAcceptance:true},1500000]]) {
+for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},1200000],[{acmeRenewalAcceptance:true},1500000],
+  [{gitlabUpgradeAcceptance:true},3600000],[{gitlabUpgradeAcceptance:true,acmeRenewalAcceptance:true},3600000]]) {
   const bounded=new Candidate({...spec,...options},{now:()=>123});
   assert.equal(bounded.deadline,123+budget);
 }
@@ -200,7 +201,16 @@ function fixture(overrides={}) {
     assert(tags.some(tag=>tag[0]===id&&tag[1]===alias),'the declared baseline and target aliases must remain exact');
   }
   assert(upgrades.commands.some(call=>call.args.includes('GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test')));
+  upgrades.instance.now=()=>upgrades.instance.deadline-1000;
+  await upgrades.instance.inner(['info'],{timeout:1200000});
+  assert.equal(upgrades.commands.at(-1).options.timeout,1000,
+    'a late upgrade/rollback call is bounded by the remaining shared deadline');
+  upgrades.instance.now=()=>upgrades.instance.deadline+1;
+  const beforeDeadlineRefusal=upgrades.commands.length;
+  await assert.rejects(()=>upgrades.instance.inner(['info'],{timeout:1200000}),/canceled-or-overall-timeout/);
+  assert.equal(upgrades.commands.length,beforeDeadlineRefusal,'expired operations never contact Docker');
   assert.equal(upgrades.instance.cleanup(),true);
+  assert.equal(upgrades.records.size,0,'owned cleanup still runs after the shared operation deadline');
   const test=fixture(); await test.instance.start(); await test.instance.smoke();
   const creation=test.commands.find(x=>x.args[0]==='create').args;
   assert(creation.includes('--privileged')); assert(!creation.includes('--publish'));

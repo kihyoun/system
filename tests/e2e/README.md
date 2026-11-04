@@ -305,8 +305,8 @@ inherits the original candidate's absolute deadline and cancellation. The expand
 `acmeRenewalAcceptance: true` scenario has one shared 1,500-second lifecycle
 budget, including both platform hosts and these fixture owners. Ordinary
 candidates retain their 1,200-second budget; no individual stage resets it.
-The existing 28-minute script and 30-minute CI-job limits retain preparation
-and cleanup reserve. Forced-kill cleanup
+The outer script and CI-job limits must also retain preparation, publication
+and independent cleanup reserve beyond the lifecycle budget. Forced-kill cleanup
 must remove heavy platform owners before these fixture owners.
 
 The DNS fixture points the test domains at each owned daemon's private bridge
@@ -368,10 +368,15 @@ The outer receipt copies the bounded migration proof; the detailed migration
 stages belong to the restored candidate receipt. Raw private checkpoints,
 configuration, credentials and database logs are never public CI artifacts.
 
-The optional successor scenario shares a finite 40-minute overall candidate
+The optional successor scenario shares a finite 60-minute overall candidate
 budget, including the preceding cold-recovery scenarios and both version
-transitions. It uses the existing serialized resource group and 12-GiB private
-daemon ceiling; check actual host headroom before starting it. The job timeout
-is separate from that operation budget and must leave time for image preparation,
-publication and ownership-checked cleanup. A passing mocked adapter contract is
-not a successful real migration; use the complete platform CI gate for that proof.
+transitions. Native upgrade and rollback readiness each allow 900 seconds, within
+a 1,200-second invocation limit and the same absolute candidate deadline. Readiness
+still requires completed background migrations; a successful migration batch alone
+does not satisfy that condition. The scenario uses the existing serialized resource
+group and 12-GiB private daemon ceiling; check actual host headroom before starting
+it. The platform job allows a 65-minute script and a separate two-minute cleanup
+within a 70-minute job limit, leaving time for preparation, publication and artifact
+collection. Ordinary smoke and ACME-only lifecycle budgets remain unchanged. A
+passing mocked adapter contract is not a successful real migration; use the
+complete platform CI gate for that proof.

@@ -120,7 +120,7 @@ class Candidate {
     this.now=options.now || Date.now;
     this.id=crypto.randomBytes(12).toString('hex'); this.name='system-candidate-'+this.id;
     this.resources=[]; this.canceled=false; this.startedAt=this.now();
-    this.deadline=this.startedAt+(spec.gitlabUpgradeAcceptance===true?2400000:spec.acmeRenewalAcceptance===true?1500000:1200000);
+    this.deadline=this.startedAt+(spec.gitlabUpgradeAcceptance===true?3600000:spec.acmeRenewalAcceptance===true?1500000:1200000);
     this.checkpoint=options.checkpoint || (()=>{});
     this.secrets={user:'test'+crypto.randomBytes(8).toString('hex'),
       password:crypto.randomBytes(24).toString('hex'),root:crypto.randomBytes(24).toString('hex')};

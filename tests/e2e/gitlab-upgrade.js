@@ -20,7 +20,7 @@ function prepared(candidate){
   const imageIds={[release.fromImage]:candidate.spec.supportImages.previousGitlab.id,[release.toImage]:candidate.spec.images.gitlab.id,[release.runner.toImage]:candidate.spec.images.runner?.id,[release.runner.fromImage]:candidate.spec.supportImages.previousRunner.id,[release.runner.helperImage]:candidate.spec.supportImages.helper.id,[release.runner.fromHelperImage]:candidate.spec.supportImages.previousHelper.id};
   if(Object.values(imageIds).some(id=>!/^sha256:[a-f0-9]{64}$/.test(id))||imageIds[release.fromImage]===imageIds[release.toImage]||imageIds[release.runner.fromImage]===imageIds[release.runner.toImage])throw Error('upgrade-distinct-images-required');
   return {imageIds,runnerAliases:{[release.runner.fromImage]:'candidate-runner:under-test',[release.runner.toImage]:'candidate-runner:target'},helperAliases:{[release.runner.fromHelperImage]:'candidate-helper:under-test',[release.runner.helperImage]:'candidate-helper:target'},aliases:{[release.fromImage]:'candidate-gitlab:under-test',[release.toImage]:'candidate-gitlab:target'},options:{sourceRevision:candidate.spec.sourceRevision,
-    stateDir:'/state',persistentDir:candidate.spec.restore.base,checkpointDir:'/state/gitlab-upgrades/candidate-'+candidate.id,evidence:'/state/candidate-migration-evidence.json',readyTimeoutSeconds:600}};
+    stateDir:'/state',persistentDir:candidate.spec.restore.base,checkpointDir:'/state/gitlab-upgrades/candidate-'+candidate.id,evidence:'/state/candidate-migration-evidence.json',readyTimeoutSeconds:900}};
 }
 async function invoke(candidate,action,checkpointSha256){
   const input={...prepared(candidate),action,checkpointSha256};
@@ -39,7 +39,7 @@ async function invoke(candidate,action,checkpointSha256){
     }else if(input.action==='rollback')result=await engine.rollback(input.checkpointSha256);else throw Error();
     process.stdout.write(JSON.stringify(result));
   }catch{process.exitCode=1;}});`;
-  const raw=await candidate.inner(['exec','-i','system_bootstrapper_1','node','-e',script],{input:JSON.stringify(input),timeout:900000});
+  const raw=await candidate.inner(['exec','-i','system_bootstrapper_1','node','-e',script],{input:JSON.stringify(input),timeout:1200000});
   return JSON.parse(raw.split('\n').at(-1));
 }
 async function run(candidate,dependencies={}){

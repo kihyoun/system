@@ -64,6 +64,29 @@ test('failed original-host removal prevents a second daemon',async t=>{
   assert(!first.events.includes('new-host-created'));
 });
 
+test('upgrade recovery preserves spent lifecycle time and refuses fresh work after the original deadline',async t=>{
+  const {Candidate}=require('./disposable-candidate');
+  const input=fixture(t),first=original(),deps=dependencies(first,input),calls=[];
+  first.startedAt=1000;first.deadline=first.startedAt+3600000;
+  first.spec.gitlabUpgradeAcceptance=true;
+  let now=first.startedAt+35*60000;
+  deps.Candidate.prototype.start=async function(){
+    assert(first.removed);
+    assert.equal(this.deadline,first.deadline,'fresh host must inherit the original absolute end');
+    this.now=()=>now;this.exec=(args,options)=>{calls.push({args,options});return '';};
+    await Candidate.prototype.call.call(this,['fixture-operation'],{timeout:30*60000});
+    assert.equal(calls.at(-1).options.timeout,25*60000,
+      'time spent on the removed host is unavailable to the fresh host');
+    now=first.deadline+1;
+    await assert.rejects(()=>Candidate.prototype.call.call(this,['fixture-after-expiry']),/canceled-or-overall-timeout/);
+    assert.equal(calls.length,1,'no command may reset or outlive the shared deadline');
+    throw Error('fixture-deadline-observed');
+  };
+  await assert.rejects(()=>recovery.run(first,()=>'/unused',deps),/fixture-deadline-observed/);
+  assert(first.events.includes('new-host-cleanup'));
+  assert(!fs.existsSync(input.directory));
+});
+
 test('restored startup failure still cleans owned daemon',async t=>{
   const input=fixture(t),first=original(),deps=dependencies(first,input,{failStart:true});
   await assert.rejects(()=>recovery.run(first,()=>'/unused',deps),/new-start-failed/);
