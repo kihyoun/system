@@ -123,11 +123,11 @@ sudo env \
   bash start.sh
 ```
 
-These selectors pin the GitLab and runner images for a **fresh installation**.
-They are not an upgrade procedure for an existing GitLab database. Without these
-explicit settings, the repository uses its historical GitLab default. When
-reusing an installation, preserve its recorded image selectors and follow the
-GitLab upgrade requirements rather than replacing them with this example.
+These selectors pin the GitLab and runner images for a **fresh installation**;
+the repository defaults use the same reviewed versions. They are not an upgrade
+procedure for an existing GitLab database. When reusing an installation, preserve
+its recorded image selectors and follow the GitLab upgrade requirements rather
+than replacing them with this example.
 
 The Bootstrapper builds its image and initially starts the Wizard and Sync
 access point. GitLab is not fully configured at this stage. The first build

@@ -157,7 +157,13 @@ verified image archives. The former live data directory is not an input.
    After confirming its helper has ended, select another fresh live directory
    and restore the same verified Seed there. The native entry point refuses to
    resume over partial data; do not delete its marker or start writers manually.
-5. Install Certbot as needed and run
+5. Restore preserves the Seed's ownership and modes exactly. Older snapshots may
+   contain an SSL root with mode `0700`, which prevents NGINX workers from serving
+   HTTP-01 challenges. Before starting writers or certificate renewal, repeat the
+   native preparation command from step 1. It prepares the public challenge
+   directory and adds traversal permission to the SSL root while keeping private
+   certificate directories and key files unchanged. The retained Seed is unchanged.
+   Install Certbot as needed and run
    `sudo bash bootstrapper/install-volume-host.sh`. This rebinds webroot renewal
    paths to the new live directory and installs the renewal/deploy integration.
    Set the required image selectors, then start with `sudo bash start.sh`.
