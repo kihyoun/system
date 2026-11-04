@@ -340,10 +340,13 @@ assertion. Only explicit source-owned failure codes survive cleanup retries.
 
 ## GitLab successor migration acceptance
 
-The committed security-release profile adds `supportImages.previousGitlab` to
-its explicit archive inputs. The ordinary `images.gitlab` identifies the patched
-successor; the isolated baseline and cold-recovery phases deliberately start the
-previous pinned image. Both archives are pulled by immutable public reference,
+The committed security-release profile adds `supportImages.previousGitlab`,
+`supportImages.previousRunner` and `supportImages.previousHelper` to its explicit
+archive inputs. `images.gitlab`, `images.runner` and `supportImages.helper`
+identify the patched successor. The isolated baseline and cold-recovery phases
+deliberately start the previous pinned GitLab, Runner and helper images.
+Independent `:target` aliases retain the new images without substituting them
+for the baseline. All archives are pulled by immutable public reference,
 inspected and loaded before the internal daemon is created. No production data,
 network, socket or credentials are inputs to the candidate platform.
 

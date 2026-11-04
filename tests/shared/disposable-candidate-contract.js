@@ -31,7 +31,7 @@ const native=require('child_process').execFileSync('bash',['-s'],{input:literalC
 assert.deepEqual(Object.values(parsed),native);
 for(const text of ['VALUE=$(touch /should-not-run)','VALUE=$HOME','VALUE=$[1+2]','VALUE="$[1+2]"','VALUE=$','VALUE=`id`','VALUE="unterminated','VALUE=first\nVALUE=second','OTHER=missing'])assert.throws(()=>configurationValues(text,['VALUE']));
 
-function fixture() {
+function fixture(overrides={}) {
   const commands=[]; const records=new Map(); let instance; let clock=0; let failRemoval=false; let offline=false;
   const run=(args,options)=>{
     commands.push({args,options});
@@ -39,17 +39,18 @@ function fixture() {
     const [kind,verb]=args;
     if(['network','volume'].includes(kind) && verb==='create' || kind==='create') {
       const actualKind=kind==='create'?'container':kind;
-      const id=actualKind==='volume'?instance.name: (actualKind==='network'?'b':'c').repeat(64);
-      records.set(id,{kind:actualKind,Id:id,Name:actualKind==='container'?'/'+instance.name:instance.name,Labels:{[LABEL]:instance.id}}); return id;
+      const name=actualKind==='container'?args[args.indexOf('--name')+1]:args.at(-1);
+      const id=actualKind==='volume'?name: (actualKind==='network'?'b':'c').repeat(64);
+      records.set(id,{kind:actualKind,Id:id,Name:actualKind==='container'?'/'+name:name,Labels:{[LABEL]:args[args.indexOf('--label')+1].slice(LABEL.length+1)}}); return id;
     }
     if(verb==='ls') return [...records.values()].filter(x=>x.kind===kind).map(x=>JSON.stringify(kind==='volume'?{Name:x.Name}:{ID:x.Id.slice(0,12),Name:x.Name,Names:x.Name.replace(/^\//,'')})).join('\n');
     if(verb==='inspect') return JSON.stringify([[...records.values()].find(x=>x.kind===kind && (x.Id===args[2] || x.Name===args[2] || x.Name==='/'+args[2]))]);
     if(verb==='rm') {if(failRemoval) throw new Error('remove failed'); records.delete(args.at(-1));return '';}
     if(kind==='inspect') return JSON.stringify({'80/tcp':[{HostIp:'127.0.0.1',HostPort:'49152'}]});
-    if(kind==='exec' && args.includes('inspect') && args.includes('{{.Id}}')) return 'sha256:'+hash;
+    if(kind==='exec' && args.includes('inspect') && args.includes('{{.Id}}')) return args.at(-1);
     return '';
   };
-  instance=new Candidate(spec,{docker:run,now:()=>clock,sleep:async ms=>{clock+=ms;},request:async(url,options)=>{
+  instance=new Candidate({...spec,...overrides},{docker:run,now:()=>clock,sleep:async ms=>{clock+=ms;},request:async(url,options)=>{
     if(url.endsWith('/login')) {assert.equal(JSON.parse(options.body).password,instance.secrets.password);return {status:200,body:'{"accessToken":"private-token"}'};}
     if(url.endsWith('/config/main')) {assert.equal(options.headers.Authorization,'Bearer private-token');return {status:200,body:JSON.stringify({data:configuration(example,instance.secrets)})};}
     return {status:200,body:'<html>candidate</html>'};
@@ -170,6 +171,19 @@ function fixture() {
     await assert.rejects(failing.platform());
     assert.equal(createdProjects,1,'A missing real Docker TOML section must fail before creating any CI project.');
   } finally {fs.rmSync(policyDirectory,{recursive:true,force:true});}
+  const upgrades=fixture({gitlabUpgradeAcceptance:true,supportImages:Object.fromEntries(
+    ['helper','previousGitlab','previousRunner','previousHelper'].map((role,index)=>[role,{id:'sha256:'+String(index+1).repeat(64),archive:path.resolve(role+'.tar')}]))});
+  await upgrades.instance.start();
+  const tags=upgrades.commands.filter(call=>call.args.includes('tag')).map(call=>call.args.slice(-2));
+  for(const [id,alias]of [[spec.images.gitlab.id,'candidate-gitlab:target'],[spec.images.runner.id,'candidate-runner:target'],
+    [upgrades.instance.spec.supportImages.helper.id,'candidate-helper:target'],
+    [upgrades.instance.spec.supportImages.previousGitlab.id,'candidate-gitlab:under-test'],
+    [upgrades.instance.spec.supportImages.previousRunner.id,'candidate-runner:under-test'],
+    [upgrades.instance.spec.supportImages.previousHelper.id,'candidate-helper:under-test']]) {
+    assert(tags.some(tag=>tag[0]===id&&tag[1]===alias),'the declared baseline and target aliases must remain exact');
+  }
+  assert(upgrades.commands.some(call=>call.args.includes('GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test')));
+  assert.equal(upgrades.instance.cleanup(),true);
   const test=fixture(); await test.instance.start(); await test.instance.smoke();
   const creation=test.commands.find(x=>x.args[0]==='create').args;
   assert(creation.includes('--privileged')); assert(!creation.includes('--publish'));

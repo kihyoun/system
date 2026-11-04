@@ -111,7 +111,7 @@ class Candidate {
       if (!/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-image-input');
     }
     for(const [role,image] of Object.entries(spec.supportImages || {})) {
-      if(!['helper','previousGitlab'].includes(role) || !/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-support-image');
+      if(!['helper','previousGitlab','previousRunner','previousHelper'].includes(role) || !/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-support-image');
     }
     this.spec=spec; this.exec=options.docker || docker;
     this.request=options.request || ((url,requestOptions)=>this.httpFromCandidate(url,requestOptions));
@@ -172,7 +172,7 @@ class Candidate {
       this.url='http://candidate.invalid';
     });
     await this.stage('candidate-images',async()=>{
-      const tags={candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous'};
+      const tags={candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous',previousRunner:'candidate-runner:previous',previousHelper:'candidate-helper:previous'};
       for (const [role,image] of Object.entries({...this.spec.images,...this.spec.supportImages})) {
         // Stream the explicit archive from an open descriptor. No buffering a
         // multi-gigabyte image in Node and no outer-host bind path assumptions.
@@ -181,9 +181,13 @@ class Candidate {
         await this.inner(['tag',image.id,tags[role]]);
       }
       if(this.spec.gitlabUpgradeAcceptance===true){
-        if(!this.spec.supportImages?.previousGitlab)throw Error('upgrade-previous-image-required');
+        if(!this.spec.supportImages?.previousGitlab||!this.spec.supportImages?.previousRunner||!this.spec.supportImages?.previousHelper||!this.spec.supportImages?.helper)throw Error('upgrade-previous-image-required');
         await this.inner(['tag',this.spec.images.gitlab.id,'candidate-gitlab:target']);
+        await this.inner(['tag',this.spec.images.runner.id,'candidate-runner:target']);
+        await this.inner(['tag',this.spec.supportImages.helper.id,'candidate-helper:target']);
         await this.inner(['tag',this.spec.supportImages.previousGitlab.id,'candidate-gitlab:under-test']);
+        await this.inner(['tag',this.spec.supportImages.previousRunner.id,'candidate-runner:under-test']);
+        await this.inner(['tag',this.spec.supportImages.previousHelper.id,'candidate-helper:under-test']);
       }
     });
     await this.stage('bootstrap',async()=>{
@@ -205,6 +209,7 @@ class Candidate {
         '--env','SEED_DIR='+require('../e2e/local-storage').SEED,'--env','SEED_MOUNT='+require('../e2e/local-storage').MOUNT,
         '--env','PERSISTENT_MOUNT=/','--env','PERSISTENT_DIR='+base,'--env','SYSTEM_CONFIG_DIR=/state','--env','COMPOSE_COMPATIBILITY=1',
         '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--env','GITLAB_RUNNER_IMAGE=candidate-runner:under-test',
+        '--env','GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test',
         '--env','NGINX_IMAGE=nginx:latest','--env','WIZARD_IMAGE=systembootstrapper/wizard',
         '--env','GITLAB_SSH_BIND=2222','--env','GITLAB_REGISTRY_BIND=5050',
         '--volume','/var/run/docker.sock:/var/run/docker.sock',
@@ -276,7 +281,9 @@ class Candidate {
           const fs=require('fs');const p=base+'/runners/runner/1/config/config.toml';
           let t=fs.readFileSync(p,'utf8');
           if((t.match(/\[runners\.docker\]\r?\n/g)||[]).length!==1)throw Error('candidate-runner-docker-section-required');
-          t=t.replace(/(\[runners\.docker\]\r?\n)/,'$1    helper_image = "candidate-helper:under-test"\n    pull_policy = "if-not-present"\n    allowed_pull_policies = ["never", "if-not-present"]\n');
+          t=t.replace(/(\[runners\.docker\]\r?\n)([\s\S]*?)(?=\r?\n\s*\[|$)/,(_match,header,body)=>
+            header+'    helper_image = "candidate-helper:under-test"\n    pull_policy = "if-not-present"\n    allowed_pull_policies = ["never", "if-not-present"]\n'+
+            body.replace(/^\s*(?:helper_image|pull_policy|allowed_pull_policies)\s*=.*(?:\r?\n|$)/gm,''));
           fs.writeFileSync(p,t,{mode:0o600});
         }.toString()+')('+JSON.stringify(this.spec.restore?.base||'/candidate-data/platform')+')';
         await this.inner(['exec','system_bootstrapper_1','node','-e',script]);

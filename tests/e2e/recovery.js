@@ -284,7 +284,8 @@ async function bootstrapRestore(candidate,dependencies={}) {
   for(const [name,directory]of Object.entries(mounts))await candidate.inner(['volume','create','--driver','local','--opt','type=none','--opt','o=bind','--opt','device='+BASE+'/'+directory,'system_'+name]);
   const args=['create','--name','system_bootstrapper_1','--restart','always','--env','PERSISTENCE_MODE=local','--env','PERSISTENT_MOUNT=/',
     '--env','SEED_DIR='+SEED,'--env','SEED_MOUNT='+storage.MOUNT,'--env','PERSISTENT_DIR='+BASE,'--env','SYSTEM_CONFIG_DIR=/state','--env','COMPOSE_COMPATIBILITY=1',
-    '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--env','GITLAB_RUNNER_IMAGE=candidate-runner:under-test','--env','NGINX_IMAGE=nginx:latest','--env','WIZARD_IMAGE=systembootstrapper/wizard',
+    '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--env','GITLAB_RUNNER_IMAGE=candidate-runner:under-test',
+    '--env','GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test','--env','NGINX_IMAGE=nginx:latest','--env','WIZARD_IMAGE=systembootstrapper/wizard',
     '--env','GITLAB_SSH_BIND=2222','--env','GITLAB_REGISTRY_BIND=5050','--volume','/var/run/docker.sock:/var/run/docker.sock',
     '--volume',BASE+'/runners:'+BASE+'/runners','--volume',BASE+'/host/letsencrypt:/host-letsencrypt',
     '--volume','system_configuration:/state','--volume','system_wizardPublic:/wizard-public','--volume','system_templates:/templates','--volume','system_synctemplates:/synctemplates','--volume','system_ssl:/ssl',
