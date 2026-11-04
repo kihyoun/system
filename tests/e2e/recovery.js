@@ -257,7 +257,9 @@ async function captureSeed(original,inputs) {
   await step('harvest',()=>original.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],
     {timeout:180000,failureCodes:HARVEST_FAILURE_CODES}),Object.values(HARVEST_FAILURE_CODES));
   const current=await step('manifest-current',async()=>{
-    const current=await original.inner(['run','--rm','--network','none','--read-only','--mount','type=bind,src='+SEED+',dst=/seed,readonly','--entrypoint','node','system-candidate:under-test','/system/system/seed-manifest.js','current','/seed']);
+    const current=await original.inner(['run','--rm','--network','none','--read-only',
+      '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--mount','type=bind,src='+SEED+',dst=/seed,readonly',
+      '--entrypoint','node','system-candidate:under-test','/system/system/seed-manifest.js','current','/seed']);
     if(!/^\/seed\/snapshots\/[A-Za-z0-9.-]+$/.test(current))throw Error('completed-snapshot-required');
     return current;
   });

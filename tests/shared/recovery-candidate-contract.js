@@ -503,6 +503,30 @@ test('cold Seed capture journals runner stop, actual Harvest, completed manifest
   assert(f.stages.every(stage=>stage.status==='passed'));
   assert.equal(f.input.configHash,recovery.hashFile(f.input.configArchive));assert.equal(f.input.seedHash,recovery.hashFile(f.input.seedArchive));
 });
+test('the fresh readonly manifest helper preserves the harvested image check without inheriting controller environment',async t=>{
+  const f=coldSeedFixture(t),seed=path.join(f.input.directory,'seed'),snapshot=path.join(seed,'snapshots/completed');
+  for(const directory of ['srv','ssl','letsencrypt'])fs.mkdirSync(path.join(snapshot,directory),{recursive:true});
+  const manifest=require('../../system/seed-manifest').create(snapshot);
+  manifest.gitlabImage='candidate-gitlab:under-test';
+  fs.writeFileSync(path.join(snapshot,'manifest.json'),JSON.stringify(manifest));
+  fs.symlinkSync('snapshots/completed',path.join(seed,'current'));
+  const env={...process.env};delete env.GITLAB_IMAGE;
+  const execute=environment=>require('child_process').spawnSync(process.execPath,
+    [path.join(__dirname,'../../system/seed-manifest.js'),'current',seed],{env:environment,encoding:'utf8'});
+  assert.notEqual(execute(env).status,0,'a fresh helper really refuses an undeclared harvested image');
+  const inner=f.candidate.inner;
+  f.candidate.inner=async(args,options)=>{
+    if(!args.includes('/system/system/seed-manifest.js'))return inner(args,options);
+    for(let index=0;index<args.length-1;index++)if(args[index]==='--env'){
+      const match=/^([A-Z_]+)=(.*)$/.exec(args[++index]);if(match)env[match[1]]=match[2];
+    }
+    const actual=execute(env);
+    assert.equal(actual.status,0,'the command must pass its expected image to the unchanged real verifier');
+    assert.equal(env.GITLAB_IMAGE,manifest.gitlabImage);
+    return actual.stdout.trim().replace(seed,'/seed');
+  };
+  await recovery.captureSeed(f.candidate,f.input);
+});
 test('cold Seed failures identify each command and do not attempt later operations',async t=>{
   const order=['runner-stop','harvest','manifest-current','archive'];
   for(const step of order){

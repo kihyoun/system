@@ -389,6 +389,7 @@ delivery-must-not-run:
         await this.inner(['exec','system_bootstrapper_1','sh','-c','printf candidate-seed-proof > /srv/gitlab/config/.candidate-proof']);
         await this.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],{timeout:180000});
         const proof=await this.inner(['run','--rm','--network','none','--read-only',
+          '--env','GITLAB_IMAGE=candidate-gitlab:under-test',
           '--mount','type=bind,src='+storage.SEED+',dst=/seed,readonly','--entrypoint','node','system-candidate:under-test','-e',
           "process.stdout.write(require('fs').readFileSync(require('/system/system/seed-manifest').current('/seed')+'/srv/gitlab/config/.candidate-proof','utf8'))"]);
         if(proof!=='candidate-seed-proof')throw new Error('seed-restore-mismatch');
