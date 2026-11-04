@@ -406,15 +406,13 @@ app.patch( "/command/system/patch", authenticateJWT, async ( req, res, next) => 
 
 app.patch( "/command/seed", authenticateJWT, async ( req, res ) => {
     try {
-      // Check the selected backup medium and complete payload before stopping
-      // any service. The native restore repeats this validation under its lease.
-      execSync('cd ../system; bash seed.sh --check-only');
-      console.log('Stopping intermediate services...');
-      const out1 = execSync('cd ../system; bash stop-intermediate.sh');
-      console.log('Apply Seed...');
+      // The native helper validates fresh storage and cold GitLab under its
+      // lease. Never stop services between a separate preflight and acquisition.
       const out = execSync('cd ../system; bash seed.sh');
-      res.status(200).json({ message: "Seed has been applied.", status,
-        output: out1.toString() + out.toString()});
+      status.needRestart = true;
+      res.once('finish', () => setImmediate(stopExecution));
+      res.status(200).json({ message: "Seed has been applied. Restarting system.", status,
+        output: out.toString()});
     } catch (err) {
       res.status(500).send(err.toString());
     }
