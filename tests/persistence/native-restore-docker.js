@@ -14,8 +14,7 @@ function run({helperImage,configurationExporter,backup}) {
   const docker=(args,input)=>{
     const result=spawnSync('docker',args,{input,encoding:'utf8',timeout:60000,maxBuffer:1024*1024});
     if(result.error || result.status!==0){
-      const code=(result.stderr||'').match(/Seed operation failed: ([a-z-]+)\./)?.[1];
-      throw Error('Native restore probe failed: '+args[0]+(code?' ('+code+')':''));
+      throw Error('Native restore probe failed: '+args[0]);
     }
     return result.stdout.trim();
   };
@@ -31,7 +30,7 @@ function run({helperImage,configurationExporter,backup}) {
       const target='/system/'+file;fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,text);}`);
   const create=(container,mounts)=>{
     created.push(container);
-    docker(['create','--name',container,'--label',label+'='+name,'--network','none','--read-only',
+    docker(['create','--name',container,'--label',label+'='+name,'--network','none','--read-only','--workdir','/',
       '--memory','256m','--cpus','0.5','--pids-limit','64','--tmpfs','/tmp:rw,noexec,nosuid,size=16m',
       '--tmpfs','/system:rw,noexec,nosuid,size=16m','--tmpfs','/srv:rw,noexec,nosuid,size=4m',
       '--tmpfs','/probe-bin:rw,exec,nosuid,nodev,size=1m',...mounts,'--entrypoint','node',image,'-e','setInterval(()=>{},1000)']);
