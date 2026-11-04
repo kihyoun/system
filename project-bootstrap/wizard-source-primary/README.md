@@ -97,6 +97,37 @@ The Build status action reads native pipeline evidence without creating pipeline
 or importing source. A pending or failed current default-branch pipeline is shown
 as unverified rather than presenting an older build as current.
 
+## Refresh an existing source-primary build recipe
+
+A controller update preserves the existing build reservation. For an already
+adopted modern Wizard, select `"buildProfile": "node24-vite8-ca-v4"` explicitly
+in a new adoption input to upgrade that reservation. The accepted starting
+profiles are `node24-vite8`, its cleanup-v2 and overview-v3 profiles, and CA-v4
+itself. Legacy recipes and initial adoption cannot select this upgrade. Omitting
+`buildProfile` retains the exact existing recipe and historical input hashes.
+
+First open a normal merge request in the canonical Wizard source project. Use
+the reviewed controller's `wizard-build/recipe.js` `generate(cube,
+'node24-vite8-ca-v4')` result to install every returned `files` entry, including
+the public CA bundle and refresh script. Preserve application source and update
+the existing `.gitlab/primary.yml` rather than replacing it with the managed
+recipe's separate CI document. Refresh the source and delivery job parents,
+install the committed public bundle before network operations, and set
+`NODE_OPTIONS=--use-openssl-ca` for Node jobs. Retain required source, browser and
+delivery checks, the public mirror and environment jobs. Rebuild and test both
+the delivery image and browser/job images; an old successful pipeline is not
+evidence for the new trust inputs.
+
+After review, merge and verify the exact default-branch push pipeline. Prepare
+the new complete `ciFiles` manifest from that commit, its immutable image digest,
+pipeline identity and matching reviewed helper. Stop and reconcile Review/Beta
+and use the same `plan`/`apply` commands above. The plan includes the old and new
+build recipe hashes. Apply independently verifies every approved CI hash and all
+generic recipe bytes, retains the previous configuration and receipt in a new
+private archive, and preserves canonical identity and environment generation
+floors. A changed or missing CA file, unrelated recipe or required CI failure
+refuses the binding. Production image promotion remains the separate step below.
+
 ## Promote and remove the duplicate
 
 Pre-pull the exact new image through scoped registry authentication and use the

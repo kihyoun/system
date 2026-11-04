@@ -8,11 +8,12 @@ const b = require('../../project-bootstrap/wizard-source-primary/binding');
 const {readConfiguration} = require('../../project-bootstrap/wizard-upgrade/run');
 const {projectForImage} = require('../../system/wizard-image-recovery');
 const logo = require('../../sync/dist/Helper').default.textLogo;
-const recipe = require('../../project-bootstrap/wizard-build/recipe').generate(logo, 'node24-vite8-overview-v3');
+const builds = require('../../project-bootstrap/wizard-build/recipe');
 const env = require('../../project-bootstrap/wizard-environments/source-primary');
 const sha = 'a'.repeat(40), image = 'registry.example.test/team/system-wizard@sha256:' + 'b'.repeat(64);
 const oldImage = 'registry.example.test/root/wizard@sha256:' + 'c'.repeat(64), helperImage = 'sha256:' + 'd'.repeat(64);
-function fixture() {
+function fixture(profile = 'node24-vite8-overview-v3') {
+  const recipe = builds.generate(logo, profile);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-source-primary-'));
   const config = path.join(root, '.projects.env/.wizard.env'), mainConfig = path.join(root, '.docker.env'), directory = path.join(root, 'adoption');
   fs.mkdirSync(path.dirname(config));
@@ -48,10 +49,32 @@ function fixture() {
   const request = async route => {calls.push(route); assert(Object.hasOwn(rows, route), 'Unexpected mutation or lookup: ' + route); return JSON.parse(JSON.stringify(rows[route]));};
   return {root, config, mainConfig, directory, receipt, text, input, rows, calls, adoption: new Adoption({config, mainConfig, directory, request, environments: env.sourcePrimaryEnvironment})};
 }
-async function use(run) { const f = fixture(); try {await run(f);} finally {fs.rmSync(f.root, {recursive: true, force: true});} }
+async function use(run, profile) { const f = fixture(profile); try {await run(f);} finally {fs.rmSync(f.root, {recursive: true, force: true});} }
+async function caUpdate(f) {
+  const initial = await f.adoption.plan(f.input);
+  await f.adoption.apply(f.input, initial.planHash);
+  fs.writeFileSync(f.mainConfig, fs.readFileSync(f.mainConfig, 'utf8').replace(oldImage, image));
+  const target = builds.generate(logo, 'node24-vite8-ca-v4'), sourceCommit = 'e'.repeat(40), pipelineId = 32;
+  const imageRef = image.replace('b'.repeat(64), 'f'.repeat(64));
+  const scripts = [...target.files, {path: b.CI, content: '# reviewed native CA CI\n'},
+    {path: '.gitlab/delivery/environment.sh', content: fs.readFileSync(path.resolve(__dirname, '../../project-bootstrap/wizard-environments/source-primary.sh'), 'utf8')}];
+  const input = {...f.input, sourceCommit, pipelineId, imageRef, buildProfile: target.profile,
+    ciFiles: scripts.map(file => ({path: file.path, sha256: b.hash(file.content)}))};
+  f.rows['projects/7/repository/branches/master'].commit.id = sourceCommit;
+  f.rows['projects/7/pipelines/32'] = {...f.rows['projects/7/pipelines/31'], id: pipelineId, sha: sourceCommit};
+  f.rows['projects/7/pipelines/32/jobs?per_page=100&include_retried=false'] = f.rows['projects/7/pipelines/31/jobs?per_page=100&include_retried=false']
+    .map(row => ({...row, commit: {id: sourceCommit}, pipeline: {id: pipelineId}}));
+  for (const file of ['build-evidence.json', 'wizard-evidence.json']) {
+    const route = 'projects/7/jobs/' + (file === 'build-evidence.json' ? 40 : 41) + '/artifacts/' + file;
+    f.rows[route] = {...f.rows[route], sourceCommit, pipelineId, imageRef};
+  }
+  for (const file of scripts) f.rows['projects/7/repository/files/' + encodeURIComponent(file.path) + '?ref=' + sourceCommit] = {content: Buffer.from(file.content).toString('base64')};
+  return {input, target, initial};
+}
 (async () => {
   await use(async f => {
     const plan = await f.adoption.plan(f.input);
+    assert(!Object.hasOwn(plan.publicPlan, 'buildProfile'), 'Historical inputs acquired a new plan field');
     assert.equal(fs.readFileSync(f.config, 'utf8'), f.text); assert(!fs.existsSync(f.directory), 'Preview wrote private state');
     assert.equal(plan.next.repository.id, 7); assert.equal(plan.next.repository.path, 'team/system-wizard');
     assert.equal(plan.next.wizardWorkflow.environments.deployments.review.stoppedThroughPipelineId, 23);
@@ -115,6 +138,54 @@ async function use(run) { const f = fixture(); try {await run(f);} finally {fs.r
     assert.equal(fs.readdirSync(f.directory).length, 2, 'A reviewed same-project binding update discarded the old private archive');
     await assert.rejects(f.adoption.plan({...updated, projectId: 8}), /canonical repository identity/);
   });
+  for (const profile of ['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4']) await use(async f => {
+    const {input, target, initial} = await caUpdate(f);
+    const before = b.read(f.config), main = fs.readFileSync(f.mainConfig, 'utf8');
+    const initialArchive = path.join(f.directory, initial.publicPlan.operation + '.json');
+    const retainedArchive = fs.readFileSync(initialArchive, 'utf8');
+    const plan = await f.adoption.plan(input);
+    assert.equal(plan.publicPlan.buildProfile, 'node24-vite8-ca-v4');
+    assert.equal(plan.publicPlan.previousBuildRecipeHash, builds.generate(logo, profile).recipeHash);
+    assert.equal(plan.publicPlan.buildRecipeHash, target.recipeHash);
+    assert.equal(plan.next.wizardWorkflow.build.recipeHash, target.recipeHash);
+    assert.equal(fs.readFileSync(f.config, 'utf8'), before.text, 'CA preview changed configuration');
+    const applied = await f.adoption.apply(input, plan.planHash);
+    const after = b.read(f.config);
+    assert.equal(after.receipt.repository.id, before.receipt.repository.id);
+    assert.equal(after.receipt.operation, before.receipt.operation);
+    assert.equal(after.text.slice(0, 1184), before.text.slice(0, 1184));
+    assert.equal(fs.readFileSync(f.mainConfig, 'utf8'), main, 'Rebind changed the running Production image');
+    assert.deepEqual(after.receipt.wizardWorkflow.environments.deployments, before.receipt.wizardWorkflow.environments.deployments);
+    assert.equal(fs.readFileSync(initialArchive, 'utf8'), retainedArchive, 'CA rebind changed a historical archive');
+    const archive = JSON.parse(fs.readFileSync(path.join(f.directory, applied.operation + '.json'), 'utf8'));
+    assert.equal(archive.previousConfiguration, before.text);
+    assert.deepEqual(archive.previousReceipt, before.receipt);
+    assert.equal((await f.adoption.apply(input, plan.planHash)).unchanged, true);
+  }, profile);
+  for (const profile of ['legacy', 'legacy-cleanup-v2']) await use(async f => {
+    const {input} = await caUpdate(f), before = fs.readFileSync(f.config, 'utf8');
+    await assert.rejects(f.adoption.plan(input), /existing reviewed modern build recipe/);
+    assert.equal(fs.readFileSync(f.config, 'utf8'), before);
+  }, profile);
+  await use(async f => {
+    await assert.rejects(f.adoption.plan({...f.input, buildProfile: 'node24-vite8-ca-v4'}), /Adopt the canonical source-primary/);
+    for (const buildProfile of ['legacy-ca-v4', 'node24-vite8-overview-v3', 'unknown', null])
+      await assert.rejects(f.adoption.plan({...f.input, buildProfile}), /explicit reviewed source-primary CA build profile/);
+  });
+  for (const change of [
+    input => {delete input.buildProfile;},
+    input => {input.ciFiles = input.ciFiles.filter(file => !file.path.endsWith('/ca/cacert-2026-10-20.crt'));},
+    input => {input.ciFiles.find(file => file.path.endsWith('/refresh-ca.sh')).sha256 = '0'.repeat(64);},
+    (input, f) => {f.rows['projects/7/repository/files/' + encodeURIComponent('.system-bootstrapper/build-v1/ca/cacert-2026-10-20.crt') + '?ref=' + input.sourceCommit].content = Buffer.from('changed CA bundle').toString('base64');},
+    (input, f) => {f.rows['projects/7/pipelines/32/jobs?per_page=100&include_retried=false'][2].status = 'failed';},
+    input => {input.projectId = 8;}
+  ]) await use(async f => {
+    const {input} = await caUpdate(f), before = fs.readFileSync(f.config, 'utf8');
+    change(input, f);
+    await assert.rejects(f.adoption.plan(input));
+    assert.equal(fs.readFileSync(f.config, 'utf8'), before);
+    assert.equal(fs.readdirSync(f.directory).length, 1, 'Refused CA upgrade created an archive');
+  });
   for (const change of [
     f => {f.rows['projects/7'].visibility = 'public';},
     f => {f.rows['projects/7'].namespace.id = 8;},
@@ -143,5 +214,5 @@ async function use(run) { const f = fixture(); try {await run(f);} finally {fs.r
     await assert.rejects(f.adoption.apply(f.input, plan.planHash), /EEXIST/);
     assert.equal(fs.readFileSync(f.config, 'utf8'), f.text);
   });
-  console.log('Source-primary adoption: exact ownership/native evidence, preserved private history/floors, CAS, shared mutex, idempotency, import guard and exact rollback image alias passed.');
+  console.log('Source-primary adoption: exact ownership/native evidence, explicit CA-v4 rebind/refusals, preserved private history/floors, CAS, shared mutex, idempotency, import guard and exact rollback image alias passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;});
