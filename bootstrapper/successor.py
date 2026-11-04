@@ -199,6 +199,22 @@ def release_inputs(release_bytes, evidence_bytes, security_release):
             'successor-stage-did-not-pass')
     require(STAGES <= {row.get('name') for row in rows}, 'successor-required-migration-stage-missing')
     images, upgrade = evidence.get('images', {}), evidence.get('evidence', {}).get('gitlabUpgrade', {})
+    if security_release.get('runner'):
+        runner = security_release['runner']
+        require(upgrade.get('runnerImage') == runner.get('toImage') and
+                upgrade.get('runnerImageId') == images.get('runner') and
+                recovery.image_id(upgrade.get('runnerImageId')) and
+                upgrade.get('runnerVersion') == '19.5.1' and
+                upgrade.get('helperImage') == runner.get('helperImage') and
+                upgrade.get('jobCaBundleSha256') == security_release.get('jobCaBundleSha256') and
+                upgrade.get('securityTrustVerified') is True and
+                upgrade.get('runnerUpgradeVerified') is True and
+                upgrade.get('runnerManagerIdentityPreserved') is True and
+                recovery.image_id(upgrade.get('fromRunnerImageId')) and
+                recovery.image_id(upgrade.get('helperImageId')) and
+                upgrade.get('fromRunnerImageId') != upgrade.get('runnerImageId') and
+                'gitlab-upgrade-security-trust' in {row.get('name') for row in rows},
+                'successor-runner-security-evidence-mismatch')
     require(images.get('candidate') == release['imageId'] and
             upgrade.get('fromImage') == security_release.get('fromImage') and
             upgrade.get('toImage') == security_release.get('toImage') and
@@ -344,8 +360,10 @@ def environment(config, reference, staged=False):
     for key in ('DOCKER_CONTEXT', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH'):
         result.pop(key, None)
     result.update(DOCKER_HOST='unix:///var/run/docker.sock', BOOTSTRAPPER_IMAGE=reference,
+                  PERSISTENCE_MODE=config.get('PERSISTENCE_MODE', 'volume'),
                   PERSISTENT_MOUNT=config['PERSISTENT_MOUNT'], PERSISTENT_DIR=str(root),
-                  PERSISTENT_UUID=config['PERSISTENT_UUID'], SEED_DIR=config['SEED_DIR'])
+                  PERSISTENT_UUID=config['PERSISTENT_UUID'], SEED_DIR=config.get('SEED_DIR', ''),
+                  SEED_MOUNT=config.get('SEED_MOUNT', ''), SEED_UUID=config.get('SEED_UUID', ''))
     if staged:
         result['SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER'] = '1'
     else:
@@ -370,15 +388,28 @@ def sync_idle(config):
 
 
 class Lease:
-    def __init__(self, config):
+    def __init__(self, config, legacy_controller=None):
         root = config['_root']
         require(not (root / 'configuration/.gitlab-upgrade-lock').exists() and
                 not (root / 'gitlab/data/.system-bootstrapper-restore-incomplete').exists(),
                 'unfinished-GitLab-operation-blocks-controller-promotion')
         self.paths = [root / 'configuration/.gitlab-upgrade-lock',
-                      Path(config['SEED_DIR']) / '.operation-lock',
+                      root / 'configuration/.storage-operation-lock',
                       root / 'host/letsencrypt/.system-bootstrapper-certificate-lock',
                       root / 'configuration/.projects.env/.wizard.env.environments.lock']
+        self.legacy_seed = None
+        if legacy_controller is not None:
+            mounts = [row for row in legacy_controller.get('Mounts', []) if row.get('Destination') == '/seed']
+            require(len(mounts) <= 1, 'ambiguous-legacy-controller-seed-binding')
+            if mounts:
+                selected = Path(config.get('SEED_DIR', ''))
+                require(mounts[0].get('Type') == 'bind' and selected.is_absolute() and
+                        selected.is_dir() and not selected.is_symlink() and
+                        selected.resolve() == Path(mounts[0].get('Source', '')).resolve() and
+                        root not in selected.parents and selected not in root.parents and selected != root,
+                        'legacy-controller-seed-binding-mismatch')
+                self.legacy_seed = str(selected.resolve())
+                self.paths.append(selected / '.operation-lock')
         self.operation = uuid.uuid4().hex
         self.held = []
         self.critical = False
@@ -403,6 +434,7 @@ class Lease:
                 path.mkdir(mode=0o700)
                 self.held.append(path)
                 atomic_json(path / 'controller-owner.json', {'format': 'system-controller-operation-v1',
+                                                            'storageLease': 'live-v1', 'legacySeedDirectory': self.legacy_seed,
                                                             'operation': self.operation, 'pid': os.getpid(),
                                                             'processStart': process_start(os.getpid()),
                                                             'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip()})
@@ -416,12 +448,26 @@ class Lease:
     def adopt(cls, config, operation):
         value = object.__new__(cls)
         root = config['_root']
-        value.paths = [root / 'configuration/.gitlab-upgrade-lock', Path(config['SEED_DIR']) / '.operation-lock',
+        value.paths = [root / 'configuration/.gitlab-upgrade-lock', root / 'configuration/.storage-operation-lock',
                        root / 'host/letsencrypt/.system-bootstrapper-certificate-lock',
                        root / 'configuration/.projects.env/.wizard.env.environments.lock']
         value.operation, value.held, value.critical = operation, [], True
         value.acquire_guard(root)
         try:
+            primary = json.loads(private_input(value.paths[0] / 'controller-owner.json'))
+            value.legacy_seed = primary.get('legacySeedDirectory')
+            if primary.get('storageLease') != 'live-v1':
+                # Retain recovery of receipts made before the live-state lease.
+                old = Path(config.get('SEED_DIR', ''))
+                require(old.is_absolute() and old.is_dir(), 'legacy-controller-seed-lease-unavailable')
+                value.paths[1] = old / '.operation-lock'
+            elif value.legacy_seed:
+                old = Path(value.legacy_seed)
+                require(old.is_absolute() and old.is_dir() and not old.is_symlink() and
+                        old.resolve() == Path(config.get('SEED_DIR', '')).resolve() and
+                        root not in old.parents and old not in root.parents and old != root,
+                        'legacy-controller-seed-lease-mismatch')
+                value.paths.append(old / '.operation-lock')
             journal = value.paths[0] / 'host-child.json'
             if journal.exists():
                 child = json.loads(private_input(journal))
@@ -447,6 +493,7 @@ class Lease:
                 value.held.append(path)
             for path in value.held:
                 atomic_json(path / 'controller-owner.json', {'format': 'system-controller-operation-v1',
+                             'storageLease': primary.get('storageLease'), 'legacySeedDirectory': value.legacy_seed,
                              'operation': operation, 'pid': os.getpid(), 'processStart': process_start(os.getpid()),
                                                                 'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip()})
         except BaseException:

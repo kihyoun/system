@@ -48,7 +48,8 @@ mkdir -p -- "$config_dir/.projects.env"
 if [[ -d $source_dir/.projects.env ]]; then
   node "$script_dir/../project-bootstrap/preserve-system-project.js" snapshot \
     "$config_dir/.projects.env/.wizard.env" "$snapshot"
-  rsync -a --delete "$source_dir/.projects.env/" "$config_dir/.projects.env/"
+  # Runtime operation barriers are server-owned, never configuration content.
+  rsync -a --delete --exclude=/.wizard.env.environments.lock/ "$source_dir/.projects.env/" "$config_dir/.projects.env/"
   node "$script_dir/../project-bootstrap/preserve-system-project.js" restore \
     "$config_dir/.projects.env/.wizard.env" "$snapshot"
 fi

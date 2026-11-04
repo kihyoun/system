@@ -4,9 +4,10 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 set -a
 source "${PERSISTENCE_ENV_FILE:-/etc/system-bootstrapper/persistence.env}"
+source bootstrapper/storage-env.sh
 set +a
 bash bootstrapper/persistence.sh
-if ! awk -v target="$PERSISTENT_MOUNT" '$1 !~ /^#/ && $2 == target { found=1 } END { exit !found }' /etc/fstab; then
+if [[ $PERSISTENCE_MODE == volume ]] && ! awk -v target="$PERSISTENT_MOUNT" '$1 !~ /^#/ && $2 == target { found=1 } END { exit !found }' /etc/fstab; then
     volume_uuid=${PERSISTENT_UUID:-$(findmnt -rn -T "$PERSISTENT_MOUNT" -o UUID)}
     [[ "$volume_uuid" =~ ^[a-fA-F0-9-]+$ ]] || { echo 'Cannot persist the data mount UUID.' >&2; exit 1; }
     printf 'UUID=%s %s ext4 defaults,nofail 0 2\n' "$volume_uuid" "$PERSISTENT_MOUNT" >> /etc/fstab

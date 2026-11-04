@@ -57,6 +57,7 @@ done
 # Validate storage before touching packages, configuration or service containers.
 set -a
 source "$PERSISTENCE_ENV_FILE"
+source bootstrapper/storage-env.sh
 set +a
 bash bootstrapper/persistence.sh
 [[ -f $PERSISTENT_DIR/configuration/.docker.env ]] || fail 'retained live configuration is missing.'

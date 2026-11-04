@@ -19,7 +19,7 @@ function fixture(t, configured = false, reset = false) {
   for (const relative of ['system', 'bootstrapper', 'sync', 'wizard', 'nginx/.templates', 'bin', 'mounted/platform/configuration']) {
     fs.mkdirSync(path.join(dir, relative), {recursive: true});
   }
-  for (const relative of ['start.sh', 'sync/start.sh', 'bootstrapper/persistence.sh', 'system/.docker.env.example', 'system/.seed.env']) {
+  for (const relative of ['start.sh', 'sync/start.sh', 'bootstrapper/persistence.sh', 'bootstrapper/storage-env.sh', 'system/.docker.env.example', 'system/.seed.env']) {
     fs.copyFileSync(path.join(root, relative), path.join(dir, relative));
   }
   const mount = path.join(dir, 'mounted'), persistent = path.join(mount, 'platform');
@@ -64,10 +64,18 @@ for (const reset of [false, true]) {
   });
 }
 
-test('host startup retains the saved main configuration seed behavior', t => {
+test('host startup keeps the host backup selection over an old configuration path', t => {
   const f = fixture(t, true), result = f.run(false);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker-compose:${f.savedSeed}\n`);
+  assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker-compose:${f.hostSeed}\n`);
+});
+test('host startup refuses active storage leases before filesystem or Docker writes',t=>{
+  const f=fixture(t),state=path.dirname(f.canonical),live=path.dirname(state);
+  fs.mkdirSync(path.join(state,'.storage-operation-lock'));
+  const result=f.run(false);assert.notEqual(result.status,0);
+  assert.match(result.stderr,/unfinished storage operation/);
+  assert(!fs.existsSync(f.capture));
+  assert(!fs.existsSync(path.join(live,'.system-bootstrapper-volume')));
 });
 test('configured Sync retains the saved main configuration seed behavior', t => {
   const f = fixture(t, true), result = f.run(true);

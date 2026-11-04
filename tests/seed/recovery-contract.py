@@ -107,6 +107,7 @@ class RecoveryContract(unittest.TestCase):
         for name in ['bin', 'seed', 'srv/gitlab/data', 'ssl', 'letsencrypt/renewal', 'sv-services', 'sv-target']:
             (self.root / name).mkdir(parents=True)
         self.env = {**os.environ, 'PATH': str(self.root/'bin') + os.pathsep + os.environ['PATH'],
+                    'SYSTEM_SEED_HELPER': '1',
                     'GITLAB_IMAGE': 'gitlab/gitlab-ce:19.4.2-ce.0', 'TEST_STATE': str(self.root), 'SEED_ROOT': str(self.root/'seed'),
                     'SERVICE_DATA_DIR': str(self.root/'srv'), 'TLS_DATA_DIR': str(self.root/'ssl'),
                     'LETSENCRYPT_DATA_DIR': str(self.root/'letsencrypt'), 'REAL_RSYNC': shutil.which('rsync'), 'REAL_NODE': shutil.which('node'),

@@ -144,6 +144,31 @@ class ReleaseContracts(unittest.TestCase):
         self.assertEqual(successor.assignment(updated, 'BOOTSTRAPPER_IMAGE', alias), updated)
         with self.assertRaisesRegex(successor.recovery.RecoveryError, 'assignment'):
             successor.assignment(raw, 'BOOTSTRAPPER_IMAGE', self.release['registryReference'])
+
+    def test_runner_security_profile_requires_real_upgrade_and_manager_identity_evidence(self):
+        security = copy.deepcopy(self.security)
+        security.update(runner={'toImage': 'runner:fixed', 'helperImage': 'helper:fixed'}, jobCaBundleSha256='9' * 64)
+        evidence = copy.deepcopy(self.evidence)
+        evidence['images']['runner'] = 'sha256:' + '5' * 64
+        evidence['results'].append({'name': 'gitlab-upgrade-security-trust', 'status': 'passed'})
+        evidence['evidence']['gitlabUpgrade'].update(runnerImage='runner:fixed', runnerImageId=evidence['images']['runner'],
+            runnerVersion='19.5.1', helperImage='helper:fixed', helperImageId='sha256:' + '6' * 64,
+            fromRunnerImageId='sha256:' + '7' * 64, jobCaBundleSha256=security['jobCaBundleSha256'],
+            securityTrustVerified=True, runnerUpgradeVerified=True, runnerManagerIdentityPreserved=True)
+        def verify(value):
+            raw = json.dumps(value).encode()
+            release = dict(self.release, candidateEvidenceSha256=hashlib.sha256(raw).hexdigest())
+            successor.release_inputs(json.dumps(release).encode(), raw, security)
+        verify(evidence)
+        for key in ('runnerUpgradeVerified', 'runnerManagerIdentityPreserved', 'securityTrustVerified',
+                    'fromRunnerImageId', 'helperImageId', 'jobCaBundleSha256'):
+            invalid = copy.deepcopy(evidence)
+            invalid['evidence']['gitlabUpgrade'].pop(key)
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'runner-security-evidence-mismatch'):
+                verify(invalid)
+        evidence['evidence']['gitlabUpgrade']['fromRunnerImageId'] = evidence['images']['runner']
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'runner-security-evidence-mismatch'):
+            verify(evidence)
     def test_old_Sync_cannot_claim_project_quiescence_by_omission(self):
         config = {'SYNC_HOST': 'sync.example.invalid', 'SYNC_DOMAIN_MODE': '2', 'SYNC_USER': 'fixture', 'SYNC_PASS': 'fixture'}
         with patch.object(successor.runtime, 'http', side_effect=[(200, b'{"accessToken":"private"}', {}),
@@ -592,6 +617,40 @@ class ColdMaintenanceContracts(unittest.TestCase):
 
 
 class HostChildInterruption(unittest.TestCase):
+    def test_legacy_controller_seed_lease_is_owned_and_remembered_after_replacement(self):
+        with tempfile.TemporaryDirectory(prefix='system-legacy-seed-lease-') as directory:
+            root = Path(directory)
+            for item in ('platform/configuration/.projects.env', 'platform/host/letsencrypt', 'seed'):
+                (root / item).mkdir(parents=True)
+            config = {'_root': root / 'platform', 'SEED_DIR': str(root / 'seed')}
+            controller = {'Mounts': [{'Type': 'bind', 'Destination': '/seed', 'Source': str(root / 'seed')}]}
+            lease = successor.Lease(config, legacy_controller=controller)
+            lease.__enter__()
+            self.assertTrue((root / 'seed/.operation-lock/controller-owner.json').is_file())
+            lease.critical = True
+            lease.__exit__(RuntimeError, RuntimeError('fixture interruption'), None)
+            # The replacement controller no longer has /seed. Recovery uses the
+            # private owned receipt rather than rediscovering only current mounts.
+            with patch.object(successor, 'process_start', return_value='0'):
+                adopted = successor.Lease.adopt(config, lease.operation)
+                self.assertIn(root / 'seed/.operation-lock', adopted.held)
+                adopted.release()
+            self.assertFalse((root / 'seed/.operation-lock').exists())
+            self.assertFalse((root / 'platform/configuration/.storage-operation-lock').exists())
+
+    def test_running_legacy_harvest_is_never_bypassed_by_the_new_live_lease(self):
+        with tempfile.TemporaryDirectory(prefix='system-legacy-seed-busy-') as directory:
+            root = Path(directory)
+            for item in ('platform/configuration/.projects.env', 'platform/host/letsencrypt', 'seed/.operation-lock'):
+                (root / item).mkdir(parents=True)
+            config = {'_root': root / 'platform', 'SEED_DIR': str(root / 'seed')}
+            controller = {'Mounts': [{'Type': 'bind', 'Destination': '/seed', 'Source': str(root / 'seed')}]}
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'lease-unavailable'):
+                with successor.Lease(config, legacy_controller=controller):
+                    self.fail('An old Harvest still owns the Seed lease.')
+            self.assertTrue((root / 'seed/.operation-lock').is_dir())
+            self.assertFalse((root / 'platform/configuration/.storage-operation-lock').exists())
+
     def test_successful_leader_cannot_leave_a_live_grandchild_after_guard_release(self):
         with tempfile.TemporaryDirectory(prefix='system-host-grandchild-') as directory:
             root = Path(directory)

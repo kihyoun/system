@@ -49,11 +49,11 @@ function create(root) {
   durableDirectory(root);
   return manifest;
 }
-function verify(root) {
+function verify(root, verifyImage=true) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
   if (manifest.format !== 'system-bootstrapper-seed-v2' || manifest.consistency !== 'gitlab-stopped') throw new Error('Unsupported or incomplete Seed manifest');
   if (JSON.stringify(inventory(root)) !== JSON.stringify(manifest.entries)) throw new Error('Seed payload does not match completed manifest');
-  if (manifest.gitlabImage && manifest.gitlabImage !== process.env.GITLAB_IMAGE) throw new Error('Restore requires the harvested GitLab version and edition');
+  if (verifyImage && manifest.gitlabImage && manifest.gitlabImage !== process.env.GITLAB_IMAGE) throw new Error('Restore requires the harvested GitLab version and edition');
   return manifest;
 }
 function publish(seed, stage) {
@@ -68,7 +68,7 @@ function publish(seed, stage) {
   fs.renameSync(next, path.join(seed, 'current'));
   durableDirectory(seed);
 }
-function current(seed) {
+function current(seed, verifyImage=true) {
   const link = path.join(seed, 'current');
   if (!fs.lstatSync(link).isSymbolicLink()) throw new Error('Seed current must be a snapshot link');
   const relative = fs.readlinkSync(link);
@@ -76,7 +76,7 @@ function current(seed) {
   const root = path.join(seed, relative);
   if (fs.realpathSync(root) !== path.resolve(seed, relative)) throw new Error('Seed snapshot escapes its root');
   if (fs.lstatSync(root).isSymbolicLink()) throw new Error('Unsafe Seed snapshot');
-  verify(root);
+  verify(root,verifyImage);
   return root;
 }
 function markRestore(srv, io = fs) {
