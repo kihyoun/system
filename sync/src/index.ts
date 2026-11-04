@@ -406,6 +406,9 @@ app.patch( "/command/system/patch", authenticateJWT, async ( req, res, next) => 
 
 app.patch( "/command/seed", authenticateJWT, async ( req, res ) => {
     try {
+      // Check the selected backup medium and complete payload before stopping
+      // any service. The native restore repeats this validation under its lease.
+      execSync('cd ../system; bash seed.sh --check-only');
       console.log('Stopping intermediate services...');
       const out1 = execSync('cd ../system; bash stop-intermediate.sh');
       console.log('Apply Seed...');
