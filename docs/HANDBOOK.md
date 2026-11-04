@@ -1690,8 +1690,11 @@ stopping the GitLab that coordinates it.
 
 For the declared CE 19.4.3 → 19.5.3 transition,
 [`gitlab/security-release.json`](../gitlab/security-release.json) contains the
-allowed source and target image pins. Make both images available before the
-outage. First deploy the **exact tested full controller image** containing the
+allowed image pins. Before planning or entering downtime, pull all six image
+references: `fromImage`, `toImage`, `runner.fromImage`, `runner.toImage`,
+`runner.fromHelperImage` and `runner.helperImage`. These include both GitLab
+versions and the previous and target Runner/Helper pairs. First deploy the
+**exact tested full controller image** containing the
 accepted tools, while preserving the saved 19.4.3 GitLab selection. Do not rebuild
 another image from the same tag and assume it has the tested identity. The helper
 requires the running controller to match the image recorded by the accepted

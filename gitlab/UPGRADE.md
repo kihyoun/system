@@ -55,9 +55,11 @@ copy for inspection and use the interrupted-operation procedure below to resume
 the old generation; do not remove its leases manually or retry with an
 unreviewed larger limit.
 
-Pull both exact `fromImage` and `toImage` references from the committed release
-metadata before promotion. The helper verifies their local immutable identities;
-it does not download a new version during downtime.
+Before planning or entering downtime, pull all six exact image references from
+the committed release metadata: `fromImage`, `toImage`, `runner.fromImage`,
+`runner.toImage`, `runner.fromHelperImage` and `runner.helperImage`. These cover
+the previous and target GitLab, Runner and Helper images. The helper verifies
+their local immutable identities; it does not download images during downtime.
 
 ```sh
 docker exec -w /system system_bootstrapper_1 \
