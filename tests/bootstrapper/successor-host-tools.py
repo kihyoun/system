@@ -211,8 +211,10 @@ class StagedControllerContracts(unittest.TestCase):
         self.before = raw
         self.current = successor.assignment(raw, 'BOOTSTRAPPER_IMAGE', self.alias)
         self.config = {'_root': self.root, '_main': self.root / 'configuration/.docker.env',
-                       'BOOTSTRAPPER_IMAGE': self.alias, 'GITLAB_HOST': 'gitlab.example.invalid', 'GITLAB_DOMAIN_MODE': '2'}
+                       'BOOTSTRAPPER_IMAGE': self.alias, 'GITLAB_HOST': 'gitlab.example.invalid', 'GITLAB_DOMAIN_MODE': '2',
+                       'PERSISTENT_MOUNT': str(self.root.parent), 'PERSISTENT_UUID': 'fixture', 'SEED_DIR': str(self.root / 'seed')}
         successor.atomic_bytes(self.config['_main'], self.current)
+        successor.atomic_bytes(self.root / 'configuration/sync-auth.env', b'export SYNC_USER=fixture\n')
         successor.atomic_bytes(self.checkpoint / 'main-before.env', raw)
         self.manifest = {'sourceCommit': '1' * 40, 'localImages': [{'tag': 'controller:old', 'imageId': 'sha256:' + '7' * 64},
                                        {'tag': 'runner:retained', 'imageId': 'sha256:' + '8' * 64}],
@@ -388,6 +390,9 @@ class StagedControllerContracts(unittest.TestCase):
                 rows['system_bootstrapper_1']['State']['Running'] = True
             return b''
         def image(reference):
+            if reference == self.security['fromImage']:
+                return {'Id': self.record['oldGitLab']['imageId'],
+                        'RepoDigests': [successor.recovery.canonical_digest(reference)]}
             return {'Id': self.target['imageId']} if reference == alias else self.image
         def selected(config, manifest, services):
             self.assertEqual(manifest['currentController']['imageId'], self.release['imageId'])
@@ -399,11 +404,10 @@ class StagedControllerContracts(unittest.TestCase):
         with ExitStack() as stack:
             stack.enter_context(patch.object(successor, 'verify_checkout'))
             stack.enter_context(patch.object(successor, 'Lease', Lease))
-            stack.enter_context(patch.object(successor, 'environment', return_value={}))
             idle = stack.enter_context(patch.object(successor, 'sync_idle'))
             stack.enter_context(patch.object(successor.recovery, 'load_manifest', return_value=self.manifest))
             stack.enter_context(patch.object(successor.recovery, 'inspect_image', side_effect=image))
-            stack.enter_context(patch.object(promoter, 'pull_accepted'))
+            self.pulled = stack.enter_context(patch.object(promoter, 'pull_accepted'))
             stack.enter_context(patch.object(promoter, 'gitlab_preflight'))
             stack.enter_context(patch.object(promoter, 'inspect', side_effect=lambda name:
                 rows[name] if name in rows else next(row for row in rows.values() if row['Id'] == name)))
@@ -442,6 +446,82 @@ class StagedControllerContracts(unittest.TestCase):
         self.assertEqual(self.config['_main'].read_bytes(), self.current)
         self.assertTrue(self.rows['system_bootstrapper_1']['State']['Running'])
         self.assertFalse(any('stop' in command or 'compose' in command for command in self.commands))
+
+    def test_missing_effective_selection_refuses_before_pull_checkpoint_or_controller_writes(self):
+        # The preceding manifest check sees valid retained saved selectors. The
+        # actual Compose environment is independently required to preserve them.
+        with patch.object(successor, 'environment', return_value={}):
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-required'):
+                self.normal_promotion()
+        self.assertEqual(self.commands, [])
+        self.pulled.assert_not_called()
+        self.assertEqual(self.config['_main'].read_bytes(), self.current)
+        self.assertFalse((self.root / 'recovery/controller-promotions/next').exists())
+
+
+class EffectivePromotionEnvironment(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix='controller-effective-images-')
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / 'configuration').mkdir()
+        self.main = self.root / 'configuration/.docker.env'
+        successor.atomic_bytes(self.root / 'configuration/sync-auth.env', b'export SYNC_USER=fixture\n')
+        self.config = {'_root': self.root, '_main': self.main, 'PERSISTENT_MOUNT': '/fixture',
+                       'PERSISTENT_UUID': 'fixture', 'SEED_DIR': '/fixture/seed'}
+        self.old_gitlab, self.old_runner = 'sha256:' + '1' * 64, 'sha256:' + '2' * 64
+        self.evidence = {'evidence': {'gitlabUpgrade': {'fromImageId': self.old_gitlab,
+                                                      'fromRunnerImageId': self.old_runner}}}
+        self.security = {'runner': {'fromImage': 'runner:reviewed'}}
+        self.services = {'system_gitlab_1': {'Image': self.old_gitlab}, 'runner_docker_1': {'Image': self.old_runner}}
+        self.images = {'gitlab:retained': {'Id': self.old_gitlab}, 'runner:retained': {'Id': self.old_runner},
+                       'gitlab:new-default': {'Id': 'sha256:' + '3' * 64}, 'runner:new-default': {'Id': 'sha256:' + '4' * 64}}
+        self.write('export GITLAB_IMAGE=gitlab:retained\nexport GITLAB_RUNNER_IMAGE=runner:retained\n')
+
+    def write(self, assignments):
+        successor.atomic_bytes(self.main, (ROOT / 'system/.docker.env.example').read_bytes()[:1184] +
+                               b'\n' + assignments.encode())
+
+    def select(self, inherited=None):
+        with patch.dict(os.environ, {'PATH': os.environ['PATH'], **(inherited or {})}, clear=True), \
+             patch.object(successor.recovery, 'inspect_image', side_effect=lambda selected: self.images[selected]):
+            return promoter.preserved_environment(self.config, 'controller:accepted', self.security, self.evidence, self.services)
+
+    def test_saved_aliases_for_exact_old_content_are_preserved(self):
+        selected = self.select()
+        self.assertEqual(selected['GITLAB_IMAGE'], 'gitlab:retained')
+        self.assertEqual(selected['GITLAB_RUNNER_IMAGE'], 'runner:retained')
+        self.assertEqual(selected['SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER'], '1')
+
+    def test_explicit_correct_inputs_are_allowed_without_saved_image_assignments(self):
+        self.write('')
+        selected = self.select({'GITLAB_IMAGE': 'gitlab:retained', 'GITLAB_RUNNER_IMAGE': 'runner:retained'})
+        self.assertEqual(selected['GITLAB_RUNNER_IMAGE'], 'runner:retained')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-required'):
+            self.select()
+        self.write('export GITLAB_IMAGE=gitlab:retained\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-required'):
+            self.select()
+
+    def test_saved_wrong_selection_overrides_correct_inherited_input_and_is_refused(self):
+        self.write('export GITLAB_IMAGE=gitlab:new-default\nexport GITLAB_RUNNER_IMAGE=runner:retained\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-changed'):
+            self.select({'GITLAB_IMAGE': 'gitlab:retained'})
+        self.write('export GITLAB_IMAGE=gitlab:retained\nexport GITLAB_RUNNER_IMAGE=runner:new-default\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-changed'):
+            self.select()
+
+    def test_effective_pin_also_requires_verified_digest_and_actual_old_manager_images(self):
+        pin = 'gitlab/gitlab-ce:old@sha256:' + '5' * 64
+        self.images[pin] = {'Id': self.old_gitlab, 'RepoDigests': []}
+        self.write('export GITLAB_IMAGE=' + pin + '\nexport GITLAB_RUNNER_IMAGE=runner:retained\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-digest-unverified'):
+            self.select()
+        self.images[pin]['RepoDigests'] = [successor.recovery.canonical_digest(pin)]
+        self.select()
+        self.services['runner_docker_1']['Image'] = 'sha256:' + '6' * 64
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'running-image-mismatch'):
+            self.select()
 
 
 class ControllerCheckpointBounds(unittest.TestCase):
