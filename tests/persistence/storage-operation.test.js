@@ -59,10 +59,42 @@ test('local preparation is source-owned and independent of any backup path',t=>{
   assert.equal(fs.readFileSync(live+'/.system-bootstrapper-volume','utf8'),'system-bootstrapper-persistence-v1\n');
   assert.equal(fs.statSync(live+'/configuration').mode&0o777,0o700);
   assert.equal(fs.statSync(live+'/wizard-public').mode&0o777,0o755);
+  assert.equal(fs.statSync(live+'/ssl').mode&0o777,0o711);
+  assert.equal(fs.statSync(live+'/ssl/acme-http01').mode&0o777,0o755);
   operation.restoreEmpty(live);
   fs.writeFileSync(live+'/gitlab/data/database','existing live data');
   assert.throws(()=>operation.restoreEmpty(live),/restore-target-not-empty/);
   assert.equal(fs.readFileSync(live+'/gitlab/data/database','utf8'),'existing live data');
+});
+test('public ACME preparation preserves private descendants and repairs only necessary traversal',t=>{
+  const f=fixture(t),ssl=f.root+f.spec.PERSISTENT_DIR+'/ssl';
+  fs.mkdirSync(ssl+'/live/example',{recursive:true,mode:0o700});
+  fs.writeFileSync(ssl+'/live/example/privkey.pem','private fixture',{mode:0o600});
+  operation.prepareLocal(f.spec,f.root,mounts);
+  assert.equal(fs.statSync(ssl).mode&0o777,0o711);
+  assert.equal(fs.statSync(ssl+'/live').mode&0o777,0o700);
+  assert.equal(fs.statSync(ssl+'/live/example/privkey.pem').mode&0o777,0o600);
+  fs.chmodSync(ssl,0o750);operation.prepareLocal(f.spec,f.root,mounts);
+  assert.equal(fs.statSync(ssl).mode&0o777,0o751);
+});
+test('only a truly empty public ACME scaffold is accepted for fresh restore',t=>{
+  const f=fixture(t),live=f.root+f.spec.PERSISTENT_DIR;
+  operation.prepareLocal(f.spec,f.root,mounts);operation.restoreEmpty(live);
+  fs.writeFileSync(live+'/ssl/acme-http01/token','unexpected');
+  assert.throws(()=>operation.restoreEmpty(live),/restore-target-not-empty/);
+  fs.rmSync(live+'/ssl/acme-http01',{recursive:true});
+  fs.symlinkSync('/nonexistent-acme-target',live+'/ssl/acme-http01');
+  assert.throws(()=>operation.restoreEmpty(live),/restore-target-not-empty/);
+});
+test('ACME symlinks and nested mounts are refused before chmod changes an outside tree',t=>{
+  const f=fixture(t),ssl=f.root+f.spec.PERSISTENT_DIR+'/ssl',outside=f.root+'/outside';
+  fs.mkdirSync(outside,{mode:0o700});fs.symlinkSync(outside,ssl+'/acme-http01');
+  assert.throws(()=>operation.prepareLocal(f.spec,f.root,mounts),/unsafe-live-storage-path/);
+  assert.equal(fs.statSync(outside).mode&0o777,0o700);
+  assert.throws(()=>operation.validate(f.spec,()=>mounts,f.root),/seed-target-unavailable/);
+  fs.unlinkSync(ssl+'/acme-http01');fs.mkdirSync(ssl+'/acme-http01',{mode:0o700});
+  assert.throws(()=>operation.prepareLocal(f.spec,f.root,mounts+'3 1 8:3 / /data/platform/ssl/acme-http01 rw - ext4 /dev/other rw\n',f.root),/nested-live-storage-mount/);
+  assert.equal(fs.statSync(ssl+'/acme-http01').mode&0o777,0o700);
 });
 test('mount records decode whitespace without confusing path prefixes',()=>{
   const rows=operation.mountRows('1 0 0:1 / / rw - ext4 /dev/vda rw\n2 1 8:2 / /seed\\040target rw - ext4 /dev/vdb rw');

@@ -37,7 +37,7 @@ minimum=${PERSISTENCE_MIN_FREE_BYTES:-1073741824}
 available=$(df -B1 --output=avail -- "$existing" | tail -n 1 | tr -d ' ')
 (( available >= minimum )) || fail 'insufficient free space for live data.'
 [[ -w $existing && -x $existing ]] || fail 'live data parent must be writable.'
-for relative in configuration wizard-public templates synctemplates ssl runners host/letsencrypt gitlab/config gitlab/logs gitlab/data; do
+for relative in configuration wizard-public templates synctemplates ssl ssl/acme-http01 runners host/letsencrypt gitlab/config gitlab/logs gitlab/data; do
   target=$(realpath -m -- "$storage_dir/$relative")
   [[ $target == "$storage_dir/$relative" ]] || fail "unsafe data path: $relative"
   if [[ -e $target ]]; then
@@ -57,9 +57,13 @@ if [[ ${PERSISTENCE_CHECK_ONLY:-0} == 1 ]]; then
 fi
 mkdir -p -- "$storage_dir" "$storage_dir/configuration" "$storage_dir/wizard-public" "$storage_dir/templates" \
   "$storage_dir/synctemplates" "$storage_dir/host/letsencrypt" "$storage_dir/ssl" "$storage_dir/runners" "$storage_dir/gitlab/config" \
-  "$storage_dir/gitlab/logs" "$storage_dir/gitlab/data"
+  "$storage_dir/gitlab/logs" "$storage_dir/gitlab/data" "$storage_dir/ssl/acme-http01"
 chmod 0700 -- "$storage_dir/configuration"
 chmod 0755 -- "$storage_dir/wizard-public"
+# The worker serves public HTTP-01 tokens through /ssl; private live/key
+# directories retain their own modes. Add traversal, never directory listing.
+chmod a+x -- "$storage_dir/ssl"
+chmod 0755 -- "$storage_dir/ssl/acme-http01"
 marker_next=$(mktemp "$storage_dir/.persistence-marker.XXXXXXXX")
 printf '%s\n' system-bootstrapper-persistence-v1 > "$marker_next"
 mv -Tf -- "$marker_next" "$marker"

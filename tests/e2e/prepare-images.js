@@ -67,6 +67,8 @@ function prepare(){
   const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',timeout:600000,...options});
   let fd=fs.openSync(archive,'r');
   try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','system/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
+  run(['pull',defaults.nginx]);
+  require('../persistence/http01-nginx-probe').run({helperImage:tags.candidate,nginxImage:defaults.nginx});
   const snapshot=validate(JSON.parse(fs.readFileSync(path.join(root,'project-bootstrap/wizard-source/snapshot.json'),'utf8')));
   const context=path.join(output,'wizard-context');fs.mkdirSync(context,{recursive:true});
   for(const file of snapshot.files){const name=path.join(context,file.path);fs.mkdirSync(path.dirname(name),{recursive:true});fs.writeFileSync(name,Buffer.from(file.content,'base64'),{mode:file.mode==='100755'?0o755:0o644});}

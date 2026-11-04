@@ -337,6 +337,26 @@ class RecoveryContract(unittest.TestCase):
         self.assertEqual((self.root/'letsencrypt/renewal/example.conf').read_text(), 'test renewal payload')
         self.assertFalse((self.root/'srv/gitlab/data/.system-bootstrapper-restore-incomplete').exists())
 
+    def test_completed_seed_preserves_public_traversal_and_private_key_modes(self):
+        for mode in [0o711, 0o700]:
+            with self.subTest(ssl_mode=oct(mode)):
+                ssl = self.root / 'ssl'
+                ssl.chmod(mode)
+                (ssl / 'acme-http01').mkdir(exist_ok=True, mode=0o755)
+                (ssl / 'live').mkdir(exist_ok=True, mode=0o700)
+                key = ssl / 'live/privkey.pem'
+                key.write_text('synthetic private key')
+                key.chmod(0o600)
+                snapshot = self.harvest()
+                self.assertEqual((snapshot / 'ssl').stat().st_mode & 0o777, mode)
+                (self.root / 'running').write_text('false')
+                for name in ['srv', 'ssl', 'letsencrypt']:
+                    shutil.rmtree(self.root / name)
+                self.run_script('seed')
+                for relative, expected in [('', mode), ('acme-http01', 0o755), ('live', 0o700), ('live/privkey.pem', 0o600)]:
+                    self.assertEqual((ssl / relative).stat().st_mode & 0o777, expected)
+                (self.root / 'running').write_text('true')
+
     def test_payload_corruption_and_version_mismatch_rejected_before_delete(self):
         snapshot = self.harvest()
         (self.root/'running').write_text('false')

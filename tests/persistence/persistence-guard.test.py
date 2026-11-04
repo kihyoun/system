@@ -96,6 +96,29 @@ esac
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.data.exists())
 
+    def test_public_acme_path_does_not_expose_private_keys(self):
+        self.assertEqual(self.run_guard().returncode, 0)
+        ssl = self.data / 'ssl'
+        self.assertEqual(ssl.stat().st_mode & 0o777, 0o711)
+        self.assertEqual((ssl / 'acme-http01').stat().st_mode & 0o777, 0o755)
+        (ssl / 'live').mkdir(mode=0o700)
+        key = ssl / 'live' / 'privkey.pem'
+        key.write_text('private fixture')
+        key.chmod(0o600)
+        ssl.chmod(0o700)
+        self.assertEqual(self.run_guard().returncode, 0)
+        self.assertEqual(ssl.stat().st_mode & 0o777, 0o711)
+        self.assertEqual((ssl / 'live').stat().st_mode & 0o777, 0o700)
+        self.assertEqual(key.stat().st_mode & 0o777, 0o600)
+
+    def test_public_acme_symlink_is_rejected_without_chmod_outside(self):
+        (self.data / 'ssl').mkdir(parents=True)
+        outside = self.root / 'outside-acme'
+        outside.mkdir(mode=0o700)
+        (self.data / 'ssl/acme-http01').symlink_to(outside)
+        self.assertNotEqual(self.run_guard().returncode, 0)
+        self.assertEqual(outside.stat().st_mode & 0o777, 0o700)
+
     def test_intermediate_symlink_is_rejected_before_recursive_mkdir(self):
         self.data.mkdir()
         outside = self.root / 'outside'

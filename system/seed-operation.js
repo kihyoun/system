@@ -71,9 +71,10 @@ function validate(spec, read=fs.readFileSync, hostRoot='/host') {
     seedRow.target === spec.SEED_MOUNT && seedRow.device !== liveRow.device && seedRow.device !== root.device,
     'external-seed-volume-required');
   resolveHost(live,hostRoot); resolveHost(seed,hostRoot);
-  for (const relative of [...liveDirectories,'configuration/.projects.env']) {
+  for (const relative of [...liveDirectories,'configuration/.projects.env','ssl/acme-http01']) {
     const selected=live+'/'+relative;
-    if (relative === 'configuration/.projects.env' && !fs.existsSync(hostRoot+selected)) continue;
+    if (['configuration/.projects.env','ssl/acme-http01'].includes(relative) &&
+      !fs.lstatSync(hostRoot+selected,{throwIfNoEntry:false})) continue;
     resolveHost(selected,hostRoot);
     requireValue(covering(rows,selected).target === liveRow.target, 'nested-live-storage-mount');
   }
@@ -163,7 +164,11 @@ function launch(operation,{environment=process.env,host=false,checkOnly=false,ba
 function restoreEmpty(live='/live') {
   for (const relative of ['gitlab/config','gitlab/logs','gitlab/data','ssl','host/letsencrypt']) {
     const directory=path.join(live,relative);
-    requireValue(fs.existsSync(directory) && fs.readdirSync(directory).length === 0, 'restore-target-not-empty');
+    requireValue(fs.existsSync(directory), 'restore-target-not-empty');
+    const entries=fs.readdirSync(directory);
+    const publicScaffold=relative === 'ssl' && entries.length === 1 && entries[0] === 'acme-http01' &&
+      fs.lstatSync(path.join(directory,entries[0])).isDirectory() && fs.readdirSync(path.join(directory,entries[0])).length === 0;
+    requireValue(entries.length === 0 || publicScaffold, 'restore-target-not-empty');
   }
 }
 function prepareLocal(spec,hostRoot='/host',mountinfo) {
@@ -180,7 +185,8 @@ function prepareLocal(spec,hostRoot='/host',mountinfo) {
   const root=hostRoot+live, marker=path.join(root,'.system-bootstrapper-volume');
   // Check every existing ancestor before mkdir: recursive mkdir otherwise
   // follows an intermediate symlink before a later realpath check can refuse.
-  for (const relative of ['',...liveDirectories]) {
+  const scaffold=[...liveDirectories,'ssl/acme-http01'];
+  for (const relative of ['',...scaffold]) {
     const selected=path.join(root,relative);
     let ancestor=selected;
     while (!fs.lstatSync(ancestor,{throwIfNoEntry:false})) ancestor=path.dirname(ancestor);
@@ -190,13 +196,16 @@ function prepareLocal(spec,hostRoot='/host',mountinfo) {
   }
   if (fs.lstatSync(marker,{throwIfNoEntry:false})) requireValue(fs.lstatSync(marker).isFile() && !fs.lstatSync(marker).isSymbolicLink() &&
     fs.readFileSync(marker,'utf8') === 'system-bootstrapper-persistence-v1\n', 'unrecognized-live-storage');
-  for (const relative of liveDirectories) {
+  for (const relative of scaffold) {
     const directory=path.join(root,relative);
     requireValue(!fs.lstatSync(directory,{throwIfNoEntry:false})?.isSymbolicLink(), 'unsafe-live-storage-path');
     fs.mkdirSync(directory,{recursive:true,mode:0o700});
     requireValue(fs.realpathSync(directory) === directory, 'unsafe-live-storage-path');
   }
   fs.chmodSync(path.join(root,'wizard-public'),0o755);
+  const ssl=path.join(root,'ssl');
+  fs.chmodSync(ssl,(fs.statSync(ssl).mode&0o7777)|0o111);
+  fs.chmodSync(path.join(ssl,'acme-http01'),0o755);
   const descriptor=fs.openSync(marker,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_TRUNC|fs.constants.O_NOFOLLOW,0o600);
   try {fs.writeFileSync(descriptor,'system-bootstrapper-persistence-v1\n');fs.fsyncSync(descriptor);} finally {fs.closeSync(descriptor);}
   console.log('Local live storage prepared.');
