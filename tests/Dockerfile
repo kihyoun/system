@@ -1,6 +1,6 @@
 # Isolated checks only: no Docker daemon, live credentials or private configuration.
-FROM node:24.22.0-bookworm@sha256:14078204b6bb268c107ceff6d3c43f45a888105e5c2b18b14c32b3409d93a1b0 AS node-runtime
-FROM ruby:3.4.11-bookworm@sha256:80259ba83f866aaa43c689e11569dc950b2e508effca0799d50608f7c4ca6172
+FROM node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5 AS node-runtime
+FROM ruby:3.4.11-bookworm@sha256:1aed73d35b66ce974febaefe42e8385abb8cbf6244ea4f45b266be9178acfd37
 # Both official runtime stages use Debian Bookworm/glibc. Ruby's full image
 # already includes Git and the shared libraries required by the Node binary.
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
@@ -11,6 +11,10 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 RUN apt-get update && apt-get install -y --no-install-recommends python3 rsync unzip zip openssl \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /candidate
+COPY bootstrapper/refresh-ca.sh ./bootstrapper/
+COPY bootstrapper/ca ./bootstrapper/ca
+ENV NODE_OPTIONS=--use-openssl-ca
+RUN sh bootstrapper/refresh-ca.sh && node bootstrapper/ca/check.js
 COPY sync/package.json sync/package-lock.json ./sync/
 RUN cd sync && npm ci --ignore-scripts --no-audit --no-fund
 COPY sync/src ./sync/src

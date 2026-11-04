@@ -7,13 +7,16 @@ const {execFileSync}=require('child_process');
 const {validate}=require('../../project-bootstrap/wizard-source/package');
 const root=path.resolve(__dirname,'../..');
 const securityRelease=require('../../gitlab/security-release.json');
+const trust=require('../../bootstrapper/ca/check');
 const defaults={
-  daemon:'docker:29.9.1-dind@sha256:3e5756e2b6dad6a5f1f5deacf0a19f9eaa2581b76ae092b2d4a118162e1d4d4e',
+  daemon:'docker:29.9.2-dind@sha256:9e79b879b177fbd72c34376a3dd3d91747da5db49e1f560f76aea59561471977',
   gitlab:securityRelease.toImage,
   previousGitlab:securityRelease.fromImage,
-  runner:'gitlab/gitlab-runner:v19.4.0@sha256:e859bcedae25987bdaf0aa79145eb5e50a0195d80a2eda7532e7a9841bb9d9a8',
+  runner:securityRelease.runner.toImage,
+  previousRunner:securityRelease.runner.fromImage,
+  previousHelper:securityRelease.runner.fromHelperImage,
   nginx:'nginx@sha256:332d0beea97cff8c0d5d27976c0778a4b00345b9d74c2feaaf8efde548314948',
-  helper:'registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v19.4.0@sha256:13188cca15a2d44fc621d42da4efb42b81c9527e072d07aab29468dea15af831'
+  helper:securityRelease.runner.helperImage
 };
 function identifiers(env=process.env){
   if(!/^\d+$/.test(env.CI_PROJECT_ID||'')||!/^\d+$/.test(env.CI_JOB_ID||'')||!(/^[a-f0-9]{40}$/.test(env.CI_COMMIT_SHA||'')))throw Error('Valid CI source and job identifiers required.');
@@ -32,6 +35,19 @@ function acmeAcceptance(files,exists=filename=>fs.existsSync(path.join(root,file
   if(!adapter.some(exists))return false;
   if(!adapter.every(exists)||!host.every(filename=>files.includes(filename)))throw Error('ACME acceptance requires the complete pinned authority and fresh-source host contract.');
   return true;
+}
+function verifyPreparedTrust(tags,execute=execFileSync){
+  for(const [role,reference,file] of [
+    ['candidate',tags.candidate,'/etc/ssl/certs/ca-certificates.crt'],
+    ['wizard',tags.wizard,'/etc/ssl/certs/ca-certificates.crt'],
+    ['runner',defaults.runner,'/etc/ssl/certs/ca-certificates.crt'],
+    ['helper',defaults.helper,'/etc/ssl/certs/ca-certificates.crt'],
+    ['daemon',defaults.daemon,'/etc/ssl/certs/ca-certificates.crt'],
+    ['gitlab',defaults.gitlab,'/opt/gitlab/embedded/ssl/certs/cacert.pem']
+  ]){
+    const bundle=execute('docker',['run','--rm','--network','none','--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'--entrypoint','cat',reference,file],{encoding:'utf8',timeout:60000});
+    if(trust.check(trust.certificates(bundle))<50)throw Error('Incomplete prepared '+role+' CA trust.');
+  }
 }
 function prepare(){
   if(process.arch!=='x64'||process.platform!=='linux')throw Error('Current pinned candidate images require Linux amd64.');
@@ -57,8 +73,8 @@ function prepare(){
   const recipes=require('../../project-bootstrap/wizard-build/recipe');
   const logo=fs.readFileSync(path.join(root,'system/.docker.env.example'),'utf8').slice(0,1184);
   const recipe=recipes.forSource?recipes.forSource(logo,snapshot.sourceRevision):recipes.generate(logo);
-  const buildFiles=recipe.files.filter(file=>/\/Dockerfile(?:\.dockerignore)?$/.test(file.path));
-  if(buildFiles.length!==2)throw Error('Complete managed Wizard Docker recipe required.');
+  const buildFiles=recipe.files;
+  if(buildFiles.filter(file=>/\/Dockerfile(?:\.dockerignore)?$/.test(file.path)).length!==2)throw Error('Complete managed Wizard Docker recipe required.');
   for(const file of buildFiles){const filename=path.join(context,file.path);fs.mkdirSync(path.dirname(filename),{recursive:true});fs.writeFileSync(filename,file.content);}
   run(['build','--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,
     '-f',path.join(context,'.system-bootstrapper/build-v1/Dockerfile'),'-t',tags.wizard,context]);
@@ -69,6 +85,7 @@ function prepare(){
     configurationExporter={archive:filename,sha256:crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex'),sourceRevision:snapshot.sourceRevision};
   }
   for(const image of Object.values(defaults))run(['pull',image]);
+  verifyPreparedTrust(tags);
   const images={};
   for(const [role,reference] of Object.entries({...tags,...Object.fromEntries(Object.entries(defaults).filter(([role])=>role!=='daemon'))})){
     const id=execFileSync('docker',['image','inspect','--format','{{.Id}}',reference],{encoding:'utf8'}).trim();
@@ -77,10 +94,10 @@ function prepare(){
   }
   const acmeImages=acmeRenewalAcceptance?require('./prepare-acme-images').prepare(output):undefined;
   if(acmeRenewalAcceptance)require('./local-acme').validate({acmeImages});
-  const spec={sourceRevision:process.env.CI_COMMIT_SHA,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab'].includes(role))),
-    supportImages:{helper:images.helper,previousGitlab:images.previousGitlab},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
+  const spec={sourceRevision:process.env.CI_COMMIT_SHA,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab','previousRunner','previousHelper'].includes(role))),
+    supportImages:{helper:images.helper,previousGitlab:images.previousGitlab,previousRunner:images.previousRunner,previousHelper:images.previousHelper},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});
   console.log('Prepared pinned full-platform candidate images for '+process.env.CI_COMMIT_SHA);
 }
-module.exports={defaults,identifiers,privateWizardAcceptance,acmeAcceptance};
+module.exports={defaults,identifiers,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust};
 if(require.main===module){try{prepare();}catch{console.error('Candidate image preparation failed; see public build log.');process.exitCode=1;}}

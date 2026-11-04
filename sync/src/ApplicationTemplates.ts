@@ -25,6 +25,10 @@ export function prepareApplication(template: string, key: string, settings: any)
     }
   }
   visit(root);
+  for (const relative of ['refresh-ca.sh', 'ca/cacert-2026-10-20.crt']) {
+    files.push({action: 'create', file_path: '.system-bootstrapper/' + relative,
+      content: fs.readFileSync(path.resolve(__dirname, '../../bootstrapper', relative), 'utf8')});
+  }
   return {files, templateVersion: 1, ci: applicationCi(key, settings, template)};
 }
 
@@ -37,15 +41,18 @@ workflow:
       when: never
     - if: '$CI_COMMIT_BRANCH'
     - when: never
-image: docker:29-cli@sha256:1a4c7cb63513f349bdad01fcc6e0f3f2f67d37b9da86f14dc0d4a0942eecda00
+image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
 default:
   tags: [docker]
+  before_script:
+    - sh .system-bootstrapper/refresh-ca.sh
 variables:
   IMAGE_TAG: '$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA'
 stages: [build, test, deploy]
 build:
   stage: build
   before_script:
+    - sh .system-bootstrapper/refresh-ca.sh
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - docker build --provenance=false -t "$IMAGE_TAG" .
@@ -53,6 +60,7 @@ build:
 test:http:
   stage: test
   before_script:
+    - sh .system-bootstrapper/refresh-ca.sh
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - docker pull "$IMAGE_TAG"
@@ -80,6 +88,7 @@ deploy:${kind}:
 ${review ? '    on_stop: stop:review\n' : ''}  rules:
     - if: '${review ? '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH' : '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}'
 ${settings[environment + '_DEPLOY_MODE'] === '0' ? '  when: manual\n' : ''}  before_script:
+    - sh .system-bootstrapper/refresh-ca.sh
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - docker pull "$IMAGE_TAG"

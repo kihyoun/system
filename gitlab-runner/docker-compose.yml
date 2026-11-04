@@ -2,7 +2,7 @@
   "version": "2",
   "services": {
     "docker": {
-      "image": "${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:latest}",
+      "image": "${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd}",
       "restart": "always",
       "networks": ["system_gitlab"],
       "volumes": [

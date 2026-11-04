@@ -74,7 +74,7 @@ timeout 8 git -C "$temporary/candidate" hash-object -w -t tree --stdin </dev/nul
 git_source show "$CI_COMMIT_SHA:gitlab/check-documentation.js" > "$temporary/candidate/checker.js"
 chmod -R a+rX "$temporary/candidate"
 chmod 0777 "$temporary/candidate"
-image=node:24.22.0-bookworm@sha256:14078204b6bb268c107ceff6d3c43f45a888105e5c2b18b14c32b3409d93a1b0
+image=node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
 timeout 45 docker pull "$image" >/dev/null
 # An empty client config prevents automatic proxy/credential-bearing environment
 # injection into the child. Pull uses the trusted parent's configured credentials.

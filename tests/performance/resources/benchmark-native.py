@@ -125,6 +125,14 @@ def main():
     if not re.fullmatch('[a-f0-9]{40}', args.source_revision):
         parser.error('Use the exact archived System source revision.')
     source = args.templates / args.case
+    # Generated starter projects receive these same reviewed public files.
+    # Keep the native template benchmark's build context equally complete.
+    ca_root = args.templates.resolve().parent.parent / 'bootstrapper'
+    ca_files = ['refresh-ca.sh', 'ca/cacert-2026-10-20.crt']
+    if any(not (ca_root / name).is_file() or (ca_root / name).is_symlink() for name in ca_files):
+        raise RuntimeError('Archive the reviewed bootstrapper public CA files with the template source.')
+    if hashlib.sha256((ca_root / ca_files[1]).read_bytes()).hexdigest() != '796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe':
+        raise RuntimeError('Template public CA bundle does not match the reviewed security release.')
     dockerfile = (source / 'Dockerfile').read_text()
     if NODE not in dockerfile or NGINX not in dockerfile or 'RUN npm ci' not in dockerfile:
         raise RuntimeError('Expected the reviewed locked template recipe.')
@@ -137,7 +145,10 @@ def main():
             'builderMemoryBytes': 4 * 1024 ** 3, 'builderCpus': 2,
             'candidateMemoryBytes': 128 * 1024 ** 2, 'candidateCpus': 0.5,
             'maxPhaseSeconds': 240, 'maxLogBytesPerPhase': 2_000_000,
-            'package': package, 'inputs': manifest(source)}
+            'package': package, 'inputs': manifest(source),
+            'publicCaInputs': [{'path': 'bootstrapper/' + name,
+                                'sha256': hashlib.sha256((ca_root / name).read_bytes()).hexdigest()}
+                               for name in ca_files]}
     if not args.execute:
         print(json.dumps(plan, indent=2))
         return
@@ -162,6 +173,10 @@ def main():
     try:
         context = temporary / 'context'
         shutil.copytree(source, context)
+        for name in ca_files:
+            target = context / '.system-bootstrapper' / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ca_root / name, target)
         docker('buildx', 'create', '--name', builder, '--driver', 'docker-container',
                '--driver-opt', 'memory=4g', '--driver-opt', 'cpu-period=100000',
                '--driver-opt', 'cpu-quota=200000', '--driver-opt', 'image=' + BUILDKIT)

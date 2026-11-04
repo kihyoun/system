@@ -8,7 +8,7 @@ function fixture(t){
   const state=path.join(root,'state'),serviceData=path.join(root,'service'),seed=path.join(root,'seed'),certbot=path.join(root,'certbot');
   for(const directory of [state,serviceData,seed,certbot,path.join(state,'.projects.env')])fs.mkdirSync(directory,{recursive:true});
   for(const name of ['config','data','log']){fs.mkdirSync(path.join(serviceData,name));fs.writeFileSync(path.join(serviceData,name,'original'),'saved-'+name);}
-  const originalConfig=example+'\nexport GITLAB_IMAGE=\''+release.fromImage+'\'\n';atomic(path.join(state,'.docker.env'),originalConfig);atomic(path.join(state,'sync-auth.env'),'export SYNC_USER=fixture\n');
+  const originalConfig=require('../../gitlab/upgrade').imageAssignment(example,release.fromImage);atomic(path.join(state,'.docker.env'),originalConfig);atomic(path.join(state,'sync-auth.env'),'export SYNC_USER=fixture\n');
   let current={Id:'d'.repeat(64),Image:old,State:{Running:false,ExitCode:0,OOMKilled:false}},failRestore=false,refuseStop=false;const events=[];
   const engine=new Upgrade({sourceRevision:'a'.repeat(40),stateDir:'/state',persistentDir:'/operator/platform',checkpointDir:'/state/gitlab-upgrades/operation',evidence:'/state/accepted.json',readyTimeoutSeconds:600},{serviceData,seed,certbot,run(binary,args,options){
     events.push([binary,...args]);if(binary==='docker'){
@@ -73,8 +73,8 @@ test('checkpoint size is bounded before reading or publishing, while options and
 test('evidence validation and its plan hash use the same bounded bytes even if the pathname is replaced',t=>{
   const f=fixture(t),filename=path.join(f.state,'accepted-evidence.json'),candidate='sha256:'+'e'.repeat(64);
   const raw=JSON.stringify({sourceRevision:f.plan.sourceRevision,fullAcceptance:true,
-    results:['gitlab-upgrade-migrated-data','gitlab-upgrade-registry-ci','gitlab-upgrade-restored-checkpoint'].map(name=>({name,status:'passed'})),
-    images:{candidate,gitlab:next},evidence:{gitlabUpgrade:{fromImage:release.fromImage,toImage:release.toImage,fromImageId:old,toImageId:next,migrationVerified:true,rollbackVerified:true,registryVerified:true,checkpointVerified:true}}});
+    results:['gitlab-upgrade-migrated-data','gitlab-upgrade-registry-ci','gitlab-upgrade-restored-checkpoint','gitlab-upgrade-security-trust'].map(name=>({name,status:'passed'})),
+    images:{candidate,gitlab:next,runner:next},evidence:{gitlabUpgrade:{fromImage:release.fromImage,toImage:release.toImage,fromImageId:old,toImageId:next,migrationVerified:true,rollbackVerified:true,registryVerified:true,checkpointVerified:true,runnerImage:release.runner.toImage,runnerImageId:next,fromRunnerImageId:next,helperImageId:next,fromHelperImageId:next,runnerUpgradeVerified:true,runnerManagerIdentityPreserved:true,runnerVersion:release.runner.toVersion,helperImage:release.runner.helperImage,jobCaBundleSha256:release.jobCaBundleSha256,securityTrustVerified:true}}});
   atomic(filename,raw);f.engine.options.evidence=filename;f.engine.inspect=()=>({Image:candidate});
   let replaced=false;const originalRead=fs.readSync;
   fs.readSync=(descriptor,...args)=>{
@@ -96,7 +96,7 @@ test('a still-running writer prevents restoration even if Docker stop returns su
   await assert.rejects(()=>f.engine.rollback(migrated.checkpointSha256),/writer-still-running/);assert.equal(fs.readFileSync(path.join(f.serviceData,'data/original'),'utf8'),'saved-data');
 });
 test('a foreign Harvest/certificate lease is never removed when acquisition fails',t=>{
-  const f=fixture(t);const foreign=path.join(f.engine.seed,'.operation-lock');fs.mkdirSync(foreign);fs.writeFileSync(path.join(foreign,'foreign'),'keep');assert.throws(()=>f.engine.lock('a'.repeat(64)));assert.equal(fs.readFileSync(path.join(foreign,'foreign'),'utf8'),'keep');assert(!fs.existsSync(path.join(f.state,'.gitlab-upgrade-lock')));
+  const f=fixture(t);const foreign=path.join(f.engine.state,'.storage-operation-lock');fs.mkdirSync(foreign);fs.writeFileSync(path.join(foreign,'foreign'),'keep');assert.throws(()=>f.engine.lock('a'.repeat(64)));assert.equal(fs.readFileSync(path.join(foreign,'foreign'),'utf8'),'keep');assert(!fs.existsSync(path.join(f.state,'.gitlab-upgrade-lock')));
 });
 
 test('every copied checkpoint directory and its ancestors are durable before the successor starts',async t=>{

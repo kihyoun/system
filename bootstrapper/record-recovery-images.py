@@ -38,7 +38,8 @@ def source_identity(checkout):
 
 
 def refreshed_manifest(previous, archive, source, controller_reference, controller_image,
-                       gitlab_reference, gitlab_image, wizard_reference):
+                       gitlab_reference, gitlab_image, wizard_reference,
+                       runner_reference=None, runner_image=None):
     """Keep old archives/metadata while atomically replacing the active selectors."""
     commit, tree, wizard = source
     value = copy.deepcopy(previous)
@@ -66,6 +67,15 @@ def refreshed_manifest(previous, archive, source, controller_reference, controll
     # saved configuration selects the new pinned reference after migration.
     value['publicImages'] = [row for row in value['publicImages'] if row not in previous_gitlab]
     value['publicImages'].append({'reference': gitlab_reference, 'tag': alias, 'imageId': gitlab_image})
+    if runner_reference is not None:
+        require(recovery.image_id(runner_image), 'invalid-current-runner-image')
+        repository = recovery.canonical_digest(runner_reference).split('@')[0]
+        previous_runner = [row for row in value['publicImages']
+                           if recovery.canonical_digest(row['reference']).split('@')[0] == repository]
+        require(bool(previous_runner), 'existing-Runner-public-image-declaration-required')
+        value['publicImages'] = [row for row in value['publicImages'] if row not in previous_runner]
+        value['publicImages'].append({'reference': runner_reference,
+                                     'tag': runner_reference.split('@')[0], 'imageId': runner_image})
     value.update(sourceCommit=commit, sourceTree=tree, deployedCodeTree=tree, wizardSourceRevision=wizard)
     value['currentController'] = {'imageId': controller_image, 'reference': controller_reference,
                                   'sourceCommit': commit, 'sourceTree': tree, 'archive': archive['file'],
@@ -165,13 +175,24 @@ def record(config, release, evidence, output):
     selected = recovery.inspect_image(config['GITLAB_IMAGE'])
     require(selected['Id'] == gitlab['Image'] and recovery.canonical_digest(config['GITLAB_IMAGE']) in
             selected.get('RepoDigests', []), 'running-GitLab-does-not-match-pinned-config')
-    runtime.verify_mounts(config, runtime.inspect_services(config))
+    require(config['GITLAB_RUNNER_IMAGE'] == upgrade['runnerImage'],
+            'recovery-export-requires-completed-runner-upgrade')
+    runner = recovery.inspect_image(config['GITLAB_RUNNER_IMAGE'])
+    require(runner['Id'] == upgrade['runnerImageId'] and
+            recovery.canonical_digest(config['GITLAB_RUNNER_IMAGE']) in runner.get('RepoDigests', []),
+            'running-Runner-does-not-match-pinned-config')
+    services = runtime.inspect_services(config)
+    for index in range(1, runtime.runner_count(config) + 1):
+        require(services[f'runner_docker_{index}']['Image'] == runner['Id'],
+                'recovery-export-requires-completed-runner-upgrade')
+    runtime.verify_mounts(config, services)
     with successor.Lease(config):
         successor.sync_idle(config)
         before = config['_main'].read_bytes()
         archive = save_archive(directory, reference, controller['Image'], source)
         value = refreshed_manifest(previous, archive, source, reference, controller['Image'],
-                                   config['GITLAB_IMAGE'], gitlab['Image'], config['WIZARD_IMAGE'])
+                                   config['GITLAB_IMAGE'], gitlab['Image'], config['WIZARD_IMAGE'],
+                                   config['GITLAB_RUNNER_IMAGE'], runner['Id'])
         value['currentController']['registryReference'] = release['registryReference']
         require(config['_main'].read_bytes() == before and inspect_container('system_gitlab_1')['Image'] == gitlab['Image'],
                 'configuration-or-GitLab-changed-during-recovery-export')
@@ -179,6 +200,7 @@ def record(config, release, evidence, output):
         result = {'format': 'system-recovery-export-v1', 'at': runtime.now(),
                   'sourceRevision': source[0], 'controllerImageId': controller['Image'],
                   'GitLabImageId': gitlab['Image'], 'manifestSha256': recovery.sha(directory / 'images.json'),
+                  'runnerImageId': runner['Id'],
                   'controllerArchive': archive['file'], 'previousManifestRetained': True,
                   'savedConfigurationUnchanged': config['_main'].read_bytes() == before}
         successor.atomic_json(output, result)

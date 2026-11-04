@@ -13,17 +13,20 @@ const env = {CI_COMMIT_SHA: sha, CI_PROJECT_ID: '4', CI_PIPELINE_ID: '10', CI_JO
   CI_REGISTRY: 'registry.example.test', CI_PROJECT_PATH: 'example/system',
   CI_REGISTRY_IMAGE: 'registry.example.test/example/system', CI_PIPELINE_SOURCE: 'merge_request_event',
   CI_REGISTRY_USER: 'fixture', CI_REGISTRY_PASSWORD: 'fixture-not-a-real-secret'};
-const proof = {runId: 'f'.repeat(24), sourceRevision: sha, fullAcceptance: true, images: {candidate: id},
+const proof = {runId: 'f'.repeat(24), sourceRevision: sha, fullAcceptance: true, images: {candidate: id, runner: registryDigest},
   results: ['gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci',
-    'gitlab-upgrade-restored-checkpoint', 'cleanup'].map(name => ({name, status: 'passed'})),
+    'gitlab-upgrade-restored-checkpoint', 'gitlab-upgrade-security-trust', 'cleanup'].map(name => ({name, status: 'passed'})),
   evidence: {gitlabUpgrade: {fromImage: release.fromImage, toImage: release.toImage,
-    migrationVerified: true, rollbackVerified: true, registryVerified: true, checkpointVerified: true}}};
+    migrationVerified: true, rollbackVerified: true, registryVerified: true, checkpointVerified: true,
+    runnerImage: release.runner.toImage, runnerImageId: registryDigest, fromRunnerImageId: 'sha256:'+'6'.repeat(64), helperImageId: 'sha256:'+'7'.repeat(64), fromHelperImageId: 'sha256:'+'5'.repeat(64), runnerUpgradeVerified: true, runnerManagerIdentityPreserved: true, runnerVersion: release.runner.toVersion,
+    helperImage: release.runner.helperImage, jobCaBundleSha256: release.jobCaBundleSha256, securityTrustVerified: true}}};
 const ci = context(env);
 assert.throws(() => context({...env, CI_REGISTRY_IMAGE: 'other.example.test/foreign/project'}));
 assert.throws(() => validateEvidence({...proof, sourceRevision: tree}, ci));
 assert.throws(() => validateEvidence({...proof, results: proof.results.slice(1)}, ci));
 assert.throws(() => validateEvidence({...proof, results: [{name: 'cleanup', status: 'failed'}]}, ci));
 assert.throws(() => validateEvidence({...proof, evidence: {gitlabUpgrade: {...proof.evidence.gitlabUpgrade, rollbackVerified: false}}}, ci));
+for(const patch of [{runnerVersion:'19.4.0'},{runnerImageId:id},{jobCaBundleSha256:'0'.repeat(64)},{securityTrustVerified:false}])assert.throws(()=>validateEvidence({...proof,evidence:{gitlabUpgrade:{...proof.evidence.gitlabUpgrade,...patch}}},ci),/Runner and effective CA/);
 
 try {
   const dir = path.join(root, 'test-results/e2e', proof.runId);
@@ -41,7 +44,7 @@ try {
     'the original host summary resolves to the complete restored migration receipt');
   writeSummary({...summary, evidence: {...summary.evidence, recovery: {...summary.evidence.recovery, runId: '2'.repeat(24)}}});
   assert.throws(() => candidates(path.join(root, 'test-results/e2e'), ci), /matching complete successor receipt/);
-  writeSummary({...summary, images: {candidate: registryDigest}});
+  writeSummary({...summary, images: {...summary.images, candidate: registryDigest}});
   assert.throws(() => candidates(path.join(root, 'test-results/e2e'), ci), /matching complete successor receipt/);
   writeSummary({...summary, results: [{name: 'cleanup', status: 'failed'}]});
   assert.throws(() => candidates(path.join(root, 'test-results/e2e'), ci), /complete passing/);

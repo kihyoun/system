@@ -20,11 +20,16 @@
 # Gitlab CI Definition
 # ProjectID: systembootstrapper
 # Filepath: ./gitlab-ci.yml
-image: docker:latest
+image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
 services:
-  - docker:dind
+  - docker:29.9.2-dind@sha256:9e79b879b177fbd72c34376a3dd3d91747da5db49e1f560f76aea59561471977
 variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  NODE_OPTIONS: --use-openssl-ca
+
+default:
+  before_script:
+    - sh bootstrapper/refresh-ca.sh
 
 stages:
   - prepare
@@ -53,7 +58,7 @@ cache:
 # The native trusted parent exports public Git objects to a socket-free child.
 check:documentation:
   stage: prepare
-  image: docker:29.9.1-cli@sha256:6fae2214c3121a28d5aa639d09032f61310b7c9c75ffbad1025f261a1b621800
+  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
   services: []
   tags: [docker]
   variables:
@@ -81,7 +86,7 @@ check:documentation:
 # Only the validated source snapshot is passed to downstream candidate builds.
 prepare:wizard-source:
   stage: prepare
-  image: node:24.22.0-bookworm@sha256:14078204b6bb268c107ceff6d3c43f45a888105e5c2b18b14c32b3409d93a1b0
+  image: node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
   services: []
   tags: [docker]
   variables:
@@ -103,7 +108,7 @@ prepare:wizard-source:
 # The current build/deploy jobs retain their upstream publishing behavior.
 test:isolated:
   stage: test
-  image: docker:29.9.1-cli@sha256:6fae2214c3121a28d5aa639d09032f61310b7c9c75ffbad1025f261a1b621800
+  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
   services: []
   tags: [docker]
   variables:
@@ -133,7 +138,7 @@ test:isolated:
 # Build the complete runtime and packaged Sync/Wizard source before publishing.
 test:candidate-image:
   stage: test
-  image: docker:29.9.1-cli@sha256:6fae2214c3121a28d5aa639d09032f61310b7c9c75ffbad1025f261a1b621800
+  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
   services: []
   tags: [docker]
   variables:
@@ -191,6 +196,7 @@ test:platform-candidate:
 build:
   stage: build
   before_script:
+    - sh bootstrapper/refresh-ca.sh
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
   script:
     - docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper
@@ -199,7 +205,7 @@ build:
 
 deploy:github:
   stage: deploy
-  image: node:24.22.0-bookworm@sha256:14078204b6bb268c107ceff6d3c43f45a888105e5c2b18b14c32b3409d93a1b0
+  image: node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
   services: []
   tags: [docker]
   cache: []
@@ -208,7 +214,8 @@ deploy:github:
   interruptible: false
   resource_group: 'github-backup-$CI_PROJECT_ID'
   allow_failure: false
-  before_script: []
+  before_script:
+    - sh bootstrapper/refresh-ca.sh
   rules:
     - if: '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       when: on_success

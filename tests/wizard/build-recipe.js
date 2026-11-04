@@ -60,8 +60,8 @@ for (const file of modern.files) assert.equal(crypto.createHash('sha256').update
 const sourceSnapshot = JSON.parse(fs.readFileSync(path.join(root, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8'));
 const packageJson = JSON.parse(Buffer.from(sourceSnapshot.files.find(file => file.path === 'package.json').content, 'base64'));
 assert.equal(recipes.forSource(logo, sourceSnapshot.sourceRevision).recipeHash,
-  recipes.generate(logo, packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-overview-v3' : 'legacy-cleanup-v2').recipeHash);
-assert.equal(recipes.forSource(logo, 'f'.repeat(40)).recipeHash, recipes.generate(logo, 'legacy-cleanup-v2').recipeHash, 'New historical-source reservations retain the legacy toolchain with corrected cleanup');
+  recipes.generate(logo, packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-ca-v4' : 'legacy-ca-v4').recipeHash);
+assert.equal(recipes.forSource(logo, 'f'.repeat(40)).recipeHash, recipes.generate(logo, 'legacy-ca-v4').recipeHash, 'New historical-source reservations retain the legacy toolchain with corrected cleanup');
 console.log('Modern Wizard profile: Node 24, exact browser lock, honest Vitest evidence, strict reservation and backward-compatible legacy hashes passed.');
 const historical = {
   legacy: 'd6f99917add408077ad732621f717bb545566e75c98c896624bd606c00a0c406',
