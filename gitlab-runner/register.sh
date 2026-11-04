@@ -67,7 +67,8 @@ register_runner() {
     printf '%s' "$GITLAB_RUNNER_TOKEN" | docker exec -i "$container" sh -c \
         'variable=$1; shift; export "$variable=$(cat)"; exec gitlab-runner register "$@"' \
         sh "$token_variable" --non-interactive "${extra_args[@]}" \
-        --executor docker --docker-image alpine:3.22 \
+        --executor docker --docker-image docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb \
+        --docker-helper-image "${GITLAB_RUNNER_HELPER_IMAGE:-$(node -p 'require("../gitlab/security-release.json").runner.helperImage')}" \
         --url "http://gitlab/" \
         --description "$name" --clone-url "http://gitlab/" \
         --docker-network-mode system_gitlab \

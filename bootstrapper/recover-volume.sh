@@ -8,6 +8,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${PERSISTENCE_ENV_FILE:?Set PERSISTENCE_ENV_FILE to the retained recovery/persistence.env}"
 set -a
 source "$PERSISTENCE_ENV_FILE"
+source bootstrapper/storage-env.sh
 set +a
 bash bootstrapper/persistence.sh
 recovery="$PERSISTENT_DIR/recovery"

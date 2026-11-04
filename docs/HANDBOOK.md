@@ -6,6 +6,8 @@ Choose the complete installation path for your environment:
   own computer, without public DNS or a certificate.
 - [Public Ubuntu server with your domain and HTTPS](#public-server-own-domain-and-https):
   prepare DNS, issue certificates with Certbot and configure the services.
+- [Replacement host from an external Seed](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation):
+  restore a completed backup into fresh local working storage.
 - [Replacement host with a retained data volume](#replace-a-host-while-retaining-its-data-volume):
   reuse an existing installation, rather than initializing it again.
 - [Evolve a running system](#5-evolving-a-running-system): use one generation
@@ -85,44 +87,47 @@ versions declared in `wizard/.nvmrc` and `wizard/package.json`.
 
 ### 0.3 Start the Bootstrapper for the first time
 
-Startup requires a separately mounted filesystem for persistent service data.
-Prepare and mount your storage using the [persistent-volume guide](PERSISTENT_VOLUME.md)
-before continuing; an ordinary directory on the root filesystem does not satisfy
-the startup guard. Retain an existing filesystem's contents when reusing it.
+Fresh Ubuntu/WSL installations use local working data at
+`/var/lib/system-bootstrapper/platform` on the system disk. No second disk, USB
+stick, cloud volume or Seed backup is needed for first startup. Keep WSL data
+inside its Linux filesystem, rather than on a Windows-mounted path such as
+`/mnt/c`, so Unix ownership and filesystem behavior are available.
 
-Create the host selector file for your own mount. For example, if your filesystem
-is already mounted at `/mnt/bootstrapper`, use:
+You may select another local directory explicitly in the root-owned
+`/etc/system-bootstrapper/persistence.env`:
 
 ```bash
-sudo install -d -m 0755 /etc/system-bootstrapper
+sudo install -d -m 0700 /etc/system-bootstrapper
 sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
-PERSISTENT_MOUNT=/mnt/bootstrapper
-PERSISTENT_DIR=/mnt/bootstrapper/platform
-SEED_DIR=/mnt/bootstrapper/seed
+PERSISTENCE_MODE=local
+PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
-sudo chmod 600 /etc/system-bootstrapper/persistence.env
+sudo chmod 0600 /etc/system-bootstrapper/persistence.env
 ```
 
-Replace the example mount path in all three assignments if yours differs. Keep
-`SEED_DIR` and `PERSISTENT_DIR` separate beneath the mounted filesystem. You can
-also set `PERSISTENT_UUID` to require a specific filesystem identity.
+That selector is optional for a fresh installation using the default. Existing
+selectors with `PERSISTENT_MOUNT` and no mode retain volume semantics; they never
+fall back to local storage when a required volume is absent. See the
+[persistence guide](PERSISTENT_VOLUME.md) before changing an existing layout.
+Configure independent backup storage when you want to Harvest or restore a Seed.
+Normal operation and certificate renewal do not require that backup medium.
 
 Then run this command from the project's root directory:
 
 ```bash
 sudo env \
-  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.3-ce.0@sha256:483fb4cc5c75237a7a6c7c8b8b2a1832ed790d86e0449ff55e8b6f6d62d2d5f5 \
-  GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0 \
+  GITLAB_IMAGE=gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c \
+  GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd \
   GITLAB_SSH_BIND=127.0.0.1:2222 \
   GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
   bash start.sh
 ```
 
-These selectors pin the GitLab and runner images for a **fresh installation**.
-They are not an upgrade procedure for an existing GitLab database. Without these
-explicit settings, the repository uses its historical GitLab default. When
-reusing an installation, preserve its recorded image selectors and follow the
-GitLab upgrade requirements rather than replacing them with this example.
+These selectors pin the GitLab and runner images for a **fresh installation**;
+the repository defaults use the same reviewed versions. They are not an upgrade
+procedure for an existing GitLab database. When reusing an installation, preserve
+its recorded image selectors and follow the GitLab upgrade requirements rather
+than replacing them with this example.
 
 The Bootstrapper builds its image and initially starts the Wizard and Sync
 access point. GitLab is not fully configured at this stage. The first build
@@ -157,7 +162,10 @@ username and password. It uses the same precedence as startup:
 ```bash
 sudo bash -c '
   set -euo pipefail
-  source /etc/system-bootstrapper/persistence.env
+  PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
+  if [[ -f /etc/system-bootstrapper/persistence.env ]]; then
+    source /etc/system-bootstrapper/persistence.env
+  fi
   source "$PERSISTENT_DIR/configuration/sync-auth.env"
   if [[ -f "$PERSISTENT_DIR/configuration/.docker.env" ]]; then
     source "$PERSISTENT_DIR/configuration/.docker.env"
@@ -262,7 +270,7 @@ Check the **Start**, **SSL**, **Sync** and **Wizard** sections under General:
 
 | Setting | Value for this local test |
 | --- | --- |
-| `SEED_DIR` | Keep the path selected on the host, for example `/mnt/bootstrapper/seed` |
+| `SEED_DIR` | Optional independent backup destination; leave empty until choosing Seed storage |
 | `GITLAB_HOST` | `gitlab.localhost` |
 | `GITLAB_REGISTRY_HOST` | `registry.localhost` |
 | Gitlab Runners | Initially `0`; configure the runner after signing into GitLab |
@@ -275,9 +283,10 @@ Check the **Start**, **SSL**, **Sync** and **Wizard** sections under General:
 | `WIZARD_HOST` | `localhost` |
 | Wizard mode | **Default, HTTP** |
 
-The seed path is a directory on the Docker host. Keep it consistent with the
-directory mounted at startup. A missing seed is normal on first startup and
-means this is a fresh installation.
+The Seed path is a backup destination on the Docker host, not the live working
+directory. First startup does not restore anything automatically. An external
+backup target is required only during an explicit Harvest or Seed operation;
+configure its mount/identity in the host selector before using it.
 
 #### Public website and operator information
 
@@ -375,8 +384,8 @@ renewal. Reusing a database or moving persistent storage requires the separate
 ## Public server: own domain and HTTPS
 
 This path installs a **fresh** platform on an Ubuntu 24.04 LTS server with sudo
-access, a separately mounted ext4 data volume and a domain you control. Reusing
-GitLab data requires the [replacement-host procedure](#replace-a-host-while-retaining-its-data-volume)
+access, enough local disk space and a domain you control. An explicit mounted
+live volume is optional. Reusing GitLab data requires the [replacement-host procedure](#replace-a-host-while-retaining-its-data-volume)
 instead. Allocate memory, CPU and disk for GitLab plus the runner jobs you intend
 to run; the Docker installation check does not establish that capacity.
 
@@ -442,31 +451,34 @@ package, rather than a separate Snap installation. Do not run
 `bootstrapper/prepare-local.sh`: public DNS and a trusted HTTPS registry replace
 its local hosts-file and insecure-registry changes.
 
-### Public 2. Mount storage and install certificate integration
+### Public 2. Select working storage and install certificate integration
 
-Identify and mount your data filesystem with `lsblk -f`, `mount` and `findmnt`.
-Follow [persistent-volume preparation](PERSISTENT_VOLUME.md#paths-and-selectors)
-and use the actual ext4 mount point and UUID. Do not format an existing volume.
-For an already mounted filesystem at `/mnt/bootstrapper-data`, create:
+This fresh installation keeps live data on the server's system disk. Create an
+explicit selector so the certificate integration and lifecycle tools share the
+same working directory:
 
 ```bash
 sudo install -d -m 0700 /etc/system-bootstrapper
 sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
-PERSISTENT_MOUNT=/mnt/bootstrapper-data
-PERSISTENT_DIR=/mnt/bootstrapper-data/platform
-SEED_DIR=/mnt/bootstrapper-data/seed
+PERSISTENCE_MODE=local
+PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
 sudo bash bootstrapper/install-volume-host.sh
 sudo systemctl stop certbot.timer
 ```
 
-Optionally add `PERSISTENT_UUID` with the actual filesystem UUID to require that
-identity. The integration validates the mount, persists its fstab dependency,
-connects `/etc/letsencrypt` to `PERSISTENT_DIR/host/letsencrypt`, installs the
-`system-certbot` lock wrapper and certificate deploy hook. A conflicting active
-Certbot tree is an error to reconcile, not a reason to delete certificate state.
-The timer is temporarily stopped while we change the renewal method below.
+Despite its compatibility name, `install-volume-host.sh` supports local storage.
+It validates working storage, connects `/etc/letsencrypt` to
+`PERSISTENT_DIR/host/letsencrypt`, and installs the `system-certbot` lock wrapper
+and certificate deploy hook. It does not add a Docker or renewal dependency on
+an external Seed target. Reconcile conflicting active Certbot trees rather than
+deleting certificate state. The timer is temporarily stopped while changing the
+renewal method below.
+
+For a deliberate volume-backed live layout instead, use `PERSISTENCE_MODE=volume`
+and the actual mount point/UUID from the [persistence guide](PERSISTENT_VOLUME.md).
+Do not format an existing volume. A missing selected live volume blocks startup.
 
 ### Public 3. Obtain the first certificate before starting the platform
 
@@ -514,8 +526,8 @@ server, start the fresh installation:
 
 ```bash
 sudo env \
-  GITLAB_IMAGE=gitlab/gitlab-ce:19.4.3-ce.0@sha256:483fb4cc5c75237a7a6c7c8b8b2a1832ed790d86e0449ff55e8b6f6d62d2d5f5 \
-  GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0 \
+  GITLAB_IMAGE=gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c \
+  GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd \
   GITLAB_SSH_BIND=127.0.0.1:2222 \
   GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
   bash start.sh
@@ -544,7 +556,7 @@ Fetch returns suggestions: verify and replace them with this table.
 
 | Section / Wizard field | Value for this public example |
 | --- | --- |
-| General → Start: `SEED_DIR` | `/mnt/bootstrapper-data/seed`, matching the host selector |
+| General → Start: `SEED_DIR` | Empty until selecting a separate Seed backup destination |
 | General → Start: `GITLAB_HOST` | `gitlab.example.com` |
 | General → Start: `GITLAB_REGISTRY_HOST` | `registry.example.com` |
 | General → Start: Gitlab Runners / Runner authentication token | Initially `0` / empty; register after GitLab is healthy |
@@ -631,10 +643,10 @@ sudo bash -c '
 '
 ```
 
-The restricted storage initializer creates private directories. These commands
-permit NGINX workers to traverse the mounted `/ssl` root and read only the ACME
-webroot; they do not open `ssl/live` lineage directories or private keys. Do not
-apply a recursive permission change to the certificate tree.
+Native storage preparation adds traversal permission to the mounted `/ssl` root
+and creates the public ACME webroot. This probe also creates the public challenge
+subdirectories and token; it leaves `ssl/live` lineage directories and private-key
+modes unchanged. Do not apply a recursive permission change to the certificate tree.
 
 From **outside** the server, request
 `http://www.example.com/.well-known/acme-challenge/bootstrapper-check` and repeat
@@ -1010,6 +1022,13 @@ message in an existing chat. Check each run's time, exit result and log: an old
 
 ## Replace a host while retaining its data volume
 
+This section is the explicit volume-backed reuse path. For fresh local working
+storage populated from an external backup instead, use the
+[configuration-plus-Seed restore procedure](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation).
+A default local installation does not preserve its working data when the VM is
+deleted; Harvest to external storage and save matching configuration first.
+
+
 This procedure reuses the current live data, including GitLab, configuration and
 certificates. It does **not** restore an older Seed or upgrade the saved GitLab
 version. Keep the volume when removing the old VM, and stop its writers cleanly
@@ -1053,6 +1072,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
    values. Do not format the attached volume:
 
    ```bash
+   PERSISTENCE_MODE=volume
    PERSISTENT_MOUNT=/mnt/bootstrapper-data
    PERSISTENT_DIR=/mnt/bootstrapper-data/platform
    SEED_DIR=/mnt/bootstrapper-data/seed
@@ -1069,6 +1089,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
    ```bash
    sudo install -d -m 0700 /etc/system-bootstrapper
    sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<EOF
+   PERSISTENCE_MODE=volume
    PERSISTENT_MOUNT=$PERSISTENT_MOUNT
    PERSISTENT_DIR=$PERSISTENT_DIR
    SEED_DIR=$SEED_DIR
@@ -1164,7 +1185,7 @@ bypass guards or restore a stale Seed to make a host replacement continue.
 | Restart | Restarts services using the transferred configuration |
 | Register / Unregister | Checks/registers or unregisters configured runner managers |
 | Harvest | Publishes a cold snapshot of GitLab data, certificates and certificate-renewal state in the seed directory |
-| Seed | Restores data from the seed; existing destination data may be overwritten |
+| Seed | Validates a completed Seed and restores into fresh live service-data directories |
 | Reset | Deletes the main and project configurations through the reset workflow |
 | Update | Updates source code through the existing update workflow |
 
@@ -1183,8 +1204,9 @@ coordinates with certificate renewal and publishes a checksummed completion
 manifest only after copying succeeds; previous completed snapshots remain
 available. Seed validates the snapshot and requires the matching GitLab image
 before restoring. Save a matching configuration backup separately and follow the
-[recovery contract](RECOVERY_CONTRACT.md). A Seed on the same volume does not
-protect against losing that volume.
+[recovery contract](RECOVERY_CONTRACT.md). Local live layouts require a separate external Seed filesystem. Legacy
+volume layouts may keep their disjoint Seed on the retained live volume; that
+does not protect against losing that volume.
 
 ## 2. Setting up GitLab runners
 
@@ -1475,7 +1497,7 @@ to the shared instance pool.
 | Saved Example values return | Fetch prioritizes saved settings. Correct them explicitly in the Wizard; suggestions do not overwrite existing configuration |
 | GitLab is not reachable yet | After Push triggers its automatic restart, wait for `healthy` and inspect GitLab logs if needed |
 | Four configured runner containers appear as one GitLab runner | Open the runner detail page and inspect **Runner managers**; the shared pool has one entry with independent manager system IDs |
-| Startup reports missing persistent storage | Mount the configured filesystem and check `/etc/system-bootstrapper/persistence.env`; do not bypass the guard with a root-disk directory |
+| Startup reports missing persistent storage | Check the selected mode and directory; mount an explicitly selected live volume instead of changing modes to bypass its guard |
 | A pipeline waits for its runner after a GitLab restart | Register checks the pool and updates managed internal IP endpoints to the stable Docker service name |
 | A pipeline cannot resolve `registry.localhost` | Run `sudo bash bootstrapper/prepare-local.sh` again in Ubuntu; WSL may reset local hosts entries at startup |
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
@@ -1513,7 +1535,7 @@ Before opening the change, prepare the following:
 | Independent recovery access | SSH/console access, the accepted checkout or Git bundle, required image archives, private storage selectors and credentials remain available while the platform's own GitLab is down. |
 | Promotion authority | An authorized maintenance window, a named operator/coordinator, the exact candidate evidence and a recovery decision point. A successful merge alone does not authorize arbitrary Production changes. |
 
-Use your own domains, mounted filesystem and private credentials. Keep
+Use your own domains, selected working storage and private credentials. Keep
 installation-specific selectors, backups, logs and receipts outside Git. The
 repository owns the logic that produces and validates them; it does not contain
 an operator's passwords or data. Transfer secrets through the entry point's
@@ -1589,13 +1611,21 @@ migration results for an upgrade.
 
 ### 5.4 Example: a GitLab security patch is a system evolution
 
-A focused evolution can replace GitLab CE **19.4.2** with **19.4.3** while keeping
-the rest of the platform's declared behavior. GitLab's
-[October 2026 patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-1-released/)
-identifies security fixes in 19.4.3 and states that it includes regular and
-post-deployment database migrations. This is a specific version-transition example, not a rule that
-19.4.3 is the right target for every later installation. Check the upstream
-upgrade path and patch notes for the actual source and target before each change.
+The committed [security release profile](../gitlab/security-release.json)
+declares a GitLab CE **19.4.3 → 19.5.3** transition and a GitLab Runner
+**19.4.0 → 19.5.1** transition with its matching helper. The linked upstream
+[patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-3-released/)
+and [Docker upgrade guidance](https://docs.gitlab.com/update/docker/) describe
+its prerequisites. Required database and post-deployment migrations must finish;
+check the source/target upgrade path rather than treating any newer image as an
+interchangeable patch.
+
+The selected System/CI images and new versioned Wizard recipes also install the
+committed public CA bundle. Existing reserved recipe hashes remain valid and do
+not silently acquire a different trust store: upgrade such recipes explicitly.
+These inputs and their tests are part of the reviewed candidate, alongside the
+service versions. Runtime configuration still supplies any installation-specific
+private certificate authorities separately.
 
 Here the improvement is measurable: the accepted target image contains the
 specified upstream fixes, the previous database migrates successfully, and
@@ -1658,11 +1688,14 @@ candidate results and exact existing installation. Run it from the host or an
 independent management connection, rather than relying on a CI job to survive
 stopping the GitLab that coordinates it.
 
-For the declared CE 19.4.2 → 19.4.3 transition,
+For the declared CE 19.4.3 → 19.5.3 transition,
 [`gitlab/security-release.json`](../gitlab/security-release.json) contains the
-allowed source and target image pins. Make both images available before the
-outage. First deploy the **exact tested full controller image** containing the
-accepted tools, while preserving the saved 19.4.2 GitLab selection. Do not rebuild
+allowed image pins. Before planning or entering downtime, pull all six image
+references: `fromImage`, `toImage`, `runner.fromImage`, `runner.toImage`,
+`runner.fromHelperImage` and `runner.helperImage`. These include both GitLab
+versions and the previous and target Runner/Helper pairs. First deploy the
+**exact tested full controller image** containing the
+accepted tools, while preserving the saved 19.4.3 GitLab selection. Do not rebuild
 another image from the same tag and assume it has the tested identity. The helper
 requires the running controller to match the image recorded by the accepted
 candidate evidence; publishing a runtime base alone does not meet this condition.
@@ -1881,6 +1914,16 @@ Use only the action appropriate to the recorded phase; the commands are
 alternatives, not a sequence to run unconditionally. Keep interrupted-operation
 leases and incomplete-restore markers for the helper to reconcile. Do not delete
 one manually to bypass a refusal.
+
+If the controller restarted with an unfinished storage or upgrade lease and no
+incomplete-restore marker, it waits in maintenance before starting writers. `docker exec` remains available
+for the native status, abort or rollback commands above. It does not leave this
+state automatically when recovery removes the lease. Only after the selected
+recovery succeeds and its barriers are released, resume controller startup:
+
+```bash
+sudo docker restart system_bootstrapper_1
+```
 
 If GitLab is restored to the old image while an accepted controller remains
 staged, develop any correction through a new merge request and its required

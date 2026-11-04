@@ -12,6 +12,11 @@ for (const template of ['angular', 'react', 'web']) {
   const generated = prepareApplication(template, settings.PROJECT_NAME, settings);
   const files = new Map(generated.files.map(file => [file.file_path, file.content]));
   assert(files.has('Dockerfile'));
+  assert(files.has('.system-bootstrapper/refresh-ca.sh'));
+  assert(files.get('Dockerfile').includes('refresh-ca.sh'));
+  assert(generated.ci.includes('29.9.2-cli@sha256:'));
+  assert(generated.ci.includes('sh .system-bootstrapper/refresh-ca.sh'));
+  assert.equal(require('crypto').createHash('sha256').update(files.get('.system-bootstrapper/ca/cacert-2026-10-20.crt')).digest('hex'), require('../../gitlab/security-release.json').jobCaBundleSha256);
   assert(files.has('GETTING_STARTED.md'));
   assert(!generated.files.some(file => file.file_path.includes('node_modules') || file.file_path.includes('..')));
   assert(generated.files.every(file => file.action === 'create' && !file.content.includes('__PROJECT_KEY__')));

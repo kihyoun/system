@@ -8,4 +8,5 @@ if [ "${SYNC_ENABLE:-false}" != true ] && [ "${WIZARD_ENABLE:-false}" = true ]; 
   npm run build
   node dist/DefaultWizard.js || echo 'System Wizard registration failed; the existing interface remains available.' >&2
 fi
+if [[ -n ${SYSTEM_STARTUP_OPERATION:-} ]]; then node ../system/seed-operation.js startup-finish; fi
 cd ../sync; bash -e ./start.sh;

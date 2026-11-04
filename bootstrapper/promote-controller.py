@@ -405,6 +405,30 @@ def wait_for_staged(config, original, baseline, release, expected_gitlab_id, tim
             time.sleep(3)
 
 
+def preserved_environment(config, reference, security, evidence, services):
+    # Resolve the same trusted assignments/explicit process inputs that Compose
+    # will receive. Empty selections must never fall through to a new default.
+    environment = successor.environment(config, reference, staged=True)
+    previous = evidence.get('evidence', {}).get('gitlabUpgrade', {})
+    selections = [('GITLAB_IMAGE', previous.get('fromImageId'), 'system_gitlab_1')]
+    if security.get('runner'):
+        selections.append(('GITLAB_RUNNER_IMAGE', previous.get('fromRunnerImageId'), None))
+    for key, expected, name in selections:
+        selected = environment.get(key)
+        require(isinstance(selected, str) and bool(selected) and recovery.image_id(expected),
+                'controller-promotion-image-selection-required')
+        image = recovery.inspect_image(selected)
+        require(image.get('Id') == expected, 'controller-promotion-image-selection-changed')
+        if '@sha256:' in selected:
+            require(recovery.canonical_digest(selected) in image.get('RepoDigests', []),
+                    'controller-promotion-image-digest-unverified')
+        actual = [services.get(name)] if name else [row for service, row in services.items()
+                                                   if service.startswith('runner_docker_')]
+        require(all(row and row.get('Image') == expected for row in actual),
+                'controller-promotion-running-image-mismatch')
+    return environment
+
+
 def promote(config, release, evidence, api, release_bytes, evidence_bytes, security, checkpoint,
             cold=False, timeout=1200, staged=None):
     require(api.base == runtime.origin(config, 'GITLAB'), 'GitLab-origin-does-not-match-saved-config')
@@ -424,6 +448,7 @@ def promote(config, release, evidence, api, release_bytes, evidence_bytes, secur
     baseline = runtime.capture(config, successor.HERE.parent, manifest=manifest)
     raw = config['_main'].read_bytes()
     alias = successor.controller_alias(release)
+    promotion_environment = preserved_environment(config, alias, security, evidence, original)
     updated = successor.assignment(raw, 'BOOTSTRAPPER_IMAGE', alias)
     if not cold:
         successor.sync_idle(config)  # Old APIs fail before any host mutation.
@@ -453,7 +478,7 @@ def promote(config, release, evidence, api, release_bytes, evidence_bytes, secur
     if staged_receipt:
         record['previousStagedPromotion'] = staged_receipt
     successor.atomic_json(checkpoint / 'operation.json', record)
-    with successor.Lease(config) as lease:
+    with successor.Lease(config, legacy_controller=controller) as lease:
         record['leaseOperation'] = lease.operation
         successor.atomic_json(checkpoint / 'operation.json', record)
         require(config['_main'].read_bytes() == raw, 'configuration-changed-before-controller-promotion')
@@ -504,7 +529,7 @@ def promote(config, release, evidence, api, release_bytes, evidence_bytes, secur
         successor.atomic_json(checkpoint / 'operation.json', record)
         run([*DOCKER, 'compose', '--compatibility', '-p', 'system', '-f',
              str(successor.HERE.parent / 'system/docker-compose.yml'), 'up', '--no-build', '--no-deps',
-             '--pull', 'never', '-d', 'bootstrapper'], env=successor.environment(config, alias))
+             '--pull', 'never', '-d', 'bootstrapper'], env=promotion_environment)
         config = runtime.settings(config['_persistence_env'])
         baseline['configurationFiles']['configuration/.docker.env'] = hashlib.sha256(updated).hexdigest()
         baseline['hostToolsRevision'] = release['sourceRevision']

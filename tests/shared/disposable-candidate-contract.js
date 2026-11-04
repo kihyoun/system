@@ -15,11 +15,21 @@ const spec={daemonImage:'docker:29-dind@sha256:'+hash,example,images:Object.from
   ['candidate','wizard','gitlab','runner','nginx'].map(name=>[name,{id:'sha256:'+hash,archive:path.resolve(name+'.tar')}]))};
 const config=configuration(example,{root:'root-secret',user:'test-user',password:'sync-secret'});
 signature(config); assert.equal(config.slice(0,1184),example.slice(0,1184));
+const baselineImages={GITLAB_IMAGE:'candidate-gitlab:under-test',GITLAB_RUNNER_IMAGE:'candidate-runner:under-test'};
+assert.deepEqual(configurationValues(config,Object.keys(baselineImages)),baselineImages,
+  'saved candidate configuration must select the loaded baseline aliases instead of fresh-install public pins');
+const sourcedImages=require('child_process').execFileSync('bash',['-s'],{
+  input:config+'\nprintf "%s\\0%s\\0" "$GITLAB_IMAGE" "$GITLAB_RUNNER_IMAGE"\n',encoding:'utf8',
+  env:{...process.env,GITLAB_IMAGE:'inherited-gitlab:other',GITLAB_RUNNER_IMAGE:'inherited-runner:other'}
+}).split('\0').slice(0,-1);
+assert.deepEqual(sourcedImages,Object.values(baselineImages),
+  'the actual shell startup must source the same saved baseline aliases');
 assert(config.includes('https://www.system-bootstrapper.com'));
 assert.throws(()=>configuration(example.replace('https://www.system-bootstrapper.com','http://www.system-bootstrapper.com'),{}));
 assert.throws(()=>new Candidate({...spec,daemonImage:'docker:latest'}));
 assert.throws(()=>new Candidate({...spec,images:{}}));
-for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},1200000],[{acmeRenewalAcceptance:true},1500000]]) {
+for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},1200000],[{acmeRenewalAcceptance:true},1500000],
+  [{gitlabUpgradeAcceptance:true},3600000],[{gitlabUpgradeAcceptance:true,acmeRenewalAcceptance:true},3600000]]) {
   const bounded=new Candidate({...spec,...options},{now:()=>123});
   assert.equal(bounded.deadline,123+budget);
 }
@@ -31,7 +41,7 @@ const native=require('child_process').execFileSync('bash',['-s'],{input:literalC
 assert.deepEqual(Object.values(parsed),native);
 for(const text of ['VALUE=$(touch /should-not-run)','VALUE=$HOME','VALUE=$[1+2]','VALUE="$[1+2]"','VALUE=$','VALUE=`id`','VALUE="unterminated','VALUE=first\nVALUE=second','OTHER=missing'])assert.throws(()=>configurationValues(text,['VALUE']));
 
-function fixture() {
+function fixture(overrides={}) {
   const commands=[]; const records=new Map(); let instance; let clock=0; let failRemoval=false; let offline=false;
   const run=(args,options)=>{
     commands.push({args,options});
@@ -39,17 +49,18 @@ function fixture() {
     const [kind,verb]=args;
     if(['network','volume'].includes(kind) && verb==='create' || kind==='create') {
       const actualKind=kind==='create'?'container':kind;
-      const id=actualKind==='volume'?instance.name: (actualKind==='network'?'b':'c').repeat(64);
-      records.set(id,{kind:actualKind,Id:id,Name:actualKind==='container'?'/'+instance.name:instance.name,Labels:{[LABEL]:instance.id}}); return id;
+      const name=actualKind==='container'?args[args.indexOf('--name')+1]:args.at(-1);
+      const id=actualKind==='volume'?name: (actualKind==='network'?'b':'c').repeat(64);
+      records.set(id,{kind:actualKind,Id:id,Name:actualKind==='container'?'/'+name:name,Labels:{[LABEL]:args[args.indexOf('--label')+1].slice(LABEL.length+1)}}); return id;
     }
     if(verb==='ls') return [...records.values()].filter(x=>x.kind===kind).map(x=>JSON.stringify(kind==='volume'?{Name:x.Name}:{ID:x.Id.slice(0,12),Name:x.Name,Names:x.Name.replace(/^\//,'')})).join('\n');
     if(verb==='inspect') return JSON.stringify([[...records.values()].find(x=>x.kind===kind && (x.Id===args[2] || x.Name===args[2] || x.Name==='/'+args[2]))]);
     if(verb==='rm') {if(failRemoval) throw new Error('remove failed'); records.delete(args.at(-1));return '';}
     if(kind==='inspect') return JSON.stringify({'80/tcp':[{HostIp:'127.0.0.1',HostPort:'49152'}]});
-    if(kind==='exec' && args.includes('inspect') && args.includes('{{.Id}}')) return 'sha256:'+hash;
+    if(kind==='exec' && args.includes('inspect') && args.includes('{{.Id}}')) return args.at(-1);
     return '';
   };
-  instance=new Candidate(spec,{docker:run,now:()=>clock,sleep:async ms=>{clock+=ms;},request:async(url,options)=>{
+  instance=new Candidate({...spec,...overrides},{docker:run,now:()=>clock,sleep:async ms=>{clock+=ms;},request:async(url,options)=>{
     if(url.endsWith('/login')) {assert.equal(JSON.parse(options.body).password,instance.secrets.password);return {status:200,body:'{"accessToken":"private-token"}'};}
     if(url.endsWith('/config/main')) {assert.equal(options.headers.Authorization,'Bearer private-token');return {status:200,body:JSON.stringify({data:configuration(example,instance.secrets)})};}
     return {status:200,body:'<html>candidate</html>'};
@@ -74,6 +85,14 @@ function fixture() {
     {status:200,body:JSON.stringify({data:configuration(example,wrong.instance.secrets).replace('SYNC_PASS='+wrong.instance.secrets.password,'SYNC_PASS='+wrong.instance.secrets.password+'suffix')})}:
     originalRequest(url,options);
   await assert.rejects(wrong.instance.smoke(),/configuration-round-trip-mismatch/);
+  for(const key of Object.keys(baselineImages)){
+    const wrongImage=fixture(),request=wrongImage.instance.request;
+    wrongImage.instance.request=async(url,options)=>url.endsWith('/config/main')?
+      {status:200,body:JSON.stringify({data:configuration(example,wrongImage.instance.secrets).replace(key+'='+baselineImages[key],key+'=public-image:unexpected')})}:
+      request(url,options);
+    await assert.rejects(wrongImage.instance.smoke(),/configuration-round-trip-mismatch/,
+      'authenticated Fetch must prove the saved baseline image selection');
+  }
   const streams=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-stream-'));
   const previousPath=process.env.PATH;
   try {
@@ -170,6 +189,28 @@ function fixture() {
     await assert.rejects(failing.platform());
     assert.equal(createdProjects,1,'A missing real Docker TOML section must fail before creating any CI project.');
   } finally {fs.rmSync(policyDirectory,{recursive:true,force:true});}
+  const upgrades=fixture({gitlabUpgradeAcceptance:true,supportImages:Object.fromEntries(
+    ['helper','previousGitlab','previousRunner','previousHelper'].map((role,index)=>[role,{id:'sha256:'+String(index+1).repeat(64),archive:path.resolve(role+'.tar')}]))});
+  await upgrades.instance.start();
+  const tags=upgrades.commands.filter(call=>call.args.includes('tag')).map(call=>call.args.slice(-2));
+  for(const [id,alias]of [[spec.images.gitlab.id,'candidate-gitlab:target'],[spec.images.runner.id,'candidate-runner:target'],
+    [upgrades.instance.spec.supportImages.helper.id,'candidate-helper:target'],
+    [upgrades.instance.spec.supportImages.previousGitlab.id,'candidate-gitlab:under-test'],
+    [upgrades.instance.spec.supportImages.previousRunner.id,'candidate-runner:under-test'],
+    [upgrades.instance.spec.supportImages.previousHelper.id,'candidate-helper:under-test']]) {
+    assert(tags.some(tag=>tag[0]===id&&tag[1]===alias),'the declared baseline and target aliases must remain exact');
+  }
+  assert(upgrades.commands.some(call=>call.args.includes('GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test')));
+  upgrades.instance.now=()=>upgrades.instance.deadline-1000;
+  await upgrades.instance.inner(['info'],{timeout:1200000});
+  assert.equal(upgrades.commands.at(-1).options.timeout,1000,
+    'a late upgrade/rollback call is bounded by the remaining shared deadline');
+  upgrades.instance.now=()=>upgrades.instance.deadline+1;
+  const beforeDeadlineRefusal=upgrades.commands.length;
+  await assert.rejects(()=>upgrades.instance.inner(['info'],{timeout:1200000}),/canceled-or-overall-timeout/);
+  assert.equal(upgrades.commands.length,beforeDeadlineRefusal,'expired operations never contact Docker');
+  assert.equal(upgrades.instance.cleanup(),true);
+  assert.equal(upgrades.records.size,0,'owned cleanup still runs after the shared operation deadline');
   const test=fixture(); await test.instance.start(); await test.instance.smoke();
   const creation=test.commands.find(x=>x.args[0]==='create').args;
   assert(creation.includes('--privileged')); assert(!creation.includes('--publish'));
@@ -183,6 +224,9 @@ function fixture() {
   assert(test.commands.some(x=>x.args.includes('COMPOSE_COMPATIBILITY=1')));
   const bootstrap=test.commands.find(x=>x.args.includes('SYSTEM_CONFIG_DIR=/state')).args;
   assert(bootstrap.includes('PERSISTENT_DIR=/candidate-data/platform'));
+  assert(bootstrap.includes('PERSISTENCE_MODE=local'));
+  assert(!bootstrap.includes('/candidate-data/seed:/seed'));
+  assert(test.commands.some(x=>x.args.at(-1)==='prepare-local'),'native source-owned local preflight runs before startup');
   assert(bootstrap.includes('system_configuration:/state'));
   assert(bootstrap.includes('system_wizardPublic:/wizard-public'));
   assert(bootstrap.includes('/candidate-data/platform/runners:/candidate-data/platform/runners'));

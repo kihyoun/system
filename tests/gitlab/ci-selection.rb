@@ -116,8 +116,11 @@ raise 'Private registry base publication changed' unless build['script'] == [
   'docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper',
   'docker push $IMAGE_TAG'
 ] && build['before_script'] == [
+  'sh bootstrapper/refresh-ca.sh',
   'echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY'
 ] && config.dig('variables', 'IMAGE_TAG') == '$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG'
+raise 'Pinned Docker job/service images required' unless config['image'].start_with?('docker:29.9.2-cli@sha256:') && config['services'].first.start_with?('docker:29.9.2-dind@sha256:')
+raise 'Every native CI parent must refresh public CA trust' unless config.dig('default','before_script') == ['sh bootstrapper/refresh-ca.sh'] && config.dig('variables','NODE_OPTIONS') == '--use-openssl-ca'
 raise 'Unexpected mirror dependencies' unless jobs.fetch('deploy:github')['dependencies'] == []
 raise 'Mirror context was weakened' unless jobs.fetch('deploy:github')['script'] == ['sh gitlab/github-backup-ci.sh'] &&
   jobs.fetch('deploy:github').fetch('rules').first.fetch('if') == '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'

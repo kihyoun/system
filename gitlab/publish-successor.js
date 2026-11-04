@@ -32,16 +32,27 @@ function validateReceipt(proof, ci) {
     upgrade?.fromImage !== release.fromImage || upgrade?.toImage !== release.toImage ||
     !['migrationVerified', 'rollbackVerified', 'registryVerified', 'checkpointVerified'].every(k => upgrade[k] === true))
     throw Error('A complete passing successor migration receipt is required.');
+  if (upgrade.runnerImage !== release.runner.toImage || upgrade.runnerImageId !== proof.images.runner ||
+    !imageId(upgrade.runnerImageId) || upgrade.runnerVersion !== release.runner.toVersion ||
+    upgrade.helperImage !== release.runner.helperImage || upgrade.jobCaBundleSha256 !== release.jobCaBundleSha256 ||
+    upgrade.securityTrustVerified !== true || upgrade.runnerUpgradeVerified !== true || upgrade.runnerManagerIdentityPreserved !== true ||
+    !imageId(upgrade.fromRunnerImageId) || upgrade.fromRunnerImageId === upgrade.runnerImageId || !imageId(upgrade.helperImageId) || !imageId(upgrade.fromHelperImageId) || upgrade.fromHelperImageId === upgrade.helperImageId) throw Error('Passing Runner and effective CA trust evidence is required.');
   return proof.images.candidate;
 }
 
 function validateEvidence(proof, ci) {
   const acceptedImage = validateReceipt(proof, ci);
   for (const name of ['gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci',
-    'gitlab-upgrade-restored-checkpoint', 'cleanup']) {
+    'gitlab-upgrade-restored-checkpoint', 'gitlab-upgrade-security-trust',
+    'storage-global-live-lease', 'storage-refuse-nonempty-and-corrupt-restore',
+    'storage-detached-backup-normal-operation', 'cleanup']) {
     if (!proof.results.some(stage => stage.name === name && stage.status === 'passed'))
       throw Error('A required successor acceptance stage is missing.');
   }
+  if (!['localLiveVerified', 'externalSeedRestored', 'backupDetached',
+    'missingBackupGuardVerified', 'globalLeaseVerified', 'invalidRestoreGuardVerified']
+    .every(key => proof.evidence?.storage?.[key] === true))
+    throw Error('Passing local storage and external Seed recovery evidence is required.');
   return acceptedImage;
 }
 
@@ -66,7 +77,8 @@ function candidates(directory, ci) {
       // as a second independently tested successor.
       const restored = receipts.find(item => item.proof.runId === restoredRun)?.proof;
       const sameUpgrade = restored && ['fromImage', 'toImage', 'fromImageId', 'toImageId',
-        'checkpointVerified', 'migrationVerified', 'registryVerified', 'rollbackVerified']
+        'checkpointVerified', 'migrationVerified', 'registryVerified', 'rollbackVerified',
+        'runnerImage', 'runnerImageId', 'fromRunnerImageId', 'runnerVersion', 'helperImage', 'helperImageId', 'fromHelperImageId', 'jobCaBundleSha256', 'securityTrustVerified', 'runnerUpgradeVerified', 'runnerManagerIdentityPreserved']
         .every(key => proof.evidence.gitlabUpgrade[key] === restored.evidence.gitlabUpgrade[key]);
       if (!/^[a-f0-9]{24}$/.test(restoredRun) || restoredRun === proof.runId ||
         proof.evidence.recovery.backupOnly !== true || proof.evidence.recovery.originalHostRemoved !== true ||

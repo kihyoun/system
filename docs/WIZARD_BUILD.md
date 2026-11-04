@@ -102,21 +102,27 @@ refresh does not install files or create pipelines.
 
 ## Toolchain profiles
 
-New source imports with Vite select the `node24-vite8-overview-v3` profile: the
+New source imports with Vite select the `node24-vite8-ca-v4` profile: the
 pinned Node 24/npm toolchain, locked install, lint, Vitest, TypeScript/Vite build,
 configuration-export checks and Playwright browser checks. Browser evidence
 includes rendered UI, Projects, SPA navigation, a configuration ZIP and exact
 Cube validation. Use `wizard/package.json` and the managed recipe for the exact
 pinned versions.
 
-The overview profile preserves the modern cleanup-v2 toolchain and changes only
-browser navigation. It verifies **Getting Started**, Overview/Wizard switching,
+This profile retains the overview browser checks and exact-tag cleanup, and
+refreshes the build/browser images' public CA trust from the reviewed, checksummed
+Mozilla bundle shipped with the System source. Node uses that refreshed OpenSSL
+trust store. The refresh runs while building or preparing job images, without
+downloading a new trust bundle at runtime or changing the host's trust store.
+
+The inherited overview checks verify **Getting Started**, Overview/Wizard switching,
 preserved workspace selection and the **Open Wizard** action when those controls
 are present; earlier modern source keeps its direct-workspace checks. To deliver
 the new navigation from an existing managed project, first perform its guarded
 build/environment-only upgrade with the explicit private option
-`"buildProfile": "node24-vite8-overview-v3"`. Both cleanup-v2 profiles and their
-predecessors retain their exact historical hashes.
+`"buildProfile": "node24-vite8-ca-v4"`. Existing overview, cleanup-v2 and earlier
+profiles retain their exact historical hashes. The equivalent current legacy
+profile is `legacy-ca-v4`.
 
 Reserved historical recipes remain verifiable by their exact hash, including
 legacy Node 13/CRA/Jest recipes. Historical compatibility does not make that
@@ -125,6 +131,8 @@ project requires the guarded [source/toolchain migration](../project-bootstrap/w
 changing a controller image does not rewrite an existing reservation. A
 build/environment-only upgrade is available when source is already modern and
 must retain local development.
+An existing recipe reservation is not silently refreshed by a controller
+upgrade; use the explicit versioned migration to rebuild its affected job images.
 
 ## Verification
 

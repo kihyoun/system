@@ -1,8 +1,9 @@
 # Reviewed GitLab CE security transition
 
-`security-release.json` declares one reviewed same-minor transition, including
-immutable public image references and upstream advisory links. It does not choose
-an arbitrary latest image or skip GitLab's supported upgrade path.
+`security-release.json` declares one reviewed GitLab CE transition and its matching
+Runner upgrade, including immutable public image references and upstream
+advisory links. It does not choose an arbitrary latest image or skip GitLab's
+supported upgrade path.
 
 The full System candidate starts the previous release with synthetic existing
 state. It proves a real runner/registry pipeline, a cold recovery, then a database
@@ -54,9 +55,11 @@ copy for inspection and use the interrupted-operation procedure below to resume
 the old generation; do not remove its leases manually or retry with an
 unreviewed larger limit.
 
-Pull both exact `fromImage` and `toImage` references from the committed release
-metadata before promotion. The helper verifies their local immutable identities;
-it does not download a new version during downtime.
+Before planning or entering downtime, pull all six exact image references from
+the committed release metadata: `fromImage`, `toImage`, `runner.fromImage`,
+`runner.toImage`, `runner.fromHelperImage` and `runner.helperImage`. These cover
+the previous and target GitLab, Runner and Helper images. The helper verifies
+their local immutable identities; it does not download images during downtime.
 
 ```sh
 docker exec -w /system system_bootstrapper_1 \
@@ -80,7 +83,8 @@ Fetch and status. A clean GitLab shutdown precedes the checksum-inventoried cold
 checkpoint. The copied directories and checkpoint ancestors are made durable
 before the completion receipt and before the new image can write any data.
 
-Only the intended `GITLAB_IMAGE` assignment changes; the Cube remains exact.
+The helper updates the saved `GITLAB_IMAGE` and `GITLAB_RUNNER_IMAGE` assignments
+and the managed runners' helper image; the Cube remains exact.
 The helper starts GitLab, waits for the expected version, readiness, completed
 migrations and idle jobs, then regenerates routing with repository entry points.
 The command returns `checkpointSha256`. The checkpoint and private

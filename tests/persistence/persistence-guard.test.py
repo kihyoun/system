@@ -45,6 +45,36 @@ esac
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.data.exists())
 
+    def test_explicit_local_mode_needs_no_volume_or_backup_directory(self):
+        self.env.update(PERSISTENCE_MODE='local', PERSISTENT_MOUNT='/', PERSISTENT_UUID='',
+                        SEED_DIR='/absent-external/seed', SEED_MOUNT='/absent-external')
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.data / 'gitlab/data').is_dir())
+        self.assertFalse(Path('/absent-external').exists())
+
+    def test_new_selector_without_mount_defaults_to_local(self):
+        self.env.pop('PERSISTENT_MOUNT')
+        self.env.pop('PERSISTENT_UUID')
+        self.mock('findmnt', '#!/bin/sh\necho /\n')
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_local_mode_with_volume_selection_is_refused(self):
+        self.env['PERSISTENCE_MODE'] = 'local'
+        self.assertNotEqual(self.run_guard().returncode, 0)
+        self.assertFalse(self.data.exists())
+
+    def test_insufficient_space_fails_before_creating_live_data(self):
+        self.env['PERSISTENCE_MIN_FREE_BYTES'] = '99999999999999999'
+        self.assertNotEqual(self.run_guard().returncode, 0)
+        self.assertFalse(self.data.exists())
+
+    def test_unknown_mode_is_not_a_volume_fallback(self):
+        self.env['PERSISTENCE_MODE'] = 'automatic'
+        self.assertNotEqual(self.run_guard().returncode, 0)
+        self.assertFalse(self.data.exists())
+
     def test_wrong_uuid_fails_before_creating_storage(self):
         self.env['PERSISTENT_UUID'] = 'different'
         self.assertNotEqual(self.run_guard().returncode, 0)
@@ -60,6 +90,43 @@ esac
         self.assertEqual((self.data / 'configuration').stat().st_mode & 0o777, 0o700)
         self.assertEqual(self.run_guard().returncode, 0)
 
+    def test_read_only_preflight_does_not_create_live_data(self):
+        self.env['PERSISTENCE_CHECK_ONLY'] = '1'
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.data.exists())
+
+    def test_public_acme_path_does_not_expose_private_keys(self):
+        self.assertEqual(self.run_guard().returncode, 0)
+        ssl = self.data / 'ssl'
+        self.assertEqual(ssl.stat().st_mode & 0o777, 0o711)
+        self.assertEqual((ssl / 'acme-http01').stat().st_mode & 0o777, 0o755)
+        (ssl / 'live').mkdir(mode=0o700)
+        key = ssl / 'live' / 'privkey.pem'
+        key.write_text('private fixture')
+        key.chmod(0o600)
+        ssl.chmod(0o700)
+        self.assertEqual(self.run_guard().returncode, 0)
+        self.assertEqual(ssl.stat().st_mode & 0o777, 0o711)
+        self.assertEqual((ssl / 'live').stat().st_mode & 0o777, 0o700)
+        self.assertEqual(key.stat().st_mode & 0o777, 0o600)
+
+    def test_public_acme_symlink_is_rejected_without_chmod_outside(self):
+        (self.data / 'ssl').mkdir(parents=True)
+        outside = self.root / 'outside-acme'
+        outside.mkdir(mode=0o700)
+        (self.data / 'ssl/acme-http01').symlink_to(outside)
+        self.assertNotEqual(self.run_guard().returncode, 0)
+        self.assertEqual(outside.stat().st_mode & 0o777, 0o700)
+
+    def test_intermediate_symlink_is_rejected_before_recursive_mkdir(self):
+        self.data.mkdir()
+        outside = self.root / 'outside'
+        outside.mkdir()
+        (self.data / 'gitlab').symlink_to(outside)
+        self.assertNotEqual(self.run_guard().returncode, 0)
+        self.assertEqual(list(outside.iterdir()), [])
+
     def test_escaping_symlink_fails_before_creating_targets(self):
         self.data.mkdir()
         (self.data / 'configuration').symlink_to(self.root / 'outside')
@@ -70,6 +137,13 @@ esac
         self.data.mkdir()
         (self.data / '.system-bootstrapper-volume').write_text('unknown\n')
         self.assertNotEqual(self.run_guard().returncode, 0)
+
+    def test_dangling_marker_symlink_cannot_write_outside_live_data(self):
+        self.data.mkdir()
+        outside = self.root / 'marker-outside'
+        (self.data / '.system-bootstrapper-volume').symlink_to(outside)
+        self.assertNotEqual(self.run_guard().returncode, 0)
+        self.assertFalse(outside.exists())
 
     def test_public_directory_cannot_escape_the_volume(self):
         self.data.mkdir()

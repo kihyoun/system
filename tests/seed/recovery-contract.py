@@ -107,6 +107,7 @@ class RecoveryContract(unittest.TestCase):
         for name in ['bin', 'seed', 'srv/gitlab/data', 'ssl', 'letsencrypt/renewal', 'sv-services', 'sv-target']:
             (self.root / name).mkdir(parents=True)
         self.env = {**os.environ, 'PATH': str(self.root/'bin') + os.pathsep + os.environ['PATH'],
+                    'SYSTEM_SEED_HELPER': '1',
                     'GITLAB_IMAGE': 'gitlab/gitlab-ce:19.4.2-ce.0', 'TEST_STATE': str(self.root), 'SEED_ROOT': str(self.root/'seed'),
                     'SERVICE_DATA_DIR': str(self.root/'srv'), 'TLS_DATA_DIR': str(self.root/'ssl'),
                     'LETSENCRYPT_DATA_DIR': str(self.root/'letsencrypt'), 'REAL_RSYNC': shutil.which('rsync'), 'REAL_NODE': shutil.which('node'),
@@ -335,6 +336,26 @@ class RecoveryContract(unittest.TestCase):
         self.assertEqual((self.root/'srv/gitlab/data/identity').read_text(), 'restorable database identity')
         self.assertEqual((self.root/'letsencrypt/renewal/example.conf').read_text(), 'test renewal payload')
         self.assertFalse((self.root/'srv/gitlab/data/.system-bootstrapper-restore-incomplete').exists())
+
+    def test_completed_seed_preserves_public_traversal_and_private_key_modes(self):
+        for mode in [0o711, 0o700]:
+            with self.subTest(ssl_mode=oct(mode)):
+                ssl = self.root / 'ssl'
+                ssl.chmod(mode)
+                (ssl / 'acme-http01').mkdir(exist_ok=True, mode=0o755)
+                (ssl / 'live').mkdir(exist_ok=True, mode=0o700)
+                key = ssl / 'live/privkey.pem'
+                key.write_text('synthetic private key')
+                key.chmod(0o600)
+                snapshot = self.harvest()
+                self.assertEqual((snapshot / 'ssl').stat().st_mode & 0o777, mode)
+                (self.root / 'running').write_text('false')
+                for name in ['srv', 'ssl', 'letsencrypt']:
+                    shutil.rmtree(self.root / name)
+                self.run_script('seed')
+                for relative, expected in [('', mode), ('acme-http01', 0o755), ('live', 0o700), ('live/privkey.pem', 0o600)]:
+                    self.assertEqual((ssl / relative).stat().st_mode & 0o777, expected)
+                (self.root / 'running').write_text('true')
 
     def test_payload_corruption_and_version_mismatch_rejected_before_delete(self):
         snapshot = self.harvest()

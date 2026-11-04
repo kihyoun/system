@@ -37,8 +37,9 @@ Each path covers checkout, host preparation, the first Sync login, configuration
 and runner setup. Moving an existing installation to another host is covered
 separately in [host replacement with a retained data volume](docs/HANDBOOK.md#replace-a-host-while-retaining-its-data-volume).
 [Prepare-Host.md](Prepare-Host.md) covers installation and service-image selection;
-[the persistence guide](docs/PERSISTENT_VOLUME.md) explains the required mounted
-data filesystem. Domain names, storage and credentials belong to your deployment.
+[the persistence guide](docs/PERSISTENT_VOLUME.md) explains local working data,
+optional live volumes and separate Seed backup media. Domain names, storage
+and credentials belong to your deployment.
 
 The platform combines GitLab Community Edition, its container registry,
 GitLab Runner managers, NGINX routing, an authenticated Sync API and a React
@@ -67,13 +68,18 @@ changes. The legacy managed initialization remains available for other setups.
 An operator can also select GitLab as the development and issue-tracking
 platform with an optional [GitHub code mirror](docs/GITLAB_GITHUB_BACKUP.md).
 That guide covers source-history mapping, reviewed merges, tracker migration
-and verification. The mirror forwards merged code; the existing persistent
-volume and recovery contract retain GitLab's service state.
+and verification. The mirror forwards merged code; selected live storage
+and the recovery contract retain GitLab's service state.
 
-Persistent service data lives beneath the configured mounted `PERSISTENT_DIR`.
-The Wizard exports configuration separately; [Harvest/Seed](docs/RECOVERY_CONTRACT.md)
-creates and restores completed service-data snapshots. A retained live data
-filesystem can be reused without first restoring a Seed.
+Persistent service data lives beneath `PERSISTENT_DIR`, normally
+`/var/lib/system-bootstrapper/platform` on the Ubuntu/WSL system disk. No second
+disk or backup medium is required to start or operate the platform. An explicit
+volume-backed live layout remains supported without fallback if its volume is
+missing. The Wizard exports configuration separately; [Harvest/Seed](docs/RECOVERY_CONTRACT.md)
+creates and restores completed service-data snapshots on independently selected
+backup storage. Deleting the VM deletes its local working data: preserve a
+completed external Seed and matching configuration before relying on recovery.
+A retained live data filesystem can also be reused without restoring a Seed.
 
 [Component and integration checks](tests/README.md) are supplied in the repository.
 The candidate harness runs disposable platform instances with isolated resources;

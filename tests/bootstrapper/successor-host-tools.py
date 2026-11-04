@@ -48,7 +48,8 @@ def fixture():
     evidence = {'runId': 'f' * 24, 'sourceRevision': release['sourceRevision'], 'fullAcceptance': True,
                 'results': [{'name': stage, 'status': 'passed'} for stage in sorted(successor.STAGES)],
                 'images': {'candidate': release['imageId'], 'gitlab': upgrade['toImageId']},
-                'evidence': {'gitlabUpgrade': upgrade}}
+                'evidence': {'gitlabUpgrade': upgrade,
+                             'storage': {key: True for key in successor.STORAGE_PROOFS}}}
     evidence_bytes = json.dumps(evidence).encode()
     release['candidateEvidenceSha256'] = hashlib.sha256(evidence_bytes).hexdigest()
     return release, evidence, security
@@ -88,6 +89,16 @@ class ReleaseContracts(unittest.TestCase):
     def test_accepted_source_pipeline_artifacts_and_all_internal_jobs_are_bound(self):
         successor.release_inputs(self.release_bytes, self.evidence_bytes, self.security)
         self.assertEqual(self.verify()['requiredJobsPassed'], 13)
+    def test_each_storage_acceptance_proof_is_required_before_promotion(self):
+        for key in successor.STORAGE_PROOFS:
+            with self.subTest(key=key):
+                evidence = copy.deepcopy(self.evidence)
+                evidence['evidence']['storage'][key] = False
+                raw = json.dumps(evidence).encode()
+                release = copy.deepcopy(self.release)
+                release['candidateEvidenceSha256'] = hashlib.sha256(raw).hexdigest()
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'storage-acceptance-required'):
+                    successor.release_inputs(json.dumps(release).encode(), raw, self.security)
     def test_pipeline_running_or_changed_default_branch_is_rejected(self):
         self.api.pipeline['status'] = 'running'
         with self.assertRaisesRegex(successor.recovery.RecoveryError, 'not-complete'):
@@ -144,6 +155,37 @@ class ReleaseContracts(unittest.TestCase):
         self.assertEqual(successor.assignment(updated, 'BOOTSTRAPPER_IMAGE', alias), updated)
         with self.assertRaisesRegex(successor.recovery.RecoveryError, 'assignment'):
             successor.assignment(raw, 'BOOTSTRAPPER_IMAGE', self.release['registryReference'])
+
+    def test_runner_security_profile_requires_real_upgrade_and_manager_identity_evidence(self):
+        security = copy.deepcopy(self.security)
+        security.update(runner={'toVersion': '19.5.1', 'toImage': 'runner:fixed', 'helperImage': 'helper:fixed'}, jobCaBundleSha256='9' * 64)
+        evidence = copy.deepcopy(self.evidence)
+        evidence['images']['runner'] = 'sha256:' + '5' * 64
+        evidence['results'].append({'name': 'gitlab-upgrade-security-trust', 'status': 'passed'})
+        evidence['evidence']['gitlabUpgrade'].update(runnerImage='runner:fixed', runnerImageId=evidence['images']['runner'],
+            runnerVersion='19.5.1', helperImage='helper:fixed', helperImageId='sha256:' + '6' * 64,
+            fromRunnerImageId='sha256:' + '7' * 64, fromHelperImageId='sha256:' + '8' * 64,
+            jobCaBundleSha256=security['jobCaBundleSha256'],
+            securityTrustVerified=True, runnerUpgradeVerified=True, runnerManagerIdentityPreserved=True)
+        def verify(value):
+            raw = json.dumps(value).encode()
+            release = dict(self.release, candidateEvidenceSha256=hashlib.sha256(raw).hexdigest())
+            successor.release_inputs(json.dumps(release).encode(), raw, security)
+        verify(evidence)
+        for key in ('runnerUpgradeVerified', 'runnerManagerIdentityPreserved', 'securityTrustVerified',
+                    'fromRunnerImageId', 'fromHelperImageId', 'helperImageId', 'jobCaBundleSha256'):
+            invalid = copy.deepcopy(evidence)
+            invalid['evidence']['gitlabUpgrade'].pop(key)
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'runner-security-evidence-mismatch'):
+                verify(invalid)
+        proof = evidence['evidence']['gitlabUpgrade']
+        for old, current in [('fromRunnerImageId', 'runnerImageId'), ('fromHelperImageId', 'helperImageId')]:
+            with self.subTest(key=old):
+                before = proof[old]
+                proof[old] = proof[current]
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'runner-security-evidence-mismatch'):
+                    verify(evidence)
+                proof[old] = before
     def test_old_Sync_cannot_claim_project_quiescence_by_omission(self):
         config = {'SYNC_HOST': 'sync.example.invalid', 'SYNC_DOMAIN_MODE': '2', 'SYNC_USER': 'fixture', 'SYNC_PASS': 'fixture'}
         with patch.object(successor.runtime, 'http', side_effect=[(200, b'{"accessToken":"private"}', {}),
@@ -169,8 +211,10 @@ class StagedControllerContracts(unittest.TestCase):
         self.before = raw
         self.current = successor.assignment(raw, 'BOOTSTRAPPER_IMAGE', self.alias)
         self.config = {'_root': self.root, '_main': self.root / 'configuration/.docker.env',
-                       'BOOTSTRAPPER_IMAGE': self.alias, 'GITLAB_HOST': 'gitlab.example.invalid', 'GITLAB_DOMAIN_MODE': '2'}
+                       'BOOTSTRAPPER_IMAGE': self.alias, 'GITLAB_HOST': 'gitlab.example.invalid', 'GITLAB_DOMAIN_MODE': '2',
+                       'PERSISTENT_MOUNT': str(self.root.parent), 'PERSISTENT_UUID': 'fixture', 'SEED_DIR': str(self.root / 'seed')}
         successor.atomic_bytes(self.config['_main'], self.current)
+        successor.atomic_bytes(self.root / 'configuration/sync-auth.env', b'export SYNC_USER=fixture\n')
         successor.atomic_bytes(self.checkpoint / 'main-before.env', raw)
         self.manifest = {'sourceCommit': '1' * 40, 'localImages': [{'tag': 'controller:old', 'imageId': 'sha256:' + '7' * 64},
                                        {'tag': 'runner:retained', 'imageId': 'sha256:' + '8' * 64}],
@@ -328,7 +372,9 @@ class StagedControllerContracts(unittest.TestCase):
                 return (prior_api if '/jobs/29/' in path else target_api).raw(path)
         class Lease:
             operation = 'fixture-lease'
-            def __init__(self, config): pass
+            def __init__(self, config, legacy_controller=None):
+                if legacy_controller is not rows['system_bootstrapper_1']:
+                    raise AssertionError('promotion must serialize the inspected legacy controller')
             def __enter__(self): return self
             def __exit__(self, *args): return False
         alias = successor.controller_alias(self.target)
@@ -344,6 +390,9 @@ class StagedControllerContracts(unittest.TestCase):
                 rows['system_bootstrapper_1']['State']['Running'] = True
             return b''
         def image(reference):
+            if reference == self.security['fromImage']:
+                return {'Id': self.record['oldGitLab']['imageId'],
+                        'RepoDigests': [successor.recovery.canonical_digest(reference)]}
             return {'Id': self.target['imageId']} if reference == alias else self.image
         def selected(config, manifest, services):
             self.assertEqual(manifest['currentController']['imageId'], self.release['imageId'])
@@ -355,11 +404,10 @@ class StagedControllerContracts(unittest.TestCase):
         with ExitStack() as stack:
             stack.enter_context(patch.object(successor, 'verify_checkout'))
             stack.enter_context(patch.object(successor, 'Lease', Lease))
-            stack.enter_context(patch.object(successor, 'environment', return_value={}))
             idle = stack.enter_context(patch.object(successor, 'sync_idle'))
             stack.enter_context(patch.object(successor.recovery, 'load_manifest', return_value=self.manifest))
             stack.enter_context(patch.object(successor.recovery, 'inspect_image', side_effect=image))
-            stack.enter_context(patch.object(promoter, 'pull_accepted'))
+            self.pulled = stack.enter_context(patch.object(promoter, 'pull_accepted'))
             stack.enter_context(patch.object(promoter, 'gitlab_preflight'))
             stack.enter_context(patch.object(promoter, 'inspect', side_effect=lambda name:
                 rows[name] if name in rows else next(row for row in rows.values() if row['Id'] == name)))
@@ -398,6 +446,82 @@ class StagedControllerContracts(unittest.TestCase):
         self.assertEqual(self.config['_main'].read_bytes(), self.current)
         self.assertTrue(self.rows['system_bootstrapper_1']['State']['Running'])
         self.assertFalse(any('stop' in command or 'compose' in command for command in self.commands))
+
+    def test_missing_effective_selection_refuses_before_pull_checkpoint_or_controller_writes(self):
+        # The preceding manifest check sees valid retained saved selectors. The
+        # actual Compose environment is independently required to preserve them.
+        with patch.object(successor, 'environment', return_value={}):
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-required'):
+                self.normal_promotion()
+        self.assertEqual(self.commands, [])
+        self.pulled.assert_not_called()
+        self.assertEqual(self.config['_main'].read_bytes(), self.current)
+        self.assertFalse((self.root / 'recovery/controller-promotions/next').exists())
+
+
+class EffectivePromotionEnvironment(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix='controller-effective-images-')
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / 'configuration').mkdir()
+        self.main = self.root / 'configuration/.docker.env'
+        successor.atomic_bytes(self.root / 'configuration/sync-auth.env', b'export SYNC_USER=fixture\n')
+        self.config = {'_root': self.root, '_main': self.main, 'PERSISTENT_MOUNT': '/fixture',
+                       'PERSISTENT_UUID': 'fixture', 'SEED_DIR': '/fixture/seed'}
+        self.old_gitlab, self.old_runner = 'sha256:' + '1' * 64, 'sha256:' + '2' * 64
+        self.evidence = {'evidence': {'gitlabUpgrade': {'fromImageId': self.old_gitlab,
+                                                      'fromRunnerImageId': self.old_runner}}}
+        self.security = {'runner': {'fromImage': 'runner:reviewed'}}
+        self.services = {'system_gitlab_1': {'Image': self.old_gitlab}, 'runner_docker_1': {'Image': self.old_runner}}
+        self.images = {'gitlab:retained': {'Id': self.old_gitlab}, 'runner:retained': {'Id': self.old_runner},
+                       'gitlab:new-default': {'Id': 'sha256:' + '3' * 64}, 'runner:new-default': {'Id': 'sha256:' + '4' * 64}}
+        self.write('export GITLAB_IMAGE=gitlab:retained\nexport GITLAB_RUNNER_IMAGE=runner:retained\n')
+
+    def write(self, assignments):
+        successor.atomic_bytes(self.main, (ROOT / 'system/.docker.env.example').read_bytes()[:1184] +
+                               b'\n' + assignments.encode())
+
+    def select(self, inherited=None):
+        with patch.dict(os.environ, {'PATH': os.environ['PATH'], **(inherited or {})}, clear=True), \
+             patch.object(successor.recovery, 'inspect_image', side_effect=lambda selected: self.images[selected]):
+            return promoter.preserved_environment(self.config, 'controller:accepted', self.security, self.evidence, self.services)
+
+    def test_saved_aliases_for_exact_old_content_are_preserved(self):
+        selected = self.select()
+        self.assertEqual(selected['GITLAB_IMAGE'], 'gitlab:retained')
+        self.assertEqual(selected['GITLAB_RUNNER_IMAGE'], 'runner:retained')
+        self.assertEqual(selected['SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER'], '1')
+
+    def test_explicit_correct_inputs_are_allowed_without_saved_image_assignments(self):
+        self.write('')
+        selected = self.select({'GITLAB_IMAGE': 'gitlab:retained', 'GITLAB_RUNNER_IMAGE': 'runner:retained'})
+        self.assertEqual(selected['GITLAB_RUNNER_IMAGE'], 'runner:retained')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-required'):
+            self.select()
+        self.write('export GITLAB_IMAGE=gitlab:retained\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-required'):
+            self.select()
+
+    def test_saved_wrong_selection_overrides_correct_inherited_input_and_is_refused(self):
+        self.write('export GITLAB_IMAGE=gitlab:new-default\nexport GITLAB_RUNNER_IMAGE=runner:retained\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-changed'):
+            self.select({'GITLAB_IMAGE': 'gitlab:retained'})
+        self.write('export GITLAB_IMAGE=gitlab:retained\nexport GITLAB_RUNNER_IMAGE=runner:new-default\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-selection-changed'):
+            self.select()
+
+    def test_effective_pin_also_requires_verified_digest_and_actual_old_manager_images(self):
+        pin = 'gitlab/gitlab-ce:old@sha256:' + '5' * 64
+        self.images[pin] = {'Id': self.old_gitlab, 'RepoDigests': []}
+        self.write('export GITLAB_IMAGE=' + pin + '\nexport GITLAB_RUNNER_IMAGE=runner:retained\n')
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'image-digest-unverified'):
+            self.select()
+        self.images[pin]['RepoDigests'] = [successor.recovery.canonical_digest(pin)]
+        self.select()
+        self.services['runner_docker_1']['Image'] = 'sha256:' + '6' * 64
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'running-image-mismatch'):
+            self.select()
 
 
 class ControllerCheckpointBounds(unittest.TestCase):
@@ -592,6 +716,40 @@ class ColdMaintenanceContracts(unittest.TestCase):
 
 
 class HostChildInterruption(unittest.TestCase):
+    def test_legacy_controller_seed_lease_is_owned_and_remembered_after_replacement(self):
+        with tempfile.TemporaryDirectory(prefix='system-legacy-seed-lease-') as directory:
+            root = Path(directory)
+            for item in ('platform/configuration/.projects.env', 'platform/host/letsencrypt', 'seed'):
+                (root / item).mkdir(parents=True)
+            config = {'_root': root / 'platform', 'SEED_DIR': str(root / 'seed')}
+            controller = {'Mounts': [{'Type': 'bind', 'Destination': '/seed', 'Source': str(root / 'seed')}]}
+            lease = successor.Lease(config, legacy_controller=controller)
+            lease.__enter__()
+            self.assertTrue((root / 'seed/.operation-lock/controller-owner.json').is_file())
+            lease.critical = True
+            lease.__exit__(RuntimeError, RuntimeError('fixture interruption'), None)
+            # The replacement controller no longer has /seed. Recovery uses the
+            # private owned receipt rather than rediscovering only current mounts.
+            with patch.object(successor, 'process_start', return_value='0'):
+                adopted = successor.Lease.adopt(config, lease.operation)
+                self.assertIn(root / 'seed/.operation-lock', adopted.held)
+                adopted.release()
+            self.assertFalse((root / 'seed/.operation-lock').exists())
+            self.assertFalse((root / 'platform/configuration/.storage-operation-lock').exists())
+
+    def test_running_legacy_harvest_is_never_bypassed_by_the_new_live_lease(self):
+        with tempfile.TemporaryDirectory(prefix='system-legacy-seed-busy-') as directory:
+            root = Path(directory)
+            for item in ('platform/configuration/.projects.env', 'platform/host/letsencrypt', 'seed/.operation-lock'):
+                (root / item).mkdir(parents=True)
+            config = {'_root': root / 'platform', 'SEED_DIR': str(root / 'seed')}
+            controller = {'Mounts': [{'Type': 'bind', 'Destination': '/seed', 'Source': str(root / 'seed')}]}
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'lease-unavailable'):
+                with successor.Lease(config, legacy_controller=controller):
+                    self.fail('An old Harvest still owns the Seed lease.')
+            self.assertTrue((root / 'seed/.operation-lock').is_dir())
+            self.assertFalse((root / 'platform/configuration/.storage-operation-lock').exists())
+
     def test_successful_leader_cannot_leave_a_live_grandchild_after_guard_release(self):
         with tempfile.TemporaryDirectory(prefix='system-host-grandchild-') as directory:
             root = Path(directory)

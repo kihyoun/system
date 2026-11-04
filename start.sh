@@ -8,10 +8,24 @@ if [[ -f $storage_env ]]; then
     source "$storage_env"
     set +a
 fi
-export PERSISTENT_MOUNT PERSISTENT_DIR PERSISTENT_UUID
+host_seed_set=${SEED_DIR+x}
+host_seed=${SEED_DIR:-}
+host_seed_mount_set=${SEED_MOUNT+x}
+host_seed_mount=${SEED_MOUNT:-}
+host_seed_uuid_set=${SEED_UUID+x}
+host_seed_uuid=${SEED_UUID:-}
+source bootstrapper/storage-env.sh
+export PERSISTENCE_MODE PERSISTENT_MOUNT PERSISTENT_DIR PERSISTENT_UUID
+for operation_lock in "$PERSISTENT_DIR/configuration/.storage-operation-lock" "$PERSISTENT_DIR/configuration/.gitlab-upgrade-lock"; do
+    if [[ -e $operation_lock || -L $operation_lock ]]; then
+        printf 'An unfinished storage operation blocks startup.\n' >&2
+        exit 1
+    fi
+done
 bash bootstrapper/persistence.sh
 readonly storage_mount=$PERSISTENT_MOUNT storage_dir=$PERSISTENT_DIR
 readonly storage_uuid=${PERSISTENT_UUID:-}
+readonly storage_mode=$PERSISTENCE_MODE
 
 if [[ -f $storage_dir/configuration/.docker.env ]]; then
     source "$storage_dir/configuration/.docker.env"
@@ -29,20 +43,13 @@ fi
 # Storage paths are selected by the host, not by a Wizard configuration upload.
 export PERSISTENT_MOUNT=$storage_mount PERSISTENT_DIR=$storage_dir
 export PERSISTENT_UUID=$storage_uuid
+export PERSISTENCE_MODE=$storage_mode
+if [[ $host_seed_set ]]; then export SEED_DIR=$host_seed; fi
+if [[ $host_seed_mount_set ]]; then export SEED_MOUNT=$host_seed_mount; fi
+if [[ $host_seed_uuid_set ]]; then export SEED_UUID=$host_seed_uuid; fi
 bash bootstrapper/persistence.sh
-: "${SEED_DIR:?SEED_DIR must be set}"
-seed_path=$(realpath -m -- "$SEED_DIR")
-[[ $seed_path == "$storage_mount/"* && $seed_path != "$storage_dir" &&
-   $seed_path != "$storage_dir/"* && $storage_dir != "$seed_path/"* ]] || {
-    echo 'SEED_DIR must be beneath PERSISTENT_MOUNT and separate from the live data directory.' >&2
-    exit 1
-}
-mkdir -p -- "$seed_path"
-[[ $(findmnt -rn -o TARGET --target "$seed_path") == "$(realpath -e -- "$storage_mount")" ]] || {
-    echo 'SEED_DIR resolves to another filesystem.' >&2
-    exit 1
-}
-export SEED_DIR=$seed_path
+# Backup media are validated and bound only by an explicit Seed operation.
+export SEED_DIR=${SEED_DIR:-} SEED_MOUNT=${SEED_MOUNT:-} SEED_UUID=${SEED_UUID:-}
 
 if [[ ${SYSTEM_BOOTSTRAPPER_SKIP_BUILD:-0} == 1 ]]; then
     docker-compose -p system -f system/docker-compose.yml up --no-build -d bootstrapper

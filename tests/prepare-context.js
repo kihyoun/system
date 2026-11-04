@@ -15,6 +15,9 @@ function included(name) {
   if (name === snapshotPath || /(^|\/)(node_modules|dist|test-results|\.test-context|\.projects\.env)(\/|$)/.test(name)) return false;
   if (/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper_initial_root_password)$/.test(name)) return false;
   if (['system/ensure-wizard-image.sh','system/wizard-image-recovery.js','system/wizard-registry-token.rb'].includes(name)) return true;
+  // Public trust data is required by the offline CA-refresh checks. Keep this
+  // exact allowlist separate from private/operator certificate material.
+  if (['bootstrapper/ca/cacert-2026-10-20.crt','bootstrapper/ca/provenance.json','bootstrapper/ca/check.js'].includes(name)) return true;
   return /^sync\/src\//.test(name) ||
     ['sync/package.json','sync/package-lock.json','sync/tsconfig.json','sync/eslint.config.mjs'].includes(name) ||
     name.startsWith('project-bootstrap/') || name.startsWith('tests/') ||
@@ -23,9 +26,9 @@ function included(name) {
     name.startsWith('nginx/.templates/') || /^nginx-proxy\/[^/]+\.sh$/.test(name) ||
     ['.gitlab-ci.yml','tests/prepare-candidate.js','start.sh','sync/start.sh','bootstrapper/persistence.sh',
       'gitlab-runner/docker-compose.yml','system/.docker.env.example','system/.seed.env',
-      'system/start-intermediate.sh','system/start.sh','system/docker-compose.yml',
+      'system/start-intermediate.sh','system/start-main.sh','system/start.sh','system/docker-compose.yml',
       'system/persistence-init.js','system/wizard-public.js','system/push.sh',
-      'system/harvest.sh','system/seed.sh','system/seed-manifest.js','bootstrapper/rebind-renewal.py'].includes(name);
+      'system/harvest.sh','system/seed.sh','system/seed-manifest.js','system/seed-operation.js','bootstrapper/rebind-renewal.py'].includes(name);
 }
 function prepareContext(root) {
   root = path.resolve(root);

@@ -106,7 +106,8 @@ rollback uses its independent retained image/checkpoint.
 ## Build and environment recipes without reimporting source
 
 Use the explicit `build-` actions when an already-modern managed project needs
-the versioned cleanup correction or overview-compatible browser checks.
+the versioned cleanup correction, overview-compatible browser checks or refreshed
+CA trust in its job images.
 The ordinary source-upgrade actions still reject edited imported source. This
 separate path accepts existing development, including added or removed source
 files, and changes only the reserved build files, environment helper, managed
@@ -118,6 +119,16 @@ options file before previewing. This profile also verifies earlier modern source
 that opens directly in the workspace, so recipe migration can precede the UI
 change. Keep the same explicit target for stage, adoption and retries. Unknown
 targets and accidental downgrades from the overview profile are rejected.
+
+For the current public CA refresh, explicitly select
+`"buildProfile": "node24-vite8-ca-v4"` and the accepted immutable helper before
+previewing. This profile inherits the overview and cleanup checks and rebuilds
+the affected build/browser images with the reviewed bundled trust data. Keep
+the explicit profile through stage, adoption and retries; the omitted-option
+historical target is not automatically changed. This guarded build-only migration
+accepts modern profiles. `legacy-ca-v4` is available for new legacy-source
+reservations; an existing legacy project follows the source/toolchain migration
+to the supported modern profile.
 Legacy projects still need the separately reviewed source/toolchain upgrade.
 Historical recipe hashes and existing checkpoints remain verifiable.
 

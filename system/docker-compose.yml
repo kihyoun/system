@@ -4,7 +4,13 @@ services:
     image: ${BOOTSTRAPPER_IMAGE:-system_bootstrapper}
     restart: always
     environment:
-      SEED_DIR: ${SEED_DIR:?SEED_DIR must be set}
+      SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER: ${SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER:-}
+      PERSISTENCE_MODE: ${PERSISTENCE_MODE:-volume}
+      PERSISTENT_MOUNT: ${PERSISTENT_MOUNT:-}
+      PERSISTENT_UUID: ${PERSISTENT_UUID:-}
+      SEED_DIR: ${SEED_DIR:-}
+      SEED_MOUNT: ${SEED_MOUNT:-}
+      SEED_UUID: ${SEED_UUID:-}
       PERSISTENT_DIR: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}
       SYSTEM_CONFIG_DIR: /state
       NGINX_IMAGE: ${NGINX_IMAGE:-nginx}
@@ -13,8 +19,8 @@ services:
       SYSTEM_WIZARD_CANONICAL_CONTROLLER: ${SYSTEM_WIZARD_CANONICAL_CONTROLLER:-system_bootstrapper_1}
       GITLAB_HOST: ${GITLAB_HOST:-gitlab.example.com}
       COMPOSE_COMPATIBILITY: "1"
-      GITLAB_IMAGE: ${GITLAB_IMAGE:-gitlab/gitlab-ce:12.10.6-ce.0}
-      GITLAB_RUNNER_IMAGE: ${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:latest}
+      GITLAB_IMAGE: ${GITLAB_IMAGE:-gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c}
+      GITLAB_RUNNER_IMAGE: ${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd}
       GITLAB_SSH_BIND: ${GITLAB_SSH_BIND:-22}
       GITLAB_REGISTRY_BIND: ${GITLAB_REGISTRY_BIND:-5050}
     volumes:
@@ -31,7 +37,6 @@ services:
         target: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/runners
         bind:
           create_host_path: false
-      - $SEED_DIR:/seed
       - templates:/templates
       - synctemplates:/synctemplates
       - ssl:/ssl
@@ -67,7 +72,7 @@ services:
     #   context: ../wizard
 
   gitlab:
-    image: '${GITLAB_IMAGE:-gitlab/gitlab-ce:12.10.6-ce.0}'
+    image: '${GITLAB_IMAGE:-gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c}'
     shm_size: '256m'
     restart: always
     hostname: '$GITLAB_HOST'
@@ -77,7 +82,6 @@ services:
       - gitlabConfig:/etc/gitlab
       - gitlabLogs:/var/log/gitlab
       - gitlabData:/var/opt/gitlab
-      - $SEED_DIR:/seed
     ports:
       - '${GITLAB_SSH_BIND:-22}:22'
       - '${GITLAB_REGISTRY_BIND:-5050}:5050'

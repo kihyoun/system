@@ -3,8 +3,14 @@ set -euo pipefail
 set -a
 source "${PERSISTENCE_ENV_FILE:-/etc/system-bootstrapper/persistence.env}"
 set +a
-mountpoint -q "$PERSISTENT_MOUNT"
-[ "$(findmnt -rn -T "$PERSISTENT_DIR" -o TARGET)" = "$PERSISTENT_MOUNT" ]
+if [[ ${PERSISTENCE_MODE:-volume} == local ]]; then
+    [[ $PERSISTENT_MOUNT == / && $PERSISTENT_DIR == /* && $PERSISTENT_DIR != / ]]
+    [[ $(realpath -e -- "$PERSISTENT_DIR") == "${PERSISTENT_DIR%/}" ]]
+else
+    [[ ${PERSISTENCE_MODE:-volume} == volume ]]
+    mountpoint -q "$PERSISTENT_MOUNT"
+    [ "$(findmnt -rn -T "$PERSISTENT_DIR" -o TARGET)" = "$PERSISTENT_MOUNT" ]
+fi
 [ "$(cat "$PERSISTENT_DIR/.system-bootstrapper-volume")" = system-bootstrapper-persistence-v1 ]
 lineage=${RENEWED_LINEAGE:-/etc/letsencrypt/live/system-bootstrapper.com}
 case "$lineage" in

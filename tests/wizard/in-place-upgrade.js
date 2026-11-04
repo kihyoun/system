@@ -287,6 +287,23 @@ async function test(name, run, modern = false) { const f = new Fixture(modern); 
     assert.deepEqual(await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths), preserved);
     assert.equal((await f.upgrade.adopt((await f.upgrade.adoptionPlan(true)).planHash, true)).unchanged, true);
   }, profile);
+  for (const profile of ['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3']) await test('explicit CA v4 recipe upgrade from ' + profile + ' preserves source and stopped generations', async f => {
+    const previous = JSON.parse(JSON.stringify(f.receipt.wizardWorkflow));
+    const historicalOperation = f.upgrade.operation(f.receipt, logo, true);
+    f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile: 'node24-vite8-ca-v4', request: f.request.bind(f), checkHelper: async () => {}});
+    const plan = await f.upgrade.plan(true);
+    assert.equal(plan.publicPlan.buildRecipeHash, builds.generate(logo, 'node24-vite8-ca-v4').recipeHash);
+    assert.notEqual(plan.publicPlan.operation, historicalOperation);
+    const preserved = await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths);
+    await f.upgrade.stage(plan.planHash, true); f.merge();
+    await f.upgrade.adopt((await f.upgrade.adoptionPlan(true)).planHash, true);
+    const workflow = readConfiguration(f.config).receipt.wizardWorkflow;
+    for (const key of ['sourceRevision', 'manifestHash', 'importCommit']) assert.equal(workflow[key], previous[key]);
+    assert.deepEqual(workflow.environments.deployments, previous.environments.deployments);
+    assert.deepEqual(await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths), preserved);
+    assert.equal(workflow.build.recipeHash, plan.publicPlan.buildRecipeHash);
+    assert.equal((await f.upgrade.adopt((await f.upgrade.adoptionPlan(true)).planHash, true)).unchanged, true);
+  }, profile);
   await test('overview recipe rejects unknown upgrade target and accidental default downgrade', async f => {
     assert.throws(() => new Upgrade({...f, helperImage: helper, buildProfile: 'unknown'}), /known modern/);
     await assert.rejects(f.upgrade.plan(true), /Retain the overview-compatible/);
@@ -322,6 +339,9 @@ global.fetch = async (target, options) => {
         {encoding: 'utf8', timeout: 30000});
     };
     const accepted = invoke({buildProfile: 'node24-vite8-overview-v3'});
+    const caAccepted = invoke({buildProfile: 'node24-vite8-ca-v4'});
+    assert.equal(caAccepted.status, 0, caAccepted.stderr);
+    assert.equal(JSON.parse(caAccepted.stdout).plan.buildRecipeHash, builds.generate(logo, 'node24-vite8-ca-v4').recipeHash);
     assert.equal(accepted.status, 0, accepted.stderr);
     assert.deepEqual(JSON.parse(accepted.stdout), {plan: preview.publicPlan, planHash: preview.planHash});
     assert(fs.readFileSync(trace, 'utf8').trim());

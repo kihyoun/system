@@ -25,7 +25,8 @@ recovery = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(recovery)
 require, run = recovery.require, recovery.run
 DOCKER = ['docker', '--host=unix:///var/run/docker.sock']
-KEYS = ['PERSISTENT_MOUNT', 'PERSISTENT_DIR', 'PERSISTENT_UUID', 'SEED_DIR', 'BOOTSTRAPPER_IMAGE',
+STORAGE_KEYS = ['PERSISTENCE_MODE', 'PERSISTENT_MOUNT', 'PERSISTENT_DIR', 'PERSISTENT_UUID', 'SEED_DIR', 'SEED_MOUNT', 'SEED_UUID']
+KEYS = STORAGE_KEYS + ['BOOTSTRAPPER_IMAGE',
         'WIZARD_IMAGE', 'NGINX_IMAGE', 'GITLAB_IMAGE', 'GITLAB_RUNNER_IMAGE', 'GITLAB_RUNNER_SCALE',
         'WIZARD_ENABLE', 'SYNC_ENABLE', 'WIZARD_HOST', 'SYNC_HOST', 'GITLAB_HOST', 'GITLAB_REGISTRY_HOST',
         'WIZARD_DOMAIN_MODE', 'SYNC_DOMAIN_MODE', 'GITLAB_DOMAIN_MODE', 'GITLAB_REGISTRY_DOMAIN_MODE',
@@ -66,7 +67,11 @@ def read_values(files, keys=KEYS):
 
 
 def settings(persistence):
-    storage = read_values([persistence], ['PERSISTENT_MOUNT', 'PERSISTENT_DIR', 'PERSISTENT_UUID', 'SEED_DIR'])
+    storage = read_values([persistence], STORAGE_KEYS)
+    storage['PERSISTENCE_MODE'] = storage['PERSISTENCE_MODE'] or ('volume' if storage['PERSISTENT_MOUNT'] else 'local')
+    if storage['PERSISTENCE_MODE'] == 'local':
+        storage['PERSISTENT_MOUNT'] = storage['PERSISTENT_MOUNT'] or '/'
+        storage['PERSISTENT_DIR'] = storage['PERSISTENT_DIR'] or '/var/lib/system-bootstrapper/platform'
     environment = dict(os.environ, **storage)
     try:
         subprocess.run(['bash', str(HERE / 'persistence.sh')], env=environment,
@@ -206,20 +211,17 @@ def verify_images(config, manifest, services):
 
 def verify_mounts(config, services):
     root, mount = config['_root'], Path(config['PERSISTENT_MOUNT']).resolve(strict=True)
-    seed = Path(config['SEED_DIR']).resolve(strict=True)
-    require(mount in seed.parents and root not in seed.parents and seed not in root.parents and seed != root,
-            'unsafe-seed-directory')
     device = run(['findmnt', '-rn', '-T', str(mount), '-o', 'MAJ:MIN']).strip()
     required = {
         'system_bootstrapper_1': {
             '/var/run/docker.sock': None, '/state': root / 'configuration', '/wizard-public': root / 'wizard-public',
             '/host-letsencrypt': root / 'host/letsencrypt', str(root / 'runners'): root / 'runners',
-            '/seed': seed, '/templates': root / 'templates', '/synctemplates': root / 'synctemplates',
+            '/templates': root / 'templates', '/synctemplates': root / 'synctemplates',
             '/ssl': root / 'ssl', '/srv/gitlab/config': root / 'gitlab/config',
             '/srv/gitlab/log': root / 'gitlab/logs', '/srv/gitlab/data': root / 'gitlab/data'},
         'system_web_1': {'/etc/nginx/templates': root / 'templates', '/ssl': root / 'ssl'},
         'system_gitlab_1': {'/etc/gitlab': root / 'gitlab/config', '/var/log/gitlab': root / 'gitlab/logs',
-                            '/var/opt/gitlab': root / 'gitlab/data', '/seed': seed}}
+                            '/var/opt/gitlab': root / 'gitlab/data'}}
     if config['WIZARD_ENABLE'] == 'true':
         required['system_wizard_1'] = {'/usr/share/nginx/wizard-public': root / 'wizard-public'}
     for index in range(1, runner_count(config) + 1):
@@ -250,7 +252,20 @@ def verify_mounts(config, services):
             path = Path(source).resolve(strict=True)
             expected = required.get(name, {}).get(entry['Destination'])
             require(expected is None or path == expected.resolve(strict=True), 'essential-persistent-mount-is-misdirected')
-            require(path == root or root in path.parents or (path == seed and entry['Destination'] == '/seed'),
+            if entry['Destination'] == '/seed':
+                # Older accepted controllers can still be restored/rolled back
+                # on their retained volume. New Compose never creates this bind.
+                require(config.get('PERSISTENCE_MODE', 'volume') == 'volume' and config.get('SEED_DIR'),
+                        'backup-medium-must-not-be-a-permanent-service-mount')
+                seed = Path(config['SEED_DIR']).resolve(strict=True)
+                require(path == seed and mount in seed.parents and root not in seed.parents and
+                        seed not in root.parents and seed != root,
+                        'legacy-seed-mount-is-misdirected')
+                require(run(['findmnt', '-rn', '-T', str(path), '-o', 'MAJ:MIN']).strip() == device,
+                        'legacy-seed-mount-is-on-another-filesystem')
+                count += 1
+                continue
+            require(path == root or root in path.parents,
                     'persistent-mount-escapes-selected-data')
             require(run(['findmnt', '-rn', '-T', str(path), '-o', 'MAJ:MIN']).strip() == device,
                     'persistent-mount-is-on-another-filesystem')

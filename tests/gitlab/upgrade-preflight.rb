@@ -3,7 +3,7 @@
 require 'json'
 require 'stringio'
 module Gitlab
-  VERSION = '19.4.2'
+  VERSION = '19.4.3'
   def self.ee? = false
   class Database
     def self.database_base_models = { 'main' => FixtureDatabase }

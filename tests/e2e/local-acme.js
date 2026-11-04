@@ -81,7 +81,7 @@ function hostProgram(paths,caAddress,certbotReference,scripts){
     '--deploy-hook '+q('touch /etc/letsencrypt/.fixture-deploy-fired')+'\n'+
     'if [ -f '+q(marker)+' ]; then RENEWED_LINEAGE=/etc/letsencrypt/live/recovery-fixture bash /tmp/install-volume-certificate.sh; fi\n';
   return 'set -euo pipefail\numask 077\n'+
-    "printf '%s' "+q('PERSISTENT_MOUNT='+paths.parent+'\nPERSISTENT_DIR='+paths.base+'\n')+' > /tmp/persistence.env\n'+
+    "printf '%s' "+q('PERSISTENCE_MODE=local\nPERSISTENT_MOUNT=/\nPERSISTENT_DIR='+paths.base+'\n')+' > /tmp/persistence.env\n'+
     'export PERSISTENCE_ENV_FILE=/tmp/persistence.env\n'+
     "printf '%s' "+q(shim)+' > /usr/bin/certbot\nchmod 700 /usr/bin/certbot\n'+
     "printf '%s' "+q(scripts.install)+' > /tmp/install-volume-certificate.sh\n'+
@@ -161,7 +161,6 @@ class LocalAcme {
     await candidate.inner(['tag',item.id,CLIENT_ALIAS]);
     await candidate.call(['exec',candidate.daemon,'mkdir','-p',p.tools,p.webroot]);
     await candidate.call(['exec','-i',candidate.daemon,'sh','-c','umask 077; cat > "$1"','sh',p.tools+'/pebble.minica.pem'],{input:this.trust});
-    await candidate.call(['exec','-i',candidate.daemon,'sh','-c','printf "%s" system-bootstrapper-persistence-v1 > "$1"','sh',p.base+'/.system-bootstrapper-volume']);
     await candidate.inner(['run','--rm','--pull','never','--network','none','--memory','128m','--cpus','0.25','--volume',p.tools+':/fixture-tools','--entrypoint','/bin/sh','system-candidate:under-test',
       '-ec','cp /usr/bin/docker /fixture-tools/docker; cp /lib/ld-musl-x86_64.so.1 /fixture-tools/ld-musl-x86_64.so.1; chmod 755 /fixture-tools/docker /fixture-tools/ld-musl-x86_64.so.1']);
     return p;
@@ -186,16 +185,21 @@ class LocalAcme {
   }
   async issue(candidate){
     return candidate.stage('acme-initial-webroot-issuance',async()=>{
-      await this.attach(candidate);await this.prepareClient(candidate,'/candidate-data/platform');
+      await candidate.stage('acme-initial-authority-attach',()=>this.attach(candidate));
+      await candidate.stage('acme-initial-client-prepare',()=>this.prepareClient(candidate,'/candidate-data/platform'));
       // Real TLS routing is active using the short-lived bootstrap certificate;
       // Certbot's HTTP-01 webroot will replace it through the actual deploy hook.
-      await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
-      await this.certbot(candidate,'/candidate-data/platform',['certonly','--server',DIRECTORY,'--non-interactive','--agree-tos','--register-unsafely-without-email',
-        '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture','-d','wizard.candidate.test','-d','sync.candidate.test']);
-      const root=await request(candidate,'https://pebble:15000/roots/0',{trust:this.trust,address:this.caAddress});
-      if(root.status!==200||!root.body.startsWith('-----BEGIN CERTIFICATE-----'))throw Error('acme-issuance-trust-required');
-      await controller(candidate,input=>require('fs').writeFileSync(input.path,input.root,{mode:0o600}),{path:ISSUANCE_CA,root:root.body});
-      return this.identity(candidate);
+      await candidate.stage('acme-initial-proxy-reload',()=>
+        candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']));
+      await candidate.stage('acme-initial-certbot-issuance',()=>this.certbot(candidate,'/candidate-data/platform',
+        ['certonly','--server',DIRECTORY,'--non-interactive','--agree-tos','--register-unsafely-without-email',
+        '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture','-d','wizard.candidate.test','-d','sync.candidate.test']));
+      await candidate.stage('acme-initial-root-certificate',async()=>{
+        const root=await request(candidate,'https://pebble:15000/roots/0',{trust:this.trust,address:this.caAddress});
+        if(root.status!==200||!root.body.startsWith('-----BEGIN CERTIFICATE-----'))throw Error('acme-issuance-trust-required');
+        await controller(candidate,input=>require('fs').writeFileSync(input.path,input.root,{mode:0o600}),{path:ISSUANCE_CA,root:root.body});
+      });
+      return candidate.stage('acme-initial-issued-identity',()=>this.identity(candidate));
     });
   }
   async renew(candidate,expected){

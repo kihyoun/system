@@ -2,6 +2,9 @@
 set -euo pipefail
 umask 077
 scripts=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ ${SYSTEM_SEED_HELPER:-0} != 1 ]]; then
+    exec node "$scripts/seed-operation.js" launch harvest "$@"
+fi
 seed=${SEED_ROOT:-/seed}
 srv=${SERVICE_DATA_DIR:-/srv}
 ssl=${TLS_DATA_DIR:-/ssl}

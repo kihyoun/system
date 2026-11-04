@@ -37,10 +37,12 @@ class Adoption {
     };
   }
   async plan(input) {
-    const keys = ['version', 'projectId', 'projectPath', 'namespaceId', 'defaultBranch', 'pipelineId', 'sourceCommit', 'imageRef', 'helperImage', 'ciFiles'];
+    const keys = ['version', 'projectId', 'projectPath', 'namespaceId', 'defaultBranch', 'pipelineId', 'sourceCommit', 'imageRef', 'helperImage', 'ciFiles', 'buildProfile'];
     if (!input || Object.keys(input).some(key => !keys.includes(key)) || input.version !== 1 ||
         !['projectId', 'namespaceId', 'pipelineId'].every(key => Number.isSafeInteger(input[key]) && input[key] > 0) ||
         !b.sha(input.sourceCommit) || !/^sha256:[a-f0-9]{64}$/.test(input.helperImage || '')) throw Error('Provide an exact source-primary project, pipeline, helper and immutable image.');
+    const upgradeBuild = Object.hasOwn(input, 'buildProfile');
+    if (upgradeBuild && input.buildProfile !== 'node24-vite8-ca-v4') throw Error('Select the explicit reviewed source-primary CA build profile.');
     const current = b.read(this.config), main = fs.readFileSync(this.mainConfig, 'utf8'); signature(main);
     if (b.primary(current.receipt)) {
       b.validate(current.receipt);
@@ -55,6 +57,7 @@ class Adoption {
         throw Error('A source-primary CI update must retain its canonical repository identity.');
     }
     const old = current.receipt, environments = old.wizardWorkflow?.environments;
+    if (upgradeBuild && !b.primary(old)) throw Error('Adopt the canonical source-primary project before upgrading its build profile.');
     if (!environments || environments.phase !== 'ready' || Object.values(environments.deployments || {}).some(slot => slot.active || slot.pending || slot.retired?.length)) throw Error('Stop and reconcile Review/Beta before reassignment.');
     const project = await this.request('projects/' + old.repository.id);
     if (project.id !== old.repository.id || project.path_with_namespace !== old.repository.path || project.namespace?.id !== old.namespaceId ||
@@ -86,7 +89,10 @@ class Adoption {
     const branch = await this.request('projects/' + input.projectId + '/repository/branches/' + encodeURIComponent(input.defaultBranch));
     if (branch.commit?.id !== input.sourceCommit) throw Error('The source-primary default branch advanced.');
     const proof = await b.evidence(this.request, next, input.pipelineId, input.sourceCommit, input.imageRef);
-    const recipe = builds.select(current.text.slice(0, 1184), old.wizardWorkflow.build.recipeHash);
+    const retainedRecipe = builds.select(current.text.slice(0, 1184), old.wizardWorkflow.build.recipeHash);
+    if (upgradeBuild && !['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4'].includes(retainedRecipe.profile))
+      throw Error('The source-primary CA upgrade requires an existing reviewed modern build recipe.');
+    const recipe = upgradeBuild ? builds.generate(current.text.slice(0, 1184), input.buildProfile) : retainedRecipe;
     if (recipe.files.some(file => !input.ciFiles.some(source => source.path === file.path && source.sha256 === b.hash(file.content))) ||
         !input.ciFiles.some(source => source.path === '.gitlab/delivery/environment.sh')) throw Error('Approve the complete generic delivery and environment script manifest.');
     for (const file of recipe.files) {
@@ -102,6 +108,7 @@ class Adoption {
     const plan = {version: 1, action: 'reassign-source-primary', operation, previousProjectId: old.repository.id,
       projectId: input.projectId, projectPath: input.projectPath, sourceCommit: input.sourceCommit, pipelineId: input.pipelineId,
       imageRef: input.imageRef, previousImageRef: previousImage, helperImage: input.helperImage,
+      ...(upgradeBuild ? {buildProfile: input.buildProfile, previousBuildRecipeHash: retainedRecipe.recipeHash, buildRecipeHash: recipe.recipeHash} : {}),
       configHash: b.hash(current.text), mainConfigHash: b.hash(main), nextReceiptHash: b.hash(JSON.stringify(next))};
     return {publicPlan: plan, planHash: b.hash(JSON.stringify(plan)), current, main, next};
   }

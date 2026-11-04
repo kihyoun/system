@@ -13,6 +13,7 @@ apk add --no-cache \
   unzip=6.0-r16 \
   curl=8.23.0-r0 \
   zlib=1.3.2-r1
+sh "$(dirname -- "$0")/refresh-ca.sh"
 docker --version
 docker-compose --version
 docker compose version

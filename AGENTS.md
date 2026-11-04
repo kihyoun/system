@@ -81,9 +81,17 @@ validators and routing also refer to `sync/src/index.ts`, `wizard/src/api/Main.t
 
 ## Persistence and recovery
 
-- Every persistent service-data path must resolve beneath the configured mounted
-  `PERSISTENT_DIR`. Validate mount/UUID and fail closed if the volume is absent;
-  never silently fall back to the root disk.
+- Every persistent service-data path must resolve beneath the selected
+  `PERSISTENT_DIR`. Local mode may use the system filesystem; explicit volume
+  mode must validate its mount/UUID and fail closed when it is absent. Never
+  silently switch a saved installation's storage mode or move its live data.
+- Keep live storage independent from the Seed backup destination. Normal
+  operation must not require a backup medium. Validate the explicitly selected
+  backup filesystem before Harvest or restore, and never create a fallback
+  backup directory on the system disk when that medium is missing. Restore a
+  completed, matching Seed into fresh live storage before starting writers.
+- Serialize destructive storage, backup, restore and deployment operations
+  against the same live-state lease, including when backup targets change.
 - Configuration management is separate from Harvest/Seed: the Wizard provides
   Open/Backup and Push/Fetch; Harvest/Seed handles persistent service data.
   Configuration lives in the separate persistent controller `/state` directory.
