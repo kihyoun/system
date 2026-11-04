@@ -300,19 +300,21 @@ async function bootstrapRestore(candidate,dependencies={}) {
     let present=false;try{await candidate.inner(['image','inspect',identity]);present=true;}catch{/* the new private layer must genuinely be absent */}
     if(present)throw Error('private-wizard-recovery-image-already-cached');
   }
-  // Rebind the one declared host-specific setting; preserve every Cube byte and
-  // every unrelated value. Runners/routing/source are never copied from old live data.
-  await node(candidate,function(input){
-    const fs=require('fs'),crypto=require('crypto');const name='/state/.docker.env';let config=fs.readFileSync(name,'utf8');
-    if(config[807]!=='$'||crypto.createHash('md5').update(config.slice(0,1184)).digest('hex')!=='bd4a8426355824593a5e21ad759830c1')throw Error();
-    if(!/^(?:export )?SEED_DIR=.*$/m.test(config))throw Error();
-    config=config.replace(/^(?:export )?SEED_DIR=.*$/m,"export SEED_DIR='"+input.seed+"'");
-    fs.writeFileSync(name,config,{mode:0o600});
-  },{seed:SEED});
   await candidate.call(['exec','-i',candidate.daemon,'tar','-xzf','-','-C',SEED],{inputFile:input.seedArchive,timeout:180000});
   if(!dependencies.storage)await candidate.stage('storage-global-live-lease',()=>storage.refuseLockedLive(candidate,'restore'));
   await storageAdapter.refuseInvalidRestore(candidate,BASE);
-  await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','seed.sh'],{timeout:180000});
+  // The initial import supplies only the refusal fixtures. Remove it so the
+  // actual native restore must validate and import the unchanged Wizard ZIP.
+  await node(candidate,function(){
+    const fs=require('fs');
+    fs.unlinkSync('/state/.docker.env');
+    fs.rmSync('/state/.projects.env',{recursive:true});
+    fs.mkdirSync('/state/.projects.env',{mode:0o700});
+  },{});
+  const hostBackup='/recovery-inputs/bootstrapper.zip';
+  await candidate.call(['exec','-i',candidate.daemon,'sh','-ec',
+    'umask 077; mkdir -m 700 /recovery-inputs; cat > '+hostBackup],{inputFile:input.configArchive});
+  await candidate.inner(['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','bash','seed.sh'],{timeout:180000});
   await storageAdapter.detach(candidate);
   candidate.externalSeedRestored=true;
   // Execute the actual fresh-source host rewriter, using the already declared
@@ -323,6 +325,9 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await candidate.inner(['rm','--force','system_bootstrapper_1']);
   await candidate.inner([...args,'system-candidate:under-test']);
   await candidate.inner(['start','system_bootstrapper_1']);
+  // The sleeper's writable layer was discarded; provide the same real backup
+  // to the later authenticated Push/restart proof in the normal controller.
+  await transferToController(candidate,input.configArchive,'/system/bootstrapper.zip');
 }
 
 async function tlsProbe(candidate,host,route,options={},connection={}) {

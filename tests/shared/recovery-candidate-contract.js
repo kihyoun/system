@@ -90,11 +90,18 @@ test('bootstrap uses only declared binary streams and restores before normal con
   await recovery.bootstrapRestore(candidate,{rewriter:'print("public fixture only")',storage:storageFixture});
   assert(!calls.some(call=>call.args[0]==='cp'),'no Docker cp binary transport');
   const uploads=calls.filter(call=>call.options?.inputFile);
-  assert.deepEqual(uploads.map(call=>call.options.inputFile),[input.configArchive,input.seedArchive]);
+  assert.deepEqual(uploads.map(call=>call.options.inputFile),[input.configArchive,input.seedArchive,input.configArchive,input.configArchive]);
   assert(!calls.some(call=>call.options?.input && Buffer.isBuffer(call.options.input)),'archive bytes never buffered into JSON input');
   const seed=calls.findIndex(call=>call.args.includes('seed.sh'));
   const normalCreate=calls.findIndex(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint'));
   assert(seed>=0&&normalCreate>seed,'restore completes before normal controller creation');
+  assert(calls[seed].args.includes('SYSTEM_SEED_CONFIGURATION_BACKUP=/recovery-inputs/bootstrapper.zip'),
+    'the native helper must validate and import the real Wizard ZIP');
+  const hostBackup=calls.findIndex(call=>call.args.at(-1)?.includes('cat > /recovery-inputs/bootstrapper.zip'));
+  assert(hostBackup>=0&&hostBackup<seed);
+  const clearFixture=calls.findIndex(call=>call.args.at(-1)?.includes("fs.unlinkSync('/state/.docker.env')"));
+  assert(clearFixture>=0&&clearFixture<hostBackup,'the native import starts from fresh configuration storage');
+  assert(calls.at(-1).args.at(-1)==='/system/bootstrapper.zip','the recreated controller receives the actual archive for the Push proof');
   const initialCreate=calls.find(call=>call.args[0]==='create');
   assert(initialCreate.args.includes('/bin/sh')&&initialCreate.args.includes('sleep infinity'));
   assert(!initialCreate.args.includes(recovery.SEED+':/seed'),'backup is attached only to the transient operation helper');
