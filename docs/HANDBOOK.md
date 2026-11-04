@@ -643,10 +643,10 @@ sudo bash -c '
 '
 ```
 
-The restricted storage initializer creates private directories. These commands
-permit NGINX workers to traverse the mounted `/ssl` root and read only the ACME
-webroot; they do not open `ssl/live` lineage directories or private keys. Do not
-apply a recursive permission change to the certificate tree.
+Native storage preparation adds traversal permission to the mounted `/ssl` root
+and creates the public ACME webroot. This probe also creates the public challenge
+subdirectories and token; it leaves `ssl/live` lineage directories and private-key
+modes unchanged. Do not apply a recursive permission change to the certificate tree.
 
 From **outside** the server, request
 `http://www.example.com/.well-known/acme-challenge/bootstrapper-check` and repeat
