@@ -48,7 +48,8 @@ def fixture():
     evidence = {'runId': 'f' * 24, 'sourceRevision': release['sourceRevision'], 'fullAcceptance': True,
                 'results': [{'name': stage, 'status': 'passed'} for stage in sorted(successor.STAGES)],
                 'images': {'candidate': release['imageId'], 'gitlab': upgrade['toImageId']},
-                'evidence': {'gitlabUpgrade': upgrade}}
+                'evidence': {'gitlabUpgrade': upgrade,
+                             'storage': {key: True for key in successor.STORAGE_PROOFS}}}
     evidence_bytes = json.dumps(evidence).encode()
     release['candidateEvidenceSha256'] = hashlib.sha256(evidence_bytes).hexdigest()
     return release, evidence, security
@@ -88,6 +89,42 @@ class ReleaseContracts(unittest.TestCase):
     def test_accepted_source_pipeline_artifacts_and_all_internal_jobs_are_bound(self):
         successor.release_inputs(self.release_bytes, self.evidence_bytes, self.security)
         self.assertEqual(self.verify()['requiredJobsPassed'], 13)
+    def test_each_storage_acceptance_proof_is_required_before_promotion(self):
+        for key in successor.STORAGE_PROOFS:
+            with self.subTest(key=key):
+                evidence = copy.deepcopy(self.evidence)
+                evidence['evidence']['storage'][key] = False
+                raw = json.dumps(evidence).encode()
+                release = copy.deepcopy(self.release)
+                release['candidateEvidenceSha256'] = hashlib.sha256(raw).hexdigest()
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'storage-acceptance-required'):
+                    successor.release_inputs(json.dumps(release).encode(), raw, self.security)
+    def test_security_acceptance_requires_distinct_verified_runner_and_helper_images(self):
+        security = copy.deepcopy(self.security)
+        security.update(runner={'toVersion': '19.5.1', 'toImage': 'runner:accepted', 'helperImage': 'helper:accepted'},
+                        jobCaBundleSha256='9' * 64)
+        evidence = copy.deepcopy(self.evidence)
+        evidence['results'].append({'name': 'gitlab-upgrade-security-trust', 'status': 'passed'})
+        evidence['images']['runner'] = 'sha256:' + '5' * 64
+        proof = evidence['evidence']['gitlabUpgrade']
+        proof.update(runnerImage='runner:accepted', runnerVersion='19.5.1', runnerImageId=evidence['images']['runner'],
+                     helperImage='helper:accepted', helperImageId='sha256:' + '6' * 64,
+                     fromRunnerImageId='sha256:' + '7' * 64, fromHelperImageId='sha256:' + '8' * 64,
+                     jobCaBundleSha256=security['jobCaBundleSha256'], securityTrustVerified=True,
+                     runnerUpgradeVerified=True, runnerManagerIdentityPreserved=True)
+        def validate():
+            raw = json.dumps(evidence).encode()
+            release = copy.deepcopy(self.release)
+            release['candidateEvidenceSha256'] = hashlib.sha256(raw).hexdigest()
+            return successor.release_inputs(json.dumps(release).encode(), raw, security)
+        validate()
+        for old, current in [('fromRunnerImageId', 'runnerImageId'), ('fromHelperImageId', 'helperImageId')]:
+            with self.subTest(key=old):
+                before = proof[old]
+                proof[old] = proof[current]
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'runner-security-evidence-mismatch'):
+                    validate()
+                proof[old] = before
     def test_pipeline_running_or_changed_default_branch_is_rejected(self):
         self.api.pipeline['status'] = 'running'
         with self.assertRaisesRegex(successor.recovery.RecoveryError, 'not-complete'):

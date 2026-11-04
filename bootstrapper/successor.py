@@ -30,7 +30,11 @@ REQUIRED_JOBS = {'check:documentation', 'prepare:wizard-source', 'test:candidate
                  'test:platform-candidate', 'build'}
 COMPONENTS = {'gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'}
 STAGES = {'gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci',
-          'gitlab-upgrade-restored-checkpoint', 'cleanup'}
+          'gitlab-upgrade-restored-checkpoint', 'storage-global-live-lease',
+          'storage-refuse-nonempty-and-corrupt-restore',
+          'storage-detached-backup-normal-operation', 'cleanup'}
+STORAGE_PROOFS = {'localLiveVerified', 'externalSeedRestored', 'backupDetached',
+                  'missingBackupGuardVerified', 'globalLeaseVerified', 'invalidRestoreGuardVerified'}
 CONTROLLER_CHECKPOINT_LIMIT = 128 * 1024 ** 2
 
 
@@ -198,13 +202,16 @@ def release_inputs(release_bytes, evidence_bytes, security_release):
     require(isinstance(rows, list) and bool(rows) and all(row.get('status') == 'passed' for row in rows),
             'successor-stage-did-not-pass')
     require(STAGES <= {row.get('name') for row in rows}, 'successor-required-migration-stage-missing')
+    storage = evidence.get('evidence', {}).get('storage', {})
+    require(isinstance(storage, dict) and all(storage.get(key) is True for key in STORAGE_PROOFS),
+            'successor-storage-acceptance-required')
     images, upgrade = evidence.get('images', {}), evidence.get('evidence', {}).get('gitlabUpgrade', {})
     if security_release.get('runner'):
         runner = security_release['runner']
         require(upgrade.get('runnerImage') == runner.get('toImage') and
                 upgrade.get('runnerImageId') == images.get('runner') and
                 recovery.image_id(upgrade.get('runnerImageId')) and
-                upgrade.get('runnerVersion') == '19.5.1' and
+                upgrade.get('runnerVersion') == runner.get('toVersion') and
                 upgrade.get('helperImage') == runner.get('helperImage') and
                 upgrade.get('jobCaBundleSha256') == security_release.get('jobCaBundleSha256') and
                 upgrade.get('securityTrustVerified') is True and
@@ -212,7 +219,9 @@ def release_inputs(release_bytes, evidence_bytes, security_release):
                 upgrade.get('runnerManagerIdentityPreserved') is True and
                 recovery.image_id(upgrade.get('fromRunnerImageId')) and
                 recovery.image_id(upgrade.get('helperImageId')) and
+                recovery.image_id(upgrade.get('fromHelperImageId')) and
                 upgrade.get('fromRunnerImageId') != upgrade.get('runnerImageId') and
+                upgrade.get('fromHelperImageId') != upgrade.get('helperImageId') and
                 'gitlab-upgrade-security-trust' in {row.get('name') for row in rows},
                 'successor-runner-security-evidence-mismatch')
     require(images.get('candidate') == release['imageId'] and
