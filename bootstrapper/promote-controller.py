@@ -504,7 +504,7 @@ def promote(config, release, evidence, api, release_bytes, evidence_bytes, secur
         successor.atomic_json(checkpoint / 'operation.json', record)
         run([*DOCKER, 'compose', '--compatibility', '-p', 'system', '-f',
              str(successor.HERE.parent / 'system/docker-compose.yml'), 'up', '--no-build', '--no-deps',
-             '--pull', 'never', '-d', 'bootstrapper'], env=successor.environment(config, alias))
+             '--pull', 'never', '-d', 'bootstrapper'], env=successor.environment(config, alias, staged=True))
         config = runtime.settings(config['_persistence_env'])
         baseline['configurationFiles']['configuration/.docker.env'] = hashlib.sha256(updated).hexdigest()
         baseline['hostToolsRevision'] = release['sourceRevision']
