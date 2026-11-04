@@ -15,6 +15,15 @@ const spec={daemonImage:'docker:29-dind@sha256:'+hash,example,images:Object.from
   ['candidate','wizard','gitlab','runner','nginx'].map(name=>[name,{id:'sha256:'+hash,archive:path.resolve(name+'.tar')}]))};
 const config=configuration(example,{root:'root-secret',user:'test-user',password:'sync-secret'});
 signature(config); assert.equal(config.slice(0,1184),example.slice(0,1184));
+const baselineImages={GITLAB_IMAGE:'candidate-gitlab:under-test',GITLAB_RUNNER_IMAGE:'candidate-runner:under-test'};
+assert.deepEqual(configurationValues(config,Object.keys(baselineImages)),baselineImages,
+  'saved candidate configuration must select the loaded baseline aliases instead of fresh-install public pins');
+const sourcedImages=require('child_process').execFileSync('bash',['-s'],{
+  input:config+'\nprintf "%s\\0%s\\0" "$GITLAB_IMAGE" "$GITLAB_RUNNER_IMAGE"\n',encoding:'utf8',
+  env:{...process.env,GITLAB_IMAGE:'inherited-gitlab:other',GITLAB_RUNNER_IMAGE:'inherited-runner:other'}
+}).split('\0').slice(0,-1);
+assert.deepEqual(sourcedImages,Object.values(baselineImages),
+  'the actual shell startup must source the same saved baseline aliases');
 assert(config.includes('https://www.system-bootstrapper.com'));
 assert.throws(()=>configuration(example.replace('https://www.system-bootstrapper.com','http://www.system-bootstrapper.com'),{}));
 assert.throws(()=>new Candidate({...spec,daemonImage:'docker:latest'}));
@@ -75,6 +84,14 @@ function fixture(overrides={}) {
     {status:200,body:JSON.stringify({data:configuration(example,wrong.instance.secrets).replace('SYNC_PASS='+wrong.instance.secrets.password,'SYNC_PASS='+wrong.instance.secrets.password+'suffix')})}:
     originalRequest(url,options);
   await assert.rejects(wrong.instance.smoke(),/configuration-round-trip-mismatch/);
+  for(const key of Object.keys(baselineImages)){
+    const wrongImage=fixture(),request=wrongImage.instance.request;
+    wrongImage.instance.request=async(url,options)=>url.endsWith('/config/main')?
+      {status:200,body:JSON.stringify({data:configuration(example,wrongImage.instance.secrets).replace(key+'='+baselineImages[key],key+'=public-image:unexpected')})}:
+      request(url,options);
+    await assert.rejects(wrongImage.instance.smoke(),/configuration-round-trip-mismatch/,
+      'authenticated Fetch must prove the saved baseline image selection');
+  }
   const streams=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-stream-'));
   const previousPath=process.env.PATH;
   try {

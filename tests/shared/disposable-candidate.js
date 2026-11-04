@@ -23,6 +23,7 @@ function signature(text) {
 function configuration(example, secrets) {
   signature(example);
   const settings = {SEED_DIR:require('../e2e/local-storage').SEED, GITLAB_INITIAL_ROOT_PASSWORD:secrets.root,
+    GITLAB_IMAGE:'candidate-gitlab:under-test',GITLAB_RUNNER_IMAGE:'candidate-runner:under-test',
     GITLAB_EXTERNAL_URL:'http://gitlab.candidate.test', GITLAB_REGISTRY_URL:'http://registry.candidate.test',
     GITLAB_HOST:'gitlab.candidate.test', GITLAB_REGISTRY_HOST:'registry.candidate.test',
     GITLAB_RUNNER_TOKEN:'', GITLAB_RUNNER_SCALE:'1', SYNC_ENABLE:'true',
@@ -243,8 +244,9 @@ class Candidate {
       const config=JSON.parse(response.body).data;
       if(typeof config!=='string') throw new Error('missing-configuration');
       signature(config);
-      const values=configurationValues(config,['SYNC_USER','SYNC_PASS']);
+      const values=configurationValues(config,['SYNC_USER','SYNC_PASS','GITLAB_IMAGE','GITLAB_RUNNER_IMAGE']);
       if(values.SYNC_USER!==this.secrets.user || values.SYNC_PASS!==this.secrets.password) throw new Error('configuration-round-trip-mismatch');
+      if(values.GITLAB_IMAGE!=='candidate-gitlab:under-test'||values.GITLAB_RUNNER_IMAGE!=='candidate-runner:under-test') throw new Error('configuration-round-trip-mismatch');
     });
   }
   async rails(script) {
