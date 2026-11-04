@@ -2,6 +2,20 @@
 // Only committed, source-owned diagnostic codes may reach receipts. A regex
 // alone would also admit a credential shaped like a hyphenated error string.
 const REASONS = new Set([
+  'seed-target-unavailable',
+  'storage-operation-busy',
+  'restore-target-not-empty',
+  'seed-payload-invalid',
+  'storage-backup-owner-required',
+  'storage-backup-still-attached',
+  'storage-owned-root-required',
+  'storage-live-not-on-root',
+  'storage-live-marker-invalid',
+  'storage-permanent-backup-binding',
+  'storage-refusal-not-enforced',
+  'storage-guard-changed-live-service',
+  'storage-completed-seed-required',
+  'storage-push-without-backup-failed',
   'upgrade-jobs-active',
   'upgrade-previous-ingress-not-ready',
   'upgrade-restored-payload-mismatch',

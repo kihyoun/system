@@ -55,9 +55,11 @@ not registry manifest digests. The daemon is pinned by registry digest; each
 loaded role is verified by image ID before its expected local alias is assigned.
 The archives must contain all required service image layers. The driver streams
 only these explicit files, not the checkout, host Docker storage or existing data.
-The current bootstrap creates configuration, service and runner bind directories
-inside the owned private daemon at `/candidate-data/platform`, and mounts the
-configuration at `/state`. These are disposable candidate paths, never the
+The bootstrap invokes the committed `prepare-local` storage guard with the
+owned private host root, creates live directories at `/candidate-data/platform`
+on that daemon's root filesystem and mounts configuration at `/state`. A separate
+journaled lightweight owner supplies an external backup volume at `/seed-device`;
+the configured backup mount `/external-seed` is absent during normal startup. These are disposable candidate paths, never the
 Production attached volume. Every Docker operation is capped by the remaining
 overall budget as well as its own timeout.
 Use candidate images built without private configuration or credentials.
@@ -184,10 +186,8 @@ GitLab and runner, repeats registration without duplicate pools or active setup
 credentials, creates an owned private project, runs a real Docker build/push/
 pull/run pipeline with artifact delivery, and proves a deliberate failed job
 blocks the downstream delivery job. It revokes its temporary API credential
-and confirms HTTP 401 before stopping services for the seed cycle. The seed
-scenario harvests stopped private GitLab files, removes a marker from live data,
-restores, and checks that marker. The additional cold recovery adapter below
-checks stronger configuration-plus-Seed recovery onto an empty second host.
+and confirms HTTP 401 before stopping services for the seed cycle. The configuration-plus-Seed recovery adapter below exercises the external
+backup-to-fresh-local lifecycle and its failure guards within the same run.
 No Production rollout is performed.
 
 The manifest records individual stage outcomes and sanitized numeric pipeline/
@@ -220,12 +220,18 @@ DinD daemon. Binary transfers use file descriptors and checksums use bounded buf
 Private archives have mode 0600 beneath a mode-0700 temporary directory; they never
 enter public CI artifacts or reports.
 
-The original daemon and its Docker-data volume are removed before a fresh owned
+The original daemon, Docker-data volume and owned backup volume are removed before a fresh owned
 daemon starts. Recovery uses a different empty data root and reloads only the
 explicit images built from the committed source and pinned public dependencies.
-It imports the real ZIP before provisioning, rebinds the declared Seed path without
-changing the Cube, applies the real Seed, executes the fresh-source renewal-path
-rewriter, and then starts services. No previous live configuration directory, runner
+It prepares fresh local live storage through the committed host-root guard,
+imports the real ZIP before provisioning and extracts only the completed Seed
+onto a separately owned backup mount. Missing backup storage must leave running
+services unchanged. The global live lease excludes operations independently of
+backup destination, and restore refuses a nonempty target and corrupted payload
+before data writes. It applies the real Seed through the transient helper,
+executes the fresh-source renewal-path rewriter and detaches both backup mounts
+before starting services. An authenticated real ZIP Push then triggers an actual
+controller restart without backup storage, followed by Fetch and service checks. No previous live configuration directory, runner
 workspace or undeclared image archive is mounted or read. Expected credentials and
 identities remain verification oracles; they are never written as recovery inputs.
 
@@ -236,6 +242,14 @@ MR recovery checks the exact source-branch commit, MR identity, title, descripti
 state, author and creation timestamp, and both discussion notes' IDs, text, authors,
 timestamps and resolution flags. The report exposes only the boolean
 `mergeRequestRecoveryVerified`; the private fixture content is not a public artifact.
+The restored receipt publishes six bounded `evidence.storage` booleans:
+`localLiveVerified`, `externalSeedRestored`, `backupDetached`,
+`missingBackupGuardVerified`, `globalLeaseVerified` and
+`invalidRestoreGuardVerified`. Their required restored stages are
+`storage-global-live-lease`, `storage-refuse-nonempty-and-corrupt-restore` and
+`storage-detached-backup-normal-operation`. These are actual native gates, not
+claims inferred from the selected storage configuration.
+
 It repeats actual runner/registry CI and its failure gate, then runs a further real
 CI job that pulls and executes the original registry blob captured before Harvest.
 Both lifecycles share the original overall deadline and cancellation flag. Each has

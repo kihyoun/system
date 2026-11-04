@@ -13,6 +13,30 @@ protect them as you protect the running configuration. Shell expressions requiri
 expansion or execution are rejected; provide their literal resolved values instead.
 The original Cube header and its strict format validation remain unchanged.
 
+## Choose the working directory and backup target
+
+Live working data and Seed backup storage are independent. Fresh installations
+use local working data on the system disk; an external target is required only
+while making or reading a backup. Put the host-owned selectors in a mode-0600
+file, for example `/etc/system-bootstrapper/persistence.env`:
+
+```sh
+PERSISTENCE_MODE=local
+PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
+SEED_MOUNT=/media/bootstrapper-backup
+SEED_DIR=/media/bootstrapper-backup/seed
+SEED_UUID=REPLACE_WITH_BACKUP_FILESYSTEM_UUID
+```
+
+Mount the actual existing backup filesystem and create its `seed` directory
+before an operation. The mount/UUID checks prevent a missing external disk from
+being replaced by an accidental local directory. For local live storage, select an external backup filesystem distinct from the
+system disk. Legacy volume-backed layouts may retain a disjoint Seed on their
+selected retained volume. The target must be disjoint from live data; see the [storage guide](PERSISTENT_VOLUME.md). Normal startup,
+configuration changes and TLS renewal do not require this medium. Deleting a VM
+with local working data deletes that data, so preserve a completed external Seed
+and its matching configuration before depending on a replacement host.
+
 ## Creating a completed recovery Seed
 
 Install host integration with `bootstrapper/install-volume-host.sh` so scheduled
@@ -21,7 +45,11 @@ use the same wrapper, for example `system-certbot renew --dry-run`. It shares a
 filesystem lease with Harvest. Do not run an unmanaged Certbot command or modify
 certificate state manually during Harvest.
 
-Harvest obtains an operation lease and the renewal lease, explicitly stops
+An explicit Harvest launches a transient helper from the exact controller image;
+ordinary controller/GitLab containers keep no `/seed` binding. The helper checks
+backup availability, host mount identity, permissions and free space before
+quiescing any service. It obtains the global live-data lease at
+`configuration/.storage-operation-lock` and the renewal lease, explicitly stops
 GitLab's services with a bounded longer runit wait, independently verifies that
 every enabled service is down, then stops the container. Inspection, service
 quiescence and container shutdown share a 120-second budget. The final container
@@ -47,54 +75,93 @@ deadline before resumption, so an old stop cannot race the restart. On failure,
 Harvest prints only the container's running state, exit code and OOM flag.
 
 SIGKILL, a lost host or power failure cannot execute cleanup. A remaining
-`.operation-lock` / `.system-bootstrapper-certificate-lock` is deliberate evidence
+`configuration/.storage-operation-lock`, backup `.operation-lock` or
+`.system-bootstrapper-certificate-lock` is deliberate evidence
 of an interrupted operation. Verify no Harvest/restore/renewal process remains,
 start GitLab if necessary, and remove only the stale lease before retrying. Do not
 promote a `.harvest-*` staging directory to `current`.
 
-## Restoring without the old live platform
+### Run from the Wizard or the host
 
-1. Mount a compatible empty data filesystem, copy only the completed Seed to it,
-   and fetch the recorded System source commit with its pinned submodules. Retain
-   the independent Wizard configuration backup. Preserve Unix ownership and modes
-   when transferring the Seed; copy symlinks as symlinks.
-2. Select the new host's `PERSISTENT_MOUNT`, `PERSISTENT_DIR`, UUID and separate
-   `SEED_DIR` deliberately. Host storage selection must override old host paths.
-   Update the restored configuration's `SEED_DIR` deliberately if the volume path
-   changed (use the Wizard field and regenerate the export; never replace text
-   across the Cube header). Run storage preflight before any service. Install the backup configuration in
-   the new persistent configuration directory before provisioning GitLab/runners.
-3. Rebuild custom controller and source-built Wizard images from the freshly fetched source
-   using their committed Dockerfiles/build recipes. Pull public GitLab and Runner
-   images at the exact retained references. Set `BOOTSTRAPPER_IMAGE`,
-   `WIZARD_IMAGE`, `NGINX_IMAGE`, `GITLAB_IMAGE` and `GITLAB_RUNNER_IMAGE` explicitly
-   where used. A custom image tag is not itself a recoverable artifact. Do not
-   silently load an undeclared archive from the previous platform tree. For managed
-   Wizard Review/Beta, rebuild its clean helper image and reprovision
-   `SYSTEM_WIZARD_ENVIRONMENT_IMAGE` with the new exact image ID through the
-   [managed environment procedure](../project-bootstrap/wizard-environments/README.md).
-   Update the installed recipe explicitly; its old immutable helper identity must
-   not be silently redirected to a new image.
-   If `WIZARD_IMAGE` instead pins a published image in this platform's own GitLab
-   registry, keep that exact digest. Its registry data must be in the completed
-   Seed; rebuilding an unrelated default-branch image is not a replacement.
-4. Before starting GitLab, run `system/seed.sh` in a recovery container with the
-   same `/srv`, `/ssl`, `/seed` and `/host-letsencrypt` bindings as the controller.
-   The Docker daemon must be available, and GitLab must be absent or stopped.
-   The entire selected Seed is verified before any destructive rsync. The
-   incomplete-restore marker and its directory entry are fsynced before copying;
-   restored directories are fsynced before the marker is durably removed. The retained
-   GitLab image version/edition and image content ID must match. Legacy unmarked Seeds are deliberately
-   rejected: create a new cold Harvest before relying on this contract.
-5. A failed restore retains
-   `gitlab/data/.system-bootstrapper-restore-incomplete` on the new volume.
-   Controller/GitLab startup refuses this state. Correct the failure and rerun
-   Seed; do not remove the marker and provision a partly restored database.
-6. Install host TLS integration again. It rebinds webroot renewal paths to the new
-   volume location and installs the deploy hook and shared renewal lease. Run a
-   renewal dry-run through `system-certbot`, then start the platform normally.
-   Runner managers/workspaces are recreated from configuration and restored GitLab
-   state; no old runner directories or checkout are required recovery inputs.
+With the target available, **Harvest** in the authenticated Wizard uses the
+same repository-owned dispatcher as `system/harvest.sh`. You can instead run
+from a reviewed host checkout using an available, accepted complete controller
+image. Resolve and record its actual image identity, then use:
+
+```sh
+sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+  bash bootstrapper/seed-operation.sh harvest \
+  --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
+  --check-only
+sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+  bash bootstrapper/seed-operation.sh harvest \
+  --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
+```
+
+`--check-only` validates inputs without stopping services or copying payload.
+A completed operation removes its owned helper. Only then detach the backup
+medium. Save the corresponding **Wizard configuration backup** independently;
+Harvest does not add that configuration to the Seed.
+
+## Restore an external Seed into a fresh local installation
+
+The inputs are the completed Seed, matching Wizard `bootstrapper.zip`, recorded
+System source with its pinned submodule, and declared image references or
+verified image archives. The former live data directory is not an input.
+
+1. Install Docker on the replacement Ubuntu host and check out the intended
+   source revision with pinned submodules. Select `PERSISTENCE_MODE=local` and
+   a fresh local `PERSISTENT_DIR`, or explicitly select a mounted live volume.
+   Mount the retained backup filesystem and set its `SEED_MOUNT`, `SEED_DIR`
+   and expected UUID in the private host selector. Do not start GitLab yet.
+2. Make the accepted complete controller image and exact harvested GitLab image
+   available. Rebuild source-built images from their recorded source and pull
+   public images at their recorded references. A custom mutable tag is not a
+   recoverable artifact. Preserve immutable private Wizard registry pins: their
+   payload must be in the Seed rather than replaced by another build.
+3. Keep the configuration ZIP in a private absolute path on the new host. Run
+   the repository-owned host restore entry point with the accepted image:
+
+   ```sh
+   sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+     bash bootstrapper/seed-operation.sh restore \
+     --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
+     --configuration-backup /root/recovery/bootstrapper.zip \
+     --check-only
+   sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+     bash bootstrapper/seed-operation.sh restore \
+     --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
+     --configuration-backup /root/recovery/bootstrapper.zip
+   ```
+
+   Storage selection belongs to this host; old exported working paths must not
+   override it. The helper validates the completed Seed and exact GitLab
+   image/version/edition before service-data writes. Fresh empty scaffold
+   directories and an explicitly imported configuration are allowed; existing
+   live GitLab/TLS data is refused instead of overwritten. A corrupt or
+   incomplete Seed does not become a valid restore source.
+4. Restore copies only after validation. It durably creates
+   `gitlab/data/.system-bootstrapper-restore-incomplete` before copying and
+   durably removes it after verifying the restored payload. A failed copy keeps
+   this guard; controller/GitLab startup refuses partly restored state. Inspect
+   the failed operation and follow its guarded continuation rather than deleting
+   the marker or starting writers manually.
+5. Install Certbot as needed and run
+   `sudo bash bootstrapper/install-volume-host.sh`. This rebinds webroot renewal
+   paths to the new live directory and installs the renewal/deploy integration.
+   Set the required image selectors, then start with `sudo bash start.sh`.
+   Reprovision optional Review/Beta helpers explicitly if their old immutable
+   image is absent; see the [environment procedure](../project-bootstrap/wizard-environments/README.md).
+   Runner managers/workspaces are recreated from configuration and restored
+   GitLab state; old runner directories are not required inputs.
+6. Verify authenticated Fetch, Wizard/GitLab/registry access, restored data and
+   runner CI. After helper completion, unmount/detach the backup medium and
+   verify configuration Push/restart and TLS renewal still work. They use only
+   the new local live directory. Use `sudo system-certbot renew --dry-run`
+   when configured DNS and certificate lineages are reachable.
+
+Startup never applies a Seed automatically. Merely reattaching an old live-data
+volume is a separate reuse path, not this backup-to-fresh-local restore.
 
 ### Pulling a restored private Wizard image
 
@@ -130,8 +197,11 @@ JSON/ENV/ZIP equivalence and the immutable signature.
 The required [disposable platform scenario](../tests/e2e/README.md) additionally
 runs real GitLab/runner/registry CI, exports configuration through the actual
 Wizard model, removes the original private host and restores only declared
-fresh-source images, configuration ZIP and completed Seed onto different empty
-paths. It checks restored service/data identities, uncached private Wizard image
+fresh-source images, configuration ZIP and completed external Seed into a
+different empty local directory. It exercises missing backup storage and global
+live-lease exclusion, refuses nonempty restore targets and corrupted payloads,
+then detaches backup mounts before the real configuration Push/restart, runner
+CI and TLS-renewal checks. It checks restored service/data identities, uncached private Wizard image
 recovery and actual ACME account/renewal/deployment through a local authority.
 These checks do not emulate a new VM's OS installation or systemd timer scheduling.
 

@@ -22,7 +22,7 @@ function signature(text) {
 }
 function configuration(example, secrets) {
   signature(example);
-  const settings = {SEED_DIR:'/candidate-data/seed', GITLAB_INITIAL_ROOT_PASSWORD:secrets.root,
+  const settings = {SEED_DIR:require('../e2e/local-storage').SEED, GITLAB_INITIAL_ROOT_PASSWORD:secrets.root,
     GITLAB_EXTERNAL_URL:'http://gitlab.candidate.test', GITLAB_REGISTRY_URL:'http://registry.candidate.test',
     GITLAB_HOST:'gitlab.candidate.test', GITLAB_REGISTRY_HOST:'registry.candidate.test',
     GITLAB_RUNNER_TOKEN:'', GITLAB_RUNNER_SCALE:'1', SYNC_ENABLE:'true',
@@ -158,9 +158,11 @@ class Candidate {
     await this.stage('private-daemon',async()=>{
       const network=await this.create('network',['network','create','--internal','--label',LABEL+'='+this.id,this.name]);
       const volume=await this.create('volume',['volume','create','--label',LABEL+'='+this.id,this.name]);
+      const backupMount=this.spec.fullAcceptance===true||this.spec.recoveryAcceptance===true ?
+        await require('../e2e/local-storage').prepareOwner(this) : [];
       this.daemon=await this.create('container',['create','--name',this.name,'--label',LABEL+'='+this.id,
         '--privileged','--memory','12g','--cpus','4','--network',network,
-        '--mount','type=volume,source='+volume+',target=/var/lib/docker',
+        '--mount','type=volume,source='+volume+',target=/var/lib/docker',...backupMount,
         '--add-host','registry.candidate.test:127.0.0.1','--add-host','gitlab.candidate.test:127.0.0.1',
         '--env','DOCKER_TLS_CERTDIR=',this.spec.daemonImage,'dockerd','--host=unix:///var/run/docker.sock',
         '--insecure-registry','registry.candidate.test','--insecure-registry','registry.candidate.test:5050']);
@@ -190,21 +192,23 @@ class Candidate {
       // These paths live on the owned private daemon's writable layer, never
       // on the outer host. Compose service volumes resolve to the same paths.
       const base='/candidate-data/platform';
+      await require('../e2e/local-storage').prepareLocal(this,base);
       const directories=['configuration','wizard-public','templates','synctemplates','ssl','runners','gitlab/config','gitlab/logs','gitlab/data','host/letsencrypt'];
-      await this.call(['exec',this.daemon,'mkdir','-p','/candidate-data/seed',...directories.map(name=>base+'/'+name)]);
+      await this.call(['exec',this.daemon,'mkdir','-p',...directories.map(name=>base+'/'+name)]);
       const mounts={configuration:'configuration',wizardPublic:'wizard-public',templates:'templates',synctemplates:'synctemplates',ssl:'ssl',
         gitlabConfig:'gitlab/config',gitlabLogs:'gitlab/logs',gitlabData:'gitlab/data'};
       for(const [name,directory] of Object.entries(mounts)) {
         await this.inner(['volume','create','--driver','local','--opt','type=none','--opt','o=bind',
           '--opt','device='+base+'/'+directory,'system_'+name]);
       }
-      const args=['create','--name','system_bootstrapper_1','--env','SEED_DIR=/candidate-data/seed',
-        '--env','PERSISTENT_DIR='+base,'--env','SYSTEM_CONFIG_DIR=/state','--env','COMPOSE_COMPATIBILITY=1',
+      const args=['create','--name','system_bootstrapper_1','--restart','always','--env','PERSISTENCE_MODE=local',
+        '--env','SEED_DIR='+require('../e2e/local-storage').SEED,'--env','SEED_MOUNT='+require('../e2e/local-storage').MOUNT,
+        '--env','PERSISTENT_MOUNT=/','--env','PERSISTENT_DIR='+base,'--env','SYSTEM_CONFIG_DIR=/state','--env','COMPOSE_COMPATIBILITY=1',
         '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--env','GITLAB_RUNNER_IMAGE=candidate-runner:under-test',
         '--env','NGINX_IMAGE=nginx:latest','--env','WIZARD_IMAGE=systembootstrapper/wizard',
         '--env','GITLAB_SSH_BIND=2222','--env','GITLAB_REGISTRY_BIND=5050',
         '--volume','/var/run/docker.sock:/var/run/docker.sock',
-        '--volume','/candidate-data/seed:/seed','--volume',base+'/runners:'+base+'/runners',
+        '--volume',base+'/runners:'+base+'/runners',
         '--volume',base+'/host/letsencrypt:/host-letsencrypt',
         '--volume','system_configuration:/state','--volume','system_wizardPublic:/wizard-public','--volume','system_templates:/templates',
         '--volume','system_synctemplates:/synctemplates','--volume','system_ssl:/ssl',
@@ -369,16 +373,17 @@ delivery-must-not-run:
         if(response.status!==401)throw new Error('temporary-credential-still-active');
         token=undefined;
       });
-      if(!this.spec.recoveryAcceptance) await this.stage('seed-cycle',async()=>{
-        // Cleanly stop the private services before taking a filesystem seed.
+      if(!this.spec.recoveryAcceptance) await this.stage('seed-harvest',async()=>{
+        const storage=require('../e2e/local-storage');
+        await storage.attach(this);
         await this.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','bash','stop.sh']);
-        await this.inner(['stop','system_gitlab_1'],{timeout:120000});
         await this.inner(['exec','system_bootstrapper_1','sh','-c','printf candidate-seed-proof > /srv/gitlab/config/.candidate-proof']);
-        await this.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],{timeout:120000});
-        await this.inner(['exec','system_bootstrapper_1','sh','-c','rm /srv/gitlab/config/.candidate-proof']);
-        await this.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','seed.sh'],{timeout:120000});
-        const proof=await this.inner(['exec','system_bootstrapper_1','cat','/srv/gitlab/config/.candidate-proof']);
+        await this.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],{timeout:180000});
+        const proof=await this.inner(['run','--rm','--network','none','--read-only',
+          '--mount','type=bind,src='+storage.SEED+',dst=/seed,readonly','--entrypoint','node','system-candidate:under-test','-e',
+          "process.stdout.write(require('fs').readFileSync(require('/system/system/seed-manifest').current('/seed')+'/srv/gitlab/config/.candidate-proof','utf8'))"]);
         if(proof!=='candidate-seed-proof')throw new Error('seed-restore-mismatch');
+        await storage.detach(this);
       });
     } finally {
       if(token) await this.stage('temporary-credential-revoked',async()=>{
@@ -440,6 +445,10 @@ delivery-must-not-run:
         if(resource.kind==='container') break;
       }
     }
+    if(!failures.length&&this.backupOwner) {
+      const clean=this.backupOwner.cleanup();this.backupOwner.checkpoint(this.backupOwner);
+      if(!clean)failures.push({kind:'backup-volume',status:'failed'});
+    }
     this.results.push({name:'cleanup',status:failures.length?'failed':'passed',failures});
     return failures.length===0;
   }
@@ -484,6 +493,11 @@ function recover(report,exec=docker) {
     const recovery={runId:report.evidence.recovery.runId};
     for(const key of ['backupOnly','originalHostRemoved','syntheticTlsVerified','acmeRenewalVerified','privateWizardPinVerified','mergeRequestRecoveryVerified'])if(typeof report.evidence.recovery[key]==='boolean')recovery[key]=report.evidence.recovery[key];
     evidence.recovery=recovery;
+  }
+  if(report.evidence?.storage){
+    const storage={};for(const key of ['localLiveVerified','externalSeedRestored','backupDetached','missingBackupGuardVerified','globalLeaseVerified','invalidRestoreGuardVerified'])
+      if(typeof report.evidence.storage[key]==='boolean')storage[key]=report.evidence.storage[key];
+    if(Object.keys(storage).length)evidence.storage=storage;
   }
   if(report.evidence?.gitlabUpgrade){const clean=require('../e2e/gitlab-upgrade').sanitizeEvidence(report.evidence.gitlabUpgrade);if(clean)evidence.gitlabUpgrade=clean;}
   Object.assign(instance,{id:report.runId,name,resources:report.resources,results,exec,

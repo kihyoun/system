@@ -5,6 +5,7 @@ const path=require('node:path');
 const os=require('node:os');
 const {test}=require('node:test');
 const recovery=require('../e2e/recovery');
+const storageFixture={prepareLocal:async()=>{},attach:async()=>{},refuseInvalidRestore:async()=>{},detach:async()=>{}};
 
 function fixture(t) {
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'recovery-adapter-contract-'));
@@ -86,7 +87,7 @@ test('cleanup failure fails acceptance and retains private recovery inputs',asyn
 test('bootstrap uses only declared binary streams and restores before normal controller startup',async t=>{
   const input=fixture(t),calls=[];
   const candidate={spec:{restore:input},daemon:'owned-private-daemon',call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{calls.push({args,options});return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'systembootstrapper/wizard':'';}};
-  await recovery.bootstrapRestore(candidate,{rewriter:'print("public fixture only")'});
+  await recovery.bootstrapRestore(candidate,{rewriter:'print("public fixture only")',storage:storageFixture});
   assert(!calls.some(call=>call.args[0]==='cp'),'no Docker cp binary transport');
   const uploads=calls.filter(call=>call.options?.inputFile);
   assert.deepEqual(uploads.map(call=>call.options.inputFile),[input.configArchive,input.seedArchive]);
@@ -96,7 +97,9 @@ test('bootstrap uses only declared binary streams and restores before normal con
   assert(seed>=0&&normalCreate>seed,'restore completes before normal controller creation');
   const initialCreate=calls.find(call=>call.args[0]==='create');
   assert(initialCreate.args.includes('/bin/sh')&&initialCreate.args.includes('sleep infinity'));
-  assert(initialCreate.args.includes(recovery.SEED+':/seed'));
+  assert(!initialCreate.args.includes(recovery.SEED+':/seed'),'backup is attached only to the transient operation helper');
+  assert(initialCreate.args.includes('PERSISTENCE_MODE=local'));
+  assert(initialCreate.args.includes('--restart'));
   assert(initialCreate.args.includes(recovery.BASE+'/host/letsencrypt:/host-letsencrypt'));
   assert(!initialCreate.args.some(arg=>arg.includes('/candidate-data/platform')),'old live paths never mounted');
   const python=calls.find(call=>call.args.includes('/opt/gitlab/embedded/bin/python3'));
@@ -164,7 +167,7 @@ test('recording backup fixture settings never replaces an existing image/version
 test('a private Wizard pin fails explicitly without silently selecting the fixture image',async t=>{
   const input=fixture(t),calls=[];
   const candidate={spec:{restore:input},daemon:'owned-private-daemon',call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{calls.push({args,options});return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'registry.private.test/wizard@sha256:'+'a'.repeat(64):'';}};
-  await assert.rejects(()=>recovery.bootstrapRestore(candidate,{rewriter:'public fixture'}),/wizard-pin-recovery-artifact-not-declared/);
+  await assert.rejects(()=>recovery.bootstrapRestore(candidate,{rewriter:'public fixture',storage:storageFixture}),/wizard-pin-recovery-artifact-not-declared/);
   assert(!calls.some(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint')),'normal provisioning must not conceal a substituted image');
 });
 
@@ -180,7 +183,7 @@ test('declared private pin remains exact and both its new image ID and reference
     calls.push({args,options});if(args[0]==='image')throw Error('absent image');
     return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?f.expected.imageRef:'';
   }};
-  await recovery.bootstrapRestore(candidate,{rewriter:'public source fixture'});
+  await recovery.bootstrapRestore(candidate,{rewriter:'public source fixture',storage:storageFixture});
   assert.deepEqual(calls.filter(call=>call.args[0]==='image').map(call=>call.args.at(-1)),[f.expected.imageRef,f.expected.imageId]);
   assert(calls.some(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint')));
   assert(!calls.some(call=>call.args.some(arg=>arg===f.expected.imageRef)&&call.args[0]==='tag'),'the test must not manufacture a cached pin');
@@ -190,7 +193,7 @@ test('an already cached private layer fails acceptance before normal platform st
   const candidate={spec:{restore:input,privateWizardRecovery:true,images:f.images},daemon:'owned-private-daemon',call:async()=>'',inner:async args=>{
     calls.push(args);return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?f.expected.imageRef:'cached image';
   }};
-  await assert.rejects(()=>recovery.bootstrapRestore(candidate),/image-already-cached/);
+  await assert.rejects(()=>recovery.bootstrapRestore(candidate,{storage:storageFixture}),/image-already-cached/);
   assert(!calls.some(args=>args[0]==='create'&&!args.includes('--entrypoint')));
 });
 test('private-image proof requires the restored container identity, marker and zero live recovery credentials',async()=>{

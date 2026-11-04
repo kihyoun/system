@@ -34,6 +34,43 @@ build/lint/API/signature regressions and the integrated Wizard source packaging.
 Live restart/recovery acceptance and manual Production promotion remain separate
 coordinated actions. Preserve the previous working image and private settings.
 
+## Local live data and on-demand Seed operations
+
+Fresh startup defaults to local working data at
+`/var/lib/system-bootstrapper/platform`. An explicitly selected
+`PERSISTENCE_MODE=volume` layout still requires its actual mounted filesystem
+and never falls back to local storage. Legacy selectors declaring a live mount
+without a mode keep that volume contract. `PERSISTENCE_MODE`, `PERSISTENT_DIR`
+and any volume mount/UUID are host-owned inputs; changing them does not migrate
+existing data. See the [storage guide](../docs/PERSISTENT_VOLUME.md).
+
+Seed backup storage is independent. `SEED_DIR` is optional during normal
+startup; `SEED_MOUNT`/`SEED_UUID` identify external backup media when selected.
+Controller/GitLab containers do not keep backup mounts. Only explicit Harvest
+or restore starts the transient exact-image helper. It validates host paths,
+mount identity and space before writes or service shutdown and uses the shared
+live-data/TLS leases. An unavailable Seed target cannot become a root-disk
+fallback or block ordinary services and renewal.
+
+For a completed external Seed and matching private configuration ZIP, use the
+committed host entry point before starting writers:
+
+```sh
+sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
+  bash bootstrapper/seed-operation.sh restore \
+  --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
+  --configuration-backup /root/recovery/bootstrapper.zip \
+  --check-only
+```
+
+Review the preflight, then repeat without `--check-only` to restore into fresh
+live service-data directories. Use `harvest --image ...` to create a backup from
+an existing platform. The [recovery contract](../docs/RECOVERY_CONTRACT.md) lists
+required source/image inputs, completion and failure guards, configuration
+separation and post-restore checks. Detach backup media after the operation;
+normal local operation no longer depends on it. Deleting a VM with local live
+data deletes that data unless matching recovery inputs were preserved elsewhere.
+
 ## Reviewed replacement-host initialization
 
 The host tools in this directory are part of the System source. Change them through
@@ -48,9 +85,11 @@ It does not format a filesystem, issue first certificates, migrate GitLab versio
 apply a Seed or convert an empty filesystem into an existing installation. Follow
 the [handbook](../docs/HANDBOOK.md) first-install path for a new installation.
 
-Requirements are root access on supported Ubuntu, Git and Python 3, an already
-mounted data filesystem, saved configuration and the recovery manifest described
-below. The normal host installer supplies Docker; Certbot is installed as well when
+Requirements are root access on supported Ubuntu, Git and Python 3, selected
+local or explicitly volume-backed live storage, saved configuration and the
+recovery manifest described below. A selected live volume must already be
+mounted; local mode uses the system disk. The normal host installer supplies
+Docker; Certbot is installed as well when
 `--install-host` is selected. Instance selectors and credentials remain private.
 
 ```sh

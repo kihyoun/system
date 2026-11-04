@@ -7,7 +7,8 @@ const os=require('os');
 const crypto=require('crypto');
 const {signature,configurationValues}=require('../shared/disposable-candidate');
 const BASE='/recovered-data/platform';
-const SEED='/recovered-data/seed';
+const storage=require('./local-storage');
+const SEED=storage.SEED;
 const LEAF='/ssl/live/recovery-fixture/fullchain.pem';
 const KEY='/ssl/live/recovery-fixture/privkey.pem';
 const PRIVATE_MARKER='/opt/system-bootstrapper/private-recovery-proof';
@@ -195,14 +196,17 @@ async function capture(original,dependencies={}) {
       // the declared persistent sources before Harvest. This is not ACME proof.
       await original.inner(['exec','system_gitlab_1','/opt/gitlab/embedded/bin/openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','2',
         '-subj','/CN=wizard.candidate.test','-addext','subjectAltName=DNS:wizard.candidate.test,DNS:sync.candidate.test',
-        '-keyout','/seed/.recovery-fixture-key','-out','/seed/.recovery-fixture-cert']);
+        '-keyout','/tmp/.recovery-fixture-key','-out','/tmp/.recovery-fixture-cert']);
+      const certificate=await original.inner(['exec','system_gitlab_1','cat','/tmp/.recovery-fixture-cert']);
+      const privateKey=await original.inner(['exec','system_gitlab_1','cat','/tmp/.recovery-fixture-key']);
+      await original.inner(['exec','system_gitlab_1','rm','/tmp/.recovery-fixture-cert','/tmp/.recovery-fixture-key']);
       const settings={GITLAB_IMAGE:'candidate-gitlab:under-test',GITLAB_RUNNER_IMAGE:'candidate-runner:under-test',
         BOOTSTRAPPER_IMAGE:'system-candidate:under-test',WIZARD_IMAGE:'systembootstrapper/wizard',NGINX_IMAGE:'nginx:latest',
         GITLAB_SSH_BIND:'2222',GITLAB_REGISTRY_BIND:'5050',SYNC_DOMAIN_MODE:'2',WIZARD_DOMAIN_MODE:'2',
         SYNC_SSL:LEAF,SYNC_SSL_KEY:KEY,WIZARD_SSL:LEAF,WIZARD_SSL_KEY:KEY,RECOVERY_RUNTIME_PROOF:'literal=one=two $HOME'};
       await node(original,function(input){
         const fs=require('fs'),path=require('path');
-        const leaf=fs.readFileSync('/seed/.recovery-fixture-cert'),key=fs.readFileSync('/seed/.recovery-fixture-key');
+        const leaf=Buffer.from(input.certificate+'\n'),key=Buffer.from(input.privateKey+'\n');
         fs.mkdirSync('/ssl/live/recovery-fixture',{recursive:true,mode:0o700});
         fs.writeFileSync('/ssl/live/recovery-fixture/fullchain.pem',leaf,{mode:0o644});
         fs.writeFileSync('/ssl/live/recovery-fixture/privkey.pem',key,{mode:0o600});
@@ -225,7 +229,7 @@ async function capture(original,dependencies={}) {
           config=expression.test(config)?config.replace(expression,()=>assignment):config+'\n'+assignment+'\n';
         }
         fs.writeFileSync('/state/.docker.env',config,{mode:0o600});
-      },{settings,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef,realAcme:!!dependencies.acme});
+      },{settings,certificate,privateKey,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef,realAcme:!!dependencies.acme});
       if(dependencies.acme)inputs.expected.acme=await dependencies.acme.issue(original);
       inputs.expected.certificateHash=await node(original,function(){process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync('/ssl/live/recovery-fixture/fullchain.pem')).digest('hex'));},{});
       if(!dependencies.acme)inputs.expected.accountIdentity=original.id;
@@ -235,6 +239,13 @@ async function capture(original,dependencies={}) {
       await original.inner(['exec','system_bootstrapper_1','node','/tmp/export-configuration.cjs','/tmp/recovery-fetch.json','/tmp/bootstrapper.zip']);
       await fromController(original,'/tmp/bootstrapper.zip',inputs.configArchive);
     });
+    await original.stage('storage-local-live-and-missing-backup',async()=>{
+      await storage.verifyLocalLive(original,'/candidate-data/platform');
+      await storage.refuseMissingTarget(original);
+    });
+    await storage.attach(original);
+    await original.stage('storage-global-live-lease',()=>storage.refuseLockedLive(original));
+    await original.inner(['exec','system_bootstrapper_1','sh','-ec','printf storage-seed-fixture > /srv/gitlab/config/.storage-acceptance-proof']);
     await original.stage('recovery-completed-cold-seed',()=>captureSeed(original,inputs));
     return inputs;
   } catch(error) {fs.rmSync(directory,{recursive:true,force:true});throw error;}
@@ -246,12 +257,12 @@ async function captureSeed(original,inputs) {
   await step('harvest',()=>original.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],
     {timeout:180000,failureCodes:HARVEST_FAILURE_CODES}),Object.values(HARVEST_FAILURE_CODES));
   const current=await step('manifest-current',async()=>{
-    const current=await original.inner(['exec','system_bootstrapper_1','node','/system/system/seed-manifest.js','current','/seed']);
+    const current=await original.inner(['run','--rm','--network','none','--read-only','--mount','type=bind,src='+SEED+',dst=/seed,readonly','--entrypoint','node','system-candidate:under-test','/system/system/seed-manifest.js','current','/seed']);
     if(!/^\/seed\/snapshots\/[A-Za-z0-9.-]+$/.test(current))throw Error('completed-snapshot-required');
     return current;
   });
   await step('archive',async()=>{
-    await original.call(['exec',original.daemon,'tar','-czf','-','-C','/candidate-data/seed','current',current.slice('/seed/'.length)],{outputFile:inputs.seedArchive,timeout:180000});
+    await original.call(['exec',original.daemon,'tar','-czf','-','-C',SEED,'current',current.slice('/seed/'.length)],{outputFile:inputs.seedArchive,timeout:180000});
     fs.chmodSync(inputs.seedArchive,0o600);
     inputs.configHash=hashFile(inputs.configArchive);
     inputs.seedHash=hashFile(inputs.seedArchive);
@@ -264,14 +275,18 @@ async function bootstrapRestore(candidate,dependencies={}) {
   const privateWizard=input.expected?.privateWizard;
   if(!!candidate.spec.privateWizardRecovery!==!!privateWizard)throw Error('private-wizard-recovery-scenario-mismatch');
   if(privateWizard)privateWizardDescriptor(privateWizard,candidate.spec);
+  const storageAdapter=dependencies.storage||storage;
+  await storageAdapter.prepareLocal(candidate,BASE);
+  await storageAdapter.attach(candidate);
   const directories=['configuration','wizard-public','templates','synctemplates','ssl','runners','gitlab/config','gitlab/logs','gitlab/data','host/letsencrypt'];
   await candidate.call(['exec',candidate.daemon,'mkdir','-p',SEED,...directories.map(name=>BASE+'/'+name)]);
   const mounts={configuration:'configuration',wizardPublic:'wizard-public',templates:'templates',synctemplates:'synctemplates',ssl:'ssl',gitlabConfig:'gitlab/config',gitlabLogs:'gitlab/logs',gitlabData:'gitlab/data'};
   for(const [name,directory]of Object.entries(mounts))await candidate.inner(['volume','create','--driver','local','--opt','type=none','--opt','o=bind','--opt','device='+BASE+'/'+directory,'system_'+name]);
-  const args=['create','--name','system_bootstrapper_1','--env','SEED_DIR='+SEED,'--env','PERSISTENT_DIR='+BASE,'--env','SYSTEM_CONFIG_DIR=/state','--env','COMPOSE_COMPATIBILITY=1',
+  const args=['create','--name','system_bootstrapper_1','--restart','always','--env','PERSISTENCE_MODE=local','--env','PERSISTENT_MOUNT=/',
+    '--env','SEED_DIR='+SEED,'--env','SEED_MOUNT='+storage.MOUNT,'--env','PERSISTENT_DIR='+BASE,'--env','SYSTEM_CONFIG_DIR=/state','--env','COMPOSE_COMPATIBILITY=1',
     '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--env','GITLAB_RUNNER_IMAGE=candidate-runner:under-test','--env','NGINX_IMAGE=nginx:latest','--env','WIZARD_IMAGE=systembootstrapper/wizard',
     '--env','GITLAB_SSH_BIND=2222','--env','GITLAB_REGISTRY_BIND=5050','--volume','/var/run/docker.sock:/var/run/docker.sock',
-    '--volume',SEED+':/seed','--volume',BASE+'/runners:'+BASE+'/runners','--volume',BASE+'/host/letsencrypt:/host-letsencrypt',
+    '--volume',BASE+'/runners:'+BASE+'/runners','--volume',BASE+'/host/letsencrypt:/host-letsencrypt',
     '--volume','system_configuration:/state','--volume','system_wizardPublic:/wizard-public','--volume','system_templates:/templates','--volume','system_synctemplates:/synctemplates','--volume','system_ssl:/ssl',
     '--volume','system_gitlabConfig:/srv/gitlab/config','--volume','system_gitlabLogs:/srv/gitlab/log','--volume','system_gitlabData:/srv/gitlab/data'];
   await candidate.inner([...args,'--entrypoint','/bin/sh','system-candidate:under-test','-c','sleep infinity']);
@@ -294,7 +309,11 @@ async function bootstrapRestore(candidate,dependencies={}) {
     fs.writeFileSync(name,config,{mode:0o600});
   },{seed:SEED});
   await candidate.call(['exec','-i',candidate.daemon,'tar','-xzf','-','-C',SEED],{inputFile:input.seedArchive,timeout:180000});
+  if(!dependencies.storage)await candidate.stage('storage-global-live-lease',()=>storage.refuseLockedLive(candidate,'restore'));
+  await storageAdapter.refuseInvalidRestore(candidate,BASE);
   await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','seed.sh'],{timeout:180000});
+  await storageAdapter.detach(candidate);
+  candidate.externalSeedRestored=true;
   // Execute the actual fresh-source host rewriter, using the already declared
   // GitLab image's embedded Python; never install/download an undeclared tool.
   const rewriter=dependencies.rewriter || fs.readFileSync(path.join(__dirname,'../../bootstrapper/rebind-renewal.py'),'utf8');
@@ -458,6 +477,11 @@ async function run(original,reportDirectory,dependencies={}) {
     second.report(reportDirectory(second));
     await second.start();
     await (dependencies.verifyRestore || verifyRestore)(second,input);
+    if(!dependencies.Candidate)await second.stage('storage-detached-backup-normal-operation',async()=>{
+      await storage.verifyLocalLive(second,BASE);await storage.assertAbsent(second);
+      await storage.refuseMissingTarget(second);
+      await storage.verifyControlWithoutBackup(second);
+    });
     await second.platform();
     await (dependencies.verifyRegistryBlob || verifyRegistryBlob)(second,input);
     if(acme)await acme.renew(second,input.expected.acme);
@@ -465,7 +489,10 @@ async function run(original,reportDirectory,dependencies={}) {
       await require('./gitlab-upgrade').run(second);
       original.evidence.gitlabUpgrade=second.evidence.gitlabUpgrade;
     }
-    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true,mergeRequestRecoveryVerified:second.mergeRequestRecoveryVerified===true};
+    if(!dependencies.Candidate)second.evidence.storage={localLiveVerified:second.localLiveVerified===true,externalSeedRestored:second.externalSeedRestored===true,
+      backupDetached:second.backupDetached===true,missingBackupGuardVerified:second.missingBackupGuardVerified===true,
+      globalLeaseVerified:second.globalLeaseVerified===true,invalidRestoreGuardVerified:second.invalidRestoreGuardVerified===true};
+    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true,mergeRequestRecoveryVerified:second.mergeRequestRecoveryVerified===true,localLiveVerified:second.localLiveVerified===true,externalSeedRestored:second.externalSeedRestored===true,backupDetached:second.backupDetached===true};
   } finally {
     let clean=true;
     if(second){clean=second.cleanup();second.report(reportDirectory(second));}

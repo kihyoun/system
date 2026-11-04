@@ -81,7 +81,7 @@ function hostProgram(paths,caAddress,certbotReference,scripts){
     '--deploy-hook '+q('touch /etc/letsencrypt/.fixture-deploy-fired')+'\n'+
     'if [ -f '+q(marker)+' ]; then RENEWED_LINEAGE=/etc/letsencrypt/live/recovery-fixture bash /tmp/install-volume-certificate.sh; fi\n';
   return 'set -euo pipefail\numask 077\n'+
-    "printf '%s' "+q('PERSISTENT_MOUNT='+paths.parent+'\nPERSISTENT_DIR='+paths.base+'\n')+' > /tmp/persistence.env\n'+
+    "printf '%s' "+q('PERSISTENCE_MODE=local\nPERSISTENT_MOUNT=/\nPERSISTENT_DIR='+paths.base+'\n')+' > /tmp/persistence.env\n'+
     'export PERSISTENCE_ENV_FILE=/tmp/persistence.env\n'+
     "printf '%s' "+q(shim)+' > /usr/bin/certbot\nchmod 700 /usr/bin/certbot\n'+
     "printf '%s' "+q(scripts.install)+' > /tmp/install-volume-certificate.sh\n'+
@@ -161,7 +161,6 @@ class LocalAcme {
     await candidate.inner(['tag',item.id,CLIENT_ALIAS]);
     await candidate.call(['exec',candidate.daemon,'mkdir','-p',p.tools,p.webroot]);
     await candidate.call(['exec','-i',candidate.daemon,'sh','-c','umask 077; cat > "$1"','sh',p.tools+'/pebble.minica.pem'],{input:this.trust});
-    await candidate.call(['exec','-i',candidate.daemon,'sh','-c','printf "%s" system-bootstrapper-persistence-v1 > "$1"','sh',p.base+'/.system-bootstrapper-volume']);
     await candidate.inner(['run','--rm','--pull','never','--network','none','--memory','128m','--cpus','0.25','--volume',p.tools+':/fixture-tools','--entrypoint','/bin/sh','system-candidate:under-test',
       '-ec','cp /usr/bin/docker /fixture-tools/docker; cp /lib/ld-musl-x86_64.so.1 /fixture-tools/ld-musl-x86_64.so.1; chmod 755 /fixture-tools/docker /fixture-tools/ld-musl-x86_64.so.1']);
     return p;

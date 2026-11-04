@@ -183,6 +183,9 @@ function fixture() {
   assert(test.commands.some(x=>x.args.includes('COMPOSE_COMPATIBILITY=1')));
   const bootstrap=test.commands.find(x=>x.args.includes('SYSTEM_CONFIG_DIR=/state')).args;
   assert(bootstrap.includes('PERSISTENT_DIR=/candidate-data/platform'));
+  assert(bootstrap.includes('PERSISTENCE_MODE=local'));
+  assert(!bootstrap.includes('/candidate-data/seed:/seed'));
+  assert(test.commands.some(x=>x.args.at(-1)==='prepare-local'),'native source-owned local preflight runs before startup');
   assert(bootstrap.includes('system_configuration:/state'));
   assert(bootstrap.includes('system_wizardPublic:/wizard-public'));
   assert(bootstrap.includes('/candidate-data/platform/runners:/candidate-data/platform/runners'));

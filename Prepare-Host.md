@@ -21,8 +21,8 @@ platform acceptance are separate steps.
 ### Local integration test
 
 Select compatible GitLab and Runner releases explicitly. The example below uses
-GitLab CE 19.4.3 and Runner 19.4.0, also pinned by the disposable integration
-suite. Do not point a new major version at existing GitLab data without following
+GitLab CE 19.5.3 and Runner 19.5.1, pinned by the security release profile and
+disposable integration suite. Do not point a new major version at existing GitLab data without following
 GitLab's supported upgrade path.
 
 For the local integration setup, include these optional exports in the complete
@@ -33,8 +33,8 @@ link to the saved configuration; the persistent copy takes precedence over
 configuration embedded in an image:
 
 ```bash
-export GITLAB_IMAGE=gitlab/gitlab-ce:19.4.3-ce.0
-export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.4.0
+export GITLAB_IMAGE=gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c
+export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd
 export GITLAB_SSH_BIND=127.0.0.1:2222
 export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 ```
@@ -69,31 +69,33 @@ acceptance rather than running fixture projects against retained user data.
 
 ## Boot
 
-Mount the attached filesystem before startup. Install Certbot on hosts using
-automatic HTTPS renewal (`sudo apt-get install -y certbot`). Create the root-owned selector
-file `/etc/system-bootstrapper/persistence.env` using your actual mount path:
+A fresh installation uses local working data at
+`/var/lib/system-bootstrapper/platform` on the Ubuntu/WSL system disk. No attached
+volume or Seed is required. To choose the layout explicitly, create a private
+host selector:
 
 ```bash
 sudo install -d -m 0700 /etc/system-bootstrapper
 sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
-PERSISTENT_MOUNT=/mnt/bootstrapper-data
-PERSISTENT_DIR=/mnt/bootstrapper-data/platform
-SEED_DIR=/mnt/bootstrapper-data/seed
-# Optional: PERSISTENT_UUID=<existing-filesystem-uuid>
+PERSISTENCE_MODE=local
+PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-sudo bash bootstrapper/install-volume-host.sh
 sudo bash start.sh
 ```
 
-Replace the example paths with the existing volume mount; do not format it.
-The host integration installs the persistent Docker mount dependency and
-certificate integration. Startup rejects an absent or mismatched filesystem
-before creating platform data directories. The seed must remain separate from
-the live `platform` directory. Fresh and reset startup preserve this host-selected
-seed path while loading legacy defaults. See [Persistent platform
-volume](docs/PERSISTENT_VOLUME.md) for the directory layout, retained credentials
-and VM replacement procedure.
+Use the Linux filesystem under WSL, not a Windows-mounted data directory.
+Startup validates free space, permissions and filesystem behavior. Existing
+`PERSISTENT_MOUNT` selectors without a mode retain their volume semantics.
+For an explicit live volume, select `PERSISTENCE_MODE=volume` and its actual
+mount/UUID; a missing selected volume fails closed rather than creating local
+replacement data. Changing the mode never migrates an existing installation.
+See [working storage and backup media](docs/PERSISTENT_VOLUME.md).
+
+Install Certbot separately on hosts using HTTPS, then run
+`sudo bash bootstrapper/install-volume-host.sh` for persistent TLS state and
+renewal integration. Local mode needs no extra mount dependency. Neither Docker,
+normal service startup nor certificate renewal depends on an external Seed target.
 
 On a fresh installation, open `http://localhost/` on the host. The bootstrapper
 builds its image and starts the configuration wizard and sync proxy. Allow time
@@ -170,16 +172,20 @@ using temporary directories without touching a running GitLab installation.
 
 ### Persistent state
 
-`SEED_DIR` is the host directory mounted at `/seed` in the bootstrapper. Harvest
+`SEED_DIR` is an independently selected backup destination. Its optional
+`SEED_MOUNT`/`SEED_UUID` identify removable storage and are checked only when
+creating or reading a Seed. Local live mode requires an external backup
+filesystem; legacy volume mode may keep a disjoint Seed on its retained volume. A transient operation helper binds that destination;
+normal controller/GitLab containers do not retain a `/seed` mount. Harvest
 creates a completed recovery snapshot containing service data from `/srv`, TLS
 files from `/ssl`, and complete Certbot account/renewal state. It stops GitLab,
 requires a clean exit, verifies a checksum/ownership manifest, and atomically
 selects the new snapshot through `seed/current`. Earlier snapshots are retained.
 
 Seed restore is explicit; startup does not automatically overwrite live data.
-Restore requires GitLab to be absent or stopped, a completed manifest and the
-same GitLab image identity. An incomplete or legacy unmarked Seed is rejected
-before copying. A missing Seed leaves existing destination data alone.
+Restore requires fresh live service-data directories, GitLab absent or stopped,
+a completed manifest and the same GitLab image identity. An incomplete or
+legacy unmarked Seed is rejected before copying. A missing Seed leaves existing destination data alone.
 Configuration remains a separate Wizard backup, and the Wizard does not download
 service-data Seeds. See the [recovery contract](docs/RECOVERY_CONTRACT.md) for
 locks, failure handling and restoration on empty storage.
