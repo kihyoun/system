@@ -69,6 +69,11 @@ test('mount records decode whitespace without confusing path prefixes',()=>{
   assert.equal(operation.covering(rows,'/seed target/a').device,'8:2');
   assert.equal(operation.covering(rows,'/seed target-other').device,'0:1');
 });
+test('a stacked backup mount cannot hide the actually mounted device behind an older record',t=>{
+  const f=fixture(t),stacked=mounts+'3 1 8:3 / /external-seed rw - ext4 /dev/other rw\n';
+  assert.throws(()=>operation.validate(f.spec,()=>stacked,f.root),/ambiguous-storage-mount/);
+  assert.equal(operation.covering(operation.mountRows(stacked),'/data/platform').device,'0:1');
+});
 test('environment operations racing the initial preflight still block before copying',t=>{
   const f=fixture(t),state=f.root+'/data/platform';
   const held=new operation.StorageLease(state,{operation:'harvest',helperName:'owned-helper',imageId:'sha256:'+'a'.repeat(64)});

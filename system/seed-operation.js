@@ -24,8 +24,10 @@ function mountRows(text) {
   });
 }
 function covering(rows, value) {
-  const row = rows.filter(row => row.target === '/' || value === row.target || value.startsWith(row.target+'/'))
-    .sort((a,b)=>b.target.length-a.target.length)[0];
+  const matches=rows.filter(row => row.target === '/' || value === row.target || value.startsWith(row.target+'/'))
+    .sort((a,b)=>b.target.length-a.target.length);
+  const row=matches[0];
+  requireValue(!row || !matches[1] || matches[1].target.length !== row.target.length,'ambiguous-storage-mount');
   requireValue(row, 'storage-mount-not-found'); return row;
 }
 function resolveHost(value,hostRoot='/host') {
