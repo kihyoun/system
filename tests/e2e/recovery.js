@@ -25,6 +25,10 @@ const HARVEST_FAILURE_CODES={
 for(const phase of ['certificate-lock','gitlab-inspect','gitlab-quiesce','gitlab-services-down','gitlab-stop','gitlab-stopped-check','gitlab-clean-exit','stage-create','srv-copy','ssl-copy','certbot-copy','manifest-create','snapshot-publish']){
   HARVEST_FAILURE_CODES['Harvest phase failed: '+phase+'.']='harvest-phase-'+phase;
 }
+const SEED_RESTORE_FAILURE_CODES=Object.fromEntries([
+  'unsafe-configuration-backup-entry','invalid-configuration-backup','configuration-restore-failed',
+  'seed-copy-failed','seed-image-identity-mismatch','seed-helper-operation-failed'
+].map(code=>['Seed operation failed: '+code+'.',code]));
 
 function privateWizardDescriptor(value,spec) {
   if(!value||!Number.isInteger(value.projectId)||value.projectId<1||!/^[-a-z0-9_/]+\/wizard$/.test(value.projectPath||'')||
@@ -316,7 +320,9 @@ async function bootstrapRestore(candidate,dependencies={}) {
   const hostBackup='/recovery-inputs/bootstrapper.zip';
   await candidate.call(['exec','-i',candidate.daemon,'sh','-ec',
     'umask 077; mkdir -m 700 /recovery-inputs; cat > '+hostBackup],{inputFile:input.configArchive});
-  await candidate.inner(['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','bash','seed.sh'],{timeout:180000});
+  await candidate.stage('recovery-seed-native-restore',()=>candidate.inner(
+    ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','bash','seed.sh'],
+    {timeout:180000,failureCodes:SEED_RESTORE_FAILURE_CODES}));
   await storageAdapter.detach(candidate);
   candidate.externalSeedRestored=true;
   // Execute the actual fresh-source host rewriter, using the already declared
@@ -512,4 +518,4 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!clean)throw Error('restored-host-cleanup-failed');
   }
 }
-module.exports={capture,bootstrapRestore,verifyRestore,verifyServiceIdentity,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,BASE,SEED};
+module.exports={capture,bootstrapRestore,verifyRestore,verifyServiceIdentity,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,SEED_RESTORE_FAILURE_CODES,BASE,SEED};

@@ -85,8 +85,8 @@ test('cleanup failure fails acceptance and retains private recovery inputs',asyn
 });
 
 test('bootstrap uses only declared binary streams and restores before normal controller startup',async t=>{
-  const input=fixture(t),calls=[];
-  const candidate={spec:{restore:input},daemon:'owned-private-daemon',call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{calls.push({args,options});return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'systembootstrapper/wizard':'';}};
+  const input=fixture(t),calls=[],stages=[];
+  const candidate={spec:{restore:input},daemon:'owned-private-daemon',stage:async(name,action)=>{stages.push(name);return action();},call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{calls.push({args,options});return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'systembootstrapper/wizard':'';}};
   await recovery.bootstrapRestore(candidate,{rewriter:'print("public fixture only")',storage:storageFixture});
   assert(!calls.some(call=>call.args[0]==='cp'),'no Docker cp binary transport');
   const uploads=calls.filter(call=>call.options?.inputFile);
@@ -97,6 +97,8 @@ test('bootstrap uses only declared binary streams and restores before normal con
   assert(seed>=0&&normalCreate>seed,'restore completes before normal controller creation');
   assert(calls[seed].args.includes('SYSTEM_SEED_CONFIGURATION_BACKUP=/recovery-inputs/bootstrapper.zip'),
     'the native helper must validate and import the real Wizard ZIP');
+  assert.deepEqual(stages,['recovery-seed-native-restore']);
+  assert.deepEqual(calls[seed].options.failureCodes,recovery.SEED_RESTORE_FAILURE_CODES);
   const hostBackup=calls.findIndex(call=>call.args.at(-1)?.includes('cat > /recovery-inputs/bootstrapper.zip'));
   assert(hostBackup>=0&&hostBackup<seed);
   const clearFixture=calls.findIndex(call=>call.args.at(-1)?.includes("fs.unlinkSync('/state/.docker.env')"));
@@ -111,6 +113,38 @@ test('bootstrap uses only declared binary streams and restores before normal con
   assert(!initialCreate.args.some(arg=>arg.includes('/candidate-data/platform')),'old live paths never mounted');
   const python=calls.find(call=>call.args.includes('/opt/gitlab/embedded/bin/python3'));
   assert(python.args.includes('candidate-gitlab:under-test')&&python.args.includes('--network'));
+});
+
+test('native Seed restore records exact public failures through the Docker boundary and redacts other output',async t=>{
+  const {Candidate}=require('./disposable-candidate');
+  const input=fixture(t),bin=path.join(input.directory,'bin');fs.mkdirSync(bin);
+  const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+  const hash='a'.repeat(64),driver=new Candidate({example,daemonImage:'docker:29-dind@sha256:'+hash,
+    images:Object.fromEntries(['candidate','wizard','gitlab','runner','nginx'].map(role=>[role,{id:'sha256:'+hash,archive:path.join(input.directory,role+'.tar')}]))});
+  const previousPath=process.env.PATH;
+  try{
+    process.env.PATH=bin+path.delimiter+previousPath;
+    for(const [line,reason]of [...Object.entries(recovery.SEED_RESTORE_FAILURE_CODES),
+      ['Seed operation failed: private-fixture-token.','docker-exec-failed'],
+      ['prefix Seed operation failed: invalid-configuration-backup.','docker-exec-failed']]){
+      const lines=[line,'private-fixture-token /private/operator-path'];
+      if(reason!=='docker-exec-failed')lines.push('Seed operation failed: seed-helper-operation-failed.');
+      fs.writeFileSync(path.join(bin,'docker'),'#!/bin/sh\nprintf "%s\\n" '+lines.map(value=>"'"+value+"'").join(' ')+' >&2\nexit 7\n',{mode:0o755});
+      const stages=[],events=[];
+      const candidate={spec:{restore:input},daemon:'owned-private-daemon',results:stages,now:()=>0,checkpoint:()=>{},stage:Candidate.prototype.stage,
+        call:async()=>'',inner:async(args,options)=>{
+          if(args.includes('seed.sh'))return driver.exec(['exec'],options);
+          return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'systembootstrapper/wizard':'';
+        }};
+      await assert.rejects(()=>recovery.bootstrapRestore(candidate,{storage:{...storageFixture,detach:async()=>events.push('detached')}}),error=>{
+        assert.equal(error.message,reason);assert.equal(error.exitCode,7);return true;
+      });
+      assert.deepEqual(stages,[{name:'recovery-seed-native-restore',status:'failed',milliseconds:0,reason,exitCode:7}]);
+      assert.deepEqual(events,[],'a failed native restore does not detach its backup');
+      assert(!JSON.stringify(stages).includes('private-fixture-token'));
+      assert(!JSON.stringify(stages).includes('/private/operator-path'));
+    }
+  }finally{process.env.PATH=previousPath;}
 });
 
 test('tampered or wrong-path recovery input fails before any Docker action',async t=>{
@@ -186,7 +220,7 @@ test('the private image oracle requires an exact owned-registry artifact absent 
 });
 test('declared private pin remains exact and both its new image ID and reference must be absent before startup',async t=>{
   const input=fixture(t),f=privateFixture(),calls=[];input.expected.privateWizard=f.expected;
-  const candidate={spec:{restore:input,privateWizardRecovery:true,images:f.images},daemon:'owned-private-daemon',call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{
+  const candidate={spec:{restore:input,privateWizardRecovery:true,images:f.images},daemon:'owned-private-daemon',stage:async(_name,action)=>action(),call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{
     calls.push({args,options});if(args[0]==='image')throw Error('absent image');
     return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?f.expected.imageRef:'';
   }};
