@@ -17,6 +17,7 @@ const environments = ['review', 'beta'] as const;
 let preparing: {operation: string, previewHash: string, settingsHash: string} | undefined;
 const safeController = (value: string) => /^[A-Za-z0-9][A-Za-z0-9_.-]{0,126}$/.test(value);
 const imageId = (value: string) => /^sha256:[a-f0-9]{64}$/.test(value || '');
+const wizardAliases = require('../../nginx/wizard-aliases');
 
 export const environmentAdapters = {
   resolve: async (host: string): Promise<string[]> => (await dns.lookup(host, {all: true})).map(row => row.address),
@@ -70,6 +71,14 @@ function canonicalSettings(input: any, platform: any): any {
   }
   if (selected.review.enabled && selected.beta.enabled && selected.review.host === selected.beta.host) {
     throw new Error('Review and Beta must use different HTTPS hosts.');
+  }
+  // Reserve alias names in the same main-configuration namespace before an
+  // optional environment can create a competing entry-point virtual host.
+  const aliasSettings = wizardAliases.validate(fs.readFileSync(mainPath(), 'utf8'));
+  for (const name of environments) {
+    if (selected[name].enabled && aliasSettings.aliases.includes(selected[name].host)) {
+      throw new Error('An environment host conflicts with a configured Wizard alias.');
+    }
   }
   const directory = path.dirname(configPath());
   if (fs.existsSync(directory)) {

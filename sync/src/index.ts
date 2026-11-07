@@ -14,12 +14,13 @@ import Base64 from 'crypto-js/enc-base64';
 import cors from 'cors';
 import Helper from "./Helper";
 import os from 'os';
-import {createProject, queryGitlab, lookupJob, validProjectKey, projectBusy, readReceipt, validateProject} from './ProjectBootstrap';
+import {createProject, queryGitlab, lookupJob, validProjectKey, projectBusy, readReceipt, validateProject, validateAliasProject} from './ProjectBootstrap';
 import { suggestConfig } from './ConfigSuggestions';
 import {ensureDefaultWizard} from './DefaultWizard';
 import {initializeWizardSource, previewWizardSource} from './WizardWorkflow';
 import {activateWizardBuild, previewWizardBuild, refreshWizardBuild} from './WizardBuild';
 import {configureWizardEnvironments, previewWizardEnvironments, refreshWizardEnvironments} from './WizardEnvironments';
+const wizardAliases = require('../../nginx/wizard-aliases');
 
 export const app = express();
 app.use(bodyParser.json());
@@ -280,9 +281,11 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
   try {
     if (req.body.data.substr(807, 1) !== "$"
       || md5(req.body.data.substr(0, 1184)) !== "bd4a8426355824593a5e21ad759830c1"
-      || !req.body.projectKey) {
+      || !validProjectKey(req.body.projectKey)) {
       res.sendStatus(400);
     } else {
+      try { validateAliasProject(req.body.data, req.body.projectKey); }
+      catch (error) { res.status(400).json({message: error.message}); return; }
       console.log('Stopping intermediate Services...')
       const out = execSync('cd ../system; bash stop-intermediate.sh');
       fs.writeFileSync(path.join(projectsDirectory(), '.'+ req.body.projectKey+'.env'),
@@ -345,6 +348,9 @@ app.post( "/config/main", authenticateJWT, async ( req, res ) => {
   try {
     const file = req.files?.['.docker.env'];
     if (file && !Array.isArray(file) && file.name==='.docker.env') {
+      try {
+        wizardAliases.validate(file.data.toString('utf8'), wizardAliases.projectFiles(projectsDirectory()).map((project: {content: string}) => project.content));
+      } catch (error) { res.status(400).json({message: error.message}); return; }
       console.log('Stopping intermediate services...');
       const out = execSync('cd ../system; bash stop-intermediate.sh');
       fs.writeFileSync(mainConfigPath(), file.data);

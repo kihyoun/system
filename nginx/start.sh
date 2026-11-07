@@ -9,6 +9,11 @@ if [ "${1:-}" = recovery ]; then
   WIZARD_ENABLE=false
 fi
 
+# Validate every saved host before replacing any generated route. An empty
+# template also clears a previous alias after it is disabled or during the
+# registry-only recovery phase; envsubst replaces the matching .conf file.
+wizard_aliases=$(node ./wizard-aliases.js render ../system/.docker.env ../system/.projects.env "${1:-}") || exit $?
+
 function generate_conf {
     cat $1 | sed -e "s@\${PROXY_UPSTREAM}@$2@g" \
       -e "s@\${PROXY_IP}@$3@g" \
@@ -36,6 +41,8 @@ function generate_nginx_conf {
 
 mkdir -p /templates
 cp ./.templates/acme-http01.conf.template /templates/00-acme-http01.conf.template
+# Sort after default.conf so enabling aliases does not select a new default TLS host.
+printf '%s\n' "$wizard_aliases" > /templates/zz-wizard-aliases.conf.template
 
 generate_nginx_conf $GITLAB_DOMAIN_MODE \
   gitlab \

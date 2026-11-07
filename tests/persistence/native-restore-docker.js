@@ -23,7 +23,7 @@ function run({helperImage,configurationExporter,backup}) {
   assert.match(image,/^sha256:[a-f0-9]{64}$/);
   const sourceRoot=path.resolve(__dirname,'../..');
   const files=Object.fromEntries(['system/seed-operation.js','system/seed-manifest.js','system/seed.sh',
-    'system/push.sh','project-bootstrap/preserve-system-project.js'].map(file=>[file,fs.readFileSync(path.join(sourceRoot,file),'utf8')]));
+    'system/push.sh','nginx/wizard-aliases.js','project-bootstrap/preserve-system-project.js'].map(file=>[file,fs.readFileSync(path.join(sourceRoot,file),'utf8')]));
   const code=(container,text)=>docker(['exec','--interactive',container,'node','-'],text);
   const install=container=>code(container,
     `const fs=require('node:fs'),path=require('node:path');for(const [file,text] of Object.entries(${JSON.stringify(files)})){

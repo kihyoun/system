@@ -1,4 +1,4 @@
-import {projectsDirectory} from './StatePaths';
+import {mainConfigPath, projectsDirectory} from './StatePaths';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -13,6 +13,13 @@ const active = new Set<string>();
 export const projectBusy = () => active.size > 0;
 const digest = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
 const receiptLine = '# BOOTSTRAPPER_PROJECT=';
+const wizardAliases = require('../../nginx/wizard-aliases');
+
+export function validateAliasProject(data: string, projectKey: string) {
+  if (!fs.existsSync(mainConfigPath())) { return; }
+  const projects = wizardAliases.projectFiles(directory).filter((file: {name: string}) => file.name !== '.' + projectKey + '.env');
+  wizardAliases.validate(fs.readFileSync(mainConfigPath(), 'utf8'), [...projects.map((file: {content: string}) => file.content), data]);
+}
 
 export function validateProject(input: any) {
   if (!validProjectKey(input.projectKey) || !/^[1-9][0-9]*$/.test(String(input.namespaceId))) {
@@ -57,6 +64,7 @@ export function validateProject(input: any) {
   if (['empty', 'wizard'].includes(input.template || 'empty') && (typeof input.ci !== 'string' || input.ci.length > 200000 || !input.ci.includes('CI_DEFAULT_BRANCH'))) {
     throw new Error('Missing generated CI configuration.');
   }
+  validateAliasProject(input.data, input.projectKey);
   return values;
 }
 

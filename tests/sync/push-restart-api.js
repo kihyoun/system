@@ -12,6 +12,10 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function scenario(validArchive) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'push-restart-'));
   for (const dir of ['sync', 'system', 'state', 'archive']) fs.mkdirSync(path.join(root, dir));
+  fs.mkdirSync(path.join(root, 'nginx'));
+  fs.mkdirSync(path.join(root, 'project-bootstrap'));
+  fs.copyFileSync(path.resolve(__dirname, '../../nginx/wizard-aliases.js'), path.join(root, 'nginx/wizard-aliases.js'));
+  fs.copyFileSync(path.resolve(__dirname, '../../project-bootstrap/preserve-system-project.js'), path.join(root, 'project-bootstrap/preserve-system-project.js'));
   fs.copyFileSync(pushScript, path.join(root, 'system/push.sh'));
   fs.writeFileSync(path.join(root, 'system/stop-intermediate.sh'), 'touch ../stopped\n');
   const saved = path.join(root, 'state/.docker.env');
