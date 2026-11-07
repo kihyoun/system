@@ -1,6 +1,43 @@
-# Supported System runtime base
+# System controller releases and runtime base
 
-Build the base with the existing standalone build context:
+A public **controller release** is the complete image built from
+`system/Dockerfile`: the orchestration code, Sync service, packaged Wizard source
+and runtime tools. It is accompanied by a separately built Wizard web image.
+A fresh host can pull these accepted images without building controller or
+Wizard images or resolving their Alpine build packages. The existing Sync
+startup still runs its prestart TypeScript build inside the controller. See
+[release installation](../Prepare-Host.md#install-a-tested-public-release).
+
+The standalone **runtime base** built from `bootstrapper/Dockerfile` contains the
+shared tools only. It cannot replace the complete controller, even when a base
+image has been published to a registry. Both images have useful roles in CI;
+only a tested complete controller and matching Wizard form the public startup
+release.
+
+## Fresh installation from public images
+
+`install-release.py` is the host entry point for an empty installation. It takes
+`--controller IMAGE@sha256:...` and `--wizard IMAGE@sha256:...`, plus an optional
+`--persistence-env FILE`. `--install-host` installs Docker/Compose through the
+committed host installer when needed. The [handbook](../docs/HANDBOOK.md) gives
+complete local HTTP and public domain/Certbot procedures using these flags.
+
+The installer verifies the clean System checkout, pinned Wizard revision and
+pulled image identities. It writes only the image selectors to the private
+`configuration/.release-images.env` and invokes native startup without a source
+build. Normal startup loads this release profile before any saved main
+configuration, so explicit later main-configuration image choices win. The
+profile is not an imported user configuration and does not apply a Seed.
+
+This fresh-only operation refuses existing GitLab data or saved main
+configuration. It does not replace the existing-state recovery, controller
+promotion or GitLab migration procedures. Prepare DNS, network access and any
+HTTPS certificate through the chosen handbook path before exposing a public
+instance.
+
+## Building the shared runtime base
+
+Developers can build the base with the existing standalone build context:
 
 ```sh
 docker build -t system-runtime:candidate ./bootstrapper
@@ -10,7 +47,7 @@ The complete System image also runs `bootstrapper/install-runtime.sh` from its
 repository build context. It starts from the same official digest-pinned Node
 24.22.0 / Alpine 3.24 image instead of requiring a separately published System
 base. The shared installer checks Node 24.22.0 and npm 11.19.1 before installing
-the pinned Docker CLI 29.9.2, Compose 5.6.1, Buildx 0.38.1 and the existing shell utilities.
+the pinned Docker CLI 29.9.3, Compose 5.6.1, Buildx 0.38.1 and the existing shell utilities.
 Both `docker-compose` and `docker compose` remain available. Custom `IMAGE`
 overrides must satisfy the same runtime checks.
 
@@ -21,7 +58,10 @@ becomes unavailable, the build fails rather than silently selecting another
 version. Refresh unavailable direct package versions against the official index
 for the pinned Alpine release in a reviewed change. Refresh the image digest and
 Node/npm assertions together when changing the upstream runtime, then rebuild
-and validate the complete candidate.
+and validate the complete candidate. Publishing an accepted image moves these
+build dependencies into CI; it does not make stale APK pins valid in future
+source builds. Keep the reviewed build inputs maintained even when end-user
+installation uses an already published image.
 
 Do not replace libraries inside the historical Alpine 3.16 image or copy glibc
 Node binaries into it. The supported base supplies the complete runtime.

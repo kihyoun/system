@@ -27,6 +27,29 @@ readonly storage_mount=$PERSISTENT_MOUNT storage_dir=$PERSISTENT_DIR
 readonly storage_uuid=${PERSISTENT_UUID:-}
 readonly storage_mode=$PERSISTENCE_MODE
 
+# Public release selection is a fallback, never executable configuration. A
+# later saved configuration can deliberately select different image versions.
+release_images=$storage_dir/configuration/.release-images.env
+if [[ -e $release_images || -L $release_images ]]; then
+    [[ -f $release_images && ! -L $release_images && $(stat -c %a -- "$release_images") == 600 && $(stat -c %u -- "$release_images") == 0 ]] || {
+        printf 'Invalid private release image selectors.\n' >&2; exit 1;
+    }
+    release_controller= release_wizard=
+    while IFS= read -r release_assignment || [[ -n $release_assignment ]]; do
+        if [[ $release_assignment =~ ^BOOTSTRAPPER_IMAGE=(docker\.io/[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64})$ && -z $release_controller ]]; then
+            release_controller=${BASH_REMATCH[1]}
+        elif [[ $release_assignment =~ ^WIZARD_IMAGE=(docker\.io/[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64})$ && -z $release_wizard ]]; then
+            release_wizard=${BASH_REMATCH[1]}
+        else
+            printf 'Unsupported release image selector.\n' >&2; exit 1
+        fi
+    done < "$release_images"
+    [[ -n $release_controller && -n $release_wizard ]] || { printf 'Incomplete release image selection.\n' >&2; exit 1; }
+    export BOOTSTRAPPER_IMAGE=$release_controller WIZARD_IMAGE=$release_wizard
+    export SYSTEM_BOOTSTRAPPER_SKIP_BUILD=${SYSTEM_BOOTSTRAPPER_SKIP_BUILD:-1}
+    unset release_controller release_wizard release_assignment
+fi
+
 if [[ -f $storage_dir/configuration/.docker.env ]]; then
     source "$storage_dir/configuration/.docker.env"
 elif [[ -f system/.docker.env ]]; then

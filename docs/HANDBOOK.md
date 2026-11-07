@@ -36,20 +36,34 @@ wsl --install -d Ubuntu
 Follow the installation steps and restart Windows if prompted. Then open Ubuntu.
 Run all subsequent shell commands in the **Ubuntu console**, rather than PowerShell.
 
-Install Git and download the project, including the Wizard submodule:
+Choose a tested public release and record its exact System source revision,
+complete controller digest and matching Wizard digest from the publisher's
+trusted release evidence. These are operator inputs: replace the placeholders
+below with that release's values. Public Docker Hub pulls do not require an
+account. The declared release targets `linux/amd64`.
+
+Install Git and check out that exact release, including its Wizard submodule:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y git
-git clone --recurse-submodules https://github.com/kihyoun/system.git
+SYSTEM_REVISION='REPLACE_WITH_40_CHARACTER_RELEASE_COMMIT'
+git clone https://github.com/kihyoun/system.git
 cd system
+git checkout --detach "$SYSTEM_REVISION"
+git submodule update --init --recursive
+CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
+WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
 ```
 
 The screenshots illustrate a local setup. The interface runs as a container
-image: updating the Git checkout alone does not update that image. Build an image
-from the pinned Wizard checkout as described in section 0.2.
+image: updating the Git checkout alone does not update that image. The release
+installer verifies source/image identities and pulls the tested images; it does
+not compile the controller or Wizard on the new host. See
+[public release selection](../Prepare-Host.md#install-a-tested-public-release)
+for the difference between a complete controller and a runtime base.
 
-### 0.2 Prepare Docker and build the Wizard image
+### 0.2 Prepare Docker and local hostnames
 
 Install the required Docker tools:
 
@@ -73,17 +87,10 @@ remains limited to the local test.
 This guide uses HTTP exclusively for local testing. A publicly accessible
 instance requires its own domain and HTTPS configuration.
 
-The pinned Wizard uses React 19, Vite 8 and Node 24. Its Dockerfile selects the
-exact Node image, installs the committed lockfile, runs its checks and builds the
-interface. Build the local image from the checked-out submodule:
-
-```bash
-sudo docker build -t systembootstrapper/wizard:latest wizard
-```
-
-The image stays local and is not published to Docker Hub. Resolve any build
-failure before continuing. For development outside Docker, use the Node and npm
-versions declared in `wizard/.nvmrc` and `wizard/package.json`.
+The controller and Wizard were built and tested in the publisher's pipeline.
+Their source remains available in this checkout for inspection and development;
+first installation does not run their Dockerfiles or resolve Alpine APK packages.
+Building a changed version remains a separate reviewed development operation.
 
 ### 0.3 Start the Bootstrapper for the first time
 
@@ -93,20 +100,22 @@ stick, cloud volume or Seed backup is needed for first startup. Keep WSL data
 inside its Linux filesystem, rather than on a Windows-mounted path such as
 `/mnt/c`, so Unix ownership and filesystem behavior are available.
 
-You may select another local directory explicitly in the root-owned
-`/etc/system-bootstrapper/persistence.env`:
+Create a root-owned storage selector shared by the release installer and
+lifecycle tools. This example selects the default local working directory:
 
 ```bash
 sudo install -d -m 0700 /etc/system-bootstrapper
 sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
 PERSISTENCE_MODE=local
+PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
 ```
 
-That selector is optional for a fresh installation using the default. Existing
-selectors with `PERSISTENT_MOUNT` and no mode retain volume semantics; they never
+The native lifecycle also supports default local storage without a selector;
+this walkthrough uses an explicit one. Existing selectors with
+`PERSISTENT_MOUNT` and no mode retain volume semantics; they never
 fall back to local storage when a required volume is absent. See the
 [persistence guide](PERSISTENT_VOLUME.md) before changing an existing layout.
 Configure independent backup storage when you want to Harvest or restore a Seed.
@@ -115,23 +124,22 @@ Normal operation and certificate renewal do not require that backup medium.
 Then run this command from the project's root directory:
 
 ```bash
-sudo env \
-  GITLAB_IMAGE=gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c \
-  GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd \
-  GITLAB_SSH_BIND=127.0.0.1:2222 \
-  GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  bash start.sh
+sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
+  python3 bootstrapper/install-release.py \
+  --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
+  --persistence-env /etc/system-bootstrapper/persistence.env
 ```
 
-These selectors pin the GitLab and runner images for a **fresh installation**;
-the repository defaults use the same reviewed versions. They are not an upgrade
-procedure for an existing GitLab database. When reusing an installation, preserve
-its recorded image selectors and follow the GitLab upgrade requirements rather
-than replacing them with this example.
+The installer requires clean source matching the controller release and its
+pinned Wizard commit. It refuses existing GitLab data or saved main configuration;
+use the replacement/recovery procedure for an existing installation. It records
+the selected public images in the private working configuration directory and
+starts with builds disabled. Later normal startup reuses that release profile;
+explicit image selectors in saved main configuration take precedence.
 
-The Bootstrapper builds its image and initially starts the Wizard and Sync
-access point. GitLab is not fully configured at this stage. The first build
-may take some time.
+The Bootstrapper initially starts the Wizard and Sync access point. GitLab is not
+fully configured at this stage. Image downloads and later GitLab initialization
+still take time; a public release removes the source build, not service startup.
 
 Check the containers and view the startup output with:
 
@@ -437,11 +445,21 @@ Connect with SSH and run these commands on the server:
 sudo apt-get update
 sudo apt-get install -y git certbot dnsutils openssl
 certbot --version
-git clone --recurse-submodules https://github.com/kihyoun/system.git
+SYSTEM_REVISION='REPLACE_WITH_40_CHARACTER_RELEASE_COMMIT'
+git clone https://github.com/kihyoun/system.git
 cd system
+git checkout --detach "$SYSTEM_REVISION"
+git submodule update --init --recursive
+CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
+WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
 sudo bash bootstrapper/install.sh
-sudo docker build -t systembootstrapper/wizard:latest wizard
 ```
+
+Choose the source revision and both public image digests from one accepted
+release, as described in [public release selection](../Prepare-Host.md#install-a-tested-public-release).
+Do not use an untested branch, a runtime-base image or a floating `latest` tag.
+The fresh host pulls the complete controller and Wizard instead of building
+these images locally.
 
 Use Certbot **2.3.0 or newer**, which supports `reconfigure`; the Ubuntu 24.04
 [package provides that interface](https://packages.ubuntu.com/noble/certbot).
@@ -461,6 +479,7 @@ same working directory:
 sudo install -d -m 0700 /etc/system-bootstrapper
 sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
 PERSISTENCE_MODE=local
+PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
@@ -525,20 +544,21 @@ Bootstrapper.** Keep TCP 443 closed for now. From the project directory on the
 server, start the fresh installation:
 
 ```bash
-sudo env \
-  GITLAB_IMAGE=gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c \
-  GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd \
-  GITLAB_SSH_BIND=127.0.0.1:2222 \
-  GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  bash start.sh
+sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
+  python3 bootstrapper/install-release.py \
+  --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
+  --persistence-env /etc/system-bootstrapper/persistence.env
 sudo docker ps
 sudo docker logs system_bootstrapper_1
 ```
 
-These image versions are a fresh-install example, **not an upgrade procedure**
-for an existing GitLab database. GitLab SSH stays on loopback port 2222, so it
-cannot take the host's administration port. Registry clients will use its HTTPS
-name on port 443; direct host port 5050 stays private.
+The installer validates the source, exact controller and matching Wizard,
+pulls the public images and starts without a source build. Its fresh-install
+checks reject existing GitLab data or main configuration. A public release does
+not authorize changing an existing database to another GitLab version: use the
+upgrade procedure for that transition. GitLab SSH stays on loopback port 2222,
+so it cannot take the host's administration port. Registry clients will use its
+HTTPS name on port 443; direct host port 5050 stays private.
 
 On **your own computer**, open another terminal and keep this tunnel running:
 
@@ -1571,6 +1591,22 @@ run without the host socket or network inside their child containers.
 `test:platform-candidate` serializes the resource-heavy real platform checks and
 must pass before runtime publishing. The pipeline's resource group complements,
 but does not replace, host capacity checks and the operator's resource lease.
+
+When public distribution is enabled, the Docker Hub publication job follows
+these required checks on the protected default branch or a protected version
+tag. It copies the accepted complete controller and matching Wizard rather
+than rebuilding either after acceptance. Each receives a full-source-commit
+tag; a protected `vX.Y.Z` tag can add a version alias. The release receipt binds
+source revision/tree, Wizard gitlink, image IDs and immutable Docker Hub
+references. Existing conflicting aliases are rejected, and anonymous pull
+verification checks that both public images can be retrieved without publisher
+credentials. See [publisher configuration](../Prepare-Host.md#publish-your-own-public-releases).
+
+Public publication does not promote Production or back up service data. A new
+operator selects that accepted source plus the two digest references and uses
+`bootstrapper/install-release.py` through the fresh-install handbook path.
+Existing installations retain their saved selectors and require the appropriate
+reviewed promotion/migration procedure instead.
 
 For the declared GitLab migration, the disposable candidate has one shared
 40-minute execution budget; the CI job has a 45-minute deadline including image

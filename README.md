@@ -36,7 +36,8 @@ Choose a complete installation path in the [System Bootstrapper Handbook](docs/H
 Each path covers checkout, host preparation, the first Sync login, configuration
 and runner setup. Moving an existing installation to another host is covered
 separately in [host replacement with a retained data volume](docs/HANDBOOK.md#replace-a-host-while-retaining-its-data-volume).
-[Prepare-Host.md](Prepare-Host.md) covers installation and service-image selection;
+[Prepare-Host.md](Prepare-Host.md#install-a-tested-public-release) covers
+installation from tested, versioned public controller and Wizard images;
 [the persistence guide](docs/PERSISTENT_VOLUME.md) explains local working data,
 optional live volumes and separate Seed backup media. Domain names, storage
 and credentials belong to your deployment.
@@ -44,6 +45,11 @@ and credentials belong to your deployment.
 The platform combines GitLab Community Edition, its container registry,
 GitLab Runner managers, NGINX routing, an authenticated Sync API and a React
 configuration Wizard. Shell scripts and Docker Compose coordinate their lifecycle.
+Public release installation pulls the complete controller and matching Wizard
+by immutable digest; it does not rebuild them on the new host. Docker Hub is the
+public distribution path, while development, review and acceptance stay in
+GitLab. Public pulls do not require a Docker Hub account, although anonymous
+pull limits and network availability still apply.
 A successful Wizard **Push** imports configuration and automatically restarts the
 platform; **Fetch** reads the saved settings. Runner scale controls independent
 managers in a shared GitLab runner pool, rather than a separate GitLab runner
