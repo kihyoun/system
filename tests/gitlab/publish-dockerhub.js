@@ -57,9 +57,12 @@ async function main() {
   const published = new Map(), calls = [];
   let activeRelease = released;
   let privateAuth, pushFails = false, wrongWizard = false, wrongPlatform = false, conflictOnRecheck = false;
+  let failWizardPushOnce = false, wrongAnonymousDigest = false;
   const inspectManifest = async (repo, selector) => {
     if (conflictOnRecheck && selector.startsWith('sha-') && calls.some(call => call[1] === 'login'))
-      return {digest: id('9'), imageId: id('9')};
+      return {digest: id('9'), configDigest: id('9')};
+    if (wrongAnonymousDigest && selector.startsWith('sha256:'))
+      return {digest: id('f'), configDigest: id('1')};
     return published.get(repo + ':' + selector) || null;
   };
   const execute = (binary, args, options = {}) => {
@@ -79,8 +82,12 @@ async function main() {
     if (args[0] === 'push') {
       if (pushFails) throw Error('fixture-push-failure');
       const isWizard = args[1].startsWith(env.DOCKERHUB_WIZARD_REPOSITORY + ':');
+      if (isWizard && failWizardPushOnce) {
+        failWizardPushOnce = false;
+        throw Error('fixture-wizard-push-failure');
+      }
       const value = {digest: (isWizard ? activeRelease.wizardRegistryReference : activeRelease.registryReference).split('@')[1],
-        imageId: isWizard ? activeRelease.wizardImageId : activeRelease.imageId};
+        configDigest: isWizard ? id('3') : id('1')};
       published.set(args[1], value);
       published.set(args[1].split(':')[0] + ':' + value.digest, value);
     }
@@ -106,6 +113,9 @@ async function main() {
     assert.equal(receipt.controller.reference, env.DOCKERHUB_REPOSITORY + '@' + id('7'));
     assert.equal(receipt.wizard.reference, env.DOCKERHUB_WIZARD_REPOSITORY + '@' + id('8'));
     assert.equal(receipt.wizard.sourceRevision, wizard);
+    assert.equal(receipt.controller.imageId, id('1'), 'classic Docker IDs may identify image config');
+    assert.equal(receipt.controller.configDigest, id('1'));
+    assert.notEqual(receipt.controller.reference.split('@')[1], receipt.controller.imageId);
     assert.deepEqual(receipt.tags, ['sha-' + sha + '-job-20']);
     assert(!fs.existsSync(privateAuth), 'private authentication is removed after success');
     assert(!calls.some(call => call.includes('build')), 'neither accepted image is rebuilt');
@@ -136,7 +146,43 @@ async function main() {
     fs.writeFileSync(path.join(artifacts, 'candidate-results.json'), JSON.stringify(proof));
     await assert.rejects(publish({...env, CI_COMMIT_TAG: 'v1.2.3', CI_COMMIT_BRANCH: undefined}, root, execute, inspectManifest),
       /existing Docker Hub/, 'a released version cannot be retargeted to another accepted attempt');
-    published.set(env.DOCKERHUB_REPOSITORY + ':sha-' + sha + '-job-20', {digest: id('9'), imageId: id('9')});
+
+    // Docker's containerd store can identify images by their manifest digest.
+    // The config digest remains different; both local IDs still match the CI
+    // evidence, and anonymous acceptance must compare the accepted manifest.
+    const modernProof = {...proof, images: {...proof.images, candidate: id('7'), wizard: id('8')}};
+    activeRelease = {...released, imageId: id('7'), wizardImageId: id('8'),
+      candidateEvidenceSha256: hash(JSON.stringify(modernProof))};
+    fs.writeFileSync(path.join(artifacts, 'candidate-results.json'), JSON.stringify(modernProof));
+    writeRelease(activeRelease);
+    published.clear();
+    fs.rmSync(path.join(root, 'test-results/dockerhub'), {recursive: true, force: true});
+    calls.length = 0; failWizardPushOnce = true;
+    await assert.rejects(publish(env, root, execute, inspectManifest), /wizard-push-failure/);
+    assert.equal(published.get(env.DOCKERHUB_REPOSITORY + ':sha-' + sha + '-job-20').digest, id('7'));
+    assert(!published.has(env.DOCKERHUB_WIZARD_REPOSITORY + ':sha-' + sha + '-job-20'));
+    assert(!fs.existsSync(path.join(root, 'test-results/dockerhub/release.json')),
+      'partial publication must not produce a complete release receipt');
+    assert(!fs.existsSync(privateAuth), 'partial publication removes private authentication');
+    calls.length = 0;
+    const modernReceipt = await publish(env, root, execute, inspectManifest);
+    assert.equal(modernReceipt.controller.imageId, id('7'));
+    assert.equal(modernReceipt.controller.configDigest, id('1'));
+    assert.equal(modernReceipt.wizard.imageId, id('8'));
+    assert.equal(modernReceipt.wizard.configDigest, id('3'));
+    assert.notEqual(modernReceipt.controller.imageId, modernReceipt.controller.configDigest);
+    assert.deepEqual(calls.filter(call => call[1] === 'push').map(call => call[2]),
+      [env.DOCKERHUB_WIZARD_REPOSITORY + ':sha-' + sha + '-job-20'],
+      'retry reuses the already published controller and finishes the missing Wizard');
+    calls.length = 0;
+    await publish(env, root, execute, inspectManifest);
+    assert(!calls.some(call => call[1] === 'push'), 'completed containerd publication is also idempotent');
+
+    published.clear(); wrongAnonymousDigest = true;
+    await assert.rejects(publish(env, root, execute, inspectManifest), /Anonymous Docker Hub acceptance/,
+      'a wrong public manifest is rejected even when its config digest matches');
+    wrongAnonymousDigest = false;
+    published.set(env.DOCKERHUB_REPOSITORY + ':sha-' + sha + '-job-20', {digest: id('9'), configDigest: id('1')});
     calls.length = 0;
     await assert.rejects(publish(env, root, execute, inspectManifest), /existing Docker Hub/);
     assert.equal(calls.filter(call => call[0] === 'docker').length, 0, 'conflicting tags fail before registry login');
@@ -159,7 +205,7 @@ async function main() {
     return {ok: true, status: 200, arrayBuffer: async () => raw,
       headers: {get: () => 'sha256:' + hash(raw)}};
   };
-  assert.deepEqual(await manifest('fixture/system', 'sha-' + sha, request), {digest: 'sha256:' + hash(raw), imageId: id('1')});
+  assert.deepEqual(await manifest('fixture/system', 'sha-' + sha, request), {digest: 'sha256:' + hash(raw), configDigest: id('1')});
   assert(requests[1][1].headers.Authorization === 'Bearer anonymous');
   assert(!requests.flat().includes(env.DOCKERHUB_TOKEN));
   assert.equal(await manifest('fixture/system', 'missing', async (url, options) =>
@@ -169,6 +215,12 @@ async function main() {
   await assert.rejects(manifest('fixture/system', 'tag', async (url, options) =>
     url.startsWith('https://auth.docker.io/') ? request(url, options) :
       {ok: true, status: 200, arrayBuffer: async () => raw, headers: {get: () => id('9')}}), /verified single-platform/);
-  console.log('Docker Hub publication: protected source, exact accepted controller/Wizard, immutable tags, no rebuild, public digest verification and credential cleanup passed.');
+  const changedConfig = Buffer.from(JSON.stringify({...JSON.parse(raw), config: {digest: id('2')}}));
+  await assert.rejects(manifest('fixture/system', 'tag', async (url, options) =>
+    url.startsWith('https://auth.docker.io/') ? request(url, options) :
+      {ok: true, status: 200, arrayBuffer: async () => changedConfig,
+        headers: {get: () => 'sha256:' + hash(raw)}}), /verified single-platform/,
+  'changing config changes the manifest hash even when the registry repeats the original header');
+  console.log('Docker Hub publication: protected source, exact accepted images, classic/containerd identities, partial retries, immutable tags, no rebuild, public manifest verification and credential cleanup passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
