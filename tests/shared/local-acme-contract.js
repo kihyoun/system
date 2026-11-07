@@ -138,7 +138,12 @@ test('negative HTTP validation must fail before real renewal can establish evide
     if(args[0]==='inspect')return JSON.stringify({bridge:{Gateway:'127.0.0.1'}});
     return JSON.stringify({status:200,body:'<html>renewed</html>',serial:'BB'});
   }};
+  let aliasChecks=0;
+  x.instance.verifyAliases=async(actual,connection)=>{
+    assert.equal(actual,candidate);assert.deepEqual(connection,{certificate:acme.ISSUANCE_CA,serial:'BB'});aliasChecks++;
+  };
   await x.instance.renew(candidate,expected);assert.equal(events.length,2);assert(candidate.acmeRenewalVerified);assert(candidate.evidence.recovery.acmeRenewalVerified);
+  assert.equal(aliasChecks,1,'the freshly served alias certificate and redirects are required renewal evidence');
   x.instance.certbot=async()=>{};identities=0;candidate.acmeRenewalVerified=false;
   await assert.rejects(()=>x.instance.renew(candidate,expected),/validation-bypass/);assert.equal(candidate.acmeRenewalVerified,false);
   identities=0;let attempt=0;
@@ -148,6 +153,11 @@ test('negative HTTP validation must fail before real renewal can establish evide
     return JSON.stringify({status:200,body:'<html>old certificate</html>',serial:'AA'});
   }};
   await assert.rejects(()=>x.instance.renew(stale,expected),/fresh-certificate-not-served/);assert.equal(stale.acmeRenewalVerified,false);
+  assert.equal(aliasChecks,1,'a stale Wizard certificate cannot reach alias acceptance');
+  attempt=0;identities=0;candidate.acmeRenewalVerified=false;candidate.evidence.recovery.acmeRenewalVerified=false;
+  x.instance.verifyAliases=async()=>{throw Error('canonical-alias-redirect-failed');};
+  await assert.rejects(()=>x.instance.renew(candidate,expected),/canonical-alias-redirect-failed/);
+  assert.equal(candidate.acmeRenewalVerified,false);assert.equal(candidate.evidence.recovery.acmeRenewalVerified,false);
 });
 test('initial issuance exposes fixed subphases and stops at the exact failing operation',async t=>{
   const phases=['acme-initial-authority-attach','acme-initial-client-prepare','acme-initial-proxy-reload',
@@ -160,7 +170,12 @@ test('initial issuance exposes fixed subphases and stops at the exact failing op
       try{return await action();}catch(error){failures.push(name);throw error;}
     };
     x.instance.attach=async()=>fault(phases[0]);x.instance.prepareClient=async()=>fault(phases[1]);
-    x.instance.certbot=async()=>fault(phases[3]);
+    x.instance.certbot=async(_candidate,base,args)=>{
+      assert.equal(base,'/candidate-data/platform');
+      const domains=args.flatMap((arg,index)=>arg==='-d'?[args[index+1]]:[]);
+      assert.deepEqual(domains,['wizard.candidate.test','sync.candidate.test',require('../e2e/recovery').WIZARD_ALIAS]);
+      fault(phases[3]);
+    };
     x.instance.identity=async()=>{fault(phases[5]);return {serial:'fixture-issued'};};
     x.original.inner=async args=>{
       if(args[1]==='-w'){fault(phases[2]);return '';}

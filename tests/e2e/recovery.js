@@ -12,6 +12,8 @@ const SEED=storage.SEED;
 const LEAF='/ssl/live/recovery-fixture/fullchain.pem';
 const KEY='/ssl/live/recovery-fixture/privkey.pem';
 const PRIVATE_MARKER='/opt/system-bootstrapper/private-recovery-proof';
+const WIZARD_ALIAS='alias.candidate.test';
+const ALIAS_ROUTE='/canonical%20wizard/nested?one=1&two=a%2Fb&one=2';
 // These are source-owned public lines; raw paths, credentials and upstream
 // output are never attached to errors or copied into acceptance reports.
 const HARVEST_FAILURE_CODES={
@@ -201,7 +203,7 @@ async function capture(original,dependencies={}) {
       // Generate a real test certificate, then place its deploy/renewal state in
       // the declared persistent sources before Harvest. This is not ACME proof.
       await original.inner(['exec','system_gitlab_1','/opt/gitlab/embedded/bin/openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','2',
-        '-subj','/CN=wizard.candidate.test','-addext','subjectAltName=DNS:wizard.candidate.test,DNS:sync.candidate.test',
+        '-subj','/CN=wizard.candidate.test','-addext','subjectAltName=DNS:wizard.candidate.test,DNS:sync.candidate.test,DNS:'+WIZARD_ALIAS,
         '-keyout','/tmp/.recovery-fixture-key','-out','/tmp/.recovery-fixture-cert']);
       const certificate=await original.inner(['exec','system_gitlab_1','cat','/tmp/.recovery-fixture-cert']);
       const privateKey=await original.inner(['exec','system_gitlab_1','cat','/tmp/.recovery-fixture-key']);
@@ -209,6 +211,7 @@ async function capture(original,dependencies={}) {
       const settings={GITLAB_IMAGE:'candidate-gitlab:under-test',GITLAB_RUNNER_IMAGE:'candidate-runner:under-test',
         BOOTSTRAPPER_IMAGE:'system-candidate:under-test',WIZARD_IMAGE:'systembootstrapper/wizard',NGINX_IMAGE:'nginx:latest',
         GITLAB_SSH_BIND:'2222',GITLAB_REGISTRY_BIND:'5050',SYNC_DOMAIN_MODE:'2',WIZARD_DOMAIN_MODE:'2',
+        WIZARD_ALIASES:WIZARD_ALIAS,
         SYNC_SSL:LEAF,SYNC_SSL_KEY:KEY,WIZARD_SSL:LEAF,WIZARD_SSL_KEY:KEY,RECOVERY_RUNTIME_PROOF:'literal=one=two $HOME'};
       await node(original,function(input){
         const fs=require('fs'),path=require('path');
@@ -236,10 +239,14 @@ async function capture(original,dependencies={}) {
         }
         fs.writeFileSync('/state/.docker.env',config,{mode:0o600});
       },{settings,certificate,privateKey,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef,realAcme:!!dependencies.acme});
+      inputs.expected.wizardAliases=WIZARD_ALIAS;
       if(dependencies.acme)inputs.expected.acme=await dependencies.acme.issue(original);
+      else await original.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
+      const connection=dependencies.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{};
+      await verifyAliasLifecycle(original,connection,'original');
       inputs.expected.certificateHash=await node(original,function(){process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync('/ssl/live/recovery-fixture/fullchain.pem')).digest('hex'));},{});
       if(!dependencies.acme)inputs.expected.accountIdentity=original.id;
-      const fetched=await syncFetch(original,dependencies.acme?{certificate:require('./local-acme').ISSUANCE_CA}:undefined);
+      const fetched=await syncFetch(original,connection);
       await node(original,function(input){require('fs').writeFileSync('/tmp/recovery-fetch.json',JSON.stringify(input),{mode:0o600});},fetched);
       await transferToController(original,exporter(original.spec),'/tmp/export-configuration.cjs');
       await original.inner(['exec','system_bootstrapper_1','node','/tmp/export-configuration.cjs','/tmp/recovery-fetch.json','/tmp/bootstrapper.zip']);
@@ -340,26 +347,33 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await transferToController(candidate,input.configArchive,'/system/bootstrapper.zip');
 }
 
-async function tlsProbe(candidate,host,route,options={},connection={}) {
+async function routingProbe(candidate,host,route,options={},connection={}) {
   const networks=JSON.parse(await candidate.inner(['inspect','--format','{{json .NetworkSettings.Networks}}','system_bootstrapper_1']));
   const gateway=networks.bridge?.Gateway;
   if(!/^\d+\.\d+\.\d+\.\d+$/.test(gateway))throw Error('missing-private-gateway');
   const raw=await node(candidate,async function(input){
-    const https=require('https'),fs=require('fs');
+    const transport=require(input.tls?'https':'http'),fs=require('fs');
     const response=await new Promise((resolve,reject)=>{
-      const request=https.request({hostname:input.host,servername:input.host,port:input.port,path:input.route,
-        lookup:(_host,options,done)=>options.all?done(null,[{address:input.gateway,family:4}]):done(null,input.gateway,4),ca:fs.readFileSync(input.certificate),rejectUnauthorized:true,
+      const request=transport.request({hostname:input.host,port:input.port,path:input.route,
+        lookup:(_host,options,done)=>options.all?done(null,[{address:input.gateway,family:4}]):done(null,input.gateway,4),
+        ...(input.tls?{servername:input.host,ca:fs.readFileSync(input.certificate),rejectUnauthorized:true}:{}),
         method:input.options.method||'GET',headers:input.options.headers||{},timeout:10000},response=>{
-        const serial=response.socket.getPeerCertificate().serialNumber;
+        const serial=input.tls?response.socket.getPeerCertificate().serialNumber:undefined;
         const chunks=[];let size=0;response.on('data',chunk=>{size+=chunk.length;if(size>524288){request.destroy();reject(Error());}else chunks.push(chunk);});
-        response.on('end',()=>resolve({status:response.statusCode,body:Buffer.concat(chunks).toString('utf8'),serial}));
+        response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,body:Buffer.concat(chunks).toString('utf8'),serial}));
       });
       request.on('error',reject);request.on('timeout',()=>request.destroy(Error()));
       request.end(input.options.body);
     });
     process.stdout.write(JSON.stringify(response));
-  },{host,gateway,route,options,certificate:connection.certificate||LEAF,port:connection.port||443},{timeout:20000});
+  },{host,gateway,route,options,tls:connection.tls!==false,certificate:connection.certificate||LEAF,port:connection.port||(connection.tls===false?80:443)},{timeout:20000});
   return JSON.parse(raw);
+}
+async function tlsProbe(candidate,host,route,options={},connection={}) {
+  return routingProbe(candidate,host,route,options,{...connection,tls:true});
+}
+async function httpProbe(candidate,host,route,options={},connection={}) {
+  return routingProbe(candidate,host,route,options,{...connection,tls:false});
 }
 // Wizard is started before the Sync listener. Retry only proxy/transport
 // startup failures; a reachable application's rejected credentials remain fatal.
@@ -370,6 +384,47 @@ async function readyResponse(candidate,request) {
     return ![502,503,504].includes(response.status);
   },candidate.spec.readinessMilliseconds||600000);
   return response;
+}
+async function verifyAliasRouting(candidate,connection={},dependencies={}) {
+  const probeTls=dependencies.tlsProbe||tlsProbe,probeHttp=dependencies.httpProbe||httpProbe,execute=dependencies.node||node;
+  const challenge='/.well-known/acme-challenge/canonical-alias-check';
+  const content='system-bootstrapper-canonical-alias-http01';
+  await execute(candidate,function(input){
+    const fs=require('fs'),path=require('path'),file='/ssl/acme-http01'+input.challenge;
+    fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,input.content,{mode:0o644});
+  },{challenge,content});
+  try {
+    for(const [probe,tls]of [[probeHttp,false],[probeTls,true]]){
+      for(const route of ['/',ALIAS_ROUTE]){
+        const response=await readyResponse(candidate,()=>probe(candidate,WIZARD_ALIAS,route,{},connection));
+        if(response.status!==308||response.headers?.location!=='https://wizard.candidate.test'+route||
+          (tls&&connection.serial&&response.serial!==connection.serial))throw Error('canonical-alias-redirect-failed');
+      }
+      const response=await readyResponse(candidate,()=>probe(candidate,WIZARD_ALIAS,challenge,{},connection));
+      if(response.status!==200||response.body!==content||response.headers?.location!==undefined||
+        (tls&&connection.serial&&response.serial!==connection.serial))throw Error('canonical-alias-challenge-failed');
+      const missing=await readyResponse(candidate,()=>probe(candidate,WIZARD_ALIAS,challenge+'-missing',{},connection));
+      if(missing.status!==404||missing.headers?.location!==undefined||
+        (tls&&connection.serial&&missing.serial!==connection.serial))throw Error('canonical-alias-challenge-failed');
+    }
+  } finally {
+    await execute(candidate,function(input){require('fs').rmSync('/ssl/acme-http01'+input.challenge,{force:true});},{challenge});
+  }
+}
+async function verifyAliasLifecycle(candidate,connection,phase,dependencies={}) {
+  if(!['original','restored'].includes(phase))throw Error('canonical-alias-phase-invalid');
+  const verify=dependencies.verifyAliasRouting||verifyAliasRouting;
+  const step=(name,action)=>checkpoint(candidate,'recovery-'+phase+'-alias-'+name,action,
+    ['canonical-alias-redirect-failed','canonical-alias-challenge-failed']);
+  await step('routing',()=>verify(candidate,connection));
+  await step('reload',async()=>{
+    await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
+    await verify(candidate,connection);
+  });
+  await step('restart',async()=>{
+    await candidate.inner(['restart','system_web_1']);
+    await verify(candidate,connection);
+  });
 }
 async function verifyConfiguration(candidate,input,dependencies={}) {
   const probe=dependencies.tlsProbe||tlsProbe;
@@ -399,6 +454,9 @@ async function verifyConfiguration(candidate,input,dependencies={}) {
   await step('config-signature',()=>signature(config));
   await step('seed-directory',()=>{if(configurationValues(config,['SEED_DIR']).SEED_DIR!==SEED)throw Error();});
   await step('runtime-extension',()=>{if(configurationValues(config,['RECOVERY_RUNTIME_PROOF']).RECOVERY_RUNTIME_PROOF!=='literal=one=two $HOME')throw Error();});
+  if(input.expected.wizardAliases!==undefined)await step('alias-configuration',()=>{
+    if(input.expected.wizardAliases!==WIZARD_ALIAS||configurationValues(config,['WIZARD_ALIASES']).WIZARD_ALIASES!==WIZARD_ALIAS)throw Error();
+  });
   const proof=await step('certificate-state',async()=>{
     const proof=JSON.parse(await execute(candidate,function(input){
       const fs=require('fs'),crypto=require('crypto');
@@ -416,6 +474,7 @@ async function verifyConfiguration(candidate,input,dependencies={}) {
 }
 async function verifyRestore(candidate,input) {
   await candidate.stage(input.expected.acme?'recovery-acme-tls-and-config':'recovery-synthetic-tls-and-config',()=>verifyConfiguration(candidate,input));
+  if(input.expected.wizardAliases!==undefined)await verifyAliasLifecycle(candidate,input.expected.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{},'restored');
   if(input.expected.privateWizard)await verifyPrivateWizard(candidate,input.expected.privateWizard);
   await candidate.stage('recovery-gitlab-data-identity',async()=>{
     await candidate.wait(async()=>{await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness']);return true;},candidate.spec.readinessMilliseconds||600000);
@@ -497,6 +556,7 @@ async function run(original,reportDirectory,dependencies={}) {
       await storage.verifyLocalLive(second,BASE);await storage.assertAbsent(second);
       await storage.refuseMissingTarget(second);
       await storage.verifyControlWithoutBackup(second);
+      if(input.expected.wizardAliases!==undefined)await verifyAliasRouting(second,input.expected.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{});
     });
     await second.platform();
     await (dependencies.verifyRegistryBlob || verifyRegistryBlob)(second,input);
@@ -520,4 +580,4 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!clean)throw Error('restored-host-cleanup-failed');
   }
 }
-module.exports={capture,bootstrapRestore,verifyRestore,verifyServiceIdentity,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,SEED_RESTORE_FAILURE_CODES,BASE,SEED};
+module.exports={capture,bootstrapRestore,verifyRestore,verifyServiceIdentity,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,httpProbe,verifyAliasRouting,verifyAliasLifecycle,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,SEED_RESTORE_FAILURE_CODES,BASE,SEED,WIZARD_ALIAS,ALIAS_ROUTE};

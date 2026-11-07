@@ -101,6 +101,7 @@ class LocalAcme {
     });
     [this.authority,this.dns,this.initializer]=this.owners;
     this.reportDirectory=reportDirectory;
+    this.verifyAliases=dependencies.verifyAliases||((...args)=>require('./recovery').verifyAliasRouting(...args));
     this.scripts=dependencies.scripts||{
       lease:fs.readFileSync(path.join(__dirname,'../../bootstrapper/certbot-with-volume-lock.sh'),'utf8'),
       install:fs.readFileSync(path.join(__dirname,'../../bootstrapper/install-volume-certificate.sh'),'utf8')
@@ -193,7 +194,7 @@ class LocalAcme {
         candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']));
       await candidate.stage('acme-initial-certbot-issuance',()=>this.certbot(candidate,'/candidate-data/platform',
         ['certonly','--server',DIRECTORY,'--non-interactive','--agree-tos','--register-unsafely-without-email',
-        '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture','-d','wizard.candidate.test','-d','sync.candidate.test']));
+        '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture','-d','wizard.candidate.test','-d','sync.candidate.test','-d',require('./recovery').WIZARD_ALIAS]));
       await candidate.stage('acme-initial-root-certificate',async()=>{
         const root=await request(candidate,'https://pebble:15000/roots/0',{trust:this.trust,address:this.caAddress});
         if(root.status!==200||!root.body.startsWith('-----BEGIN CERTIFICATE-----'))throw Error('acme-issuance-trust-required');
@@ -223,6 +224,7 @@ class LocalAcme {
         const response=await tlsProbe(candidate,'wizard.candidate.test','/',{},{certificate:ISSUANCE_CA});
         return response.status===200&&response.serial===after.serial;
       },30000);
+      await candidate.stage('acme-renewed-alias-routing',()=>this.verifyAliases(candidate,{certificate:ISSUANCE_CA,serial:after.serial}));
       candidate.acmeRenewalVerified=true;
       if(candidate.evidence?.recovery)candidate.evidence.recovery.acmeRenewalVerified=true;
     });
