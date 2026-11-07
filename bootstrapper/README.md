@@ -3,8 +3,9 @@
 A public **controller release** is the complete image built from
 `system/Dockerfile`: the orchestration code, Sync service, packaged Wizard source
 and runtime tools. It is accompanied by a separately built Wizard web image.
-A fresh host can pull these accepted images without compiling Sync, building the
-Wizard or installing Alpine packages inside an image. See
+A fresh host can pull these accepted images without building controller or
+Wizard images or resolving their Alpine build packages. The existing Sync
+startup still runs its prestart TypeScript build inside the controller. See
 [release installation](../Prepare-Host.md#install-a-tested-public-release).
 
 The standalone **runtime base** built from `bootstrapper/Dockerfile` contains the

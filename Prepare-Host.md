@@ -26,6 +26,9 @@ Hub account; anonymous rate limits and availability of Docker Hub still apply.
 The declared public release targets `linux/amd64`; it does not establish ARM64
 support for the complete platform.
 No image contains your private main configuration, service databases or Seed.
+The public release receipt binds the two project images; it does not pin every
+third-party service. Review the native GitLab, Runner and NGINX image selections
+for your deployment separately.
 
 Host preparation still installs Docker Engine/Compose from Ubuntu/Docker APT
 repositories. Using release images removes controller/Wizard source builds and
