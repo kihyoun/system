@@ -593,6 +593,12 @@ Fetch returns suggestions: verify and replace them with this table.
 | General → Wizard: `WIZARD_DOMAIN_MODE` | **SSL encrypted**, value `2` |
 | General → Wizard: `WIZARD_SSL`, `WIZARD_SSL_KEY` | `/ssl/live/example.com/fullchain.pem`, `/ssl/live/example.com/privkey.pem` |
 
+To redirect additional names such as `example.com` to this Wizard, configure
+[canonical Wizard aliases](WIZARD_ALIASES.md). Point each alias at this proxy
+and include it in the selected certificate. Aliases are explicit saved
+configuration; choosing `www.example.com` alone does not create a bare-domain
+redirect. Test both HTTP and HTTPS with a path and query after Push.
+
 The fields require the **full container paths**, including `/ssl`; any path
 adornment displayed beside an input is not a replacement for that prefix. Use
 hostnames without a scheme in the `*_HOST` fields. The generated GitLab and
@@ -680,6 +686,9 @@ for name in www sync gitlab registry; do
   curl --fail --silent --show-error "http://$name.example.com/.well-known/acme-challenge/bootstrapper-check"
 done
 ```
+
+Repeat the same challenge probe for every configured Wizard alias. Its normal
+redirect must leave the HTTP-01 challenge path reachable directly.
 
 After the probe succeeds, run on the server:
 
