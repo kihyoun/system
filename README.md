@@ -12,9 +12,9 @@ That's the problem that led me to start **System Bootstrapper** in 2019. I wante
 
 But getting the platform running was only half the problem. The platform itself would age and need upgrades. That led to a bigger question: **What if the platform could use its own development tools to build, test, and deliver its next generation?**
 
-The idea grew from a convenient self-hosted setup into an open-source framework for **generation-by-generation renewal**. The running system should be able to develop a candidate successor, validate it as a complete platform, safely carry forward its persistent state, and let the validated successor repeat the process. A human developer—or, in the future, an optional AI agent—could propose changes through the same merge-request workflow.
+The idea grew from a convenient self-hosted setup into an open-source framework for **generation-by-generation renewal**. The running platform provides the GitLab, runners and registry used to develop, build and test its successor. Versioned tools in this repository handle controlled controller promotion, supported GitLab upgrades and matching recovery inputs for the next host.
 
-The original use case is still simple: spend more time building web projects and less time maintaining the infrastructure behind them. But the underlying architecture could eventually support other kinds of infrastructure. **The self-renewal cycle is the project's vision, not a capability already delivered today.**
+The original use case is still simple: spend more time building web projects and less time maintaining the infrastructure behind them. **The tool-assisted renewal workflow is available today; developers and operators choose the changes, review the evidence and authorize Production promotion.** Fully autonomous recursive improvement remains a longer-term goal.
 
 ### Born before AI. Built to evolve.
 
@@ -82,13 +82,10 @@ completed external Seed and matching configuration before relying on recovery.
 A retained live data filesystem can also be reused without restoring a Seed.
 
 [Component and integration checks](tests/README.md) are supplied in the repository.
-The candidate harness runs disposable platform instances with isolated resources;
-its lifecycle checks are distinct from promoting an entire successor platform.
-The [evolution chapter](docs/HANDBOOK.md#5-evolving-a-running-system) describes
-the bounded workflow for a reviewed successor: committed tools, isolated migration
-checks, accepted source/image evidence and deliberate promotion. A particular
-version transition is accepted only after its required tests and post-deployment
-checks pass. Open-ended recursive self-improvement remains a design goal.
+The candidate harness runs disposable platform instances with isolated resources.
+The [evolution chapter](docs/HANDBOOK.md#5-evolving-a-running-system) documents
+the complete procedure for developing, validating and deliberately promoting a
+supported successor, including existing-state migration and recovery.
 
 ## Why this project exists
 
@@ -98,61 +95,97 @@ System Bootstrapper encodes that setup in a repository. Docker containers provid
 
 But installation is only the beginning. Dependencies change, services evolve, and a once-working environment can become difficult to update. The central purpose of this project is to make that renewal a normal, testable development workflow.
 
+## Evolving the platform with its own tools
+
+The running generation **A** supplies the development platform for generation
+**B**. This applies to the infrastructure itself, including the controller and
+supported GitLab/Runner transitions, as well as to the Wizard. Initialization,
+validation, promotion and recovery tools live in the repository, so another
+operator can use the same procedure with their own infrastructure and inputs.
+
+The workflow is:
+
+1. **Develop B using A.** Propose a change to the platform's source, image pins or
+   tools through a branch and GitLab merge request.
+2. **Build and test the candidate.** CI checks the committed source and builds
+   the complete candidate image. Runtime changes require component checks and
+   a disposable, isolated platform test; documentation-only changes use the
+   short documentation lane.
+3. **Validate the supported transition.** For an upgrade, test representative
+   existing service data, required migrations, runner/registry behavior and
+   recovery. Starting an empty candidate alone does not prove upgrade safety.
+4. **Review and merge.** Keep the required gates enabled. The merged
+   default-branch revision receives its own applicable checks; a merge does
+   not automatically replace Production.
+5. **Promote the accepted version.** Use the committed
+   [controller promotion tool](bootstrapper/README.md#promoting-a-tested-successor-controller)
+   and, for the declared GitLab migration, the
+   [upgrade procedure](docs/HANDBOOK.md#migrate-gitlab-through-the-accepted-controller).
+   They bind the operation to accepted source/image evidence and preserve
+   checkpoints and recovery actions.
+6. **Prepare B for the next cycle.** Verify the running services and export
+   [matching recovery inputs](docs/HANDBOOK.md#export-bs-matching-recovery-inputs),
+   retaining the accepted source and images. B then supplies the development
+   platform and tools for the next reviewed change.
+
+These operations are deliberately separate: promoting a controller does not
+itself migrate GitLab's database. A single-node GitLab upgrade has downtime and
+uses a compatible cold checkpoint for recovery; changing NGINX's target or
+reverting an image cannot undo a database migration. The accepted checkout,
+images, credentials and recovery inputs must remain accessible while GitLab
+is unavailable, independently of the service being upgraded.
+
+The [declared release profile](gitlab/security-release.json) and its tests define
+the supported migration. A new version or component change still needs its own
+acceptance criteria and successful checks; existing tools do not establish that
+every possible upgrade is safe.
+
 ## Vision: automated recursive self-improvement
+
+The next step is to extend this developer-led renewal into a feedback loop that
+identifies improvements, proposes changes, evaluates them against explicit
+objectives and repeats from the improved system. The machinery performing those
+steps could itself evolve. Rebuilding or replacing a generation alone does not
+demonstrate that it improved.
+
+AI agents can assist with development and review through the same workflow.
+Automatically selecting arbitrary improvements and promoting them recursively
+is not an implemented autonomous capability. The current tools automate bounded
+operations; they do not choose their own objectives or grant themselves
+Production approval.
 
 The System Cube also records a theoretical possibility for modular
 communication. The `$` opening in its ASCII signature, reflected in port `8071`,
 symbolizes a future opening to the outside world for introducing a seed and
-communicating with other bootstrapper instances. This broader opening has not
-yet been developed into a working interface. In the intended model, systems
-contained within a Cube would communicate according to the same principle:
-each system could expose an interface to its surroundings and contain other
+communicating with other bootstrapper instances. In the intended model, each
+system could expose an interface to its surroundings and contain other
 communicating systems, allowing recursive composition.
 
-This is an architectural possibility. The existing sync API does not implement
-this broader communication model;
-inter-bootstrapper and internal-system communication under a common model still
-need to be specified and demonstrated. The port itself does not establish that
-protocol or guarantee continuous connectivity.
-
-The architecture should eventually support a feedback loop: identify a possible improvement, produce a candidate change, build and evaluate it, promote a validated improvement, and repeat from the improved system. The recursive aspect is that the system being improved also supplies the machinery for the next improvement cycle; that machinery can itself evolve.
-
-Rebuilding or replacing a generation alone does not demonstrate improvement. A convincing demonstration needs explicit objectives and evaluation criteria that show what improved and whether required behavior was preserved. Changes use the GitLab merge-request workflow, and each supported transition needs explicit migration evidence and a deliberate promotion. The [handbook](docs/HANDBOOK.md#5-evolving-a-running-system) documents that bounded cycle. Automatically selecting arbitrary improvements and promoting them recursively remains the long-term vision, not a delivered autonomous capability.
-
-The running platform should host its own source code and execute the pipelines that build its next version.
-
-A merge request should be able to start a separate candidate platform from its branch. That candidate should represent the platform itself—including the relevant GitLab, runner, registry, network, and proxy configuration—rather than only a sample application deployed on top of it.
-
-The intended cycle is:
-
-1. **Bootstrap generation A.** Create an initial working platform on an Ubuntu host.
-2. **Develop generation B using A.** Store and change the platform's own code through the GitLab workflow provided by the running platform.
-3. **Create a review platform.** A GitLab Runner executes a pipeline that starts the candidate container landscape for the merge request.
-4. **Validate the complete environment.** Automated checks and human review establish whether the services work together and whether the upgrade path is viable.
-5. **Promote the tested version.** After approval and successful validation, deploy the new platform version while preserving the required persistent state.
-6. **Repeat using B.** The new production platform becomes the environment used to develop generation C.
-
-Review environments and tests are therefore central to the project's purpose. They are the mechanism for improving the system before its dependencies become an unmanageable maintenance backlog.
-
-This does not make maintenance automatic by itself. Dependency changes still need to trigger work, tests need to cover meaningful behavior, and deployment needs an explicit approval and recovery process. Automated update merge requests and AI-assisted maintenance could help sustain that cycle; they are future possibilities, not existing features.
+The current Sync API does not implement this broader communication model.
+Inter-bootstrapper communication and nested modular composition still need to
+be specified and demonstrated; listening on port `8071` alone does not establish
+that protocol.
 
 ## One host, multiple platform generations
 
-The intended design does not require a separate VM for every review environment. GitLab Runners execute pipelines capable of starting Docker containers, allowing the current platform and a candidate generation to coexist on a single sufficiently provisioned host.
+A separate VM is not required for every candidate. The disposable platform harness can run alongside Production on a sufficiently provisioned host, with a separate Docker daemon, containers, networks and state. Candidate instances exist for the test and are removed afterward; a permanent second platform is not required.
 
-Each candidate needs its own container identities, networks, state, and routing so that multiple generations can run without interfering with one another. NGINX and the review network provide the basis for making those environments reachable.
-
-The existing architecture uses an entry-point NGINX service and separate production, beta, and review proxies. Dynamic application routing uses `VIRTUAL_HOST`. The disposable platform harness supplies a separate candidate daemon and state for complete platform tests. This test boundary is distinct from automatically routing a complete successor into Production; each supported promotion still needs its declared migration and recovery procedure.
+Application Review/Beta environments use the entry-point NGINX service and
+separate production, beta and review proxies, with dynamic application routing
+through `VIRTUAL_HOST`. Those environments are separate from the full-platform
+candidate harness. Passing a candidate test does not automatically route an
+entire successor into Production; each supported promotion follows its declared
+migration and recovery procedure.
 
 A single host keeps the infrastructure footprint small, but it remains a shared resource and failure domain. Containers share the host kernel; they are not independent virtual machines. Host-level Ubuntu, kernel, and Docker Engine updates require their own maintenance path.
 
 ![Historical platform architecture](overview.png)
 
-*This diagram documents the earlier architecture. It is not evidence that the complete self-renewal workflow is implemented.*
+*Historical platform layout. See the [evolution chapter](docs/HANDBOOK.md#5-evolving-a-running-system) for the current supported renewal and recovery procedure.*
 
 ## What a successful renewal must prove
 
-A candidate is not ready merely because its containers start. The target validation should demonstrate that:
+A candidate is not ready merely because its containers start. The [platform and migration checks](docs/HANDBOOK.md#53-validate-existing-state-migration-not-only-first-startup) must establish the behavior required by the declared change:
 
 - GitLab is reachable and can host the platform repository.
 - A runner can execute a pipeline and build an image.
@@ -169,15 +202,15 @@ The container definitions can be reproduced; GitLab repositories, database conte
 | Path | Purpose in the existing implementation |
 | --- | --- |
 | `start.sh`, `stop.sh` | Top-level lifecycle entry points. |
-| `bootstrapper/` | Bootstrapper base image and host installation script. |
+| `bootstrapper/` | Base image, host initialization, recovery, runtime verification and accepted controller promotion/export tools. |
 | `system/` | Main Compose definition and orchestration scripts. |
-| `gitlab/` | GitLab lifecycle and configuration scripts. |
+| `gitlab/` | GitLab lifecycle/configuration and supported upgrade, checkpoint and rollback tools. |
 | `gitlab-runner/` | Runner configuration, registration, and lifecycle scripts. |
 | `nginx/` | Entry-point reverse-proxy configuration and lifecycle scripts. |
 | `nginx-proxy/` | Production, beta, and review proxy configuration. |
 | `sync/` | Synchronization-related configuration and scripts. |
 | `wizard/` | Configuration wizard submodule. |
-| `.gitlab-ci.yml` | Required isolated component checks, image build and deployment/publishing pipeline. |
+| `.gitlab-ci.yml` | Short documentation lane; required runtime component, image and disposable platform checks; image publishing and optional GitHub mirror. |
 | [tests/](tests/README.md) | Component inventory, isolated test commands and explicit live-integration boundaries. |
 | [Prepare-Host.md](Prepare-Host.md) | Host installation, service-image selection and startup. |
 
