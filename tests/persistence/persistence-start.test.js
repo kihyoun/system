@@ -35,17 +35,18 @@ function fixture(t, configured = false, reset = false) {
   command('mountpoint', 'exit 0\n');
   command('findmnt', 'for last; do :; done\ncase "$*" in\n*MAJ:MIN*) if [ "$last" = / ]; then echo root-device; else echo data-device; fi;;\n*) printf "%s\\n" "$PERSISTENT_MOUNT";;\nesac\n');
   for (const name of ['docker-compose', 'npm']) {
-    command(name, `printf '${name}:%s\\n' "$SEED_DIR" >> "$START_CAPTURE"\nprintf '%s' "\${NGINX_IMAGE-unset}" > "$START_IMAGE_CAPTURE"\n`);
+    command(name, `printf '${name}:%s\\n' "$SEED_DIR" >> "$START_CAPTURE"\nprintf '%s' "\${NGINX_IMAGE-unset}" > "$START_IMAGE_CAPTURE"\nprintf '%s\\n%s\\n%s\\n' "\${BOOTSTRAPPER_IMAGE-unset}" "\${WIZARD_IMAGE-unset}" "$*" > "$START_RELEASE_CAPTURE"\n`);
   }
   const capture = path.join(dir, 'capture');
   const env = {...process.env, PATH: path.join(dir, 'bin') + ':' + process.env.PATH,
     PERSISTENCE_ENV_FILE: path.join(dir, 'selector.env'), SYSTEM_BOOTSTRAPPER_SKIP_BUILD: '1',
     PERSISTENT_MOUNT: mount, PERSISTENT_DIR: persistent, SEED_DIR: hostSeed, START_CAPTURE: capture,
-    START_IMAGE_CAPTURE: path.join(dir, 'image-capture')};
+    START_IMAGE_CAPTURE: path.join(dir, 'image-capture'), START_RELEASE_CAPTURE: path.join(dir, 'release-capture')};
   const run = sync => spawnSync('bash', [path.join(dir, sync ? 'sync/start.sh' : 'start.sh')], {
     cwd: sync ? path.join(dir, 'sync') : dir, env, encoding: 'utf8'
   });
-  return {run, hostSeed, savedSeed, capture, canonical, imageCapture: env.START_IMAGE_CAPTURE};
+  return {run, hostSeed, savedSeed, capture, canonical, dir, env, imageCapture: env.START_IMAGE_CAPTURE,
+    releaseCapture: env.START_RELEASE_CAPTURE};
 }
 
 for (const reset of [false, true]) {
@@ -81,4 +82,54 @@ test('configured Sync retains the saved main configuration seed behavior', t => 
   const f = fixture(t, true), result = f.run(true);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.readFileSync(f.capture, 'utf8'), `npm:${f.savedSeed}\n`);
+});
+
+const releaseController='docker.io/example/system@sha256:'+'a'.repeat(64);
+const releaseWizard='docker.io/example/wizard@sha256:'+'b'.repeat(64);
+function releaseProfile(f, contents=`BOOTSTRAPPER_IMAGE=${releaseController}\nWIZARD_IMAGE=${releaseWizard}\n`) {
+  const filename=path.join(path.dirname(f.canonical),'.release-images.env');
+  fs.writeFileSync(filename,contents,{mode:0o600});
+  return filename;
+}
+test('public release startup and restart keep digest pins without any build flag',t=>{
+  const f=fixture(t);releaseProfile(f);delete f.env.SYSTEM_BOOTSTRAPPER_SKIP_BUILD;
+  let result=f.run(false);assert.equal(result.status,0,result.stderr);
+  let [controller,wizard,args]=fs.readFileSync(f.releaseCapture,'utf8').trimEnd().split('\n');
+  assert.equal(controller,releaseController);assert.equal(wizard,releaseWizard);
+  assert.match(args,/up --no-build -d bootstrapper/);assert.doesNotMatch(args,/--build(?:\s|$)/);
+  // A Wizard Push may save a main configuration which omits the image keys.
+  fs.writeFileSync(f.canonical,cube+'\nexport SYNC_ENABLE=true\n');
+  result=f.run(false);assert.equal(result.status,0,result.stderr);
+  [controller,wizard,args]=fs.readFileSync(f.releaseCapture,'utf8').trimEnd().split('\n');
+  assert.equal(controller,releaseController);assert.equal(wizard,releaseWizard);
+  assert.match(args,/up --no-build -d bootstrapper/);
+});
+test('saved explicit image choices override public release fallback pins',t=>{
+  const f=fixture(t,true);releaseProfile(f);delete f.env.SYSTEM_BOOTSTRAPPER_SKIP_BUILD;
+  fs.appendFileSync(f.canonical,'export BOOTSTRAPPER_IMAGE=controller:deliberate\nexport WIZARD_IMAGE=wizard:deliberate\n');
+  const result=f.run(false);assert.equal(result.status,0,result.stderr);
+  assert.deepEqual(fs.readFileSync(f.releaseCapture,'utf8').split('\n').slice(0,2),['controller:deliberate','wizard:deliberate']);
+});
+test('release startup accepts an explicit developer build opt-in',t=>{
+  const f=fixture(t);releaseProfile(f);f.env.SYSTEM_BOOTSTRAPPER_SKIP_BUILD='0';
+  const prepare=path.join(f.dir,'project-bootstrap/wizard-source/prepare.sh');
+  fs.mkdirSync(path.dirname(prepare),{recursive:true});fs.writeFileSync(prepare,'#!/bin/sh\nexit 0\n');
+  const result=f.run(false);assert.equal(result.status,0,result.stderr);
+  assert.match(fs.readFileSync(f.releaseCapture,'utf8'),/up --build -d bootstrapper/);
+});
+test('release profile rejects shell instructions, unknown keys, mutable refs and links',t=>{
+  for(const [index,contents]of [
+    `BOOTSTRAPPER_IMAGE=${releaseController}\nWIZARD_IMAGE=$(touch /tmp/unsafe-public-profile)\n`,
+    `BOOTSTRAPPER_IMAGE=${releaseController}\nOTHER=untrusted\nWIZARD_IMAGE=${releaseWizard}\n`,
+    `BOOTSTRAPPER_IMAGE=example/system:latest\nWIZARD_IMAGE=${releaseWizard}\n`,
+    `BOOTSTRAPPER_IMAGE=${releaseController}\nBOOTSTRAPPER_IMAGE=${releaseController}\nWIZARD_IMAGE=${releaseWizard}\n`,
+  ].entries()){
+    const f=fixture(t);releaseProfile(f,contents);
+    const result=f.run(false);assert.notEqual(result.status,0,`profile${index}`);
+    assert.match(result.stderr,/release image selector/);assert(!fs.existsSync(f.capture));
+  }
+  const f=fixture(t),profile=path.join(path.dirname(f.canonical),'.release-images.env');
+  const target=path.join(f.dir,'other');fs.writeFileSync(target,`BOOTSTRAPPER_IMAGE=${releaseController}\nWIZARD_IMAGE=${releaseWizard}\n`,{mode:0o600});
+  fs.symlinkSync(target,profile);
+  const result=f.run(false);assert.notEqual(result.status,0);assert(!fs.existsSync(f.capture));
 });
