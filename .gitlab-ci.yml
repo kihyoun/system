@@ -54,6 +54,7 @@ cache:
         regexp: '\A(?!(?:AGENTS\.md|README\.md|Prepare-Host\.md|docs/[^\r\n]*\.(?:md|png|jpe?g|svg))\z)[\s\S]*\z'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       changes: *runtime-changes
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
 
 # The native trusted parent exports public Git objects to a socket-free child.
 check:documentation:
@@ -81,6 +82,7 @@ check:documentation:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
 
 # Package the exact gitlink while the trusted checkout still contains Git data.
 # Only the validated source snapshot is passed to downstream candidate builds.
@@ -202,6 +204,38 @@ build:
     - docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper
     - docker push $IMAGE_TAG
   rules: *runtime-rules
+
+# Publish the exact complete controller and Wizard from the mandatory candidate.
+# Protected credentials never enter merge-request pipelines or candidate children.
+deploy:dockerhub:
+  stage: deploy
+  image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+  services: []
+  tags: [docker]
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    GIT_DEPTH: "0"
+    GIT_SUBMODULE_STRATEGY: none
+  cache: []
+  dependencies: [test:platform-candidate]
+  timeout: 15m
+  interruptible: false
+  resource_group: 'dockerhub-release-$CI_PROJECT_ID'
+  allow_failure: false
+  before_script:
+    - sh bootstrapper/install-runtime.sh
+  script:
+    - node gitlab/publish-dockerhub.js
+  artifacts:
+    expire_in: 1 year
+    paths: [test-results/dockerhub/]
+  rules:
+    - if: '$DOCKERHUB_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+      changes: *runtime-changes
+      when: on_success
+    - if: '$DOCKERHUB_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+      when: on_success
+    - when: never
 
 deploy:github:
   stage: deploy

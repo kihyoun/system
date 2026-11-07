@@ -108,11 +108,24 @@ function publish(env = process.env, root = process.cwd(), execute = command) {
   const expectedId = validateEvidence(proof, ci);
   const tag = ci.registryRepository + ':pipeline-' + ci.pipelineId + '-job-' + ci.candidateJobId;
   const local = 'system-platform-candidate:ci-' + ci.projectId + '-' + ci.candidateJobId;
+  const wizardRepository = ci.registryRepository + '-wizard';
+  const wizardTag = wizardRepository + ':pipeline-' + ci.pipelineId + '-job-' + ci.candidateJobId;
+  const wizardLocal = 'system-platform-wizard:ci-' + ci.projectId + '-' + ci.candidateJobId;
   const inspect = reference => JSON.parse(execute('docker', ['image', 'inspect', reference]))[0];
+  const tree = execute('git', ['rev-parse', 'HEAD^{tree}'], {cwd: root});
+  const gitlink = /^160000 commit ([a-f0-9]{40})\twizard$/.exec(execute('git', ['ls-tree', 'HEAD', 'wizard'], {cwd: root}));
+  if (execute('git', ['rev-parse', 'HEAD'], {cwd: root}) !== ci.sourceRevision || !revision(tree) || !gitlink)
+    throw Error('Publication checkout/source mismatch.');
   const image = inspect(local);
   if (image.Id !== expectedId || image.Config?.Labels?.['org.system-bootstrapper.test-job'] !== String(ci.candidateJobId) ||
     image.Config?.Labels?.['org.opencontainers.image.revision'] !== ci.sourceRevision)
     throw Error('The accepted image/source/job identity does not match.');
+  const wizard = inspect(wizardLocal);
+  if (!imageId(proof.images.wizard) || wizard.Id !== proof.images.wizard ||
+    wizard.Config?.Labels?.['org.system-bootstrapper.test-job'] !== String(ci.candidateJobId) ||
+    wizard.Config?.Labels?.['org.opencontainers.image.revision'] !== gitlink[1] ||
+    wizard.Config?.Labels?.['org.system-bootstrapper.source-revision'] !== ci.sourceRevision)
+    throw Error('The accepted Wizard image/source/job identity does not match.');
   if (!env.CI_REGISTRY_USER || !env.CI_REGISTRY_PASSWORD) throw Error('Scoped CI registry credentials are required.');
   const output = path.join(root, 'test-results/successor');
   fs.mkdirSync(output, {recursive: true, mode: 0o700});
@@ -121,24 +134,28 @@ function publish(env = process.env, root = process.cwd(), execute = command) {
   const auth = fs.mkdtempSync(path.join(os.tmpdir(), 'system-successor-registry-'));
   fs.chmodSync(auth, 0o700);
   const dockerEnv = {...env, DOCKER_CONFIG: auth};
-  let tagged = false;
+  const tagged = [];
   try {
     execute('docker', ['login', '--username', env.CI_REGISTRY_USER, '--password-stdin', env.CI_REGISTRY],
       {env: dockerEnv, input: env.CI_REGISTRY_PASSWORD});
-    execute('docker', ['tag', local, tag]); tagged = true;
+    execute('docker', ['tag', local, tag]); tagged.push([tag, expectedId]);
     execute('docker', ['push', tag], {env: dockerEnv});
     const published = inspect(tag);
     if (published.Id !== expectedId) throw Error('Published image identity changed.');
     const refs = (published.RepoDigests || []).filter(ref => ref.startsWith(ci.registryRepository + '@') &&
       imageId(ref.split('@')[1]));
     if (refs.length !== 1) throw Error('An immutable published successor reference is required.');
-    const tree = execute('git', ['rev-parse', 'HEAD^{tree}'], {cwd: root});
-    const gitlink = /^160000 commit ([a-f0-9]{40})\twizard$/.exec(execute('git', ['ls-tree', 'HEAD', 'wizard'], {cwd: root}));
-    if (execute('git', ['rev-parse', 'HEAD'], {cwd: root}) !== ci.sourceRevision || !revision(tree) || !gitlink)
-      throw Error('Publication checkout/source mismatch.');
+    execute('docker', ['tag', wizardLocal, wizardTag]); tagged.push([wizardTag, wizard.Id]);
+    execute('docker', ['push', wizardTag], {env: dockerEnv});
+    const publishedWizard = inspect(wizardTag);
+    const wizardRefs = (publishedWizard.RepoDigests || []).filter(ref => ref.startsWith(wizardRepository + '@') &&
+      imageId(ref.split('@')[1]));
+    if (publishedWizard.Id !== wizard.Id || wizardRefs.length !== 1)
+      throw Error('An immutable published Wizard reference is required.');
     const receipt = {format: 'system-successor-release-v1', ...ci,
       sourceTree: tree, wizardRevision: gitlink[1], imageId: expectedId,
       registryReference: refs[0], candidateEvidenceSha256: digest(bytes),
+      wizardImageId: wizard.Id, wizardRegistryReference: wizardRefs[0],
       candidateEvidencePath: 'test-results/successor/candidate-results.json'};
     // E2E after_script cleanup rewrites its working receipts. Freeze exactly
     // the accepted bytes used here so the uploaded release hash stays valid.
@@ -147,9 +164,9 @@ function publish(env = process.env, root = process.cwd(), execute = command) {
     return receipt;
   } finally {
     fs.rmSync(auth, {recursive: true, force: true});
-    if (tagged) {
-      if (inspect(tag).Id !== expectedId) throw Error('Cannot clean a changed successor publication alias.');
-      execute('docker', ['image', 'rm', tag]);
+    for (const [reference, expected] of tagged.reverse()) {
+      if (inspect(reference).Id !== expected) throw Error('Cannot clean a changed successor publication alias.');
+      execute('docker', ['image', 'rm', reference]);
     }
   }
 }

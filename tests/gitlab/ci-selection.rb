@@ -14,6 +14,8 @@ baseline = {'CI_PIPELINE_SOURCE' => 'merge_request_event', 'CI_DEFAULT_BRANCH' =
             'GITHUB_BACKUP_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'false'}
 condition = lambda do |expression, environment|
   expression.split('&&').all? do |term|
+    regexp_match = /\A\s*\$([A-Z_]+) =~ \/(.*)\/\s*\z/.match(term)
+    next Regexp.new(regexp_match[2]).match?(environment[regexp_match[1]].to_s) if regexp_match
     match = /\A\s*\$([A-Z_]+) == (?:\$([A-Z_]+)|"([^"]*)"|(null))\s*\z/.match(term)
     raise 'Unknown condition syntax' unless match
     left = environment[match[1]]
@@ -66,12 +68,21 @@ assert_jobs.call('protected docs push mirrors but does not publish images', ['AG
 assert_jobs.call('protected runtime push', ['system/start.sh'], runtime + ['deploy:github'], push)
 assert_jobs.call('disabled GitHub mirror', ['system/start.sh'], runtime,
                  push.merge('GITHUB_BACKUP_ENABLED' => 'false'))
-assert_jobs.call('legacy Docker Hub settings cannot enable publication', ['system/start.sh'], runtime + ['deploy:github'],
-                 push.merge('DOCKERHUB_PUBLISH_ENABLED' => 'true', 'DOCKERHUB_USER' => 'fixture-user', 'DOCKERHUB_PASS' => 'fixture-password'))
+hub = push.merge('DOCKERHUB_PUBLISH_ENABLED' => 'true')
+assert_jobs.call('enabled protected runtime push publishes accepted images', ['system/start.sh'], runtime + ['deploy:github', 'deploy:dockerhub'], hub)
+assert_jobs.call('documentation push does not publish public images', ['README.md'], light + ['deploy:github'], hub)
+assert_jobs.call('MR cannot publish even with an enable selector', ['system/start.sh'], runtime,
+                 baseline.merge('DOCKERHUB_PUBLISH_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'true'))
 assert_jobs.call('unprotected default push', ['system/start.sh'], runtime, push.merge('CI_COMMIT_REF_PROTECTED' => 'false'))
 assert_jobs.call('first push is conservative', ['README.md'], runtime + ['deploy:github'], push, false)
 assert_jobs.call('other branch push', ['system/start.sh'], [], push.merge('CI_COMMIT_BRANCH' => 'feature'))
 assert_jobs.call('tag push', ['system/start.sh'], [], push.merge('CI_COMMIT_BRANCH' => nil, 'CI_COMMIT_TAG' => 'v1'))
+assert_jobs.call('protected semantic version tag runs all acceptance before public release', ['README.md'], runtime + ['deploy:dockerhub'],
+                 hub.merge('CI_COMMIT_BRANCH' => nil, 'CI_COMMIT_TAG' => 'v1.2.3'))
+assert_jobs.call('protected tag without public release selector still tests fully', ['README.md'], runtime,
+                 push.merge('CI_COMMIT_BRANCH' => nil, 'CI_COMMIT_TAG' => 'v1.2.3'))
+assert_jobs.call('unprotected semantic version tag cannot publish', ['system/start.sh'], [],
+                 hub.merge('CI_COMMIT_BRANCH' => nil, 'CI_COMMIT_TAG' => 'v1.2.3', 'CI_COMMIT_REF_PROTECTED' => 'false'))
 assert_jobs.call('manual/scheduled default runs remain full', ['README.md'], runtime, push.merge('CI_PIPELINE_SOURCE' => 'web'), false)
 assert_jobs.call('scheduled default run remains full', ['README.md'], runtime, push.merge('CI_PIPELINE_SOURCE' => 'schedule'), false)
 Dir.mktmpdir('ci-renames-') do |directory|
@@ -110,7 +121,16 @@ raise 'Documentation lane must retain its short bounded budget' unless documenta
   documentation.dig('variables', 'RUNNER_SCRIPT_TIMEOUT') == '2m' && documentation.dig('variables', 'RUNNER_AFTER_SCRIPT_TIMEOUT') == '30s'
 raise 'Documentation lane must not require runtime artifacts' if documentation['needs'] || documentation['dependencies']
 raise 'Documentation lane must be required' unless documentation['allow_failure'] == false
-raise 'Removed Docker Hub publisher must not be configured' if config.key?('deploy:dockerhub') || text.match?(/DOCKERHUB_|systembootstrapper\/system(?=[:\s])/)
+hub_job = jobs.fetch('deploy:dockerhub')
+raise 'Public release must consume the accepted full candidate without rebuilding' unless hub_job['script'] == ['node gitlab/publish-dockerhub.js'] &&
+  hub_job['dependencies'] == ['test:platform-candidate'] && !hub_job['needs'] && hub_job['stage'] == 'deploy'
+raise 'Public publisher must retain required protected and serialized execution' unless hub_job['allow_failure'] == false &&
+  hub_job['resource_group'] == 'dockerhub-release-$CI_PROJECT_ID' && hub_job['services'] == [] && hub_job['tags'] == ['docker'] &&
+  hub_job['interruptible'] == false && hub_job.dig('variables', 'GIT_DEPTH') == '0' &&
+  hub_job.fetch('rules').last == {'when' => 'never'} &&
+  hub_job.fetch('rules')[0..1].all? { |rule| rule['if'].include?('$CI_COMMIT_REF_PROTECTED == "true"') &&
+    rule['if'].include?('$DOCKERHUB_PUBLISH_ENABLED == "true"') && rule['if'].include?('$CI_PIPELINE_SOURCE == "push"') }
+raise 'Public release must not upload credentials or broad candidate output' unless hub_job.dig('artifacts', 'paths') == ['test-results/dockerhub/']
 build = jobs.fetch('build')
 raise 'Private registry base publication changed' unless build['script'] == [
   'docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper',
@@ -124,4 +144,4 @@ raise 'Every native CI parent must refresh public CA trust' unless config.dig('d
 raise 'Unexpected mirror dependencies' unless jobs.fetch('deploy:github')['dependencies'] == []
 raise 'Mirror context was weakened' unless jobs.fetch('deploy:github')['script'] == ['sh gitlab/github-backup-ci.sh'] &&
   jobs.fetch('deploy:github').fetch('rules').first.fetch('if') == '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
-puts 'PASS: native YAML event/path selection, artifact closure, required gates, private registry publication, protected GitHub mirror and removed Docker Hub publisher'
+puts 'PASS: native YAML event/path selection, artifact closure, required gates, private registry publication, protected public controller/Wizard release and GitHub mirror'

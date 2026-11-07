@@ -9,11 +9,12 @@ const release = require('../../gitlab/security-release.json');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'successor-publication-test-'));
 const sha = 'a'.repeat(40), tree = 'b'.repeat(40), wizard = 'c'.repeat(40);
 const id = 'sha256:' + 'd'.repeat(64), registryDigest = 'sha256:' + 'e'.repeat(64);
+const wizardId = 'sha256:' + '8'.repeat(64), wizardDigest = 'sha256:' + '9'.repeat(64);
 const env = {CI_COMMIT_SHA: sha, CI_PROJECT_ID: '4', CI_PIPELINE_ID: '10', CI_JOB_ID: '20',
   CI_REGISTRY: 'registry.example.test', CI_PROJECT_PATH: 'example/system',
   CI_REGISTRY_IMAGE: 'registry.example.test/example/system', CI_PIPELINE_SOURCE: 'merge_request_event',
   CI_REGISTRY_USER: 'fixture', CI_REGISTRY_PASSWORD: 'fixture-not-a-real-secret'};
-const proof = {runId: 'f'.repeat(24), sourceRevision: sha, fullAcceptance: true, images: {candidate: id, runner: registryDigest},
+const proof = {runId: 'f'.repeat(24), sourceRevision: sha, fullAcceptance: true, images: {candidate: id, runner: registryDigest, wizard: wizardId},
   results: ['gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci',
     'gitlab-upgrade-restored-checkpoint', 'gitlab-upgrade-security-trust',
     'storage-global-live-lease', 'storage-refuse-nonempty-and-corrupt-restore',
@@ -77,13 +78,19 @@ try {
       fs.writeFileSync(path.join(privateAuth, 'config.json'), 'fixture-private-auth');
     }
     if (args[0] === 'push' && pushFails) throw Error('fixture-push-failure');
-    if (args[0] === 'image' && args[1] === 'inspect') return JSON.stringify([{Id: wrongImage ? registryDigest : id,
-      RepoDigests: [ci.registryRepository + '@' + registryDigest], Config: {Labels: {
-        'org.system-bootstrapper.test-job': env.CI_JOB_ID, 'org.opencontainers.image.revision': sha}}}]);
+    if (args[0] === 'image' && args[1] === 'inspect') {
+      const isWizard = args[2].includes('wizard');
+      return JSON.stringify([{Id: wrongImage ? registryDigest : isWizard ? wizardId : id,
+        RepoDigests: [(isWizard ? ci.registryRepository + '-wizard' : ci.registryRepository) + '@' + (isWizard ? wizardDigest : registryDigest)], Config: {Labels: {
+          'org.system-bootstrapper.test-job': env.CI_JOB_ID, 'org.opencontainers.image.revision': isWizard ? wizard : sha,
+          'org.system-bootstrapper.source-revision': sha}}}]);
+    }
     return '';
   };
   const result = publish(env, root, execute);
   assert.equal(result.registryReference, ci.registryRepository + '@' + registryDigest);
+  assert.equal(result.wizardImageId, wizardId);
+  assert.equal(result.wizardRegistryReference, ci.registryRepository + '-wizard@' + wizardDigest);
   assert.equal(fs.existsSync(privateAuth), false, 'private registry config is cleaned after success');
   fs.writeFileSync(path.join(dir, 'results.json'), JSON.stringify({...proof,
     results: [...proof.results, {name: 'cleanup', status: 'passed'}]}));
