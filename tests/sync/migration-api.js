@@ -5,6 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const {spawn} = require('node:child_process');
+const cube = fs.readFileSync(path.resolve(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+const configuration = index => cube + '\nexport MIGRATION_FIXTURE="configuration-' + index + '"\n';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-migration-'));
 for (const name of ['sync', 'system', 'state']) fs.mkdirSync(path.join(root, name));
 fs.writeFileSync(path.join(root, 'system/stop-intermediate.sh'), 'exit 0\n');
@@ -27,7 +29,7 @@ function request(route, method, body, token, contentType = 'application/json') {
 }
 function multipart(field, count) {
   let body = '';
-  for (let i = 0; i < count; i++) body += `--sync-migration\r\nContent-Disposition: form-data; name="${field}"; filename="${field}"\r\nContent-Type: application/octet-stream\r\n\r\nconfiguration-${i}\r\n`;
+  for (let i = 0; i < count; i++) body += `--sync-migration\r\nContent-Disposition: form-data; name="${field}"; filename="${field}"\r\nContent-Type: application/octet-stream\r\n\r\n${configuration(i)}\r\n`;
   return body + '--sync-migration--\r\n';
 }
 (async () => {
@@ -56,13 +58,13 @@ function multipart(field, count) {
     assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 1), accessToken, type)).status, 200);
     const fetched = await request('/config/main', 'GET', undefined, accessToken);
     assert.equal(fetched.status, 200);
-    assert.equal(JSON.parse(fetched.text).data, 'configuration-0');
+    assert.equal(JSON.parse(fetched.text).data, configuration(0));
     assert(!fs.existsSync(path.join(root, 'system/.docker.env')), 'writes must use the mounted configuration directory');
     assert.equal((await request('/config/main', 'DELETE', undefined, accessToken)).status, 200);
     assert(!fs.existsSync(path.join(root, 'state/.docker.env')));
     assert.equal((await request('/config/main', 'GET', undefined, accessToken)).status, 404);
     assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 1), accessToken, type)).status, 200);
-    assert.equal(JSON.parse((await request('/config/main', 'GET', undefined, accessToken)).text).data, 'configuration-0');
+    assert.equal(JSON.parse((await request('/config/main', 'GET', undefined, accessToken)).text).data, configuration(0));
     assert.equal((await request('/logout', 'POST', '{}', accessToken)).status, 200);
     await new Promise(resolve=>setImmediate(resolve));
     assert(logs.includes('Sync authentication is configured.'),'Startup must confirm configured authentication without values.');

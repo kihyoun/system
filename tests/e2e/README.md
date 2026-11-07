@@ -238,6 +238,15 @@ identities remain verification oracles; they are never written as recovery input
 The restored instance must pass CA-verified HTTPS with the expected host/SNI,
 authenticated configuration Fetch, account/certificate/renewal-path preservation,
 and GitLab user/project/repository/issue/encrypted-setting/registry identity checks.
+The fixture exports an explicit `WIZARD_ALIASES` setting. Its alias must return
+HTTP and CA-verified HTTPS `308` redirects to the configured canonical Wizard,
+preserving an encoded path, repeated query keys and encoded query values exactly.
+Both protocols must serve the owned HTTP-01 challenge directly, with `404` and
+no `Location` for a missing challenge. These checks run before Backup, after
+rerender/reload and entry-proxy restart, again on the restored host, and after
+the restored configuration Push has restarted the controller. The synthetic
+certificate includes the alias SAN; a redirect alone cannot conceal a hostname
+verification failure.
 MR recovery checks the exact source-branch commit, MR identity, title, description,
 state, author and creation timestamp, and both discussion notes' IDs, text, authors,
 timestamps and resolution flags. The report exposes only the boolean
@@ -315,7 +324,11 @@ reuse is disabled and validation is never bypassed. A real certificate/account i
 created before configuration Backup and cold Harvest. After the host switch, the
 same account key and certificate are verified, an invalid DNS target must cause
 renewal to fail, then the correct new target must allow actual renewal and produce
-a different certificate serial. Verified HTTPS uses the independently generated
+a different certificate serial. Initial issuance includes the Wizard, Sync and
+configured alias names, so Pebble also validates the alias's HTTP-01 route. After
+renewal, both Wizard and alias must serve the new serial; the alias must still
+pass the exact HTTP/HTTPS redirect and direct challenge checks before renewal
+acceptance is recorded. Verified HTTPS uses the independently generated
 issuance root fetched over the authenticated fixture control channel.
 
 The actual fresh-source renewal lease and certificate installation/reload scripts

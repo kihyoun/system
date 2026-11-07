@@ -44,6 +44,7 @@ if [[ -n $(find "$source_dir" -type l -print -quit) ]]; then
   echo 'Configuration archive contains a symbolic link.' >&2
   exit 1
 fi
+node "$script_dir/../nginx/wizard-aliases.js" validate-import "$source_dir" "$config_dir"
 mkdir -p -- "$config_dir/.projects.env"
 if [[ -d $source_dir/.projects.env ]]; then
   node "$script_dir/../project-bootstrap/preserve-system-project.js" snapshot \

@@ -195,9 +195,13 @@ test('actual TLS probe validates its CA, SNI and host using Node 24 DNS lookup s
   const foreignCert=path.join(input.directory,'foreign.pem'),foreignKey=path.join(input.directory,'foreign.key');
   for(const [certificate,privateKey]of [[cert,key],[foreignCert,foreignKey]]){
     execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','2','-subj','/CN=wizard.candidate.test',
-      '-addext','subjectAltName=DNS:wizard.candidate.test','-keyout',privateKey,'-out',certificate],{stdio:'ignore'});
+      '-addext','subjectAltName=DNS:wizard.candidate.test,DNS:'+recovery.WIZARD_ALIAS,'-keyout',privateKey,'-out',certificate],{stdio:'ignore'});
   }
-  const server=https.createServer({cert:fs.readFileSync(cert),key:fs.readFileSync(key)},(req,res)=>{assert.equal(req.headers.host.split(':')[0],'wizard.candidate.test');res.end('verified synthetic TLS');});
+  const server=https.createServer({cert:fs.readFileSync(cert),key:fs.readFileSync(key)},(req,res)=>{
+    const host=req.headers.host.split(':')[0];assert.equal(req.socket.servername,host);
+    if(host===recovery.WIZARD_ALIAS){res.writeHead(308,{Location:'https://wizard.candidate.test'+req.url});res.end();}
+    else {assert.equal(host,'wizard.candidate.test');res.end('verified synthetic TLS');}
+  });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>new Promise(resolve=>server.close(resolve)));
   const candidate={inner:async(args,options)=>{
@@ -213,8 +217,101 @@ test('actual TLS probe validates its CA, SNI and host using Node 24 DNS lookup s
   const response=await recovery.tlsProbe(candidate,'wizard.candidate.test','/',{},connection);
   assert.equal(response.status,200);assert.equal(response.body,'verified synthetic TLS');
   assert.equal(response.serial,new (require('crypto').X509Certificate)(fs.readFileSync(cert)).serialNumber);
+  const alias=await recovery.tlsProbe(candidate,recovery.WIZARD_ALIAS,recovery.ALIAS_ROUTE,{},connection);
+  assert.equal(alias.status,308);assert.equal(alias.headers.location,'https://wizard.candidate.test'+recovery.ALIAS_ROUTE);assert.equal(alias.serial,response.serial);
   await assert.rejects(()=>recovery.tlsProbe(candidate,'wrong.candidate.test','/',{},connection),/tls-rejected/);
   await assert.rejects(()=>recovery.tlsProbe(candidate,'wizard.candidate.test','/',{},{...connection,certificate:foreignCert}),/tls-rejected/);
+});
+
+test('HTTP routing probe preserves the raw path/query and response Location without following redirects',async t=>{
+  const {spawn}=require('node:child_process'),http=require('node:http');
+  const server=http.createServer((req,res)=>{
+    assert.equal(req.headers.host.split(':')[0],recovery.WIZARD_ALIAS);assert.equal(req.url,recovery.ALIAS_ROUTE);
+    res.writeHead(308,{Location:'https://wizard.candidate.test'+req.url});res.end();
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const candidate={inner:async(args,options)=>{
+    if(args[0]==='inspect')return JSON.stringify({bridge:{Gateway:'127.0.0.1'}});
+    return new Promise((resolve,reject)=>{
+      const child=spawn(process.execPath,['-e',args.at(-1)],{stdio:['pipe','pipe','pipe']});let output='';
+      child.stdout.on('data',chunk=>output+=chunk);child.stderr.resume();child.on('error',reject);
+      child.on('close',code=>code===0?resolve(output):reject(Error('http-routing-rejected')));child.stdin.end(options.input);
+    });
+  }};
+  const response=await recovery.httpProbe(candidate,recovery.WIZARD_ALIAS,recovery.ALIAS_ROUTE,{},{port:server.address().port});
+  assert.equal(response.status,308);assert.equal(response.headers.location,'https://wizard.candidate.test'+recovery.ALIAS_ROUTE);
+  assert.equal(response.serial,undefined);
+});
+
+function aliasFixture(change){
+  const requests=[],files=[];
+  const candidate={spec:{},wait:async action=>assert(await action())};
+  const probe=tls=>async(_candidate,host,route,_options,connection)=>{
+    requests.push({tls,host,route,connection});
+    const challenge=route.startsWith('/.well-known/acme-challenge/');
+    const response=challenge?{status:route.endsWith('-missing')?404:200,headers:{},body:route.endsWith('-missing')?'':'system-bootstrapper-canonical-alias-http01'}:
+      {status:308,headers:{location:'https://wizard.candidate.test'+route},body:''};
+    if(tls)response.serial='BB';return change?change(response,{tls,route,challenge}):response;
+  };
+  return {candidate,requests,files,dependencies:{httpProbe:probe(false),tlsProbe:probe(true),node:async(_candidate,action,input)=>files.push({action:action.toString(),input})}};
+}
+test('alias verification checks HTTP and CA-verified HTTPS redirects, exact URI, direct challenges and the served serial',async()=>{
+  const f=aliasFixture();await recovery.verifyAliasRouting(f.candidate,{certificate:'/fixture-ca',serial:'BB'},f.dependencies);
+  assert.equal(f.requests.length,8);assert(f.requests.every(request=>request.host===recovery.WIZARD_ALIAS));
+  for(const tls of [false,true])assert.deepEqual(f.requests.filter(request=>request.tls===tls).map(request=>request.route),
+    ['/',recovery.ALIAS_ROUTE,'/.well-known/acme-challenge/canonical-alias-check','/.well-known/acme-challenge/canonical-alias-check-missing']);
+  assert.equal(f.files.length,2);assert(f.files[0].action.includes('writeFileSync'));assert(f.files[1].action.includes('rmSync'));
+  assert(f.requests.filter(request=>request.tls).every(request=>request.connection.certificate==='/fixture-ca'));
+});
+test('alias verification rejects stripped/changed targets, redirecting challenges and stale TLS before recording acceptance',async()=>{
+  const cases=[
+    [(response,{challenge})=>challenge?response:{...response,status:200},'redirect'],
+    [(response,{challenge})=>challenge?response:{...response,headers:{location:'https://wizard.candidate.test/'}},'redirect'],
+    [(response,{challenge})=>challenge?response:{...response,headers:{location:'https://other.candidate.test'+recovery.ALIAS_ROUTE}},'redirect'],
+    [(response,{challenge})=>challenge?{...response,status:308,headers:{location:'https://wizard.candidate.test/'}}:response,'challenge'],
+    [(response,{challenge})=>challenge?{...response,body:'private-upstream-body'}:response,'challenge'],
+    [(response,{tls})=>tls?{...response,serial:'AA'}:response,'redirect']
+  ];
+  for(const [change,reason]of cases){
+    const f=aliasFixture(change);
+    await assert.rejects(()=>recovery.verifyAliasRouting(f.candidate,{serial:'BB'},f.dependencies),{message:'canonical-alias-'+reason+'-failed'});
+    assert.equal(f.files.length,2,'failed verification still removes its owned challenge');
+  }
+});
+test('original and restored alias checks rerender/reload and restart only the private entry proxy',async()=>{
+  for(const phase of ['original','restored']){
+    const events=[],connection={certificate:'/fixture-ca'};
+    const candidate={stage:async(name,action)=>{events.push(name);return action();},inner:async args=>events.push(args)};
+    await recovery.verifyAliasLifecycle(candidate,connection,phase,{verifyAliasRouting:async(actual,actualConnection)=>{
+      assert.equal(actual,candidate);assert.equal(actualConnection,connection);events.push('verified');
+    }});
+    assert.deepEqual(events,[
+      'recovery-'+phase+'-alias-routing','verified','recovery-'+phase+'-alias-reload',
+      ['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload'],'verified',
+      'recovery-'+phase+'-alias-restart',['restart','system_web_1'],'verified'
+    ]);
+  }
+});
+test('alias lifecycle failures retain bounded diagnostic codes and the shared cancellation reason',async()=>{
+  const {Candidate}=require('./disposable-candidate');
+  for(const phase of ['original','restored'])for(const failed of ['routing','reload','restart']){
+    const stages=[],events=[];
+    const candidate={results:stages,now:()=>0,checkpoint:()=>{},stage:Candidate.prototype.stage,
+      inner:async args=>{
+        const name=args[0]==='restart'?'restart':'reload';events.push(name);
+        if(name===failed)throw Object.assign(Error('private-upstream-error'),{exitCode:23});
+      }};
+    const dependencies={verifyAliasRouting:async()=>{if(failed==='routing')throw Error('canonical-alias-redirect-failed');}};
+    const reason=failed==='routing'?'canonical-alias-redirect-failed':'recovery-'+phase+'-alias-'+failed+'-failed';
+    await assert.rejects(()=>recovery.verifyAliasLifecycle(candidate,{},phase,dependencies),{message:reason});
+    assert.equal(stages.at(-1).reason,reason);assert.equal(stages.at(-1).name,'recovery-'+phase+'-alias-'+failed);
+    assert(!JSON.stringify(stages).includes('private-'));
+    if(failed!=='routing')assert.equal(stages.at(-1).exitCode,23);
+    if(failed==='reload')assert(!events.includes('restart'));
+  }
+  const canceled={stage:async(_name,action)=>action()};
+  await assert.rejects(()=>recovery.verifyAliasLifecycle(canceled,{},'original',{verifyAliasRouting:async()=>{throw Error('canceled-or-overall-timeout');}}),
+    {message:'canceled-or-overall-timeout'});
 });
 
 
@@ -522,6 +619,20 @@ test('restored path and runtime proofs compare shell values rather than the expo
   const f=restoredConfigurationFixture({config});
   await recovery.verifyConfiguration(f.candidate,f.input,f.dependencies);
   assert(f.stages.every(stage=>stage.status==='passed'));
+});
+test('restored configuration must retain the exact exported alias before routing acceptance',async()=>{
+  for(const value of [recovery.WIZARD_ALIAS,undefined,'other.candidate.test']){
+    const initial=restoredConfigurationFixture();
+    const f=restoredConfigurationFixture({config:initial.config+(value===undefined?'':"export WIZARD_ALIASES='"+value+"'\n")});
+    f.input.expected.wizardAliases=recovery.WIZARD_ALIAS;
+    if(value===recovery.WIZARD_ALIAS){
+      await recovery.verifyConfiguration(f.candidate,f.input,f.dependencies);
+      assert(f.stages.some(stage=>stage.name==='recovery-restored-alias-configuration'&&stage.status==='passed'));
+    }else{
+      await assert.rejects(()=>recovery.verifyConfiguration(f.candidate,f.input,f.dependencies),/recovery-restored-alias-configuration-failed/);
+      assert.equal(f.stages.at(-1).reason,'recovery-restored-alias-configuration-failed');
+    }
+  }
 });
 test('persistent Sync startup failure remains bounded by readiness and shared cancellation',async()=>{
   const f=restoredConfigurationFixture(),probe=f.dependencies.tlsProbe;let count=0;

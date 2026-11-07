@@ -10,6 +10,8 @@ Choose the complete installation path for your environment:
   restore a completed backup into fresh local working storage.
 - [Replacement host with a retained data volume](#replace-a-host-while-retaining-its-data-volume):
   reuse an existing installation, rather than initializing it again.
+- [Measured installation and recovery times](#measured-installation-and-recovery-times):
+  observed durations, their verification scopes and a repeatable measurement method.
 - [Evolve a running system](#5-evolving-a-running-system): use one generation
   to build and test a reviewed successor, then promote it with a recovery path.
 
@@ -591,6 +593,12 @@ Fetch returns suggestions: verify and replace them with this table.
 | General → Wizard: `WIZARD_DOMAIN_MODE` | **SSL encrypted**, value `2` |
 | General → Wizard: `WIZARD_SSL`, `WIZARD_SSL_KEY` | `/ssl/live/example.com/fullchain.pem`, `/ssl/live/example.com/privkey.pem` |
 
+To redirect additional names such as `example.com` to this Wizard, configure
+[canonical Wizard aliases](WIZARD_ALIASES.md). Point each alias at this proxy
+and include it in the selected certificate. Aliases are explicit saved
+configuration; choosing `www.example.com` alone does not create a bare-domain
+redirect. Test both HTTP and HTTPS with a path and query after Push.
+
 The fields require the **full container paths**, including `/ssl`; any path
 adornment displayed beside an input is not a replacement for that prefix. Use
 hostnames without a scheme in the `*_HOST` fields. The generated GitLab and
@@ -678,6 +686,9 @@ for name in www sync gitlab registry; do
   curl --fail --silent --show-error "http://$name.example.com/.well-known/acme-challenge/bootstrapper-check"
 done
 ```
+
+Repeat the same challenge probe for every configured Wizard alias. Its normal
+redirect must leave the HTTP-01 challenge path reachable directly.
 
 After the probe succeeds, run on the server:
 
@@ -911,6 +922,138 @@ This validates repository read access, not push permission. The
 [native runtime verifier](../bootstrapper/README.md#reviewed-replacement-host-initialization)
 checks the platform's other application/storage contracts; it does not replace
 these SSH and firewall checks.
+
+## Measured installation and recovery times
+
+Two operator-assisted runs on **7 November 2026** used Ubuntu **26.04.1 AMD64**,
+**8 vCPUs**, approximately **32 GB RAM** and a **225 GB system disk** on each
+host. Both used GitLab **19.5.3**, **four Runner managers** and System source
+revision `c12a00cebe27b5d7601052448480c12494b95c19` with its pinned Wizard
+submodule. Live service data used `PERSISTENCE_MODE=local` on the system disk.
+
+| Scenario | First SSH command (UTC) | Verified ready (UTC) | Elapsed |
+| --- | --- | --- | --- |
+| Fresh installation without Seed or external disk | 18:39:13.884 | 18:50:12.231 | **10 min 58 s** (658.347 s) |
+| External Seed restored into fresh local working storage | 18:57:12.746 | 19:13:35.166 | **16 min 22 s** (982.420 s) |
+
+The fresh installation reused only domain and Runner-count settings. It had no
+previous database, service data, projects or old instance credentials. Trusted
+certificates were newly issued. The complete controller and matching Wizard were
+pulled from tested public release images, without building them on the host.
+
+Recovery copied and verified approximately **3.1 GB of Seed payload** into empty
+internal working storage using the matching, separately saved Wizard
+configuration. The Seed retained GitLab databases, repositories, registry,
+secrets and certificate/renewal state. The saved controller selector was
+deliberately changed to the accepted public release; other settings and
+credentials were preserved. The exact retained private Wizard and an optional
+historical CI helper image were recovered from the restored registry. No separate
+image archives or host builds of these images were used. Backup storage was
+unmounted before platform startup.
+
+These are three distinct storage workflows:
+
+- **Fresh initialization:** create new service state in local working storage;
+  no Seed or external medium is needed.
+- **Seed recovery:** validate and copy a completed backup into fresh working
+  storage, then run from that local copy. Ordinary operation, configuration
+  changes and certificate renewal need no attached backup medium.
+- **Retained live-volume reuse:** attach the existing live data filesystem and
+  resume it without copying a Seed. This separate replacement-host path was
+  **not measured** in these runs.
+
+Harvest/Seed uses separately selected backup storage for service data. Wizard
+Open/Backup and Sync Push/Fetch manage configuration independently; a Seed does
+not replace the matching configuration backup. See the [storage guide](PERSISTENT_VOLUME.md)
+and [recovery contract](RECOVERY_CONTRACT.md).
+
+### Timing boundaries and readiness
+
+The clock ran from the first SSH command until the declared ready point, using
+UTC timestamps and elapsed seconds. Before timing, each run already had a
+provisioned VM, its address and DNS, SSH authorization, internet access and the
+operator's configuration inputs. Recovery additionally had an attached completed
+Seed and matching configuration backup. VM provisioning, DNS propagation and
+SSH-key provisioning were excluded.
+
+Included work covered host prerequisites and Docker installation, checkout and
+submodule setup, image pulls, configuration, service startup, certificate
+integration and renewal verification. Operator preparation during the run,
+waits and probe retries remained on the clock: an initial Runner recent-contact
+assertion was retried in the fresh run, and a metadata probe was retried during
+recovery. These were attended procedures, not measurements of an unattended
+installer.
+
+Fresh readiness required trusted public Wizard, GitLab and registry responses,
+authenticated idle Sync, completed certificate renewal setup with a successful
+dry-run, and all four current Runner managers confirmed online in GitLab.
+Recovery additionally required retained-state checks, exact historical CI helper
+recovery and revocation of temporary registry credentials. Public routes and
+authenticated Sync had already passed at approximately **13 min 20 s** in that
+run; the additional recovery checks completed at **16 min 22 s**. Historical
+Runner-manager records alone did not count as current managers.
+
+Post-readiness audits, including subsequent image/storage and final cleanup
+checks, were outside these durations. Neither run started an additional full
+system-test pipeline. The historical readiness scope did not assert canonical
+Wizard alias redirects; include those explicitly when required by your
+deployment. These observations do not establish every application or CI workload
+as tested.
+
+The two runs performed different work and checks, so they are not a controlled
+A/B benchmark or a direct performance comparison. Host performance, network and
+image caches, registry availability, certificate issuance, operator interaction,
+data volume and selected acceptance checks all affect elapsed time. These values
+are observations, not an installation-time guarantee.
+
+### Repeat the measurement with your own inputs
+
+1. Record the host OS/architecture, CPU, RAM, disk and storage mode, accepted
+   source and image digests, GitLab version and desired Runner-manager count.
+   Supply your own domains, DNS, SSH access, firewall rules and private
+   configuration. For recovery, also record the completed Seed's payload size
+   and identity and verify that its separate configuration backup matches.
+   Select an empty live target; never overwrite a running installation to time
+   a fresh setup.
+2. Define the required checks before starting. On one administration computer,
+   record UTC and start a monotonic stopwatch immediately before the first SSH
+   command. Keep it running through operator input, waits and retries, including
+   failures that are resolved within the attempt. Record each milestone's UTC
+   and elapsed time privately; do not reset the clock after a failed probe.
+3. For fresh initialization, follow the [public HTTPS walkthrough](#public-server-own-domain-and-https)
+   using `bootstrapper/install.sh`, `bootstrapper/install-release.py` and
+   `bootstrapper/install-volume-host.sh` from the reviewed release checkout.
+   Use the release's immutable controller and matching Wizard image selections.
+   Configure through Wizard Fetch, Backup and Push; set four managers if
+   reproducing this run's count. Complete first certificate issuance and the
+   documented webroot renewal/deploy-hook check with `system-certbot`.
+4. For recovery, follow [external Seed restore](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation),
+   including native storage preparation and
+   `bootstrapper/seed-operation.sh restore --check-only` before the actual
+   restore with the matching configuration backup. Keep GitLab stopped until
+   restore verification finishes. After the helper completes, unmount the
+   backup medium before startup to reproduce this run's storage separation.
+   Install host certificate integration and start through `start.sh`. The
+   [native private-Wizard recovery](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image)
+   preserves its saved digest and cleans up scoped temporary registry access.
+5. Check the public Wizard, GitLab and registry with trusted TLS, authenticated
+   Sync Fetch and idle status, certificate renewal/deployment, and every current
+   manager's online status in GitLab. The walkthrough gives routing and renewal
+   commands; [runner setup](#2-setting-up-gitlab-runners) explains the shared pool
+   and manager identities. For recovery, also verify retained repositories,
+   registry content and the expected saved settings. Declare any additional
+   managed-image or application checks and include their recovery and temporary
+   credential cleanup in your ready boundary. In workflows using the
+   [native runtime verifier](../bootstrapper/README.md#reviewed-replacement-host-initialization),
+   supply its private API-token file to verify recent manager contact and
+   `--redirect-from` when a canonical Wizard alias is required. A skipped check
+   must remain marked as skipped.
+6. At the last required successful check, record the ready UTC and elapsed
+   seconds and stop the stopwatch. Record later audits and cleanup separately.
+   Keep credentials, configuration exports, machine addresses and raw logs in
+   private operator records. Publish only sanitized context, measurement
+   boundaries and results. A failed or interrupted attempt is a separate result,
+   not an omitted interval in a successful duration.
 
 ## Optional weekly host maintenance from a trusted Codex host
 

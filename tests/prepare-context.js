@@ -22,7 +22,7 @@ function included(name) {
     ['sync/package.json','sync/package-lock.json','sync/tsconfig.json','sync/eslint.config.mjs'].includes(name) ||
     name.startsWith('project-bootstrap/') || name.startsWith('tests/') ||
     /^gitlab\/[^/]+\.(js|sh|rb|json)$/.test(name) || name === 'gitlab/gitlab.rb' ||
-    /^bootstrapper\/[^/]+\.(sh|py)$/.test(name) || /^gitlab-runner\/[^/]+\.(js|sh|rb)$/.test(name) || /^nginx\/[^/]+\.sh$/.test(name) ||
+    /^bootstrapper\/[^/]+\.(sh|py)$/.test(name) || /^gitlab-runner\/[^/]+\.(js|sh|rb)$/.test(name) || /^nginx\/[^/]+\.(js|sh)$/.test(name) ||
     name.startsWith('nginx/.templates/') || /^nginx-proxy\/[^/]+\.sh$/.test(name) ||
     ['.gitlab-ci.yml','tests/prepare-candidate.js','start.sh','sync/start.sh','bootstrapper/persistence.sh',
       'gitlab-runner/docker-compose.yml','system/.docker.env.example','system/.seed.env',

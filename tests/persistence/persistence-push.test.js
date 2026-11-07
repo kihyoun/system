@@ -67,7 +67,7 @@ test('ZIP Push recreates a reset main file through canonical state and keeps run
 
 test('archive replaces ordinary projects and preserves owned Wizard receipt', t => {
   const {state, run} = fixture(t, {
-    '.docker.env': 'main', '.projects.env/.app.env': 'new project', '.projects.env/.wizard.env': 'archive wizard'
+    '.docker.env': '# main\n', '.projects.env/.app.env': 'new project', '.projects.env/.wizard.env': 'archive wizard'
   });
   const owned = '# BOOTSTRAPPER_PROJECT=' + Buffer.from(JSON.stringify({defaultProject: true, template: 'wizard'})).toString('base64') + '\n';
   fs.writeFileSync(path.join(state, '.projects.env/.wizard.env'), owned);
@@ -134,4 +134,21 @@ test('normal ZIP Push preserves public settings for startup generation and expli
   publish(path.join(f.state, '.docker.env'), publicDir);
   published = JSON.parse(fs.readFileSync(path.join(publicDir, 'privacy-instance.json'), 'utf8'));
   assert.equal(published.operatorName, '');
+});
+
+test('ZIP Push validates aliases against its complete new project set before any saved-state mutation', t => {
+  const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+  const main = cube + '\nWIZARD_ENABLE="true"\nWIZARD_HOST="wizard.example.test"\nWIZARD_DOMAIN_MODE="2"\n' +
+    'WIZARD_SSL="/ssl/example/cert.pem"\nWIZARD_SSL_KEY="/ssl/example/key.pem"\nWIZARD_ALIASES="example.test"\n';
+  const project = cube + '\nUSE_PROD_HOST="true"\nPROD_HOST="example.test"\nPROD_DOMAIN_MODE="2"\n';
+  const f = fixture(t, {'.docker.env': main, '.projects.env/.conflict.env': project});
+  fs.writeFileSync(path.join(f.state, '.docker.env'), 'original main');
+  fs.writeFileSync(path.join(f.state, '.projects.env/.retained.env'), 'original project');
+  const result = f.run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /project host/);
+  assert.doesNotMatch(result.stdout, /Ready\./);
+  assert.equal(fs.readFileSync(path.join(f.state, '.docker.env'), 'utf8'), 'original main');
+  assert.deepEqual(fs.readdirSync(path.join(f.state, '.projects.env')), ['.retained.env']);
+  assert.equal(fs.readFileSync(path.join(f.state, '.projects.env/.retained.env'), 'utf8'), 'original project');
 });

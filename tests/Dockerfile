@@ -23,7 +23,7 @@ COPY sync/eslint.config.mjs ./sync/eslint.config.mjs
 COPY project-bootstrap ./project-bootstrap
 COPY gitlab/*.js gitlab/*.sh gitlab/*.rb gitlab/*.json ./gitlab/
 COPY gitlab-runner/*.js gitlab-runner/*.sh gitlab-runner/*.rb gitlab-runner/docker-compose.yml ./gitlab-runner/
-COPY nginx/*.sh ./nginx/
+COPY nginx/*.sh nginx/*.js ./nginx/
 COPY nginx/.templates ./nginx/.templates
 COPY nginx-proxy/*.sh ./nginx-proxy/
 COPY start.sh ./

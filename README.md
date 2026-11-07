@@ -87,6 +87,13 @@ backup storage. Deleting the VM deletes its local working data: preserve a
 completed external Seed and matching configuration before relying on recovery.
 A retained live data filesystem can also be reused without restoring a Seed.
 
+On 7 November 2026, a fresh public-release installation without a Seed took
+**10 min 58 s**, and recovery from an external Seed into fresh local working
+storage took **16 min 22 s**. These observed operator-assisted durations have
+different verification scopes; they are neither a time guarantee nor a direct
+performance comparison. See the [measurement context and repeatable procedure](docs/HANDBOOK.md#measured-installation-and-recovery-times)
+for hardware, prerequisites and timing boundaries.
+
 [Component and integration checks](tests/README.md) are supplied in the repository.
 The candidate harness runs disposable platform instances with isolated resources.
 The [evolution chapter](docs/HANDBOOK.md#5-evolving-a-running-system) documents
