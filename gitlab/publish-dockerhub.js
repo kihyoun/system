@@ -84,7 +84,7 @@ async function manifest(repo, selector, request = fetch) {
     !['application/vnd.oci.image.manifest.v1+json', 'application/vnd.docker.distribution.manifest.v2+json'].includes(document.mediaType) ||
     result.headers.get('docker-content-digest') !== digest)
     throw Error('A verified single-platform Docker Hub image manifest is required.');
-  return {digest, imageId: document.config.digest};
+  return {digest, configDigest: document.config.digest};
 }
 
 async function publish(env = process.env, root = process.cwd(), execute = command, inspectManifest = manifest) {
@@ -110,6 +110,10 @@ async function publish(env = process.env, root = process.cwd(), execute = comman
     {name: 'wizard', repository: env.DOCKERHUB_WIZARD_REPOSITORY, source: released.wizardRegistryReference,
       imageId: released.wizardImageId, revision: released.wizardRevision}
   ];
+  // The accepted manifest digest binds the config and every layer. Docker's
+  // local image ID is daemon-specific: classic stores report the config digest,
+  // while containerd stores may report the manifest digest. Keep the local ID
+  // checks below, but never equate that ID with an anonymous manifest's config.
   // Refuse a conflicting existing alias before publishing either component.
   for (const role of roles) {
     role.digest = role.source.split('@')[1];
@@ -117,7 +121,7 @@ async function publish(env = process.env, root = process.cwd(), execute = comman
     role.missing = [];
     for (const tag of ci.tags) {
       const current = await inspectManifest(role.repository, tag);
-      if (current && (current.digest !== role.digest || current.imageId !== role.imageId))
+      if (current && current.digest !== role.digest)
         throw Error('Refusing to replace an existing Docker Hub commit or version tag.');
       if (!current) role.missing.push(tag);
     }
@@ -150,7 +154,7 @@ async function publish(env = process.env, root = process.cwd(), execute = comman
         // guard against a different publisher racing this check and push.
         const current = await inspectManifest(role.repository, tag);
         if (current) {
-          if (current.digest !== role.digest || current.imageId !== role.imageId)
+          if (current.digest !== role.digest)
             throw Error('Docker Hub tag changed during publication.');
           continue;
         }
@@ -165,8 +169,9 @@ async function publish(env = process.env, root = process.cwd(), execute = comman
       }
       for (const selector of [...ci.tags, role.digest]) {
         const current = await inspectManifest(role.repository, selector);
-        if (!current || current.digest !== role.digest || current.imageId !== role.imageId)
+        if (!current || current.digest !== role.digest)
           throw Error('Anonymous Docker Hub acceptance did not preserve the tested image.');
+        role.configDigest = current.configDigest;
       }
     }
     const receipt = {format: 'system-public-release-v1', ...ci, sourceTree: released.sourceTree,
@@ -174,7 +179,7 @@ async function publish(env = process.env, root = process.cwd(), execute = comman
       upstreamRelease: {projectId: ci.projectId, pipelineId: ci.pipelineId,
         candidateJobId: released.candidateJobId, registryReference: released.registryReference,
         candidateEvidenceSha256: released.candidateEvidenceSha256}};
-    for (const role of roles) receipt[role.name] = {imageId: role.imageId, sourceRevision: role.revision,
+    for (const role of roles) receipt[role.name] = {imageId: role.imageId, configDigest: role.configDigest, sourceRevision: role.revision,
       reference: role.repository + '@' + role.digest, tags: role.tags};
     const output = path.join(root, 'test-results/dockerhub');
     fs.mkdirSync(output, {recursive: true});
