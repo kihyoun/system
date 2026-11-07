@@ -80,6 +80,12 @@ source/digest selections through a public release channel if other operators
 should install it; publishing container images alone does not publish private
 GitLab job artifacts.
 
+Restrict repository writes to the publication identity. Where available, enable
+Docker Hub's repository-side immutable tag policy for `sha-*` and `v*` aliases.
+CI serializes its publishers and refuses an already conflicting alias, but that
+check cannot atomically exclude another external publisher's simultaneous push.
+The recorded digest, rather than an alias, remains the installation authority.
+
 ## Local integration test
 
 Select compatible GitLab and Runner releases explicitly. The example below uses
