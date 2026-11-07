@@ -264,6 +264,118 @@ An older two-list checksum manifest can be audited explicitly with
 That compatibility audit cannot load images or start services; complete the source
 and alias declarations through the normal reviewed operator workflow first.
 
+## Updating a public controller with already-current services
+
+Use `update-controller.py` when an existing public-release installation already
+runs the GitLab and Runner images accepted by the current security profile and
+has **no `recovery/images.json` archive manifest**. This explicit path refuses an
+existing manifest, including a dangling link; it never fabricates or replaces
+one. An archive-backed installation uses the successor workflow below.
+
+The update changes only `BOOTSTRAPPER_IMAGE` in the saved main configuration.
+It preserves the exact GitLab, Runner, NGINX and Wizard image identities, manager
+identities, storage selection, service data and Seed. In particular, an existing
+private Wizard selector stays selected: publishing a public controller/Wizard
+pair does not replace that configured Wizard. GitLab must already match the
+candidate's accepted **target** image/version, and Runner images must match its
+accepted target evidence. This is a controller update, without a database
+migration, Seed operation or rebuild.
+
+Prepare a clean checkout of the accepted protected default-branch revision,
+private frozen successor `release.json` and `candidate-results.json`, and the
+exact public controller digest from the accepted publication or another
+independently verified release record. Keep a private API-token file with access
+to the source project's pipeline/artifacts and administrative `read_api` access
+to current Runner managers. The tool verifies the required successful jobs,
+enabled merge gate, protected current default-branch head and byte-identical CI
+artifacts using the same successor evidence checks as promotion. It pulls the
+public digest and additionally requires the exact accepted controller image ID,
+source label and candidate-job label. The public Wizard image is not pulled.
+
+```sh
+sudo python3 bootstrapper/update-controller.py \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --release /root/accepted-release/release.json \
+  --evidence /root/accepted-release/candidate-results.json \
+  --controller docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST \
+  --gitlab-url https://gitlab.example.com \
+  --token-file /root/private-gitlab-api-token \
+  --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example \
+  --check-only
+```
+
+Replace paths/domains with your inputs and select a new checkpoint directory
+under your live `PERSISTENT_DIR/recovery/controller-updates`. `--check-only` may
+pull the accepted image and wait for current manager contacts, but does not
+write a checkpoint/configuration or stop services. Run the same command without
+`--check-only` to update. `--timeout` bounds each readiness wait (60–3600 seconds,
+default 1200). Use `--redirect-from https://example.com` when the currently saved
+configuration already requires that canonical Wizard alias.
+
+Before stopping the old controller, the tool retains its exact image selector/ID,
+restart policy, private original configuration and runtime baseline. The shared
+live-state, certificate and environment leases and host-command guardian protect
+the transition. Sync must prove its operation queue idle. Only the controller is
+recreated through native Compose with builds and pulls disabled. Acceptance
+checks exact service images and mounts, unchanged configuration apart from the
+controller selector, authenticated Sync Fetch, trusted application routing,
+renewal integration and recent GitLab contact by every current Runner manager.
+The private `operation.json`, `baseline-after.json` and `verification.json` bind
+the deployed controller to the accepted source, image and candidate job and
+report preservation of the other service images separately.
+
+For a later configuration change such as enabling Wizard aliases, use the normal
+validated configuration/Sync Push workflow after this update. Keep its separate
+configuration checkpoint. The update tool does not combine arbitrary
+configuration edits with controller replacement. Its private `main-after.env`
+retains the exact post-update configuration for that later reconciliation.
+
+Inspect or roll back an interrupted or completed update with the same checkout:
+
+```sh
+sudo python3 bootstrapper/update-controller.py --operation status \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example
+sudo python3 bootstrapper/update-controller.py --operation rollback \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example \
+  --token-file /root/private-gitlab-api-token
+```
+
+Rollback needs the retained previous image and current-manager verification, but
+does not require a reachable CI API. It adopts only the exact interrupted lease
+after the coordinator and guarded commands have ended, restores the previous
+controller/configuration and checks readiness without rewinding service data.
+It also handles a failed Compose recreate that removed the old container before
+creating its replacement. Changed service image IDs or later configuration edits
+block rollback. Reconcile later configuration changes through the normal
+validated configuration workflow and its separate checkpoint before retrying;
+the tool never discards someone else's edits. An uncertain failure retains the
+owned leases and private receipts for the same native rollback action. Preserve
+the checkpoint and both images until the accepted version is no longer needed
+for recovery.
+
+For independent runtime checks of this installation type, select the explicit
+public-image mode for both baseline and check:
+
+```sh
+sudo python3 bootstrapper/verify-runtime.py baseline --public-images \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --output /root/public-runtime-baseline.json
+sudo python3 bootstrapper/verify-runtime.py check --public-images \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --baseline /root/public-runtime-baseline.json --output /root/public-runtime-check.json \
+  --gitlab-token-file /root/private-gitlab-api-token --timeout 1200 \
+  --redirect-from https://example.com
+```
+
+Only supply the redirect option for a configured alias. Baselines bind the saved
+configuration, selected image identities and manager identities; capture a new
+one after an intentional configuration change. Docker Hub's optional `docker.io/`
+prefix is normalized for digest verification; private registry names and ports
+remain exact. This mode does not make image archives, private registry payloads
+or the matching configuration-plus-Seed recovery inputs unnecessary.
+
 ## Promoting a tested successor controller
 
 `promote-controller.py` consumes the frozen `release.json` and

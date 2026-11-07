@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -107,26 +108,74 @@ def configuration_files(root):
     return {str(path.relative_to(root)): recovery.sha(path) for path in files if path.is_file()}
 
 
-def capture(config, checkout, manifest=None):
+def public_manifest_absent(config):
+    path = config['_root'] / 'recovery/images.json'
+    require(not path.exists() and not path.is_symlink(), 'public-image-mode-refuses-recovery-manifest')
+
+
+def public_images(config, services):
+    """Resolve saved selections against actual images; never invent an archive manifest."""
+    require(re.fullmatch(r'(?:docker\.io/)?[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64}',
+                         config['BOOTSTRAPPER_IMAGE'] or '') is not None,
+            'public-controller-digest-required')
+    selected = [('system_bootstrapper_1', 'BOOTSTRAPPER_IMAGE', ''),
+                ('system_web_1', 'NGINX_IMAGE', 'nginx'), ('system_gitlab_1', 'GITLAB_IMAGE', '')]
+    selected += [(f'runner_docker_{index}', 'GITLAB_RUNNER_IMAGE', '')
+                 for index in range(1, runner_count(config) + 1)]
+    if config['WIZARD_ENABLE'] == 'true':
+        selected.append(('system_wizard_1', 'WIZARD_IMAGE', ''))
+    images = {}
+    for name, key, default in selected:
+        reference = config[key] or default
+        require(bool(reference), 'saved-image-selection-required')
+        image = recovery.inspect_image(reference)
+        require(recovery.image_id(image.get('Id')) and services[name]['Image'] == image['Id'],
+                'service-image-selection-mismatch')
+        if '@sha256:' in reference:
+            # Docker omits its default Docker Hub hostname in some inspections.
+            # Keep explicit private registry hosts/ports as part of identity.
+            normalize = lambda value: recovery.canonical_digest(value).removeprefix('docker.io/')
+            require(normalize(reference) in {normalize(value) for value in image.get('RepoDigests', [])},
+                    'running-image-digest-not-verified')
+        images[name] = {'key': key, 'reference': reference, 'imageId': image['Id']}
+    return images
+
+
+def capture(config, checkout, manifest=None, public=False):
     root = config['_root']
     cube(config['_main'].read_bytes())
     require(not run(['git', '-C', str(checkout), 'status', '--porcelain']).strip(),
             'initialization-checkout-is-modified')
     # Promotion may provide its authenticated, completed staging validation view.
     # Ordinary recovery/baseline callers always load the archive-backed manifest.
-    if manifest is None:
+    if public:
+        public_manifest_absent(config)
+        services = inspect_services(config)
+        images = public_images(config, services)
+        controller = recovery.inspect_image(images['system_bootstrapper_1']['reference'])
+        source = controller.get('Config', {}).get('Labels', {}).get('org.opencontainers.image.revision')
+        require(recovery.git_id(source), 'public-controller-source-label-required')
+        source_tree = run(['git', '-C', str(checkout), 'rev-parse', source + '^{tree}']).decode().strip()
+        require(recovery.git_id(source_tree), 'public-controller-source-tree-required')
+    elif manifest is None:
         manifest = recovery.load_manifest(root / 'recovery', checkout)
-    recovery.validate_selected_images(manifest, config['_main'])
+    if not public:
+        recovery.validate_selected_images(manifest, config['_main'])
     identities = {}
     for index in range(1, runner_count(config) + 1):
         path = root / f'runners/runner/{index}/config/.runner_system_id'
         if path.is_file():
             identities[str(index)] = recovery.sha(path)
-    return {'schemaVersion': 1, 'startedAt': now(), 'configurationFiles': configuration_files(root),
-            'manifestSha256': recovery.sha(root / 'recovery/images.json'),
+    result = {'schemaVersion': 1, 'startedAt': now(), 'configurationFiles': configuration_files(root),
             'runnerManagerIdentitySha256': identities, 'expectedRunnerCount': runner_count(config),
-            'sourceCommit': manifest['sourceCommit'], 'sourceTree': manifest['sourceTree'],
             'hostToolsRevision': run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).decode().strip()}
+    if public:
+        result.update(imageMode='public-images-v1', selectedImages=images,
+                      sourceCommit=source, sourceTree=source_tree)
+    else:
+        result.update(manifestSha256=recovery.sha(root / 'recovery/images.json'),
+                      sourceCommit=manifest['sourceCommit'], sourceTree=manifest['sourceTree'])
+    return result
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -161,7 +210,10 @@ def origin(config, prefix):
 def assert_baseline(config, baseline):
     root = config['_root']
     require(configuration_files(root) == baseline['configurationFiles'], 'saved-configuration-changed')
-    require(recovery.sha(root / 'recovery/images.json') == baseline['manifestSha256'], 'recovery-manifest-changed')
+    if baseline.get('imageMode') == 'public-images-v1':
+        public_manifest_absent(config)
+    else:
+        require(recovery.sha(root / 'recovery/images.json') == baseline['manifestSha256'], 'recovery-manifest-changed')
     require(runner_count(config) == baseline['expectedRunnerCount'], 'runner-count-changed')
     for index, expected in baseline['runnerManagerIdentitySha256'].items():
         path = root / f'runners/runner/{index}/config/.runner_system_id'
@@ -362,13 +414,19 @@ def runner_contacts(config, baseline, token_file):
     return {'checked': True, 'online': len(matched), 'contactsAfterStart': True}
 
 
-def verify(config, baseline, checkout, token_file=None, redirect_from=None):
+def verify(config, baseline, checkout, token_file=None, redirect_from=None, public=False):
+    require(public == (baseline.get('imageMode') == 'public-images-v1'), 'runtime-image-mode-mismatch')
     assert_baseline(config, baseline)
     require(run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).decode().strip() == baseline['hostToolsRevision'] and
             not run(['git', '-C', str(checkout), 'status', '--porcelain']).strip(), 'host-tools-checkout-changed')
-    manifest = recovery.load_manifest(config['_root'] / 'recovery', checkout)
     services = inspect_services(config)
-    verify_images(config, manifest, services)
+    if public:
+        require(public_images(config, services) == baseline['selectedImages'], 'public-service-image-changed')
+        source = baseline
+    else:
+        manifest = recovery.load_manifest(config['_root'] / 'recovery', checkout)
+        verify_images(config, manifest, services)
+        source = manifest
     mounts = verify_mounts(config, services)
     verify_routes(config, services, redirect_from)
     verify_sync(config)
@@ -386,8 +444,8 @@ def verify(config, baseline, checkout, token_file=None, redirect_from=None):
     final = inspect_services(config)
     require(all(final[name]['Id'] == row['Id'] and final[name]['State']['StartedAt'] == row['State']['StartedAt']
                 for name, row in services.items()), 'services-replaced-during-verification')
-    return {'passed': True, 'at': now(), 'sourceCommit': manifest['sourceCommit'],
-            'sourceTree': manifest['sourceTree'], 'hostToolsRevision': baseline['hostToolsRevision'],
+    return {'passed': True, 'at': now(), 'sourceCommit': source['sourceCommit'],
+            'sourceTree': source['sourceTree'], 'hostToolsRevision': baseline['hostToolsRevision'],
             'runningCoreServices': len(services), 'persistentMountCount': mounts,
             'configurationUnchanged': True, 'authenticatedFetchMatchesSavedBytes': True,
             'cubeExact': True, 'runnerManagers': runners, 'renewalTimerChecked': tls}
@@ -402,6 +460,8 @@ def main():
     parser.add_argument('--timeout', type=int, default=0, help='Bounded readiness wait in seconds.')
     parser.add_argument('--gitlab-token-file', help='Optional private operator API token; verifies fresh manager contacts.')
     parser.add_argument('--redirect-from', help='Optional old origin that must redirect to configured Wizard origin.')
+    parser.add_argument('--public-images', action='store_true',
+                        help='Explicit installed-image baseline without recovery/images.json; refuses an existing archive manifest.')
     args = parser.parse_args()
     require(0 <= args.timeout <= 3600, 'invalid-readiness-timeout')
     output = Path(args.output).resolve()
@@ -410,7 +470,7 @@ def main():
     checkout = HERE.parent
     if args.operation == 'baseline':
         require(not Path(args.output).exists(), 'baseline-already-exists')
-        write_private(args.output, capture(config, checkout))
+        write_private(args.output, capture(config, checkout, public=args.public_images))
         print('Pre-start baseline captured.')
         return
     require(bool(args.baseline), 'pre-start-baseline-required')
@@ -419,7 +479,7 @@ def main():
     recovery.OPERATION_DEADLINE = deadline if args.timeout else None
     while True:
         try:
-            result = verify(config, baseline, checkout, args.gitlab_token_file, args.redirect_from)
+            result = verify(config, baseline, checkout, args.gitlab_token_file, args.redirect_from, public=args.public_images)
             write_private(args.output, result)
             print('Runtime verification passed.')
             return
