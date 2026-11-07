@@ -39,8 +39,8 @@ async function main() {
     {CI_COMMIT_BRANCH: 'feature'}, {DOCKERHUB_PUBLISH_ENABLED: 'false'}, {CI_COMMIT_TAG: 'latest'},
     {DOCKERHUB_REPOSITORY: 'https://attacker.invalid/repo'}, {DOCKERHUB_WIZARD_REPOSITORY: env.DOCKERHUB_REPOSITORY}])
     assert.throws(() => context({...env, ...patch}));
-  assert.deepEqual(context(env).tags, ['sha-' + sha]);
-  assert.deepEqual(context({...env, CI_COMMIT_TAG: 'v1.2.3', CI_COMMIT_BRANCH: undefined}).tags, ['sha-' + sha, 'v1.2.3']);
+  assert.equal(context(env).versionTag, null);
+  assert.equal(context({...env, CI_COMMIT_TAG: 'v1.2.3', CI_COMMIT_BRANCH: undefined}).versionTag, 'v1.2.3');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dockerhub-publication-test-'));
   const artifacts = path.join(root, 'test-results/successor');
   fs.mkdirSync(artifacts, {recursive: true});
@@ -55,6 +55,7 @@ async function main() {
   }
   writeRelease(released);
   const published = new Map(), calls = [];
+  let activeRelease = released;
   let privateAuth, pushFails = false, wrongWizard = false, wrongPlatform = false, conflictOnRecheck = false;
   const inspectManifest = async (repo, selector) => {
     if (conflictOnRecheck && selector.startsWith('sha-') && calls.some(call => call[1] === 'login'))
@@ -78,15 +79,16 @@ async function main() {
     if (args[0] === 'push') {
       if (pushFails) throw Error('fixture-push-failure');
       const isWizard = args[1].startsWith(env.DOCKERHUB_WIZARD_REPOSITORY + ':');
-      const value = {digest: isWizard ? id('8') : id('7'), imageId: isWizard ? id('3') : id('1')};
+      const value = {digest: (isWizard ? activeRelease.wizardRegistryReference : activeRelease.registryReference).split('@')[1],
+        imageId: isWizard ? activeRelease.wizardImageId : activeRelease.imageId};
       published.set(args[1], value);
       published.set(args[1].split(':')[0] + ':' + value.digest, value);
     }
     if (args[0] === 'image' && args[1] === 'inspect') {
       const isWizard = args[2].includes('wizard');
-      return JSON.stringify([{Id: isWizard ? (wrongWizard ? id('9') : id('3')) : id('1'),
+      return JSON.stringify([{Id: isWizard ? (wrongWizard ? id('f') : activeRelease.wizardImageId) : activeRelease.imageId,
         Os: 'linux', Architecture: wrongPlatform ? 'arm64' : 'amd64', Config: {Labels: {
-          'org.system-bootstrapper.test-job': '20', 'org.opencontainers.image.revision': isWizard ? wizard : sha,
+          'org.system-bootstrapper.test-job': String(activeRelease.candidateJobId), 'org.opencontainers.image.revision': isWizard ? wizard : sha,
           'org.system-bootstrapper.source-revision': sha}}}]);
     }
     return '';
@@ -104,6 +106,7 @@ async function main() {
     assert.equal(receipt.controller.reference, env.DOCKERHUB_REPOSITORY + '@' + id('7'));
     assert.equal(receipt.wizard.reference, env.DOCKERHUB_WIZARD_REPOSITORY + '@' + id('8'));
     assert.equal(receipt.wizard.sourceRevision, wizard);
+    assert.deepEqual(receipt.tags, ['sha-' + sha + '-job-20']);
     assert(!fs.existsSync(privateAuth), 'private authentication is removed after success');
     assert(!calls.some(call => call.includes('build')), 'neither accepted image is rebuilt');
     assert(!calls.flat().includes(env.DOCKERHUB_TOKEN), 'token never occurs in process arguments');
@@ -112,10 +115,28 @@ async function main() {
     calls.length = 0;
     await publish(env, root, execute, inspectManifest);
     assert(!calls.some(call => call[1] === 'push'), 'identical immutable aliases are reused');
-    await publish({...env, CI_COMMIT_TAG: 'v1.2.3', CI_COMMIT_BRANCH: undefined}, root, execute, inspectManifest);
+    // A later tag pipeline rebuilds the same source with another job label.
+    // Distinct tested attempts necessarily have different image IDs/digests.
+    const tagProof = {...proof, images: {...proof.images, candidate: id('9'), wizard: id('a')}};
+    activeRelease = {...released, pipelineId: 11, candidateJobId: 21,
+      imageId: id('9'), wizardImageId: id('a'),
+      registryReference: env.CI_REGISTRY_IMAGE + '/successor@' + id('b'),
+      wizardRegistryReference: env.CI_REGISTRY_IMAGE + '/successor-wizard@' + id('c'),
+      candidateEvidenceSha256: hash(JSON.stringify(tagProof))};
+    fs.writeFileSync(path.join(artifacts, 'candidate-results.json'), JSON.stringify(tagProof));
+    writeRelease(activeRelease);
+    const tagReceipt = await publish({...env, CI_PIPELINE_ID: '11', CI_COMMIT_TAG: 'v1.2.3', CI_COMMIT_BRANCH: undefined}, root, execute, inspectManifest);
     assert(calls.some(call => call.join(' ') === 'git merge-base --is-ancestor HEAD FETCH_HEAD'));
-    assert(published.has(env.DOCKERHUB_REPOSITORY + ':v1.2.3'));
-    published.set(env.DOCKERHUB_REPOSITORY + ':sha-' + sha, {digest: id('9'), imageId: id('9')});
+    assert.deepEqual(tagReceipt.tags, ['sha-' + sha + '-job-21', 'v1.2.3']);
+    assert.equal(published.get(env.DOCKERHUB_REPOSITORY + ':v1.2.3').digest, id('b'));
+    assert.equal(published.get(env.DOCKERHUB_REPOSITORY + ':sha-' + sha + '-job-20').digest, id('7'),
+      'the original default-branch attempt remains unchanged');
+    activeRelease = released;
+    writeRelease(released);
+    fs.writeFileSync(path.join(artifacts, 'candidate-results.json'), JSON.stringify(proof));
+    await assert.rejects(publish({...env, CI_COMMIT_TAG: 'v1.2.3', CI_COMMIT_BRANCH: undefined}, root, execute, inspectManifest),
+      /existing Docker Hub/, 'a released version cannot be retargeted to another accepted attempt');
+    published.set(env.DOCKERHUB_REPOSITORY + ':sha-' + sha + '-job-20', {digest: id('9'), imageId: id('9')});
     calls.length = 0;
     await assert.rejects(publish(env, root, execute, inspectManifest), /existing Docker Hub/);
     assert.equal(calls.filter(call => call[0] === 'docker').length, 0, 'conflicting tags fail before registry login');

@@ -78,7 +78,7 @@ function prepare(){
   const buildFiles=recipe.files;
   if(buildFiles.filter(file=>/\/Dockerfile(?:\.dockerignore)?$/.test(file.path)).length!==2)throw Error('Complete managed Wizard Docker recipe required.');
   for(const file of buildFiles){const filename=path.join(context,file.path);fs.mkdirSync(path.dirname(filename),{recursive:true});fs.writeFileSync(filename,file.content);}
-  run(['build','--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,
+  run(['build','--provenance=false','--sbom=false','--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,
     '--label','org.opencontainers.image.revision='+snapshot.sourceRevision,
     '--label','org.system-bootstrapper.source-revision='+process.env.CI_COMMIT_SHA,
     '-f',path.join(context,'.system-bootstrapper/build-v1/Dockerfile'),'-t',tags.wizard,context]);

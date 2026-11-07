@@ -16,8 +16,11 @@ output to obtain them. A CI job artifact is not automatically a publicly
 accessible download; do not make first startup depend on access to a private
 GitLab instance.
 
-Commit tags such as `sha-<full-System-commit>` and optional protected version tags
-such as `v1.2.3` make images discoverable. Install by their recorded digest rather
+Attempt tags such as `sha-<full-System-commit>-job-<candidate-job-id>` and optional
+protected version tags such as `v1.2.3` make images discoverable. The candidate job
+is included because its ownership label changes the image digest: a later build
+of the same commit is a separate tested attempt. A published version alias is
+never reassigned to another attempt. Install by the recorded digest rather
 than assuming a tag, including `latest`, is immutable. Public pulls need no Docker
 Hub account; anonymous rate limits and availability of Docker Hub still apply.
 The declared public release targets `linux/amd64`; it does not establish ARM64

@@ -29,7 +29,7 @@ function context(env) {
     throw Error('Docker Hub publication requires an enabled protected default-branch or version-tag push.');
   return {sourceRevision: env.CI_COMMIT_SHA, projectId: Number(env.CI_PROJECT_ID),
     pipelineId: Number(env.CI_PIPELINE_ID), publicationJobId: Number(env.CI_JOB_ID),
-    tags: ['sha-' + env.CI_COMMIT_SHA, ...(tag ? [tag] : [])]};
+    versionTag: tag};
 }
 
 function readEvidence(root, ci, env) {
@@ -89,6 +89,11 @@ async function manifest(repo, selector, request = fetch) {
 
 async function publish(env = process.env, root = process.cwd(), execute = command, inspectManifest = manifest) {
   const ci = context(env), {released} = readEvidence(root, ci, env);
+  // Candidate job labels are part of each tested image's config identity.
+  // Rebuilding the same source in a retry/tag pipeline is a distinct release
+  // attempt, so its immutable discovery tag must include that candidate job.
+  ci.tags = ['sha-' + ci.sourceRevision + '-job-' + released.candidateJobId,
+    ...(ci.versionTag ? [ci.versionTag] : [])];
   const git = (...args) => execute('git', args, {cwd: root});
   if (git('rev-parse', 'HEAD') !== ci.sourceRevision || git('rev-parse', 'HEAD^{tree}') !== released.sourceTree ||
     git('ls-tree', 'HEAD', 'wizard') !== '160000 commit ' + released.wizardRevision + '\twizard')
