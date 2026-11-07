@@ -49,10 +49,11 @@ class PublicRelease(unittest.TestCase):
 
     def image(self, wizard=False):
         selected = WIZARD if wizard else CONTROLLER
-        labels = {'org.opencontainers.image.revision': self.wizard if wizard else self.identity['sourceCommit']}
+        labels = {'org.opencontainers.image.revision': self.wizard if wizard else self.identity['sourceCommit'],
+                  'org.system-bootstrapper.test-job': '20'}
         if wizard:
             labels['org.system-bootstrapper.source-revision'] = self.identity['sourceCommit']
-        return {'Id': 'sha256:' + ('e' if wizard else 'd') * 64,
+        return {'Id': 'sha256:' + ('e' if wizard else 'd') * 64, 'Os': 'linux', 'Architecture': 'amd64',
                 'RepoDigests': [selected.removeprefix('docker.io/')], 'Config': {'Labels': labels}}
 
     def test_public_digest_required(self):
@@ -80,7 +81,23 @@ class PublicRelease(unittest.TestCase):
             with patch.object(release, 'run', side_effect=[b'', json.dumps([row]).encode()]) as command:
                 result = release.checked_image(WIZARD if wizard else CONTROLLER, self.identity, wizard=wizard)
             self.assertEqual(result['imageId'], row['Id'])
+            self.assertEqual(result['candidateJobId'], 20)
+            self.assertEqual(result['platform'], 'linux/amd64')
             self.assertEqual(command.call_args_list[0].args[0][2], 'pull')
+
+    def test_unsupported_platform_and_unbound_candidate_job_refused(self):
+        for field, value in [('Os', 'windows'), ('Architecture', 'arm64'), ('job', ''),
+                             ('job', '0'), ('job', 'not-a-job'), ('job', 20),
+                             ('job', str(2 ** 53))]:
+            row = self.image()
+            if field == 'job':
+                row['Config']['Labels']['org.system-bootstrapper.test-job'] = value
+            else:
+                row[field] = value
+            with self.subTest(field=field, value=value), \
+                    patch.object(release, 'run', side_effect=[b'', json.dumps([row]).encode()]), \
+                    self.assertRaises(release.ReleaseError):
+                release.checked_image(CONTROLLER, self.identity)
 
     def test_wrong_digest_or_source_refused(self):
         for field in ('digest', 'system', 'wizard', 'binding'):
@@ -161,7 +178,8 @@ class PublicRelease(unittest.TestCase):
             return b''
 
         def image(selected, identity, **options):
-            return {'reference': selected, 'imageId': 'sha256:' + 'd' * 64}
+            return {'reference': selected, 'imageId': 'sha256:' + 'd' * 64,
+                    'candidateJobId': 20, 'platform': 'linux/amd64'}
 
         with patch.object(release, 'run', side_effect=command), \
                 patch.object(release, 'storage', return_value=(selected, self.root)), \
@@ -179,6 +197,26 @@ class PublicRelease(unittest.TestCase):
         self.assertEqual(len(startup), 1)
         self.assertEqual(startup[0][1]['environment']['SYSTEM_BOOTSTRAPPER_SKIP_BUILD'], '1')
         self.assertFalse(any('build' in call[0] for call in calls))
+
+    def test_same_source_images_from_different_candidate_attempts_cannot_start(self):
+        selected = {'PERSISTENCE_MODE': 'local', 'PERSISTENT_MOUNT': '/',
+                    'PERSISTENT_DIR': str(self.root), 'PERSISTENT_UUID': ''}
+        pair = [{'reference': CONTROLLER, 'imageId': 'sha256:' + 'd' * 64,
+                 'candidateJobId': 20, 'platform': 'linux/amd64'},
+                {'reference': WIZARD, 'imageId': 'sha256:' + 'e' * 64,
+                 'candidateJobId': 21, 'platform': 'linux/amd64'}]
+        with patch.object(release, 'source_identity', return_value=self.identity), \
+                patch.object(release, 'storage', return_value=(selected, self.root)), \
+                patch.object(release, 'checked_image', side_effect=pair), \
+                patch.object(release, 'no_existing_services'), \
+                patch.object(release, 'GUARD_DIRECTORY', self.directory / 'guard'), \
+                patch.object(release.os, 'geteuid', return_value=0), \
+                patch.object(release, 'run') as commands, \
+                self.assertRaisesRegex(release.ReleaseError, 'one-accepted-candidate-job'):
+            release.install(self.args, self.checkout)
+        self.assertFalse((self.root / 'configuration/.release-images.env').exists())
+        self.assertFalse((self.root / 'configuration/.release-images.json').exists())
+        commands.assert_not_called()
 
 
 if __name__ == '__main__':

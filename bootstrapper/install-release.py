@@ -160,14 +160,20 @@ def checked_image(selected, identity, *, wizard=False):
             'release-pulled-repository-digest-mismatch')
     image_id = image.get('Id', '')
     require(isinstance(image_id, str) and re.fullmatch(r'sha256:[a-f0-9]{64}', image_id), 'release-image-id-required')
+    require(image.get('Os') == 'linux' and image.get('Architecture') == 'amd64',
+            'release-platform-must-be-linux-amd64')
     labels = (image.get('Config') or {}).get('Labels') or {}
     require(isinstance(labels, dict), 'release-image-labels-required')
+    candidate_job = labels.get('org.system-bootstrapper.test-job', '')
+    require(isinstance(candidate_job, str) and re.fullmatch(r'[1-9][0-9]*', candidate_job)
+            and int(candidate_job) <= 2 ** 53 - 1, 'release-candidate-job-required')
     require(labels.get('org.opencontainers.image.revision') ==
             identity['wizardSourceRevision' if wizard else 'sourceCommit'], 'release-image-source-mismatch')
     if wizard:
         require(labels.get('org.system-bootstrapper.source-revision') == identity['sourceCommit'],
                 'wizard-release-system-source-mismatch')
-    return {'reference': selected, 'imageId': image_id}
+    return {'reference': selected, 'imageId': image_id, 'candidateJobId': int(candidate_job),
+            'platform': 'linux/amd64'}
 
 
 def install(args, checkout=ROOT):
@@ -194,6 +200,8 @@ def install(args, checkout=ROOT):
         no_existing_services()
         pair = {'controller': checked_image(controller, identity),
                 'wizard': checked_image(wizard, identity, wizard=True)}
+        require(pair['controller']['candidateJobId'] == pair['wizard']['candidateJobId'],
+                'release-images-must-share-one-accepted-candidate-job')
         require(source_identity(checkout) == identity, 'release-source-changed-during-download')
         fresh(root, checkout)
         no_existing_services()
