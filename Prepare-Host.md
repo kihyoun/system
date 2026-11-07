@@ -1,6 +1,37 @@
 # Prepare an Ubuntu host
 
-## Install
+## Install a tested public release
+
+For an end-user installation, use a reviewed **complete controller** image and
+its matching Wizard web image from public Docker Hub repositories. The controller
+is built from `system/Dockerfile`, including Sync and the lifecycle tools. The
+smaller runtime base built from `bootstrapper/Dockerfile` is not a bootable
+controller and must not be substituted for it.
+
+Choose a release's exact System source revision and both immutable image
+references, each ending in `@sha256:...`. The publisher's release evidence binds
+the source revision/tree, pinned Wizard revision and both image IDs to those
+references. Use a trusted release announcement or your own successful publication
+output to obtain them. A CI job artifact is not automatically a publicly
+accessible download; do not make first startup depend on access to a private
+GitLab instance.
+
+Commit tags such as `sha-<full-System-commit>` and optional protected version tags
+such as `v1.2.3` make images discoverable. Install by their recorded digest rather
+than assuming a tag, including `latest`, is immutable. Public pulls need no Docker
+Hub account; anonymous rate limits and availability of Docker Hub still apply.
+The declared public release targets `linux/amd64`; it does not establish ARM64
+support for the complete platform.
+No image contains your private main configuration, service databases or Seed.
+
+Host preparation still installs Docker Engine/Compose from Ubuntu/Docker APT
+repositories. Using release images removes controller/Wizard source builds and
+Alpine package resolution from the new host; it does not remove host dependencies,
+GitLab's first initialization or the requirement to maintain build inputs in CI.
+See the complete [local](docs/HANDBOOK.md#0-getting-started) or
+[domain/HTTPS](docs/HANDBOOK.md#public-server-own-domain-and-https) walkthrough.
+
+## Prepare host dependencies
 
 Run the host installer from a local checkout on Ubuntu (including Ubuntu in
 WSL2 with systemd enabled). It installs Docker Engine from Docker's APT
@@ -8,8 +39,13 @@ repository, Buildx and the Compose plugin, starts Docker and runs `hello-world`.
 It does not upgrade unrelated operating-system packages.
 
 ```bash
-git clone --recurse-submodules https://github.com/kihyoun/system.git
+SYSTEM_REVISION='REPLACE_WITH_40_CHARACTER_RELEASE_COMMIT'
+git clone https://github.com/kihyoun/system.git
 cd system
+git checkout --detach "$SYSTEM_REVISION"
+git submodule update --init --recursive
+CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
+WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
 sudo bash bootstrapper/install.sh
 ```
 
@@ -18,7 +54,33 @@ It uses `docker compose --compatibility` to preserve their expected
 underscore-separated container names. Service configuration, persistence and
 platform acceptance are separate steps.
 
-### Local integration test
+## Publish your own public releases
+
+Keep source development, merge review and required candidate checks in GitLab.
+Public Docker Hub publication is a distribution step after the applicable
+checks; it does not make Docker Hub the development or Production control plane.
+The publisher copies the exact accepted complete controller and Wizard image
+identities instead of rebuilding a different image after testing.
+
+Configure the System GitLab project's CI variables for your Docker Hub namespace:
+
+| Variable | Value / handling |
+| --- | --- |
+| `DOCKERHUB_PUBLISH_ENABLED` | Protected variable; `true` opts into public release publication |
+| `DOCKERHUB_REPOSITORY` | Protected variable; your public controller repository, for example `your-namespace/system` |
+| `DOCKERHUB_WIZARD_REPOSITORY` | Protected variable; your public Wizard repository, for example `your-namespace/wizard` |
+| `DOCKERHUB_USER` | Protected and masked publisher identity with write access to those repositories |
+| `DOCKERHUB_TOKEN` | Scoped write token; protected and masked, never stored in source |
+
+Create the public repositories and configure protected default-branch/release-tag
+rules before enabling publication. Keep publisher credentials unavailable to
+untrusted merge-request code. The public release receipt records source and image
+identities, not credentials or installation data. Share that receipt or its
+source/digest selections through a public release channel if other operators
+should install it; publishing container images alone does not publish private
+GitLab job artifacts.
+
+## Local integration test
 
 Select compatible GitLab and Runner releases explicitly. The example below uses
 GitLab CE 19.5.3 and Runner 19.5.1, pinned by the security release profile and
@@ -78,10 +140,14 @@ host selector:
 sudo install -d -m 0700 /etc/system-bootstrapper
 sudo tee /etc/system-bootstrapper/persistence.env >/dev/null <<'EOF'
 PERSISTENCE_MODE=local
+PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-sudo bash start.sh
+sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
+  python3 bootstrapper/install-release.py \
+  --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
+  --persistence-env /etc/system-bootstrapper/persistence.env
 ```
 
 Use the Linux filesystem under WSL, not a Windows-mounted data directory.
@@ -97,9 +163,19 @@ Install Certbot separately on hosts using HTTPS, then run
 renewal integration. Local mode needs no extra mount dependency. Neither Docker,
 normal service startup nor certificate renewal depends on an external Seed target.
 
-On a fresh installation, open `http://localhost/` on the host. The bootstrapper
-builds its image and starts the configuration wizard and sync proxy. Allow time
-for the first build and service startup. Read the generated first-setup Sync login privately from
+`install-release.py` verifies the clean checkout and pinned Wizard revision
+against the pulled public-image identities. It refuses an existing main
+configuration or GitLab data rather than treating a reinstall as an upgrade.
+It records only the two release image selectors in the private
+`configuration/.release-images.env` and invokes native startup with builds
+disabled. Ordinary subsequent `sudo bash start.sh` calls reuse that profile;
+explicit saved main-configuration selectors still take precedence. `--install-host`
+can perform the Docker installation when it has not already been run. This
+installer does not restore a Seed, import a configuration ZIP or issue certificates.
+
+On a fresh local installation, open `http://localhost/` on the host. The pulled
+Bootstrapper starts the configuration Wizard and Sync proxy. Allow time for
+image downloads and service startup. Read the generated first-setup Sync login privately from
 `PERSISTENT_DIR/configuration/sync-auth.env` (mounted at `/state/sync-auth.env` in
 the controller). Saved main configuration in `configuration/.docker.env` is
 loaded afterwards and may override `SYNC_USER` and `SYNC_PASS`; use those saved
