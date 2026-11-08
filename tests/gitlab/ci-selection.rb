@@ -9,7 +9,7 @@ text = File.binread(File.join(root, '.gitlab-ci.yml'))
 raise 'Cube signature changed' unless text[807] == '$' && Digest::MD5.hexdigest(text[0, 1184]) == 'bd4a8426355824593a5e21ad759830c1'
 config = YAML.safe_load(text, aliases: true)
 jobs = config.select { |name, value| !name.start_with?('.') && value.is_a?(Hash) && value.key?('script') }
-full = %w[prepare:wizard-source test:isolated test:candidate-image test:platform-candidate build]
+full = %w[prepare:wizard-source test:isolated test:candidate-image test:wizard-browser test:platform-candidate build]
 baseline = {'CI_PIPELINE_SOURCE' => 'merge_request_event', 'CI_DEFAULT_BRANCH' => 'master',
             'GITHUB_BACKUP_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'false'}
 condition = lambda do |expression, environment|
@@ -122,6 +122,13 @@ raise 'Documentation lane must retain its short bounded budget' unless documenta
 raise 'Documentation lane must not require runtime artifacts' if documentation['needs'] || documentation['dependencies']
 raise 'Documentation lane must be required' unless documentation['allow_failure'] == false
 hub_job = jobs.fetch('deploy:dockerhub')
+mirror_job = jobs.fetch('deploy:github')
+raise 'Wizard dependency publication evidence must remain available' unless mirror_job.dig('artifacts', 'paths') == ['test-results/github/'] &&
+  mirror_job.dig('artifacts', 'when') == 'always' && mirror_job['script'] == ['sh gitlab/github-backup-ci.sh']
+browser_job = jobs.fetch('test:wizard-browser')
+raise 'Full native Wizard browser coverage must use an isolated required child' unless browser_job['script'] == ['sh tests/ci-wizard-browser.sh'] &&
+  browser_job['after_script'] == ['sh tests/ci-wizard-browser.sh cleanup'] && browser_job['services'] == [] &&
+  browser_job['tags'] == ['docker'] && browser_job.dig('artifacts', 'reports', 'junit') == 'test-results/wizard-browser/junit.xml'
 raise 'Public release must consume the accepted full candidate without rebuilding' unless hub_job['script'] == ['node gitlab/publish-dockerhub.js'] &&
   hub_job['dependencies'] == ['test:platform-candidate'] && !hub_job['needs'] && hub_job['stage'] == 'deploy'
 raise 'Public publisher must retain required protected and serialized execution' unless hub_job['allow_failure'] == false &&

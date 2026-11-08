@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Shared, repository-owned successor release and operation boundaries."""
+import configparser
 import datetime
 import fcntl
 import hashlib
@@ -265,6 +266,86 @@ def normalized_job(name):
 
 def verify_pipeline(api, release, release_bytes, evidence_bytes):
     return _verify_pipeline(api, release, release_bytes, evidence_bytes, current=True)
+
+
+def wizard_release(release, evidence):
+    """Require the Wizard published by the same accepted System candidate."""
+    reference = release.get('wizardRegistryReference')
+    require(recovery.image_id(release.get('wizardImageId')) and
+            evidence.get('images', {}).get('wizard') == release['wizardImageId'] and
+            recovery.reference(reference) and '@' in reference and
+            recovery.canonical_digest(reference) == reference and
+            reference.split('@')[0] == release['registryRepository'] + '-wizard',
+            'successor-Wizard-release-evidence-mismatch')
+
+
+def verify_public_pair(api, release, evidence, controller, wizard):
+    """Bind a deliberate paired update to the exact successful public CI copy."""
+    wizard_release(release, evidence)
+    prefix = '/projects/' + str(release['projectId'])
+    pipeline = api.get(prefix + '/pipelines/' + str(release['pipelineId']))
+    require(pipeline.get('source') == 'push', 'paired-release-requires-native-default-branch-push')
+    jobs = api.pages(prefix + '/pipelines/' + str(release['pipelineId']) + '/jobs?include_retried=false')
+    browser = [job for job in jobs if job.get('name') == 'test:wizard-browser']
+    require(len(browser) == 1 and browser[0].get('status') == 'success' and
+            browser[0].get('allow_failure') is False and
+            browser[0].get('pipeline', {}).get('id') == release['pipelineId'] and
+            browser[0].get('commit', {}).get('id') == release['sourceRevision'],
+            'paired-Wizard-browser-job-not-successful')
+    matches = [job for job in jobs if job.get('name') == 'deploy:dockerhub']
+    require(len(matches) == 1 and matches[0].get('status') == 'success' and
+            matches[0].get('allow_failure') is False and
+            matches[0].get('pipeline', {}).get('id') == release['pipelineId'] and
+            matches[0].get('commit', {}).get('id') == release['sourceRevision'] and
+            type(matches[0].get('id')) is int and matches[0]['id'] > 0,
+            'paired-publication-job-not-successful')
+    job = matches[0]
+    artifact = prefix + '/jobs/' + str(job['id']) + '/artifacts/test-results/dockerhub/release.json'
+    public_bytes = api.raw(artifact)[0]
+    public = json.loads(public_bytes)
+    require(isinstance(public, dict) and public.get('format') == 'system-public-release-v1' and
+            all(public.get(key) == release[key] for key in
+                ('projectId', 'pipelineId', 'sourceRevision', 'sourceTree', 'wizardRevision')) and
+            public.get('publicationJobId') == job['id'] and public.get('versionTag') is None and
+            public.get('platform') == 'linux/amd64' and
+            public.get('upstreamRelease') == {key: release[key] for key in
+                ('projectId', 'pipelineId', 'candidateJobId', 'registryReference', 'candidateEvidenceSha256')},
+            'paired-publication-source-mismatch')
+    for role, selected, image, source, internal in (
+            ('controller', controller, release['imageId'], release['sourceRevision'], release['registryReference']),
+            ('wizard', wizard, release['wizardImageId'], release['wizardRevision'], release['wizardRegistryReference'])):
+        row = public.get(role, {})
+        require(isinstance(row, dict) and isinstance(row.get('reference'), str) and
+                row['reference'].removeprefix('docker.io/') == selected.removeprefix('docker.io/') and
+                row.get('imageId') == image and row.get('sourceRevision') == source and
+                recovery.image_id(row.get('configDigest')) and
+                selected.split('@')[-1] == internal.split('@')[-1],
+                'paired-publication-image-mismatch')
+    mirrors = [row for row in jobs if row.get('name') == 'deploy:github']
+    require(len(mirrors) == 1 and mirrors[0].get('status') == 'success' and
+            mirrors[0].get('allow_failure') is False and
+            mirrors[0].get('pipeline', {}).get('id') == release['pipelineId'] and
+            mirrors[0].get('commit', {}).get('id') == release['sourceRevision'] and
+            type(mirrors[0].get('id')) is int and mirrors[0]['id'] > 0,
+            'paired-source-publication-job-not-successful')
+    mirror = mirrors[0]
+    source_bytes = api.raw(prefix + '/jobs/' + str(mirror['id']) +
+                           '/artifacts/test-results/github/wizard-source.json')[0]
+    source = json.loads(source_bytes)
+    mapping = configparser.RawConfigParser(strict=True)
+    mapping.read_string(api.raw(prefix + '/repository/files/.gitmodules/raw?ref=' + release['sourceRevision'])[0].decode())
+    section = 'submodule "wizard"'
+    require(mapping.has_section(section) and mapping.get(section, 'path', fallback=None) == 'wizard',
+            'paired-source-submodule-mapping-required')
+    repository = mapping.get(section, 'url', fallback='')
+    require(re.fullmatch(r'https://github\.com/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\.git', repository) is not None and
+            source == {'format': 'system-wizard-source-publication-v1', 'projectId': release['projectId'],
+                       'pipelineId': release['pipelineId'], 'publicationJobId': mirror['id'],
+                       'systemRevision': release['sourceRevision'], 'wizardRevision': release['wizardRevision'],
+                       'repository': repository, 'ref': 'refs/heads/system-release/' + release['wizardRevision']},
+            'paired-source-publication-mismatch')
+    return {'jobId': job['id'], 'artifactSha256': hashlib.sha256(public_bytes).hexdigest(),
+            'sourceJobId': mirror['id'], 'sourceArtifactSha256': hashlib.sha256(source_bytes).hexdigest()}
 
 
 def verify_completed_promotion(api, record, security):

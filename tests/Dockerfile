@@ -31,6 +31,7 @@ COPY sync/start.sh ./sync/
 COPY system/ ./system/
 COPY bootstrapper/ ./bootstrapper/
 COPY tests ./tests
+COPY docs/check-wizard-docs.js ./docs/check-wizard-docs.js
 COPY .gitlab-ci.yml ./
 RUN node project-bootstrap/wizard-source/package.js --verify \
  && cd sync && npm run build

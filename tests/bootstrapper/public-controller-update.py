@@ -107,7 +107,7 @@ class PublicControllerUpdate(unittest.TestCase):
         self.stack.enter_context(patch.object(tool, 'run', side_effect=self.command))
         self.pulled = {'reference': self.new, 'imageId': self.release['imageId'],
                        'candidateJobId': self.release['candidateJobId']}
-        self.stack.enter_context(patch.object(tool.installer, 'checked_image', side_effect=lambda *a, **k: self.pulled))
+        self.checked = self.stack.enter_context(patch.object(tool.installer, 'checked_image', side_effect=lambda *a, **k: self.pulled))
         self.checkpoint = self.root / 'recovery/controller-updates/attempt'
         self.controller_template = copy.deepcopy(self.rows['system_bootstrapper_1'])
 
@@ -118,8 +118,9 @@ class PublicControllerUpdate(unittest.TestCase):
         raise AssertionError(command)
 
     def settings(self, unused):
-        selected = self.config['_main'].read_text().split('export BOOTSTRAPPER_IMAGE=', 1)[1].splitlines()[0].strip("'")
-        self.config['BOOTSTRAPPER_IMAGE'] = selected
+        for key in ['BOOTSTRAPPER_IMAGE', 'WIZARD_IMAGE']:
+            selected = self.config['_main'].read_text().split('export ' + key + '=', 1)[1].splitlines()[0].strip("'")
+            self.config[key] = selected
         return self.config
 
     def inspect(self, name):
@@ -130,7 +131,8 @@ class PublicControllerUpdate(unittest.TestCase):
     def command(self, command, **kwargs):
         self.commands.append(command)
         if command[2:4] == ['container', 'ls']:
-            return b'system_bootstrapper_1\n' if 'system_bootstrapper_1' in self.rows else b''
+            name = 'system_wizard_1' if 'name=^/system_wizard_1$' in command else 'system_bootstrapper_1'
+            return (name + '\n').encode() if name in self.rows else b''
         if 'stop' in command:
             self.rows['system_bootstrapper_1']['State']['Running'] = False
         if 'compose' in command:
@@ -139,12 +141,134 @@ class PublicControllerUpdate(unittest.TestCase):
             row = self.rows.setdefault('system_bootstrapper_1', copy.deepcopy(self.controller_template))
             row.update(Id='controller-replaced', Image=self.images[self.config['BOOTSTRAPPER_IMAGE']]['Id'])
             row['State'] = {'Running': True, 'StartedAt': 'replacement'}
+            if getattr(self, 'paired', False):
+                row = self.rows.setdefault('system_wizard_1', copy.deepcopy(self.wizard_template))
+                row.update(Id='wizard-replaced', Image=self.images[self.config['WIZARD_IMAGE']]['Id'])
+                row['State'] = {'Running': True, 'StartedAt': 'replacement'}
         return b''
 
     def update(self, **extra):
         return tool.update(self.config, self.release, self.evidence, self.api,
                            json.dumps(self.release).encode(), json.dumps(self.evidence).encode(), self.security,
                            self.new, self.checkpoint, '/private/synthetic-token', **extra)
+
+    def enable_pair(self):
+        old_new = self.new
+        self.new, self.wizard, self.public, self.source = fixtures.public_pair(self.release, self.evidence, self.api)
+        self.images[self.new] = self.images.pop(old_new)
+        self.images[self.new]['RepoDigests'] = [self.new]
+        self.pulled['reference'] = self.new
+        self.images[self.wizard] = {'Id': self.release['wizardImageId'], 'RepoDigests': [self.wizard]}
+        self.pulled_wizard = {'reference': self.wizard, 'imageId': self.release['wizardImageId'],
+                              'candidateJobId': self.release['candidateJobId']}
+        self.checked.side_effect = lambda *args, **kwargs: self.pulled_wizard if kwargs.get('wizard') else self.pulled
+        self.wizard_template = copy.deepcopy(self.rows['system_wizard_1'])
+        self.paired = True
+
+    def test_pair_changes_only_release_pins_and_keeps_source_primary_configuration(self):
+        self.enable_pair()
+        binding = self.root / 'configuration/.projects.env/.wizard.env'
+        binding.write_text('fixture canonical binding kept exactly\n')
+        expected = tool.assignment(tool.assignment(self.raw, self.new), self.wizard, 'WIZARD_IMAGE')
+        record = self.update(wizard=self.wizard)
+        self.assertEqual(self.config['_main'].read_bytes(), expected)
+        self.assertEqual(expected[:1184], self.raw[:1184])
+        self.assertEqual(binding.read_text(), 'fixture canonical binding kept exactly\n')
+        self.assertEqual(record['previousWizard']['imageId'], self.wizard_template['Image'])
+        self.assertTrue(record['otherServiceImagesPreserved'])
+        before = json.loads((self.checkpoint / 'baseline-before.json').read_bytes())
+        after = json.loads((self.checkpoint / 'baseline-after.json').read_bytes())
+        for name in before['selectedImages']:
+            if name not in ('system_bootstrapper_1', 'system_wizard_1'):
+                self.assertEqual(before['selectedImages'][name], after['selectedImages'][name])
+        self.assertEqual(self.rows['system_wizard_1']['Image'], self.release['wizardImageId'])
+
+    def test_pair_preflight_and_bad_Wizard_image_do_not_mutate_services(self):
+        self.enable_pair()
+        self.assertEqual(self.update(wizard=self.wizard, check_only=True)['phase'], 'preflight-passed')
+        for key, value in [('imageId', 'sha256:' + '0' * 64), ('candidateJobId', 900)]:
+            old = self.pulled_wizard[key]; self.pulled_wizard[key] = value
+            with self.assertRaisesRegex(recovery.RecoveryError, 'public-Wizard-does-not-match'):
+                self.update(wizard=self.wizard)
+            self.pulled_wizard[key] = old
+        self.assertEqual(self.commands, [])
+        self.assertFalse(self.checkpoint.exists())
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+
+    def test_pair_refuses_disabled_or_foreign_Wizard_before_checkpoint(self):
+        self.enable_pair()
+        self.config['WIZARD_ENABLE'] = 'false'
+        with self.assertRaisesRegex(recovery.RecoveryError, 'enabled-Wizard'):
+            self.update(wizard=self.wizard, check_only=True)
+        self.config['WIZARD_ENABLE'] = 'true'
+        self.rows['system_wizard_1']['Config']['Labels']['com.docker.compose.service'] = 'foreign'
+        with self.assertRaisesRegex(recovery.RecoveryError, 'owned-core-container-required'):
+            self.update(wizard=self.wizard, check_only=True)
+        self.assertFalse(self.checkpoint.exists())
+        self.assertEqual(self.commands, [])
+
+    def test_pair_rechecks_publication_under_lease_before_stopping_services(self):
+        self.enable_pair()
+        verify = successor.verify_public_pair
+        calls = 0
+        def changed_publication(*args):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                self.source['wizardRevision'] = '0' * 40
+            return verify(*args)
+        with patch.object(successor, 'verify_public_pair', side_effect=changed_publication):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'source-publication-mismatch'):
+                self.update(wizard=self.wizard)
+        self.assertEqual(calls, 2)
+        self.assertFalse(any('stop' in command for command in self.commands))
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
+
+    def test_pair_rollback_restores_both_images_and_configuration_without_CI_API(self):
+        self.enable_pair()
+        self.update(wizard=self.wizard)
+        with patch.object(successor, 'verify_public_pair', side_effect=AssertionError('CI API not needed')):
+            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(record['phase'], 'rolled-back')
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertEqual(self.rows['system_wizard_1']['Image'], self.wizard_template['Image'])
+        self.assertEqual(self.rows['system_bootstrapper_1']['Image'], self.controller_template['Image'])
+
+    def test_interrupted_pair_handles_missing_Wizard_and_controller_with_owned_lease(self):
+        self.enable_pair()
+        self.compose_fail = True
+        with self.assertRaisesRegex(recovery.RecoveryError, 'compose-failure'): self.update(wizard=self.wizard)
+        del self.rows['system_bootstrapper_1']; del self.rows['system_wizard_1']
+        self.compose_fail = False
+        with patch.object(successor, 'process_start', return_value='different-process'):
+            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(record['phase'], 'rolled-back')
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertEqual(self.rows['system_wizard_1']['Image'], self.wizard_template['Image'])
+
+    def test_pair_rollback_refuses_unrelated_Wizard_and_unavailable_previous_image(self):
+        self.enable_pair()
+        self.update(wizard=self.wizard)
+        self.rows['system_wizard_1']['Image'] = 'sha256:' + '0' * 64
+        with self.assertRaisesRegex(recovery.RecoveryError, 'unrelated-Wizard'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.rows['system_wizard_1']['Image'] = self.release['wizardImageId']
+        previous = json.loads((self.checkpoint / 'operation.json').read_bytes())['previousWizard']['reference']
+        self.images[previous]['Id'] = 'sha256:' + '0' * 64
+        with self.assertRaisesRegex(recovery.RecoveryError, 'previous-Wizard-image-unavailable'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+
+    def test_pair_rollback_refuses_changed_canonical_binding_before_stopping_services(self):
+        self.enable_pair()
+        binding = self.root / 'configuration/.projects.env/.wizard.env'
+        binding.write_text('canonical binding\n')
+        self.update(wizard=self.wizard)
+        binding.write_text('operator changed binding\n')
+        commands_before = len(self.commands)
+        with self.assertRaisesRegex(recovery.RecoveryError, 'saved-configuration-changed'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertFalse(any('stop' in command for command in self.commands[commands_before:]))
 
     def test_controller_only_update_retains_config_pins_data_and_exact_previous_image(self):
         record = self.update(redirect_from='https://alias.example.invalid')

@@ -2,7 +2,7 @@
 
 **Bootstrap a development platform. Use it to build, test, and evolve its own next generation.**
 
-> **Build your web projects. Not your infrastructure.**
+> **You build it, you own it**
 
 ## How it started: a developer's problem, a bigger idea
 

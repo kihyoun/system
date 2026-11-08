@@ -97,13 +97,15 @@ prepare:wizard-source:
   timeout: 5m
   script:
     - node gitlab/prepare-wizard-source.js
+    - node docs/check-wizard-docs.js
     - node project-bootstrap/wizard-source/package.js
     - node project-bootstrap/wizard-source/package.js --verify
     - node tests/prepare-context.js
     - node tests/prepare-candidate.js
+    - node tests/prepare-wizard-browser.js
   artifacts:
     expire_in: 1 day
-    paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/]
+    paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/]
   rules: *runtime-rules
 
 # The existing trusted socket runner launches a socket-free test child.
@@ -162,6 +164,34 @@ test:candidate-image:
     paths: [test-results/candidate-image/]
     reports:
       junit: test-results/candidate-image/junit.xml
+  rules: *runtime-rules
+
+# Browser coverage belongs to this same System candidate when the Wizard
+# gitlink is delivered without a separate Wizard pipeline.
+test:wizard-browser:
+  stage: test
+  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+  services: []
+  tags: [docker]
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    GIT_SUBMODULE_STRATEGY: none
+    RUNNER_SCRIPT_TIMEOUT: 13m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+  cache: []
+  dependencies: [prepare:wizard-source]
+  timeout: 15m
+  allow_failure: false
+  script:
+    - sh tests/ci-wizard-browser.sh
+  after_script:
+    - sh tests/ci-wizard-browser.sh cleanup
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths: [test-results/wizard-browser/]
+    reports:
+      junit: test-results/wizard-browser/junit.xml
   rules: *runtime-rules
 
 # One required resource-heavy candidate after all socket-free checks pass.
@@ -248,6 +278,10 @@ deploy:github:
   interruptible: false
   resource_group: 'github-backup-$CI_PROJECT_ID'
   allow_failure: false
+  artifacts:
+    when: always
+    expire_in: 1 year
+    paths: [test-results/github/]
   before_script:
     - sh bootstrapper/refresh-ca.sh
   rules:
@@ -256,6 +290,7 @@ deploy:github:
     - when: never
   script:
     - sh gitlab/github-backup-ci.sh
+
 
 
 

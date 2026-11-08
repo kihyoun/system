@@ -2,7 +2,8 @@
 """Update a public controller while preserving already-current service images/data.
 
 This explicit path requires no archive recovery manifest and refuses an existing
-one. It never migrates GitLab, restores a Seed or changes the Wizard selector.
+one. Opt in to the accepted public Wizard with --wizard. Neither mode migrates
+GitLab or restores a Seed.
 """
 import argparse
 import copy
@@ -36,7 +37,8 @@ installer = module('public_release_installer', 'install-release.py')
 promoter = module('existing_controller_promoter', 'promote-controller.py')
 
 
-def assignment(raw, reference):
+def assignment(raw, reference, selected_key='BOOTSTRAPPER_IMAGE'):
+    require(selected_key in ('BOOTSTRAPPER_IMAGE', 'WIZARD_IMAGE'), 'unsupported-update-image-assignment')
     reference = installer.reference(reference)
     runtime.cube(raw)
     # Parse complete literal assignment records, including multiline unrelated
@@ -78,14 +80,16 @@ def assignment(raw, reference):
         require(len(tokens) == 1 and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*=[\s\S]*', tokens[0]),
                 'unsupported-controller-update-configuration')
         key, value = tokens[0].split('=', 1)
-        if key == 'BOOTSTRAPPER_IMAGE':
-            installer.reference(value)
+        if key == selected_key:
+            require(recovery.reference(value), 'invalid-existing-image-assignment')
+            if selected_key == 'BOOTSTRAPPER_IMAGE':
+                installer.reference(value)
             matches.append((start, end))
         record = b''
     require(not record, 'incomplete-controller-update-configuration')
     require(len(matches) <= 1 and all(start >= 1184 for start, _ in matches),
             'duplicate-or-header-controller-assignment')
-    line = b"export BOOTSTRAPPER_IMAGE='" + reference.encode() + b"'"
+    line = b"export " + selected_key.encode() + b"='" + reference.encode() + b"'"
     if matches:
         start, end = matches[0]
         result = raw[:start] + line + (b'\n' if raw[start:end].endswith(b'\n') else b'') + raw[end:]
@@ -104,12 +108,14 @@ def checkpoint_path(config, path, new=False):
     return path
 
 
-def unchanged_services(services, baseline, controller_optional=False):
+def unchanged_services(services, baseline, controller_optional=False, wizard_optional=False):
     expected = baseline['selectedImages']
     required = set(expected) - ({'system_bootstrapper_1'} if controller_optional else set())
+    if wizard_optional:
+        required.discard('system_wizard_1')
     require(required <= set(services) <= set(expected), 'controller-update-service-set-changed')
     for name, selected in expected.items():
-        if name != 'system_bootstrapper_1':
+        if name != 'system_bootstrapper_1' and not (wizard_optional and name == 'system_wizard_1'):
             require(services[name]['Image'] == selected['imageId'], 'controller-update-service-image-changed')
 
 
@@ -120,15 +126,25 @@ def rollback_services(config, baseline, record):
     names = run([*DOCKER, 'container', 'ls', '--all', '--filter',
                  'name=^/system_bootstrapper_1$', '--format', '{{.Names}}']).decode().splitlines()
     require(names in ([], ['system_bootstrapper_1']), 'controller-rollback-ambiguous-controller')
-    services = {name: promoter.inspect(name) for name in baseline['selectedImages']
-                if name != 'system_bootstrapper_1' or names}
-    unchanged_services(services, baseline, controller_optional=True)
+    present = {'system_bootstrapper_1': bool(names)}
+    if record.get('wizard'):
+        names = run([*DOCKER, 'container', 'ls', '--all', '--filter',
+                     'name=^/system_wizard_1$', '--format', '{{.Names}}']).decode().splitlines()
+        require(names in ([], ['system_wizard_1']), 'paired-rollback-ambiguous-Wizard')
+        present['system_wizard_1'] = bool(names)
+    services = {name: promoter.inspect(name) for name in baseline['selectedImages'] if present.get(name, True)}
+    unchanged_services(services, baseline, controller_optional=True, wizard_optional=bool(record.get('wizard')))
     runtime.verify_mounts(config, services)
-    if names:
+    if present['system_bootstrapper_1']:
         current = services['system_bootstrapper_1']
         promoter.owned(current, 'bootstrapper')
         require(current['Image'] in (record['previousController']['imageId'], record['controller']['imageId']),
                 'controller-rollback-refuses-unrelated-controller')
+    if record.get('wizard') and present['system_wizard_1']:
+        current = services['system_wizard_1']
+        promoter.owned(current, 'wizard')
+        require(current['Image'] in (record['previousWizard']['imageId'], record['wizard']['imageId']),
+                'paired-rollback-refuses-unrelated-Wizard')
     return services
 
 
@@ -189,12 +205,19 @@ def write_configuration(config, raw, metadata):
 
 
 def update(config, release, evidence, api, release_bytes, evidence_bytes, security,
-           controller, checkpoint, token_file, redirect_from=None, timeout=1200, check_only=False):
+           controller, checkpoint, token_file, redirect_from=None, timeout=1200, check_only=False, wizard=None):
     runtime.public_manifest_absent(config)
     require(api.base == runtime.origin(config, 'GITLAB'), 'GitLab-origin-does-not-match-saved-config')
     successor.verify_checkout(release, ROOT)
     pipeline = successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
+    publication = None
+    if wizard is not None:
+        controller, wizard = installer.reference(controller), installer.reference(wizard)
+        require(config.get('WIZARD_ENABLE') == 'true', 'paired-update-requires-enabled-Wizard')
+        publication = successor.verify_public_pair(api, release, evidence, controller, wizard)
     original = current_services(config, release, evidence, security)
+    if wizard is not None:
+        promoter.owned(original['system_wizard_1'], 'wizard')
     baseline = runtime.capture(config, ROOT, public=True)
     require(len(baseline['runnerManagerIdentitySha256']) == runtime.runner_count(config),
             'all-current-runner-identities-required')
@@ -203,13 +226,23 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
     pulled = installer.checked_image(controller, {'sourceCommit': release['sourceRevision']})
     require(pulled['imageId'] == release['imageId'] and pulled['candidateJobId'] == release['candidateJobId'],
             'public-controller-does-not-match-accepted-candidate')
+    pulled_wizard = None
+    if wizard is not None:
+        pulled_wizard = installer.checked_image(wizard, {'sourceCommit': release['sourceRevision'],
+                                                        'wizardSourceRevision': release['wizardRevision']}, wizard=True)
+        require(pulled_wizard['imageId'] == release['wizardImageId'] and
+                pulled_wizard['candidateJobId'] == release['candidateJobId'],
+                'public-Wizard-does-not-match-accepted-candidate')
     checkpoint = checkpoint_path(config, checkpoint, new=True)
     raw = config['_main'].read_bytes()
     updated = assignment(raw, pulled['reference'])
+    if pulled_wizard:
+        updated = assignment(updated, pulled_wizard['reference'], 'WIZARD_IMAGE')
     info = config['_main'].stat()
     metadata = {'mode': stat.S_IMODE(info.st_mode), 'uid': info.st_uid, 'gid': info.st_gid}
     if check_only:
-        return {'phase': 'preflight-passed', 'controller': pulled, 'pipeline': pipeline}
+        return {'phase': 'preflight-passed', 'controller': pulled, 'pipeline': pipeline,
+                **({'wizard': pulled_wizard, 'publication': publication} if pulled_wizard else {})}
     checkpoint.mkdir(parents=True, mode=0o700)
     checkpoint.chmod(0o700)
     successor.atomic_bytes(checkpoint / 'main-before.env', raw)
@@ -222,6 +255,10 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
               'configurationMetadata': metadata, 'previousController': {
                   'reference': config['BOOTSTRAPPER_IMAGE'], 'imageId': original['system_bootstrapper_1']['Image'],
                   'restartPolicy': original['system_bootstrapper_1']['HostConfig']['RestartPolicy']}}
+    if pulled_wizard:
+        record.update(wizard=pulled_wizard, publication=publication,
+                      previousWizard={'reference': config['WIZARD_IMAGE'],
+                                      'imageId': original['system_wizard_1']['Image']})
     successor.atomic_json(checkpoint / 'operation.json', record)
     with successor.Lease(config) as lease:
         record.update(leaseOperation=lease.operation, phase='lease-acquired')
@@ -230,6 +267,9 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
         require(runtime.public_images(config, runtime.inspect_services(config)) == baseline['selectedImages'],
                 'controller-update-images-changed-before-stop')
         successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
+        if pulled_wizard:
+            require(successor.verify_public_pair(api, release, evidence, controller, wizard) == publication,
+                    'paired-publication-changed-before-stop')
         successor.sync_idle(config)
         current_services(config, release, evidence, security)
         lease.critical = True
@@ -246,14 +286,18 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
         after = copy.deepcopy(baseline)
         after['configurationFiles']['configuration/.docker.env'] = hashlib.sha256(updated).hexdigest()
         after['selectedImages']['system_bootstrapper_1'].update(reference=pulled['reference'], imageId=pulled['imageId'])
+        if pulled_wizard:
+            after['selectedImages']['system_wizard_1'].update(reference=pulled_wizard['reference'], imageId=pulled_wizard['imageId'])
         after.update(sourceCommit=release['sourceRevision'], sourceTree=release['sourceTree'])
         after['startedAt'] = restarted_at
         successor.atomic_json(checkpoint / 'baseline-after.json', after)
         receipt = wait_ready(config, after, token_file, redirect_from, timeout)
-        unchanged_services(runtime.inspect_services(config), baseline)
+        unchanged_services(runtime.inspect_services(config), baseline, wizard_optional=bool(pulled_wizard))
         successor.atomic_json(checkpoint / 'verification.json', receipt)
-        record.update(phase='completed', completedAt=runtime.now(), serviceImagesPreserved=True,
-                      configurationChangedOnlyControllerImage=True, databaseRewound=False)
+        record.update(phase='completed', completedAt=runtime.now(), serviceImagesPreserved=not bool(pulled_wizard),
+                      configurationChangedOnlyControllerImage=not bool(pulled_wizard), databaseRewound=False)
+        if pulled_wizard:
+            record.update(otherServiceImagesPreserved=True, configurationChangedOnlyReleaseImages=True)
         successor.atomic_json(checkpoint / 'operation.json', record)
     return record
 
@@ -264,6 +308,13 @@ def load_operation(config, checkpoint):
     record = json.loads(successor.private_input(checkpoint / 'operation.json'))
     require(record.get('format') == 'system-public-controller-update-v1', 'invalid-public-controller-operation')
     return checkpoint, record
+
+
+def paired_rollback_baseline(config, baseline, record):
+    if record.get('wizard'):
+        current = copy.deepcopy(baseline)
+        current['configurationFiles']['configuration/.docker.env'] = recovery.sha(config['_main'])
+        runtime.assert_baseline(config, current)
 
 
 def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
@@ -280,6 +331,11 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
     previous = record['previousController']
     require(recovery.inspect_image(previous['reference'])['Id'] == previous['imageId'],
             'previous-controller-image-unavailable-or-retargeted')
+    if record.get('wizard'):
+        previous_wizard = record['previousWizard']
+        require(recovery.inspect_image(previous_wizard['reference'])['Id'] == previous_wizard['imageId'],
+                'previous-Wizard-image-unavailable-or-retargeted')
+    paired_rollback_baseline(config, baseline, record)
     rollback_services(config, baseline, record)
     locked = (config['_root'] / 'configuration/.gitlab-upgrade-lock').exists()
     lease = successor.Lease.adopt(config, record['leaseOperation']) if locked else successor.Lease(config).__enter__()
@@ -289,6 +345,7 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
         require(hashlib.sha256(config['_main'].read_bytes()).hexdigest() in
                 (record['configurationBeforeSha256'], record['configurationAfterSha256']),
                 'controller-rollback-configuration-changed')
+        paired_rollback_baseline(config, baseline, record)
         services = rollback_services(config, baseline, record)
         record['phase'] = 'rollback-started'
         successor.atomic_json(checkpoint / 'operation.json', record)
@@ -326,6 +383,7 @@ def main():
     parser.add_argument('--release')
     parser.add_argument('--evidence')
     parser.add_argument('--controller', help='Independently selected public Docker Hub digest for the accepted candidate.')
+    parser.add_argument('--wizard', help='Opt in to the exact same-candidate public Wizard and paired rollback.')
     parser.add_argument('--gitlab-url')
     parser.add_argument('--token-file', help='Private API token used for CI and current Runner-manager verification.')
     parser.add_argument('--redirect-from')
@@ -339,7 +397,9 @@ def main():
     if args.operation == 'status':
         _, record = load_operation(config, args.checkpoint_dir)
         print(json.dumps({'phase': record['phase'], 'controller': record['controller'],
-                          'previousControllerImageId': record['previousController']['imageId']}, indent=2))
+                          'previousControllerImageId': record['previousController']['imageId'],
+                          **({'wizard': record['wizard'], 'previousWizardImageId': record['previousWizard']['imageId']}
+                             if record.get('wizard') else {})}, indent=2))
         return
     require(bool(args.token_file), 'private-API-token-file-required')
     if args.operation == 'rollback':
@@ -352,8 +412,11 @@ def main():
     release, evidence = successor.release_inputs(release_bytes, evidence_bytes, security)
     api = successor.GitLab(args.gitlab_url, args.token_file)
     update(config, release, evidence, api, release_bytes, evidence_bytes, security, args.controller,
-           args.checkpoint_dir, args.token_file, args.redirect_from, args.timeout, args.check_only)
-    print('Public controller preflight passed.' if args.check_only else 'Accepted public controller updated; service images/data preserved.')
+           args.checkpoint_dir, args.token_file, args.redirect_from, args.timeout, args.check_only, args.wizard)
+    print(('Public controller/Wizard pair preflight passed.' if args.wizard else
+           'Public controller preflight passed.') if args.check_only else
+          ('Accepted public controller/Wizard pair updated; other service images/data preserved.' if args.wizard else
+           'Accepted public controller updated; service images/data preserved.'))
 
 
 if __name__ == '__main__':

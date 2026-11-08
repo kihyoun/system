@@ -3,20 +3,23 @@ const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const quote = value => "'" + value.replace(/'/g, "'\"'\"'") + "'";
 
-function startTransport(args, seconds = 30) {
+function startTransport(args, seconds = 30, environment = process.env) {
   if (!Number.isInteger(seconds) || seconds < 1 || seconds > 300) {
     throw new Error('Transport deadline must be an integer from 1 to 300 seconds');
   }
   const windows = process.platform === 'win32';
-  const shell = windows ? process.env.GITHUB_BACKUP_TEST_SHELL : '/bin/sh';
+  const shell = windows ? environment.GITHUB_BACKUP_TEST_SHELL : '/bin/sh';
   if (!shell) throw new Error('Windows offline fixture shell missing');
-  const hostsFile = process.env.GITHUB_BACKUP_KNOWN_HOSTS_FILE;
+  const hostsFile = environment.GITHUB_BACKUP_KNOWN_HOSTS_FILE;
+  const identity = environment.GITHUB_BACKUP_IDENTITY_FILE;
   if (hostsFile && /[\r\n\0]/.test(hostsFile)) throw new Error('Invalid known-hosts selector');
+  if (identity && (!path.isAbsolute(identity) || /[\r\n\0]/.test(identity))) throw new Error('Invalid SSH identity selector');
   const ssh = 'ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=2' +
-    (hostsFile ? ' -o ' + quote('UserKnownHostsFile=' + hostsFile) + ' -o GlobalKnownHostsFile=/dev/null' : '');
+    (hostsFile ? ' -o ' + quote('UserKnownHostsFile=' + hostsFile) + ' -o GlobalKnownHostsFile=/dev/null' : '') +
+    (identity ? ' -o IdentitiesOnly=yes -i ' + quote(identity) : '');
   const child = spawn(shell, ['-c', 'exec git -c core.hooksPath=/dev/null "$@"', 'git', ...args], {
     detached: !windows, windowsHide: true, stdio: 'ignore',
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never',
+    env: { ...environment, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never',
       GIT_SSH_VARIANT: 'ssh',
       GIT_SSH_COMMAND: ssh },
   });
