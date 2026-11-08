@@ -160,6 +160,22 @@ DinD services does not remove that authority. This setup is for trusted code,
 not hostile merge requests on a shared privileged runner. No additional runner
 is provisioned by the tests.
 
+`prepare:wizard-source` also checks the bundled Docs against the complete public
+guide sources before packaging. To update the reader, edit the original guides,
+run `python3 docs/export-wizard-docs.py`, and commit the generated Wizard catalog
+with its System gitlink. `node docs/check-wizard-docs.js` checks source drift and
+full-text preservation; `python3 docs/test-export-wizard-docs.py` exercises chapter,
+link and offline image coverage during authoring.
+
+The required `test:wizard-browser` job consumes a separately checksummed context
+from that same committed Wizard gitlink. Its trusted parent builds the browser
+tools and runs the full native Playwright suite in a network-disabled child
+with no host socket, private configuration or job credentials. The child has
+2 GiB memory, two CPUs and a 512-process limit. Reports and JUnit leave through
+`docker cp`; identity-checked cleanup removes only that job's child and image.
+This keeps browser coverage in the same System pipeline when a combined release
+does not use a separate Wizard source pipeline.
+
 Names include numeric project/job IDs. Traps and `after_script` remove only the
 exact job-owned containers/images. The eight-minute script budget leaves cleanup
 reserve within the ten-minute job, and each cleanup command is bounded. Separate

@@ -68,6 +68,7 @@ class API:
         self.jobs = [{'id': (release['candidateJobId'] if name == 'test:platform-candidate' else index + 100),
                       'name': name, 'status': 'success', 'allow_failure': False,
                       'pipeline': {'id': release['pipelineId']}} for index, name in enumerate(names)]
+        self.artifacts = {}
     def get(self, path):
         if '/repository/branches/' in path:
             return self.branch
@@ -75,8 +76,114 @@ class API:
     def pages(self, path):
         return self.jobs
     def raw(self, path):
+        if path in self.artifacts:
+            value = self.artifacts[path]
+            return (value if isinstance(value, bytes) else json.dumps(value).encode()), {}
         value = self.evidence if path.endswith(successor.EVIDENCE_PATH) else self.release
         return json.dumps(value).encode(), {}
+
+
+def public_pair(release, evidence, api):
+    release.update(wizardImageId='sha256:' + '8' * 64,
+                   wizardRegistryReference=release['registryRepository'] + '-wizard@sha256:' + '9' * 64)
+    evidence['images']['wizard'] = release['wizardImageId']
+    release['candidateEvidenceSha256'] = hashlib.sha256(json.dumps(evidence).encode()).hexdigest()
+    api.release, api.evidence = copy.deepcopy(release), copy.deepcopy(evidence)
+    for number, name in [(900, 'test:wizard-browser'), (901, 'deploy:dockerhub'), (902, 'deploy:github')]:
+        api.jobs.append({'id': number, 'name': name, 'status': 'success', 'allow_failure': False,
+                         'pipeline': {'id': release['pipelineId']}, 'commit': {'id': release['sourceRevision']}})
+    controller = 'docker.io/example/system@' + release['registryReference'].split('@')[1]
+    wizard = 'docker.io/example/wizard@' + release['wizardRegistryReference'].split('@')[1]
+    public = {'format': 'system-public-release-v1', 'publicationJobId': 901, 'versionTag': None,
+              'platform': 'linux/amd64', **{key: release[key] for key in
+                ('projectId', 'pipelineId', 'sourceRevision', 'sourceTree', 'wizardRevision')},
+              'upstreamRelease': {key: release[key] for key in
+                ('projectId', 'pipelineId', 'candidateJobId', 'registryReference', 'candidateEvidenceSha256')}}
+    for role, reference, image, revision in [('controller', controller, release['imageId'], release['sourceRevision']),
+                                           ('wizard', wizard, release['wizardImageId'], release['wizardRevision'])]:
+        public[role] = {'reference': reference.removeprefix('docker.io/'), 'imageId': image, 'sourceRevision': revision,
+                        'configDigest': 'sha256:' + '1' * 64}
+    source = {'format': 'system-wizard-source-publication-v1', 'projectId': release['projectId'],
+              'pipelineId': release['pipelineId'], 'publicationJobId': 902,
+              'systemRevision': release['sourceRevision'], 'wizardRevision': release['wizardRevision'],
+              'repository': 'https://github.com/example/wizard.git',
+              'ref': 'refs/heads/system-release/' + release['wizardRevision']}
+    prefix = '/projects/' + str(release['projectId'])
+    api.artifacts[prefix + '/jobs/901/artifacts/test-results/dockerhub/release.json'] = public
+    api.artifacts[prefix + '/jobs/902/artifacts/test-results/github/wizard-source.json'] = source
+    api.artifacts[prefix + '/repository/files/.gitmodules/raw?ref=' + release['sourceRevision']] = (
+        b'[submodule "wizard"]\n\tpath = wizard\n\turl = https://github.com/example/wizard.git\n')
+    return controller, wizard, public, source
+
+
+class PublicPairContracts(unittest.TestCase):
+    def setUp(self):
+        self.release, self.evidence, self.security = fixture()
+        self.api = API(self.release, self.evidence)
+        self.controller, self.wizard, self.public, self.source = public_pair(self.release, self.evidence, self.api)
+
+    def verify(self):
+        successor.release_inputs(json.dumps(self.release).encode(), json.dumps(self.evidence).encode(), self.security)
+        successor.verify_pipeline(self.api, self.release, json.dumps(self.release).encode(), json.dumps(self.evidence).encode())
+        return successor.verify_public_pair(self.api, self.release, self.evidence, self.controller, self.wizard)
+
+    def test_public_pair_binds_same_candidate_source_and_public_dependency(self):
+        proof = self.verify()
+        self.assertEqual(proof['jobId'], 901)
+        self.assertEqual(proof['sourceJobId'], 902)
+
+    def test_Wizard_image_and_internal_registry_are_independently_bound(self):
+        for change in [dict(wizardImageId='sha256:' + '0' * 64),
+                       dict(wizardRegistryReference='registry.example.invalid/other@sha256:' + '9' * 64),
+                       dict(wizardRegistryReference=None)]:
+            with self.subTest(change=change), self.assertRaisesRegex(successor.recovery.RecoveryError, 'Wizard-release-evidence'):
+                successor.wizard_release(dict(self.release, **change), self.evidence)
+
+    def test_native_push_and_both_required_publication_jobs_are_required(self):
+        for source in ['web', 'schedule', 'api', 'merge_request_event']:
+            self.api.pipeline['source'] = source
+            with self.subTest(source=source), self.assertRaises(successor.recovery.RecoveryError): self.verify()
+        self.api.pipeline['source'] = 'push'
+        for name in ['deploy:dockerhub', 'deploy:github']:
+            job = next(row for row in self.api.jobs if row['name'] == name)
+            for key, value in [('status', 'failed'), ('allow_failure', True), ('commit', {'id': '0' * 40}),
+                               ('pipeline', {'id': 900})]:
+                old = job[key]; job[key] = value
+                with self.subTest(name=name, key=key), self.assertRaises(successor.recovery.RecoveryError): self.verify()
+                job[key] = old
+
+    def test_paired_browser_job_must_exist_and_pass_for_the_same_source_pipeline(self):
+        browser = next(job for job in self.api.jobs if job['name'] == 'test:wizard-browser')
+        self.api.jobs.remove(browser)
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'paired-Wizard-browser-job'):
+            self.verify()
+        self.api.jobs.append(browser)
+        for key, value in [('status', 'skipped'), ('status', 'failed'), ('allow_failure', True),
+                           ('pipeline', {'id': 900}), ('commit', {'id': '0' * 40})]:
+            old = browser[key]; browser[key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(successor.recovery.RecoveryError):
+                self.verify()
+            browser[key] = old
+        self.assertEqual(self.verify()['jobId'], 901)
+
+    def test_public_artifact_cannot_claim_another_source_image_or_candidate(self):
+        changes = [('sourceRevision', '0' * 40), ('wizardRevision', '0' * 40), ('publicationJobId', 900),
+                   ('upstreamRelease', dict(self.public['upstreamRelease'], candidateJobId=900)),
+                   ('wizard', dict(self.public['wizard'], reference=self.controller)),
+                   ('wizard', dict(self.public['wizard'], imageId='sha256:' + '0' * 64)),
+                   ('controller', dict(self.public['controller'], sourceRevision='0' * 40))]
+        for key, value in changes:
+            old = self.public[key]; self.public[key] = value
+            with self.subTest(key=key), self.assertRaises(successor.recovery.RecoveryError): self.verify()
+            self.public[key] = old
+
+    def test_public_dependency_must_match_authenticated_gitmodules_and_retained_ref(self):
+        for key, value in [('repository', 'https://github.com/another/wizard.git'), ('ref', 'refs/heads/master'),
+                           ('wizardRevision', '0' * 40), ('publicationJobId', 900), ('systemRevision', '0' * 40)]:
+            old = self.source[key]; self.source[key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(successor.recovery.RecoveryError, 'source-publication-mismatch'):
+                self.verify()
+            self.source[key] = old
 
 
 class ReleaseContracts(unittest.TestCase):

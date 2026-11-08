@@ -24,7 +24,7 @@ private_dir=$(mktemp -d "${TMPDIR:-/tmp}/system-github-backup.XXXXXXXX") || fail
 agent_started=false
 cleanup() {
   if [ "$agent_started" = true ]; then ssh-agent -k >/dev/null 2>&1 || :; fi
-  rm -f "$private_dir/known_hosts" "$private_dir/identity"
+  rm -f "$private_dir/known_hosts" "$private_dir/identity" "$private_dir/wizard-identity"
   rmdir "$private_dir" 2>/dev/null || :
 }
 trap cleanup EXIT
@@ -42,9 +42,20 @@ if [ -f "$GITHUB_SSH_PRIVATE_KEY" ]; then
   ssh-add "$private_dir/identity" >/dev/null 2>&1 || fail 'SSH identity could not be loaded'
 else
   # Existing protected multiline variables remain supported; prefer file type.
-  printf '%s\n' "$GITHUB_SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - >/dev/null 2>&1 || fail 'SSH identity could not be loaded'
+  printf '%s\n' "$GITHUB_SSH_PRIVATE_KEY" | tr -d '\r' >"$private_dir/identity"
+  chmod 600 "$private_dir/identity"
+  ssh-add "$private_dir/identity" >/dev/null 2>&1 || fail 'SSH identity could not be loaded'
 fi
 unset GITHUB_SSH_PRIVATE_KEY
 GITHUB_BACKUP_KNOWN_HOSTS_FILE="$private_dir/known_hosts"
-export GITHUB_BACKUP_KNOWN_HOSTS_FILE
+GITHUB_BACKUP_IDENTITY_FILE="$private_dir/identity"
+export GITHUB_BACKUP_KNOWN_HOSTS_FILE GITHUB_BACKUP_IDENTITY_FILE
+if [ "${WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED:-}" = true ]; then
+  [ -n "${WIZARD_GITHUB_SSH_PRIVATE_KEY:-}" ] && [ -f "$WIZARD_GITHUB_SSH_PRIVATE_KEY" ] || fail 'protected Wizard SSH file variable missing'
+  tr -d '\r' <"$WIZARD_GITHUB_SSH_PRIVATE_KEY" >"$private_dir/wizard-identity" 2>/dev/null || fail 'Wizard SSH identity could not be copied'
+  chmod 600 "$private_dir/wizard-identity"
+  ssh-add "$private_dir/wizard-identity" >/dev/null 2>&1 || fail 'Wizard SSH identity could not be loaded'
+  unset WIZARD_GITHUB_SSH_PRIVATE_KEY
+  GITHUB_BACKUP_IDENTITY_FILE="$private_dir/wizard-identity" node "$script_dir/publish-wizard-source.js"
+fi
 sh "$script_dir/github-backup.sh"

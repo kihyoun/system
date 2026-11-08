@@ -13,5 +13,7 @@ project-bootstrap/wizard-source/snapshot.json
 .test-context/
 
 .candidate-context/
+.wizard-browser-context/
+docs/__pycache__/
 
 .candidate-images/

@@ -272,7 +272,8 @@ has **no `recovery/images.json` archive manifest**. This explicit path refuses a
 existing manifest, including a dangling link; it never fabricates or replaces
 one. An archive-backed installation uses the successor workflow below.
 
-The update changes only `BOOTSTRAPPER_IMAGE` in the saved main configuration.
+By default, the update changes only `BOOTSTRAPPER_IMAGE` in the saved main
+configuration.
 It preserves the exact GitLab, Runner, NGINX and Wizard image identities, manager
 identities, storage selection, service data and Seed. In particular, an existing
 private Wizard selector stays selected: publishing a public controller/Wizard
@@ -290,7 +291,8 @@ to current Runner managers. The tool verifies the required successful jobs,
 enabled merge gate, protected current default-branch head and byte-identical CI
 artifacts using the same successor evidence checks as promotion. It pulls the
 public digest and additionally requires the exact accepted controller image ID,
-source label and candidate-job label. The public Wizard image is not pulled.
+source label and candidate-job label. The public Wizard image is not pulled
+unless the explicit paired option below is selected.
 
 ```sh
 sudo python3 bootstrapper/update-controller.py \
@@ -315,8 +317,8 @@ configuration already requires that canonical Wizard alias.
 Before stopping the old controller, the tool retains its exact image selector/ID,
 restart policy, private original configuration and runtime baseline. The shared
 live-state, certificate and environment leases and host-command guardian protect
-the transition. Sync must prove its operation queue idle. Only the controller is
-recreated through native Compose with builds and pulls disabled. Acceptance
+the transition. Sync must prove its operation queue idle. In the default mode,
+only the controller is recreated through native Compose with builds and pulls disabled. Acceptance
 checks exact service images and mounts, unchanged configuration apart from the
 controller selector, authenticated Sync Fetch, trusted application routing,
 renewal integration and recent GitLab contact by every current Runner manager.
@@ -354,6 +356,56 @@ the tool never discards someone else's edits. An uncertain failure retains the
 owned leases and private receipts for the same native rollback action. Preserve
 the checkpoint and both images until the accepted version is no longer needed
 for recovery.
+
+### Deliberately updating the accepted controller and Wizard together
+
+Add `--wizard docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST`
+to the update command to select the complete accepted System release. Use this
+option for both `--check-only` and the subsequent update with the same inputs.
+The Wizard must be enabled. This is one maintenance operation with possible
+management-interface downtime; it uses the shared leases and native startup.
+GitLab and Runner images must already be current, as in the controller-only path.
+
+The paired mode requires the exact protected System default-branch **push**
+pipeline. All ordinary internal checks and the required `test:wizard-browser`
+job must pass for that exact source and pipeline. The browser job runs the
+Wizard's complete native Playwright suite against its prepared source.
+Its required, successful
+`deploy:dockerhub` job must provide `test-results/dockerhub/release.json`, binding
+both public digests to the same accepted candidate job, source tree and Wizard
+gitlink. The frozen successor evidence must identify the Wizard image published
+in that System project's `successor-wizard` registry repository. Both public
+images are pulled before maintenance and checked for their exact image IDs,
+source revisions and candidate-job labels; the Wizard also carries the System
+source revision. The public and private publication digests must agree.
+
+Public source availability is required for this mode. The same pipeline's
+`deploy:github` job must succeed and retain
+`test-results/github/wizard-source.json`. That receipt must identify the exact
+Wizard gitlink on `refs/heads/system-release/<wizard-revision>` in the public
+Wizard repository named by the accepted System `.gitmodules`. The verifier
+reads that mapping from authenticated GitLab source at the accepted revision.
+An optional mirror failure still has its existing behavior for controller-only
+updates; it cannot authorize a paired public release.
+
+A paired System release can review and pin a retained Wizard dependency branch
+without changing Wizard's default branch. Keep its source and public release
+references available for fresh recursive checkouts. This is System release
+provenance. It does not create native Wizard pipeline evidence, adopt a project
+or change the canonical source-primary binding and approved CI manifest. The
+ordinary source-primary Wizard Production command continues to require its own
+successful current default-branch push and delivery evidence.
+
+The combined checkpoint retains both previous image selectors and IDs and the
+exact original configuration. Only `BOOTSTRAPPER_IMAGE` and `WIZARD_IMAGE` may
+change; the Cube, managed project receipts, other settings, other service images,
+manager identities, storage and Seed remain verified against the baseline.
+The accepted controller's native startup reconciles the selected Wizard. Keep
+both previous images available. The same `status` and `rollback` commands above
+inspect or restore the pair without needing a CI API or rewinding service data.
+An unrelated Wizard image, unavailable retained image, changed configuration or
+uncertain container lookup blocks rollback. A proven interrupted removal of the
+controller or Wizard is handled through native recreation under the owned lease.
 
 For independent runtime checks of this installation type, select the explicit
 public-image mode for both baseline and check:

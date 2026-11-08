@@ -9,7 +9,8 @@ text = File.binread(File.join(root, '.gitlab-ci.yml'))
 raise 'Cube signature changed' unless text[807] == '$' && Digest::MD5.hexdigest(text[0, 1184]) == 'bd4a8426355824593a5e21ad759830c1'
 config = YAML.safe_load(text, aliases: true)
 jobs = config.select { |name, value| !name.start_with?('.') && value.is_a?(Hash) && value.key?('script') }
-full = %w[prepare:wizard-source test:isolated test:candidate-image test:platform-candidate build]
+jobs.transform_values! { |job| job['extends'] ? config.fetch(job['extends']).merge(job) : job }
+full = %w[prepare:wizard-source test:isolated test:candidate-image test:wizard-browser test:platform-candidate build]
 baseline = {'CI_PIPELINE_SOURCE' => 'merge_request_event', 'CI_DEFAULT_BRANCH' => 'master',
             'GITHUB_BACKUP_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'false'}
 condition = lambda do |expression, environment|
@@ -73,6 +74,12 @@ assert_jobs.call('enabled protected runtime push publishes accepted images', ['s
 assert_jobs.call('documentation push does not publish public images', ['README.md'], light + ['deploy:github'], hub)
 assert_jobs.call('MR cannot publish even with an enable selector', ['system/start.sh'], runtime,
                  baseline.merge('DOCKERHUB_PUBLISH_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'true'))
+review = baseline.merge('SYSTEM_REVIEW_ENABLED' => 'true', 'CI_PROJECT_ID' => '42', 'CI_MERGE_REQUEST_SOURCE_PROJECT_ID' => '42')
+review_jobs = %w[deploy:wizard-review stop:wizard-review]
+assert_jobs.call('same-project MR offers one optional shared Wizard Review', ['wizard'], runtime + review_jobs, review)
+assert_jobs.call('documentation-only MR needs no candidate artifacts', ['README.md'], light, review)
+assert_jobs.call('fork MR cannot deploy the shared Review', ['wizard'], runtime, review.merge('CI_MERGE_REQUEST_SOURCE_PROJECT_ID' => '43'))
+assert_jobs.call('Review opt-in never deploys a push', ['wizard'], runtime + ['deploy:github'], push.merge('SYSTEM_REVIEW_ENABLED' => 'true'))
 assert_jobs.call('unprotected default push', ['system/start.sh'], runtime, push.merge('CI_COMMIT_REF_PROTECTED' => 'false'))
 assert_jobs.call('first push is conservative', ['README.md'], runtime + ['deploy:github'], push, false)
 assert_jobs.call('other branch push', ['system/start.sh'], [], push.merge('CI_COMMIT_BRANCH' => 'feature'))
@@ -122,6 +129,24 @@ raise 'Documentation lane must retain its short bounded budget' unless documenta
 raise 'Documentation lane must not require runtime artifacts' if documentation['needs'] || documentation['dependencies']
 raise 'Documentation lane must be required' unless documentation['allow_failure'] == false
 hub_job = jobs.fetch('deploy:dockerhub')
+review_jobs.each do |name|
+  job = jobs.fetch(name)
+  raise 'Review must remain optional, serialized and manually selected' unless job['allow_failure'] == true && job['resource_group'] == 'wizard-review' &&
+    job['stage'] == 'deploy' && job['services'] == [] && job['tags'] == ['docker'] && job['rules'].first['when'] == 'manual' &&
+    job['rules'].last == {'when' => 'never'} && !job['needs']
+  raise 'Review installation must preserve its finite cleanup reserve' unless job['before_script'] == ['timeout -k 5 110 sh bootstrapper/install-runtime.sh'] &&
+    job.dig('variables', 'RUNNER_SCRIPT_TIMEOUT') == '12m' && job['timeout'] == '14m'
+end
+raise 'Review must reuse the candidate; Stop must survive artifact expiry' unless jobs.fetch('deploy:wizard-review')['dependencies'] == ['test:platform-candidate'] &&
+  jobs.fetch('stop:wizard-review')['dependencies'] == [] && jobs.fetch('deploy:wizard-review').dig('environment', 'on_stop') == 'stop:wizard-review' &&
+  jobs.fetch('stop:wizard-review').dig('environment', 'action') == 'stop'
+mirror_job = jobs.fetch('deploy:github')
+raise 'Wizard dependency publication evidence must remain available' unless mirror_job.dig('artifacts', 'paths') == ['test-results/github/'] &&
+  mirror_job.dig('artifacts', 'when') == 'always' && mirror_job['script'] == ['sh gitlab/github-backup-ci.sh']
+browser_job = jobs.fetch('test:wizard-browser')
+raise 'Full native Wizard browser coverage must use an isolated required child' unless browser_job['script'] == ['sh tests/ci-wizard-browser.sh'] &&
+  browser_job['after_script'] == ['sh tests/ci-wizard-browser.sh cleanup'] && browser_job['services'] == [] &&
+  browser_job['tags'] == ['docker'] && browser_job.dig('artifacts', 'reports', 'junit') == 'test-results/wizard-browser/junit.xml'
 raise 'Public release must consume the accepted full candidate without rebuilding' unless hub_job['script'] == ['node gitlab/publish-dockerhub.js'] &&
   hub_job['dependencies'] == ['test:platform-candidate'] && !hub_job['needs'] && hub_job['stage'] == 'deploy'
 raise 'Public publisher must retain required protected and serialized execution' unless hub_job['allow_failure'] == false &&

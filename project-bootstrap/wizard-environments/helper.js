@@ -32,11 +32,13 @@ function parse(args) {
       throw new Error('Invalid helper arguments.');
     values[args[i].slice(2)] = args[i + 1];
   }
-  if (values.controller !== 'system_bootstrapper_1' || Object.keys(values).length !== 9)
+  const system = values.delivery === 'system';
+  if (values.controller !== 'system_bootstrapper_1' || Object.keys(values).length !== (system ? 10 : 9) ||
+      (values.delivery !== undefined && !system) || (system && values.kind !== 'review'))
     throw new Error('Original controller is required.');
   return state.validRequest({action: values.action, kind: values.kind, projectId: Number(values.project),
     pipelineId: Number(values.pipeline), jobId: Number(values.job), sourceCommit: values.sha,
-    mrIid: Number(values.mr), operation: values.operation});
+    mrIid: Number(values.mr), operation: values.operation, ...(system ? {delivery: 'system'} : {})});
 }
 class Runtime {
   constructor(request, options = {}) {
@@ -263,6 +265,24 @@ class Runtime {
   async verify() {
     const registry = new URL(this.context.publicSettings.GITLAB_REGISTRY_URL);
     if (Number(this.context.publicSettings.GITLAB_REGISTRY_DOMAIN_MODE || 0) < 2) registry.port = '5050';
+    if (this.request.delivery === 'system') {
+      const binding = require('../system-review/binding').validate(this.context.systemReviewBinding, this.context, this.request);
+      const result = await this.verifyInput({binding, request: this.request, repository: this.context.receipt.repository,
+        environments: this.environment, registryHost: registry.host,
+        securityRelease: require('../../gitlab/security-release.json')});
+      if (this.request.action === 'deploy') {
+        const images = await this.json(['image', 'inspect', binding.helperImage, binding.wizardImageRef]);
+        const [helper, wizard] = images;
+        const labels = item => item?.Config?.Labels || {};
+        if (helper?.Id !== binding.helperImage || wizard?.Id !== binding.wizardImageId ||
+            labels(helper)['org.opencontainers.image.revision'] !== binding.sourceCommit ||
+            labels(wizard)['org.opencontainers.image.revision'] !== binding.wizardRevision ||
+            labels(wizard)['org.system-bootstrapper.source-revision'] !== binding.sourceCommit ||
+            images.some(item => labels(item)['org.system-bootstrapper.test-job'] !== String(binding.candidateJobId)))
+          throw new Error('System review images do not match the accepted candidate/source/job.');
+      }
+      return result;
+    }
     const workflow = this.context.receipt.wizardWorkflow;
     const build = workflow?.build;
     if (this.context.receipt.repository.managementMode === 'source-primary') {
@@ -288,7 +308,9 @@ class Runtime {
     return this.verifyInput(input);
   }
   async verifyInput(input) {
-    const script = "BOOTSTRAPPER_ENVIRONMENT_INPUT = '" + Buffer.from(JSON.stringify(input)).toString('base64') + "'\n" + verifier;
+    const system = this.request.delivery === 'system';
+    const code = system ? fs.readFileSync(path.join(__dirname, '../system-review/verify.rb'), 'utf8') : verifier;
+    const script = (system ? 'BOOTSTRAPPER_SYSTEM_REVIEW_INPUT' : 'BOOTSTRAPPER_ENVIRONMENT_INPUT') + " = '" + Buffer.from(JSON.stringify(input)).toString('base64') + "'\n" + code;
     const result = await this.json(['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'], script, {timeout: 180000});
     if (!result.ok) throw new Error('Canonical GitLab job, source, or candidate checks failed.');
     return result;
@@ -370,11 +392,13 @@ class Runtime {
       await this.canonical('lock'); locked = true;
       this.context = await this.canonical('read');
       this.environment = this.context.receipt.wizardWorkflow?.environments;
+      const system = this.request.delivery === 'system';
+      const binding = system ? require('../system-review/binding').validate(this.context.systemReviewBinding, this.context, this.request) : null;
       if (!this.environment || this.environment.operation !== this.request.operation || this.environment.phase !== 'ready' ||
-          !this.environment.activationCommit || this.context.receipt.repository.id !== this.request.projectId)
+          !this.environment.activationCommit || (!system && this.context.receipt.repository.id !== this.request.projectId))
         throw new Error('Managed environment reservation is not ready.');
       const own = await this.inspected(this.helperName);
-      if (!own || own.image !== this.environment.helperImage || own.labels?.['system.wizard.environments.helper'] !== this.request.operation)
+      if (!own || own.image !== (system ? binding.helperImage : this.environment.helperImage) || own.labels?.['system.wizard.environments.helper'] !== this.request.operation)
         throw new Error('Immutable clean helper image does not match the reservation.');
       this.environment.deployments ||= {};
       this.setting = this.environment.settings[this.request.kind];

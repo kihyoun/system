@@ -251,6 +251,49 @@ No automatic System merge
 or Production deployment is introduced. Production remains a deliberate
 operator-confirmed [promotion action](../project-bootstrap/wizard-production/README.md).
 
+### Deliver the Wizard in one System release
+
+An explicitly selected alternative bundles interface and System changes into one
+System merge request. Retain the reviewed Wizard commit on a dedicated source
+ref, pin that exact gitlink in the System MR, and include its complete comparison
+in the review. This does not advance the Wizard's default branch or manufacture
+native Wizard pipeline evidence. The System pipeline runs the Wizard's source
+and browser checks, full platform acceptance and both-image publication together.
+The merged default branch receives its own required checks. No intermediate
+System pipeline or second Wizard pipeline is needed for this path.
+
+For public recursive checkouts, enable these additional **protected** System CI
+variables alongside the normal GitHub mirror configuration:
+
+| Variable | Value |
+| --- | --- |
+| `WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED` | `true` to publish the exact dependency before the System mirror |
+| `WIZARD_GITHUB_BACKUP_REMOTE` | GitHub SSH destination matching the committed Wizard `.gitmodules` HTTPS URL |
+| `WIZARD_GITHUB_SSH_PRIVATE_KEY` | File variable with an authorized Wizard-repository publishing identity |
+
+Use the Wizard repository's authorized publishing identity; a System deploy key
+does not imply access to another repository. The existing independently verified
+GitHub host-key file must also apply to that destination. The wrapper keeps the
+two identities separate and removes its private copies and SSH agent on exit.
+
+`gitlab/publish-wizard-source.js` reads the exact gitlink from the protected
+System default-branch push, obtains it from the same-instance canonical Wizard
+source with the job token, and publishes `system-release/<Wizard commit>`.
+An atomic create-only lease refuses changing an existing ref, including an
+ancestor. Retrying verifies the same commit. The helper fetches that exact ref
+anonymously from the public HTTPS repository before the ordinary System mirror
+runs. Neither Wizard default branch is changed. Retain these source refs while
+a published release or recovery input needs them.
+
+The same-pipeline `test-results/github/wizard-source.json` receipt records only
+source, destination and job identities. The opt-in
+[paired release updater](../bootstrapper/README.md#deliberately-updating-the-accepted-controller-and-wizard-together)
+requires this successful publication proof, the full accepted System pipeline
+and the unchanged Docker Hub image-pair artifact. Its default controller-only
+mode keeps the original mirror policy. Production promotion remains deliberate;
+the source-primary Wizard binding and its ordinary native promotion rules remain
+separate and unchanged.
+
 ## Activate the selected primary/backup relationship
 
 1. Verify the real GitLab review, required-check and deployment workflow on your

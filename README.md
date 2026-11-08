@@ -2,7 +2,7 @@
 
 **Bootstrap a development platform. Use it to build, test, and evolve its own next generation.**
 
-> **Build your web projects. Not your infrastructure.**
+> **You build it, you own it**
 
 ## How it started: a developer's problem, a bigger idea
 
@@ -76,6 +76,10 @@ platform with an optional [GitHub code mirror](docs/GITLAB_GITHUB_BACKUP.md).
 That guide covers source-history mapping, reviewed merges, tracker migration
 and verification. The mirror forwards merged code; selected live storage
 and the recovery contract retain GitLab's service state.
+
+For a bundled System/Wizard change, optional [System candidate Review jobs](docs/SYSTEM_CANDIDATE_REVIEW.md)
+reuse the tested Wizard image on the configured Review HTTPS host for personal
+UI acceptance before deliberate Production promotion.
 
 Persistent service data lives beneath `PERSISTENT_DIR`, normally
 `/var/lib/system-bootstrapper/platform` on the Ubuntu/WSL system disk. No second
