@@ -235,6 +235,50 @@ build:
     - docker push $IMAGE_TAG
   rules: *runtime-rules
 
+# Optional Wizard-only acceptance on the existing reserved HTTPS Review host.
+# The complete candidate is reused; no second Wizard pipeline/build is started.
+.wizard-review:
+  stage: deploy
+  image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+  services: []
+  tags: [docker]
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    GIT_SUBMODULE_STRATEGY: none
+    RUNNER_SCRIPT_TIMEOUT: 12m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+  cache: []
+  before_script:
+    - timeout -k 5 110 sh bootstrapper/install-runtime.sh
+  timeout: 14m
+  interruptible: false
+  resource_group: wizard-review
+  allow_failure: true
+  rules:
+    - if: '$SYSTEM_REVIEW_ENABLED == "true" && $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID'
+      changes: *runtime-changes
+      when: manual
+    - when: never
+
+deploy:wizard-review:
+  extends: .wizard-review
+  dependencies: [test:platform-candidate]
+  script:
+    - node project-bootstrap/system-review/run.js deploy
+  environment:
+    name: 'wizard-review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'
+    url: 'https://$WIZARD_REVIEW_HOST'
+    on_stop: stop:wizard-review
+
+stop:wizard-review:
+  extends: .wizard-review
+  dependencies: []
+  script:
+    - node project-bootstrap/system-review/run.js stop
+  environment:
+    name: 'wizard-review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'
+    action: stop
+
 # Publish the exact complete controller and Wizard from the mandatory candidate.
 # Protected credentials never enter merge-request pipelines or candidate children.
 deploy:dockerhub:

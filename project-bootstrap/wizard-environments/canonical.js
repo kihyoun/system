@@ -9,6 +9,7 @@ const configDirectory = process.env.SYSTEM_CONFIG_DIR || '/system/system';
 const file = path.join(configDirectory, '.projects.env/.wizard.env');
 const lock = file + '.environments.lock';
 const prefix = '# BOOTSTRAPPER_PROJECT=';
+const reviewBinding = file + '.system-review.json';
 const sha = text => crypto.createHash('sha256').update(text).digest('hex');
 function read() {
   const text = fs.readFileSync(file, 'utf8');
@@ -81,15 +82,39 @@ async function run(action, payload) {
   const current = read();
   if (action === 'read') {
     const receipt = current.receipt;
+    let systemReviewBinding, bindingText = '';
+    try { bindingText = fs.readFileSync(reviewBinding, 'utf8'); systemReviewBinding = JSON.parse(bindingText); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
     return {receipt: {operation: receipt.operation, namespaceId: receipt.namespaceId,
       repository: {id: receipt.repository.id, path: receipt.repository.path, defaultBranch: receipt.repository.defaultBranch,
         ciPath: receipt.repository.ciPath, systemProject: receipt.repository.systemProject,
         managementMode: receipt.repository.managementMode, namespaceId: receipt.repository.namespaceId},
       sourcePrimary: receipt.sourcePrimary, wizardWorkflow: receipt.wizardWorkflow},
-      publicSettings: current.publicSettings, contentHash: current.contentHash};
+      publicSettings: current.publicSettings, contentHash: current.contentHash, systemReviewBinding, systemReviewBindingHash: sha(bindingText)};
   }
   const environment = current.receipt.wizardWorkflow?.environments;
   if (!environment || environment.operation !== payload.operation || environment.controller !== 'system_bootstrapper_1') throw new Error('reservation');
+  if (action === 'bind-system-review') {
+    const owner = JSON.parse(fs.readFileSync(lock + '/owner', 'utf8'));
+    if (owner.token !== payload.token || current.contentHash !== payload.expectedHash ||
+        !payload.binding || JSON.stringify(payload.binding).length > 10000) throw new Error('binding-raced');
+    const slot = environment.deployments?.review || {};
+    if (slot.active || slot.pending || slot.retired?.length) throw new Error('review-must-be-stopped');
+    let previous = '';
+    try { previous = fs.readFileSync(reviewBinding, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (sha(previous) !== payload.previousBindingHash) throw new Error('binding-raced');
+    const bytes = JSON.stringify(payload.binding, null, 2) + '\n';
+    if (previous === bytes) return {ok: true, unchanged: true};
+    if (previous) {
+      const archive = reviewBinding + '.history'; fs.mkdirSync(archive, {recursive: true, mode: 0o700});
+      const saved = path.join(archive, sha(previous) + '.json');
+      if (!fs.existsSync(saved)) fs.writeFileSync(saved, previous, {flag: 'wx', mode: 0o600});
+    }
+    const temporary = reviewBinding + '.' + payload.token;
+    fs.writeFileSync(temporary, bytes, {flag: 'wx', mode: 0o600});
+    try { fs.renameSync(temporary, reviewBinding); } catch (error) { fs.unlinkSync(temporary); throw error; }
+    return {ok: true};
+  }
   if (action === 'cas') {
     const owner = JSON.parse(fs.readFileSync(lock + '/owner', 'utf8'));
     if (owner.token !== payload.token || current.contentHash !== payload.expectedHash) throw new Error('receipt-raced');

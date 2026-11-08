@@ -77,6 +77,10 @@ That guide covers source-history mapping, reviewed merges, tracker migration
 and verification. The mirror forwards merged code; selected live storage
 and the recovery contract retain GitLab's service state.
 
+For a bundled System/Wizard change, optional [System candidate Review jobs](docs/SYSTEM_CANDIDATE_REVIEW.md)
+reuse the tested Wizard image on the configured Review HTTPS host for personal
+UI acceptance before deliberate Production promotion.
+
 Persistent service data lives beneath `PERSISTENT_DIR`, normally
 `/var/lib/system-bootstrapper/platform` on the Ubuntu/WSL system disk. No second
 disk or backup medium is required to start or operate the platform. An explicit

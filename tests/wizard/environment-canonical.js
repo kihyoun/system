@@ -21,7 +21,7 @@ const mockfs = {
   statSync(name) { if (!directories.has(name)) throw error('ENOENT'); return {dev: 1, ino: inodes.get(name)}; },
   readFileSync(name) { if (!files.has(name)) throw error('ENOENT'); return files.get(name); },
   writeFileSync(name, text, options = {}) { if (options.flag === 'wx' && files.has(name)) throw error('EEXIST'); files.set(name, text); },
-  mkdirSync(name) { if (directories.has(name)) throw error('EEXIST'); if (race) { const callback = race; race = null; callback(); } directories.add(name); inodes.set(name, ++inode); },
+  mkdirSync(name, options = {}) { if (directories.has(name)) { if (options.recursive) return; throw error('EEXIST'); } if (race) { const callback = race; race = null; callback(); } directories.add(name); inodes.set(name, ++inode); },
   unlinkSync(name) { if (!files.delete(name)) throw error('ENOENT'); },
   rmdirSync(name) { if ([...files.keys()].some(key => key.startsWith(name + '/'))) throw error('ENOTEMPTY'); if (!directories.delete(name)) throw error('ENOENT'); },
   renameSync(from, to) { if (!files.has(from)) throw error('ENOENT'); files.set(to, files.get(from)); files.delete(from); }
@@ -74,6 +74,26 @@ const run = moduleValue.exports.run;
   assert.strictEqual(nativeRead.receipt.repository.managementMode, 'source-primary');
   assert.strictEqual(nativeRead.receipt.repository.namespaceId, 3);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(nativeRead.receipt.sourcePrimary)), current.sourcePrimary);
+  await run('unlock', {operation: current.wizardWorkflow.environments.operation, token: foreign});
+  const bindingToken = '3'.repeat(48), boundOperation = current.wizardWorkflow.environments.operation;
+  await run('lock', {operation: boundOperation, token: bindingToken, helper: 'operator-binding'});
+  const bindingFile = file + '.system-review.json';
+  const selected = {version: 1, projectId: 4, mrIid: 12, pipelineId: 100};
+  const originalConfig = files.get(file), firstRead = await run('read', {});
+  const bind = (binding, selectedRead = firstRead) => run('bind-system-review', {operation: boundOperation, token: bindingToken,
+    expectedHash: selectedRead.contentHash, previousBindingHash: selectedRead.systemReviewBindingHash, binding});
+  await bind(selected);
+  assert.strictEqual(files.get(file), originalConfig, 'Binding changed the Wizard receipt or signed configuration bytes.');
+  const boundRead = await run('read', {});
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(boundRead.systemReviewBinding)), selected);
+  await assert.rejects(() => bind({...selected, pipelineId: 101}), /binding-raced/);
+  const priorBinding = files.get(bindingFile);
+  await bind({...selected, pipelineId: 101}, boundRead);
+  assert.strictEqual(files.get(bindingFile + '.history/' + crypto.createHash('sha256').update(priorBinding).digest('hex') + '.json'), priorBinding);
+  current.wizardWorkflow.environments.deployments.review.active = {projectId: 5}; files.set(file, encode());
+  await assert.rejects(async () => bind(selected, await run('read', {})), /review-must-be-stopped/);
+  delete current.wizardWorkflow.environments.deployments.review.active; files.set(file, encode());
+  await run('unlock', {operation: boundOperation, token: bindingToken});
   current.repository.managementMode = 'unknown'; files.set(file, encode());
   await assert.rejects(() => run('read', {}), /ownership/);
   console.log('Canonical receipt: under-lock reservation check, token-owned unlock, exact-byte deployment CAS, hash conflicts and public-setting allowlist passed.');
