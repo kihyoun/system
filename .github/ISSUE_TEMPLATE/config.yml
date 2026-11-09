@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Bugs and feature requests (GitLab)
+    url: https://gitlab.system-bootstrapper.com/system-bootstrapper/system/-/issues
+    about: Use the central GitLab tracker; see CONTRIBUTING.md for access.
+  - name: Security, conduct or contribution access (private contact)
+    url: mailto:kihyoun@gmail.com
+    about: Contact the maintainer privately; reports are tracked in confidential GitLab issues.

@@ -1,3 +1,4 @@
+import {recoveryObservation} from './RecoveryObservation';
 import {mainConfigPath, projectsDirectory, wizardConfigPath} from './StatePaths';
 import express from "express";
 import bodyParser from 'body-parser';
@@ -169,7 +170,7 @@ app.get( "/config/main", authenticateJWT, async ( req, res ) => {
     const data = fs.readFileSync(mainConfigPath(),
       {encoding:'utf8', flag:'r'});
 
-    res.status(200).json({filename: ".docker.env", data})
+    res.status(200).json({filename: ".docker.env", data, recoveryObservation: recoveryObservation()})
   } else {
      res.sendStatus(404);
   }

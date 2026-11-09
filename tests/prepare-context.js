@@ -18,7 +18,7 @@ function included(name) {
   // Public trust data is required by the offline CA-refresh checks. Keep this
   // exact allowlist separate from private/operator certificate material.
   if (['bootstrapper/ca/cacert-2026-10-20.crt','bootstrapper/ca/provenance.json','bootstrapper/ca/check.js'].includes(name)) return true;
-  if (name === 'docs/check-wizard-docs.js') return true;
+  if (['docs/check-wizard-docs.js', 'renovate.json', 'gitlab/renovate/config.cjs', 'gitlab/renovate/setup.py', 'gitlab/renovate/verify.py'].includes(name)) return true;
   return /^sync\/src\//.test(name) ||
     ['sync/package.json','sync/package-lock.json','sync/tsconfig.json','sync/eslint.config.mjs'].includes(name) ||
     name.startsWith('project-bootstrap/') || name.startsWith('tests/') ||

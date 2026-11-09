@@ -1,0 +1,137 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Dependency Dashboard",
+  "dependencyDashboardApproval": true,
+  "automerge": false,
+  "platformAutomerge": false,
+  "ignoreUnstable": true,
+  "rangeStrategy": "bump",
+  "rebaseWhen": "conflicted",
+  "enabledManagers": [
+    "npm",
+    "dockerfile",
+    "docker-compose",
+    "gitlabci",
+    "custom.regex"
+  ],
+  "ignorePaths": [
+    "wizard/**",
+    "**/node_modules/**",
+    "**/.test-context/**",
+    "**/wizard-source/**",
+    "**/fixtures/**",
+    "**/security-release.json",
+    "project-bootstrap/wizard-build/recipe/**"
+  ],
+  "prConcurrentLimit": 2,
+  "branchConcurrentLimit": 2,
+  "prHourlyLimit": 2,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "dependencyDashboardApproval": true,
+    "automerge": false
+  },
+  "packageRules": [
+    {
+      "description": "Keep supported Node and CI runtime on their reviewed major lines.",
+      "matchPackageNames": [
+        "node"
+      ],
+      "allowedVersions": "/^24\\./"
+    },
+    {
+      "description": "GitLab and Runner require the reviewed paired migration workflow.",
+      "matchPackageNames": [
+        "gitlab/gitlab-ce",
+        "gitlab/gitlab-ee",
+        "gitlab/gitlab-runner",
+        "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper"
+      ],
+      "enabled": false
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "groupName": "compatible npm dependencies",
+      "groupSlug": "npm-compatible"
+    },
+    {
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose",
+        "gitlabci",
+        "custom.regex"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "groupName": "compatible runtime images",
+      "groupSlug": "runtime-compatible"
+    },
+    {
+      "description": "Keep Docker client and daemon on the reviewed major.",
+      "matchPackageNames": [
+        "docker"
+      ],
+      "allowedVersions": "/^29\\./"
+    },
+    {
+      "description": "Refresh pinned Renovate within its reviewed stable major.",
+      "matchPackageNames": [
+        "ghcr.io/renovatebot/renovate"
+      ],
+      "allowedVersions": "/^44\\./"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^system/Dockerfile$/"
+      ],
+      "matchStrings": [
+        "ARG IMAGE=(?<depName>node):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^gitlab-runner/register\\.sh$/"
+      ],
+      "matchStrings": [
+        "--docker-image (?<depName>docker):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^project-bootstrap/wizard-build/modern/(?:build|verify)\\.sh$/"
+      ],
+      "matchStrings": [
+        "--driver-opt image=(?<depName>moby/buildkit):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "dependencyDashboardApproval": true,
+    "automerge": false,
+    "platformAutomerge": false
+  }
+}

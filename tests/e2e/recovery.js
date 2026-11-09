@@ -250,6 +250,27 @@ async function capture(original,dependencies={}) {
       await node(original,function(input){require('fs').writeFileSync('/tmp/recovery-fetch.json',JSON.stringify(input),{mode:0o600});},fetched);
       await transferToController(original,exporter(original.spec),'/tmp/export-configuration.cjs');
       await original.inner(['exec','system_bootstrapper_1','node','/tmp/export-configuration.cjs','/tmp/recovery-fetch.json','/tmp/bootstrapper.zip']);
+      // Exercise the actual authenticated Fetch -> Wizard ZIP, including the
+      // metadata subsequently consumed by the unchanged native restore path.
+      await node(original,function(input){
+        const assert=require('node:assert/strict'),{execFileSync}=require('node:child_process');
+        const read=name=>execFileSync('unzip',['-p','/tmp/bootstrapper.zip',name],{encoding:'utf8',maxBuffer:5000000});
+        const metadata=JSON.parse(read('recovery.json')),backup=JSON.parse(read('bootstrapper.json'));
+        assert.equal(input.observation?.format,'system-runtime-observation-v1');
+        assert.equal(metadata.format,'system-configuration-recovery-v1');
+        assert.equal(metadata.scope,'configuration-only');
+        assert.deepEqual(backup.recovery,metadata);
+        assert.deepEqual(metadata.observedRuntime,input.observation);
+        assert.equal(metadata.savedImages.gitlab.reference,'candidate-gitlab:under-test');
+        assert.equal(metadata.savedImages.wizard.reference,input.wizard);
+        assert.equal(metadata.observedRuntime.images.controller.imageId,input.controller);
+        assert.equal(metadata.seed.verified,false);
+        assert.equal(metadata.seed.generation,null);
+        assert.equal(metadata.seed.manifest,null);
+        assert.equal(metadata.recoveryTools.extendedConfigurationZipRequired,true);
+        assert.match(read('RECOVERY.md'),/matching completed Seed/);
+      },{observation:fetched.main.recoveryObservation,controller:original.spec.images.candidate.id,
+        wizard:inputs.expected.privateWizard?.imageRef||'systembootstrapper/wizard'});
       await fromController(original,'/tmp/bootstrapper.zip',inputs.configArchive);
     });
     await original.stage('storage-local-live-and-missing-backup',async()=>{

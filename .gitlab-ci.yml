@@ -37,6 +37,7 @@ stages:
   - candidate
   - build
   - deploy
+  - public-release
 
 cache:
   key: ${CI_COMMIT_REF_SLUG}
@@ -49,6 +50,8 @@ cache:
 # runtime checks. Anchors include newlines safely; mixed/unknown changes run full.
 .runtime-selection:
   rules: &runtime-rules
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $RENOVATE_ENABLED == "true"'
+      when: never
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes: &runtime-changes
         regexp: '\A(?!(?:AGENTS\.md|README\.md|Prepare-Host\.md|docs/[^\r\n]*\.(?:md|png|jpe?g|svg))\z)[\s\S]*\z'
@@ -80,9 +83,33 @@ check:documentation:
     expire_in: 7 days
     paths: [test-results/documentation/]
   rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $RENOVATE_ENABLED == "true"'
+      when: never
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+
+# Scheduled discovery runs alone; its protected credentials never reach MR jobs.
+renovate:discover:
+  stage: prepare
+  image: ghcr.io/renovatebot/renovate:44.222.5-full@sha256:1e5baa47058a74b5f41e425838862f6728b4351790d8278f1356df2e56e8df62
+  services: []
+  tags: [docker]
+  before_script: []
+  cache: []
+  dependencies: []
+  resource_group: renovate-discovery
+  timeout: 45m
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
+    RENOVATE_CONFIG_FILE: gitlab/renovate/config.cjs
+    LOG_LEVEL: info
+  script:
+    - renovate-config-validator --strict --no-global renovate.json
+    - renovate
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $RENOVATE_ENABLED == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true"'
+    - when: never
 
 # Package the exact gitlink while the trusted checkout still contains Git data.
 # Only the validated source snapshot is passed to downstream candidate builds.
@@ -348,3 +375,29 @@ deploy:github:
 #   only:
 #     - merge_requests
 #     - $CI_DEFAULT_BRANCH
+
+# Publish immutable public metadata only after candidate, images and mirror finish.
+deploy:github-release:
+  stage: public-release
+  image: node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
+  services: []
+  tags: [docker]
+  cache: []
+  variables:
+    GIT_DEPTH: "0"
+    GIT_SUBMODULE_STRATEGY: none
+  dependencies: [test:platform-candidate, deploy:dockerhub, deploy:github]
+  timeout: 10m
+  interruptible: false
+  resource_group: 'github-release-$CI_PROJECT_ID'
+  allow_failure: false
+  script:
+    - node gitlab/publish-github-release.js
+  artifacts:
+    when: always
+    expire_in: 1 year
+    paths: [test-results/public-release/]
+  rules:
+    - if: '$GITHUB_RELEASE_PUBLISH_ENABLED == "true" && $DOCKERHUB_PUBLISH_ENABLED == "true" && $GITHUB_BACKUP_ENABLED == "true" && $WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+      changes: *runtime-changes
+    - when: never

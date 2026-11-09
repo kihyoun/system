@@ -90,8 +90,18 @@ assert_jobs.call('protected tag without public release selector still tests full
                  push.merge('CI_COMMIT_BRANCH' => nil, 'CI_COMMIT_TAG' => 'v1.2.3'))
 assert_jobs.call('unprotected semantic version tag cannot publish', ['system/start.sh'], [],
                  hub.merge('CI_COMMIT_BRANCH' => nil, 'CI_COMMIT_TAG' => 'v1.2.3', 'CI_COMMIT_REF_PROTECTED' => 'false'))
-assert_jobs.call('manual/scheduled default runs remain full', ['README.md'], runtime, push.merge('CI_PIPELINE_SOURCE' => 'web'), false)
-assert_jobs.call('scheduled default run remains full', ['README.md'], runtime, push.merge('CI_PIPELINE_SOURCE' => 'schedule'), false)
+assert_jobs.call('manual default run retains full runtime gates', ['README.md'], runtime, push.merge('CI_PIPELINE_SOURCE' => 'web'), false)
+%w[api trigger pipeline].each do |source|
+  assert_jobs.call("default #{source} retains full runtime gates", ['README.md'], runtime, push.merge('CI_PIPELINE_SOURCE' => source), false)
+end
+assert_jobs.call('ordinary default schedule retains full runtime gates', ['README.md'], runtime, push.merge('CI_PIPELINE_SOURCE' => 'schedule'), false)
+renovate = hub.merge('CI_PIPELINE_SOURCE' => 'schedule', 'RENOVATE_ENABLED' => 'true',
+                     'GITHUB_RELEASE_PUBLISH_ENABLED' => 'true', 'WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED' => 'true')
+assert_jobs.call('Renovate schedule runs only discovery', ['system/start.sh'], ['renovate:discover'], renovate, false)
+assert_jobs.call('unprotected schedule receives no bot', ['system/start.sh'], [], renovate.merge('CI_COMMIT_REF_PROTECTED' => 'false'), false)
+assert_jobs.call('MR selector cannot run bot', ['system/start.sh'], runtime, baseline.merge('RENOVATE_ENABLED' => 'true'))
+assert_jobs.call('release metadata follows all image and mirror gates', ['system/start.sh'], runtime + ['deploy:github', 'deploy:dockerhub', 'deploy:github-release'],
+                 hub.merge('GITHUB_RELEASE_PUBLISH_ENABLED' => 'true', 'WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED' => 'true'))
 Dir.mktmpdir('ci-renames-') do |directory|
   git = lambda do |*arguments|
     output, error, status = Open3.capture3('git', '-C', directory, *arguments)

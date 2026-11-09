@@ -13,6 +13,56 @@ protect them as you protect the running configuration. Shell expressions requiri
 expansion or execution are rejected; provide their literal resolved values instead.
 The original Cube header and its strict format validation remain unchanged.
 
+## Recovery metadata travels with the configuration
+
+Normal JSON backup includes `recovery`; ZIP includes the same object in
+`bootstrapper.json` and `recovery.json`, plus a short `RECOVERY.md` guide. The
+versioned format is `system-configuration-recovery-v1`. The repository-owned
+`wizard/scripts/export-configuration.ts` executes the same Wizard model used by
+Fetch/Backup, including an authenticated Fetch response's `recoveryObservation`
+when available. Existing JSON/ZIP backups without these entries remain usable.
+
+Metadata records a fresh backup timestamp and the exact saved controller, Wizard,
+GitLab and Runner image settings, including explicitly unspecified settings. It
+separates these from a timestamped authenticated runtime observation of running
+containers and their immutable image IDs/repository digests/source labels.
+A disconnected/offline export without an accompanying observation reports unknown
+runtime identity; it never substitutes `latest`, invents a revision or claims that
+saved settings were observed running. Source/release identities absent from image
+labels/accepted selection remain unknown. A previously fetched observation keeps
+its own observation time and may be older than the edited configuration.
+
+Metadata is data only. Open does not apply its image, source, Seed or storage fields
+to operational configuration. Push imports the existing ENV settings and project
+files; descriptive metadata cannot start a migration or select another runtime.
+The exact Cube and all runtime options continue to round-trip. Re-export after Open
+retains one `importedBackup` record marked `imported-unverified`, with the original
+backup timestamp and descriptive version evidence; this is historical data, not a
+fresh observation. It cannot select a runtime or retain an asserted Seed match.
+
+`recoveryTools.minimumSystemProductVersion` is `1.0.0`: use an accepted recovery-tool
+controller with explicit support for this extended ZIP format and the selected
+Seed. Older controllers can reject `recovery.json` / `RECOVERY.md` during native
+restore. This requirement is separate from the backup's saved runtime pins:
+importing old configuration and exporting a new bundle does not upgrade its runtime.
+Obtain the compatible tool checkout/controller independently; do not blindly use an
+old saved controller as the restore helper or substitute images in configuration.
+
+No Seed generation or manifest is inferred from the configured backup directory.
+Each configuration-only export explicitly requires a matching completed Seed:
+check its generation, manifest, timestamp and exact harvested GitLab image before
+recovery. An older Seed and newer configuration can be incompatible. Preserve the
+bundle and Seed independently; neither implies the other is present or verified.
+
+For a recorded accepted product release, retrieve its
+[public release metadata](RELEASES.md) and fetch that exact source commit with the
+pinned Wizard submodule. For a source-built/private runtime, retain its source
+and verified image payloads independently. Pull exact immutable references or load
+verified archives before recovery; a reference is not a saved image. The native
+private-Wizard recovery path below can pull a matching image from the restored
+registry, whose payload must exist in the matching Seed. Do not rebuild a missing
+immutable private image and describe it as the same tested image.
+
 ## Choose the working directory and backup target
 
 Live working data and Seed backup storage are independent. Fresh installations
@@ -124,11 +174,13 @@ verified image archives. The former live data directory is not an input.
    This step neither starts containers nor requires the backup medium. It must
    precede `--check-only` on a fresh target: that preflight does not create paths.
 2. Make the accepted complete controller image and exact harvested GitLab image
-   available. Rebuild source-built images from their recorded source and pull
-   public images at their recorded references. A custom mutable tag is not a
+   available. Pull exact recorded immutable references or load separately retained,
+   verified image archives. Rebuilding source is a new image attempt and is not
+   a substitute for the recorded tested payload. A custom mutable tag is not a
    recoverable artifact. Preserve immutable private Wizard registry pins: their
    payload must be in the Seed rather than replaced by another build.
-3. Keep the configuration ZIP in a private absolute path on the new host. Run
+3. Select a compatible accepted recovery-tool controller as described above; it
+   can differ from the preserved saved runtime controller. Keep the configuration ZIP in a private absolute path on the new host. Run
    the repository-owned host restore entry point with the accepted image:
 
    ```sh

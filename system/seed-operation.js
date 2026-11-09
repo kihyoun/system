@@ -347,7 +347,7 @@ function validateBackup(filename) {
   const listed=(names.stdout || '').trim().split('\n');
   requireValue(!names.error && names.status === 0 && listed.length <= 1000 && new Set(listed).size === listed.length &&
     listed.includes('.docker.env') && listed.every(name=>
-    /^(?:bootstrapper\.json|\.docker\.env|\.projects\.env\/(?:[A-Za-z0-9_.-]+\.env)?)$/.test(name)), 'invalid-configuration-backup');
+    /^(?:bootstrapper\.json|recovery\.json|RECOVERY\.md|\.docker\.env|\.projects\.env\/(?:[A-Za-z0-9_.-]+\.env)?)$/.test(name)), 'invalid-configuration-backup');
   const metadata=spawnSync('unzip',['-Z','-l',filename],{encoding:'utf8',maxBuffer:1024*1024});
   const entries=(metadata.stdout || '').split('\n').map(line=>
     /^(\S[rwxstST-]{6}(?:[rwxstST-]{3})?)\s+\d+\.\d+\s+(\S+)\s+([0-9]+)\s/.exec(line)).filter(Boolean);
