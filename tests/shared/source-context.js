@@ -28,6 +28,7 @@ try {
   const wizardRevision=wizardGit('rev-parse','HEAD');
   write('tests/Dockerfile','FROM scratch\n');
   write('.gitlab-ci.yml','stages: [test]\n');
+  write('VERSION','1.1.0\n');
   write('system/Dockerfile','FROM scratch\n');
   write('sync/package.json','{}\n');
   write('sync/src/public.ts','committed source\n');
@@ -49,6 +50,7 @@ try {
   for (const name of ['.docker.env','system/.docker.env','tests/credentials.json','project-bootstrap/untracked-secret.txt','seed/data','test-results/old.xml']) write(name,'untracked-private-marker');
   write('sync/src/public.ts','dirty-private-marker');
   write('.gitlab-ci.yml','dirty-uncommitted-ci\n');
+  write('VERSION','9.9.9\n');
   write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify({...snapshot,unrecognizedSecret:'never copy this metadata'}));
   const result = prepareContext(root);
   const archive=path.join(root,'.test-context/context.tar');
@@ -57,6 +59,7 @@ try {
   assert(result.files.includes('system/Dockerfile'), 'Runtime pin extraction needs the committed Dockerfile');
   assert.equal(execFileSync('tar',['-xOf',archive,'system/Dockerfile'],{encoding:'utf8'}),'FROM scratch\n');
   assert.equal(execFileSync('tar',['-xOf',archive,'.gitlab-ci.yml'],{encoding:'utf8'}),'stages: [test]\n');
+  assert.equal(execFileSync('tar',['-xOf',archive,'VERSION'],{encoding:'utf8'}),'1.1.0\n', 'Release verification uses the committed version, not working-copy edits');
   for(const filename of runtimeInputs) assert(result.files.includes(filename), 'Missing runtime input: '+filename);
   assert.equal(execFileSync('tar',['-xOf',archive,'sync/src/public.ts'],{encoding:'utf8'}),'committed source\n');
   assert(execFileSync('tar',['-xOf',archive,'tests/binary.png']).equals(binary),'preserve binary source bytes');

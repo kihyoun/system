@@ -25,7 +25,7 @@ function included(name) {
     /^gitlab\/[^/]+\.(js|sh|rb|json)$/.test(name) || name === 'gitlab/gitlab.rb' ||
     /^bootstrapper\/[^/]+\.(sh|py)$/.test(name) || /^gitlab-runner\/[^/]+\.(js|sh|rb)$/.test(name) || /^nginx\/[^/]+\.(js|sh)$/.test(name) ||
     name.startsWith('nginx/.templates/') || /^nginx-proxy\/[^/]+\.sh$/.test(name) ||
-    ['.gitlab-ci.yml','tests/prepare-candidate.js','start.sh','sync/start.sh','bootstrapper/persistence.sh',
+    ['.gitlab-ci.yml','VERSION','tests/prepare-candidate.js','start.sh','sync/start.sh','bootstrapper/persistence.sh',
       'gitlab-runner/docker-compose.yml','system/Dockerfile','system/.docker.env.example','system/.seed.env',
       'system/start-intermediate.sh','system/start-main.sh','system/start.sh','system/docker-compose.yml',
       'system/persistence-init.js','system/wizard-public.js','system/push.sh',
