@@ -54,6 +54,8 @@ try {
   const archive=path.join(root,'.test-context/context.tar');
   assert(!result.files.some(name=>/private\.env|credentials|untracked-secret|seed\/data|old\.xml/.test(name)));
   assert(result.files.includes('system/.docker.env.example'));
+  assert(result.files.includes('system/Dockerfile'), 'Runtime pin extraction needs the committed Dockerfile');
+  assert.equal(execFileSync('tar',['-xOf',archive,'system/Dockerfile'],{encoding:'utf8'}),'FROM scratch\n');
   assert.equal(execFileSync('tar',['-xOf',archive,'.gitlab-ci.yml'],{encoding:'utf8'}),'stages: [test]\n');
   for(const filename of runtimeInputs) assert(result.files.includes(filename), 'Missing runtime input: '+filename);
   assert.equal(execFileSync('tar',['-xOf',archive,'sync/src/public.ts'],{encoding:'utf8'}),'committed source\n');
