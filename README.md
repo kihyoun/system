@@ -31,7 +31,7 @@ state and does not perform an unattended migration or recovery.
 
 ## Use and maintain
 
-- [Handbook / Docs](docs/HANDBOOK.md): installation, configuration, runners and troubleshooting. The Wizard’s **Docs** reader includes English and German chapters without requiring a Sync connection.
+- [Handbook / Docs](docs/HANDBOOK.md): installation, configuration, runners and troubleshooting. The Wizard’s **Docs** reader includes English, German and Korean chapters without requiring a Sync connection.
 - [Create an application](docs/PROJECT_BOOTSTRAP_GUIDE.md): private repositories, editable starters, pipelines and environments.
 - [Storage](docs/PERSISTENT_VOLUME.md) and [recovery](docs/RECOVERY_CONTRACT.md): keep configuration and completed service-data Seeds separately; ordinary operation needs no backup disk.
 - [Evolve a running system](docs/HANDBOOK.md#5-evolving-a-running-system): validate existing-state migrations, promote a reviewed successor and retain a tested recovery path.

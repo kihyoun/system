@@ -1,0 +1,11 @@
+'use strict';
+const assert = require('assert');
+const {settings} = require('../../project-bootstrap/preview-setup/settings');
+const {publicAddress} = require('../../project-bootstrap/preview-setup/source');
+const host = {enabled: true, host: 'review.example.test', ssl: '/ssl/review/cert.pem', sslKey: '/ssl/review/key.pem'};
+const desired = {version: 1, namespace: 'team/dev', wizard: {mode: 'import', project: 'wizard-fork', origin: 'https://example.test/fork.git'}, review: host, beta: {...host, enabled: false, host: ''}};
+assert.deepEqual(settings(desired), desired);
+for (const patch of [{token: 'secret'}, {namespaceId: 3}, {version: 99}, {namespace: '../root'}, {review: {...host, ssl: '/ssl/../state/token'}}, {review: {...host, host: '*.example.test'}}, {wizard: {...desired.wizard, origin: 'https://user:token@example.test/a.git'}}, {wizard: {...desired.wizard, origin: 'http://example.test/a.git'}}, {wizard: {...desired.wizard, origin: 'https://127.0.0.1/a.git'}}]) assert.throws(() => settings({...desired, ...patch}));
+for (const address of ['127.0.0.1', '10.3.4.5', '172.16.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '::1', '::', 'fc00::1', 'fe80::1', '::ffff:127.0.0.1', '64:ff9b::a00:1', '198.18.0.1', '192.0.2.1', '2001:db8::1']) assert(!publicAddress(address));
+assert(publicAddress('1.1.1.1')); assert(publicAddress('2606:4700:4700::1111'));
+console.log('Preview setup intent: bounded schema, credential/instance separation, exact HTTPS inputs and public origin guards passed.');

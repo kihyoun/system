@@ -393,3 +393,13 @@ within a 70-minute job limit, leaving time for preparation, publication and arti
 collection. Ordinary smoke and ACME-only lifecycle budgets remain unchanged. A
 passing mocked adapter contract is not a successful real migration; use the
 complete platform CI gate for that proof.
+
+## Postdeployment guided preview acceptance
+
+The [native guided preview acceptance tool](GUIDED_PREVIEW_ACCEPTANCE.md) checks
+fresh source import, actual required Wizard push/MR pipelines, source-primary
+adoption and Review Deploy/Stop after deliberate deployment of an accepted
+controller. It uses explicit private operator input and the native local Docker
+socket. It is not activated by the disposable specification or an additional CI
+pipeline. A check-only plan or offline fixture pass does not establish that the
+real operator acceptance ran.

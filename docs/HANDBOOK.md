@@ -1373,9 +1373,17 @@ bypass guards or restore a stale Seed to make a host replacement continue.
 | Restart | Restarts services using the transferred configuration |
 | Register / Unregister | Checks/registers or unregisters configured runner managers |
 | Harvest | Publishes a cold snapshot of GitLab data, certificates and certificate-renewal state in the seed directory |
+| Harvest and configuration backup | Coordinates a native Harvest with a matching configuration ZIP to download and store independently |
+| Set up development previews | Explicitly prepares canonical source/build bindings for optional Review and Beta while preserving Production |
+| Credential expiry | Reads selected automation credential metadata and shows known dates, warnings and unknown states |
+| System diagnostics | Checks configured registry connectivity; an optional separate action pulls the exact helper image through the selected runner daemon |
 | Seed | Validates a completed Seed and restores into fresh live service-data directories |
 | Reset | Deletes the main and project configurations through the reset workflow |
 | Update | Updates source code through the existing update workflow |
+
+See [development previews](DEVELOPMENT_PREVIEWS.md),
+[coordinated backups](COORDINATED_BACKUP.md), [credential expiry](TOKEN_EXPIRY.md)
+and [system diagnostics](SYSTEM_DIAGNOSTICS.md) for prerequisites and limitations.
 
 **Configuration and persistent service data are managed separately.** Open/Backup
 and Push/Fetch manage configuration. Harvest/Seed handle service data. Neither

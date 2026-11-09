@@ -249,7 +249,9 @@ async function capture(original,dependencies={}) {
       const fetched=await syncFetch(original,connection);
       await node(original,function(input){require('fs').writeFileSync('/tmp/recovery-fetch.json',JSON.stringify(input),{mode:0o600});},fetched);
       await transferToController(original,exporter(original.spec),'/tmp/export-configuration.cjs');
-      await original.inner(['exec','system_bootstrapper_1','node','/tmp/export-configuration.cjs','/tmp/recovery-fetch.json','/tmp/bootstrapper.zip']);
+      // Exercise the installed coordinated-backup exporter through the existing
+      // native Fetch/ZIP/recovery acceptance flow.
+      await original.inner(['exec','system_bootstrapper_1','node','/opt/system-bootstrapper/export-configuration.cjs','/tmp/recovery-fetch.json','/tmp/bootstrapper.zip']);
       // Exercise the actual authenticated Fetch -> Wizard ZIP, including the
       // metadata subsequently consumed by the unchanged native restore path.
       await node(original,function(input){

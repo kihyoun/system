@@ -3,6 +3,34 @@
 Versions follow [Semantic Versioning](https://semver.org/). A version belongs to
 one accepted System source revision and tested controller/Wizard image attempt.
 
+## 1.1.0
+
+### Features
+
+- Optional guided setup for a fresh installation's Wizard Review and Beta
+  environments, using explicit project/host selection and real source, build and
+  browser evidence while retaining the accepted public Production image.
+- A coordinated Harvest and configuration ZIP workflow, with exact backup-pair
+  metadata, resumable downloads and clear partial-failure status.
+- Read-only operational credential expiry, renewal guidance and on-demand
+  configured registry/runner diagnostics in the connected Wizard.
+
+### Interface and documentation
+
+- A shorter Overview introduction and a slightly smaller slogan, in English,
+  German and Korean, with the existing installation actions preserved.
+- Integrated guides for previews, backup pairs, credential expiry and
+  connectivity diagnostics in all three languages.
+- Korean as an additional Wizard language, including the complete integrated
+  handbook, with the English repository documentation retained as the source.
+
+### Upgrade and recovery
+
+- Existing configuration and Seed formats remain supported. Preview intent and
+  recovery metadata stay descriptive; imports do not provision or deploy services.
+- Back up configuration and persistent data through the native procedures before
+  promotion. Retain the previous accepted images and matching recovery inputs.
+
 ## 1.0.0
 
 The first supported System product release establishes the public contract; it

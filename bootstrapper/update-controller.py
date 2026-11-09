@@ -204,11 +204,82 @@ def write_configuration(config, raw, metadata):
     os.chown(config['_main'], metadata['uid'], metadata['gid'])
 
 
+RELEASE_SELECTION = ('.release-images.json', '.release-images.env')
+
+
+def release_selection(config):
+    """Read bounded private files without following a selection symlink."""
+    result, payloads = {}, {}
+    for name in RELEASE_SELECTION:
+        path = config['_main'].parent / name
+        if not path.exists() and not path.is_symlink():
+            result[name] = None
+            continue
+        raw = successor.private_input(path)
+        info = path.stat()
+        result[name] = {'sha256': hashlib.sha256(raw).hexdigest(), 'mode': stat.S_IMODE(info.st_mode),
+                        'uid': info.st_uid, 'gid': info.st_gid}
+        payloads[name] = raw
+    return result, payloads
+
+
+def prepare_release_selection(config, accepted, release, controller, wizard):
+    before, payloads = release_selection(config)
+    require(all(value is None for value in before.values()) or all(before.values()),
+            'public-release-selection-incomplete')
+    receipt = {'schemaVersion': 1, 'sourceCommit': release['sourceRevision'],
+               'sourceTree': release['sourceTree'], 'wizardSourceRevision': release['wizardRevision'],
+               'images': {'controller': controller, 'wizard': wizard}, 'status': 'selected',
+               'selectedAt': runtime.now(), 'productRelease': {'version': accepted['version'],
+                   'tag': accepted['tag'], 'sourceRevision': accepted['source']['revision']},
+               'selectionOperation': 'accepted-public-controller-update'}
+    after_payloads = {'.release-images.json': (json.dumps(receipt, indent=2) + '\n').encode(),
+                      '.release-images.env': ('BOOTSTRAPPER_IMAGE=' + controller['reference'] +
+                                              '\nWIZARD_IMAGE=' + wizard['reference'] + '\n').encode()}
+    after = {name: {**(before[name] or {'mode': 0o600, 'uid': os.geteuid(), 'gid': os.getegid()}),
+                    'sha256': hashlib.sha256(raw).hexdigest()} for name, raw in after_payloads.items()}
+    return {'before': before, 'after': after}, payloads, after_payloads
+
+
+def verify_release_selection(config, selection, rollback=False):
+    current, _ = release_selection(config)
+    for name in RELEASE_SELECTION:
+        allowed = [selection['before'][name], selection['after'][name]] if rollback else [selection['before'][name]]
+        require(current[name] in allowed, 'public-release-selection-changed')
+
+
+def write_release_selection(config, checkpoint, selection, phase):
+    # Both payloads were checkpointed before maintenance. A process loss between
+    # atomic replacements is recoverable from either exact old/new file state.
+    for name in RELEASE_SELECTION:
+        path = config['_main'].parent / name
+        metadata = selection[phase][name]
+        if metadata is None:
+            if path.exists():
+                path.unlink()
+                successor.directory_barrier(path.parent)
+            continue
+        raw = successor.private_input(checkpoint / (name + '.' + phase))
+        require(hashlib.sha256(raw).hexdigest() == metadata['sha256'], 'public-release-selection-checkpoint-changed')
+        successor.atomic_bytes(path, raw, metadata['mode'], (metadata['uid'], metadata['gid']))
+
+
+def verify_release_selection_checkpoint(checkpoint, selection):
+    for phase in ('before', 'after'):
+        for name, metadata in selection[phase].items():
+            if metadata is not None:
+                raw = successor.private_input(checkpoint / (name + '.' + phase))
+                require(hashlib.sha256(raw).hexdigest() == metadata['sha256'],
+                        'public-release-selection-checkpoint-changed')
+
+
 def update(config, release, evidence, api, release_bytes, evidence_bytes, security,
-           controller, checkpoint, token_file, redirect_from=None, timeout=1200, check_only=False, wizard=None):
+           controller, checkpoint, token_file, redirect_from=None, timeout=1200, check_only=False, wizard=None,
+           release_metadata=None):
     runtime.public_manifest_absent(config)
     require(api.base == runtime.origin(config, 'GITLAB'), 'GitLab-origin-does-not-match-saved-config')
     successor.verify_checkout(release, ROOT)
+    require(release_metadata is None or wizard is not None, 'release-metadata-requires-paired-update')
     pipeline = successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
     publication = None
     if wizard is not None:
@@ -233,6 +304,24 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
         require(pulled_wizard['imageId'] == release['wizardImageId'] and
                 pulled_wizard['candidateJobId'] == release['candidateJobId'],
                 'public-Wizard-does-not-match-accepted-candidate')
+    selection = None
+    if release_metadata is not None:
+        identity = {'sourceCommit': release['sourceRevision'], 'sourceTree': release['sourceTree'],
+                    'wizardSourceRevision': release['wizardRevision']}
+        accepted = installer.accepted_metadata(release_metadata, identity, controller, wizard)
+        require(accepted['version'] == (ROOT / 'VERSION').read_text().strip() and
+                accepted['acceptance'].get('evidenceSha256') == release['candidateEvidenceSha256'] and
+                all(accepted['images'][role]['imageId'] == release[key] for role, key in
+                    (('controller', 'imageId'), ('wizard', 'wizardImageId'))),
+                'public-release-metadata-differs-from-accepted-candidate')
+        require(all(selected['imageId'] in {accepted['images'][role]['imageId'],
+                                            accepted['images'][role]['configDigest'],
+                                            accepted['images'][role]['reference'].split('@')[1]} and
+                    selected['candidateJobId'] == accepted['acceptance']['candidateJobId']
+                    for role, selected in (('controller', pulled), ('wizard', pulled_wizard))),
+                'pulled-images-differ-from-accepted-public-attempt')
+        selection, selection_before, selection_after = prepare_release_selection(
+            config, accepted, release, pulled, pulled_wizard)
     checkpoint = checkpoint_path(config, checkpoint, new=True)
     raw = config['_main'].read_bytes()
     updated = assignment(raw, pulled['reference'])
@@ -242,12 +331,18 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
     metadata = {'mode': stat.S_IMODE(info.st_mode), 'uid': info.st_uid, 'gid': info.st_gid}
     if check_only:
         return {'phase': 'preflight-passed', 'controller': pulled, 'pipeline': pipeline,
-                **({'wizard': pulled_wizard, 'publication': publication} if pulled_wizard else {})}
+                **({'wizard': pulled_wizard, 'publication': publication} if pulled_wizard else {}),
+                **({'productRelease': {'version': accepted['version'], 'tag': accepted['tag']},
+                    'releaseSelectionWillRefresh': True} if selection else {})}
     checkpoint.mkdir(parents=True, mode=0o700)
     checkpoint.chmod(0o700)
     successor.atomic_bytes(checkpoint / 'main-before.env', raw)
     successor.atomic_bytes(checkpoint / 'main-after.env', updated)
     successor.atomic_json(checkpoint / 'baseline-before.json', baseline)
+    if selection:
+        for phase, payloads in (('before', selection_before), ('after', selection_after)):
+            for name, payload in payloads.items():
+                successor.atomic_bytes(checkpoint / (name + '.' + phase), payload)
     record = {'format': 'system-public-controller-update-v1', 'phase': 'inputs-verified', 'at': runtime.now(),
               'release': release, 'pipeline': pipeline, 'controller': pulled,
               'configurationBeforeSha256': hashlib.sha256(raw).hexdigest(),
@@ -259,11 +354,16 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
         record.update(wizard=pulled_wizard, publication=publication,
                       previousWizard={'reference': config['WIZARD_IMAGE'],
                                       'imageId': original['system_wizard_1']['Image']})
+    if selection:
+        successor.atomic_json(checkpoint / 'accepted-public-release.json', accepted)
+        record['releaseSelection'] = selection
     successor.atomic_json(checkpoint / 'operation.json', record)
     with successor.Lease(config) as lease:
         record.update(leaseOperation=lease.operation, phase='lease-acquired')
         successor.atomic_json(checkpoint / 'operation.json', record)
         runtime.assert_baseline(config, baseline)
+        if selection:
+            verify_release_selection(config, selection)
         require(runtime.public_images(config, runtime.inspect_services(config)) == baseline['selectedImages'],
                 'controller-update-images-changed-before-stop')
         successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
@@ -272,12 +372,17 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
                     'paired-publication-changed-before-stop')
         successor.sync_idle(config)
         current_services(config, release, evidence, security)
+        if selection:
+            verify_release_selection(config, selection)
+            verify_release_selection_checkpoint(checkpoint, selection)
         lease.critical = True
         record['phase'] = 'controller-stop-started'
         successor.atomic_json(checkpoint / 'operation.json', record)
         stop_controller(original['system_bootstrapper_1'])
         runtime.assert_baseline(config, baseline)
         write_configuration(config, updated, metadata)
+        if selection:
+            write_release_selection(config, checkpoint, selection, 'after')
         record['phase'] = 'controller-start-started'
         successor.atomic_json(checkpoint / 'operation.json', record)
         restarted_at = runtime.now()
@@ -328,6 +433,10 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
             (record['configurationBeforeSha256'], record['configurationAfterSha256']),
             'controller-rollback-configuration-changed')
     runtime.cube(before)
+    selection = record.get('releaseSelection')
+    if selection:
+        verify_release_selection(config, selection, rollback=True)
+        verify_release_selection_checkpoint(checkpoint, selection)
     previous = record['previousController']
     require(recovery.inspect_image(previous['reference'])['Id'] == previous['imageId'],
             'previous-controller-image-unavailable-or-retargeted')
@@ -346,6 +455,9 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
                 (record['configurationBeforeSha256'], record['configurationAfterSha256']),
                 'controller-rollback-configuration-changed')
         paired_rollback_baseline(config, baseline, record)
+        if selection:
+            verify_release_selection(config, selection, rollback=True)
+            verify_release_selection_checkpoint(checkpoint, selection)
         services = rollback_services(config, baseline, record)
         record['phase'] = 'rollback-started'
         successor.atomic_json(checkpoint / 'operation.json', record)
@@ -353,6 +465,8 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
         if 'system_bootstrapper_1' in services:
             stop_controller(services['system_bootstrapper_1'])
         write_configuration(config, before, record['configurationMetadata'])
+        if selection:
+            write_release_selection(config, checkpoint, selection, 'before')
         config = runtime.settings(config['_persistence_env'])
         compose(config, previous['reference'])
         baseline['startedAt'] = runtime.now()
@@ -384,6 +498,7 @@ def main():
     parser.add_argument('--evidence')
     parser.add_argument('--controller', help='Independently selected public Docker Hub digest for the accepted candidate.')
     parser.add_argument('--wizard', help='Opt in to the exact same-candidate public Wizard and paired rollback.')
+    parser.add_argument('--release-metadata', help='Accepted public metadata for paired release-selection refresh and rollback.')
     parser.add_argument('--gitlab-url')
     parser.add_argument('--token-file', help='Private API token used for CI and current Runner-manager verification.')
     parser.add_argument('--redirect-from')
@@ -412,7 +527,8 @@ def main():
     release, evidence = successor.release_inputs(release_bytes, evidence_bytes, security)
     api = successor.GitLab(args.gitlab_url, args.token_file)
     update(config, release, evidence, api, release_bytes, evidence_bytes, security, args.controller,
-           args.checkpoint_dir, args.token_file, args.redirect_from, args.timeout, args.check_only, args.wizard)
+           args.checkpoint_dir, args.token_file, args.redirect_from, args.timeout, args.check_only, args.wizard,
+           args.release_metadata)
     print(('Public controller/Wizard pair preflight passed.' if args.wizard else
            'Public controller preflight passed.') if args.check_only else
           ('Accepted public controller/Wizard pair updated; other service images/data preserved.' if args.wizard else

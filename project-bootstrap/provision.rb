@@ -10,6 +10,10 @@ input = JSON.parse(Base64.strict_decode64(BOOTSTRAPPER_INPUT))
 credential = nil
 result = nil
 begin
+  if input['action'] == 'token-expiry-status'
+    puts JSON.generate(BootstrapperTokenExpiry.status(input))
+    exit
+  end
   admin = User.find_by_username('root')
   raise BootstrapError, 'No active administrator' unless admin&.admin? && admin.active?
   # Only clean expired credentials: concurrent lookups must not revoke one another.
@@ -26,9 +30,11 @@ begin
       request.body = JSON.generate(body)
     end
     response = Net::HTTP.start(uri.hostname, uri.port, open_timeout: 10, read_timeout: 60) { |http| http.request(request) }
-    [response.code.to_i, JSON.parse(response.body)]
+    [response.code.to_i, response.body.to_s.empty? ? nil : JSON.parse(response.body)]
   end
-  if input['action'] == 'namespaces'
+  if input['action'].start_with?('preview-setup-')
+    result = BootstrapperPreviewSetup.new(api, input).call
+  elsif input['action'] == 'namespaces'
     namespaces = []
     page = 1
     loop do

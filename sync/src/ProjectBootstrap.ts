@@ -84,6 +84,8 @@ function runRails(input: any): Promise<any> {
   return new Promise((resolve, reject) => {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
     const modules: {[key: string]: string} = {'wizard-source': 'wizard-source/import.rb',
+      'token-expiry-status': 'token-expiry/status.rb',
+      ...Object.fromEntries(['preflight', 'project', 'revoke', 'read', 'system'].map(action => ['preview-setup-' + action, 'preview-setup/provision.rb'])),
       'wizard-build': 'wizard-build/activate.rb', 'wizard-build-status': 'wizard-build/activate.rb',
       'wizard-environments': 'wizard-environments/activate.rb', 'wizard-environments-status': 'wizard-environments/activate.rb',
       'wizard-source-primary-status': 'wizard-source-primary/status.rb',
@@ -92,16 +94,30 @@ function runRails(input: any): Promise<any> {
     const importer = modules[input.action] ? fs.readFileSync(path.join(__dirname, '../../project-bootstrap', modules[input.action]), 'utf8') + '\n' : '';
     const script = `BOOTSTRAPPER_INPUT = '${encoded}'\n` + importer + fs.readFileSync(path.join(__dirname, '../../project-bootstrap/provision.rb'), 'utf8');
     const child = spawn('docker', ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-']);
-    let output = '';
-    const timer = setTimeout(() => { child.kill(); reject(new Error('GitLab setup timed out; retry to recover the same operation.')); }, 240000);
+    let output = '', launched = false;
+    const readOnly = ['namespaces', 'availability', 'wizard-build-status', 'wizard-environments-status',
+      'wizard-source-primary-status', 'wizard-environments-primary-status', 'token-expiry-status',
+      'preview-setup-preflight', 'preview-setup-read'].includes(input.action);
+    const failure = (message: string) => Object.assign(new Error(message), {uncertain: launched && !readOnly, action: input.action});
+    child.once('spawn', () => { launched = true; });
+    const timer = setTimeout(() => {
+      // Killing the local Docker client does not prove that the Rails process
+      // inside GitLab ended. Callers must retain their mutation barriers.
+      reject(failure('GitLab setup timed out; inspect the recorded operation before resuming.'));
+      child.kill();
+    }, 240000);
     child.stdout.on('data', (data) => { if (output.length < 2000000) { output += data; } });
     // Rails diagnostics can contain a temporary PAT. Never expose them.
     child.stderr.resume();
-    child.on('error', () => { clearTimeout(timer); reject(new Error('Could not access the local GitLab container.')); });
+    child.on('error', () => { clearTimeout(timer); reject(failure('Could not access the local GitLab container.')); });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0) { reject(new Error('GitLab operation failed; check readiness and retry.')); return; }
-      try { resolve(JSON.parse(output.trim().split('\n').pop())); } catch (_) { reject(new Error('Invalid GitLab response.')); }
+      if (code !== 0) { reject(failure('GitLab operation completion was not confirmed; inspect the recorded operation.')); return; }
+      try {
+        const result = JSON.parse(output.trim().split('\n').pop());
+        if (!result || typeof result !== 'object' || Array.isArray(result) || !Object.keys(result).length) throw Error('terminal');
+        resolve(result);
+      } catch (_) { reject(failure('GitLab returned no complete terminal response; inspect the recorded operation.')); }
     });
     child.stdin.on('error', () => undefined);
     child.stdin.end(script);
@@ -127,8 +143,8 @@ function trimJobs() {
     jobs.delete(completed[0]);
   }
 }
-export function withProjectLock(id: string, operation: () => any) {
-  if (active.size > 0) { throw new Error('Another project operation is running. Retry after it completes.'); }
+export function withProjectLock(id: string, operation: () => any, parentOperation?: string) {
+  if (active.size > 0 && !(parentOperation && active.size === 1 && active.has(parentOperation))) { throw new Error('Another project operation is running. Retry after it completes.'); }
   active.add(id);
   try { return operation(); } catch (error) { active.delete(id); throw error; }
 }
@@ -137,7 +153,7 @@ export function startJob(id: string, operation: () => Promise<any>) {
   const job: any = {id, state: 'running', created: Date.now()};
   jobs.set(id, job);
   operation().then((result) => Object.assign(job, result, {state: result.state || 'complete'}))
-    .catch((error) => Object.assign(job, {state: 'failed', message: error.message}))
+    .catch((error) => Object.assign(job, {state: 'failed', message: error.message, ...(error.uncertain === true ? {uncertain: true, uncertainAction: error.action} : {})}))
     .finally(() => active.delete(id));
   return job;
 }

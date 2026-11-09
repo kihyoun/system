@@ -220,7 +220,7 @@ function withoutDeployments(content: string) {
   const data = content.split('\n').filter(line => !line.startsWith('# BOOTSTRAPPER_PROJECT=')).join('\n');
   return {data, receipt};
 }
-function operation(mode: 'activate' | 'status', input?: any) {
+function operation(mode: 'activate' | 'status', input?: any, parentOperation?: string) {
   if (mode === 'activate' && (!input || Object.keys(input).some(key => !['previewHash', 'settings'].includes(key)))) {
     throw new Error('Confirm only previewHash and environment settings; helper identity is server-owned.');
   }
@@ -355,18 +355,30 @@ function operation(mode: 'activate' | 'status', input?: any) {
         return {environments, message: result.message || 'Environment state verified. Production is unchanged.'};
       } catch (error) {
         if (reserved || mode === 'status') {
-          const uncertain = environments.phase === 'requires-reconciliation' ||
+          const uncertain = error.uncertain === true || environments.phase === 'requires-reconciliation' ||
             value.current?.phase === 'requires-reconciliation';
-          persist({...environments, phase: uncertain ? 'requires-reconciliation' : 'verification-failed',
-            message: error.message});
+          try {
+            persist({...environments, phase: uncertain ? 'requires-reconciliation' : 'verification-failed', message: error.message});
+          } catch (writeError) {
+            if (uncertain) { writeError.uncertain = true; writeError.action = error.action; }
+            throw writeError;
+          }
         }
         throw error;
       } finally {
         if (preparing?.operation === environments.operation) { preparing = undefined; }
       }
     });
-  });
+  }, parentOperation);
 }
-export const configureWizardEnvironments = (input: any) => operation('activate', input);
+export const configureWizardEnvironments = (input: any, parentOperation?: string) => operation('activate', input, parentOperation);
 export const refreshWizardEnvironments = () => operation('status');
 
+
+// Shared by the optional guided setup before it creates any source project.
+export async function preflightWizardEnvironmentSettings(input: any) {
+  const platform = readSettings(fs.readFileSync(mainPath(), 'utf8'));
+  const settings = canonicalSettings(input, platform);
+  await preflight(settings, platform);
+  return settings;
+}

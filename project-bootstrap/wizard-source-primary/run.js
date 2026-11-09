@@ -36,14 +36,34 @@ class Adoption {
       } catch (_) { throw Error('Cannot independently verify the source-primary GitLab state.'); }
     };
   }
+  publicRelease(main) {
+    signature(main);
+    const directory = path.dirname(this.mainConfig);
+    let record, selected;
+    try {
+      record = JSON.parse(fs.readFileSync(path.join(directory, '.release-images.json'), 'utf8'));
+      selected = fs.readFileSync(path.join(directory, '.release-images.env'), 'utf8');
+    } catch (_) { throw Error('Retain the accepted public release installation receipt and image selection before initial preview setup.'); }
+    const image = record.images?.wizard, controller = record.images?.controller;
+    const pin = setting(main, 'WIZARD_IMAGE') || setting(selected, 'WIZARD_IMAGE');
+    if (record.schemaVersion !== 1 || !['selected', 'startup-requested'].includes(record.status) ||
+        !/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(record.productRelease?.tag || '') ||
+        record.productRelease.sourceRevision !== record.sourceCommit || !b.sha(record.sourceCommit) ||
+        !/^docker\.io\/[A-Za-z0-9_./-]+@sha256:[a-f0-9]{64}$/.test(pin || '') || image?.reference !== pin ||
+        !Number.isSafeInteger(image?.candidateJobId) || image.candidateJobId < 1 || image.candidateJobId !== controller?.candidateJobId ||
+        (setting(main, 'BOOTSTRAPPER_IMAGE') || setting(selected, 'BOOTSTRAPPER_IMAGE')) !== controller?.reference)
+      throw Error('Retain the accepted public release selection and matching controller/Wizard installation receipt.');
+    return pin;
+  }
   async plan(input) {
     const keys = ['version', 'projectId', 'projectPath', 'namespaceId', 'defaultBranch', 'pipelineId', 'sourceCommit', 'imageRef', 'helperImage', 'ciFiles', 'buildProfile', 'action'];
     if (!input || Object.keys(input).some(key => !keys.includes(key)) || input.version !== 1 ||
-        (Object.hasOwn(input, 'action') && input.action !== 'refresh-binding') ||
+        (Object.hasOwn(input, 'action') && !['refresh-binding', 'bootstrap-previews'].includes(input.action)) ||
         !['projectId', 'namespaceId', 'pipelineId'].every(key => Number.isSafeInteger(input[key]) && input[key] > 0) ||
         !b.sha(input.sourceCommit) || !/^sha256:[a-f0-9]{64}$/.test(input.helperImage || '')) throw Error('Provide an exact source-primary project, pipeline, helper and immutable image.');
     const upgradeBuild = Object.hasOwn(input, 'buildProfile');
     const refreshBinding = input.action === 'refresh-binding';
+    const bootstrap = input.action === 'bootstrap-previews';
     if (refreshBinding && !upgradeBuild) throw Error('A binding refresh requires an explicit reviewed build profile.');
     if (upgradeBuild && !['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(input.buildProfile)) throw Error('Select an explicit reviewed source-primary build profile.');
     const current = b.read(this.config), main = fs.readFileSync(this.mainConfig, 'utf8'); signature(main);
@@ -54,15 +74,22 @@ class Adoption {
         const archive = path.join(this.directory, current.receipt.sourcePrimary.operation + '.json');
         const record = JSON.parse(fs.readFileSync(archive, 'utf8'));
         if (JSON.stringify(record.nextReceipt) !== JSON.stringify(current.receipt) || record.plan.operation !== current.receipt.sourcePrimary.operation) throw Error('Applied source-primary receipt changed.');
-        if (refreshBinding && b.hash(main) !== record.plan.mainConfigHash) throw Error('Production configuration changed after the binding refresh.');
+        if ((refreshBinding || bootstrap) && b.hash(main) !== record.plan.mainConfigHash) throw Error('Production configuration changed after the binding refresh.');
         return {publicPlan: record.plan, planHash: b.hash(JSON.stringify(record.plan)), current, main, next: current.receipt, alreadyAdopted: true};
       }
       const r = current.receipt.repository;
       if (input.projectId !== r.id || input.projectPath !== r.path || input.namespaceId !== current.receipt.namespaceId || input.defaultBranch !== r.defaultBranch)
         throw Error('A source-primary CI update must retain its canonical repository identity.');
     }
-    const old = current.receipt, environments = old.wizardWorkflow?.environments;
-    if (upgradeBuild && !b.primary(old)) throw Error('Adopt the canonical source-primary project before upgrading its build profile.');
+    const old = current.receipt;
+    let environments = old.wizardWorkflow?.environments;
+    if (bootstrap) {
+      const settings = Object.fromEntries(['review', 'beta'].map(name => [name, {enabled: false, host: '', domainMode: 2, ssl: '', sslKey: ''}]));
+      environments = {version: 1, phase: 'ready', operation: old.operation, settings, settingsHash: b.hash(JSON.stringify(settings)), deployments: {}};
+    }
+    if (bootstrap && (b.primary(old) || old.wizardWorkflow || old.repository.ciPath !== '.system-bootstrapper/ci.yml')) throw Error('Initial preview bootstrap requires the untouched managed Wizard registration.');
+    if (bootstrap && !upgradeBuild) throw Error('Initial preview bootstrap requires an explicit reviewed build profile.');
+    if (upgradeBuild && !bootstrap && !b.primary(old)) throw Error('Adopt the canonical source-primary project before upgrading its build profile.');
     if (!environments || environments.phase !== 'ready' || Object.values(environments.deployments || {}).some(slot => slot.active || slot.pending || slot.retired?.length)) throw Error('Stop and reconcile Review/Beta before reassignment.');
     const project = await this.request('projects/' + old.repository.id);
     if (project.id !== old.repository.id || project.path_with_namespace !== old.repository.path || project.namespace?.id !== old.namespaceId ||
@@ -77,7 +104,8 @@ class Adoption {
     if (!input.imageRef?.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(input.imageRef.slice(prefix.length))) throw Error('Use an immutable image from the adopted project registry.');
     const previousImage = setting(main, 'WIZARD_IMAGE');
     const previousPrefix = registry.host + '/' + old.repository.path + '@sha256:';
-    if (!refreshBinding && (!previousImage?.startsWith(previousPrefix) || !/^[a-f0-9]{64}$/.test(previousImage.slice(previousPrefix.length)))) throw Error('Retain the exact previous managed Production image.');
+    if (bootstrap) this.publicRelease(main);
+    if (!refreshBinding && !bootstrap && (!previousImage?.startsWith(previousPrefix) || !/^[a-f0-9]{64}$/.test(previousImage.slice(previousPrefix.length)))) throw Error('Retain the exact previous managed Production image.');
     const operation = b.hash(JSON.stringify({version: 1, config: b.hash(current.text), main: b.hash(main), input})).slice(0, 48);
     const next = JSON.parse(JSON.stringify(old));
     next.namespaceId = input.namespaceId;
@@ -85,16 +113,16 @@ class Adoption {
       defaultBranch: input.defaultBranch, ciPath: b.CI, managementMode: 'source-primary',
       webUrl: 'https://' + setting(main, 'GITLAB_HOST') + '/' + input.projectPath,
       pipelineUrl: 'https://' + setting(main, 'GITLAB_HOST') + '/' + input.projectPath + '/-/pipelines',
-      recoveryImages: [...(old.repository.recoveryImages || []).filter(row => row.imageRef !== previousImage),
+      recoveryImages: bootstrap ? [] : [...(old.repository.recoveryImages || []).filter(row => row.imageRef !== previousImage),
         {projectId: old.repository.id, projectPath: old.repository.path, imageRef: previousImage}]};
     next.sourcePrimary = {version: 1, operation, adoptionCommit: input.sourceCommit, pipelineId: input.pipelineId,
       ciFiles: input.ciFiles, previousRepository: {id: old.repository.id, path: old.repository.path},
-      archive: operation + '.json', inputHash: b.hash(JSON.stringify(input))};
+      ...(bootstrap ? {bootstrap: true} : {}), archive: operation + '.json', inputHash: b.hash(JSON.stringify(input))};
     b.validate(next);
     const branch = await this.request('projects/' + input.projectId + '/repository/branches/' + encodeURIComponent(input.defaultBranch));
     if (branch.commit?.id !== input.sourceCommit) throw Error('The source-primary default branch advanced.');
     const proof = await b.evidence(this.request, next, input.pipelineId, input.sourceCommit, input.imageRef);
-    const retainedRecipe = builds.select(current.text.slice(0, 1184), old.wizardWorkflow.build.recipeHash);
+    const retainedRecipe = bootstrap ? builds.generate(current.text.slice(0, 1184), input.buildProfile) : builds.select(current.text.slice(0, 1184), old.wizardWorkflow.build.recipeHash);
     if (upgradeBuild && !['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(retainedRecipe.profile))
       throw Error('The source-primary upgrade requires an existing reviewed modern build recipe.');
     if (upgradeBuild && retainedRecipe.profile === 'node24-vite8-quickstart-v5' && input.buildProfile !== retainedRecipe.profile)
@@ -118,10 +146,10 @@ class Adoption {
         pipeline: {id: proof.pipeline.id, sha: proof.pipeline.sha, status: proof.pipeline.status, webUrl: proof.pipeline.web_url},
         publishing: proof.publishing,
         artifact: {imageRef: input.imageRef, sourceCommit: input.sourceCommit, pipelineId: input.pipelineId}},
-      environments: this.environments(environments, {operation, helperImage: input.helperImage, activationCommit: input.sourceCommit, ciFiles: input.ciFiles})};
-    const plan = {version: 1, action: refreshBinding ? 'refresh-source-primary-binding' : 'reassign-source-primary', operation, previousProjectId: old.repository.id,
+      environments: {...this.environments(environments, {operation, helperImage: input.helperImage, activationCommit: input.sourceCommit, ciFiles: input.ciFiles}), ...(bootstrap ? {initialVariablesMissing: true} : {})}};
+    const plan = {version: 1, action: bootstrap ? 'bootstrap-source-primary-previews' : refreshBinding ? 'refresh-source-primary-binding' : 'reassign-source-primary', operation, previousProjectId: old.repository.id,
       projectId: input.projectId, projectPath: input.projectPath, sourceCommit: input.sourceCommit, pipelineId: input.pipelineId,
-      imageRef: input.imageRef, ...(refreshBinding ? {retainedProductionImageRef: previousImage} : {previousImageRef: previousImage}), helperImage: input.helperImage,
+      imageRef: input.imageRef, ...((refreshBinding || bootstrap) ? {retainedProductionImageRef: bootstrap ? this.publicRelease(main) : previousImage} : {previousImageRef: previousImage}), helperImage: input.helperImage,
       ...(upgradeBuild ? {buildProfile: input.buildProfile, previousBuildRecipeHash: retainedRecipe.recipeHash, buildRecipeHash: recipe.recipeHash} : {}),
       configHash: b.hash(current.text), mainConfigHash: b.hash(main), nextReceiptHash: b.hash(JSON.stringify(next))};
     return {publicPlan: plan, planHash: b.hash(JSON.stringify(plan)), current, main, next};

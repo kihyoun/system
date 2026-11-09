@@ -134,6 +134,10 @@ function helperArguments(spec,image,name,operation,checkOnly=false,backup='') {
 function launch(operation,{environment=process.env,host=false,checkOnly=false,backup='',run=execute}={}) {
   requireValue(['harvest','restore'].includes(operation), 'invalid-seed-operation');
   const spec=configuration(environment,host);
+  if (environment.SYSTEM_COORDINATED_BACKUP) {
+    requireValue(operation === 'harvest' && /^[a-f0-9]{32}$/.test(environment.SYSTEM_COORDINATED_BACKUP), 'invalid-backup-operation');
+    spec.coordinatedBackup=environment.SYSTEM_COORDINATED_BACKUP;
+  }
   requireValue(spec.SEED_DIR, 'seed-target-unavailable');
   const image=host ? environment.SYSTEM_SEED_CONTROLLER_IMAGE :
     JSON.parse(run(['inspect',spec.SYSTEM_WIZARD_CANONICAL_CONTROLLER || 'system_bootstrapper_1']))[0].Image;
@@ -158,8 +162,13 @@ function launch(operation,{environment=process.env,host=false,checkOnly=false,ba
       // remains a visible barrier until the owned helper can be investigated.
       requireValue(row.State.Running === false, 'seed-helper-still-running');
       run(['rm',name]);
+      if (spec.coordinatedBackup) {
+        const coordinated=require('./coordinated-backup');
+        coordinated.helperCompleted(environment.SYSTEM_CONFIG_DIR || '/state',spec.coordinatedBackup);
+      }
     }
   }
+
 }
 function restoreEmpty(live='/live') {
   for (const relative of ['gitlab/config','gitlab/logs','gitlab/data','ssl','host/letsencrypt']) {
@@ -442,14 +451,34 @@ function inside(spec) {
     const env={...process.env,SYSTEM_SEED_HELPER:'1',SYSTEM_CONFIG_DIR:state,SEED_ROOT:'/seed',SERVICE_DATA_DIR:'/srv',
       TLS_DATA_DIR:'/live/ssl',LETSENCRYPT_DATA_DIR:'/live/host/letsencrypt'};
     const script='set -e; set -a; source "$1"; export GITLAB_CONTAINER=system_gitlab_1; exec bash "$2"';
-    safeRelease=false;
-    const result=spawnSync('bash',['-c',script,'seed-operation',main,'/system/system/'+(spec.operation==='harvest'?'harvest.sh':'seed.sh')],
-      {env,stdio:'inherit',timeout:3500000});
-    safeRelease=!result.error && result.status !== null && result.signal === null;
-    requireValue(!result.error && result.status === 0, 'seed-copy-failed');
+    const harvest=certificateToken=>{
+      safeRelease=false;
+      const result=spawnSync('bash',['-c',script,'seed-operation',main,'/system/system/'+(spec.operation==='harvest'?'harvest.sh':'seed.sh')],
+        {env:{...env,...(certificateToken?{SYSTEM_HARVEST_CERTIFICATE_LEASE:certificateToken}:{})},stdio:'inherit',timeout:3500000});
+      safeRelease=!result.error && result.status !== null && result.signal === null;
+      if (result.error || result.status !== 0) {
+        const error=Error('seed-copy-failed'); error.uncertain=!safeRelease; throw error;
+      }
+    };
+    if (spec.coordinatedBackup) {
+      requireValue(spec.operation === 'harvest','invalid-backup-operation');
+      const coordinated=require('./coordinated-backup');
+      coordinated.runWorkflow({state,seed:'/seed',certbot:'/live/host/letsencrypt',id:spec.coordinatedBackup,
+        harvest,exporter:coordinated.exportZip,seedTarget:selected.seed});
+    } else harvest();
     succeeded=true;
   } finally {
-    held.release(safeRelease);
+    try { held.release(safeRelease); }
+    catch (error) {
+      if (spec.coordinatedBackup) {
+        const coordinated=require('./coordinated-backup');
+        const root=coordinated.directory(state,spec.coordinatedBackup);
+        const status=JSON.parse(fs.readFileSync(path.join(root,'status.json'),'utf8'));
+        coordinated.writeStatus(root,{...status,state:status.seed?'partial':'failed',phase:'needs-inspection',
+          error:'storage-lease-cleanup-failed',configuration:{status:'unavailable'}});
+      }
+      throw error;
+    }
   }
   if (succeeded) console.log('Seed operation completed on '+selected.mode+' live storage.');
 }
@@ -471,6 +500,17 @@ if (require.main === module) {
     else throw Error('invalid-seed-operation');
   } catch (error) {
     const code=/^[a-z][a-z0-9-]+$/.test(error.message) ? error.message:'seed-operation-failed';
+    try {
+      const inside=process.argv[2] === 'inside';
+      const id=process.env.SYSTEM_COORDINATED_BACKUP || (inside && JSON.parse(process.env.SYSTEM_STORAGE_SPEC).coordinatedBackup);
+      if (id) {
+        const coordinated=require('./coordinated-backup');
+        const root=coordinated.directory(inside ? '/live/configuration' : process.env.SYSTEM_CONFIG_DIR || '/state',id);
+        const status=JSON.parse(fs.readFileSync(path.join(root,'status.json'),'utf8'));
+        if (status.state === 'working' && status.phase === 'preflight') coordinated.writeStatus(root,{...status,
+          state:'failed',phase:'preflight-failed',error:code,completedAt:new Date().toISOString(),configuration:{status:'unavailable'}});
+      }
+    } catch { /* Never replace the original controlled failure with raw diagnostics. */ }
     console.error('Seed operation failed: '+code+'.');
     process.exitCode=process.argv[2] === 'startup-begin' && code === 'storage-operation-busy' ? 75:1;
   }
