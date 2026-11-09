@@ -24,8 +24,14 @@ if [ -f ../system/.docker.env ]; then
         recreate=(--force-recreate)
     fi
 
+    compose=(-f ../system/docker-compose.yml)
+    if [ -n "${GITLAB_OMNIBUS_CONFIG:-}" ]; then
+        export GITLAB_OMNIBUS_CONFIG
+        compose+=(-f ../gitlab/docker-compose.omnibus.yml)
+    fi
+
     # Configure the shared volume before GitLab's first reconfigure runs.
-    docker-compose -f ../system/docker-compose.yml up "${recreate[@]}" -d gitlab
+    docker-compose "${compose[@]}" up "${recreate[@]}" -d gitlab
     printf "export GITLAB_IP=" > .docker.env
     docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' system_gitlab_1 >> .docker.env
 else

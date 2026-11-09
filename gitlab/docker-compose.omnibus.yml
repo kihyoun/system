@@ -1,0 +1,5 @@
+version: '3'
+services:
+  gitlab:
+    environment:
+      GITLAB_OMNIBUS_CONFIG: ${GITLAB_OMNIBUS_CONFIG:?GITLAB_OMNIBUS_CONFIG must be set}

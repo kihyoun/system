@@ -3,6 +3,27 @@
 Versions follow [Semantic Versioning](https://semver.org/). A version belongs to
 one accepted System source revision and tested controller/Wizard image attempt.
 
+## 1.1.1
+
+### Fixes
+
+- Start the guided preview import's native default-branch pipeline before
+  transferring historical branches and tags. Preserve exact source history,
+  safe partial-import resumption and operator changes without starting obsolete
+  historical pipelines or inheriting Auto DevOps for newly imported projects.
+- Allow authenticated configuration ZIP downloads from the private backup
+  directory while retaining helper-completion, file-type and checksum checks.
+- Handle a process exiting during upgrade-watchdog inspection without hiding
+  unrelated I/O or permission failures or weakening operation ownership checks.
+- Bound disposable GitLab web workers through its supported configuration so
+  nested test platforms retain their CPU and memory limits on larger hosts.
+
+### Upgrade and recovery
+
+- Existing configuration and Seed formats remain unchanged. Use the reviewed
+  paired controller/Wizard update and retain the previous images and matching
+  recovery inputs before promotion.
+
 ## 1.1.0
 
 ### Features

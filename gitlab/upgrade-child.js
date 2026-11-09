@@ -6,7 +6,10 @@
 const fs=require('node:fs'),path=require('node:path');
 const {spawn,spawnSync}=require('node:child_process');
 const uptime=()=>Number(fs.readFileSync('/proc/uptime','utf8').split(' ')[0]);
-function stat(pid){try{const fields=fs.readFileSync('/proc/'+pid+'/stat','utf8').slice(fs.readFileSync('/proc/'+pid+'/stat','utf8').lastIndexOf(')')+2).split(' ');return {state:fields[0],group:Number(fields[2]),start:fields[19]};}catch(error){if(error.code==='ENOENT')return null;throw error;}}
+function stat(pid){try{const raw=fs.readFileSync('/proc/'+pid+'/stat','utf8'),fields=raw.slice(raw.lastIndexOf(')')+2).split(' ');return {state:fields[0],group:Number(fields[2]),start:fields[19]};}catch(error){
+  // A process can exit after /proc enumeration or after its stat file opens.
+  if(error.code==='ENOENT'||error.code==='ESRCH')return null;throw error;
+}}
 function activeGroup(group){return fs.readdirSync('/proc').filter(name=>/^\d+$/.test(name)).some(name=>{const row=stat(Number(name));return row&&row.group===group&&row.state!=='Z';});}
 function record(filename,value){const temporary=filename+'.'+process.pid+'.tmp';let fd;try{fd=fs.openSync(temporary,'wx',0o600);fs.writeFileSync(fd,JSON.stringify(value));fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;fs.renameSync(temporary,filename);fd=fs.openSync(path.dirname(filename),'r');fs.fsyncSync(fd);}finally{if(fd!==undefined)fs.closeSync(fd);if(fs.existsSync(temporary))fs.unlinkSync(temporary);}}
 function input(){return new Promise((resolve,reject)=>{let raw='';process.stdin.on('data',chunk=>{raw+=chunk;if(raw.length>12*1024*1024)reject(Error('operation-payload-too-large'));});process.stdin.on('end',()=>{try{resolve(JSON.parse(raw));}catch{reject(Error('operation-payload-invalid'));}});});}

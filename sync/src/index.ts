@@ -178,7 +178,7 @@ app.get('/backup/:id/download', authenticateJWT, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const output = backupWorkflowDownload(req.params.id);
-    res.download(output.filename, 'bootstrapper.zip', error => {
+    res.download(output.filename, 'bootstrapper.zip', {dotfiles: 'allow'}, error => {
       if (error && !res.headersSent) res.status(500).json({message: 'Configuration backup transfer failed. Retry the download.'});
     });
   } catch { res.status(409).json({message: 'The matching configuration backup is not available for download.'}); }

@@ -214,6 +214,8 @@ function fixture(overrides={}) {
   const test=fixture(); await test.instance.start(); await test.instance.smoke();
   const creation=test.commands.find(x=>x.args[0]==='create').args;
   assert(creation.includes('--privileged')); assert(!creation.includes('--publish'));
+  assert.equal(creation[creation.indexOf('--memory')+1],'12g');
+  assert.equal(creation[creation.indexOf('--cpus')+1],'4');
   assert(creation.some((value,index)=>value==='--insecure-registry'&&creation[index+1]==='registry.candidate.test'));
   assert(creation.some((value,index)=>value==='--insecure-registry'&&creation[index+1]==='registry.candidate.test:5050'));
   assert.equal(test.instance.url,'http://candidate.invalid');
@@ -225,6 +227,8 @@ function fixture(overrides={}) {
   const bootstrap=test.commands.find(x=>x.args.includes('SYSTEM_CONFIG_DIR=/state')).args;
   assert(bootstrap.includes('PERSISTENT_DIR=/candidate-data/platform'));
   assert(bootstrap.includes('PERSISTENCE_MODE=local'));
+  assert(bootstrap.some((value,index)=>value==='--env'&&bootstrap[index+1]==="GITLAB_OMNIBUS_CONFIG=puma['worker_processes'] = 2"),
+    'the disposable GitLab receives an explicit Puma bound independent of outer-host resource detection');
   assert(!bootstrap.includes('/candidate-data/seed:/seed'));
   assert(test.commands.some(x=>x.args.at(-1)==='prepare-local'),'native source-owned local preflight runs before startup');
   assert(bootstrap.includes('system_configuration:/state'));

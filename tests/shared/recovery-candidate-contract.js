@@ -128,6 +128,10 @@ test('bootstrap uses only declared binary streams and restores before normal con
   assert(clearFixture>=0&&clearFixture<hostBackup,'the native import starts from fresh configuration storage');
   assert(calls.at(-1).args.at(-1)==='/system/bootstrapper.zip','the recreated controller receives the actual archive for the Push proof');
   const initialCreate=calls.find(call=>call.args[0]==='create');
+  const controllers=calls.filter(call=>call.args[0]==='create');
+  assert.equal(controllers.length,2);
+  for(const {args}of controllers)assert(args.some((value,index)=>value==='--env'&&args[index+1]==="GITLAB_OMNIBUS_CONFIG=puma['worker_processes'] = 2"),
+    'both the restore helper controller and the normal restored controller retain the disposable Puma bound');
   assert(initialCreate.args.includes('/bin/sh')&&initialCreate.args.includes('sleep infinity'));
   assert(!initialCreate.args.includes(recovery.SEED+':/seed'),'backup is attached only to the transient operation helper');
   assert(initialCreate.args.includes('PERSISTENCE_MODE=local'));

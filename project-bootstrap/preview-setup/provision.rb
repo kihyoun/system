@@ -60,7 +60,7 @@ class BootstrapperPreviewSetup
       project = get('projects/' + URI.encode_www_form_component(selected.fetch('full_path') + '/' + source.fetch('project')), true)
       if source.fetch('mode') == 'import'
         unless project
-          project = api(Net::HTTP::Post, 'projects', {name: source.fetch('project'), path: source.fetch('project'), namespace_id: selected.fetch('id'), visibility: 'private', description: marker, initialize_with_readme: false, ci_config_path: source.fetch('ciPath'), only_allow_merge_if_pipeline_succeeds: true, only_allow_merge_if_all_discussions_are_resolved: true})
+          project = api(Net::HTTP::Post, 'projects', {name: source.fetch('project'), path: source.fetch('project'), namespace_id: selected.fetch('id'), visibility: 'private', description: marker, initialize_with_readme: false, auto_devops_enabled: false, ci_config_path: source.fetch('ciPath'), only_allow_merge_if_pipeline_succeeds: true, only_allow_merge_if_all_discussions_are_resolved: true})
         end
         owned(project)
         # New operator forks never inherit an upstream publication opt-in.

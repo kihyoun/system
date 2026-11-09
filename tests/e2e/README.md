@@ -34,6 +34,17 @@ this driver before invocation. An internal outer network prevents external
 dependency downloads; service images must be preloaded. The full runner/registry
 scenario also needs its declared helper and build-image inputs.
 
+Disposable GitLab instances use `puma['worker_processes'] = 2` through the
+official `GITLAB_OMNIBUS_CONFIG` environment variable. Nested containers can
+detect the outer host's resources instead of the private daemon's limits.
+The original and restored controllers supply the same setting; native GitLab
+startup forwards it during initial creation, upgrade and rollback. This uses
+the declared unmodified GitLab images and leaves ordinary startup unchanged
+when the variable is unset or empty. The setting is evaluated before
+`gitlab.rb` and is not written into that file, so each controller creation
+must supply it. See GitLab's [Docker configuration](https://docs.gitlab.com/install/docker/configuration/#pre-configure-docker-container)
+and [Puma sizing](https://docs.gitlab.com/administration/operations/puma/).
+
 ## Explicit inputs
 
 Create a public JSON specification with `daemonImage` as an exact Docker DinD
