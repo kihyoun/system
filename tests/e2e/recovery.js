@@ -256,6 +256,7 @@ async function capture(original,dependencies={}) {
       // metadata subsequently consumed by the unchanged native restore path.
       await node(original,function(input){
         const assert=require('node:assert/strict'),{execFileSync}=require('node:child_process');
+        require('/system/system/seed-operation').validateBackup('/tmp/bootstrapper.zip');
         const read=name=>execFileSync('unzip',['-p','/tmp/bootstrapper.zip',name],{encoding:'utf8',maxBuffer:5000000});
         const metadata=JSON.parse(read('recovery.json')),backup=JSON.parse(read('bootstrapper.json'));
         assert.equal(input.observation?.format,'system-runtime-observation-v1');
