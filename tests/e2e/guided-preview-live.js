@@ -34,7 +34,7 @@ function readInput(filename) {
   acceptance.settings({id:'a'.repeat(24),spec:{operatorAcceptance:true,guidedPreviewAcceptance:true,guidedPreviewSettings:input.settings}});
   return input;
 }
-const requestScript=`let raw='';process.stdin.on('data',part=>raw+=part);process.stdin.on('end',()=>{try{const input=JSON.parse(raw),url=new URL(input.url);if(url.protocol!=='https:')throw Error();const transport=require('node:https');const req=transport.request(url,{...input.options,signal:AbortSignal.timeout(20000)},res=>{let body='';res.on('data',part=>{body+=part;if(body.length>8000000)req.destroy();});res.on('error',()=>process.exitCode=1);res.on('end',()=>process.stdout.write(JSON.stringify({status:res.statusCode,body})));});req.on('error',()=>process.exitCode=1);req.end(input.options.body); }catch{process.exitCode=1;}});`;
+const requestScript=`let raw='';process.stdin.on('data',part=>raw+=part);process.stdin.on('end',()=>{try{const input=JSON.parse(raw),url=new URL(input.url);if(url.protocol!=='https:'||!Number.isSafeInteger(input.timeoutMilliseconds)||input.timeoutMilliseconds<1||input.timeoutMilliseconds>300000)throw Error();const transport=require('node:https');const req=transport.request(url,{...input.options,signal:AbortSignal.timeout(input.timeoutMilliseconds)},res=>{let body='';res.on('data',part=>{body+=part;if(body.length>8000000)req.destroy();});res.on('error',()=>process.exitCode=1);res.on('end',()=>process.stdout.write(JSON.stringify({status:res.statusCode,body})));});req.on('error',()=>process.exitCode=1);req.end(input.options.body); }catch{process.exitCode=1;}});`;
 class Operator {
   constructor(input,{command=spawnSync,now=()=>Date.now(),sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}) {
     this.input=input;this.command=command;this.now=now;this.sleep=sleep;this.id=crypto.randomBytes(12).toString('hex');
@@ -50,7 +50,12 @@ class Operator {
     // Host is derived from each exact TLS URL. Never relay another host's
     // private authentication header to a redirect or alternative endpoint.
     const {Host:_host,...headers}=options.headers||{};
-    const result=await this.inner(['exec','-i','system_bootstrapper_1','node','-e',requestScript],{input:JSON.stringify({url,options:{...options,headers}}),timeout:30000});
+    const preflight=url===this.url+'/projects/wizard/preview-setup/preflight'&&options.method==='POST';
+    const remaining=(this.cleanupDeadline||this.deadline)-this.now();
+    const timeoutMilliseconds=Math.min(preflight?300000:20000,remaining-1000);
+    requireValue(timeoutMilliseconds>0,'guided-preview-overall-timeout');
+    const result=await this.inner(['exec','-i','system_bootstrapper_1','node','-e',requestScript],
+      {input:JSON.stringify({url,options:{...options,headers},timeoutMilliseconds}),timeout:timeoutMilliseconds+10000});
     try{return JSON.parse(result);}catch{throw Error('guided-preview-http-result-invalid');}
   }
   async api(route,token,method='GET',payload) {

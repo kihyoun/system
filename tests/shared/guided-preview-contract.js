@@ -28,6 +28,38 @@ test('native acceptance rejects fake success without four required real runner j
     const rows=structuredClone(jobs);change(rows);assert.throws(()=>adapter.nativeJobs(pipeline,rows));
   }
 });
+test('long native waits renew Sync authentication before writes and retry expired read tokens only once',async()=>{
+  let clock=0,logins=0,expiredRead=true;
+  const requests=[];
+  const sync=adapter.syncSession({url:'https://sync.example.test',secrets:{user:'fixture',password:'memory-only'},now:()=>clock,
+    request:async(url,options)=>{
+      requests.push({url,method:options.method,authorization:options.headers.Authorization});
+      if(url.endsWith('/login'))return {status:200,body:JSON.stringify({accessToken:'fixture-'+(++logins)})};
+      if(url.endsWith('/jobs/1')&&expiredRead){expiredRead=false;return {status:403,body:'expired'};}
+      return {status:200,body:'{"state":"running"}'};
+    }});
+  await sync('/status');clock+=16*60000;
+  await sync('/apply',{confirmed:true});
+  assert.equal(logins,2);
+  assert.equal(requests.filter(row=>row.url.endsWith('/apply')).length,1);
+  assert.equal(requests.find(row=>row.url.endsWith('/apply')).authorization,'Bearer fixture-2');
+  await sync('/jobs/1');assert.equal(logins,3);
+  assert.deepEqual(requests.filter(row=>row.url.endsWith('/jobs/1')).map(row=>row.authorization),['Bearer fixture-2','Bearer fixture-3']);
+});
+test('Sync authentication failures never replay a mutation and read reauthentication stays bounded',async()=>{
+  for(const status of [401,403]) {
+    let logins=0,writes=0,reads=0;
+    const sync=adapter.syncSession({url:'https://sync.example.test',secrets:{user:'fixture',password:'memory-only'},request:async(url,options)=>{
+      if(url.endsWith('/login'))return {status:200,body:JSON.stringify({accessToken:'fixture-'+(++logins)})};
+      if(options.method==='POST')writes++;else reads++;
+      return {status,body:'private diagnostic must not leak'};
+    }});
+    await assert.rejects(()=>sync('/apply',{confirmed:true}),/guided-preview-sync-request-failed/);
+    assert.equal(writes,1);assert.equal(logins,1);
+    await assert.rejects(()=>sync('/jobs/1'),error=>error.message==='guided-preview-sync-request-failed');
+    assert.equal(reads,2);assert.equal(logins,2);assert.equal(writes,1);
+  }
+});
 test('Production identity proof compares both exact saved bytes and running immutable image',()=>{
   const before={mainSha256:'a'.repeat(64),runningImage:image};adapter.unchanged(before,{...before});
   assert.throws(()=>adapter.unchanged(before,{...before,mainSha256:'b'.repeat(64)}),/production-changed/);
@@ -52,6 +84,20 @@ test('native transport keeps request credentials on stdin and does not expose su
     await assert.rejects(()=>operator.inner(['inspect','system_bootstrapper_1']),error=>!error.message.includes('test-secret-value')&&error.message==='guided-preview-native-command-failed');
   });
 });
+test('only synchronous native preflight receives a longer HTTP budget and the global deadline still caps it',async()=>fixture(async root=>{
+  let clock=0,captured;
+  const operator=new Operator({...input(root),timeBudgetMilliseconds:600000},{now:()=>clock,
+    command:(_command,_args,options)=>{captured=options;return {status:0,stdout:'{"status":200,"body":"{}"}'};}});
+  await operator.request(operator.url+'/projects/wizard/preview-setup/preflight',{method:'POST'});
+  assert.equal(JSON.parse(captured.input).timeoutMilliseconds,300000);assert.equal(captured.timeout,310000);
+  await operator.request(operator.url+'/projects/wizard/preview-setup/apply',{method:'POST'});
+  assert.equal(JSON.parse(captured.input).timeoutMilliseconds,20000);assert.equal(captured.timeout,30000);
+  clock=operator.deadline-7000;
+  await operator.request(operator.url+'/projects/wizard/preview-setup/preflight',{method:'POST'});
+  assert.equal(JSON.parse(captured.input).timeoutMilliseconds,6000);assert.equal(captured.timeout,7000);
+  clock=operator.deadline;
+  await assert.rejects(()=>operator.request(operator.url+'/status'),/overall-timeout/);
+}));
 test('check-only validates accepted public proof and native preflight without starting setup',async()=>{
   await fixture(async root=>{
     const operator=new Operator(input(root));operator.secrets={user:'fixture-user',password:'fixture-only-password'};

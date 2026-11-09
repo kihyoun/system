@@ -39,20 +39,39 @@ function nativeJobs(pipeline,jobs) {
   requireValue(required.every(name=>jobs.find(job=>job.name===name)?.runner?.id),'guided-preview-real-runner-jobs-required');
   return jobs.filter(job=>required.includes(job.name)).map(job=>({id:job.id,name:job.name,status:job.status,runnerId:job.runner.id}));
 }
+function syncSession(candidate) {
+  let accessToken,issuedAt=0;
+  const now=()=>candidate.now?candidate.now():Date.now();
+  const login=async()=>{
+    const response=await candidate.request(candidate.url+'/login',{method:'POST',headers:{Host:new URL(candidate.url).host,'Content-Type':'application/json'},
+      body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})});
+    requireValue(response.status===200,'guided-preview-sync-login-failed');
+    let value;try{value=JSON.parse(response.body);}catch{throw Error('guided-preview-sync-login-failed');}
+    requireValue(typeof value.accessToken==='string'&&value.accessToken.length>0,'guided-preview-sync-login-failed');
+    accessToken=value.accessToken;issuedAt=now();
+  };
+  return async(route,payload)=>{
+    // Sync JWTs expire after 20 minutes. Long native setup may spend most of
+    // that time in Rails or CI; renew before requests without replaying writes.
+    if(!accessToken||now()-issuedAt>=15*60000)await login();
+    const send=()=>candidate.request(candidate.url+route,{method:payload===undefined?'GET':'POST',headers:{Host:new URL(candidate.url).host,
+      Authorization:'Bearer '+accessToken,'Content-Type':'application/json'},...(payload===undefined?{}:{body:JSON.stringify(payload)})});
+    let response=await send();
+    // The native JWT guard returns 403 for an expired token, 401 if absent.
+    if(payload===undefined&&[401,403].includes(response.status)){await login();response=await send();}
+    requireValue(response.status>=200&&response.status<300,'guided-preview-sync-request-failed');
+    try{return JSON.parse(response.body);}catch{throw Error('guided-preview-sync-result-invalid');}
+  };
+}
 async function run(candidate) {
   const desired=settings(candidate),before=await production(candidate,true);
-  let token,accessToken;
+  let token;
   const evidence={productionMainSha256:before.mainSha256,productionImageId:before.runningImage,initialRegistrationId:before.projectId};
   candidate.evidence.guidedPreview=evidence;
   // This adapter requires real HTTPS/DNS/trust/public-source and native CI
   // dependencies prepared by the existing platform harness. It creates no CA,
   // accepted-release receipt, alternate CI producer, or privileged test bypass.
-  const sync=async(route,payload)=>{
-    const response=await candidate.request(candidate.url+route,{method:payload===undefined?'GET':'POST',headers:{Host:new URL(candidate.url).host,
-      Authorization:'Bearer '+accessToken,'Content-Type':'application/json'},...(payload===undefined?{}:{body:JSON.stringify(payload)})});
-    requireValue(response.status>=200&&response.status<300,'guided-preview-sync-request-failed');
-    try{return JSON.parse(response.body);}catch{throw Error('guided-preview-sync-result-invalid');}
-  };
+  const sync=syncSession(candidate);
   const apply=async()=>{
     const preview=await sync('/projects/wizard/preview-setup/preflight',{settings:desired});
     requireValue(preview.productionChanged===false&&preview.runnerReady===true,'guided-preview-preflight-proof-failed');
@@ -60,14 +79,11 @@ async function run(candidate) {
     await candidate.wait(async()=>{
       if(job.state==='running')job=await sync('/projects/jobs/'+job.id);
       requireValue(job.state!=='failed','guided-preview-setup-job-failed');return job.state!=='running';
-    },600000);
+    },1800000);
     return sync('/projects/wizard/preview-setup');
   };
   try {
     await candidate.stage('guided-preview-fresh-public-registration',async()=>{
-      const login=await candidate.request(candidate.url+'/login',{method:'POST',headers:{Host:new URL(candidate.url).host,'Content-Type':'application/json'},
-        body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})});
-      requireValue(login.status===200,'guided-preview-sync-login-failed');accessToken=JSON.parse(login.body).accessToken;
       const existing=await sync('/projects/wizard/preview-setup');requireValue(existing.phase==='not-started','guided-preview-fresh-setup-required');
       const auth=await candidate.rails("require 'json';t=User.find_by_username('root').personal_access_tokens.create!(name:'guided-preview-acceptance-"+candidate.id+"',scopes:['api'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token)");
       requireValue(typeof auth.token==='string'&&auth.token.length>10,'guided-preview-credential-required');token=auth.token;
@@ -171,4 +187,4 @@ async function run(candidate) {
     } }
   }
 }
-module.exports={run,settings,nativeJobs,unchanged,production};
+module.exports={run,settings,nativeJobs,unchanged,production,syncSession};
