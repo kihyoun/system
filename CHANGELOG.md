@@ -13,6 +13,8 @@ one accepted System source revision and tested controller/Wizard image attempt.
   historical pipelines or inheriting Auto DevOps for newly imported projects.
 - Allow authenticated configuration ZIP downloads from the private backup
   directory while retaining helper-completion, file-type and checksum checks.
+- Handle a process exiting during upgrade-watchdog inspection without hiding
+  unrelated I/O or permission failures or weakening operation ownership checks.
 
 ### Upgrade and recovery
 
