@@ -26,6 +26,7 @@ if (failureMode === 'uncertain-environment') pipelineStatus = 'success';
 nativeSource.originPreflight = async () => 'ref: refs/heads/master HEAD';
 nativeSource.transfer = async input => { transfers++; assert.equal(input.token, 'fixture-transfer-secret'); assert.equal(input.destination, 'https://gitlab.example.test/team/fork.git');
   if (failureMode.startsWith('uncertain-push')) throw Object.assign(Error('Source push response was lost.'), {uncertain:true,action:'preview-source-push'});
+  if (failureMode === 'missing-pipeline') return {unchanged: true};
 };
 require('../../project-bootstrap/wizard-source-primary/run').Adoption = class {
   publicRelease() { return 'accepted-public-release'; }
@@ -56,7 +57,7 @@ bootstrap.rails = async input => {
   const route = input.route;
   if (route === 'projects/7') return {value: {id: 7, default_branch: 'master'}};
   if (route.includes('/repository/branches/')) return {value: {commit: {id: sha}}};
-  if (route.includes('/pipelines?')) return {value: [{id: 31, sha, source: 'push', status: pipelineStatus, web_url: 'https://gitlab.example.test/pipeline/31'}]};
+  if (route.includes('/pipelines?')) return {value: failureMode === 'missing-pipeline' ? [] : [{id: 31, sha, source: 'push', status: pipelineStatus, web_url: 'https://gitlab.example.test/pipeline/31'}]};
   if (route.includes('/pipelines/31/jobs')) return {value: ['build:source', 'test:browser', 'build:wizard', 'test:wizard'].map((name, id) => ({id: id + 40, name, status: name === 'test:browser' ? requiredStatus : 'success', allow_failure: false, commit: {id: sha}, pipeline: {id: 31}}))};
   if (route.includes('/artifacts/build-evidence.json')) return {value: {imageRef}};
   if (route.includes('/repository/tree?')) return {value: route.includes('path=.gitlab&') ? [{type: 'blob', path: '.gitlab/primary.yml'}, {type: 'blob', path: '.gitlab/delivery/environment.sh'}] : []};
@@ -68,6 +69,19 @@ require('../../project-bootstrap/preview-setup/producers').validateProducers = f
 const setup = require('../../sync/dist/PreviewSetup');
 async function wait(job) {while (job.state === 'running') await new Promise(resolve => setTimeout(resolve, 1)); return job;}
 (async () => {
+  if (failureMode === 'missing-pipeline') {
+    let plan = await setup.preflightPreviewSetup({settings: desired});
+    let job = await wait(setup.applyPreviewSetup({settings: desired, previewHash: plan.previewHash}));
+    assert.equal(job.phase, 'waiting-build'); assert.equal(job.pipeline, undefined);
+    assert(job.message.includes('normal source push')); assert(job.message.includes('never fabricates'));
+    plan = await setup.preflightPreviewSetup({settings: desired});
+    job = await wait(setup.applyPreviewSetup({settings: desired, previewHash: plan.previewHash}));
+    assert.equal(job.phase, 'waiting-build'); assert.equal(job.pipeline, undefined);
+    assert.equal(transfers, 1); assert.equal(registered, 1); assert.equal(revoked, 1);
+    assert.equal(adoptionCalls + activated, 0, 'A full import without native CI cannot become accepted previews');
+    console.log('Preview setup failure regression passed: missing-pipeline');
+    return;
+  }
   if (failureMode) {
     const mode = failureMode;
     let plan = await setup.preflightPreviewSetup({settings: desired});
@@ -142,7 +156,7 @@ async function wait(job) {while (job.state === 'running') await new Promise(reso
   assert.equal(fs.readFileSync(main, 'utf8'), originalMain, 'Preview setup changed Production');
   assert.equal(setup.previewSetupStatus().phase, 'ready');
   await assert.rejects(setup.preflightPreviewSetup({settings: {...desired, namespace: 'other'}}), /different setup/);
-  for (const mode of ['uncertain-project', 'uncertain-environment', 'uncertain-push', 'uncertain-push-revoke-failed', 'settled-project', 'replaced-storage', 'replaced-preview']) {
+  for (const mode of ['missing-pipeline', 'uncertain-project', 'uncertain-environment', 'uncertain-push', 'uncertain-push-revoke-failed', 'settled-project', 'replaced-storage', 'replaced-preview']) {
     const output = require('child_process').execFileSync(process.execPath, [__filename], {env: {...process.env, PREVIEW_SETUP_FAILURE_FIXTURE: mode}, encoding: 'utf8', timeout: 30000});
     assert(output.includes('regression passed: ' + mode), output);
   }

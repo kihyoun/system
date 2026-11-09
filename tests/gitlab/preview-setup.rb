@@ -50,11 +50,23 @@ raise 'preflight made a write' unless calls.all? { |row| row[0] == Net::HTTP::Ge
 setup = input.merge('action' => 'preview-setup-project', 'source' => input['sources'][0])
 result = BootstrapperPreviewSetup.new(api, setup).call
 raise 'fresh credentials not scoped to project' unless result.dig(:credential, :id) == 12
+raise 'new import inherited Auto DevOps' unless project['auto_devops_enabled'] == false
+raise 'new import lost native CI path' unless project['ci_config_path'] == '.gitlab/primary.yml'
 raise 'source gates weakened' unless project['only_allow_merge_if_pipeline_succeeds'] && project['only_allow_merge_if_all_discussions_are_resolved']
 raise 'private delivery missing' unless variables.dig('WIZARD_DELIVERY_ENABLED', 'value') == 'true'
 raise 'fork can publish upstream' unless ['GITHUB_BACKUP_ENABLED', 'DOCKERHUB_PUBLISH_ENABLED', 'GITHUB_RELEASE_PUBLISH_ENABLED', 'WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED'].all? { |key| variables.dig(key, 'value') == 'false' }
 BootstrapperPreviewSetup.new(api, input.merge('action' => 'preview-setup-revoke', 'projectId' => 7, 'tokenId' => 12)).call
+# Existing owned imports and operator-selected sources keep their settings.
+project['auto_devops_enabled'] = true
+BootstrapperPreviewSetup.new(api, setup).call
+raise 'existing import Auto DevOps was rewritten' unless project['auto_devops_enabled'] == true
 project['description'] = 'operator project'
+existing = setup.merge('source' => setup.fetch('source').merge('mode' => 'existing'))
+count = calls.length
+result = BootstrapperPreviewSetup.new(api, existing).call
+raise 'existing operator settings were changed' unless project['auto_devops_enabled'] == true && calls.drop(count).all? { |row| row[0] == Net::HTTP::Get }
+raise 'existing project received an import credential' if result[:credential]
+
 count = calls.length
 begin
   BootstrapperPreviewSetup.new(api, setup).call

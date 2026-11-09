@@ -54,14 +54,38 @@ async function transfer({origin, destination, token, username = 'oauth2', approv
     const cwd = path.join(directory, 'source.git');
     const refs = (await run(['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', 'refs/tags'], {cwd, env: sourceEnv})).split('\n').filter(Boolean).map(line => line.split(' '));
     if (!refs.length || refs.length > 500) throw Error('Import requires a bounded source repository with at least one branch.');
-    const actual = (await run(['-c', 'http.followRedirects=false', 'ls-remote', '--heads', '--tags', destination], {env})).split('\n').filter(Boolean).filter(line => !line.endsWith('^{}') && /\srefs\/(?:heads|tags)\//.test(line)).map(line => line.split(/\s+/));
-    // A lost push response is recovered by comparing every exact ref. Changed
-    // or additional refs are an operator conflict, never a force-push target.
-    if (actual.length) {
-      if (actual.length !== refs.length || actual.some(([sha, name]) => !refs.some(([expected, ref]) => expected === sha && name === ref))) throw Error('The imported project contains changed or additional refs. Preserve operator edits and reconcile manually.');
-      return {unchanged: true};
+    const defaultRef = await run(['symbolic-ref', '--quiet', 'HEAD'], {cwd, env: sourceEnv});
+    const advertised = verified.head.split('\n');
+    const defaultHead = refs.find(([, name]) => name === defaultRef);
+    if (!/^refs\/heads\//.test(defaultRef) || !defaultHead ||
+        !advertised.includes('ref: ' + defaultRef + '\tHEAD') ||
+        !advertised.includes(defaultHead[0] + '\tHEAD')) throw Error('The source default branch changed or is unavailable. No refs were pushed; run preflight again.');
+    const historical = refs.filter(([, name]) => name !== defaultRef);
+    const actualRefs = async () => (await run(['-c', 'http.followRedirects=false', 'ls-remote', '--heads', '--tags', destination], {env}))
+      .split('\n').filter(Boolean).filter(line => !line.endsWith('^{}') && /\srefs\/(?:heads|tags)\//.test(line)).map(line => line.split(/\s+/));
+    const same = (actual, expected) => actual.length === expected.length &&
+      actual.every(([sha, name]) => expected.some(([expectedSha, expectedName]) => sha === expectedSha && name === expectedName));
+    const conflict = () => Error('The imported project contains changed or additional refs. Preserve operator edits and reconcile manually.');
+    let actual = await actualRefs();
+    // Only an exact complete import or our exact default-only intermediate
+    // state can resume. Never turn arbitrary partial/operator refs into leases.
+    if (same(actual, refs)) return {unchanged: true};
+    if (actual.length && !same(actual, [defaultHead])) throw conflict();
+    const push = async (selected, skipCI) => run(['-c', 'http.followRedirects=false', 'push', '--atomic', '--no-follow-tags',
+      ...(skipCI ? ['--push-option=ci.skip'] : []), ...selected.map(([, name]) => '--force-with-lease=' + name + ':'),
+      destination, ...selected.map(([, name]) => name + ':' + name)], {cwd, env, mutating: true});
+    if (!actual.length) {
+      // GitLab bounds pipelines per push. Give the source default branch its
+      // own ordinary push, so historical refs cannot displace its native CI.
+      await push([defaultHead], false);
+      actual = await actualRefs();
+      if (same(actual, refs)) return {imported: true};
+      if (!same(actual, [defaultHead])) throw conflict();
     }
-    await run(['-c', 'http.followRedirects=false', 'push', '--atomic', ...refs.map(([, name]) => '--force-with-lease=' + name + ':'), destination, ...refs.map(([, name]) => name + ':' + name)], {cwd, env, mutating: true});
+    // Preserve history without running obsolete branch/tag CI. The candidate's
+    // default-branch pipeline above is never skipped or recreated through API.
+    await push(historical, true);
+    if (!same(await actualRefs(), refs)) throw conflict();
     return {imported: true};
   } finally { fs.rmSync(directory, {recursive: true, force: true}); }
 }
