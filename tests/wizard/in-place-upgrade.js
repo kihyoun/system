@@ -287,12 +287,13 @@ async function test(name, run, modern = false) { const f = new Fixture(modern); 
     assert.deepEqual(await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths), preserved);
     assert.equal((await f.upgrade.adopt((await f.upgrade.adoptionPlan(true)).planHash, true)).unchanged, true);
   }, profile);
-  for (const profile of ['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3']) await test('explicit CA v4 recipe upgrade from ' + profile + ' preserves source and stopped generations', async f => {
+  for (const targetProfile of ['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'])
+  for (const profile of ['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', ...(targetProfile.endsWith('-v5') ? ['node24-vite8-ca-v4', targetProfile] : [])]) await test('explicit ' + targetProfile + ' recipe upgrade from ' + profile + ' preserves source and stopped generations', async f => {
     const previous = JSON.parse(JSON.stringify(f.receipt.wizardWorkflow));
     const historicalOperation = f.upgrade.operation(f.receipt, logo, true);
-    f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile: 'node24-vite8-ca-v4', request: f.request.bind(f), checkHelper: async () => {}});
+    f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile: targetProfile, request: f.request.bind(f), checkHelper: async () => {}});
     const plan = await f.upgrade.plan(true);
-    assert.equal(plan.publicPlan.buildRecipeHash, builds.generate(logo, 'node24-vite8-ca-v4').recipeHash);
+    assert.equal(plan.publicPlan.buildRecipeHash, builds.generate(logo, targetProfile).recipeHash);
     assert.notEqual(plan.publicPlan.operation, historicalOperation);
     const preserved = await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths);
     await f.upgrade.stage(plan.planHash, true); f.merge();
@@ -309,6 +310,13 @@ async function test(name, run, modern = false) { const f = new Fixture(modern); 
     await assert.rejects(f.upgrade.plan(true), /Retain the overview-compatible/);
     assert.deepEqual(f.posts, []);
   }, 'node24-vite8-overview-v3');
+  await test('Quick Install recipe rejects older browser profiles', async f => {
+    for (const buildProfile of ['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4']) {
+      f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile, request: f.request.bind(f), checkHelper: async () => {}});
+      await assert.rejects(f.upgrade.plan(true), /Retain the overview-compatible/);
+    }
+    assert.deepEqual(f.posts, []);
+  }, 'node24-vite8-quickstart-v5');
   await test('native operator CLI accepts the explicit overview profile and rejects unknown options or profiles before requests', async f => {
     const responses = {}, request = f.request.bind(f);
     f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile: 'node24-vite8-overview-v3',
@@ -342,6 +350,9 @@ global.fetch = async (target, options) => {
     const caAccepted = invoke({buildProfile: 'node24-vite8-ca-v4'});
     assert.equal(caAccepted.status, 0, caAccepted.stderr);
     assert.equal(JSON.parse(caAccepted.stdout).plan.buildRecipeHash, builds.generate(logo, 'node24-vite8-ca-v4').recipeHash);
+    const quickstartAccepted = invoke({buildProfile: 'node24-vite8-quickstart-v5'});
+    assert.equal(quickstartAccepted.status, 0, quickstartAccepted.stderr);
+    assert.equal(JSON.parse(quickstartAccepted.stdout).plan.buildRecipeHash, builds.generate(logo, 'node24-vite8-quickstart-v5').recipeHash);
     assert.equal(accepted.status, 0, accepted.stderr);
     assert.deepEqual(JSON.parse(accepted.stdout), {plan: preview.publicPlan, planHash: preview.planHash});
     assert(fs.readFileSync(trace, 'utf8').trim());

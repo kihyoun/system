@@ -25,7 +25,7 @@ verifyPreparedTrust({candidate:'candidate:fixture',wizard:'wizard:fixture'},()=>
 assert.throws(()=>verifyPreparedTrust({candidate:'candidate:fixture',wizard:'wizard:fixture'},()=>bundle.toString()+compromised),/distrusted/);
 const recipes=require('../../project-bootstrap/wizard-build/recipe');
 const logo=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184);
-for(const profile of ['legacy-ca-v4','node24-vite8-ca-v4']){
+for(const profile of ['legacy-ca-v4','node24-vite8-ca-v4','node24-vite8-quickstart-v5']){
  const recipe=recipes.generate(logo,profile);assert.deepEqual(recipes.select(logo,recipe.recipeHash),recipe);
  assert(recipe.ci.includes('29.9.2-cli@sha256:'));assert(recipe.ci.includes('before_script:'));
  assert.equal(recipe.files.find(f=>f.path.endsWith('/ca/'+trust.provenance.bundle)).content,bundle.toString());

@@ -6,7 +6,15 @@ const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const cleanupProfiles = {'legacy-cleanup-v2': 'legacy', 'node24-vite8-cleanup-v2': 'node24-vite8'};
 const overviewProfile = 'node24-vite8-overview-v3';
 const caProfiles = {'legacy-ca-v4': 'legacy-cleanup-v2', 'node24-vite8-ca-v4': overviewProfile};
+const quickstartProfile = 'node24-vite8-quickstart-v5';
 function generate(logo, profile = 'legacy') {
+  if (profile === quickstartProfile) {
+    const baseline = generate(logo, 'node24-vite8-ca-v4');
+    const smoke = fs.readFileSync(path.join(__dirname, 'quickstart-v5', 'check.js'), 'utf8').replace(/\r\n/g, '\n');
+    const files = baseline.files.map(file => file.path.endsWith('/smoke/check.js') ? {...file, content: smoke, sha256: hash(smoke)} : file);
+    const manifest = {version: 1, ciHash: baseline.ciHash, files: files.map(({path, sha256}) => ({path, sha256}))};
+    return {...manifest, profile, recipeHash: hash(JSON.stringify(manifest)), ci: baseline.ci, files};
+  }
   if (Object.hasOwn(caProfiles, profile)) {
     const baseline = generate(logo, caProfiles[profile]);
     const prefix = '.system-bootstrapper/build-v1/';
@@ -58,7 +66,7 @@ function generate(logo, profile = 'legacy') {
   return {...manifest, profile, recipeHash: hash(JSON.stringify(manifest)), ci, files};
 }
 function select(logo, recipeHash) {
-  for (const profile of ['legacy', 'node24-vite8', ...Object.keys(cleanupProfiles), overviewProfile, ...Object.keys(caProfiles)]) {
+  for (const profile of ['legacy', 'node24-vite8', ...Object.keys(cleanupProfiles), overviewProfile, ...Object.keys(caProfiles), quickstartProfile]) {
     const recipe = generate(logo, profile);
     if (recipe.recipeHash === recipeHash) return recipe;
   }
@@ -70,7 +78,7 @@ function forSource(logo, sourceRevision) {
   if (snapshot.sourceRevision !== sourceRevision) return generate(logo, 'legacy-ca-v4'); // Existing hashes still select their original recipe.
   const file = snapshot.files.find(file => file.path === 'package.json');
   const packageJson = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'));
-  const profile = packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-ca-v4' : 'legacy-ca-v4';
+  const profile = packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? quickstartProfile : 'legacy-ca-v4';
   return generate(logo, profile);
 }
 module.exports = {generate, select, forSource};

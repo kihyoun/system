@@ -102,27 +102,33 @@ refresh does not install files or create pipelines.
 
 ## Toolchain profiles
 
-New source imports with Vite select the `node24-vite8-ca-v4` profile: the
+New source imports with Vite select the `node24-vite8-quickstart-v5` profile: the
 pinned Node 24/npm toolchain, locked install, lint, Vitest, TypeScript/Vite build,
 configuration-export checks and Playwright browser checks. Browser evidence
 includes rendered UI, Projects, SPA navigation, a configuration ZIP and exact
 Cube validation. Use `wizard/package.json` and the managed recipe for the exact
 pinned versions.
 
-This profile retains the overview browser checks and exact-tag cleanup, and
-refreshes the build/browser images' public CA trust from the reviewed, checksummed
+This profile retains exact-tag cleanup and the build/browser images' public CA
+trust from the reviewed, checksummed
 Mozilla bundle shipped with the System source. Node uses that refreshed OpenSSL
 trust store. The refresh runs while building or preparing job images, without
 downloading a new trust bundle at runtime or changing the host's trust store.
 
-The inherited overview checks verify **Getting Started**, Overview/Wizard switching,
-preserved workspace selection and the **Open Wizard** action when those controls
-are present; earlier modern source keeps its direct-workspace checks. To deliver
-the new navigation from an existing managed project, first perform its guarded
-build/environment-only upgrade with the explicit private option
-`"buildProfile": "node24-vite8-ca-v4"`. Existing overview, cleanup-v2 and earlier
-profiles retain their exact historical hashes. The equivalent current legacy
-profile is `legacy-ca-v4`.
+The browser checks verify **How it works**, the three overview cards, the
+**Install System Bootstrapper** scroll/focus action and exact **Quick Install**
+command. They open the integrated handbook, preserve the selected Projects
+workspace across Overview/Docs/Wizard navigation, validate the configuration
+ZIP/Cube and check nested SPA and direct `/configuration` routes. This profile
+requires that current interface. Existing overview-v3 and CA-v4 reservations
+retain their historical **Getting Started** / **Open Wizard** checks.
+
+For an existing managed import, use the guarded build/environment-only upgrade
+with `"buildProfile": "node24-vite8-quickstart-v5"` alongside the matching source.
+An adopted source-primary project instead uses its
+[native source merge and binding refresh](../project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe).
+Every earlier profile retains its exact historical hash. The equivalent current
+legacy profile is `legacy-ca-v4`.
 
 Reserved historical recipes remain verifiable by their exact hash, including
 legacy Node 13/CRA/Jest recipes. Historical compatibility does not make that
