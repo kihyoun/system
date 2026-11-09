@@ -210,6 +210,7 @@ class Candidate {
         '--env','SEED_DIR='+require('../e2e/local-storage').SEED,'--env','SEED_MOUNT='+require('../e2e/local-storage').MOUNT,
         '--env','PERSISTENT_MOUNT=/','--env','PERSISTENT_DIR='+base,'--env','SYSTEM_CONFIG_DIR=/state','--env','COMPOSE_COMPATIBILITY=1',
         '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--env','GITLAB_RUNNER_IMAGE=candidate-runner:under-test',
+        '--env',"GITLAB_OMNIBUS_CONFIG=puma['worker_processes'] = 2",
         '--env','GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test',
         '--env','NGINX_IMAGE=nginx:latest','--env','WIZARD_IMAGE=systembootstrapper/wizard',
         '--env','GITLAB_SSH_BIND=2222','--env','GITLAB_REGISTRY_BIND=5050',

@@ -37,7 +37,7 @@ try {
   write('tests/binary.png',binary);
   write('system/.docker.env.example','public example\n');
   const runtimeInputs=['start.sh','sync/start.sh','bootstrapper/persistence.sh',
-    'gitlab-runner/docker-compose.yml','gitlab-runner/provision.rb','system/.seed.env',
+    'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','gitlab-runner/provision.rb','system/.seed.env',
     'system/persistence-init.js','system/wizard-public.js','system/start-main.sh','system/start.sh','system/docker-compose.yml',
     'system/push.sh','nginx/wizard-aliases.js','system/harvest.sh','system/seed.sh',
     'system/seed-manifest.js','system/seed-operation.js','system/coordinated-backup.js','bootstrapper/rebind-renewal.py'];
@@ -61,6 +61,7 @@ try {
   assert.equal(execFileSync('tar',['-xOf',archive,'.gitlab-ci.yml'],{encoding:'utf8'}),'stages: [test]\n');
   assert.equal(execFileSync('tar',['-xOf',archive,'VERSION'],{encoding:'utf8'}),'1.1.0\n', 'Release verification uses the committed version, not working-copy edits');
   for(const filename of runtimeInputs) assert(result.files.includes(filename), 'Missing runtime input: '+filename);
+  assert.equal(execFileSync('tar',['-xOf',archive,'gitlab/docker-compose.omnibus.yml'],{encoding:'utf8'}),'committed runtime input\n');
   assert.equal(execFileSync('tar',['-xOf',archive,'sync/src/public.ts'],{encoding:'utf8'}),'committed source\n');
   assert(execFileSync('tar',['-xOf',archive,'tests/binary.png']).equals(binary),'preserve binary source bytes');
   const cleanSnapshot = JSON.parse(execFileSync('tar',['-xOf',archive,'project-bootstrap/wizard-source/snapshot.json'],{encoding:'utf8',maxBuffer:8*1024*1024}));

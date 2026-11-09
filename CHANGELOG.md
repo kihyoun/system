@@ -15,6 +15,8 @@ one accepted System source revision and tested controller/Wizard image attempt.
   directory while retaining helper-completion, file-type and checksum checks.
 - Handle a process exiting during upgrade-watchdog inspection without hiding
   unrelated I/O or permission failures or weakening operation ownership checks.
+- Bound disposable GitLab web workers through its supported configuration so
+  nested test platforms retain their CPU and memory limits on larger hosts.
 
 ### Upgrade and recovery
 
