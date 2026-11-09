@@ -93,5 +93,19 @@
   {"component":"bootstrapper","file":"persistence/storage-operation.test.js","timeoutSeconds":30},
   {"component":"gitlab","file":"gitlab/ca-trust.js","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/security-runners.js","timeoutSeconds":25},
-  {"component":"bootstrapper","file":"bootstrapper/security-recovery-export.py","timeoutSeconds":15}
+  {"component":"bootstrapper","file":"bootstrapper/security-recovery-export.py","timeoutSeconds":15},
+  {"component":"sync","file":"sync/token-overview.js","timeoutSeconds":20},
+  {"component":"gitlab","file":"gitlab/token-expiry.rb","timeoutSeconds":20},
+  {"component":"sync","file":"sync/system-diagnostics.js","timeoutSeconds":20},
+  {"component":"sync","file":"sync/backup-workflow.js","timeoutSeconds":20},
+  {"component":"bootstrapper","file":"seed/coordinated-backup.js","timeoutSeconds":30},
+  {"component":"wizard","file":"wizard/preview-setup.js","timeoutSeconds":30},
+  {"component":"gitlab","file":"gitlab/preview-setup.rb","timeoutSeconds":25},
+  {"component":"wizard","file":"wizard/preview-source-transfer.js","timeoutSeconds":30},
+  {"component":"wizard","file":"wizard/preview-setup-workflow.js","timeoutSeconds":40},
+  {"component":"wizard","file":"wizard/preview-producers.js","timeoutSeconds":20},
+  {"component":"sync","file":"sync/operations-api.js","timeoutSeconds":30,"port":8071},
+  {"component":"shared","file":"shared/guided-preview-contract.js","timeoutSeconds":20},
+  {"component":"wizard","file":"wizard/rails-completion.js","timeoutSeconds":20},
+  {"component":"wizard","file":"wizard/native-locale-messages.js","timeoutSeconds":20}
 ]

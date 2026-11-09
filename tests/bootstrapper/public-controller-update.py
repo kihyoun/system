@@ -5,6 +5,7 @@ from contextlib import ExitStack
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -164,6 +165,177 @@ class PublicControllerUpdate(unittest.TestCase):
         self.checked.side_effect = lambda *args, **kwargs: self.pulled_wizard if kwargs.get('wizard') else self.pulled
         self.wizard_template = copy.deepcopy(self.rows['system_wizard_1'])
         self.paired = True
+
+    def accepted_metadata(self, existing=True):
+        self.enable_pair()
+        value = {'format': 'system-accepted-release-v1', 'version': (ROOT / 'VERSION').read_text().strip(),
+                 'tag': 'v' + (ROOT / 'VERSION').read_text().strip(), 'platform': 'linux/amd64',
+                 'source': {'revision': self.release['sourceRevision'], 'tree': self.release['sourceTree'],
+                            'wizardRevision': self.release['wizardRevision']},
+                 'images': {role: {'reference': row['reference'], 'imageId': row['imageId'],
+                                  'configDigest': row['imageId']}
+                            for role, row in [('controller', self.pulled), ('wizard', self.pulled_wizard)]},
+                 'acceptance': {'candidateJobId': self.release['candidateJobId'],
+                                'evidenceSha256': self.release['candidateEvidenceSha256'],
+                                'controllerWizardSameAttempt': True, 'requiredChecksPassed': True}}
+        self.metadata = self.root / 'accepted-public.json'
+        self.metadata.write_text(json.dumps(value))
+        if existing:
+            successor.atomic_bytes(self.config['_main'].parent / '.release-images.json', b'{"original":true}\n')
+            successor.atomic_bytes(self.config['_main'].parent / '.release-images.env',
+                                   ('BOOTSTRAPPER_IMAGE=' + self.old + '\nWIZARD_IMAGE=' +
+                                    self.config['WIZARD_IMAGE'] + '\n').encode())
+        return value
+
+    def test_metadata_refresh_is_checkpointed_and_restores_exact_prior_selection(self):
+        accepted = self.accepted_metadata()
+        before, payloads = tool.release_selection(self.config)
+        record = self.update(wizard=self.wizard, release_metadata=self.metadata)
+        receipt = json.loads((self.config['_main'].parent / '.release-images.json').read_bytes())
+        self.assertEqual(receipt['productRelease'], {'version': accepted['version'], 'tag': accepted['tag'],
+                                                    'sourceRevision': self.release['sourceRevision']})
+        self.assertEqual(receipt['sourceTree'], self.release['sourceTree'])
+        self.assertEqual(receipt['wizardSourceRevision'], self.release['wizardRevision'])
+        self.assertEqual(receipt['images'], {'controller': self.pulled, 'wizard': self.pulled_wizard})
+        self.assertEqual(receipt['status'], 'selected')
+        self.assertEqual((self.config['_main'].parent / '.release-images.env').read_text(),
+                         'BOOTSTRAPPER_IMAGE=' + self.new + '\nWIZARD_IMAGE=' + self.wizard + '\n')
+        self.assertEqual(record['releaseSelection']['before'], before)
+        self.assertEqual(json.loads((self.checkpoint / 'accepted-public-release.json').read_bytes()), accepted)
+        for name, payload in payloads.items():
+            self.assertEqual((self.checkpoint / (name + '.before')).read_bytes(), payload)
+        tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(tool.release_selection(self.config), (before, payloads))
+
+    def test_metadata_preflight_checks_without_writes_and_refuses_other_attempt(self):
+        accepted = self.accepted_metadata()
+        before = tool.release_selection(self.config)
+        self.update(wizard=self.wizard, release_metadata=self.metadata, check_only=True)
+        self.assertEqual(tool.release_selection(self.config), before)
+        for category in ('source', 'image', 'candidate', 'evidence', 'version'):
+            changed = copy.deepcopy(accepted)
+            if category == 'source': changed['source']['wizardRevision'] = '0' * 40
+            elif category == 'image': changed['images']['wizard']['imageId'] = 'sha256:' + '0' * 64
+            elif category == 'candidate': changed['acceptance']['candidateJobId'] += 1
+            elif category == 'evidence': changed['acceptance']['evidenceSha256'] = '0' * 64
+            else: changed.update(version='99.0.0', tag='v99.0.0')
+            self.metadata.write_text(json.dumps(changed))
+            with self.subTest(category=category), self.assertRaises((recovery.RecoveryError, tool.installer.ReleaseError)):
+                self.update(wizard=self.wizard, release_metadata=self.metadata)
+        self.assertFalse(self.checkpoint.exists())
+        self.assertEqual(self.commands, [])
+        self.assertEqual(tool.release_selection(self.config), before)
+
+    def test_partial_metadata_update_restores_known_old_and_new_receipt_files(self):
+        self.accepted_metadata()
+        before = tool.release_selection(self.config)
+        atomic = successor.atomic_bytes
+        def fail_second_selection(path, payload, *args):
+            if Path(path) == self.config['_main'].parent / '.release-images.env':
+                raise recovery.RecoveryError('synthetic-selection-write-failure')
+            return atomic(path, payload, *args)
+        with patch.object(successor, 'atomic_bytes', side_effect=fail_second_selection):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'selection-write-failure'):
+                self.update(wizard=self.wizard, release_metadata=self.metadata)
+        mixed, _ = tool.release_selection(self.config)
+        self.assertNotEqual(mixed['.release-images.json'], before[0]['.release-images.json'])
+        self.assertEqual(mixed['.release-images.env'], before[0]['.release-images.env'])
+        self.assertTrue((self.root / 'configuration/.storage-operation-lock').exists())
+        with patch.object(successor, 'process_start', return_value='different-process'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(tool.release_selection(self.config), before)
+
+    def test_interrupted_selection_replacement_preserves_nonroot_owner_atomically(self):
+        self.accepted_metadata()
+        for name in tool.RELEASE_SELECTION:
+            os.chown(self.config['_main'].parent / name, 65534, 65534)
+        before = tool.release_selection(self.config)
+        replace = os.replace
+        target = self.config['_main'].parent / '.release-images.json'
+        def interrupted(source, destination):
+            result = replace(source, destination)
+            if Path(destination) == target:
+                self.assertEqual((target.stat().st_uid, target.stat().st_gid), (65534, 65534))
+                raise recovery.RecoveryError('synthetic-loss-after-selection-rename')
+            return result
+        with patch.object(os, 'replace', interrupted):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'loss-after-selection-rename'):
+                self.update(wizard=self.wizard, release_metadata=self.metadata)
+        with patch.object(successor, 'process_start', return_value='different-process'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(tool.release_selection(self.config), before)
+
+    def test_selection_owner_failure_does_not_publish_incomplete_metadata(self):
+        self.accepted_metadata()
+        before = tool.release_selection(self.config)
+        with patch.object(os, 'fchown', side_effect=OSError('synthetic-owner-failure')):
+            with self.assertRaisesRegex(OSError, 'owner-failure'):
+                self.update(wizard=self.wizard, release_metadata=self.metadata)
+        self.assertEqual(tool.release_selection(self.config), before)
+        with patch.object(successor, 'process_start', return_value='different-process'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(tool.release_selection(self.config), before)
+
+    def test_partial_metadata_rollback_can_resume_and_removes_initially_absent_receipts(self):
+        self.accepted_metadata(existing=False)
+        self.update(wizard=self.wizard, release_metadata=self.metadata)
+        unlink = Path.unlink
+        def fail_second_unlink(path, *args, **kwargs):
+            if path == self.config['_main'].parent / '.release-images.env':
+                raise recovery.RecoveryError('synthetic-selection-unlink-failure')
+            return unlink(path, *args, **kwargs)
+        with patch.object(Path, 'unlink', fail_second_unlink):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'selection-unlink-failure'):
+                tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        with patch.object(successor, 'process_start', return_value='different-process'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(tool.release_selection(self.config)[0], {name: None for name in tool.RELEASE_SELECTION})
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+
+    def test_metadata_drift_or_changed_checkpoint_blocks_rollback_before_stop(self):
+        self.accepted_metadata()
+        self.update(wizard=self.wizard, release_metadata=self.metadata)
+        path = self.config['_main'].parent / '.release-images.json'
+        after = path.read_bytes()
+        for drift in ('live', 'checkpoint'):
+            if drift == 'live': successor.atomic_bytes(path, b'{"operator":"changed"}\n')
+            else:
+                successor.atomic_bytes(path, after)
+                successor.atomic_bytes(self.checkpoint / '.release-images.json.before', b'changed checkpoint\n')
+            count = len(self.commands)
+            with self.subTest(drift=drift), self.assertRaisesRegex(recovery.RecoveryError, 'public-release-selection'):
+                tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+            self.assertFalse(any('stop' in command for command in self.commands[count:]))
+
+    def test_metadata_requires_pair_and_refuses_unsafe_or_incomplete_selection(self):
+        self.accepted_metadata()
+        with self.assertRaisesRegex(recovery.RecoveryError, 'requires-paired'):
+            self.update(release_metadata=self.metadata)
+        path = self.config['_main'].parent / '.release-images.json'
+        path.unlink()
+        with self.assertRaisesRegex(recovery.RecoveryError, 'selection-incomplete'):
+            self.update(wizard=self.wizard, release_metadata=self.metadata)
+        path.symlink_to(self.root / 'absent')
+        with self.assertRaisesRegex(recovery.RecoveryError, 'private-regular-input'):
+            self.update(wizard=self.wizard, release_metadata=self.metadata)
+        self.assertEqual(self.commands, [])
+
+    def test_metadata_rechecks_selection_under_lease_before_stopping(self):
+        self.accepted_metadata()
+        acquire = successor.Lease.__enter__
+        path = self.config['_main'].parent / '.release-images.json'
+        changed = b'{"operator":"changed during preflight"}\n'
+        def acquire_then_edit(lease):
+            result = acquire(lease)
+            successor.atomic_bytes(path, changed)
+            return result
+        with patch.object(successor.Lease, '__enter__', acquire_then_edit):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'public-release-selection-changed'):
+                self.update(wizard=self.wizard, release_metadata=self.metadata)
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertEqual(path.read_bytes(), changed)
+        self.assertEqual(self.commands, [])
+        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
 
     def test_pair_changes_only_release_pins_and_keeps_source_primary_configuration(self):
         self.enable_pair()

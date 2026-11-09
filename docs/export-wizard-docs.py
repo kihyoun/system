@@ -136,6 +136,10 @@ A source import installs source. A build produces a candidate. Review and Beta a
 """))
 
     guides = [
+        ("docs/DEVELOPMENT_PREVIEWS.md", "development-previews", "8.13 Set up development previews", "Evolution"),
+        ("docs/COORDINATED_BACKUP.md", "coordinated-backup", "7.3 Coordinated backup", "Recovery"),
+        ("docs/TOKEN_EXPIRY.md", "token-expiry", "6.2 Credential expiry", "Operations"),
+        ("docs/SYSTEM_DIAGNOSTICS.md", "system-diagnostics", "6.3 System diagnostics", "Operations"),
         ("docs/DEPENDENCY_SECURITY.md", "dependency-security", "8.12 Dependency security", "Evolution"),
         ("docs/DEPENDENCY_UPDATES.md", "dependency-updates", "8.11 Dependency update operations", "Evolution"),
         ("docs/QUICKSTART.md", "quickstart", "1.5 Quick Install", "Installation"),
@@ -160,8 +164,14 @@ A source import installs source. A build produces a candidate. Review and Beta a
         ("bootstrapper/README.md", "controller-reference", "9. Controller and recovery reference", "Reference"),
         ("tests/README.md", "verification", "9.1 Component and platform checks", "Reference"),
         ("tests/e2e/README.md", "candidate-testing", "9.2 Disposable platform acceptance", "Reference"),
+        ("tests/e2e/GUIDED_PREVIEW_ACCEPTANCE.md", "guided-preview-acceptance", "9.3 Native guided preview acceptance", "Reference"),
     ]
     contexts = {
+        "development-previews": ("Healthy GitLab, registry and runners; selected source projects, exact preview DNS names and certificates.", "Explicit setup creates verified preview bindings while the accepted Production image remains selected."),
+        "coordinated-backup": ("A configured platform and the selected mounted external backup medium with sufficient free space.", "A native Harvest and matching configuration ZIP form two independently retained recovery inputs."),
+        "token-expiry": ("An authenticated Sync connection and explicit automation project paths in saved configuration.", "Known expiry dates and honest unknown states guide renewal without exposing or rotating credentials."),
+        "system-diagnostics": ("An authenticated Sync connection and configured registry, helper image and managed runner pool.", "Bounded server checks and an optional explicit Docker pull distinguish connectivity from authentication and image availability."),
+        "guided-preview-acceptance": ("The accepted public release is deployed; exact native controller identity, source, TLS hosts and runner prerequisites are available.", "An explicitly started native acceptance verifies fresh push/MR checks and the Review lifecycle while Production stays unchanged."),
         "dependency-security": ("The declared Node/npm toolchains, committed lockfiles and the affected application/build checks.", "You can audit actual dependency paths, apply stable compatible fixes and validate scoped overrides without bypassing release gates."),
         "dependency-updates": ("Protected source branches, reviewed Renovate configuration and private operator provisioning inputs.", "Scheduled discovery proposes grouped stable updates only after explicit dashboard approval; existing merge and deployment gates remain."),
         "quickstart": ("A fresh Ubuntu 24.04 / 26.04 LTS x86_64 host with sudo, curl, internet, 8 GiB RAM and 40 GiB free disk.", "One maintained command starts the initial Wizard; you continue platform setup in the browser."),

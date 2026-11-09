@@ -309,5 +309,43 @@ async function bindingRefresh(f) {
     await assert.rejects(f.adoption.apply(f.input, plan.planHash), /EEXIST/);
     assert.equal(fs.readFileSync(f.config, 'utf8'), f.text);
   });
+  // Initial optional previews may retain an accepted public Production pair.
+  async function initialBootstrap(f) {
+    delete f.receipt.wizardWorkflow;
+    fs.writeFileSync(f.config, logo + '\n# BOOTSTRAPPER_PROJECT=' + Buffer.from(JSON.stringify(f.receipt)).toString('base64') + '\n');
+    const controller = 'docker.io/example/system@sha256:' + '8'.repeat(64);
+    fs.writeFileSync(f.mainConfig, fs.readFileSync(f.mainConfig, 'utf8').replace(oldImage, publicImage) + "BOOTSTRAPPER_IMAGE='" + controller + "'\n");
+    fs.writeFileSync(path.join(f.root, '.release-images.env'), 'BOOTSTRAPPER_IMAGE=' + controller + '\nWIZARD_IMAGE=' + publicImage + '\n');
+    fs.writeFileSync(path.join(f.root, '.release-images.json'), JSON.stringify({schemaVersion: 1, status: 'startup-requested', sourceCommit: sha,
+      productRelease: {tag: 'v1.0.0', sourceRevision: sha}, images: {wizard: {reference: publicImage, candidateJobId: 71}, controller: {reference: controller, candidateJobId: 71}}}));
+    return {...f.input, action: 'bootstrap-previews', buildProfile: 'node24-vite8-quickstart-v5'};
+  }
+  await use(async f => {
+    const input = await initialBootstrap(f), before = fs.readFileSync(f.config, 'utf8'), main = fs.readFileSync(f.mainConfig, 'utf8');
+    const plan = await f.adoption.plan(input);
+    assert.equal(fs.readFileSync(f.config, 'utf8'), before, 'Bootstrap preview wrote configuration');
+    assert.equal(plan.publicPlan.action, 'bootstrap-source-primary-previews');
+    assert.equal(plan.publicPlan.retainedProductionImageRef, publicImage);
+    assert.deepEqual(plan.next.repository.recoveryImages, [], 'Public image acquired a false private recovery alias');
+    assert.equal(plan.next.sourcePrimary.bootstrap, true);
+    assert.equal(plan.next.wizardWorkflow.environments.initialVariablesMissing, true);
+    await assert.rejects(f.adoption.apply(input, 'stale'), /Preview/);
+    await f.adoption.apply(input, plan.planHash);
+    assert.equal(fs.readFileSync(f.mainConfig, 'utf8'), main, 'Initial preview adoption promoted Production');
+    assert.equal((await f.adoption.apply(input, plan.planHash)).unchanged, true);
+  }, 'node24-vite8-quickstart-v5');
+  for (const change of [
+    f => fs.unlinkSync(path.join(f.root, '.release-images.json')),
+    f => { const file = path.join(f.root, '.release-images.json'), record = JSON.parse(fs.readFileSync(file)); record.images.controller.candidateJobId++; fs.writeFileSync(file, JSON.stringify(record)); },
+    f => {f.rows['projects/7/pipelines/31/jobs?per_page=100&include_retried=false'][0].status = 'failed';},
+    f => {f.rows['projects/7/jobs/41/artifacts/wizard-evidence.json'].cubeSignature = false;},
+    f => {f.receipt.wizardWorkflow = {version: 1, phase: 'source-imported'}; fs.writeFileSync(f.config, logo + '\n# BOOTSTRAPPER_PROJECT=' + Buffer.from(JSON.stringify(f.receipt)).toString('base64') + '\n');}
+  ]) await use(async f => {
+    const input = await initialBootstrap(f); change(f);
+    const before = fs.readFileSync(f.config, 'utf8'), main = fs.readFileSync(f.mainConfig, 'utf8');
+    await assert.rejects(f.adoption.plan(input));
+    assert.equal(fs.readFileSync(f.config, 'utf8'), before); assert.equal(fs.readFileSync(f.mainConfig, 'utf8'), main);
+    assert(!fs.existsSync(f.directory));
+  }, 'node24-vite8-quickstart-v5');
   console.log('Source-primary adoption: exact ownership/native evidence, versioned rebind/refusals, metadata-only refresh with unchanged Production/native CI/recovery aliases, preserved private history/floors, CAS, shared mutex, idempotency and initial private-image guard passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;});

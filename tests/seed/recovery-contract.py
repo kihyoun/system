@@ -328,6 +328,27 @@ class RecoveryContract(unittest.TestCase):
         self.assertEqual((self.root/'running').read_text(), 'true')
         self.assertFalse((self.root/'calls').exists())
 
+    def test_coordinated_harvest_reuses_owned_tls_lease_and_leaves_release_to_parent(self):
+        lease = self.root/'letsencrypt/.system-bootstrapper-certificate-lock'
+        lease.mkdir()
+        token = 'a' * 48
+        (lease/'coordinated-owner').write_text(token)
+        self.run_script('harvest', SYSTEM_HARVEST_CERTIFICATE_LEASE=token)
+        self.assertTrue((self.root/'seed/current').is_symlink())
+        self.assertEqual((self.root/'running').read_text(), 'true')
+        self.assertEqual((lease/'coordinated-owner').read_text(), token)
+        snapshot = (self.root/'seed/current').resolve()
+        self.assertFalse((snapshot/'letsencrypt/.system-bootstrapper-certificate-lock').exists())
+
+    def test_coordinated_harvest_refuses_wrong_tls_owner_before_stopping_services(self):
+        lease = self.root/'letsencrypt/.system-bootstrapper-certificate-lock'
+        lease.mkdir()
+        (lease/'coordinated-owner').write_text('a' * 48)
+        self.run_script('harvest', success=False, SYSTEM_HARVEST_CERTIFICATE_LEASE='b' * 48)
+        self.assertFalse((self.root/'calls').exists())
+        self.assertEqual((self.root/'running').read_text(), 'true')
+        self.assertEqual((lease/'coordinated-owner').read_text(), 'a' * 48)
+
     def test_restore_validates_before_delete_and_recovers_into_empty_new_paths(self):
         self.harvest()
         (self.root/'running').write_text('false')

@@ -98,13 +98,15 @@ def atomic_controller_checkpoint(path, value):
     atomic_bytes(path, raw)
 
 
-def atomic_bytes(path, value, mode=0o600):
+def atomic_bytes(path, value, mode=0o600, owner=None):
     path = Path(path)
     require(not path.is_symlink(), 'atomic-output-must-not-be-symlink')
     temporary = path.with_name('.' + path.name + '.tmp-' + uuid.uuid4().hex)
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
     try:
         with os.fdopen(descriptor, 'wb') as stream:
+            if owner is not None:
+                os.fchown(stream.fileno(), *owner)
             stream.write(value)
             stream.flush()
             os.fsync(stream.fileno())

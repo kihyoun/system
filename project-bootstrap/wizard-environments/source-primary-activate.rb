@@ -76,7 +76,9 @@ class WizardSourcePrimaryEnvironments
     value.fetch('value')
   end
   def synchronize
-    expected = values(@input['previousEnvironments'] || @environment)
+    previous = @input['previousEnvironments'] || @environment
+    initial = @input.dig('sourcePrimary', 'bootstrap') == true && previous['initialVariablesMissing'] == true
+    expected = initial ? VARIABLES.to_h { |name| [name, nil] } : values(previous)
     target = values(@environment)
     current = VARIABLES.to_h { |name| [name, variable(name)] }
     unless VARIABLES.all? { |name| [expected.fetch(name), target.fetch(name)].include?(current.fetch(name)) }
@@ -93,9 +95,11 @@ class WizardSourcePrimaryEnvironments
         next if actual == target.fetch(name)
         raise BootstrapError, 'Environment variable raced configuration; inspect the same operation' unless actual == expected.fetch(name)
         begin
-          code, = @api.call(Net::HTTP::Put, prefix + 'variables/' + name + '?filter%5Benvironment_scope%5D=*',
-            {value: target.fetch(name), variable_type: 'env_var', protected: false, masked: false, raw: true, environment_scope: '*'})
-          raise BootstrapError, 'Variable update requires read-only reconciliation' unless code == 200
+          method = actual.nil? ? Net::HTTP::Post : Net::HTTP::Put
+          route = actual.nil? ? prefix + 'variables' : prefix + 'variables/' + name + '?filter%5Benvironment_scope%5D=*'
+          code, = @api.call(method, route,
+            {key: name, value: target.fetch(name), variable_type: 'env_var', protected: false, masked: false, raw: true, environment_scope: '*'})
+          raise BootstrapError, 'Variable update requires read-only reconciliation' unless [200, 201].include?(code)
         rescue StandardError
           return {environments: @environment.merge('phase' => 'pending'),
             message: 'A variable update may have completed. Refresh the same reservation before retrying.'}

@@ -407,6 +407,24 @@ An unrelated Wizard image, unavailable retained image, changed configuration or
 uncertain container lookup blocks rollback. A proven interrupted removal of the
 controller or Wizard is handled through native recreation under the owned lease.
 
+For a versioned public release, also pass
+`--release-metadata /root/accepted-release/system-release-vX.Y.Z.json` to both
+preflight and update. Obtain the metadata and its checksum from the selected
+[public release](../docs/RELEASES.md). This option requires `--wizard` and binds
+the product version, source tree, Wizard gitlink, both images, candidate job and
+evidence hash to the independently verified accepted attempt. It refreshes the
+private `.release-images.json` and `.release-images.env` selection used by initial
+development-preview setup. It does not run the fresh-host installer on existing
+data. Without this option the existing release-selection files remain unchanged.
+
+The same update checkpoint retains the exact previous selection bytes and file
+metadata, the verified public metadata and the new selection. Each selection
+file is replaced atomically under the maintenance lease. Rollback restores the
+previous files, including their original absence, and accepts an interrupted
+replacement containing only the exact known old/new files. Unrelated selection
+edits or changed checkpoint payloads block rollback before services are stopped.
+Keep these receipts with the checkpoint and both images.
+
 For independent runtime checks of this installation type, select the explicit
 public-image mode for both baseline and check:
 

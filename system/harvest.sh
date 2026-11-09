@@ -111,10 +111,18 @@ finish() {
 trap finish EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-mkdir "$certbot/.system-bootstrapper-certificate-lock" || {
-    echo 'Certificate renewal is active or was interrupted; retry after resolving its lock.' >&2; exit 1;
-}
-certificate_lock=true
+if [[ -n ${SYSTEM_HARVEST_CERTIFICATE_LEASE:-} ]]; then
+    [[ $SYSTEM_HARVEST_CERTIFICATE_LEASE =~ ^[a-f0-9]{48}$ ]] &&
+      [[ -f "$certbot/.system-bootstrapper-certificate-lock/coordinated-owner" ]] &&
+      [[ $(cat "$certbot/.system-bootstrapper-certificate-lock/coordinated-owner") == "$SYSTEM_HARVEST_CERTIFICATE_LEASE" ]] || {
+        echo 'Coordinated certificate lease is unavailable.' >&2; exit 1;
+    }
+else
+    mkdir "$certbot/.system-bootstrapper-certificate-lock" || {
+        echo 'Certificate renewal is active or was interrupted; retry after resolving its lock.' >&2; exit 1;
+    }
+    certificate_lock=true
+fi
 # Verify the controlled application exists. Never claim consistency after an
 # ignored Docker/API failure or while a different GitLab is writing this tree.
 phase=gitlab-inspect

@@ -48,11 +48,18 @@ importing old configuration and exporting a new bundle does not upgrade its runt
 Obtain the compatible tool checkout/controller independently; do not blindly use an
 old saved controller as the restore helper or substitute images in configuration.
 
-No Seed generation or manifest is inferred from the configured backup directory.
+Ordinary configuration-only exports do not infer a Seed generation or manifest from the configured backup directory.
 Each configuration-only export explicitly requires a matching completed Seed:
 check its generation, manifest, timestamp and exact harvested GitLab image before
 recovery. An older Seed and newer configuration can be incompatible. Preserve the
 bundle and Seed independently; neither implies the other is present or verified.
+
+The explicit [coordinated backup workflow](COORDINATED_BACKUP.md) captures stable
+configuration and completes native Harvest under shared operation leases. Its
+normal configuration ZIP includes an association with that exact completed Seed.
+It still produces two separate recovery inputs; downloading and independently
+storing the ZIP remains necessary. Imported metadata does not establish a fresh
+Seed match or authorize recovery.
 
 For a recorded accepted product release, retrieve its
 [public release metadata](RELEASES.md) and fetch that exact source commit with the

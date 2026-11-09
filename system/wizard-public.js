@@ -49,11 +49,8 @@ function literal(value) {
   return result;
 }
 
-function publicSettings(content) {
-  const values = {...defaults};
-  if (content === null) return values;
-  if (content[807] !== '$' || crypto.createHash('md5').update(content.slice(0, 1184)).digest('hex') !== 'bd4a8426355824593a5e21ad759830c1')
-    throw Error('Invalid saved configuration signature for public Wizard settings.');
+function assignments(content) {
+  const values = [];
   let record = '', quote = '', escaped = false;
   for (const line of content.split('\n')) {
     if (!record && (!line.trim() || line.trim().startsWith('#'))) continue;
@@ -72,10 +69,20 @@ function publicSettings(content) {
     if (quote || escaped) { escaped = false; continue; }
     const assignment = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/.exec(record);
     if (!assignment) throw Error('Unsupported saved configuration assignment.');
-    if (Object.hasOwn(fields, assignment[1])) values[fields[assignment[1]]] = literal(assignment[2]);
+    values.push([assignment[1], assignment[2]]);
     record = '';
   }
   if (record) throw Error('Incomplete saved configuration assignment.');
+  return values;
+}
+
+function publicSettings(content) {
+  const values = {...defaults};
+  if (content === null) return values;
+  if (content[807] !== '$' || crypto.createHash('md5').update(content.slice(0, 1184)).digest('hex') !== 'bd4a8426355824593a5e21ad759830c1')
+    throw Error('Invalid saved configuration signature for public Wizard settings.');
+  for (const [name, value] of assignments(content))
+    if (Object.hasOwn(fields, name)) values[fields[name]] = literal(value);
   return values;
 }
 
@@ -136,4 +143,4 @@ if (require.main === module) {
   const {state, directory} = publicationMounts(process.env.SYSTEM_CONFIG_DIR || '/state', '/wizard-public');
   publish(path.join(state, '.docker.env'), directory);
 }
-module.exports = {fields, defaults, publicSettings, requireMountedDirectory, publicationMounts, verifyPublication, publish};
+module.exports = {fields, defaults, assignments, literal, publicSettings, requireMountedDirectory, publicationMounts, verifyPublication, publish};

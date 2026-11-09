@@ -21,6 +21,10 @@ import {ensureDefaultWizard} from './DefaultWizard';
 import {initializeWizardSource, previewWizardSource} from './WizardWorkflow';
 import {activateWizardBuild, previewWizardBuild, refreshWizardBuild} from './WizardBuild';
 import {configureWizardEnvironments, previewWizardEnvironments, refreshWizardEnvironments} from './WizardEnvironments';
+import {previewSetupStatus, preflightPreviewSetup, applyPreviewSetup} from './PreviewSetup';
+import {startBackupWorkflow, backupWorkflowStatus, backupWorkflowDownload} from './BackupWorkflow';
+import {registerSystemDiagnostics} from './SystemDiagnostics';
+import {tokenOverview} from './TokenOverview';
 const wizardAliases = require('../../nginx/wizard-aliases');
 
 export const app = express();
@@ -67,8 +71,12 @@ const storageOperationBusy = () => fs.existsSync(path.join(process.env.SYSTEM_CO
 // Authentication and read-only status remain available throughout maintenance.
 app.use((req, res, next) => {
   const upgrading = fs.existsSync(path.join(process.env.SYSTEM_CONFIG_DIR || '/state', '.gitlab-upgrade-lock'));
+  // These authenticated handlers only read local receipts. A guided setup holds
+  // the storage lease itself, so clients must still be able to poll its job.
+  const localProjectRead = req.method === 'GET' &&
+    (req.path === '/projects/wizard/preview-setup' || /^\/projects\/jobs\/[a-zA-Z0-9_-]{1,128}$/.test(req.path));
   if ((upgrading || storageOperationBusy()) &&
-      (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path.startsWith('/projects')) && !['/login', '/token', '/logout'].includes(req.path)) {
+      (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) || (req.path.startsWith('/projects') && !localProjectRead)) && !['/login', '/token', '/logout'].includes(req.path)) {
     res.status(409).json({message: upgrading
       ? 'A GitLab upgrade is in progress. Wait before changing the platform.'
       : 'A backup or recovery operation is in progress. Wait before changing the platform.'});
@@ -126,6 +134,55 @@ const stopExecution = async () => {
   console.log('Restarting System...');
   process.exit(0);
 };
+
+registerSystemDiagnostics(app, authenticateJWT);
+
+const operationBusy = () => storageOperationBusy() || status.harvestInProgress || status.runnerSetupInProgress ||
+  status.defaultWizardSetupInProgress || projectBusy() || environmentHelperBusy();
+app.get('/operations/credentials', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (operationBusy()) { res.status(409).json({message: 'Wait for the current platform operation to finish.'}); return; }
+  try { res.json(tokenOverview()); }
+  catch { res.status(409).json({message: 'Credential metadata is unavailable. Check monitoring settings and GitLab readiness.'}); }
+});
+app.get('/projects/wizard/preview-setup', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(previewSetupStatus()); }
+  catch { res.status(409).json({message: 'Development preview setup status is unavailable.'}); }
+});
+app.post('/projects/wizard/preview-setup/preflight', authenticateJWT, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (operationBusy()) { res.status(409).json({message: 'Wait for the current platform operation to finish.'}); return; }
+  try { res.json(await preflightPreviewSetup(req.body)); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
+app.post('/projects/wizard/preview-setup/apply', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (operationBusy()) { res.status(409).json({message: 'Wait for the current platform operation to finish.'}); return; }
+  try { res.status(202).json(applyPreviewSetup(req.body)); }
+  catch (error) { res.status(409).json({message: error.message}); }
+});
+app.post('/command/backup', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (operationBusy()) { res.status(409).json({message: 'Wait for the current platform operation to finish.'}); return; }
+  status.harvestInProgress = true;
+  try { res.status(202).json(startBackupWorkflow(() => { status.harvestInProgress = false; })); }
+  catch { status.harvestInProgress = false; res.status(409).json({message: 'The coordinated backup could not be started. Check backup storage and operation status.'}); }
+});
+app.get('/backup/:id', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(backupWorkflowStatus(req.params.id)); }
+  catch { res.status(404).json({message: 'Backup operation not found.'}); }
+});
+app.get('/backup/:id/download', authenticateJWT, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const output = backupWorkflowDownload(req.params.id);
+    res.download(output.filename, 'bootstrapper.zip', error => {
+      if (error && !res.headersSent) res.status(500).json({message: 'Configuration backup transfer failed. Retry the download.'});
+    });
+  } catch { res.status(409).json({message: 'The matching configuration backup is not available for download.'}); }
+});
 
 app.post('/token', (req, res) => {
     const { token } = req.body;
