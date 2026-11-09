@@ -100,18 +100,25 @@ as unverified rather than presenting an older build as current.
 ## Refresh an existing source-primary build recipe
 
 A controller update preserves the existing build reservation. For an already
-adopted modern Wizard, select `"buildProfile": "node24-vite8-ca-v4"` explicitly
-in a new adoption input to upgrade that reservation. The accepted starting
-profiles are `node24-vite8`, its cleanup-v2 and overview-v3 profiles, and CA-v4
-itself. Legacy recipes and initial adoption cannot select this upgrade. Omitting
+adopted modern Wizard, select `"buildProfile": "node24-vite8-quickstart-v5"`
+explicitly in a new adoption input to deliver the current Overview, Quick Install
+and integrated Docs interface. The earlier CA refresh target
+`node24-vite8-ca-v4` remains accepted. Starting profiles are `node24-vite8`, its
+cleanup-v2, overview-v3 and CA-v4 profiles, and quickstart-v5 itself. Downgrading
+quickstart-v5 to CA-v4 is rejected. Legacy recipes and initial adoption cannot
+select this upgrade. Omitting
 `buildProfile` retains the exact existing recipe and historical input hashes.
 
 First open a normal merge request in the canonical Wizard source project. Use
 the reviewed controller's `wizard-build/recipe.js` `generate(cube,
-'node24-vite8-ca-v4')` result to install every returned `files` entry, including
-the public CA bundle and refresh script. Preserve application source and update
-the existing `.gitlab/primary.yml` rather than replacing it with the managed
-recipe's separate CI document. Refresh the source and delivery job parents,
+'node24-vite8-quickstart-v5')` result to install every returned `files` entry
+alongside the matching UI source. From CA-v4, only
+`.system-bootstrapper/build-v1/smoke/check.js` changes; the existing native
+`.gitlab/primary.yml` and its gates remain identical. Never replace the native
+CI with the managed recipe's separate CI document.
+
+When moving from an earlier profile that lacks CA-v4 trust preparation, also
+refresh the existing native source and delivery job parents,
 install the committed public bundle before network operations, and set
 `NODE_OPTIONS=--use-openssl-ca` for Node jobs. Retain required source, browser and
 delivery checks, the public mirror and environment jobs. Rebuild and test both
@@ -127,6 +134,49 @@ generic recipe bytes, retains the previous configuration and receipt in a new
 private archive, and preserves canonical identity and environment generation
 floors. A changed or missing CA file, unrelated recipe or required CI failure
 refuses the binding. Production image promotion remains the separate step below.
+
+A changed smoke file changes the approved `ciFiles` manifest even when the native
+CI entrypoint is unchanged. Retain canonical project/namespace/path/default-branch
+identity in the new private input, select the explicit target profile, and replace
+the source commit, push pipeline ID, image digest and complete committed-file
+manifest with the newly verified values. Keep the reviewed immutable helper.
+Run `plan` and `apply` from a reviewed controller/helper that recognizes the new
+profile. Do not edit the saved receipt or its hashes manually. Until this guarded
+binding refresh completes, verification through the old binding rejects the
+changed managed smoke bytes.
+
+For an already adopted source-primary project, add
+`"action": "refresh-binding"` to that private input for a metadata-only recipe
+refresh. An explicit supported `buildProfile` is required. This action retains
+the exact canonical project identity, every approved native CI file outside the
+generic recipe, repository metadata and recovery-image aliases. It independently
+verifies the new recipe bytes, complete CI manifest, required merge gates and
+the exact default-branch push pipeline and immutable candidate artifacts.
+Review/Beta must be stopped and reconciled. The existing private archive,
+confirmation hash, configuration compare-and-swap and environment lock still
+apply; a stale main or project configuration refuses the refresh.
+
+The action leaves the complete main configuration and its Production image pin
+unchanged, including when Production runs a separately accepted public release
+pair. That pin is retained as archived configuration, never treated as candidate
+evidence or added as a private-registry recovery alias. Public-pair verification
+and Production promotion keep their separate release/update gates. Initial
+adoption and reassignment still require the exact previous private-registry
+image; `refresh-binding` cannot adopt or redirect a repository.
+
+Normally run the existing `plan`/`apply` commands in the reviewed controller.
+When the running controller predates this action, an operator may use the
+matching accepted immutable helper image with the same persistent configuration
+mounted at `/state`, without starting a controller or mounting a Docker socket:
+
+```sh
+docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/project-bootstrap/wizard-source-primary/run.js plan /state/adoption-input.json /state/adoption-credential.json
+docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/project-bootstrap/wizard-source-primary/run.js apply /state/adoption-input.json /state/adoption-credential.json PLAN_HASH
+```
+
+Replace the configuration mount and image ID with independently verified
+operator inputs. Retain the same input and helper for apply/retries. This runs
+the committed entrypoint directly and does not start services or promote images.
 
 ## Promote and remove the duplicate
 

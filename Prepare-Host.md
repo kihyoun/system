@@ -1,5 +1,10 @@
 # Prepare an Ubuntu host
 
+For a fresh Ubuntu 24.04 or 26.04 LTS amd64 host, the [one-command Quickstart](docs/QUICKSTART.md)
+selects an accepted public release and delegates to these native tools. It requires
+8 GiB RAM, 40 GiB free disk, curl, standard Python 3 and administrator access.
+Existing installations, DNS/HTTPS and recovery use the explicit paths below.
+
 ## Install a tested public release
 
 For an end-user installation, use a reviewed **complete controller** image and
@@ -11,8 +16,8 @@ controller and must not be substituted for it.
 Choose a release's exact System source revision and both immutable image
 references, each ending in `@sha256:...`. The publisher's release evidence binds
 the source revision/tree, pinned Wizard revision and both image IDs to those
-references. Use a trusted release announcement or your own successful publication
-output to obtain them. A CI job artifact is not automatically a publicly
+references. Obtain them from the versioned public metadata in [GitHub Releases](https://github.com/kihyoun/system/releases),
+following [the release verification procedure](docs/RELEASES.md), or your own successful publication output. A CI job artifact is not automatically a publicly
 accessible download; do not make first startup depend on access to a private
 GitLab instance.
 

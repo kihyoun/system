@@ -18,7 +18,7 @@ function included(name) {
   // Public trust data is required by the offline CA-refresh checks. Keep this
   // exact allowlist separate from private/operator certificate material.
   if (['bootstrapper/ca/cacert-2026-10-20.crt','bootstrapper/ca/provenance.json','bootstrapper/ca/check.js'].includes(name)) return true;
-  if (name === 'docs/check-wizard-docs.js') return true;
+  if (['docs/check-wizard-docs.js', 'renovate.json', 'gitlab/renovate/config.cjs', 'gitlab/renovate/setup.py', 'gitlab/renovate/verify.py'].includes(name)) return true;
   return /^sync\/src\//.test(name) ||
     ['sync/package.json','sync/package-lock.json','sync/tsconfig.json','sync/eslint.config.mjs'].includes(name) ||
     name.startsWith('project-bootstrap/') || name.startsWith('tests/') ||
@@ -26,7 +26,7 @@ function included(name) {
     /^bootstrapper\/[^/]+\.(sh|py)$/.test(name) || /^gitlab-runner\/[^/]+\.(js|sh|rb)$/.test(name) || /^nginx\/[^/]+\.(js|sh)$/.test(name) ||
     name.startsWith('nginx/.templates/') || /^nginx-proxy\/[^/]+\.sh$/.test(name) ||
     ['.gitlab-ci.yml','tests/prepare-candidate.js','start.sh','sync/start.sh','bootstrapper/persistence.sh',
-      'gitlab-runner/docker-compose.yml','system/.docker.env.example','system/.seed.env',
+      'gitlab-runner/docker-compose.yml','system/Dockerfile','system/.docker.env.example','system/.seed.env',
       'system/start-intermediate.sh','system/start-main.sh','system/start.sh','system/docker-compose.yml',
       'system/persistence-init.js','system/wizard-public.js','system/push.sh',
       'system/harvest.sh','system/seed.sh','system/seed-manifest.js','system/seed-operation.js','bootstrapper/rebind-renewal.py'].includes(name);

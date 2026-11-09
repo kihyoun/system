@@ -22,6 +22,8 @@ COPY sync/tsconfig.json ./sync/tsconfig.json
 COPY sync/eslint.config.mjs ./sync/eslint.config.mjs
 COPY project-bootstrap ./project-bootstrap
 COPY gitlab/*.js gitlab/*.sh gitlab/*.rb gitlab/*.json ./gitlab/
+COPY gitlab/renovate ./gitlab/renovate
+COPY renovate.json ./
 COPY gitlab-runner/*.js gitlab-runner/*.sh gitlab-runner/*.rb gitlab-runner/docker-compose.yml ./gitlab-runner/
 COPY nginx/*.sh nginx/*.js ./nginx/
 COPY nginx/.templates ./nginx/.templates

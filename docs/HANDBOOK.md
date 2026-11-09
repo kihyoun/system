@@ -2,6 +2,9 @@
 
 Choose the complete installation path for your environment:
 
+- [Quick Install](QUICKSTART.md): one command on a fresh supported Ubuntu host,
+  followed by browser configuration.
+
 - [Local Ubuntu / WSL2 with HTTP](#0-getting-started): try the platform on your
   own computer, without public DNS or a certificate.
 - [Public Ubuntu server with your domain and HTTPS](#public-server-own-domain-and-https):
@@ -16,6 +19,27 @@ Choose the complete installation path for your environment:
   to build and test a reviewed successor, then promote it with a recovery path.
 
 ## 0. Getting Started
+
+### Quick Install on a fresh Ubuntu host
+
+On Ubuntu 24.04 / 26.04 LTS x86_64 with sudo access, curl, Python 3, internet,
+at least 8 GiB RAM, 40 GiB free for data plus 1 GiB for source and free ports
+80/443, run this command in the host’s terminal:
+
+```bash
+curl -fsSL https://github.com/kihyoun/system/releases/latest/download/quickstart.sh | sudo bash
+```
+
+The thin installer obtains the tested public release, prepares the host and
+starts the initial Wizard. Follow its local first-access instructions, using an
+SSH tunnel for a remote host, then continue configuration in your browser.
+Downloads and service startup take time. The command does not configure public
+DNS/HTTPS, restore a Seed or migrate an existing installation. See
+[Quick Install](QUICKSTART.md) for requirements, release selection and failure
+handling, and [public releases](RELEASES.md) for source/image verification.
+
+The manual local installation below remains available for Ubuntu/WSL2. For a
+public service, use the [domain and HTTPS path](#public-server-own-domain-and-https).
 
 This is the **local Ubuntu / WSL2 HTTP** installation. Keep it on a trusted local
 computer; do not expose this unencrypted setup as a public service. You do not
@@ -198,13 +222,14 @@ whenever the container restarts.
 
 Open [http://localhost/](http://localhost/).
 
-The **Overview** opens with the project introduction, **Getting Started**
-instructions and links to the handbook. Choose **Open Wizard** or the top **Wizard** tab to reach the
-configuration workspace shown below. Switching between Overview, Wizard and
+The **Overview** opens with a short project introduction, **How it works** cards
+and **Quick Install**. The install button scrolls to a command for the host’s
+terminal. Choose the top **Wizard** tab to reach the configuration workspace shown below.
+Switching between Overview, Wizard and
 the footer's legal pages preserves your connection and unsent form values;
 reloading the browser resets that local state.
 
-![Getting Started overview with entry points to the Wizard and handbook](images/getting-started/00-overview.png)
+![Overview with the platform introduction and Quick Install](images/getting-started/00-overview.png)
 
 If an older version is already open, reload the page. Use **Ctrl+F5** if the
 interface looks outdated; the browser cache may still contain the previous version.
@@ -1342,7 +1367,7 @@ bypass guards or restore a stale Seed to make a host replacement continue.
 | Submit / Connect | Signs the Wizard into the Sync service |
 | Disconnect | Disconnects the Wizard |
 | Open | Loads a configuration file from your computer into the Wizard |
-| Backup | Downloads configuration as JSON or a ZIP containing JSON and generated environment files |
+| Backup | Downloads configuration as JSON or a ZIP containing JSON, generated environment files, `recovery.json` and `RECOVERY.md` |
 | Fetch | Retrieves saved instance settings; without a configuration, the current version loads marked suggestions |
 | Push | Transfers the Wizard configuration and automatically restarts the instance |
 | Restart | Restarts services using the transferred configuration |
@@ -1356,6 +1381,16 @@ bypass guards or restore a stale Seed to make a host replacement continue.
 and Push/Fetch manage configuration. Harvest/Seed handle service data. Neither
 configuration download includes the Seed, databases or registry contents. Harvest
 and Seed are not needed to view a configuration with Fetch.
+
+A new configuration ZIP includes `recovery.json` and `RECOVERY.md`. They record
+saved and observed release/source/image identities where available and explain
+their completeness. An exported reference does not preserve its image: retain
+accessible images, matching private configuration and a separate completed Seed
+before relying on recovery. Older configuration backups can still be opened;
+missing recovery metadata does not establish a verified recovery set. Extended ZIPs
+require compatible accepted 1.0.0+ recovery tools; that requirement does not upgrade
+the saved runtime images. Follow the
+[recovery inputs guide](RECOVERY_CONTRACT.md) to verify all matching inputs.
 
 Current implementation detail: the existing Wizard **Seed** action also
 transfers the main configuration from the form before restoring data. Check the
@@ -1669,6 +1704,13 @@ See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
 
 
 ## 5. Evolving a running system
+
+See [architecture, origins and vision](ARCHITECTURE.md) for the generation model,
+repository map, historical diagram and the boundary between today’s tools and
+future autonomous renewal.
+[Dependency update operations](DEPENDENCY_UPDATES.md) explain discovery, explicit
+approval, grouped proposals and recovery of the dedicated bot. Follow the
+[dependency security guide](DEPENDENCY_SECURITY.md) for lockfile audits and compatible fixes.
 
 System evolution uses the development platform to change the source from which
 its successor is built. Generation **A** hosts the source, requirements, merge

@@ -176,10 +176,38 @@ def checked_image(selected, identity, *, wizard=False):
             'platform': 'linux/amd64'}
 
 
+def accepted_metadata(filename, identity, controller, wizard):
+    if not filename:
+        return None
+    filename = Path(filename)
+    require(filename.is_file() and not filename.is_symlink() and filename.stat().st_size <= 1024 * 1024,
+            'regular-bounded-public-release-metadata-required')
+    value = json.loads(filename.read_bytes())
+    require(value.get('format') == 'system-accepted-release-v1' and
+            re.fullmatch(r'(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)', value.get('version', '')) and
+            value.get('tag') == 'v' + value['version'] and value.get('platform') == 'linux/amd64',
+            'accepted-product-version-required')
+    source = value.get('source', {})
+    require(source.get('revision') == identity['sourceCommit'] and source.get('tree') == identity['sourceTree'] and
+            source.get('wizardRevision') == identity['wizardSourceRevision'], 'public-release-source-mismatch')
+    for role, selected in (('controller', controller), ('wizard', wizard)):
+        row = value.get('images', {}).get(role, {})
+        require(reference(row.get('reference')) == selected and
+                re.fullmatch(r'sha256:[a-f0-9]{64}', row.get('imageId', '')) and
+                re.fullmatch(r'sha256:[a-f0-9]{64}', row.get('configDigest', '')),
+                'public-release-paired-image-mismatch')
+    acceptance = value.get('acceptance', {})
+    require(acceptance.get('controllerWizardSameAttempt') is True and acceptance.get('requiredChecksPassed') is True and
+            type(acceptance.get('candidateJobId')) is int and acceptance['candidateJobId'] > 0,
+            'public-release-accepted-attempt-required')
+    return value
+
+
 def install(args, checkout=ROOT):
     require(os.geteuid() == 0, 'run-release-installer-as-root')
     controller, wizard = reference(args.controller), reference(args.wizard)
     identity = source_identity(checkout)
+    accepted = accepted_metadata(getattr(args, 'release_metadata', None), identity, controller, wizard)
     selected, root = storage(args.persistence_env, checkout)
     fresh(root, checkout)
     require(not root.is_relative_to(Path(checkout).resolve()), 'live-data-must-be-outside-checkout')
@@ -202,6 +230,15 @@ def install(args, checkout=ROOT):
                 'wizard': checked_image(wizard, identity, wizard=True)}
         require(pair['controller']['candidateJobId'] == pair['wizard']['candidateJobId'],
                 'release-images-must-share-one-accepted-candidate-job')
+        if accepted:
+            # Docker classic stores report a config ID; containerd stores may
+            # report the immutable manifest digest. The pulled RepoDigest and
+            # source/job labels are independently checked by checked_image.
+            require(all(pair[role]['imageId'] in {accepted['images'][role]['imageId'],
+                                                accepted['images'][role]['configDigest'],
+                                                accepted['images'][role]['reference'].split('@')[1]} and
+                        pair[role]['candidateJobId'] == accepted['acceptance']['candidateJobId']
+                        for role in ('controller', 'wizard')), 'pulled-images-differ-from-accepted-public-attempt')
         require(source_identity(checkout) == identity, 'release-source-changed-during-download')
         fresh(root, checkout)
         no_existing_services()
@@ -219,6 +256,9 @@ def install(args, checkout=ROOT):
         receipt = root / 'configuration/.release-images.json'
         result = {'schemaVersion': 1, **identity, 'images': pair, 'status': 'selected',
                   'selectedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+        if accepted:
+            result['productRelease'] = {'version': accepted['version'], 'tag': accepted['tag'],
+                                        'sourceRevision': accepted['source']['revision']}
         write_private(receipt, (json.dumps(result, indent=2) + '\n').encode())
         persistence = Path(args.persistence_env)
         if not persistence.exists():
@@ -248,6 +288,7 @@ def main():
     parser.add_argument('--controller', required=True, help='Accepted Docker Hub controller repository@sha256:digest.')
     parser.add_argument('--wizard', required=True, help='Matching accepted Docker Hub Wizard repository@sha256:digest.')
     parser.add_argument('--persistence-env', type=Path, default=Path('/etc/system-bootstrapper/persistence.env'))
+    parser.add_argument('--release-metadata', type=Path, help='Public accepted-release metadata; checked against source and pulled images.')
     parser.add_argument('--install-host', action='store_true', help='Run the committed Ubuntu host dependency installer.')
     args = parser.parse_args()
     try:

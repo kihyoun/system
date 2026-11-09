@@ -63,7 +63,7 @@ def build():
 
 The **Bootstrapper** runs your platform. The **Wizard** configures it in your browser. **Sync** connects the two. You do not need Kubernetes experience.
 
-1. [Install the platform](#docs/installation). Use local HTTP on a trusted Ubuntu/WSL2 computer, or choose the public-server HTTPS path.
+1. [Quick Install](#docs/quickstart) on a fresh Ubuntu 24.04 / 26.04 LTS x86_64 host with sudo, curl, internet, at least 8 GiB RAM and 40 GiB free disk. Or choose [manual Ubuntu/WSL2 installation](#docs/installation) or the public-server HTTPS path.
 2. [Connect and configure](#docs/configuration). Open **Wizard**, choose the pencil beside **Connect**, enter your own Sync address and credentials, then **Submit → Synchronize → Fetch**.
 3. Review the settings, keep a private **Backup**, then **Push**. Push applies the configuration and restarts services automatically.
 4. [Set up a runner](#docs/runners), then [create your first project](#docs/projects). Wait for its build and deployment jobs before opening its domain.
@@ -83,7 +83,7 @@ uname -m
 git --version
 ```
 
-The public release targets `x86_64` / `linux/amd64`. The installation chapter includes Git and Docker preparation, exact release inputs, credential discovery and the expected checks at each stage.
+The public release targets `x86_64` / `linux/amd64`. Quick Install downloads the tested release and starts the initial Wizard; follow its protected first-access instructions, then continue in your browser. Downloads and initialization take time. The manual installation chapter covers Git, Docker, release inputs and checks. Existing installations and Seed recovery use their separate documented paths.
 
 > **Info:** Example domains and release placeholders belong to your own deployment. A standalone Wizard does not start Sync, GitLab or runners.
 """))
@@ -136,6 +136,12 @@ A source import installs source. A build produces a candidate. Review and Beta a
 """))
 
     guides = [
+        ("docs/DEPENDENCY_SECURITY.md", "dependency-security", "8.12 Dependency security", "Evolution"),
+        ("docs/DEPENDENCY_UPDATES.md", "dependency-updates", "8.11 Dependency update operations", "Evolution"),
+        ("docs/QUICKSTART.md", "quickstart", "1.5 Quick Install", "Installation"),
+        ("docs/RELEASES.md", "releases", "1.6 Public releases and changelog", "Installation"),
+        ("docs/ARCHITECTURE.md", "architecture", "8.9 Architecture, origins and vision", "Evolution"),
+        ("docs/SYSTEM_CANDIDATE_REVIEW.md", "system-review", "8.10 Bundled System candidate Review", "Evolution"),
         ("Prepare-Host.md", "host-preparation", "1.4 Host preparation and releases", "Installation"),
         ("docs/WIZARD_ALIASES.md", "aliases", "3.1 Canonical Wizard aliases", "Configuration"),
         ("docs/PROJECT_BOOTSTRAP_GUIDE.md", "project-guide", "5.1 Create an application · detailed guide", "Projects and runners"),
@@ -156,6 +162,12 @@ A source import installs source. A build produces a candidate. Review and Beta a
         ("tests/e2e/README.md", "candidate-testing", "9.2 Disposable platform acceptance", "Reference"),
     ]
     contexts = {
+        "dependency-security": ("The declared Node/npm toolchains, committed lockfiles and the affected application/build checks.", "You can audit actual dependency paths, apply stable compatible fixes and validate scoped overrides without bypassing release gates."),
+        "dependency-updates": ("Protected source branches, reviewed Renovate configuration and private operator provisioning inputs.", "Scheduled discovery proposes grouped stable updates only after explicit dashboard approval; existing merge and deployment gates remain."),
+        "quickstart": ("A fresh Ubuntu 24.04 / 26.04 LTS x86_64 host with sudo, curl, internet, 8 GiB RAM and 40 GiB free disk.", "One maintained command starts the initial Wizard; you continue platform setup in the browser."),
+        "releases": ("Public release access and the source/image identities of the version you want to install.", "You can inspect versioned public metadata, release notes and the accepted publication boundary."),
+        "architecture": ("Read Getting Started for the platform’s practical installation and configuration workflow.", "You understand the 2019 origin, source-as-DNA principle, generation model and future vision."),
+        "system-review": ("An accepted candidate, an explicitly reserved Review HTTPS host and the required System checks.", "You can inspect and stop the exact bundled Wizard candidate before deliberate Production promotion."),
         "host-preparation": ("Ubuntu with sudo, Docker access, selected working storage and trusted release source/image identities.", "The selected release starts with the intended images, storage mode and host integration."),
         "aliases": ("A configured canonical Wizard hostname, DNS for every alias and certificates covering HTTPS aliases.", "Alias requests redirect to the canonical Wizard while preserving paths, queries and certificate challenges."),
         "project-guide": ("Connect and Fetch; select a GitLab namespace, unique lowercase/digit Project Key, template and environment domains.", "The private repository and managed pipeline are created; successful jobs deploy each automatic environment."),

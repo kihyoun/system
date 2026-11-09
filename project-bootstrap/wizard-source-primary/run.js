@@ -37,19 +37,24 @@ class Adoption {
     };
   }
   async plan(input) {
-    const keys = ['version', 'projectId', 'projectPath', 'namespaceId', 'defaultBranch', 'pipelineId', 'sourceCommit', 'imageRef', 'helperImage', 'ciFiles', 'buildProfile'];
+    const keys = ['version', 'projectId', 'projectPath', 'namespaceId', 'defaultBranch', 'pipelineId', 'sourceCommit', 'imageRef', 'helperImage', 'ciFiles', 'buildProfile', 'action'];
     if (!input || Object.keys(input).some(key => !keys.includes(key)) || input.version !== 1 ||
+        (Object.hasOwn(input, 'action') && input.action !== 'refresh-binding') ||
         !['projectId', 'namespaceId', 'pipelineId'].every(key => Number.isSafeInteger(input[key]) && input[key] > 0) ||
         !b.sha(input.sourceCommit) || !/^sha256:[a-f0-9]{64}$/.test(input.helperImage || '')) throw Error('Provide an exact source-primary project, pipeline, helper and immutable image.');
     const upgradeBuild = Object.hasOwn(input, 'buildProfile');
-    if (upgradeBuild && input.buildProfile !== 'node24-vite8-ca-v4') throw Error('Select the explicit reviewed source-primary CA build profile.');
+    const refreshBinding = input.action === 'refresh-binding';
+    if (refreshBinding && !upgradeBuild) throw Error('A binding refresh requires an explicit reviewed build profile.');
+    if (upgradeBuild && !['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(input.buildProfile)) throw Error('Select an explicit reviewed source-primary build profile.');
     const current = b.read(this.config), main = fs.readFileSync(this.mainConfig, 'utf8'); signature(main);
+    if (refreshBinding && !b.primary(current.receipt)) throw Error('Adopt the canonical source-primary project before refreshing its binding.');
     if (b.primary(current.receipt)) {
       b.validate(current.receipt);
       if (current.receipt.sourcePrimary.inputHash === b.hash(JSON.stringify(input))) {
         const archive = path.join(this.directory, current.receipt.sourcePrimary.operation + '.json');
         const record = JSON.parse(fs.readFileSync(archive, 'utf8'));
         if (JSON.stringify(record.nextReceipt) !== JSON.stringify(current.receipt) || record.plan.operation !== current.receipt.sourcePrimary.operation) throw Error('Applied source-primary receipt changed.');
+        if (refreshBinding && b.hash(main) !== record.plan.mainConfigHash) throw Error('Production configuration changed after the binding refresh.');
         return {publicPlan: record.plan, planHash: b.hash(JSON.stringify(record.plan)), current, main, next: current.receipt, alreadyAdopted: true};
       }
       const r = current.receipt.repository;
@@ -72,11 +77,11 @@ class Adoption {
     if (!input.imageRef?.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(input.imageRef.slice(prefix.length))) throw Error('Use an immutable image from the adopted project registry.');
     const previousImage = setting(main, 'WIZARD_IMAGE');
     const previousPrefix = registry.host + '/' + old.repository.path + '@sha256:';
-    if (!previousImage?.startsWith(previousPrefix) || !/^[a-f0-9]{64}$/.test(previousImage.slice(previousPrefix.length))) throw Error('Retain the exact previous managed Production image.');
+    if (!refreshBinding && (!previousImage?.startsWith(previousPrefix) || !/^[a-f0-9]{64}$/.test(previousImage.slice(previousPrefix.length)))) throw Error('Retain the exact previous managed Production image.');
     const operation = b.hash(JSON.stringify({version: 1, config: b.hash(current.text), main: b.hash(main), input})).slice(0, 48);
     const next = JSON.parse(JSON.stringify(old));
     next.namespaceId = input.namespaceId;
-    next.repository = {...old.repository, id: input.projectId, namespaceId: input.namespaceId, path: input.projectPath,
+    next.repository = refreshBinding ? next.repository : {...old.repository, id: input.projectId, namespaceId: input.namespaceId, path: input.projectPath,
       defaultBranch: input.defaultBranch, ciPath: b.CI, managementMode: 'source-primary',
       webUrl: 'https://' + setting(main, 'GITLAB_HOST') + '/' + input.projectPath,
       pipelineUrl: 'https://' + setting(main, 'GITLAB_HOST') + '/' + input.projectPath + '/-/pipelines',
@@ -90,9 +95,18 @@ class Adoption {
     if (branch.commit?.id !== input.sourceCommit) throw Error('The source-primary default branch advanced.');
     const proof = await b.evidence(this.request, next, input.pipelineId, input.sourceCommit, input.imageRef);
     const retainedRecipe = builds.select(current.text.slice(0, 1184), old.wizardWorkflow.build.recipeHash);
-    if (upgradeBuild && !['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4'].includes(retainedRecipe.profile))
-      throw Error('The source-primary CA upgrade requires an existing reviewed modern build recipe.');
+    if (upgradeBuild && !['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(retainedRecipe.profile))
+      throw Error('The source-primary upgrade requires an existing reviewed modern build recipe.');
+    if (upgradeBuild && retainedRecipe.profile === 'node24-vite8-quickstart-v5' && input.buildProfile !== retainedRecipe.profile)
+      throw Error('Retain the Quick Install-compatible Wizard build profile.');
     const recipe = upgradeBuild ? builds.generate(current.text.slice(0, 1184), input.buildProfile) : retainedRecipe;
+    if (refreshBinding) {
+      const managedPaths = new Set(recipe.files.map(file => file.path));
+      const retainedCI = old.sourcePrimary.ciFiles.filter(file => !managedPaths.has(file.path));
+      const nextCI = input.ciFiles.filter(file => !managedPaths.has(file.path));
+      if (retainedCI.length !== nextCI.length || retainedCI.some(file => !nextCI.some(next => next.path === file.path && next.sha256 === file.sha256)))
+        throw Error('A binding refresh must retain every approved native CI file unchanged.');
+    }
     if (recipe.files.some(file => !input.ciFiles.some(source => source.path === file.path && source.sha256 === b.hash(file.content))) ||
         !input.ciFiles.some(source => source.path === '.gitlab/delivery/environment.sh')) throw Error('Approve the complete generic delivery and environment script manifest.');
     for (const file of recipe.files) {
@@ -105,9 +119,9 @@ class Adoption {
         publishing: proof.publishing,
         artifact: {imageRef: input.imageRef, sourceCommit: input.sourceCommit, pipelineId: input.pipelineId}},
       environments: this.environments(environments, {operation, helperImage: input.helperImage, activationCommit: input.sourceCommit, ciFiles: input.ciFiles})};
-    const plan = {version: 1, action: 'reassign-source-primary', operation, previousProjectId: old.repository.id,
+    const plan = {version: 1, action: refreshBinding ? 'refresh-source-primary-binding' : 'reassign-source-primary', operation, previousProjectId: old.repository.id,
       projectId: input.projectId, projectPath: input.projectPath, sourceCommit: input.sourceCommit, pipelineId: input.pipelineId,
-      imageRef: input.imageRef, previousImageRef: previousImage, helperImage: input.helperImage,
+      imageRef: input.imageRef, ...(refreshBinding ? {retainedProductionImageRef: previousImage} : {previousImageRef: previousImage}), helperImage: input.helperImage,
       ...(upgradeBuild ? {buildProfile: input.buildProfile, previousBuildRecipeHash: retainedRecipe.recipeHash, buildRecipeHash: recipe.recipeHash} : {}),
       configHash: b.hash(current.text), mainConfigHash: b.hash(main), nextReceiptHash: b.hash(JSON.stringify(next))};
     return {publicPlan: plan, planHash: b.hash(JSON.stringify(plan)), current, main, next};

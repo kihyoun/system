@@ -57,7 +57,7 @@ class Upgrade {
     if (!/^sha256:[a-f0-9]{64}$/.test(this.helperImage || '')) throw Error('Configure the reviewed immutable clean helper image.');
     // An explicit target keeps existing build-only checkpoint identities stable.
     this.buildProfile = options.buildProfile === undefined ? 'node24-vite8-cleanup-v2' : options.buildProfile;
-    if (!['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4'].includes(this.buildProfile))
+    if (!['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(this.buildProfile))
       throw Error('Configure a known modern Wizard build upgrade profile.');
     this.snapshot = validate(options.snapshot || JSON.parse(fs.readFileSync(path.join(__dirname, '../wizard-source/snapshot.json'), 'utf8')));
     this.request = options.request || this.api(options.credentialFile);
@@ -206,11 +206,12 @@ class Upgrade {
     }
     for (const file of buildOnly ? [] : this.snapshot.files) if (!oldFiles.has(file.path) && currentTree.has(file.path)) throw Error('New source path is occupied: ' + file.path);
     const modern = buildOnly ? builds.generate(logo, this.buildProfile) : builds.forSource(logo, this.snapshot.sourceRevision);
-    if (!['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4'].includes(modern.profile) ||
-        (buildOnly && !['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4'].includes(oldBuild.profile)))
+    if (!['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(modern.profile) ||
+        (buildOnly && !['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(oldBuild.profile)))
       throw Error('The reviewed upgrade requires the modern Wizard profile.');
-    if (buildOnly && ((oldBuild.profile === 'node24-vite8-overview-v3' && !['node24-vite8-overview-v3', 'node24-vite8-ca-v4'].includes(modern.profile)) ||
-        (oldBuild.profile === 'node24-vite8-ca-v4' && modern.profile !== oldBuild.profile)))
+    if (buildOnly && ((oldBuild.profile === 'node24-vite8-overview-v3' && !['node24-vite8-overview-v3', 'node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(modern.profile)) ||
+        (oldBuild.profile === 'node24-vite8-ca-v4' && !['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(modern.profile)) ||
+        (oldBuild.profile === 'node24-vite8-quickstart-v5' && modern.profile !== oldBuild.profile)))
       throw Error('Retain the overview-compatible Wizard build profile.');
     const operation = this.operation(receipt, logo, buildOnly);
     const environment = {...copy(workflow.environments), helperImage: this.helperImage, buildRecipeHash: modern.recipeHash};

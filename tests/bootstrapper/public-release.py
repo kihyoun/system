@@ -56,6 +56,70 @@ class PublicRelease(unittest.TestCase):
         return {'Id': 'sha256:' + ('e' if wizard else 'd') * 64, 'Os': 'linux', 'Architecture': 'amd64',
                 'RepoDigests': [selected.removeprefix('docker.io/')], 'Config': {'Labels': labels}}
 
+    def metadata(self):
+        return {'format': 'system-accepted-release-v1', 'version': '1.0.0', 'tag': 'v1.0.0',
+                'platform': 'linux/amd64', 'source': {'revision': self.identity['sourceCommit'],
+                    'tree': self.identity['sourceTree'], 'wizardRevision': self.wizard},
+                'images': {role: {'reference': selected, 'imageId': 'sha256:' + image * 64,
+                                 'configDigest': 'sha256:' + image * 64}
+                           for role, selected, image in [('controller', CONTROLLER, 'd'), ('wizard', WIZARD, 'e')]},
+                'acceptance': {'candidateJobId': 20, 'controllerWizardSameAttempt': True, 'requiredChecksPassed': True}}
+
+    def test_accepted_public_manifest_is_bound_to_exact_source_and_pair(self):
+        manifest = self.directory / 'release.json'
+        value = self.metadata()
+        manifest.write_text(json.dumps(value))
+        self.assertEqual(release.accepted_metadata(manifest, self.identity, CONTROLLER, WIZARD), value)
+        for category in ('source', 'image', 'candidate', 'version'):
+            changed = self.metadata()
+            if category == 'source':
+                changed['source']['wizardRevision'] = '0' * 40
+            elif category == 'image':
+                changed['images']['wizard']['reference'] = CONTROLLER
+            elif category == 'candidate':
+                changed['acceptance']['controllerWizardSameAttempt'] = False
+            else:
+                changed['version'] = '01.0.0'
+            manifest.write_text(json.dumps(changed))
+            with self.subTest(category=category), self.assertRaises(release.ReleaseError):
+                release.accepted_metadata(manifest, self.identity, CONTROLLER, WIZARD)
+
+    def test_manifest_refuses_another_tested_attempt_before_writing_selectors(self):
+        manifest = self.directory / 'release.json'
+        manifest.write_text(json.dumps(self.metadata()))
+        self.args.release_metadata = manifest
+        selected = {'PERSISTENCE_MODE': 'local', 'PERSISTENT_MOUNT': '/', 'PERSISTENT_DIR': str(self.root), 'PERSISTENT_UUID': ''}
+        def image(reference, identity, **options):
+            return {'reference': reference, 'imageId': 'sha256:' + ('e' if options.get('wizard') else 'd') * 64,
+                    'candidateJobId': 21, 'platform': 'linux/amd64'}
+        with patch.object(release, 'storage', return_value=(selected, self.root)), \
+                patch.object(release, 'checked_image', side_effect=image), patch.object(release, 'no_existing_services'), \
+                patch.object(release, 'GUARD_DIRECTORY', self.directory / 'guard'), \
+                self.assertRaisesRegex(release.ReleaseError, 'accepted-public-attempt'):
+            release.install(self.args, self.checkout)
+        self.assertFalse((self.root / 'configuration/.release-images.env').exists())
+        self.assertFalse((self.root / 'configuration/.release-images.json').exists())
+
+    def test_exact_manifest_digest_remains_portable_between_docker_image_stores(self):
+        manifest = self.directory / 'release.json'
+        manifest.write_text(json.dumps(self.metadata()))
+        self.args.release_metadata = manifest
+        selected = {'PERSISTENCE_MODE': 'local', 'PERSISTENT_MOUNT': '/', 'PERSISTENT_DIR': str(self.root), 'PERSISTENT_UUID': ''}
+        def command(arguments, **options):
+            return subprocess.check_output(arguments, stderr=subprocess.DEVNULL) if arguments[0] == 'git' else b''
+        def image(reference, identity, **options):
+            return {'reference': reference, 'imageId': reference.split('@')[1],
+                    'candidateJobId': 20, 'platform': 'linux/amd64'}
+        with patch.object(release, 'run', side_effect=command), \
+                patch.object(release, 'storage', return_value=(selected, self.root)), \
+                patch.object(release, 'checked_image', side_effect=image), \
+                patch.object(release, 'GUARD_DIRECTORY', self.directory / 'guard'):
+            result = release.install(self.args, self.checkout)
+        self.assertEqual(result['status'], 'startup-requested')
+        self.assertEqual(result['productRelease']['version'], '1.0.0')
+        self.assertEqual(result['images']['controller']['imageId'], CONTROLLER.split('@')[1])
+        self.assertNotEqual(result['images']['controller']['imageId'], self.metadata()['images']['controller']['imageId'])
+
     def test_public_digest_required(self):
         self.assertEqual(release.reference(CONTROLLER.removeprefix('docker.io/')), CONTROLLER)
         for value in ('example/system:latest', 'registry.example.com/system@sha256:' + 'a' * 64,

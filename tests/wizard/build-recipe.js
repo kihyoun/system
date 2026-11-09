@@ -60,14 +60,17 @@ for (const file of modern.files) assert.equal(crypto.createHash('sha256').update
 const sourceSnapshot = JSON.parse(fs.readFileSync(path.join(root, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8'));
 const packageJson = JSON.parse(Buffer.from(sourceSnapshot.files.find(file => file.path === 'package.json').content, 'base64'));
 assert.equal(recipes.forSource(logo, sourceSnapshot.sourceRevision).recipeHash,
-  recipes.generate(logo, packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-ca-v4' : 'legacy-ca-v4').recipeHash);
+  recipes.generate(logo, packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-quickstart-v5' : 'legacy-ca-v4').recipeHash);
 assert.equal(recipes.forSource(logo, 'f'.repeat(40)).recipeHash, recipes.generate(logo, 'legacy-ca-v4').recipeHash, 'New historical-source reservations retain the legacy toolchain with corrected cleanup');
 console.log('Modern Wizard profile: Node 24, exact browser lock, honest Vitest evidence, strict reservation and backward-compatible legacy hashes passed.');
 const historical = {
   legacy: 'd6f99917add408077ad732621f717bb545566e75c98c896624bd606c00a0c406',
   'node24-vite8': 'd0d8fcd0e325cdf806f2f5fec6aec59481f13dea78c475f7f69c8764db947360',
   'legacy-cleanup-v2': 'f25ac5294694ff96eb2baf150d064162f66b11967caa69c984a472abd21dd991',
-  'node24-vite8-cleanup-v2': '2032f68f7c84f100ac97fe783a857108d03a668f8c09427241f9cad8b55f543a'
+  'node24-vite8-cleanup-v2': '2032f68f7c84f100ac97fe783a857108d03a668f8c09427241f9cad8b55f543a',
+  'node24-vite8-overview-v3': 'c75d423482e48666a48878a8417b363f94f0d6cd28bea98e94d048e53e0f8d1e',
+  'legacy-ca-v4': '9c4e13d774c0bb9c93b65e01240cc8e62d6cccb9a47152c466bbab4648e9fa7b',
+  'node24-vite8-ca-v4': '6f4fd137e234f932c0c35ee7c7cdc8e81b9493ec4df8d50bb0cd138db39fe1f8'
 };
 for (const [profile, hash] of Object.entries(historical)) assert.equal(recipes.generate(logo, profile).recipeHash, hash);
 const overview = recipes.generate(logo, 'node24-vite8-overview-v3');
@@ -84,3 +87,17 @@ assert(navigation.includes("name: 'Main navigation'") && navigation.includes("na
 assert(navigation.includes("name: 'Connect'") && navigation.includes("name: 'Projects'") && navigation.includes("name: 'Backup'"));
 assert(navigation.includes("name: 'Overview'") && navigation.includes('cubeSignature: true'));
 console.log('Overview browser profile: versioned navigation checks, unchanged required evidence and four exact historical recipe hashes passed.');
+const quickstart = recipes.generate(logo, 'node24-vite8-quickstart-v5');
+const ca = recipes.generate(logo, 'node24-vite8-ca-v4');
+assert.deepEqual(recipes.select(logo, quickstart.recipeHash), quickstart);
+assert.notEqual(quickstart.recipeHash, ca.recipeHash);
+assert.equal(quickstart.ci, ca.ci, 'Quick Install checks retain every CI gate');
+for (const file of ca.files.filter(file => !file.path.endsWith('/smoke/check.js'))) {
+  assert.deepEqual(quickstart.files.find(other => other.path === file.path), file, 'Quick Install profile changes only its browser script');
+}
+for (const file of quickstart.files) assert.equal(crypto.createHash('sha256').update(file.content).digest('hex'), file.sha256);
+const quickstartSmoke = quickstart.files.find(file => file.path.endsWith('/smoke/check.js')).content;
+assert.equal(quickstartSmoke, fs.readFileSync(path.join(root, 'project-bootstrap/wizard-build/quickstart-v5/check.js'), 'utf8'));
+assert(quickstartSmoke.includes("name: 'How it works'") && quickstartSmoke.includes("name: 'Quick Install'"));
+assert(quickstartSmoke.includes("name: 'Docs'") && quickstartSmoke.includes('cubeSignature: true'));
+console.log('Quick Install browser profile: source-selected version, unchanged CI/toolchain/CA files and seven exact historical recipe hashes passed.');

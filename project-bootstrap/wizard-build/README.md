@@ -75,7 +75,7 @@ and verify native job cleanup before promoting a candidate.
 
 The legacy `build-v1` recipe is retained byte-for-byte for its recorded hashes
 and historical GitLab evidence. New source imports whose verified snapshot uses
-Vite select the Node 24 / Vite 8 family (`node24-vite8-ca-v4` for new
+Vite select the Node 24 / Vite 8 family (`node24-vite8-quickstart-v5` for new
 reservations): Node 24.22.0/npm 11.19.1, locked install,
 lint, Vitest, TypeScript/Vite build and Playwright 1.64.1 browser checks. Both
 profiles use the same bounded job names and artifact/digest contract; modern
@@ -98,7 +98,7 @@ limitation: an untagged browser image is recorded by Docker as `:latest`, and
 that older cleanup comparison can leave its job tag behind while reporting
 success.
 
-Current unreserved builds use `legacy-ca-v4` or `node24-vite8-ca-v4`.
+Current unreserved builds use `legacy-ca-v4` or `node24-vite8-quickstart-v5`.
 These inherit the corrected cleanup implementation from the versioned cleanup-v2
 profiles, and the modern profile also inherits the navigation checks below. The
 cleanup adds `:latest` only when the final repository path component has no tag;
@@ -131,7 +131,7 @@ Earlier profiles, including both cleanup-v2 profiles, remain selectable
 by their exact reserved hashes. A new controller does not replace an installed
 recipe or rewrite its receipt. Before delivering source that adds the default
 Overview, perform the guarded build/environment-only migration with an explicit
-`buildProfile` of `node24-vite8-ca-v4` and a matching immutable helper.
+`buildProfile` of `node24-vite8-overview-v3` or `node24-vite8-ca-v4` and a matching immutable helper.
 Keep the selected profile in the private operator options for later adoption or
 retry; Production promotion remains a separate deliberate operation.
 
@@ -151,3 +151,25 @@ helper, then rebuild and test the job
 images. Replacing a controller alone does not update a reserved project's recipe.
 This refresh is for generated images and CI jobs; it is not a host trust-store
 maintenance command. Review deployment-specific custom CAs separately.
+
+## Quick Install and integrated Docs
+
+The `node24-vite8-quickstart-v5` profile inherits the exact CA-v4 toolchain,
+CI gates, cleanup and public trust files. Only its browser script changes to
+match the current interface: **How it works**, the three overview cards, the
+**Install System Bootstrapper** scroll/focus action, the exact **Quick Install**
+command and integrated handbook navigation. It preserves Projects selection
+across Overview/Docs/Wizard, verifies the configuration ZIP and exact Cube,
+and checks both nested SPA fallback and the direct `/configuration` entry.
+Overview, Docs and Wizard screenshots remain available as browser evidence.
+
+This profile requires the current source UI; it does not reinterpret earlier
+reserved recipes. Deliver its managed files together with the corresponding
+source, then explicitly adopt `"buildProfile": "node24-vite8-quickstart-v5"`
+through the appropriate managed-import or source-primary workflow. Guarded
+upgrades reject a downgrade from this profile to older browser checks.
+
+To run the exact smoke script against an isolated local build, set
+`WIZARD_BASE_URL` to its HTTP origin and `WIZARD_EVIDENCE_DIR` to a private output
+directory. The managed container defaults remain `http://wizard-candidate` and
+`/evidence`; all requests outside the selected origin are blocked.

@@ -132,6 +132,16 @@ to the supported modern profile.
 Legacy projects still need the separately reviewed source/toolchain upgrade.
 Historical recipe hashes and existing checkpoints remain verifiable.
 
+For source with **How it works**, **Quick Install** and integrated Docs, explicitly
+select `"buildProfile": "node24-vite8-quickstart-v5"`. It retains all CA-v4 files
+and gates while updating the browser contract, including Install scroll/focus,
+Docs navigation and preserved workspace selection. Deliver the matching UI
+source before the staged browser gate runs. This target accepts earlier modern
+profiles and itself; subsequent downgrades to older browser profiles are rejected.
+Source-primary projects use their
+[native source merge and binding refresh](../wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe)
+instead of these legacy import migration actions.
+
 ```sh
 node project-bootstrap/wizard-upgrade/run.js build-plan /state/upgrade-options.json
 # Review scope=build-environment, exact head, managed paths and preservedTreeHash.
