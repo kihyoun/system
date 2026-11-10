@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {test} = require('node:test');
 const {context, token, api, gates, publicMetadata, present} = require('../../gitlab/publish-github-release');
+const guided = require('../shared/guided-preview-fixture');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const sha = 'a'.repeat(40), tree = 'b'.repeat(40), wizard = 'c'.repeat(40), id = n => 'sha256:' + n.repeat(64);
 const environment = {GITLAB_CI: 'true', GITHUB_RELEASE_PUBLISH_ENABLED: 'true', GITHUB_BACKUP_ENABLED: 'true',
@@ -156,6 +157,7 @@ test('gates bind required successful jobs and byte-identical artifacts before Gi
 test('complete publisher derives deterministic public assets from one accepted real Git checkout without rebuilding', async t => {
   const {spawnSync} = require('node:child_process');
   const {publish} = require('../../gitlab/publish-github-release');
+  const {candidates, validateEvidence} = require('../../gitlab/publish-successor');
   const security = require('../../gitlab/security-release.json');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'github-release-full-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
@@ -176,12 +178,14 @@ test('complete publisher derives deterministic public assets from one accepted r
   const manifests = Object.fromEntries(['controller', 'wizard'].map((role, index) => [role, Buffer.from(JSON.stringify({schemaVersion: 2,
     mediaType: 'application/vnd.oci.image.manifest.v1+json', config: {digest: id(String(index + 1))}, layers: []}))]));
   const digests = Object.fromEntries(Object.entries(manifests).map(([role, raw]) => [role, 'sha256:' + hash(raw)]));
-  const proof = {runId: 'f'.repeat(24), sourceRevision: commit, fullAcceptance: true,
+  const ciIdentity = {projectId: 4, pipelineId: 10, candidateJobId: 20};
+  const restored = {runId: 'f'.repeat(24), sourceRevision: commit, fullAcceptance: true, ciIdentity,
     images: {candidate: id('1'), wizard: id('2'), runner: id('3')},
     results: ['gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci', 'gitlab-upgrade-restored-checkpoint',
       'gitlab-upgrade-security-trust', 'storage-global-live-lease', 'storage-refuse-nonempty-and-corrupt-restore',
       'storage-detached-backup-normal-operation', 'cleanup'].map(name => ({name, status: 'passed'})),
-    evidence: {gitlabUpgrade: {fromImage: security.fromImage, toImage: security.toImage, migrationVerified: true,
+    evidence: {recovery: {guidedBindingRestored: true},
+    gitlabUpgrade: {fromImage: security.fromImage, toImage: security.toImage, migrationVerified: true,
       rollbackVerified: true, registryVerified: true, checkpointVerified: true,
       runnerImage: security.runner.toImage, runnerImageId: id('3'), fromRunnerImageId: id('4'), helperImageId: id('5'),
       fromHelperImageId: id('6'), runnerUpgradeVerified: true, runnerManagerIdentityPreserved: true,
@@ -189,7 +193,28 @@ test('complete publisher derives deterministic public assets from one accepted r
       jobCaBundleSha256: security.jobCaBundleSha256, securityTrustVerified: true},
     storage: {localLiveVerified: true, externalSeedRestored: true, backupDetached: true, missingBackupGuardVerified: true,
       globalLeaseVerified: true, invalidRestoreGuardVerified: true}}};
-  const proofBytes = Buffer.from(JSON.stringify(proof));
+  const original = {...restored, runId: '1'.repeat(24),
+    results: [...guided.stages, 'recovery-original-host-removed', 'cleanup'].map(name => ({name, status: 'passed'})),
+    evidence: {guidedPreview: guided.proof(restored.images.wizard), gitlabUpgrade: restored.evidence.gitlabUpgrade,
+      recovery: {runId: restored.runId, backupOnly: true, originalHostRemoved: true, guidedBindingRestored: true}}};
+  const candidateDirectory = path.join(root, 'test-results/e2e');
+  for (const receipt of [original, restored]) {
+    const directory = path.join(candidateDirectory, receipt.runId);
+    fs.mkdirSync(directory, {recursive: true});
+    fs.writeFileSync(path.join(directory, 'results.json'), JSON.stringify(receipt));
+  }
+  const candidateCi = {sourceRevision: commit, ...ciIdentity};
+  const [{proof, bytes: proofBytes}] = candidates(candidateDirectory, candidateCi);
+  assert.equal(proof.guidedPreviewReceipt.runId, original.runId);
+  assert.equal(proof.evidence.guidedPreview, undefined);
+  assert(!proof.results.some(row => guided.stages.includes(row.name)));
+  for (const change of [value => delete value.guidedPreviewReceipt,
+    value => { value.guidedPreviewReceipt.ciIdentity.candidateJobId++; },
+    value => { value.guidedPreviewReceipt.evidence.recovery.runId = original.runId; },
+    value => { value.guidedPreviewReceipt.evidence.guidedPreview.merge.normalGate = false; }]) {
+    const invalid = structuredClone(proof); change(invalid);
+    assert.throws(() => validateEvidence(invalid, candidateCi));
+  }
   const accepted = {...released, format: 'system-successor-release-v1', sourceRevision: commit, sourceTree,
     registryRepository: env.CI_REGISTRY_IMAGE + '/successor', candidateEvidenceSha256: hash(proofBytes),
     candidateEvidencePath: 'test-results/successor/candidate-results.json',

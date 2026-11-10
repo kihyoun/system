@@ -164,6 +164,7 @@ class Candidate {
       try { if(await check()) return; } catch(error) { if(error.noRetry===true)throw error; /* bounded readiness retry */ }
       await this.sleep(1000);
     } while(this.now()<until);
+    if((this.canceled&&!this.cleanupDeadline) || this.now()>(this.cleanupDeadline||this.deadline)) throw new Error('canceled-or-overall-timeout');
     throw new Error('readiness-timeout');
   }
   async create(kind,args) {
