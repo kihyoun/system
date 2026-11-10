@@ -57,6 +57,10 @@ technical documentation remain appropriate.
 - Run checks appropriate to code changes. Documentation-only housekeeping does
   not require repeating the full platform suite. Preserve actual test evidence
   and distinguish successful runs from skipped checks or partial failures.
+- A green pipeline proves only the checks it actually ran. Map feature acceptance
+  criteria to executable pipeline evidence before closing an issue, and disclose
+  missing coverage. Do not substitute additional checks on an operator's live
+  platform for missing candidate-pipeline coverage.
 - Never commit tokens, passwords, private SSH keys, configuration ZIPs or raw
   private logs. Document secret locations/selectors, not their contents.
 
