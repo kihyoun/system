@@ -16,6 +16,8 @@ one accepted System source revision and tested controller/Wizard image attempt.
   avoiding a separate recovery-image build.
 - Retain explicit source-built installation provenance without claiming an
   accepted public release or changing Production selection.
+- Keep the Korean language and theme controls in one desktop toolbar row,
+  preserving the header height when switching languages.
 
 ### Documentation
 
