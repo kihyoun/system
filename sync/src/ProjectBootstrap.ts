@@ -85,7 +85,7 @@ function runRails(input: any): Promise<any> {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
     const modules: {[key: string]: string} = {'wizard-source': 'wizard-source/import.rb',
       'token-expiry-status': 'token-expiry/status.rb',
-      ...Object.fromEntries(['preflight', 'project', 'revoke', 'read', 'system'].map(action => ['preview-setup-' + action, 'preview-setup/provision.rb'])),
+      ...Object.fromEntries(['preflight', 'project', 'revoke', 'read', 'read-many', 'system'].map(action => ['preview-setup-' + action, 'preview-setup/provision.rb'])),
       'wizard-build': 'wizard-build/activate.rb', 'wizard-build-status': 'wizard-build/activate.rb',
       'wizard-environments': 'wizard-environments/activate.rb', 'wizard-environments-status': 'wizard-environments/activate.rb',
       'wizard-source-primary-status': 'wizard-source-primary/status.rb',
@@ -97,7 +97,7 @@ function runRails(input: any): Promise<any> {
     let output = '', launched = false;
     const readOnly = ['namespaces', 'availability', 'wizard-build-status', 'wizard-environments-status',
       'wizard-source-primary-status', 'wizard-environments-primary-status', 'token-expiry-status',
-      'preview-setup-preflight', 'preview-setup-read'].includes(input.action);
+      'preview-setup-preflight', 'preview-setup-read', 'preview-setup-read-many'].includes(input.action);
     const failure = (message: string) => Object.assign(new Error(message), {uncertain: launched && !readOnly, action: input.action});
     child.once('spawn', () => { launched = true; });
     const timer = setTimeout(() => {
@@ -106,7 +106,12 @@ function runRails(input: any): Promise<any> {
       reject(failure('GitLab setup timed out; inspect the recorded operation before resuming.'));
       child.kill();
     }, 240000);
-    child.stdout.on('data', (data) => { if (output.length < 2000000) { output += data; } });
+    child.stdout.on('data', (data) => {
+      if (Buffer.byteLength(output) + Buffer.byteLength(data) > 2000000) {
+        clearTimeout(timer); reject(failure('GitLab returned an oversized response; inspect the recorded operation.')); child.kill(); return;
+      }
+      output += data;
+    });
     // Rails diagnostics can contain a temporary PAT. Never expose them.
     child.stderr.resume();
     child.on('error', () => { clearTimeout(timer); reject(failure('Could not access the local GitLab container.')); });

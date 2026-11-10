@@ -31,6 +31,24 @@ function cleanupAll(directory,dependencies={}) {
   }
   return !failed;
 }
+async function scenario(candidate,reportDirectory,ownership={},dependencies={}) {
+  const spec=candidate.spec;
+  if(spec.guidedPreviewAcceptance===true&&
+    (spec.fullAcceptance!==true||spec.recoveryAcceptance!==true||spec.acmeRenewalAcceptance!==true))throw Error('guided-preview-requires-complete-owned-platform');
+  await candidate.start();await candidate.smoke();
+  if(spec.fullAcceptance===true)await candidate.platform();
+  if(spec.guidedPreviewAcceptance===true){
+    const LocalAcme=dependencies.LocalAcme||require('./local-acme').LocalAcme;
+    ownership.acme=new LocalAcme(candidate,reportDirectory);await ownership.acme.start();
+    await (dependencies.prepareGuided||require('./guided-preview-platform').prepare)(candidate,ownership.acme);
+    candidate.url='https://sync.candidate.test';candidate.gitlabUrl='https://gitlab.candidate.test';
+    await (dependencies.guided||require('./guided-preview').run)(candidate);
+  }
+  if(spec.recoveryAcceptance===true){
+    ownership.acmeHandedToRecovery=true;
+    await (dependencies.recovery||require('./recovery').run)(candidate,reportDirectory,{acme:ownership.acme});
+  }
+}
 async function main() {
   if(process.env.SYSTEM_DISPOSABLE_CANDIDATE!=='I_ACCEPT_PRIVILEGED_DISPOSABLE_EXECUTION') {
     throw new Error('explicit-disposable-opt-in-and-spec-required');
@@ -60,16 +78,16 @@ async function main() {
   console.log('Disposable candidate run: '+candidate.id);
   const cancel=()=>{candidate.canceled=true;};
   process.on('SIGINT',cancel); process.on('SIGTERM',cancel);
-  let failed=false;
-  try { await candidate.start(); await candidate.smoke(); if(spec.fullAcceptance===true) await candidate.platform();
-    if(spec.recoveryAcceptance===true) await require('./recovery').run(candidate,reportDirectory); }
+  let failed=false;const ownership={};
+  try {await scenario(candidate,reportDirectory,ownership);}
   catch { failed=true; console.error('Disposable candidate failed; see sanitized stage report.'); }
   finally {
     if(!candidate.cleanup()) failed=true;
+    if(ownership.acme&&!ownership.acmeHandedToRecovery&&!ownership.acme.cleanup())failed=true;
     candidate.report(reportDirectory(candidate));
     process.removeListener('SIGINT',cancel); process.removeListener('SIGTERM',cancel);
   }
   process.exitCode=failed?1:0;
 }
 if(require.main===module) main().catch(()=>{console.error('Invalid disposable candidate invocation.');process.exitCode=1;});
-module.exports={main,cleanupAll};
+module.exports={main,cleanupAll,scenario};

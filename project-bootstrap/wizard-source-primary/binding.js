@@ -52,14 +52,13 @@ async function evidence(get, receipt, pipelineId, sourceCommit, expectedImage) {
   const pipeline = await get(prefix + 'pipelines/' + pipelineId);
   if (pipeline.id !== pipelineId || pipeline.sha !== sourceCommit ||
       pipeline.ref !== r.defaultBranch || pipeline.source !== 'push' || pipeline.yaml_errors) throw Error('Require the exact successful native default-branch push pipeline.');
-  for (const file of receipt.sourcePrimary.ciFiles) {
+  await Promise.all(receipt.sourcePrimary.ciFiles.map(async file => {
     const row = await get(prefix + 'repository/files/' + encodeURIComponent(file.path) + '?ref=' + sourceCommit);
     if (hash(Buffer.from(row.content.replace(/\n/g, ''), 'base64')) !== file.sha256) throw Error('Approved native Wizard CI changed.');
-  }
+  }));
   const jobs = await get(prefix + 'pipelines/' + pipelineId + '/jobs?per_page=100&include_retried=false');
   const publishing = pipelineChecks(pipeline, jobs);
-  const artifacts = [];
-  for (const [name, file] of [['build:wizard', 'build-evidence.json'], ['test:wizard', 'wizard-evidence.json']]) {
+  const artifacts = await Promise.all([['build:wizard', 'build-evidence.json'], ['test:wizard', 'wizard-evidence.json']].map(async ([name, file]) => {
     const matches = jobs.filter(job => job.name === name);
     if (matches.length !== 1) throw Error('Expected one required native Wizard job.');
     const job = matches[0];
@@ -67,8 +66,8 @@ async function evidence(get, receipt, pipelineId, sourceCommit, expectedImage) {
     const artifact = await get(prefix + 'jobs/' + job.id + '/artifacts/' + file);
     if (artifact.version !== 1 || artifact.pipelineId !== pipelineId || artifact.sourceCommit !== sourceCommit ||
         artifact.imageRef !== expectedImage) throw Error('Native Wizard evidence identity changed.');
-    artifacts.push(artifact);
-  }
+    return artifact;
+  }));
   const [build, smoke] = artifacts;
   if (!['unitTests', 'lint', 'typecheck', 'productionBuild'].every(key => build[key] === true) || build.testRunner !== 'vitest' ||
       !['http', 'renderedUI', 'projects', 'spa', 'configurationBackup', 'cubeSignature'].every(key => smoke[key] === true)) throw Error('Native Wizard evidence is incomplete.');

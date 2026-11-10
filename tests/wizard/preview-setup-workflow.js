@@ -29,7 +29,7 @@ nativeSource.transfer = async input => { transfers++; assert.equal(input.token, 
   if (failureMode === 'missing-pipeline') return {unchanged: true};
 };
 require('../../project-bootstrap/wizard-source-primary/run').Adoption = class {
-  publicRelease() { return 'accepted-public-release'; }
+  retainedInstallation() { return 'accepted-public-release'; }
   async plan(input) { adoptionCalls++; assert.equal(input.action, 'bootstrap-previews'); assert.equal(input.sourceCommit, sha); assert.equal(input.imageRef, imageRef); this.input = input; return {planHash: 'confirmed-native-proof'}; }
   async apply(input, confirmation) {
     assert.equal(confirmation, 'confirmed-native-proof');
@@ -43,6 +43,7 @@ environment.preflightWizardEnvironmentSettings = async value => value;
 environment.previewWizardEnvironments = () => ({previewHash: 'native-environments', capabilities: {canUpdate: true, reasons: []}});
 environment.configureWizardEnvironments = input => {if (failureMode === 'uncertain-environment') return {state: 'failed', message: 'Fixture environment timeout.', uncertain: true, uncertainAction: 'wizard-environments-primary'}; activated++; assert.equal(input.settings.review.host, desired.review.host); return {state: 'complete'};};
 bootstrap.rails = async input => {
+  if (input.action === 'preview-setup-read-many') return {values: await Promise.all(input.routes.map(async route => (await bootstrap.rails({...input, action: 'preview-setup-read', route})).value))};
   if (input.action === 'preview-setup-preflight') return {namespaceId: 9};
   if (input.action === 'preview-setup-project') { registered++;
     if (failureMode === 'uncertain-project') throw Object.assign(Error('Fixture Rails timeout.'), {uncertain: true, action: input.action});
@@ -68,7 +69,32 @@ require('../../project-bootstrap/preview-setup/producers').approvedProducers = (
 require('../../project-bootstrap/preview-setup/producers').validateProducers = files => {assert(files.some(file => file.path === '.gitlab/primary.yml'));};
 const setup = require('../../sync/dist/PreviewSetup');
 async function wait(job) {while (job.state === 'running') await new Promise(resolve => setTimeout(resolve, 1)); return job;}
+async function verifyReadBatches() {
+  const {batchedReads, MAX_ROUTES, MAX_OUTPUT_BYTES} = require('../../project-bootstrap/preview-setup/reads');
+  let active = 0, peak = 0, launches = 0, generation = 1;
+  const request = batchedReads(async routes => {
+    launches++; active++; peak = Math.max(peak, active);
+    assert(routes.length <= MAX_ROUTES);
+    await Promise.resolve(); active--;
+    return routes.map(route => ({route, generation}));
+  });
+  const routes = Array.from({length: 100}, (_, index) => 'projects/7/pipelines/' + (index + 1));
+  assert.deepEqual((await Promise.all(routes.map(request))).map(row => row.route), routes);
+  assert.equal(launches, Math.ceil(routes.length / MAX_ROUTES)); assert.equal(peak, 1);
+  generation++;
+  assert.equal((await request(routes[0])).generation, 2, 'Evidence transport cached an earlier phase');
+  const malformed = batchedReads(async () => []);
+  await assert.rejects(malformed('projects/7'), /Preview setup GitLab request failed/);
+  const oversized = batchedReads(async () => ['한'.repeat(Math.ceil(MAX_OUTPUT_BYTES / 3))]);
+  await assert.rejects(oversized('projects/7'), /Preview setup GitLab request failed/);
+  let failedLaunches = 0;
+  const failed = batchedReads(async () => {failedLaunches++; throw Error('Settled native read refusal');});
+  const outcomes = await Promise.allSettled(routes.map(failed));
+  assert(outcomes.every(row => row.status === 'rejected'));
+  assert.equal(failedLaunches, 1, 'Failed native batch continued launching evidence processes');
+}
 (async () => {
+  if (!failureMode) await verifyReadBatches();
   if (failureMode === 'missing-pipeline') {
     let plan = await setup.preflightPreviewSetup({settings: desired});
     let job = await wait(setup.applyPreviewSetup({settings: desired, previewHash: plan.previewHash}));
@@ -139,7 +165,7 @@ async function wait(job) {while (job.state === 'running') await new Promise(reso
   let job = await wait(pending);
   assert(!bootstrap.projectBusy());
   assert(!fs.existsSync(path.join(root, '.storage-operation-lock')), 'Completed setup retained its storage lease');
-  assert.equal(job.phase, 'waiting-build'); assert.equal(registered, 1); assert.equal(transfers, 1); assert.equal(revoked, 1);
+  assert.equal(job.phase, 'waiting-build', JSON.stringify(job)); assert.equal(registered, 1); assert.equal(transfers, 1); assert.equal(revoked, 1);
   assert.equal(adoptionCalls + activated, 0, 'Pending CI became accepted previews');
   assert(!fs.readFileSync(path.join(root, 'preview-setup.json'), 'utf8').includes('fixture-transfer-secret'), 'Transfer token leaked into resumable state');
   const beforeReads = reads; setup.previewSetupStatus(); assert.equal(reads, beforeReads, 'Status queried GitLab');

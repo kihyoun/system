@@ -23,6 +23,18 @@ function identifiers(env=process.env){
   const suffix=env.CI_PROJECT_ID+'-'+env.CI_JOB_ID;
   return {candidate:'system-platform-candidate:ci-'+suffix,wizard:'system-platform-wizard:ci-'+suffix};
 }
+function ciIdentity(env=process.env){
+  const identity={projectId:Number(env.CI_PROJECT_ID),pipelineId:Number(env.CI_PIPELINE_ID),candidateJobId:Number(env.CI_JOB_ID)};
+  if(!Object.values(identity).every(value=>Number.isSafeInteger(value)&&value>0))throw Error('Exact positive CI project, pipeline and candidate job identities required.');
+  return identity;
+}
+function guidedSettings(origin, env=process.env) {
+  const value={version:1,namespace:'root',wizard:{mode:'import',project:'guided-wizard-'+env.CI_PROJECT_ID+'-'+env.CI_JOB_ID,
+    origin:env.SYSTEM_TEST_WIZARD_ORIGIN||origin},
+    review:{enabled:true,host:'review.candidate.test',ssl:'/ssl/live/recovery-fixture/fullchain.pem',sslKey:'/ssl/live/recovery-fixture/privkey.pem'},
+    beta:{enabled:true,host:'beta.candidate.test',ssl:'/ssl/live/recovery-fixture/fullchain.pem',sslKey:'/ssl/live/recovery-fixture/privkey.pem'}};
+  return require('../../project-bootstrap/preview-setup/settings').settings(value);
+}
 function privateWizardAcceptance(files,exists=filename=>fs.existsSync(path.join(root,filename))) {
   const helpers=["system/ensure-wizard-image.sh","system/wizard-image-recovery.js","system/wizard-registry-token.rb"];
   if(!helpers.some(filename=>files.includes(filename)))return false;
@@ -52,12 +64,17 @@ function verifyPreparedTrust(tags,execute=execFileSync){
 function prepare(){
   if(process.arch!=='x64'||process.platform!=='linux')throw Error('Current pinned candidate images require Linux amd64.');
   const tags=identifiers();
+  const identity=ciIdentity();
   const output=path.join(root,'.candidate-images');fs.mkdirSync(output,{recursive:true,mode:0o700});
   const manifest=path.join(root,'.candidate-context');
   if(fs.readFileSync(path.join(manifest,'revision'),'utf8').trim()!==process.env.CI_COMMIT_SHA)throw Error('Candidate context revision mismatch.');
   const archive=path.join(manifest,'context.tar');
   if(crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex')!==fs.readFileSync(path.join(manifest,'sha256'),'utf8').trim())throw Error('Candidate context checksum mismatch.');
   const trackedManifest=JSON.parse(fs.readFileSync(path.join(manifest,'manifest.json'),'utf8'));
+  const sourceTree=execFileSync('git',['rev-parse',process.env.CI_COMMIT_SHA+'^{tree}'],{encoding:'utf8'}).trim();
+  if(!/^[a-f0-9]{40}$/.test(sourceTree))throw Error('Exact candidate source tree required.');
+  const origin=execFileSync('git',['config','--file','.gitmodules','--get','submodule.wizard.url'],{encoding:'utf8'}).trim();
+  const guidedPreviewSettings=guidedSettings(origin);
   const recoveryAcceptance=trackedManifest.files.includes('system/seed-manifest.js');
   const privateWizardRecovery=privateWizardAcceptance(trackedManifest.files);
   const acmeRenewalAcceptance=acmeAcceptance(trackedManifest.files);
@@ -66,7 +83,7 @@ function prepare(){
   if(recoveryAcceptance&&!fs.existsSync(path.join(__dirname,'recovery.js')))throw Error('Marked Seed requires the complete cold recovery adapter.');
   const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',timeout:600000,...options});
   let fd=fs.openSync(archive,'r');
-  try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','system/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
+  try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.source-tree='+sourceTree,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','system/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
   run(['pull',defaults.nginx]);
   require('../persistence/http01-nginx-probe').run({helperImage:tags.candidate,nginxImage:defaults.nginx});
   const snapshot=validate(JSON.parse(fs.readFileSync(path.join(root,'project-bootstrap/wizard-source/snapshot.json'),'utf8')));
@@ -79,6 +96,7 @@ function prepare(){
   if(buildFiles.filter(file=>/\/Dockerfile(?:\.dockerignore)?$/.test(file.path)).length!==2)throw Error('Complete managed Wizard Docker recipe required.');
   for(const file of buildFiles){const filename=path.join(context,file.path);fs.mkdirSync(path.dirname(filename),{recursive:true});fs.writeFileSync(filename,file.content);}
   run(['build','--provenance=false','--sbom=false','--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,
+    '--label','org.system-bootstrapper.source-tree='+sourceTree,
     '--label','org.opencontainers.image.revision='+snapshot.sourceRevision,
     '--label','org.system-bootstrapper.source-revision='+process.env.CI_COMMIT_SHA,
     '-f',path.join(context,'.system-bootstrapper/build-v1/Dockerfile'),'-t',tags.wizard,context]);
@@ -99,10 +117,12 @@ function prepare(){
   }
   const acmeImages=acmeRenewalAcceptance?require('./prepare-acme-images').prepare(output):undefined;
   if(acmeRenewalAcceptance)require('./local-acme').validate({acmeImages});
-  const spec={sourceRevision:process.env.CI_COMMIT_SHA,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab','previousRunner','previousHelper'].includes(role))),
+  const spec={sourceRevision:process.env.CI_COMMIT_SHA,sourceTree,wizardSourceRevision:snapshot.sourceRevision,
+    ciIdentity:identity,
+    guidedPreviewAcceptance:true,guidedPreviewSettings,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab','previousRunner','previousHelper'].includes(role))),
     supportImages:{helper:images.helper,previousGitlab:images.previousGitlab,previousRunner:images.previousRunner,previousHelper:images.previousHelper},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});
   console.log('Prepared pinned full-platform candidate images for '+process.env.CI_COMMIT_SHA);
 }
-module.exports={defaults,identifiers,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust};
+module.exports={defaults,identifiers,ciIdentity,guidedSettings,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust};
 if(require.main===module){try{prepare();}catch{console.error('Candidate image preparation failed; see public build log.');process.exitCode=1;}}

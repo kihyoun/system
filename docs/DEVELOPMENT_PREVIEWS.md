@@ -66,11 +66,52 @@ mismatched immutable image cannot produce an accepted binding. The native
 [source-primary verifier](../project-bootstrap/wizard-source-primary/README.md)
 checks the exact commit, pipeline, approved producer files and digest again.
 
-Initial setup accepts only an untouched managed registration and the retained
-accepted public controller/Wizard installation receipt. It archives the old
+Initial setup requires an untouched managed registration and a retained
+installation identity. A public installation retains the accepted
+controller/Wizard release receipt. It archives the old
 configuration and binds private previews without changing the main configuration
 or Production image selection. Existing managed source history must use its
 native adoption/upgrade path. Production promotion remains separate.
+
+Evidence reads are grouped into bounded batches within each verification phase.
+They retain the same project, pipeline, artifact and producer checks; applying a
+plan obtains fresh mutable evidence rather than trusting a cached preview.
+This reduces separate Rails startups. Downloads, native builds and browser
+checks still require their real execution time; no fixed setup duration is promised.
+
+### Retain a source-built installation identity
+
+A source-built installation can retain its actual running image pair without
+claiming that it is an accepted public release. Both configured image selectors
+must be immutable `sha256:` image IDs. The controller and Wizard must carry
+matching `org.system-bootstrapper.test-job` and
+`org.system-bootstrapper.source-tree` labels, their respective
+`org.opencontainers.image.revision` labels, and the Wizard's matching
+`org.system-bootstrapper.source-revision`. The packaged Wizard snapshot must
+match the supplied Wizard revision. The native System candidate preparation
+produces this paired provenance from the committed checkout.
+
+Obtain the expected image IDs, System commit/tree and Wizard gitlink independently
+from the reviewed source/build records. Record the already running pair through
+the committed controller entry point:
+
+```sh
+docker exec system_bootstrapper_1 node /system/bootstrapper/record-source-installation.js \
+  --controller sha256:REPLACE_WITH_CONTROLLER_IMAGE_ID \
+  --wizard sha256:REPLACE_WITH_WIZARD_IMAGE_ID \
+  --source-revision REPLACE_WITH_SYSTEM_COMMIT \
+  --source-tree REPLACE_WITH_SYSTEM_TREE \
+  --wizard-revision REPLACE_WITH_WIZARD_GITLINK
+```
+
+The command inspects the actual running containers and exact image provenance,
+then creates the root-owned mode-0600 `/state/.source-installation.json`. It does
+not install, start, promote or accept images, alter main configuration, create a
+release receipt or assert that tests passed. Subsequent setup rechecks the
+running identity. An existing invalid or incomplete public release selection
+cannot fall back to this source record. After recovery, retain or explicitly
+re-record source provenance against independently preserved build inputs before
+starting a new initial setup; configuration metadata alone does not authorize it.
 
 ## Deploy, stop and System candidates
 

@@ -3,8 +3,9 @@
 `candidate.js` runs an explicit private-daemon smoke or full-platform scenario.
 It is separate from the isolated manifest; offline transports verify its
 lifecycle contract without starting Docker. The required root CI platform gate
-runs the full scenario, including configuration-plus-Seed recovery, uncached
-private Wizard image retrieval and local ACME renewal.
+runs the full scenario, including native guided source/adoption and Review/Beta
+lifecycles, configuration-plus-Seed recovery, uncached private Wizard image
+retrieval and local ACME renewal.
 
 ## Boundary and prerequisites
 
@@ -17,7 +18,7 @@ loopback. No port is published on the outer daemon. HTTP probes run through Node
 the owned candidate, through its private bridge gateway and private NGINX.
 
 The driver creates one randomly named, ownership-labeled **privileged DinD**
-container, an internal network and a Docker-data volume. DinD has its own Unix
+container, an owned network and a Docker-data volume. DinD has its own Unix
 socket; the host socket is never mounted into it. Fixed `system_*` names, inner
 Docker networks, ports 80/8071/5050 and service volumes are confined to that daemon.
 The inner bootstrapper receives that **inner** socket because normal System
@@ -30,9 +31,29 @@ coordinator's resource lease and agree a test window. The DinD container is
 limited to four CPUs and 12 GiB RAM. Budget additional headroom on the outer
 host, image archives, image extraction and GitLab's data volume; Docker's volume
 does not enforce a disk quota. Disk/RAM checks and a lease must happen outside
-this driver before invocation. An internal outer network prevents external
-dependency downloads; service images must be preloaded. The full runner/registry
-scenario also needs its declared helper and build-image inputs.
+this driver before invocation. Smoke scenarios use an internal outer network.
+The full guided scenario explicitly permits outbound access on its owned bridge
+for the public HTTPS Git origin and native package, browser and image downloads;
+it still publishes no outer ports. Service images remain declared and preloaded.
+The full runner/registry scenario also needs its declared helper and build inputs.
+
+The guided scenario uses the pinned submodule's public origin from `.gitmodules`;
+an operator fork can set `SYSTEM_TEST_WIZARD_ORIGIN` to its public HTTPS Git URL.
+The native public-address and approved-producer checks remain active. A changed
+upstream producer is a failing input, not permission to copy different CI into
+the source project. Private origins are not supported by this import acceptance.
+GitLab, Sync, Wizard, Review and Beta use exact-host TLS through the existing
+local ACME authority. The registry remains the existing private HTTP endpoint
+on port 5050; this scenario does not claim HTTPS registry verification.
+
+The full gate performs guided setup once on its fresh original platform, then
+uses the same platform's normal imported-default, merge-request and merged-default
+pipelines. It plays the real manual Review/Beta Deploy and Stop jobs, preserving
+the original main configuration and running Wizard image throughout setup.
+The publication gate requires those native stages and identities; passing offline
+fixtures cannot substitute for them. The existing candidate job and overall
+deadline remain unchanged. Per-stage timings include the new work, and a timeout
+remains a failure rather than a reason to extend the deadline automatically.
 
 Disposable GitLab instances use `puma['worker_processes'] = 2` through the
 official `GITLAB_OMNIBUS_CONFIG` environment variable. Nested containers can
@@ -291,14 +312,18 @@ Without the explicit `privateWizardRecovery` scenario, a restored private Wizard
 registry pin fails with `wizard-pin-recovery-artifact-not-declared`; it is never
 silently changed to the local fixture image.
 
-The private-image scenario publishes a derivative of the declared source-built
-Wizard image through a real CI job on a separate branch of the managed Wizard
-project. A unique marker layer makes its image ID different from every prepared
-archive. The actual exported configuration pins that CI-published registry digest.
+In the full guided scenario, private-image recovery reuses the actual Wizard
+artifact from its verified merged-default pipeline. It independently checks the
+canonical source receipt, native required jobs and artifacts, registry digest,
+image ID and source label. No extra private-image build is needed. Its image must
+be absent from every prepared archive. The nonguided fixture instead publishes a
+derivative through its existing owned CI branch and unique marker layer.
+The actual exported configuration pins the CI-published registry digest.
 The new daemon must have neither its digest reference nor its private image ID
 before startup. After Seed restoration, the fresh-source startup helper retrieves
 the exact image using a temporary project-scoped `read_registry` deploy token.
-The adapter verifies the running Wizard's image ID and marker and verifies that
+The adapter verifies the running Wizard's exact image ID and source revision
+(or the legacy fixture's marker), and verifies that
 no live reserved recovery token remains. Only then may the report state
 `privateWizardPinVerified: true`. The fixture does not supply an old Docker login,
 private image archive or substitute image. This scenario requires actual passing

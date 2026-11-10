@@ -69,6 +69,7 @@
   {"component":"performance","file":"performance/resources/test_collect.py","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/in-place-upgrade.js","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/source-primary-adoption.js","timeoutSeconds":30},
+  {"component":"wizard","file":"wizard/source-installation.js","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/wizard-source-primary.rb","timeoutSeconds":25},
   {"component":"shared","file":"shared/local-acme-contract.js","timeoutSeconds":20},
   {"component":"shared","file":"shared/candidate-cleanup-contract.js","timeoutSeconds":15},
@@ -106,6 +107,8 @@
   {"component":"wizard","file":"wizard/preview-producers.js","timeoutSeconds":20},
   {"component":"sync","file":"sync/operations-api.js","timeoutSeconds":30,"port":8071},
   {"component":"shared","file":"shared/guided-preview-contract.js","timeoutSeconds":20},
+  {"component":"shared","file":"shared/guided-preview-platform-contract.js","timeoutSeconds":20},
   {"component":"wizard","file":"wizard/rails-completion.js","timeoutSeconds":20},
-  {"component":"wizard","file":"wizard/native-locale-messages.js","timeoutSeconds":20}
+  {"component":"wizard","file":"wizard/native-locale-messages.js","timeoutSeconds":20},
+  {"component":"shared","file":"shared/guided-preview-orchestration-contract.js","timeoutSeconds":20}
 ]

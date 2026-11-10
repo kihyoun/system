@@ -2,6 +2,7 @@ require 'json'
 require 'net/http'
 require 'uri'
 require 'date'
+require 'stringio'
 class BootstrapError < StandardError; end
 def Date.tomorrow = today + 1
 load File.expand_path('../../project-bootstrap/preview-setup/provision.rb', __dir__)
@@ -56,6 +57,80 @@ raise 'source gates weakened' unless project['only_allow_merge_if_pipeline_succe
 raise 'private delivery missing' unless variables.dig('WIZARD_DELIVERY_ENABLED', 'value') == 'true'
 raise 'fork can publish upstream' unless ['GITHUB_BACKUP_ENABLED', 'DOCKERHUB_PUBLISH_ENABLED', 'GITHUB_RELEASE_PUBLISH_ENABLED', 'WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED'].all? { |key| variables.dig(key, 'value') == 'false' }
 BootstrapperPreviewSetup.new(api, input.merge('action' => 'preview-setup-revoke', 'projectId' => 7, 'tokenId' => 12)).call
+# Every batch is bounded and wholly authorized before its first API lookup.
+batch_input = {'action' => 'preview-setup-read-many', 'projectIds' => [7], 'routes' => ['projects/7'] * 32}
+count = calls.length
+raise 'bounded batch lost response order' unless BootstrapperPreviewSetup.new(api, batch_input).call[:values] == [project] * 32
+raise 'batch made non-GET requests' unless calls.drop(count).length == 32 && calls.drop(count).all? { |row| row[0] == Net::HTTP::Get }
+invalid = [nil, [], ['projects/7'] * 33, ['projects/7', 'projects/8'], ['projects/7', 'projects/7/access_tokens'],
+  ['projects/7', "projects/7\r"], ['projects/7', "projects/7\0"], ['projects/7', 'projects/7/../8'],
+  ['projects/7', 'projects/7/repository/files/' + 'a' * 2048], ['projects/7', 7]]
+invalid.each do |routes|
+  count = calls.length
+  begin
+    BootstrapperPreviewSetup.new(api, batch_input.merge('routes' => routes)).call
+    raise 'invalid evidence batch was accepted'
+  rescue BootstrapError
+    raise 'invalid batch read before complete authorization' unless calls.length == count
+  end
+end
+large_api = lambda { |method, _route, _body| raise 'batch wrote GitLab state' unless method == Net::HTTP::Get; [200, {'content' => 'x' * 800000}] }
+begin
+  BootstrapperPreviewSetup.new(large_api, batch_input.merge('routes' => ['projects/7', 'projects/7'])).call
+  raise 'oversized aggregate evidence was accepted'
+rescue BootstrapError
+  # The outer provisioner still revokes its normal temporary PAT in ensure.
+end
+# Exercise the actual outer dispatcher and credential ensure without Rails or
+# HTTP. Successful, invalid, oversized and interrupted batches all revoke PATs.
+User = Class.new unless defined?(User)
+admin = Object.new
+admin.define_singleton_method(:admin?) { true }
+admin.define_singleton_method(:active?) { true }
+tokens = Object.new
+tokens.define_singleton_method(:where) { |*_args| self }
+tokens.define_singleton_method(:find_each) { nil }
+minted = revoked = network = 0
+tokens.define_singleton_method(:create!) do |*_args|
+  minted += 1
+  token = Object.new
+  token.define_singleton_method(:token) { 'fixture-only-native-credential' }
+  token.define_singleton_method(:revoke!) { revoked += 1 }
+  token
+end
+admin.define_singleton_method(:personal_access_tokens) { tokens }
+User.define_singleton_method(:find_by_username) { |_name| admin }
+original_start = Net::HTTP.method(:start)
+begin
+  [:success, :invalid, :oversized, :transport_loss].each do |scenario|
+    network = 0
+    http = Object.new
+    http.define_singleton_method(:request) do |_request|
+      network += 1
+      raise IOError, 'fixture-only-native-credential' if scenario == :transport_loss
+      body = JSON.generate(scenario == :oversized ? {'content' => 'x' * 1500000} : {'id' => 7})
+      Struct.new(:code, :body).new('200', body)
+    end
+    Net::HTTP.define_singleton_method(:start) { |*_args, **_options, &block| block.call(http) }
+    selected = batch_input.merge('routes' => scenario == :invalid ? ['projects/7', 'projects/8'] : ['projects/7'])
+    Object.send(:remove_const, :BOOTSTRAPPER_INPUT) if defined?(BOOTSTRAPPER_INPUT)
+    Object.const_set(:BOOTSTRAPPER_INPUT, [JSON.generate(selected)].pack('m0'))
+    previous_stdout, $stdout = $stdout, StringIO.new
+    begin
+      load File.expand_path('../../project-bootstrap/provision.rb', __dir__)
+      response = $stdout.string
+    ensure
+      $stdout = previous_stdout
+    end
+    raise 'native read credential was not revoked' unless minted == revoked
+    raise 'credential leaked through failed native batch' if response.include?('fixture-only-native-credential')
+    parsed = JSON.parse(response)
+    raise "native batch dispatcher failed (#{scenario}): #{parsed}" unless scenario == :success ? parsed['values'] == [{'id' => 7}] : parsed['state'] == 'failed'
+    raise 'invalid native batch started HTTP' if scenario == :invalid && network != 0
+  end
+ensure
+  Net::HTTP.define_singleton_method(:start, original_start)
+end
 # Existing owned imports and operator-selected sources keep their settings.
 project['auto_devops_enabled'] = true
 BootstrapperPreviewSetup.new(api, setup).call

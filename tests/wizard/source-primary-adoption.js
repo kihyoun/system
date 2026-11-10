@@ -82,6 +82,43 @@ async function bindingRefresh(f) {
 }
 (async () => {
   await use(async f => {
+    const {batchedReads, MAX_ROUTES} = require('../../project-bootstrap/preview-setup/reads');
+    // Include the native recipe (and its real CA bundle) in a full approved
+    // manifest. Process launches must scale with phases, not individual files.
+    while (f.input.ciFiles.length < 40) {
+      const file = '.gitlab/proof-' + f.input.ciFiles.length + '.sh', content = '# retained native proof\n';
+      f.input.ciFiles.push({path: file, sha256: b.hash(content)});
+      f.rows['projects/7/repository/files/' + encodeURIComponent(file) + '?ref=' + sha] = {content: Buffer.from(content).toString('base64')};
+    }
+    let launches = 0, active = 0, peak = 0;
+    const original = f.adoption.request;
+    f.adoption.request = batchedReads(async routes => {
+      launches++; active++; peak = Math.max(peak, active);
+      assert(routes.length <= MAX_ROUTES);
+      try { return await Promise.all(routes.map(original)); } finally { active--; }
+    });
+    const plan = await f.adoption.plan(f.input);
+    await f.adoption.apply(f.input, plan.planHash);
+    assert(f.calls.length >= 100, 'Fixture did not exercise the expensive native manifest');
+    assert(launches <= 20, 'Evidence reads started Rails for individual manifest files: ' + launches);
+    assert.equal(peak, 1, 'Batches overlapped Rails processes');
+    assert.equal(f.calls.filter(route => route === 'projects/7').length, 2, 'Apply reused mutable plan evidence');
+    console.log('Native adoption batching: ' + f.calls.length + ' evidence GETs in ' + launches + ' sequential process batches across plan/apply.');
+  }, 'node24-vite8-quickstart-v5');
+  for (const change of [
+    f => {f.rows['projects/7'].only_allow_merge_if_pipeline_succeeds = false;},
+    f => {f.rows['projects/7/pipelines/31/jobs?per_page=100&include_retried=false'][2].status = 'failed';},
+    f => {f.rows['projects/7/jobs/41/artifacts/wizard-evidence.json'].cubeSignature = false;},
+    f => {f.rows['projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + sha].content = Buffer.from('changed native CI').toString('base64');}
+  ]) await use(async f => {
+    const {batchedReads} = require('../../project-bootstrap/preview-setup/reads'), original = f.adoption.request;
+    f.adoption.request = batchedReads(routes => Promise.all(routes.map(original)));
+    const plan = await f.adoption.plan(f.input); change(f);
+    await assert.rejects(f.adoption.apply(f.input, plan.planHash));
+    assert.equal(fs.readFileSync(f.config, 'utf8'), f.text);
+    assert(!fs.existsSync(f.directory), 'Refused fresh evidence created an adoption archive');
+  });
+  await use(async f => {
     const plan = await f.adoption.plan(f.input);
     assert(!Object.hasOwn(plan.publicPlan, 'buildProfile'), 'Historical inputs acquired a new plan field');
     assert.equal(fs.readFileSync(f.config, 'utf8'), f.text); assert(!fs.existsSync(f.directory), 'Preview wrote private state');

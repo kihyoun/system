@@ -55,6 +55,17 @@ class Adoption {
       throw Error('Retain the accepted public release selection and matching controller/Wizard installation receipt.');
     return pin;
   }
+  retainedInstallation(main) {
+    const directory = path.dirname(this.mainConfig);
+    // A broken or incomplete public selection must never fall back to a
+    // different installation identity, including dangling receipt symlinks.
+    const publicSelection = ['.release-images.json', '.release-images.env'].some(name => {
+      try { fs.lstatSync(path.join(directory, name)); return true; }
+      catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+    });
+    return publicSelection ? this.publicRelease(main) :
+      require('./source-installation').sourceInstallation(main, {mainConfig: this.mainConfig});
+  }
   async plan(input) {
     const keys = ['version', 'projectId', 'projectPath', 'namespaceId', 'defaultBranch', 'pipelineId', 'sourceCommit', 'imageRef', 'helperImage', 'ciFiles', 'buildProfile', 'action'];
     if (!input || Object.keys(input).some(key => !keys.includes(key)) || input.version !== 1 ||
@@ -104,7 +115,7 @@ class Adoption {
     if (!input.imageRef?.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(input.imageRef.slice(prefix.length))) throw Error('Use an immutable image from the adopted project registry.');
     const previousImage = setting(main, 'WIZARD_IMAGE');
     const previousPrefix = registry.host + '/' + old.repository.path + '@sha256:';
-    if (bootstrap) this.publicRelease(main);
+    if (bootstrap) this.retainedInstallation(main);
     if (!refreshBinding && !bootstrap && (!previousImage?.startsWith(previousPrefix) || !/^[a-f0-9]{64}$/.test(previousImage.slice(previousPrefix.length)))) throw Error('Retain the exact previous managed Production image.');
     const operation = b.hash(JSON.stringify({version: 1, config: b.hash(current.text), main: b.hash(main), input})).slice(0, 48);
     const next = JSON.parse(JSON.stringify(old));
@@ -137,10 +148,10 @@ class Adoption {
     }
     if (recipe.files.some(file => !input.ciFiles.some(source => source.path === file.path && source.sha256 === b.hash(file.content))) ||
         !input.ciFiles.some(source => source.path === '.gitlab/delivery/environment.sh')) throw Error('Approve the complete generic delivery and environment script manifest.');
-    for (const file of recipe.files) {
+    await Promise.all(recipe.files.map(async file => {
       const row = await this.request('projects/' + input.projectId + '/repository/files/' + encodeURIComponent(file.path) + '?ref=' + input.sourceCommit);
       if (!Buffer.from(row.content.replace(/\n/g, ''), 'base64').equals(Buffer.from(file.content))) throw Error('The source-primary build recipe differs from the reviewed generic recipe.');
-    }
+    }));
     next.wizardWorkflow = {version: 1, phase: 'source-primary', sourceRevision: input.sourceCommit,
       build: {version: 1, mode: 'source-primary', recipeHash: recipe.recipeHash, phase: 'candidate-verified',
         pipeline: {id: proof.pipeline.id, sha: proof.pipeline.sha, status: proof.pipeline.status, webUrl: proof.pipeline.web_url},
@@ -149,7 +160,7 @@ class Adoption {
       environments: {...this.environments(environments, {operation, helperImage: input.helperImage, activationCommit: input.sourceCommit, ciFiles: input.ciFiles}), ...(bootstrap ? {initialVariablesMissing: true} : {})}};
     const plan = {version: 1, action: bootstrap ? 'bootstrap-source-primary-previews' : refreshBinding ? 'refresh-source-primary-binding' : 'reassign-source-primary', operation, previousProjectId: old.repository.id,
       projectId: input.projectId, projectPath: input.projectPath, sourceCommit: input.sourceCommit, pipelineId: input.pipelineId,
-      imageRef: input.imageRef, ...((refreshBinding || bootstrap) ? {retainedProductionImageRef: bootstrap ? this.publicRelease(main) : previousImage} : {previousImageRef: previousImage}), helperImage: input.helperImage,
+      imageRef: input.imageRef, ...((refreshBinding || bootstrap) ? {retainedProductionImageRef: bootstrap ? this.retainedInstallation(main) : previousImage} : {previousImageRef: previousImage}), helperImage: input.helperImage,
       ...(upgradeBuild ? {buildProfile: input.buildProfile, previousBuildRecipeHash: retainedRecipe.recipeHash, buildRecipeHash: recipe.recipeHash} : {}),
       configHash: b.hash(current.text), mainConfigHash: b.hash(main), nextReceiptHash: b.hash(JSON.stringify(next))};
     return {publicPlan: plan, planHash: b.hash(JSON.stringify(plan)), current, main, next};

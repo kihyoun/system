@@ -6,6 +6,7 @@ const os = require('os');
 const crypto = require('crypto');
 const {context, readEvidence, manifest, publish} = require('../../gitlab/publish-dockerhub');
 const security = require('../../gitlab/security-release.json');
+const guided = require('../shared/guided-preview-fixture');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const sha = 'a'.repeat(40), tree = 'b'.repeat(40), wizard = 'c'.repeat(40);
 const id = n => 'sha256:' + n.repeat(64);
@@ -19,8 +20,8 @@ const proof = {runId: 'f'.repeat(24), sourceRevision: sha, fullAcceptance: true,
   images: {candidate: id('1'), runner: id('2'), wizard: id('3')},
   results: ['gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci', 'gitlab-upgrade-restored-checkpoint',
     'gitlab-upgrade-security-trust', 'storage-global-live-lease', 'storage-refuse-nonempty-and-corrupt-restore',
-    'storage-detached-backup-normal-operation', 'cleanup'].map(name => ({name, status: 'passed'})),
-  evidence: {gitlabUpgrade: {fromImage: security.fromImage, toImage: security.toImage,
+    'storage-detached-backup-normal-operation', 'cleanup',...guided.stages].map(name => ({name, status: 'passed'})),
+  evidence: {guidedPreview:guided.proof(id('3')),gitlabUpgrade: {fromImage: security.fromImage, toImage: security.toImage,
     migrationVerified: true, rollbackVerified: true, registryVerified: true, checkpointVerified: true,
     runnerImage: security.runner.toImage, runnerImageId: id('2'), fromRunnerImageId: id('4'),
     helperImageId: id('5'), fromHelperImageId: id('6'), runnerUpgradeVerified: true, runnerManagerIdentityPreserved: true,
@@ -127,7 +128,7 @@ async function main() {
     assert(!calls.some(call => call[1] === 'push'), 'identical immutable aliases are reused');
     // A later tag pipeline rebuilds the same source with another job label.
     // Distinct tested attempts necessarily have different image IDs/digests.
-    const tagProof = {...proof, images: {...proof.images, candidate: id('9'), wizard: id('a')}};
+    const tagProof = {...proof,evidence:{...proof.evidence,guidedPreview:guided.proof(id('a'))}, images: {...proof.images, candidate: id('9'), wizard: id('a')}};
     activeRelease = {...released, pipelineId: 11, candidateJobId: 21,
       imageId: id('9'), wizardImageId: id('a'),
       registryReference: env.CI_REGISTRY_IMAGE + '/successor@' + id('b'),
@@ -150,7 +151,7 @@ async function main() {
     // Docker's containerd store can identify images by their manifest digest.
     // The config digest remains different; both local IDs still match the CI
     // evidence, and anonymous acceptance must compare the accepted manifest.
-    const modernProof = {...proof, images: {...proof.images, candidate: id('7'), wizard: id('8')}};
+    const modernProof = {...proof,evidence:{...proof.evidence,guidedPreview:guided.proof(id('8'))}, images: {...proof.images, candidate: id('7'), wizard: id('8')}};
     activeRelease = {...released, imageId: id('7'), wizardImageId: id('8'),
       candidateEvidenceSha256: hash(JSON.stringify(modernProof))};
     fs.writeFileSync(path.join(artifacts, 'candidate-results.json'), JSON.stringify(modernProof));

@@ -15,6 +15,7 @@ function included(name) {
   if (name === snapshotPath || /(^|\/)(node_modules|dist|test-results|\.test-context|\.projects\.env)(\/|$)/.test(name)) return false;
   if (/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper_initial_root_password)$/.test(name)) return false;
   if (['system/ensure-wizard-image.sh','system/wizard-image-recovery.js','system/wizard-registry-token.rb'].includes(name)) return true;
+  if (name === 'bootstrapper/record-source-installation.js') return true;
   // Public trust data is required by the offline CA-refresh checks. Keep this
   // exact allowlist separate from private/operator certificate material.
   if (['bootstrapper/ca/cacert-2026-10-20.crt','bootstrapper/ca/provenance.json','bootstrapper/ca/check.js'].includes(name)) return true;

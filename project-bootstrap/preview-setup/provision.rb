@@ -37,6 +37,18 @@ class BootstrapperPreviewSetup
       api(Net::HTTP::Post, prefix, {key: key, value: value, environment_scope: '*', raw: true, protected: false, masked: false})
     end
   end
+  def evidence_routes(routes)
+    ids = @input.fetch('projectIds').map { |id| Integer(id) }
+    raise BootstrapError, 'Invalid preview evidence route.' unless routes.is_a?(Array) && routes.length.between?(1, 32)
+    # Validate the complete batch before making its first request. An invalid
+    # later member must not read even an otherwise permitted project.
+    routes.each do |route|
+      match = route.is_a?(String) && route.bytesize <= 2048 &&
+        %r{\Aprojects/([1-9][0-9]*)(?:\z|/(?:repository/(?:branches/|files/|tree\?)|pipelines(?:/|\?)|jobs/[1-9][0-9]*/artifacts/))}.match(route)
+      raise BootstrapError, 'Invalid preview evidence route.' unless match && ids.include?(Integer(match[1])) && !route.match?(/[\x00-\x20\x7f]/) && !route.include?('..')
+    end
+    routes
+  end
   def call
     case @input.fetch('action')
     when 'preview-setup-preflight'
@@ -84,11 +96,17 @@ class BootstrapperPreviewSetup
       api(Net::HTTP::Delete, "projects/#{project.fetch('id')}/access_tokens/#{Integer(@input.fetch('tokenId'))}")
       {revoked: true}
     when 'preview-setup-read'
-      route = @input.fetch('route')
-      ids = @input.fetch('projectIds').map { |id| Integer(id) }
-      match = %r{\Aprojects/([1-9][0-9]*)(?:\z|/(?:repository/(?:branches/|files/|tree\?)|pipelines(?:/|\?)|jobs/[1-9][0-9]*/artifacts/))}.match(route)
-      raise BootstrapError, 'Invalid preview evidence route.' unless match && ids.include?(Integer(match[1])) && !route.include?("\n") && !route.include?('..')
-      {value: get(route)}
+      {value: get(evidence_routes([@input.fetch('route')]).first)}
+    when 'preview-setup-read-many'
+      routes = evidence_routes(@input.fetch('routes'))
+      bytes = 32
+      values = routes.map do |route|
+        value = get(route)
+        bytes += JSON.generate(value).bytesize + 1
+        raise BootstrapError, 'Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.' if bytes > 1500000
+        value
+      end
+      {values: values}
     when 'preview-setup-system'
       project = get('projects/' + Integer(@input.fetch('projectId')).to_s)
       raise BootstrapError, 'Selected System source identity changed.' unless project['path_with_namespace'] == @input.fetch('projectPath') && project.dig('namespace', 'id') == Integer(@input.fetch('namespaceId')) && project['only_allow_merge_if_pipeline_succeeds'] == true && project['only_allow_merge_if_all_discussions_are_resolved'] == true
