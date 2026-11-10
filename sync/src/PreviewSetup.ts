@@ -149,28 +149,29 @@ export function applyPreviewSetup(input: any) {
       const request = batchedReads(async (routes: string[]) => (await checked({action: 'preview-setup-read-many', routes,
         projectIds: [...projects.map(project => project.id), value.receipt.repository.id]})).values);
       const selected = current.projects.wizard;
-      const project = await request('projects/' + selected.id);
-      const branch = await request('projects/' + selected.id + '/repository/branches/' + encodeURIComponent(project.default_branch));
+      // Resolve dependent native reads in one bounded, read-only Rails call.
+      // This context belongs only to this apply; adoption still reads afresh.
+      const {project, branch, pipeline: nativePipeline, jobs, trees} = await checked({action: 'preview-setup-source-context',
+        projectId: selected.id, projectIds: [...projects.map(project => project.id), value.receipt.repository.id]});
+      const pipeline = nativePipeline ?? undefined;
       const commit = branch.commit.id;
-      const pipelines = await request('projects/' + selected.id + '/pipelines?sha=' + commit + '&ref=' + encodeURIComponent(project.default_branch) + '&source=push&per_page=100');
-      const pipeline = pipelines.find((row: any) => row.sha === commit && row.source === 'push');
       if (!pipeline || !['success', 'failed'].includes(pipeline.status)) {
         save({phase: 'waiting-build', pipeline: pipeline && {id: pipeline.id, status: pipeline.status, webUrl: pipeline.web_url}, message: 'Wait for the current native default-branch push pipeline, then run preflight and resume. Existing projects require a normal source push; setup never fabricates a successful pipeline.'});
         return publicState(current);
       }
-      const jobs = await request('projects/' + selected.id + '/pipelines/' + pipeline.id + '/jobs?per_page=100&include_retried=false');
       binding.pipelineChecks({...pipeline, ref: project.default_branch}, jobs);
       const buildJob = jobs.find((job: any) => job.name === 'build:wizard');
-      const artifact = await request('projects/' + selected.id + '/jobs/' + buildJob.id + '/artifacts/build-evidence.json');
-      const trees = await Promise.all(['.gitlab', '.system-bootstrapper/build-v1'].map(async directory => {
-        const rows = await request('projects/' + selected.id + '/repository/tree?path=' + encodeURIComponent(directory) + '&ref=' + commit + '&recursive=true&per_page=100');
-        if (rows.length >= 100) throw Error('The approved CI manifest is too large. Review it through the native source-primary tool.');
-        return rows.filter((row: any) => row.type === 'blob');
-      }));
-      const ciFiles: any[] = await Promise.all(trees.flat().map(async (row: any) => {
-        const file = await request('projects/' + selected.id + '/repository/files/' + encodeURIComponent(row.path) + '?ref=' + commit);
-        return {path: row.path, sha256: hash(Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8'))};
-      }));
+      if (!Array.isArray(trees) || trees.length !== 2 || trees.some(rows => !Array.isArray(rows) || rows.length >= 100))
+        throw Error('The approved CI manifest is too large. Review it through the native source-primary tool.');
+      const blobs = trees.flat().filter((row: any) => row.type === 'blob');
+      // Job validation above must finish before any artifact is requested.
+      const [artifact, ciFiles]: [any, any[]] = await Promise.all([
+        request('projects/' + selected.id + '/jobs/' + buildJob.id + '/artifacts/build-evidence.json'),
+        Promise.all(blobs.map(async (row: any) => {
+          const file = await request('projects/' + selected.id + '/repository/files/' + encodeURIComponent(row.path) + '?ref=' + commit);
+          return {path: row.path, sha256: hash(Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8'))};
+        }))
+      ]);
       ciFiles.sort((a, b) => a.path.localeCompare(b.path));
       validateProducers(ciFiles);
       const canonical = readReceipt(fs.readFileSync(wizardConfigPath(), 'utf8'));

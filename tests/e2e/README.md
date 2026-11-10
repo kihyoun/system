@@ -55,6 +55,16 @@ fixtures cannot substitute for them. The existing candidate job and overall
 deadline remain unchanged. Per-stage timings include the new work, and a timeout
 remains a failure rather than a reason to extend the deadline automatically.
 
+Only the original disposable guided platform's single managed Docker runner
+opts into two concurrent jobs, each limited to 2 GiB RAM and one CPU. This lets
+the native source pipeline schedule its browser checks alongside image delivery.
+The fixture refuses conflicting runner settings and preserves the registered
+identity, endpoints, public trust and source CI bytes. The existing 4-GiB/two-CPU
+delivery builder and 1-GiB/one-CPU verifier browser keep their own limits; all
+nested work still shares the candidate's hard 12-GiB/four-CPU ceiling. These are
+ceilings rather than reservations. Only the final full-platform CI run establishes
+acceptance and any elapsed-time improvement; offline contracts do not measure it.
+
 Disposable GitLab instances use `puma['worker_processes'] = 2` through the
 official `GITLAB_OMNIBUS_CONFIG` environment variable. Nested containers can
 detect the outer host's resources instead of the private daemon's limits.

@@ -49,6 +49,45 @@ class BootstrapperPreviewSetup
     end
     routes
   end
+  def source_context
+    id = @input.fetch('projectId')
+    ids = @input['projectIds']
+    raise BootstrapError, 'Invalid preview evidence route.' unless id.is_a?(Integer) && id > 0 && ids.is_a?(Array) && ids.include?(id)
+    reads, bytes = 0, 32
+    read = lambda do |route|
+      evidence_routes([route])
+      reads += 1
+      raise BootstrapError, 'Invalid preview evidence route.' if reads > 32
+      value = get(route)
+      bytes += JSON.generate(value).bytesize + 1
+      raise BootstrapError, 'Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.' if bytes > 1500000
+      value
+    end
+    finish = lambda do |value|
+      raise BootstrapError, 'Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.' if JSON.generate(value).bytesize > 1500000
+      value
+    end
+    prefix = "projects/#{id}"
+    project = read.call(prefix)
+    branch_name = project.fetch('default_branch')
+    raise BootstrapError, 'Selected preview source identity is invalid.' unless project['id'] == id && branch_name.is_a?(String) && !branch_name.empty?
+    branch = read.call(prefix + '/repository/branches/' + URI.encode_www_form_component(branch_name))
+    sha = branch.fetch('commit').fetch('id')
+    raise BootstrapError, 'Selected preview source identity is invalid.' unless sha.is_a?(String) && sha.match?(/\A[a-f0-9]{40}\z/)
+    pipelines = read.call(prefix + '/pipelines?sha=' + sha + '&ref=' + URI.encode_www_form_component(branch_name) + '&source=push&per_page=100')
+    pipeline = pipelines.find { |row| row['sha'] == sha && row['source'] == 'push' }
+    result = {project: project, branch: branch, pipeline: pipeline}
+    return finish.call(result) unless pipeline && ['success', 'failed'].include?(pipeline['status'])
+    pipeline_id = pipeline.fetch('id')
+    raise BootstrapError, 'Selected preview source identity is invalid.' unless pipeline_id.is_a?(Integer) && pipeline_id > 0
+    result[:jobs] = read.call(prefix + "/pipelines/#{pipeline_id}/jobs?per_page=100&include_retried=false")
+    result[:trees] = ['.gitlab', '.system-bootstrapper/build-v1'].map do |directory|
+      rows = read.call(prefix + '/repository/tree?path=' + URI.encode_www_form_component(directory) + '&ref=' + sha + '&recursive=true&per_page=100')
+      raise BootstrapError, 'The approved CI manifest is too large. Review it through the native source-primary tool.' if rows.length >= 100
+      rows
+    end
+    finish.call(result)
+  end
   def call
     case @input.fetch('action')
     when 'preview-setup-preflight'
@@ -97,6 +136,8 @@ class BootstrapperPreviewSetup
       {revoked: true}
     when 'preview-setup-read'
       {value: get(evidence_routes([@input.fetch('route')]).first)}
+    when 'preview-setup-source-context'
+      source_context
     when 'preview-setup-read-many'
       routes = evidence_routes(@input.fetch('routes'))
       bytes = 32

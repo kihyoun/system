@@ -4,6 +4,7 @@
 const {settings: desiredSettings}=require('../../project-bootstrap/preview-setup/settings');
 const recovery=require('./recovery');
 const {ISSUANCE_CA,issuanceDomains}=require('./local-acme');
+const {runnerCapacity}=require('./guided-preview-runner-capacity');
 const LEAF='/ssl/live/recovery-fixture/fullchain.pem',KEY='/ssl/live/recovery-fixture/privkey.pem';
 const TRUST='/run/system-bootstrapper/guided-preview-ca.pem';
 const JOB_TRUST='/etc/system-bootstrapper/guided-preview-ca.pem';
@@ -139,9 +140,10 @@ async function bindingProof(candidate,dependencies={}){
   },{});
 }
 async function configureRunner(candidate){
+  settings(candidate);
   const runner='runner_docker_1';
   const before=await candidate.inner(['exec',runner,'cat','/etc/gitlab-runner/config.toml']);
-  const after=runnerTrust(before);
+  const after=runnerTrust(runnerCapacity(before));
   if(after!==before)await candidate.inner(['exec','-i',runner,'sh','-ec',
     'umask 077; cat > /etc/gitlab-runner/config.toml.guided-tmp; mv /etc/gitlab-runner/config.toml.guided-tmp /etc/gitlab-runner/config.toml'],{input:after});
   await candidate.inner(['exec',runner,'gitlab-runner','verify']);
@@ -197,4 +199,4 @@ async function prepare(candidate,acme,dependencies={}){
     '--source-revision',candidate.spec.sourceRevision,'--source-tree',candidate.spec.sourceTree,'--wizard-revision',candidate.spec.wizardSourceRevision]));
   return {acmeIdentity:candidate.guidedAcmeIdentity,trust:candidate.guidedTrust,domains};
 }
-module.exports={prepare,restoreTrust,installTrust,installAnchor,bindingProof,runnerTrust,settings,node,HOSTS,LEAF,KEY,TRUST,JOB_TRUST};
+module.exports={prepare,restoreTrust,installTrust,installAnchor,bindingProof,configureRunner,runnerTrust,settings,node,HOSTS,LEAF,KEY,TRUST,JOB_TRUST};

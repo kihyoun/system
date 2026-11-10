@@ -9,6 +9,8 @@ one accepted System source revision and tested controller/Wizard image attempt.
 
 - Batch independent guided-preview evidence reads while retaining fresh
   plan/apply verification, bounded responses and temporary-credential cleanup.
+- Resolve dependent source discovery in one bounded native read and allow two
+  resource-limited CI jobs within the existing disposable candidate ceiling.
 - Require the native import, adoption, Review, regular merge and Beta lifecycle
   in the existing disposable System gate, with source/image/CI lineage retained
   through cold recovery and artifact publication.

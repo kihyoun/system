@@ -5,7 +5,12 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),vm=r
 const {spawnSync,spawn}=require('node:child_process');
 const fixture=require('../e2e/guided-preview-platform');
 const acme=require('../e2e/local-acme');
-const runner='concurrent = 1\n\n[[runners]]\n  name = "runner-docker-1"\n  url = "http://gitlab/"\n  token = "retained-test-token"\n  clone_url = "http://gitlab/"\n  [runners.cache]\n    MaxUploadedArchiveSize = 0\n  [runners.docker]\n    image = "docker:reviewed"\n    volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/cache"]\n    privileged = true\n    shm_size = 0\n';
+const {runnerCapacity}=require('../e2e/guided-preview-runner-capacity');
+const runner='concurrent = 1\n\n[[runners]]\n  name = "runner-docker-1"\n  executor = "docker"\n  url = "http://gitlab/"\n  token = "retained-test-token"\n  clone_url = "http://gitlab/"\n  [runners.cache]\n    MaxUploadedArchiveSize = 0\n  [runners.docker]\n    image = "docker:reviewed"\n    volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/cache"]\n    privileged = true\n    shm_size = 0\n';
+function toml(text){
+  const result=spawnSync('python3',['-c','import json,sys,tomllib; print(json.dumps(tomllib.loads(sys.stdin.read())))'],{input:text,encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);
+}
 function platform(){
   const calls=[],stages=[];
   const settings={version:1,namespace:'root',wizard:{mode:'import',project:'wizard-source',origin:'https://github.com/example/wizard.git'},
@@ -81,6 +86,81 @@ test('runner trust adds only a read-only public bundle and preserves native endp
   assert(!result.includes('pre_build_script'));assert(!result.includes('.gitlab/'));
   assert.throws(()=>fixture.runnerTrust(runner+'\n[[runners]]\n'),/single-managed-runner/);
   assert.throws(()=>fixture.runnerTrust(runner.replace('  name =','  environment = ["SSL_CERT_FILE=/unrelated"]\n  name =')),/trust-conflict/);
+});
+test('guided runner capacity changes only global concurrency and Docker job ceilings in their actual TOML scopes',()=>{
+  // End the Docker table before the end of the file: appended settings must
+  // not accidentally configure cache or session-server resource keys.
+  const input=runner+'  [runners.cache.s3]\n    ServerAddress = "retained.test"\n\n[session_server]\n  session_timeout = 1800\n';
+  const result=runnerCapacity(input),before=toml(input),after=toml(result);
+  assert.equal(after.concurrent,2);assert.equal(after.runners.length,1);
+  assert.equal(after.runners[0].docker.memory,'2g');assert.equal(after.runners[0].docker.cpus,'1');
+  delete after.runners[0].docker.memory;delete after.runners[0].docker.cpus;after.concurrent=1;
+  assert.deepEqual(after,before,'all other native runner values remain identical');
+  assert.equal(runnerCapacity(result),result);
+  assert.equal(runnerCapacity(fixture.runnerTrust(result)),fixture.runnerTrust(result));
+  for(const line of input.split('\n').filter(line=>line&&!line.startsWith('concurrent')))assert(result.includes(line));
+  const comment=runner.replace('concurrent = 1','concurrent = 1 # retained comment');
+  assert(runnerCapacity(comment).startsWith('concurrent = 2 # retained comment\n'));
+  const native=runner.replace('  [runners.cache]', '  limit = 0\n  request_concurrency = 1\n  [runners.cache]');
+  assert.equal(toml(runnerCapacity(native)).runners[0].limit,0);
+});
+test('runner capacity refuses conflicting, duplicated, misplaced and nonnative TOML resource controls',()=>{
+  const changed=[
+    runner.replace('concurrent = 1','concurrent = 0'),
+    runner.replace('concurrent = 1','concurrent = 3'),
+    runner.replace('concurrent = 1','concurrent = 2'),
+    runner.replace('concurrent = 1\n',''),
+    runner.replace('concurrent = 1','concurrent = 1\nconcurrent = 1'),
+    runner+'\n[[runners]]\n  name = "second-manager"\n',
+    runner.replace('runner-docker-1','foreign-runner'),
+    runner.replace('executor = "docker"','executor = "shell"'),
+    runner.replace('  [runners.docker]','  [runners.docker]\n    memory = "4g"'),
+    runner.replace('  [runners.docker]','  [runners.docker]\n    cpus = "2"'),
+    runner.replace('  [runners.docker]','  [runners.docker]\n    memory = "2g"\n    memory = "2g"'),
+    runner.replace('  [runners.cache]','  memory = "2g"\n  [runners.cache]'),
+    runner.replace('  [runners.cache]','  limit = 1\n  [runners.cache]'),
+    runner.replace('  [runners.cache]','  request_concurrency = 3\n  [runners.cache]'),
+    runner.replace('  [runners.docker]','  [runners.cache.s3]\n    cpus = "1"\n  [runners.docker]'),
+    runner+'[session_server]\n  concurrent = 1\n',
+    runner.replace('  [runners.docker]','  [runners."docker"]'),
+    runner.replace('concurrent = 1','"concurrent" = 1'),
+    runner.replace('  [runners.cache]','  docker.memory = "2g"\n  [runners.cache]'),
+    runner+'  [runners.custom]\n    config_exec = "unbounded"\n',
+    runner.replace('  name = "runner-docker-1"','  name = """runner-docker-1"""'),
+  ];
+  for(const key of ['memory_swap','memory_reservation','cpu_period','cpu_quota','cpu_shares','cpuset_cpus','service_memory','service_cpus']){
+    changed.push(runner.replace('  [runners.docker]','  [runners.docker]\n    '+key+' = "unreviewed"'));
+  }
+  for(const input of changed)assert.throws(()=>runnerCapacity(input),/runner-capacity-conflict/,input);
+});
+test('capacity ceiling arithmetic retains room beneath the existing hard candidate memory boundary',()=>{
+  const config=toml(runnerCapacity(runner));
+  const jobsGiB=config.concurrent*Number(config.runners[0].docker.memory.slice(0,-1));
+  // The DAG has one delivery builder at a time; its retained builder may
+  // coexist with the 1-GiB verifier browser and 128-MiB app. This leaves platform
+  // headroom, not a reservation or proof that the full native gate will pass.
+  assert.equal(jobsGiB+4+1+0.125,9.125);assert(jobsGiB+4+1+0.125<12);
+  const boundary=fs.readFileSync(path.join(__dirname,'disposable-candidate.js'),'utf8');
+  assert(boundary.includes("'--privileged','--memory','12g','--cpus','4'"));
+  for(const file of ['build.sh','verify.sh']){
+    const producer=fs.readFileSync(path.join(__dirname,'../../project-bootstrap/wizard-build/modern',file),'utf8');
+    assert(producer.includes('--driver-opt memory=4g --driver-opt cpu-period=100000 --driver-opt cpu-quota=200000'));
+    if(file==='verify.sh')assert(producer.includes('docker run --memory 1g --cpus 1'));
+  }
+});
+test('capacity configuration uses only the owned inner manager and refuses foreign fixture settings before IO',async()=>{
+  const f=platform();await fixture.configureRunner(f.candidate);
+  assert(f.calls.filter(call=>call.inner).every(call=>call.inner[0]==='exec'&&call.inner.includes('runner_docker_1')));
+  assert(!f.calls.some(call=>call.call));
+  const write=f.calls.find(call=>call.options?.input)?.options.input,config=toml(write);
+  assert.equal(config.concurrent,2);assert.equal(config.runners[0].docker.memory,'2g');assert.equal(config.runners[0].docker.cpus,'1');
+  assert.equal(config.runners[0].token,'retained-test-token');assert.equal(config.runners[0].url,'http://gitlab/');
+  assert(config.runners[0].docker.volumes.includes(fixture.TRUST+':'+fixture.JOB_TRUST+':ro'));
+  const foreign=platform();foreign.candidate.spec.guidedPreviewAcceptance=false;
+  await assert.rejects(()=>fixture.configureRunner(foreign.candidate),/owned-platform/);assert.equal(foreign.calls.length,0);
+  const conflict=platform();conflict.candidate.inner=async()=>runner.replace('concurrent = 1','concurrent = 3');
+  await assert.rejects(()=>fixture.configureRunner(conflict.candidate),/runner-capacity-conflict/);
+  assert(!conflict.calls.some(call=>call.rails||call.options?.input));
 });
 test('trust setup remains inside the owned daemon and installs public union trust without disabling validation',async()=>{
   const f=platform();await fixture.prepare(f.candidate,f.authority,f.dependencies);

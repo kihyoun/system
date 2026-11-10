@@ -20,6 +20,7 @@ const desired = {version: 1, namespace: 'team', wizard: {mode: 'import', project
   review: {enabled: true, host: 'review.example.test', ssl: '/ssl/review/cert', sslKey: '/ssl/review/key'}, beta: {enabled: false, host: '', ssl: '', sslKey: ''}};
 const nativeSource = require('../../project-bootstrap/preview-setup/source');
 let transfers = 0, registered = 0, revoked = 0, adoptionCalls = 0, activated = 0, reads = 0;
+const evidenceProcesses = [], evidenceRoutes = [];
 let pipelineStatus = 'running', requiredStatus = 'success';
 let failureMode = process.env.PREVIEW_SETUP_FAILURE_FIXTURE || '';
 if (failureMode === 'uncertain-environment') pipelineStatus = 'success';
@@ -43,7 +44,25 @@ environment.preflightWizardEnvironmentSettings = async value => value;
 environment.previewWizardEnvironments = () => ({previewHash: 'native-environments', capabilities: {canUpdate: true, reasons: []}});
 environment.configureWizardEnvironments = input => {if (failureMode === 'uncertain-environment') return {state: 'failed', message: 'Fixture environment timeout.', uncertain: true, uncertainAction: 'wizard-environments-primary'}; activated++; assert.equal(input.settings.review.host, desired.review.host); return {state: 'complete'};};
 bootstrap.rails = async input => {
-  if (input.action === 'preview-setup-read-many') return {values: await Promise.all(input.routes.map(async route => (await bootstrap.rails({...input, action: 'preview-setup-read', route})).value))};
+  if (input.action === 'preview-setup-read-many') {
+    evidenceProcesses.push({action: input.action, routes: [...input.routes]});
+    return {values: await Promise.all(input.routes.map(async route => (await bootstrap.rails({...input, action: 'preview-setup-read', route})).value))};
+  }
+  if (input.action === 'preview-setup-source-context') {
+    evidenceProcesses.push({action: input.action});
+    if (failureMode === 'source-context-transport') throw Object.assign(Error('Fixture read-only transport loss.'), {uncertain: false, action: input.action});
+    assert.equal(input.projectId, 7); assert(input.projectIds.includes(7));
+    const get = async route => (await bootstrap.rails({...input, action: 'preview-setup-read', route})).value;
+    const project = await get('projects/7');
+    const branch = await get('projects/7/repository/branches/' + project.default_branch);
+    const pipeline = (await get('projects/7/pipelines?sha=' + branch.commit.id + '&ref=' + project.default_branch + '&source=push&per_page=100'))
+      .find(row => row.sha === branch.commit.id && row.source === 'push');
+    if (!pipeline || !['success', 'failed'].includes(pipeline.status)) return {project, branch, pipeline: pipeline || null};
+    const jobs = await get('projects/7/pipelines/' + pipeline.id + '/jobs?per_page=100&include_retried=false');
+    const trees = await Promise.all(['.gitlab', '.system-bootstrapper/build-v1'].map(directory =>
+      get('projects/7/repository/tree?path=' + directory + '&ref=' + branch.commit.id + '&recursive=true&per_page=100')));
+    return {project, branch, pipeline, jobs, trees};
+  }
   if (input.action === 'preview-setup-preflight') return {namespaceId: 9};
   if (input.action === 'preview-setup-project') { registered++;
     if (failureMode === 'uncertain-project') throw Object.assign(Error('Fixture Rails timeout.'), {uncertain: true, action: input.action});
@@ -56,12 +75,16 @@ bootstrap.rails = async input => {
     return {revoked: true};}
   assert.equal(input.action, 'preview-setup-read'); reads++;
   const route = input.route;
+  evidenceRoutes.push(route);
   if (route === 'projects/7') return {value: {id: 7, default_branch: 'master'}};
   if (route.includes('/repository/branches/')) return {value: {commit: {id: sha}}};
   if (route.includes('/pipelines?')) return {value: failureMode === 'missing-pipeline' ? [] : [{id: 31, sha, source: 'push', status: pipelineStatus, web_url: 'https://gitlab.example.test/pipeline/31'}]};
   if (route.includes('/pipelines/31/jobs')) return {value: ['build:source', 'test:browser', 'build:wizard', 'test:wizard'].map((name, id) => ({id: id + 40, name, status: name === 'test:browser' ? requiredStatus : 'success', allow_failure: false, commit: {id: sha}, pipeline: {id: 31}}))};
   if (route.includes('/artifacts/build-evidence.json')) return {value: {imageRef}};
-  if (route.includes('/repository/tree?')) return {value: route.includes('path=.gitlab&') ? [{type: 'blob', path: '.gitlab/primary.yml'}, {type: 'blob', path: '.gitlab/delivery/environment.sh'}] : []};
+  if (route.includes('/repository/tree?')) return {value: route.includes('path=.gitlab&') ?
+    [{type: 'blob', path: '.gitlab/primary.yml'}, {type: 'blob', path: '.gitlab/delivery/environment.sh'},
+      ...Array.from({length: 9}, (_, index) => ({type: 'blob', path: '.gitlab/proof-' + index + '.sh'}))] :
+    require('../../project-bootstrap/wizard-build/recipe').generate(logo, 'node24-vite8-quickstart-v5').files.map(file => ({type: 'blob', path: file.path}))};
   if (route.includes('/repository/files/')) return {value: {content: Buffer.from('# approved fixture\n').toString('base64')}};
   throw Error('Unexpected native request: ' + route);
 };
@@ -114,7 +137,7 @@ async function verifyReadBatches() {
     let job = await wait(setup.applyPreviewSetup({settings: desired, previewHash: plan.previewHash}));
     assert.equal(job.state, 'failed');
     assert.equal(fs.readFileSync(main, 'utf8'), originalMain);
-    if (mode === 'settled-project') {
+    if (['settled-project', 'source-context-transport'].includes(mode)) {
       assert.equal(setup.previewSetupStatus().phase, 'needs-attention');
       assert(!fs.existsSync(path.join(root, '.storage-operation-lock')));
       assert(!fs.existsSync(path.join(root, 'preview-setup.json.lock')));
@@ -166,6 +189,8 @@ async function verifyReadBatches() {
   assert(!bootstrap.projectBusy());
   assert(!fs.existsSync(path.join(root, '.storage-operation-lock')), 'Completed setup retained its storage lease');
   assert.equal(job.phase, 'waiting-build', JSON.stringify(job)); assert.equal(registered, 1); assert.equal(transfers, 1); assert.equal(revoked, 1);
+  assert.deepEqual(evidenceProcesses.map(row => row.action), ['preview-setup-source-context'], 'Waiting discovery must use one Rails process');
+  assert.equal(evidenceRoutes.length, 3, 'Waiting discovery must stop before jobs, trees, blobs or artifacts');
   assert.equal(adoptionCalls + activated, 0, 'Pending CI became accepted previews');
   assert(!fs.readFileSync(path.join(root, 'preview-setup.json'), 'utf8').includes('fixture-transfer-secret'), 'Transfer token leaked into resumable state');
   const beforeReads = reads; setup.previewSetupStatus(); assert.equal(reads, beforeReads, 'Status queried GitLab');
@@ -173,18 +198,27 @@ async function verifyReadBatches() {
   plan = await setup.preflightPreviewSetup({settings: desired});
   job = await wait(setup.applyPreviewSetup({settings: desired, previewHash: plan.previewHash}));
   assert.equal(job.state, 'failed'); assert.equal(adoptionCalls + activated, 0, 'Failed required CI became accepted previews');
+  assert.equal(evidenceProcesses.length, 2, 'Failed required jobs must not launch an artifact/blob process');
+  assert(!evidenceRoutes.some(route => route.includes('/artifacts/') || route.includes('/repository/files/')), 'Failed required jobs read artifacts or blobs');
   requiredStatus = 'success';
   plan = await setup.preflightPreviewSetup({settings: desired});
   job = await wait(setup.applyPreviewSetup({settings: desired, previewHash: plan.previewHash}));
   assert.equal(job.phase, 'ready'); assert.equal(job.previewUrl, 'https://review.example.test');
+  assert.deepEqual(evidenceProcesses.slice(2).map(row => row.action), ['preview-setup-source-context', 'preview-setup-read-many'], 'Ready discovery must use two Rails processes');
+  const blobBatch = evidenceProcesses.at(-1).routes;
+  assert.equal(blobBatch.length, 24, 'Ready native discovery must batch one build artifact with all 23 manifest blobs');
+  assert.equal(blobBatch.filter(route => route.includes('/artifacts/')).length, 1);
+  assert.equal(blobBatch.filter(route => route.includes('/repository/files/')).length, 23);
+  assert(blobBatch.filter(route => route.includes('/repository/files/')).every(route => route.endsWith('?ref=' + sha)), 'Blob proof lost the exact source head');
   assert.equal(registered, 1); assert.equal(transfers, 1); assert.equal(revoked, 1, 'Resumption repeated source transfer');
   assert.equal(adoptionCalls, 1); assert.equal(activated, 1);
   assert.equal(fs.readFileSync(main, 'utf8'), originalMain, 'Preview setup changed Production');
   assert.equal(setup.previewSetupStatus().phase, 'ready');
   await assert.rejects(setup.preflightPreviewSetup({settings: {...desired, namespace: 'other'}}), /different setup/);
-  for (const mode of ['missing-pipeline', 'uncertain-project', 'uncertain-environment', 'uncertain-push', 'uncertain-push-revoke-failed', 'settled-project', 'replaced-storage', 'replaced-preview']) {
+  for (const mode of ['missing-pipeline', 'uncertain-project', 'uncertain-environment', 'uncertain-push', 'uncertain-push-revoke-failed', 'settled-project', 'source-context-transport', 'replaced-storage', 'replaced-preview']) {
     const output = require('child_process').execFileSync(process.execPath, [__filename], {env: {...process.env, PREVIEW_SETUP_FAILURE_FIXTURE: mode}, encoding: 'utf8', timeout: 30000});
     assert(output.includes('regression passed: ' + mode), output);
   }
+  console.log('Preview setup discovery: waiting 3 GETs in 1 Rails process; ready 30 GETs in 2 Rails processes, with required jobs checked before the artifact/23-blob batch.');
   console.log('Preview setup workflow: inert status/preflight, explicit hash, scoped secret lifetime, pending/failed native CI refusal, resumable exact project identity, canonical adoption, native environment reuse and unchanged Production passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;}).finally(() => fs.rmSync(root, {recursive: true, force: true}));
