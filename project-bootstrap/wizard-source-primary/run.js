@@ -102,11 +102,6 @@ class Adoption {
     if (bootstrap && !upgradeBuild) throw Error('Initial preview bootstrap requires an explicit reviewed build profile.');
     if (upgradeBuild && !bootstrap && !b.primary(old)) throw Error('Adopt the canonical source-primary project before upgrading its build profile.');
     if (!environments || environments.phase !== 'ready' || Object.values(environments.deployments || {}).some(slot => slot.active || slot.pending || slot.retired?.length)) throw Error('Stop and reconcile Review/Beta before reassignment.');
-    const project = await this.request('projects/' + old.repository.id);
-    if (project.id !== old.repository.id || project.path_with_namespace !== old.repository.path || project.namespace?.id !== old.namespaceId ||
-        project.visibility !== 'private' || project.ci_config_path !== old.repository.ciPath ||
-        (!b.primary(old) && (project.description !== 'System Bootstrapper operation ' + old.operation || old.repository.ciPath !== '.system-bootstrapper/ci.yml')))
-      throw Error('Previous managed Wizard ownership changed.');
     if (!b.primary(old) && input.projectId === old.repository.id) throw Error('Select the existing distinct source-primary project.');
     const registry = new URL(setting(main, 'GITLAB_REGISTRY_URL'));
     if (!['https:', 'http:'].includes(registry.protocol) || registry.username || registry.password || registry.pathname !== '/' || registry.search || registry.hash) throw Error('Invalid configured own registry.');
@@ -130,9 +125,17 @@ class Adoption {
       ciFiles: input.ciFiles, previousRepository: {id: old.repository.id, path: old.repository.path},
       ...(bootstrap ? {bootstrap: true} : {}), archive: operation + '.json', inputHash: b.hash(JSON.stringify(input))};
     b.validate(next);
-    const branch = await this.request('projects/' + input.projectId + '/repository/branches/' + encodeURIComponent(input.defaultBranch));
+    let verifiedFiles;
+    const [project, branch, proof] = await Promise.all([
+      this.request('projects/' + old.repository.id),
+      this.request('projects/' + input.projectId + '/repository/branches/' + encodeURIComponent(input.defaultBranch)),
+      b.evidence(this.request, next, input.pipelineId, input.sourceCommit, input.imageRef, files => { verifiedFiles = files; })
+    ]);
+    if (project.id !== old.repository.id || project.path_with_namespace !== old.repository.path || project.namespace?.id !== old.namespaceId ||
+        project.visibility !== 'private' || project.ci_config_path !== old.repository.ciPath ||
+        (!b.primary(old) && (project.description !== 'System Bootstrapper operation ' + old.operation || old.repository.ciPath !== '.system-bootstrapper/ci.yml')))
+      throw Error('Previous managed Wizard ownership changed.');
     if (branch.commit?.id !== input.sourceCommit) throw Error('The source-primary default branch advanced.');
-    const proof = await b.evidence(this.request, next, input.pipelineId, input.sourceCommit, input.imageRef);
     const retainedRecipe = bootstrap ? builds.generate(current.text.slice(0, 1184), input.buildProfile) : builds.select(current.text.slice(0, 1184), old.wizardWorkflow.build.recipeHash);
     if (upgradeBuild && !['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(retainedRecipe.profile))
       throw Error('The source-primary upgrade requires an existing reviewed modern build recipe.');
@@ -148,10 +151,9 @@ class Adoption {
     }
     if (recipe.files.some(file => !input.ciFiles.some(source => source.path === file.path && source.sha256 === b.hash(file.content))) ||
         !input.ciFiles.some(source => source.path === '.gitlab/delivery/environment.sh')) throw Error('Approve the complete generic delivery and environment script manifest.');
-    await Promise.all(recipe.files.map(async file => {
-      const row = await this.request('projects/' + input.projectId + '/repository/files/' + encodeURIComponent(file.path) + '?ref=' + input.sourceCommit);
-      if (!Buffer.from(row.content.replace(/\n/g, ''), 'base64').equals(Buffer.from(file.content))) throw Error('The source-primary build recipe differs from the reviewed generic recipe.');
-    }));
+    for (const file of recipe.files) {
+      if (!verifiedFiles.get(file.path)?.equals(Buffer.from(file.content))) throw Error('The source-primary build recipe differs from the reviewed generic recipe.');
+    }
     next.wizardWorkflow = {version: 1, phase: 'source-primary', sourceRevision: input.sourceCommit,
       build: {version: 1, mode: 'source-primary', recipeHash: recipe.recipeHash, phase: 'candidate-verified',
         pipeline: {id: proof.pipeline.id, sha: proof.pipeline.sha, status: proof.pipeline.status, webUrl: proof.pipeline.web_url},

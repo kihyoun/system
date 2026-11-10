@@ -81,42 +81,77 @@ async function bindingRefresh(f) {
   return {...update, input: {...update.input, action: 'refresh-binding'}};
 }
 (async () => {
-  await use(async f => {
+  for (const manifestSize of [23, 40]) await use(async f => {
     const {batchedReads, MAX_ROUTES} = require('../../project-bootstrap/preview-setup/reads');
     // Include the native recipe (and its real CA bundle) in a full approved
     // manifest. Process launches must scale with phases, not individual files.
-    while (f.input.ciFiles.length < 40) {
+    while (f.input.ciFiles.length < manifestSize) {
       const file = '.gitlab/proof-' + f.input.ciFiles.length + '.sh', content = '# retained native proof\n';
       f.input.ciFiles.push({path: file, sha256: b.hash(content)});
       f.rows['projects/7/repository/files/' + encodeURIComponent(file) + '?ref=' + sha] = {content: Buffer.from(content).toString('base64')};
     }
-    let launches = 0, active = 0, peak = 0;
+    let active = 0, peak = 0;
+    const batches = [];
     const original = f.adoption.request;
     f.adoption.request = batchedReads(async routes => {
-      launches++; active++; peak = Math.max(peak, active);
+      batches.push([...routes]); active++; peak = Math.max(peak, active);
       assert(routes.length <= MAX_ROUTES);
       try { return await Promise.all(routes.map(original)); } finally { active--; }
     });
     const plan = await f.adoption.plan(f.input);
     await f.adoption.apply(f.input, plan.planHash);
-    assert(f.calls.length >= 100, 'Fixture did not exercise the expensive native manifest');
-    assert(launches <= 20, 'Evidence reads started Rails for individual manifest files: ' + launches);
+    assert.equal(f.calls.length, 2 * (manifestSize + 7), 'Evidence GETs include duplicate recipe reads');
+    const phaseSizes = manifestSize === 23 ? [28, 2] : [32, 13, 2];
+    assert.deepEqual(batches.map(routes => routes.length), [...phaseSizes, ...phaseSizes], 'Independent evidence reads did not coalesce');
     assert.equal(peak, 1, 'Batches overlapped Rails processes');
     assert.equal(f.calls.filter(route => route === 'projects/7').length, 2, 'Apply reused mutable plan evidence');
-    console.log('Native adoption batching: ' + f.calls.length + ' evidence GETs in ' + launches + ' sequential process batches across plan/apply.');
+    for (const file of f.input.ciFiles) {
+      const route = 'projects/7/repository/files/' + encodeURIComponent(file.path) + '?ref=' + sha;
+      assert.equal(f.calls.filter(actual => actual === route).length, 2, 'Each plan must read every manifest blob exactly once');
+    }
+    console.log('Native adoption batching (' + manifestSize + ' files): ' + f.calls.length + ' evidence GETs in ' + batches.length + ' sequential process batches across plan/apply.');
   }, 'node24-vite8-quickstart-v5');
   for (const change of [
+    f => {f.rows['projects/1'].description = 'Unrelated project';},
+    f => {f.rows['projects/7/repository/branches/master'].commit.id = 'f'.repeat(40);},
     f => {f.rows['projects/7'].only_allow_merge_if_pipeline_succeeds = false;},
+    f => {f.rows['projects/7/pipelines/31'].sha = 'f'.repeat(40);},
     f => {f.rows['projects/7/pipelines/31/jobs?per_page=100&include_retried=false'][2].status = 'failed';},
     f => {f.rows['projects/7/jobs/41/artifacts/wizard-evidence.json'].cubeSignature = false;},
-    f => {f.rows['projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + sha].content = Buffer.from('changed native CI').toString('base64');}
+    f => {f.rows['projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + sha].content = Buffer.from('changed native CI').toString('base64');},
+    f => {f.rows['projects/7/repository/files/' + encodeURIComponent('.system-bootstrapper/build-v1/build.sh') + '?ref=' + sha].content = Buffer.from('changed generic recipe').toString('base64');}
   ]) await use(async f => {
     const {batchedReads} = require('../../project-bootstrap/preview-setup/reads'), original = f.adoption.request;
     f.adoption.request = batchedReads(routes => Promise.all(routes.map(original)));
     const plan = await f.adoption.plan(f.input); change(f);
+    await assert.rejects(f.adoption.plan(f.input));
     await assert.rejects(f.adoption.apply(f.input, plan.planHash));
+    assert.equal(f.calls.filter(route => route === 'projects/7').length, 3, 'A later plan or apply reused the earlier project proof');
+    const ciRoute = 'projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + sha;
+    assert.equal(f.calls.filter(route => route === ciRoute).length, 3, 'A later plan or apply reused the earlier manifest proof');
     assert.equal(fs.readFileSync(f.config, 'utf8'), f.text);
     assert(!fs.existsSync(f.directory), 'Refused fresh evidence created an adoption archive');
+  });
+  await use(async f => {
+    const file = f.input.ciFiles.find(row => row.path === '.system-bootstrapper/build-v1/build.sh');
+    const changed = 'changed generic recipe\n';
+    file.sha256 = b.hash(changed);
+    f.rows['projects/7/repository/files/' + encodeURIComponent(file.path) + '?ref=' + sha].content = Buffer.from(changed).toString('base64');
+    // Matching the supplied manifest is insufficient: it must still match the
+    // controller's complete trusted generic recipe, without another blob read.
+    await assert.rejects(f.adoption.plan(f.input), /complete generic delivery/);
+    assert.equal(fs.readFileSync(f.config, 'utf8'), f.text);
+    assert(!fs.existsSync(f.directory), 'Unapproved generic bytes created an adoption archive');
+  });
+  await use(async f => {
+    const plan = await f.adoption.plan(f.input);
+    let files, notifications = 0;
+    const proof = await b.evidence(f.adoption.request, plan.next, f.input.pipelineId, sha, image,
+      verified => {files = verified; notifications++;});
+    assert.deepEqual(Object.keys(proof).sort(), ['build', 'pipeline', 'project', 'publishing', 'smoke'], 'Verified blobs leaked into the public evidence shape');
+    assert.equal(notifications, 1);
+    const recipeFile = '.system-bootstrapper/build-v1/build.sh';
+    assert(files.get(recipeFile).equals(Buffer.from(builds.generate(logo, 'node24-vite8-overview-v3').files.find(file => file.path === recipeFile).content)));
   });
   await use(async f => {
     const plan = await f.adoption.plan(f.input);
