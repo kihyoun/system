@@ -54,6 +54,23 @@ test('fixture TLS uses one existing authority and extends its exact owned SANs',
     f.candidate.spec.images.candidate.id,f.candidate.spec.images.wizard.id])assert(recording.includes(value));
   assert.equal(f.stages.at(-1),'guided-preview-native-source-installation-record');
 });
+test('GitLab HTTPS uses the public sign-in route while monitoring readiness stays on loopback',async()=>{
+  const f=platform(),probes=[];
+  f.dependencies.tlsProbe=async(actual,host,route,options,connection)=>{
+    assert.equal(actual,f.candidate);assert.equal(connection.certificate,acme.ISSUANCE_CA);
+    probes.push({host,route});
+    if(host===fixture.HOSTS.gitlab)return {status:route==='/users/sign_in'?200:403};
+    return {status:host===fixture.HOSTS.sync?404:200};
+  };
+  await fixture.prepare(f.candidate,f.authority,f.dependencies);
+  assert.deepEqual(probes,[
+    {host:fixture.HOSTS.gitlab,route:'/users/sign_in'},
+    {host:fixture.HOSTS.sync,route:'/'},
+    {host:fixture.HOSTS.wizard,route:'/'}
+  ]);
+  assert(f.calls.some(call=>call.inner?.includes('http://127.0.0.1/-/readiness')));
+  assert(!f.calls.some(call=>call.rails?.includes('monitoring_whitelist')||call.input?.settings?.GITLAB_OMNIBUS_CONFIG));
+});
 test('runner trust adds only a read-only public bundle and preserves native endpoints, image, token and producer bytes',()=>{
   const result=fixture.runnerTrust(runner);
   assert.equal(fixture.runnerTrust(result),result,'runner trust setup must be idempotent');

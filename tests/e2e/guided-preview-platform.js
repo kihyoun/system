@@ -186,7 +186,9 @@ async function prepare(candidate,acme,dependencies={}){
     await candidate.inner(['exec','-w','/system/gitlab','system_bootstrapper_1','bash','-e','start.sh'],{timeout:180000});
     await candidate.wait(async()=>{try{return (await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness'])).includes('ok');}catch{return false;}},600000);
     await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
-    for(const [host,route]of [[HOSTS.gitlab,'/-/readiness'],[HOSTS.sync,'/'],[HOSTS.wizard,'/']]){
+    // GitLab restricts monitoring endpoints to its local monitoring allowlist.
+    // Keep readiness above on loopback; exercise the public sign-in route here.
+    for(const [host,route]of [[HOSTS.gitlab,'/users/sign_in'],[HOSTS.sync,'/'],[HOSTS.wizard,'/']]){
       await candidate.wait(async()=>{try{const result=await probe(candidate,host,route,{},{certificate:ISSUANCE_CA});return result.status===200||host===HOSTS.sync&&result.status===404;}catch{return false;}},60000);
     }
   });
