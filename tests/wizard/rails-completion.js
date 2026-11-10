@@ -18,6 +18,7 @@ childProcess.spawn = (command, args) => {
     else if (scenario === 'client-exit') child.emit('close', 1);
     else if (scenario === 'truncated-json') {child.stdout.emit('data', '{"state":'); child.emit('close', 0);}
     else if (scenario === 'invalid-json-shape') {child.stdout.emit('data', 'null'); child.emit('close', 0);}
+    else if (scenario === 'oversized-output') {child.stdout.emit('data', 'x'.repeat(2000001)); child.emit('close', 0);}
     else if (scenario === 'settled-failure') {child.stdout.emit('data', JSON.stringify({state: 'failed', message: 'Settled native refusal.'})); child.emit('close', 0);}
     else throw Error('Unknown fixture scenario');
   });
@@ -27,7 +28,7 @@ global.setTimeout = (callback, milliseconds, ...args) => milliseconds === 240000
 global.clearTimeout = timer => {if (!timer?.fixture) originalClear(timer);};
 const {rails, startJob} = require('../../sync/dist/ProjectBootstrap');
 (async () => {
-  for (scenario of ['timeout', 'transport-loss', 'client-exit', 'truncated-json', 'invalid-json-shape']) {
+  for (scenario of ['timeout', 'transport-loss', 'client-exit', 'truncated-json', 'invalid-json-shape', 'oversized-output']) {
     await assert.rejects(rails({action: 'preview-setup-project'}), error => {
       assert.equal(error.uncertain, true, scenario + ' lost its unconfirmed mutation marker');
       assert.equal(error.action, 'preview-setup-project'); return true;
@@ -39,6 +40,9 @@ const {rails, startJob} = require('../../sync/dist/ProjectBootstrap');
   assert.equal((await rails({action: 'preview-setup-project'})).state, 'failed');
   scenario = 'timeout';
   await assert.rejects(rails({action: 'preview-setup-read'}), error => error.uncertain === false);
+  for (const action of ['preview-setup-read-many', 'preview-setup-source-context'])
+    for (scenario of ['timeout', 'transport-loss', 'oversized-output'])
+      await assert.rejects(rails({action}), error => error.uncertain === false && error.action === action);
   const job = startJob('nested-uncertainty-fixture', async () => {throw Object.assign(Error('Fixture uncertain mutation.'), {uncertain: true, action: 'wizard-environments-primary'});});
   await new Promise(resolve => originalTimeout(resolve, 0));
   assert.equal(job.state, 'failed'); assert.equal(job.uncertain, true); assert.equal(job.uncertainAction, 'wizard-environments-primary');

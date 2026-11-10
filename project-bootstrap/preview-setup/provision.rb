@@ -37,6 +37,57 @@ class BootstrapperPreviewSetup
       api(Net::HTTP::Post, prefix, {key: key, value: value, environment_scope: '*', raw: true, protected: false, masked: false})
     end
   end
+  def evidence_routes(routes)
+    ids = @input.fetch('projectIds').map { |id| Integer(id) }
+    raise BootstrapError, 'Invalid preview evidence route.' unless routes.is_a?(Array) && routes.length.between?(1, 32)
+    # Validate the complete batch before making its first request. An invalid
+    # later member must not read even an otherwise permitted project.
+    routes.each do |route|
+      match = route.is_a?(String) && route.bytesize <= 2048 &&
+        %r{\Aprojects/([1-9][0-9]*)(?:\z|/(?:repository/(?:branches/|files/|tree\?)|pipelines(?:/|\?)|jobs/[1-9][0-9]*/artifacts/))}.match(route)
+      raise BootstrapError, 'Invalid preview evidence route.' unless match && ids.include?(Integer(match[1])) && !route.match?(/[\x00-\x20\x7f]/) && !route.include?('..')
+    end
+    routes
+  end
+  def source_context
+    id = @input.fetch('projectId')
+    ids = @input['projectIds']
+    raise BootstrapError, 'Invalid preview evidence route.' unless id.is_a?(Integer) && id > 0 && ids.is_a?(Array) && ids.include?(id)
+    reads, bytes = 0, 32
+    read = lambda do |route|
+      evidence_routes([route])
+      reads += 1
+      raise BootstrapError, 'Invalid preview evidence route.' if reads > 32
+      value = get(route)
+      bytes += JSON.generate(value).bytesize + 1
+      raise BootstrapError, 'Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.' if bytes > 1500000
+      value
+    end
+    finish = lambda do |value|
+      raise BootstrapError, 'Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.' if JSON.generate(value).bytesize > 1500000
+      value
+    end
+    prefix = "projects/#{id}"
+    project = read.call(prefix)
+    branch_name = project.fetch('default_branch')
+    raise BootstrapError, 'Selected preview source identity is invalid.' unless project['id'] == id && branch_name.is_a?(String) && !branch_name.empty?
+    branch = read.call(prefix + '/repository/branches/' + URI.encode_www_form_component(branch_name))
+    sha = branch.fetch('commit').fetch('id')
+    raise BootstrapError, 'Selected preview source identity is invalid.' unless sha.is_a?(String) && sha.match?(/\A[a-f0-9]{40}\z/)
+    pipelines = read.call(prefix + '/pipelines?sha=' + sha + '&ref=' + URI.encode_www_form_component(branch_name) + '&source=push&per_page=100')
+    pipeline = pipelines.find { |row| row['sha'] == sha && row['source'] == 'push' }
+    result = {project: project, branch: branch, pipeline: pipeline}
+    return finish.call(result) unless pipeline && ['success', 'failed'].include?(pipeline['status'])
+    pipeline_id = pipeline.fetch('id')
+    raise BootstrapError, 'Selected preview source identity is invalid.' unless pipeline_id.is_a?(Integer) && pipeline_id > 0
+    result[:jobs] = read.call(prefix + "/pipelines/#{pipeline_id}/jobs?per_page=100&include_retried=false")
+    result[:trees] = ['.gitlab', '.system-bootstrapper/build-v1'].map do |directory|
+      rows = read.call(prefix + '/repository/tree?path=' + URI.encode_www_form_component(directory) + '&ref=' + sha + '&recursive=true&per_page=100')
+      raise BootstrapError, 'The approved CI manifest is too large. Review it through the native source-primary tool.' if rows.length >= 100
+      rows
+    end
+    finish.call(result)
+  end
   def call
     case @input.fetch('action')
     when 'preview-setup-preflight'
@@ -84,11 +135,19 @@ class BootstrapperPreviewSetup
       api(Net::HTTP::Delete, "projects/#{project.fetch('id')}/access_tokens/#{Integer(@input.fetch('tokenId'))}")
       {revoked: true}
     when 'preview-setup-read'
-      route = @input.fetch('route')
-      ids = @input.fetch('projectIds').map { |id| Integer(id) }
-      match = %r{\Aprojects/([1-9][0-9]*)(?:\z|/(?:repository/(?:branches/|files/|tree\?)|pipelines(?:/|\?)|jobs/[1-9][0-9]*/artifacts/))}.match(route)
-      raise BootstrapError, 'Invalid preview evidence route.' unless match && ids.include?(Integer(match[1])) && !route.include?("\n") && !route.include?('..')
-      {value: get(route)}
+      {value: get(evidence_routes([@input.fetch('route')]).first)}
+    when 'preview-setup-source-context'
+      source_context
+    when 'preview-setup-read-many'
+      routes = evidence_routes(@input.fetch('routes'))
+      bytes = 32
+      values = routes.map do |route|
+        value = get(route)
+        bytes += JSON.generate(value).bytesize + 1
+        raise BootstrapError, 'Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.' if bytes > 1500000
+        value
+      end
+      {values: values}
     when 'preview-setup-system'
       project = get('projects/' + Integer(@input.fetch('projectId')).to_s)
       raise BootstrapError, 'Selected System source identity changed.' unless project['path_with_namespace'] == @input.fetch('projectPath') && project.dig('namespace', 'id') == Integer(@input.fetch('namespaceId')) && project['only_allow_merge_if_pipeline_succeeds'] == true && project['only_allow_merge_if_all_discussions_are_resolved'] == true

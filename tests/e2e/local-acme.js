@@ -45,6 +45,12 @@ function basePaths(base){
   if(!['/candidate-data/platform','/recovered-data/platform'].includes(base))throw Error('acme-owned-data-root-required');
   return {base,parent:path.posix.dirname(base),state:base+'/host/letsencrypt',tools:base+'/acme-test-tools',webroot:base+'/ssl/acme-http01'};
 }
+function issuanceDomains(extra=[]){
+  if(!Array.isArray(extra)||extra.length>12||extra.some(host=>typeof host!=='string'||host.length>253||
+    !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(host)||!host.endsWith('.candidate.test')))
+    throw Error('acme-owned-certificate-domains-required');
+  return [...new Set(['wizard.candidate.test','sync.candidate.test',require('./recovery').WIZARD_ALIAS,...extra])];
+}
 async function controller(candidate,action,input){
   const script="let t='';process.stdin.on('data',x=>t+=x);process.stdin.on('end',async()=>{try{const input=JSON.parse(t);const result=await ("+action.toString()+")(input);if(result!==undefined)process.stdout.write(JSON.stringify(result));}catch{process.exitCode=1;}});";
   const text=await candidate.inner(['exec','-i','system_bootstrapper_1','node','-e',script],{input:JSON.stringify(input),timeout:20000});
@@ -184,7 +190,8 @@ class LocalAcme {
         serial:new crypto.X509Certificate(cert).serialNumber,certificateHash:crypto.createHash('sha256').update(cert).digest('hex')};
     },{});
   }
-  async issue(candidate){
+  async issue(candidate,options={}){
+    const domains=issuanceDomains(options.domains);
     return candidate.stage('acme-initial-webroot-issuance',async()=>{
       await candidate.stage('acme-initial-authority-attach',()=>this.attach(candidate));
       await candidate.stage('acme-initial-client-prepare',()=>this.prepareClient(candidate,'/candidate-data/platform'));
@@ -194,7 +201,7 @@ class LocalAcme {
         candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']));
       await candidate.stage('acme-initial-certbot-issuance',()=>this.certbot(candidate,'/candidate-data/platform',
         ['certonly','--server',DIRECTORY,'--non-interactive','--agree-tos','--register-unsafely-without-email',
-        '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture','-d','wizard.candidate.test','-d','sync.candidate.test','-d',require('./recovery').WIZARD_ALIAS]));
+        '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture',...domains.flatMap(host=>['-d',host])]));
       await candidate.stage('acme-initial-root-certificate',async()=>{
         const root=await request(candidate,'https://pebble:15000/roots/0',{trust:this.trust,address:this.caAddress});
         if(root.status!==200||!root.body.startsWith('-----BEGIN CERTIFICATE-----'))throw Error('acme-issuance-trust-required');
@@ -249,4 +256,4 @@ class LocalAcme {
     return true;
   }
 }
-module.exports={LocalAcme,PINNED,TRUST_HASH,DIRECTORY,ISSUANCE_CA,validate,pebbleConfiguration,basePaths,hostProgram,request,hashFile};
+module.exports={LocalAcme,PINNED,TRUST_HASH,DIRECTORY,ISSUANCE_CA,validate,pebbleConfiguration,basePaths,hostProgram,request,hashFile,issuanceDomains};

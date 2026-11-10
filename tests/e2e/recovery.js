@@ -33,6 +33,17 @@ const SEED_RESTORE_FAILURE_CODES=Object.fromEntries([
 ].map(code=>['Seed operation failed: '+code+'.',code]));
 
 function privateWizardDescriptor(value,spec) {
+  if(value?.kind==='source-primary-native-v1') {
+    const archives=Object.values({...spec.images,...spec.supportImages,...spec.acmeImages});
+    if(!['projectId','pipelineId','jobId','runnerId'].every(key=>Number.isSafeInteger(value[key])&&value[key]>0)||
+      !/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+$/.test(value.projectPath||'')||value.projectPath.split('/').some(part=>['.','..'].includes(part))||
+      !/^registry\.candidate\.test(?::5050)?$/.test(value.registryHost||'')||!/^sha256:[a-f0-9]{64}$/.test(value.imageDigest||'')||
+      !/^sha256:[a-f0-9]{64}$/.test(value.imageId||'')||!/^[a-f0-9]{40}$/.test(value.sourceCommit||'')||
+      value.imageRef!==value.registryHost+'/'+value.projectPath+'@'+value.imageDigest||archives.some(image=>image.id===value.imageId)||
+      ['marker','markerPath','sourceImageId'].some(key=>Object.hasOwn(value,key)))throw Error('private-wizard-recovery-descriptor-invalid');
+    return value;
+  }
+  if(value?.kind!==undefined)throw Error('private-wizard-recovery-descriptor-invalid');
   if(!value||!Number.isInteger(value.projectId)||value.projectId<1||!/^[-a-z0-9_/]+\/wizard$/.test(value.projectPath||'')||
     !/^sha256:[a-f0-9]{64}$/.test(value.imageDigest||'')||!/^sha256:[a-f0-9]{64}$/.test(value.imageId||'')||
     value.sourceImageId!==spec.images?.wizard?.id||Object.values(spec.images||{}).some(image=>image.id===value.imageId)||
@@ -84,6 +95,11 @@ async function syncFetch(candidate,connection,{waitForReady=false}={}) {
   const projects=await request('/config/projects',{headers});
   if(projects.status!==200) throw Error('recovery-fetch-failed');
   const result={main:JSON.parse(main.body),projects:JSON.parse(projects.body)};
+  if(candidate.spec?.guidedPreviewAcceptance===true&&!candidate.spec.restore){
+    const preview=await request('/projects/wizard/preview-setup',{headers});
+    if(preview.status!==200)throw Error('recovery-preview-intent-fetch-failed');
+    result.previewSetup=require('../../project-bootstrap/preview-setup/settings').settings(JSON.parse(preview.body).settings);
+  }
   signature(result.main.data);
   if(!Array.isArray(result.projects)||!result.projects.some(project=>project.filename==='.wizard.env')) throw Error('recovery-project-export-missing');
   return result;
@@ -194,6 +210,7 @@ async function capture(original,dependencies={}) {
   try {
     await original.stage('recovery-record-service-identity',async()=>{
       inputs.expected=await recordIdentity(original);
+      if(original.spec.guidedPreviewAcceptance===true)inputs.expected.guidedBinding=await require('./guided-preview-platform').bindingProof(original);
     });
     if(original.spec.privateWizardRecovery)await original.stage('recovery-publish-uncached-private-wizard',async()=>{
       const publish=dependencies.publishWizard||require('./wizard-pin-fixture').publish;
@@ -202,12 +219,14 @@ async function capture(original,dependencies={}) {
     await original.stage('recovery-backup-wizard-configuration',async()=>{
       // Generate a real test certificate, then place its deploy/renewal state in
       // the declared persistent sources before Harvest. This is not ACME proof.
-      await original.inner(['exec','system_gitlab_1','/opt/gitlab/embedded/bin/openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','2',
+      const guided=original.spec.guidedPreviewAcceptance===true;
+      if(guided&&(!dependencies.acme||!original.guidedAcmeIdentity))throw Error('guided-preview-issued-certificate-required');
+      if(!guided)await original.inner(['exec','system_gitlab_1','/opt/gitlab/embedded/bin/openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','2',
         '-subj','/CN=wizard.candidate.test','-addext','subjectAltName=DNS:wizard.candidate.test,DNS:sync.candidate.test,DNS:'+WIZARD_ALIAS,
         '-keyout','/tmp/.recovery-fixture-key','-out','/tmp/.recovery-fixture-cert']);
-      const certificate=await original.inner(['exec','system_gitlab_1','cat','/tmp/.recovery-fixture-cert']);
-      const privateKey=await original.inner(['exec','system_gitlab_1','cat','/tmp/.recovery-fixture-key']);
-      await original.inner(['exec','system_gitlab_1','rm','/tmp/.recovery-fixture-cert','/tmp/.recovery-fixture-key']);
+      const certificate=await original.inner(['exec',guided?'system_bootstrapper_1':'system_gitlab_1','cat',guided?LEAF:'/tmp/.recovery-fixture-cert']);
+      const privateKey=await original.inner(['exec',guided?'system_bootstrapper_1':'system_gitlab_1','cat',guided?KEY:'/tmp/.recovery-fixture-key']);
+      if(!guided)await original.inner(['exec','system_gitlab_1','rm','/tmp/.recovery-fixture-cert','/tmp/.recovery-fixture-key']);
       const settings={GITLAB_IMAGE:'candidate-gitlab:under-test',GITLAB_RUNNER_IMAGE:'candidate-runner:under-test',
         BOOTSTRAPPER_IMAGE:'system-candidate:under-test',WIZARD_IMAGE:'systembootstrapper/wizard',NGINX_IMAGE:'nginx:latest',
         GITLAB_SSH_BIND:'2222',GITLAB_REGISTRY_BIND:'5050',SYNC_DOMAIN_MODE:'2',WIZARD_DOMAIN_MODE:'2',
@@ -240,7 +259,7 @@ async function capture(original,dependencies={}) {
         fs.writeFileSync('/state/.docker.env',config,{mode:0o600});
       },{settings,certificate,privateKey,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef,realAcme:!!dependencies.acme});
       inputs.expected.wizardAliases=WIZARD_ALIAS;
-      if(dependencies.acme)inputs.expected.acme=await dependencies.acme.issue(original);
+      if(dependencies.acme)inputs.expected.acme=guided?original.guidedAcmeIdentity:await dependencies.acme.issue(original);
       else await original.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
       const connection=dependencies.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{};
       await verifyAliasLifecycle(original,connection,'original');
@@ -326,6 +345,9 @@ async function bootstrapRestore(candidate,dependencies={}) {
     '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--env','GITLAB_RUNNER_IMAGE=candidate-runner:under-test',
     '--env',"GITLAB_OMNIBUS_CONFIG=puma['worker_processes'] = 2",
     '--env','GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test','--env','NGINX_IMAGE=nginx:latest','--env','WIZARD_IMAGE=systembootstrapper/wizard',
+    ...(candidate.spec.guidedPreviewAcceptance===true?['--env','SYSTEM_WIZARD_ENVIRONMENT_IMAGE='+candidate.spec.images.candidate.id,
+      '--env','SYSTEM_WIZARD_CANONICAL_CONTROLLER=system_bootstrapper_1',
+      ...['gitlab','registry','wizard','sync','review','beta'].flatMap(host=>['--add-host',host+'.candidate.test:host-gateway'])]:[]),
     '--env','GITLAB_SSH_BIND=2222','--env','GITLAB_REGISTRY_BIND=5050','--volume','/var/run/docker.sock:/var/run/docker.sock',
     '--volume',BASE+'/runners:'+BASE+'/runners','--volume',BASE+'/host/letsencrypt:/host-letsencrypt',
     '--volume','system_configuration:/state','--volume','system_wizardPublic:/wizard-public','--volume','system_templates:/templates','--volume','system_synctemplates:/synctemplates','--volume','system_ssl:/ssl',
@@ -357,6 +379,7 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await candidate.stage('recovery-seed-native-restore',()=>candidate.inner(
     ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','bash','seed.sh'],
     {timeout:180000,failureCodes:SEED_RESTORE_FAILURE_CODES}));
+  if(candidate.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(candidate);
   await storageAdapter.detach(candidate);
   candidate.externalSeedRestored=true;
   // Execute the actual fresh-source host rewriter, using the already declared
@@ -373,6 +396,8 @@ async function bootstrapRestore(candidate,dependencies={}) {
 }
 
 async function routingProbe(candidate,host,route,options={},connection={}) {
+  const timeoutMilliseconds=connection.timeoutMilliseconds??10000;
+  if(!Number.isInteger(timeoutMilliseconds)||timeoutMilliseconds<1||timeoutMilliseconds>300000)throw Error('invalid-owned-routing-timeout');
   const networks=JSON.parse(await candidate.inner(['inspect','--format','{{json .NetworkSettings.Networks}}','system_bootstrapper_1']));
   const gateway=networks.bridge?.Gateway;
   if(!/^\d+\.\d+\.\d+\.\d+$/.test(gateway))throw Error('missing-private-gateway');
@@ -382,7 +407,7 @@ async function routingProbe(candidate,host,route,options={},connection={}) {
       const request=transport.request({hostname:input.host,port:input.port,path:input.route,
         lookup:(_host,options,done)=>options.all?done(null,[{address:input.gateway,family:4}]):done(null,input.gateway,4),
         ...(input.tls?{servername:input.host,ca:fs.readFileSync(input.certificate),rejectUnauthorized:true}:{}),
-        method:input.options.method||'GET',headers:input.options.headers||{},timeout:10000},response=>{
+        method:input.options.method||'GET',headers:input.options.headers||{},timeout:input.timeoutMilliseconds},response=>{
         const serial=input.tls?response.socket.getPeerCertificate().serialNumber:undefined;
         const chunks=[];let size=0;response.on('data',chunk=>{size+=chunk.length;if(size>524288){request.destroy();reject(Error());}else chunks.push(chunk);});
         response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,body:Buffer.concat(chunks).toString('utf8'),serial}));
@@ -391,7 +416,7 @@ async function routingProbe(candidate,host,route,options={},connection={}) {
       request.end(input.options.body);
     });
     process.stdout.write(JSON.stringify(response));
-  },{host,gateway,route,options,tls:connection.tls!==false,certificate:connection.certificate||LEAF,port:connection.port||(connection.tls===false?80:443)},{timeout:20000});
+  },{host,gateway,route,options,tls:connection.tls!==false,certificate:connection.certificate||LEAF,port:connection.port||(connection.tls===false?80:443),timeoutMilliseconds},{timeout:timeoutMilliseconds+10000});
   return JSON.parse(raw);
 }
 async function tlsProbe(candidate,host,route,options={},connection={}) {
@@ -501,6 +526,11 @@ async function verifyRestore(candidate,input) {
   await candidate.stage(input.expected.acme?'recovery-acme-tls-and-config':'recovery-synthetic-tls-and-config',()=>verifyConfiguration(candidate,input));
   if(input.expected.wizardAliases!==undefined)await verifyAliasLifecycle(candidate,input.expected.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{},'restored');
   if(input.expected.privateWizard)await verifyPrivateWizard(candidate,input.expected.privateWizard);
+  if(candidate.spec.guidedPreviewAcceptance===true)await candidate.stage('recovery-guided-source-binding',async()=>{
+    const restored=await require('./guided-preview-platform').bindingProof(candidate);
+    if(!input.expected.guidedBinding||JSON.stringify(restored)!==JSON.stringify(input.expected.guidedBinding))throw Error('restored-guided-source-binding-changed');
+    candidate.guidedBindingRestored=true;
+  });
   await candidate.stage('recovery-gitlab-data-identity',async()=>{
     await candidate.wait(async()=>{await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness']);return true;},candidate.spec.readinessMilliseconds||600000);
     await verifyServiceIdentity(candidate,input.expected);
@@ -534,9 +564,11 @@ async function verifyServiceIdentity(candidate,expected){
 async function verifyPrivateWizard(candidate,expected){
   await candidate.stage('recovery-private-wizard-image-and-credential-cleanup',async()=>{
     const identity=await candidate.inner(['inspect','--format','{{.Image}}','system_wizard_1']);
-    const marker=await candidate.inner(['exec','system_wizard_1','cat',PRIVATE_MARKER]);
+    const proof=expected.kind==='source-primary-native-v1'?
+      await candidate.inner(['inspect','--format','{{index .Config.Labels "org.opencontainers.image.revision"}}','system_wizard_1']):
+      await candidate.inner(['exec','system_wizard_1','cat',PRIVATE_MARKER]);
     const cleanup=await candidate.rails("require 'json';p=Project.find("+expected.projectId+");raise unless p.full_path=="+JSON.stringify(expected.projectPath)+";puts JSON.generate(active:p.deploy_tokens.where(name:'system-bootstrapper-wizard-image-recovery',revoked:false).count)");
-    if(identity!==expected.imageId||marker!==expected.marker||cleanup.active!==0)throw Error('private-wizard-restoration-or-credential-cleanup-failed');
+    if(identity!==expected.imageId||proof!==(expected.kind==='source-primary-native-v1'?expected.sourceCommit:expected.marker)||cleanup.active!==0)throw Error('private-wizard-restoration-or-credential-cleanup-failed');
     candidate.privateWizardPinVerified=true;
   });
 }
@@ -553,14 +585,14 @@ async function verifyRegistryBlob(candidate,input) {
       if(pipeline.status!=='success')throw Error('restored-registry-ci-failed');
       const jobs=await candidate.api('/projects/'+expected.projectId+'/pipelines/'+pipeline.id+'/jobs',auth.token);
       if(jobs.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id)throw Error('restored-registry-job-not-successful');
-      candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:!input.expected.acme,acmeRenewalVerified:false,privateWizardPinVerified:candidate.privateWizardPinVerified===true,mergeRequestRecoveryVerified:candidate.mergeRequestRecoveryVerified===true};
+      candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:!input.expected.acme,acmeRenewalVerified:false,privateWizardPinVerified:candidate.privateWizardPinVerified===true,mergeRequestRecoveryVerified:candidate.mergeRequestRecoveryVerified===true,guidedBindingRestored:candidate.guidedBindingRestored===true};
     } finally {await revoke(candidate,auth.token);}
   });
 }
 async function run(original,reportDirectory,dependencies={}) {
-  let input,second,acme,originalRemoved=false;
+  let input,second,acme=dependencies.acme,originalRemoved=false;
   try {
-    if(original.spec.acmeRenewalAcceptance===true){
+    if(original.spec.acmeRenewalAcceptance===true&&!acme){
       const LocalAcme=dependencies.LocalAcme||require('./local-acme').LocalAcme;
       acme=new LocalAcme(original,reportDirectory);await acme.start();
     }
@@ -576,6 +608,7 @@ async function run(original,reportDirectory,dependencies={}) {
     second.secrets={...original.secrets};
     second.report(reportDirectory(second));
     await second.start();
+    if(original.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(second);
     await (dependencies.verifyRestore || verifyRestore)(second,input);
     if(!dependencies.Candidate)await second.stage('storage-detached-backup-normal-operation',async()=>{
       await storage.verifyLocalLive(second,BASE);await storage.assertAbsent(second);
@@ -593,7 +626,7 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!dependencies.Candidate)second.evidence.storage={localLiveVerified:second.localLiveVerified===true,externalSeedRestored:second.externalSeedRestored===true,
       backupDetached:second.backupDetached===true,missingBackupGuardVerified:second.missingBackupGuardVerified===true,
       globalLeaseVerified:second.globalLeaseVerified===true,invalidRestoreGuardVerified:second.invalidRestoreGuardVerified===true};
-    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true,mergeRequestRecoveryVerified:second.mergeRequestRecoveryVerified===true,localLiveVerified:second.localLiveVerified===true,externalSeedRestored:second.externalSeedRestored===true,backupDetached:second.backupDetached===true};
+    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true,mergeRequestRecoveryVerified:second.mergeRequestRecoveryVerified===true,localLiveVerified:second.localLiveVerified===true,externalSeedRestored:second.externalSeedRestored===true,backupDetached:second.backupDetached===true,guidedBindingRestored:second.guidedBindingRestored===true};
   } finally {
     let clean=true;
     if(second){clean=second.cleanup();second.report(reportDirectory(second));}

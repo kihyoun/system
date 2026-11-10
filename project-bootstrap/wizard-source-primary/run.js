@@ -55,6 +55,17 @@ class Adoption {
       throw Error('Retain the accepted public release selection and matching controller/Wizard installation receipt.');
     return pin;
   }
+  retainedInstallation(main) {
+    const directory = path.dirname(this.mainConfig);
+    // A broken or incomplete public selection must never fall back to a
+    // different installation identity, including dangling receipt symlinks.
+    const publicSelection = ['.release-images.json', '.release-images.env'].some(name => {
+      try { fs.lstatSync(path.join(directory, name)); return true; }
+      catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+    });
+    return publicSelection ? this.publicRelease(main) :
+      require('./source-installation').sourceInstallation(main, {mainConfig: this.mainConfig});
+  }
   async plan(input) {
     const keys = ['version', 'projectId', 'projectPath', 'namespaceId', 'defaultBranch', 'pipelineId', 'sourceCommit', 'imageRef', 'helperImage', 'ciFiles', 'buildProfile', 'action'];
     if (!input || Object.keys(input).some(key => !keys.includes(key)) || input.version !== 1 ||
@@ -91,11 +102,6 @@ class Adoption {
     if (bootstrap && !upgradeBuild) throw Error('Initial preview bootstrap requires an explicit reviewed build profile.');
     if (upgradeBuild && !bootstrap && !b.primary(old)) throw Error('Adopt the canonical source-primary project before upgrading its build profile.');
     if (!environments || environments.phase !== 'ready' || Object.values(environments.deployments || {}).some(slot => slot.active || slot.pending || slot.retired?.length)) throw Error('Stop and reconcile Review/Beta before reassignment.');
-    const project = await this.request('projects/' + old.repository.id);
-    if (project.id !== old.repository.id || project.path_with_namespace !== old.repository.path || project.namespace?.id !== old.namespaceId ||
-        project.visibility !== 'private' || project.ci_config_path !== old.repository.ciPath ||
-        (!b.primary(old) && (project.description !== 'System Bootstrapper operation ' + old.operation || old.repository.ciPath !== '.system-bootstrapper/ci.yml')))
-      throw Error('Previous managed Wizard ownership changed.');
     if (!b.primary(old) && input.projectId === old.repository.id) throw Error('Select the existing distinct source-primary project.');
     const registry = new URL(setting(main, 'GITLAB_REGISTRY_URL'));
     if (!['https:', 'http:'].includes(registry.protocol) || registry.username || registry.password || registry.pathname !== '/' || registry.search || registry.hash) throw Error('Invalid configured own registry.');
@@ -104,7 +110,7 @@ class Adoption {
     if (!input.imageRef?.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(input.imageRef.slice(prefix.length))) throw Error('Use an immutable image from the adopted project registry.');
     const previousImage = setting(main, 'WIZARD_IMAGE');
     const previousPrefix = registry.host + '/' + old.repository.path + '@sha256:';
-    if (bootstrap) this.publicRelease(main);
+    if (bootstrap) this.retainedInstallation(main);
     if (!refreshBinding && !bootstrap && (!previousImage?.startsWith(previousPrefix) || !/^[a-f0-9]{64}$/.test(previousImage.slice(previousPrefix.length)))) throw Error('Retain the exact previous managed Production image.');
     const operation = b.hash(JSON.stringify({version: 1, config: b.hash(current.text), main: b.hash(main), input})).slice(0, 48);
     const next = JSON.parse(JSON.stringify(old));
@@ -119,9 +125,17 @@ class Adoption {
       ciFiles: input.ciFiles, previousRepository: {id: old.repository.id, path: old.repository.path},
       ...(bootstrap ? {bootstrap: true} : {}), archive: operation + '.json', inputHash: b.hash(JSON.stringify(input))};
     b.validate(next);
-    const branch = await this.request('projects/' + input.projectId + '/repository/branches/' + encodeURIComponent(input.defaultBranch));
+    let verifiedFiles;
+    const [project, branch, proof] = await Promise.all([
+      this.request('projects/' + old.repository.id),
+      this.request('projects/' + input.projectId + '/repository/branches/' + encodeURIComponent(input.defaultBranch)),
+      b.evidence(this.request, next, input.pipelineId, input.sourceCommit, input.imageRef, files => { verifiedFiles = files; })
+    ]);
+    if (project.id !== old.repository.id || project.path_with_namespace !== old.repository.path || project.namespace?.id !== old.namespaceId ||
+        project.visibility !== 'private' || project.ci_config_path !== old.repository.ciPath ||
+        (!b.primary(old) && (project.description !== 'System Bootstrapper operation ' + old.operation || old.repository.ciPath !== '.system-bootstrapper/ci.yml')))
+      throw Error('Previous managed Wizard ownership changed.');
     if (branch.commit?.id !== input.sourceCommit) throw Error('The source-primary default branch advanced.');
-    const proof = await b.evidence(this.request, next, input.pipelineId, input.sourceCommit, input.imageRef);
     const retainedRecipe = bootstrap ? builds.generate(current.text.slice(0, 1184), input.buildProfile) : builds.select(current.text.slice(0, 1184), old.wizardWorkflow.build.recipeHash);
     if (upgradeBuild && !['node24-vite8', 'node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', 'node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(retainedRecipe.profile))
       throw Error('The source-primary upgrade requires an existing reviewed modern build recipe.');
@@ -138,8 +152,7 @@ class Adoption {
     if (recipe.files.some(file => !input.ciFiles.some(source => source.path === file.path && source.sha256 === b.hash(file.content))) ||
         !input.ciFiles.some(source => source.path === '.gitlab/delivery/environment.sh')) throw Error('Approve the complete generic delivery and environment script manifest.');
     for (const file of recipe.files) {
-      const row = await this.request('projects/' + input.projectId + '/repository/files/' + encodeURIComponent(file.path) + '?ref=' + input.sourceCommit);
-      if (!Buffer.from(row.content.replace(/\n/g, ''), 'base64').equals(Buffer.from(file.content))) throw Error('The source-primary build recipe differs from the reviewed generic recipe.');
+      if (!verifiedFiles.get(file.path)?.equals(Buffer.from(file.content))) throw Error('The source-primary build recipe differs from the reviewed generic recipe.');
     }
     next.wizardWorkflow = {version: 1, phase: 'source-primary', sourceRevision: input.sourceCommit,
       build: {version: 1, mode: 'source-primary', recipeHash: recipe.recipeHash, phase: 'candidate-verified',
@@ -149,7 +162,7 @@ class Adoption {
       environments: {...this.environments(environments, {operation, helperImage: input.helperImage, activationCommit: input.sourceCommit, ciFiles: input.ciFiles}), ...(bootstrap ? {initialVariablesMissing: true} : {})}};
     const plan = {version: 1, action: bootstrap ? 'bootstrap-source-primary-previews' : refreshBinding ? 'refresh-source-primary-binding' : 'reassign-source-primary', operation, previousProjectId: old.repository.id,
       projectId: input.projectId, projectPath: input.projectPath, sourceCommit: input.sourceCommit, pipelineId: input.pipelineId,
-      imageRef: input.imageRef, ...((refreshBinding || bootstrap) ? {retainedProductionImageRef: bootstrap ? this.publicRelease(main) : previousImage} : {previousImageRef: previousImage}), helperImage: input.helperImage,
+      imageRef: input.imageRef, ...((refreshBinding || bootstrap) ? {retainedProductionImageRef: bootstrap ? this.retainedInstallation(main) : previousImage} : {previousImageRef: previousImage}), helperImage: input.helperImage,
       ...(upgradeBuild ? {buildProfile: input.buildProfile, previousBuildRecipeHash: retainedRecipe.recipeHash, buildRecipeHash: recipe.recipeHash} : {}),
       configHash: b.hash(current.text), mainConfigHash: b.hash(main), nextReceiptHash: b.hash(JSON.stringify(next))};
     return {publicPlan: plan, planHash: b.hash(JSON.stringify(plan)), current, main, next};

@@ -28,6 +28,12 @@ function privateFixture(){
   expected.imageRef='registry.candidate.test:5050/root/wizard/recovery-wizard@'+expected.imageDigest;
   return {images,expected};
 }
+function privateNativeFixture(){
+  const {images}=privateFixture(),expected={kind:'source-primary-native-v1',projectId:12,projectPath:'team/native-source',registryHost:'registry.candidate.test:5050',
+    imageDigest:'sha256:'+'d'.repeat(64),imageId:'sha256:'+'e'.repeat(64),sourceCommit:'f'.repeat(40),pipelineId:21,jobId:31,runnerId:41};
+  expected.imageRef=expected.registryHost+'/'+expected.projectPath+'@'+expected.imageDigest;
+  return {images,expected};
+}
 function dependencies(first,input,options={}) {
   const events=first.events;
   class FakeCandidate {
@@ -64,12 +70,13 @@ test('failed original-host removal prevents a second daemon',async t=>{
   assert(!first.events.includes('new-host-created'));
 });
 
-test('upgrade recovery preserves spent lifecycle time and refuses fresh work after the original deadline',async t=>{
+for(const [budget,guided]of [[3600000,false],[4500000,true]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
   const {Candidate}=require('./disposable-candidate');
   const input=fixture(t),first=original(),deps=dependencies(first,input),calls=[];
-  first.startedAt=1000;first.deadline=first.startedAt+3600000;
+  first.startedAt=1000;first.deadline=first.startedAt+budget;
   first.spec.gitlabUpgradeAcceptance=true;
-  let now=first.startedAt+35*60000;
+  first.spec.guidedPreviewAcceptance=guided;
+  let now=first.deadline-25*60000;
   deps.Candidate.prototype.start=async function(){
     assert(first.removed);
     assert.equal(this.deadline,first.deadline,'fresh host must inherit the original absolute end');
@@ -368,6 +375,46 @@ test('private-image proof requires the restored container identity, marker and z
   for(const fault of ['image','marker','credential']){
     const bad={...candidate,privateWizardPinVerified:false,inner:async args=>args[0]==='inspect'?(fault==='image'?'sha256:'+'f'.repeat(64):expected.imageId):(fault==='marker'?'different-marker':expected.marker),rails:async()=>({active:fault==='credential'?1:0})};
     await assert.rejects(()=>recovery.verifyPrivateWizard(bad,expected),/restoration-or-credential-cleanup-failed/);assert.equal(bad.privateWizardPinVerified,false);
+  }
+});
+test('native private image descriptors retain exact project, build, source, registry and uncached image identity',()=>{
+  const f=privateNativeFixture();assert.equal(recovery.privateWizardDescriptor(f.expected,f),f.expected);
+  for(const change of [{kind:'unknown'},{projectId:0},{pipelineId:0},{jobId:0},{runnerId:0},{sourceCommit:'latest'},
+    {registryHost:'foreign.invalid'},{projectPath:'team/../native-source'},{imageId:f.images.wizard.id},
+    {imageRef:f.expected.imageRef.replace('team/native-source','team/other')},{marker:'a'.repeat(24)},{sourceImageId:f.images.wizard.id}])
+    assert.throws(()=>recovery.privateWizardDescriptor({...f.expected,...change},f),/descriptor-invalid/);
+  assert.throws(()=>recovery.privateWizardDescriptor(f.expected,{...f,supportImages:{helper:{id:f.expected.imageId}}}),/descriptor-invalid/);
+});
+test('native private recovery starts with neither immutable reference nor image ID cached',async t=>{
+  for(const cached of [false,true]) {
+    const input=fixture(t),f=privateNativeFixture(),calls=[];input.expected.privateWizard=f.expected;
+    const candidate={spec:{restore:input,privateWizardRecovery:true,images:f.images},daemon:'owned-private-daemon',stage:async(_name,action)=>action(),
+      call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{
+        calls.push({args,options});if(args[0]==='image'){if(cached)return 'cached image';throw Error('absent image');}
+        return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?f.expected.imageRef:'';
+      }};
+    if(cached)await assert.rejects(recovery.bootstrapRestore(candidate,{storage:storageFixture}),/image-already-cached/);
+    else {
+      await recovery.bootstrapRestore(candidate,{rewriter:'public source fixture',storage:storageFixture});
+      assert.deepEqual(calls.filter(call=>call.args[0]==='image').map(call=>call.args.at(-1)),[f.expected.imageRef,f.expected.imageId]);
+    }
+    assert(!calls.some(call=>call.args[0]==='tag'||call.args[0]==='build'),'Native recovery manufactured its image');
+  }
+});
+test('native private restoration verifies exact running ID, OCI source revision and revoked deploy tokens without a marker',async()=>{
+  const {expected}=privateNativeFixture(),calls=[];
+  const candidate={stage:async(_name,action)=>action(),inner:async args=>{
+    calls.push(args);assert.equal(args[0],'inspect','Native recovery must not require a synthetic marker');
+    return args[2]==='{{.Image}}'?expected.imageId:expected.sourceCommit;
+  },rails:async()=>({active:0})};
+  await recovery.verifyPrivateWizard(candidate,expected);assert.equal(candidate.privateWizardPinVerified,true);
+  assert.equal(calls.length,2);
+  for(const fault of ['image','source','credential']) {
+    const bad={...candidate,privateWizardPinVerified:false,inner:async args=>args[2]==='{{.Image}}'?
+      (fault==='image'?'sha256:'+'0'.repeat(64):expected.imageId):(fault==='source'?'0'.repeat(40):expected.sourceCommit),
+      rails:async()=>({active:fault==='credential'?1:0})};
+    await assert.rejects(recovery.verifyPrivateWizard(bad,expected),/restoration-or-credential-cleanup-failed/);
+    assert.equal(bad.privateWizardPinVerified,false);
   }
 });
 test('an independent ACME authority survives the host switch and is removed after both heavy hosts',async t=>{

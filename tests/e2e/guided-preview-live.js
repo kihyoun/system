@@ -69,19 +69,19 @@ class Operator {
     try{return JSON.parse(result.trim().split('\n').at(-1));}catch{throw Error('guided-preview-native-rails-result-invalid');}
   }
   async wait(action,milliseconds) {
-    const end=Math.min(this.now()+milliseconds,this.deadline);
+    const end=Math.min(this.now()+milliseconds,this.cleanupDeadline||this.deadline);
     while(this.now()<end){if(await action())return;await this.sleep(2000);}
     throw Error('guided-preview-native-check-timeout');
   }
   report() {
     const report={version:1,operation:this.id,mode:this.mode,controllerImageId:this.input.controllerImageId,stages:this.stages,evidence:this.evidence,
-      scope:this.mode==='apply'?'Real native source push/MR pipelines and Review lifecycle. No Production promotion or automatic restore.':'Preflight only; no source import, build, adoption or Review deployment.',
+      scope:this.mode==='apply'?'Real native imported-default, MR and merged-default pipelines, normal merge, Review and optional Beta lifecycles. No Production promotion or automatic restore.':'Preflight only; no source import, build, adoption or Review deployment.',
       completed:this.completed===true,acceptancePassed:this.mode==='apply'&&this.completed===true};
     const next=this.input.reportPath+'.'+this.id+'.tmp';
     fs.writeFileSync(next,JSON.stringify(report,null,2)+'\n',{mode:0o600,flag:'wx',flush:true});fs.renameSync(next,this.input.reportPath);
   }
   async stage(name,action) {
-    const cleanup=['guided-preview-temporary-credential-revoked','guided-preview-production-retained'].includes(name);
+    const cleanup=['guided-preview-temporary-credential-revoked','guided-preview-production-retained','guided-preview-native-review-stop','guided-preview-native-beta-stop'].includes(name);
     const previousCleanup=this.cleanupDeadline;if(cleanup)this.cleanupDeadline=this.now()+180000;
     const record={name,state:'running',startedAt:new Date().toISOString()};this.stages.push(record);this.report();
     try{const value=await action();record.state='passed';return value;}

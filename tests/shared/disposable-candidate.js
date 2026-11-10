@@ -9,6 +9,10 @@ const {configurationValues} = require('./literal-configuration');
 
 const LABEL = 'com.system-bootstrapper.test-run';
 const SIGNATURE = 'bd4a8426355824593a5e21ad759830c1';
+function ciIdentity(value) {
+  const keys=['projectId','pipelineId','candidateJobId'];
+  return value&&keys.every(key=>Number.isSafeInteger(value[key])&&value[key]>0)?Object.fromEntries(keys.map(key=>[key,value[key]])):undefined;
+}
 function exitDetails(error) {
   return {
     ...(Number.isInteger(error.exitCode)&&error.exitCode>=0&&error.exitCode<=255?{exitCode:error.exitCode}:{}),
@@ -115,12 +119,25 @@ class Candidate {
       if(!['helper','previousGitlab','previousRunner','previousHelper'].includes(role) || !/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-support-image');
     }
     this.spec=spec; this.exec=options.docker || docker;
-    this.request=options.request || ((url,requestOptions)=>this.httpFromCandidate(url,requestOptions));
+    this.request=options.request || ((url,requestOptions)=>{
+      const selected=new URL(url);
+      if(spec.guidedPreviewAcceptance===true&&selected.protocol==='https:') {
+        if(!['gitlab.candidate.test','sync.candidate.test','wizard.candidate.test','review.candidate.test','beta.candidate.test'].includes(selected.hostname))throw Error('unowned-guided-preview-route');
+        const preflight=selected.hostname==='sync.candidate.test'&&selected.pathname==='/projects/wizard/preview-setup/preflight'&&requestOptions?.method==='POST';
+        const timeoutMilliseconds=Math.min(preflight?300000:10000,(this.cleanupDeadline||this.deadline)-this.now()-1000);
+        if(timeoutMilliseconds<=0)throw Error('canceled-or-overall-timeout');
+        return require('../e2e/recovery').tlsProbe(this,selected.hostname,selected.pathname+selected.search,requestOptions,
+          {certificate:require('../e2e/local-acme').ISSUANCE_CA,timeoutMilliseconds});
+      }
+      return this.httpFromCandidate(url,requestOptions);
+    });
     this.sleep=options.sleep || (ms=>new Promise(resolve=>setTimeout(resolve,ms)));
     this.now=options.now || Date.now;
     this.id=crypto.randomBytes(12).toString('hex'); this.name='system-candidate-'+this.id;
     this.resources=[]; this.canceled=false; this.startedAt=this.now();
-    this.deadline=this.startedAt+(spec.gitlabUpgradeAcceptance===true?3600000:spec.acmeRenewalAcceptance===true?1500000:1200000);
+    const budget=spec.gitlabUpgradeAcceptance===true?
+      (spec.guidedPreviewAcceptance===true?4500000:3600000):spec.acmeRenewalAcceptance===true?1500000:1200000;
+    this.deadline=this.startedAt+budget;
     this.checkpoint=options.checkpoint || (()=>{});
     this.secrets={user:'test'+crypto.randomBytes(8).toString('hex'),
       password:crypto.randomBytes(24).toString('hex'),root:crypto.randomBytes(24).toString('hex')};
@@ -130,20 +147,26 @@ class Candidate {
     // Promise/microtask-only awaits do not deliver queued OS signal callbacks.
     // Yield to the event loop before EVERY bounded synchronous Docker operation.
     await new Promise(resolve=>setImmediate(resolve));
-    if(this.canceled || this.now()>this.deadline) throw new Error('canceled-or-overall-timeout');
-    return this.exec(args,{...options,timeout:Math.max(1,Math.min(options?.timeout || 120000,this.deadline-this.now()))});
+    const deadline=this.cleanupDeadline||this.deadline;
+    if((this.canceled&&!this.cleanupDeadline) || this.now()>deadline) throw new Error('canceled-or-overall-timeout');
+    return this.exec(args,{...options,timeout:Math.max(1,Math.min(options?.timeout || 120000,deadline-this.now()))});
   }
   inner(args, options) { return this.call(['exec','-i',this.daemon,'docker',...args],options); }
   async stage(name, action) {
     const start=this.now();
+    const previousCleanup=this.cleanupDeadline;
+    if(['guided-preview-native-review-stop','guided-preview-native-beta-stop','guided-preview-production-retained','guided-preview-temporary-credential-revoked'].includes(name))this.cleanupDeadline=start+180000;
     try { const value=await action(); this.results.push({name,status:'passed',milliseconds:this.now()-start}); this.checkpoint(this); return value; }
     catch(error) { this.results.push({name,status:'failed',milliseconds:this.now()-start,reason:stageDiagnostics.failureReason(error.message),...exitDetails(error)}); this.checkpoint(this); throw error; }
+    finally {this.cleanupDeadline=previousCleanup;}
   }
   async wait(check, milliseconds) {
-    const until=this.now()+milliseconds;
-    do { if(this.canceled || this.now()>this.deadline) throw new Error('canceled-or-overall-timeout'); try { if(await check()) return; } catch { /* bounded readiness retry */ }
+    const until=Math.min(this.now()+milliseconds,this.cleanupDeadline||this.deadline);
+    do { if((this.canceled&&!this.cleanupDeadline) || this.now()>(this.cleanupDeadline||this.deadline)) throw new Error('canceled-or-overall-timeout');
+      try { if(await check()) return; } catch(error) { if(error.noRetry===true)throw error; /* bounded readiness retry */ }
       await this.sleep(1000);
     } while(this.now()<until);
+    if((this.canceled&&!this.cleanupDeadline) || this.now()>(this.cleanupDeadline||this.deadline)) throw new Error('canceled-or-overall-timeout');
     throw new Error('readiness-timeout');
   }
   async create(kind,args) {
@@ -157,7 +180,7 @@ class Candidate {
   }
   async start() {
     await this.stage('private-daemon',async()=>{
-      const network=await this.create('network',['network','create','--internal','--label',LABEL+'='+this.id,this.name]);
+      const network=await this.create('network',['network','create',...(this.spec.guidedPreviewAcceptance===true?[]:['--internal']),'--label',LABEL+'='+this.id,this.name]);
       const volume=await this.create('volume',['volume','create','--label',LABEL+'='+this.id,this.name]);
       const backupMount=this.spec.fullAcceptance===true||this.spec.recoveryAcceptance===true ?
         await require('../e2e/local-storage').prepareOwner(this) : [];
@@ -170,7 +193,8 @@ class Candidate {
       await this.call(['start',this.daemon]);
       await this.wait(async()=>{await this.inner(['info','--format','{{.ID}}']);return true;},90000);
       // All HTTP probes execute inside the owned daemon; publish no outer port.
-      this.url='http://candidate.invalid';
+      this.url=this.spec.restore&&this.spec.guidedPreviewAcceptance===true?'https://sync.candidate.test':'http://candidate.invalid';
+      if(this.spec.restore&&this.spec.guidedPreviewAcceptance===true)this.gitlabUrl='https://gitlab.candidate.test';
     });
     await this.stage('candidate-images',async()=>{
       const tags={candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous',previousRunner:'candidate-runner:previous',previousHelper:'candidate-helper:previous'};
@@ -193,7 +217,9 @@ class Candidate {
     });
     await this.stage('bootstrap',async()=>{
       if(this.spec.restore)return require('../e2e/recovery').bootstrapRestore(this);
-      const config=configuration(this.spec.example,this.secrets);
+      let config=configuration(this.spec.example,this.secrets);
+      if(this.spec.guidedPreviewAcceptance===true)config=require('../e2e/recovery').updateConfiguration(config,
+        {BOOTSTRAPPER_IMAGE:this.spec.images.candidate.id,WIZARD_IMAGE:this.spec.images.wizard.id});
       // These paths live on the owned private daemon's writable layer, never
       // on the outer host. Compose service volumes resolve to the same paths.
       const base='/candidate-data/platform';
@@ -213,6 +239,9 @@ class Candidate {
         '--env',"GITLAB_OMNIBUS_CONFIG=puma['worker_processes'] = 2",
         '--env','GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test',
         '--env','NGINX_IMAGE=nginx:latest','--env','WIZARD_IMAGE=systembootstrapper/wizard',
+        ...(this.spec.guidedPreviewAcceptance===true?['--env','SYSTEM_WIZARD_ENVIRONMENT_IMAGE='+this.spec.images.candidate.id,
+          '--env','SYSTEM_WIZARD_CANONICAL_CONTROLLER=system_bootstrapper_1',
+          ...['gitlab','registry','wizard','sync','review','beta'].flatMap(host=>['--add-host',host+'.candidate.test:host-gateway'])]:[]),
         '--env','GITLAB_SSH_BIND=2222','--env','GITLAB_REGISTRY_BIND=5050',
         '--volume','/var/run/docker.sock:/var/run/docker.sock',
         '--volume',base+'/runners:'+base+'/runners',
@@ -255,7 +284,7 @@ class Candidate {
     try {return JSON.parse(raw.split('\n').at(-1));} catch {throw new Error('invalid-rails-result');}
   }
   async api(route,token,method='GET',payload) {
-    const response=await this.request(this.url+'/api/v4'+route,{method,headers:{Host:'gitlab.candidate.test',
+    const response=await this.request((this.gitlabUrl||this.url)+'/api/v4'+route,{method,headers:{Host:'gitlab.candidate.test',
       'PRIVATE-TOKEN':token,'Content-Type':'application/json'},...(payload===undefined?{}:{body:JSON.stringify(payload)})});
     if(response.status<200||response.status>=300) throw new Error('gitlab-api-request-failed');
     if(!response.body) return null;
@@ -467,7 +496,7 @@ delivery-must-not-run:
     prepareReportDirectory(directory,io,platform);
     const safe={runId:this.id,startedAt:this.startedAt===undefined?undefined:new Date(this.startedAt).toISOString(),results:this.results,resources:this.resources,
       images:this.spec?.images ? Object.fromEntries(Object.entries(this.spec.images).map(([role,image])=>[role,image.id])) : undefined,
-      daemonImage:this.spec?.daemonImage,sourceRevision:this.spec?.sourceRevision,evidence:this.evidence,fullAcceptance:this.spec?.fullAcceptance===true,
+      daemonImage:this.spec?.daemonImage,sourceRevision:this.spec?.sourceRevision,ciIdentity:ciIdentity(this.spec?.ciIdentity),guidedPreviewReceipt:this.guidedPreviewReceipt,evidence:this.evidence,fullAcceptance:this.spec?.fullAcceptance===true,
       acceptance:this.spec?.fullAcceptance===true?'explicit-private-platform-scenarios; see individual stage outcomes':'lifecycle-and-http-smoke-only'};
     atomicReplace(path.join(directory,'results.json'),JSON.stringify(safe,null,2),io,platform);
     atomicReplace(path.join(directory,'junit.xml'),'<?xml version="1.0"?><testsuite name="disposable-candidate" tests="'+this.results.length+'" failures="'+this.results.filter(x=>x.status==='failed').length+'">'+this.results.map(x=>'<testcase name="'+x.name+'">'+(x.status==='failed'?'<failure message="stage failed; inspect sanitized JSON"/>':'')+'</testcase>').join('')+'</testsuite>',io,platform);
@@ -500,21 +529,23 @@ function recover(report,exec=docker) {
       ...(Number.isFinite(job.duration)?{duration:job.duration}:{}),
       ...(Number.isFinite(job.queuedSeconds)?{queuedSeconds:job.queuedSeconds}:{}),
       ...(jobDiagnostics.sanitize(job.diagnostics)?{diagnostics:jobDiagnostics.sanitize(job.diagnostics)}:{})}));
-  if(report.evidence?.recovery && /^[a-f0-9]{24}$/.test(report.evidence.recovery.runId||'')) {
-    const recovery={runId:report.evidence.recovery.runId};
-    for(const key of ['backupOnly','originalHostRemoved','syntheticTlsVerified','acmeRenewalVerified','privateWizardPinVerified','mergeRequestRecoveryVerified'])if(typeof report.evidence.recovery[key]==='boolean')recovery[key]=report.evidence.recovery[key];
-    evidence.recovery=recovery;
+  if(report.evidence?.recovery) {
+    const recovery={};if(/^[a-f0-9]{24}$/.test(report.evidence.recovery.runId||''))recovery.runId=report.evidence.recovery.runId;
+    for(const key of ['backupOnly','originalHostRemoved','syntheticTlsVerified','acmeRenewalVerified','privateWizardPinVerified','mergeRequestRecoveryVerified','guidedBindingRestored'])if(typeof report.evidence.recovery[key]==='boolean')recovery[key]=report.evidence.recovery[key];
+    if(Object.keys(recovery).length)evidence.recovery=recovery;
   }
   if(report.evidence?.storage){
     const storage={};for(const key of ['localLiveVerified','externalSeedRestored','backupDetached','missingBackupGuardVerified','globalLeaseVerified','invalidRestoreGuardVerified'])
       if(typeof report.evidence.storage[key]==='boolean')storage[key]=report.evidence.storage[key];
     if(Object.keys(storage).length)evidence.storage=storage;
   }
+  if(report.evidence?.guidedPreview){const clean=require('../../gitlab/guided-preview-evidence').sanitize(report.evidence.guidedPreview);if(clean)evidence.guidedPreview=clean;}
   if(report.evidence?.gitlabUpgrade){const clean=require('../e2e/gitlab-upgrade').sanitizeEvidence(report.evidence.gitlabUpgrade);if(clean)evidence.gitlabUpgrade=clean;}
   Object.assign(instance,{id:report.runId,name,resources:report.resources,results,exec,
     startedAt:typeof report.startedAt==='string'&&Number.isFinite(Date.parse(report.startedAt))?Date.parse(report.startedAt):undefined,
     evidence:Object.keys(evidence).length?evidence:undefined,
-    spec:{images,sourceRevision:/^[a-f0-9]{40}$/.test(report.sourceRevision||'')?report.sourceRevision:undefined,daemonImage:/^[a-z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(report.daemonImage||'')?report.daemonImage:undefined,fullAcceptance:report.fullAcceptance===true}});
+    guidedPreviewReceipt:require('../../gitlab/publish-successor').sanitizeGuidedReceipt(report.guidedPreviewReceipt),
+    spec:{images,ciIdentity:ciIdentity(report.ciIdentity),sourceRevision:/^[a-f0-9]{40}$/.test(report.sourceRevision||'')?report.sourceRevision:undefined,daemonImage:/^[a-z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(report.daemonImage||'')?report.daemonImage:undefined,fullAcceptance:report.fullAcceptance===true}});
   return instance;
 }
 module.exports={Candidate,configuration,signature,configurationValues,recover,atomicReplace,LABEL};

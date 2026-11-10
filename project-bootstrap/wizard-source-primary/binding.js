@@ -42,24 +42,29 @@ function pipelineChecks(pipeline, jobs) {
   if (failures.length || pipeline.status !== 'success' && (!publisher || publisher.status === 'success')) throw Error('Native Wizard pipeline failed outside the optional public mirror.');
   return {mirrorFailed: publisher?.status === 'failed', status: publisher?.status || 'absent'};
 }
-async function evidence(get, receipt, pipelineId, sourceCommit, expectedImage) {
+async function evidence(get, receipt, pipelineId, sourceCommit, expectedImage, onVerifiedFiles) {
   validate(receipt);
   const r = receipt.repository, prefix = 'projects/' + r.id + '/';
-  const project = await get(prefix.slice(0, -1));
+  // All routes are known from this invocation's exact binding and pipeline.
+  // Read them together so the native adapter can share one bounded Rails batch.
+  const [project, pipeline, jobs, files] = await Promise.all([
+    get(prefix.slice(0, -1)),
+    get(prefix + 'pipelines/' + pipelineId),
+    get(prefix + 'pipelines/' + pipelineId + '/jobs?per_page=100&include_retried=false'),
+    Promise.all(receipt.sourcePrimary.ciFiles.map(async file => {
+      const row = await get(prefix + 'repository/files/' + encodeURIComponent(file.path) + '?ref=' + sourceCommit);
+      const content = Buffer.from(row.content.replace(/\n/g, ''), 'base64');
+      if (hash(content) !== file.sha256) throw Error('Approved native Wizard CI changed.');
+      return [file.path, content];
+    }))
+  ]);
   if (project.id !== r.id || project.path_with_namespace !== r.path || project.namespace?.id !== receipt.namespaceId ||
       project.default_branch !== r.defaultBranch || project.visibility !== 'private' || project.ci_config_path !== CI ||
       project.only_allow_merge_if_pipeline_succeeds !== true || project.only_allow_merge_if_all_discussions_are_resolved !== true) throw Error('Canonical source-primary project identity or merge gates changed.');
-  const pipeline = await get(prefix + 'pipelines/' + pipelineId);
   if (pipeline.id !== pipelineId || pipeline.sha !== sourceCommit ||
       pipeline.ref !== r.defaultBranch || pipeline.source !== 'push' || pipeline.yaml_errors) throw Error('Require the exact successful native default-branch push pipeline.');
-  for (const file of receipt.sourcePrimary.ciFiles) {
-    const row = await get(prefix + 'repository/files/' + encodeURIComponent(file.path) + '?ref=' + sourceCommit);
-    if (hash(Buffer.from(row.content.replace(/\n/g, ''), 'base64')) !== file.sha256) throw Error('Approved native Wizard CI changed.');
-  }
-  const jobs = await get(prefix + 'pipelines/' + pipelineId + '/jobs?per_page=100&include_retried=false');
   const publishing = pipelineChecks(pipeline, jobs);
-  const artifacts = [];
-  for (const [name, file] of [['build:wizard', 'build-evidence.json'], ['test:wizard', 'wizard-evidence.json']]) {
+  const artifacts = await Promise.all([['build:wizard', 'build-evidence.json'], ['test:wizard', 'wizard-evidence.json']].map(async ([name, file]) => {
     const matches = jobs.filter(job => job.name === name);
     if (matches.length !== 1) throw Error('Expected one required native Wizard job.');
     const job = matches[0];
@@ -67,11 +72,14 @@ async function evidence(get, receipt, pipelineId, sourceCommit, expectedImage) {
     const artifact = await get(prefix + 'jobs/' + job.id + '/artifacts/' + file);
     if (artifact.version !== 1 || artifact.pipelineId !== pipelineId || artifact.sourceCommit !== sourceCommit ||
         artifact.imageRef !== expectedImage) throw Error('Native Wizard evidence identity changed.');
-    artifacts.push(artifact);
-  }
+    return artifact;
+  }));
   const [build, smoke] = artifacts;
   if (!['unitTests', 'lint', 'typecheck', 'productionBuild'].every(key => build[key] === true) || build.testRunner !== 'vitest' ||
       !['http', 'renderedUI', 'projects', 'spa', 'configurationBackup', 'cubeSignature'].every(key => smoke[key] === true)) throw Error('Native Wizard evidence is incomplete.');
+  // A caller may compare the already verified bytes again within this call.
+  // They are never retained across invocations or added to the public proof.
+  if (onVerifiedFiles) onVerifiedFiles(new Map(files));
   return {project, pipeline, build, smoke, publishing};
 }
 function environment(file) { return path.join(path.dirname(path.dirname(file)), '.docker.env'); }

@@ -10,6 +10,49 @@ const release = require('./security-release.json');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const imageId = value => /^sha256:[a-f0-9]{64}$/.test(value || '');
 const revision = value => /^[a-f0-9]{40}$/.test(value || '');
+const guided = require('./guided-preview-evidence');
+const upgradeKeys = ['fromImage', 'toImage', 'fromImageId', 'toImageId',
+  'checkpointVerified', 'migrationVerified', 'registryVerified', 'rollbackVerified',
+  'runnerImage', 'runnerImageId', 'fromRunnerImageId', 'runnerVersion', 'helperImage', 'helperImageId',
+  'fromHelperImageId', 'jobCaBundleSha256', 'securityTrustVerified', 'runnerUpgradeVerified', 'runnerManagerIdentityPreserved'];
+function validateLineage(restored, original, ci) {
+  validateReceipt(original, ci);
+  const recovery = original.evidence?.recovery;
+  if (original.runId === restored.runId || recovery?.runId !== restored.runId ||
+      recovery.backupOnly !== true || recovery.originalHostRemoved !== true || recovery.guidedBindingRestored !== true ||
+      restored.evidence?.recovery?.guidedBindingRestored !== true || restored.evidence?.recovery?.runId !== undefined ||
+      !['candidate', 'wizard', 'runner', 'gitlab', 'nginx'].every(role => restored.images?.[role] === original.images?.[role]) ||
+      !['candidate', 'wizard', 'runner'].every(role => imageId(original.images?.[role])) ||
+      !upgradeKeys.every(key => original.evidence.gitlabUpgrade[key] === restored.evidence?.gitlabUpgrade?.[key]) ||
+      !['projectId', 'pipelineId', 'candidateJobId'].every(key => Number.isSafeInteger(ci[key]) && ci[key] > 0 &&
+        original.ciIdentity?.[key] === ci[key] && restored.ciIdentity?.[key] === ci[key]) ||
+      !['recovery-original-host-removed', 'cleanup'].every(name => original.results.some(row => row.name === name && row.status === 'passed')))
+    throw Error('Recovery summary must reference its matching complete successor receipt and same-job guided origin.');
+  const lifecycle=guided.validate(original.evidence?.guidedPreview, original.results);
+  if(lifecycle.productionImageId!==original.images.wizard)throw Error('Guided Production baseline must be the prepared Wizard image from the same candidate job.');
+}
+function guidedOrigin(original) {
+  return {format: 'system-guided-preview-origin-v1', runId: original.runId, sourceRevision: original.sourceRevision,
+    fullAcceptance: true, ciIdentity: Object.fromEntries(['projectId','pipelineId','candidateJobId'].map(key=>[key,original.ciIdentity[key]])),
+    images: Object.fromEntries(['candidate', 'wizard', 'runner', 'gitlab', 'nginx'].filter(role => imageId(original.images[role])).map(role => [role, original.images[role]])),
+    results: original.results.filter(row => [...guided.stages, 'recovery-original-host-removed', 'cleanup'].includes(row.name))
+      .map(row => ({name: row.name, status: row.status})),
+    evidence: {guidedPreview: guided.sanitize(original.evidence.guidedPreview),
+      gitlabUpgrade: Object.fromEntries(upgradeKeys.filter(key => original.evidence.gitlabUpgrade[key] !== undefined && (!['fromImageId','toImageId'].includes(key)||imageId(original.evidence.gitlabUpgrade[key]))).map(key => [key, original.evidence.gitlabUpgrade[key]])),
+      recovery: {runId: original.evidence.recovery.runId, backupOnly: true, originalHostRemoved: true, guidedBindingRestored: true}}};
+}
+
+function sanitizeGuidedReceipt(value) {
+  try {
+    if(value?.format!=='system-guided-preview-origin-v1')return undefined;
+    validateReceipt(value,{sourceRevision:value.sourceRevision});
+    if(!revision(value.sourceRevision)||!['projectId','pipelineId','candidateJobId'].every(key=>Number.isSafeInteger(value.ciIdentity?.[key])&&value.ciIdentity[key]>0)||
+      !/^[a-f0-9]{24}$/.test(value.evidence?.recovery?.runId||'')||value.evidence.recovery.runId===value.runId||
+      !['backupOnly','originalHostRemoved','guidedBindingRestored'].every(key=>value.evidence.recovery[key]===true))return undefined;
+    guided.validate(value.evidence?.guidedPreview,value.results);
+    return guidedOrigin(value);
+  }catch{return undefined;}
+}
 
 function context(env) {
   if (!revision(env.CI_COMMIT_SHA) || !['CI_PROJECT_ID', 'CI_PIPELINE_ID', 'CI_JOB_ID']
@@ -53,6 +96,14 @@ function validateEvidence(proof, ci) {
     'missingBackupGuardVerified', 'globalLeaseVerified', 'invalidRestoreGuardVerified']
     .every(key => proof.evidence?.storage?.[key] === true))
     throw Error('Passing local storage and external Seed recovery evidence is required.');
+  if (proof.guidedPreviewReceipt !== undefined) {
+    if (proof.guidedPreviewReceipt?.format !== 'system-guided-preview-origin-v1')
+      throw Error('A versioned original guided preview receipt is required.');
+    validateLineage(proof, proof.guidedPreviewReceipt, ci);
+  } else {
+    const lifecycle=guided.validate(proof.evidence?.guidedPreview, proof.results);
+    if(lifecycle.productionImageId!==proof.images.wizard)throw Error('Guided Production baseline must be the prepared Wizard image from the same candidate job.');
+  }
   return acceptedImage;
 }
 
@@ -68,28 +119,24 @@ function candidates(directory, ci) {
     if (proof.runId !== name) throw Error('Candidate evidence directory mismatch.');
     return [{proof, bytes}];
   });
-  return receipts.filter(({proof}) => {
-    const restoredRun = proof.evidence?.recovery?.runId;
-    if (restoredRun !== undefined) {
-      // The original host summarizes the restored host's result; only that
-      // restored receipt contains the migration stages performed on real data.
-      // Bind the summary to its actual complete receipt instead of counting it
-      // as a second independently tested successor.
-      const restored = receipts.find(item => item.proof.runId === restoredRun)?.proof;
-      const sameUpgrade = restored && ['fromImage', 'toImage', 'fromImageId', 'toImageId',
-        'checkpointVerified', 'migrationVerified', 'registryVerified', 'rollbackVerified',
-        'runnerImage', 'runnerImageId', 'fromRunnerImageId', 'runnerVersion', 'helperImage', 'helperImageId', 'fromHelperImageId', 'jobCaBundleSha256', 'securityTrustVerified', 'runnerUpgradeVerified', 'runnerManagerIdentityPreserved']
-        .every(key => proof.evidence.gitlabUpgrade[key] === restored.evidence.gitlabUpgrade[key]);
-      if (!/^[a-f0-9]{24}$/.test(restoredRun) || restoredRun === proof.runId ||
-        proof.evidence.recovery.backupOnly !== true || proof.evidence.recovery.originalHostRemoved !== true ||
-        !restored || restored.evidence?.recovery?.runId !== undefined ||
-        restored.images.candidate !== proof.images.candidate || !sameUpgrade)
-        throw Error('Recovery summary must reference its matching complete successor receipt.');
-      validateEvidence(restored, ci);
-      return false;
-    }
+  const summaries = receipts.filter(({proof}) => proof.evidence?.recovery?.runId !== undefined);
+  for (const {proof} of summaries) {
+    const restoredRun = proof.evidence.recovery.runId;
+    const restored = receipts.find(item => item.proof.runId === restoredRun)?.proof;
+    if (!/^[a-f0-9]{24}$/.test(restoredRun || '') || !restored)
+      throw Error('Recovery summary must reference its matching complete successor receipt.');
+    validateLineage(restored, proof, ci);
+  }
+  return receipts.filter(({proof}) => proof.evidence?.recovery?.runId === undefined).map(item => {
+    const origins = summaries.filter(({proof}) => proof.evidence.recovery.runId === item.proof.runId);
+    if (origins.length > 1) throw Error('Exactly one original guided preview receipt must identify the restored host.');
+    if (!origins.length) { validateEvidence(item.proof, ci); return item; }
+    // Preserve where each stage actually ran. Only this frozen publication
+    // artifact embeds the original host's sanitized proof; the restored host's
+    // working receipt and migration stage results stay unchanged.
+    const proof = {...item.proof, guidedPreviewReceipt: guidedOrigin(origins[0].proof)};
     validateEvidence(proof, ci);
-    return true;
+    return {proof, bytes: Buffer.from(JSON.stringify(proof, null, 2) + '\n')};
   });
 }
 
@@ -171,7 +218,7 @@ function publish(env = process.env, root = process.cwd(), execute = command) {
   }
 }
 
-module.exports = {context, validateEvidence, candidates, publish};
+module.exports = {context, validateEvidence, candidates, publish, sanitizeGuidedReceipt};
 if (require.main === module) {
   try { const value = publish(); console.log('Published the accepted successor image: ' + value.registryReference); }
   catch (_) { console.error('Successor publication refused; inspect candidate, source and image identity checks.'); process.exitCode = 1; }

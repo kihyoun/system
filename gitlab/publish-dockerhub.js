@@ -48,7 +48,7 @@ function readEvidence(root, ci, env) {
     !revision(released.sourceTree) || !revision(released.wizardRevision) ||
     released.candidateEvidencePath !== 'test-results/successor/candidate-results.json' ||
     released.candidateEvidenceSha256 !== sha256(bytes) ||
-    validateEvidence(proof, ci) !== released.imageId ||
+    validateEvidence(proof, {...ci, candidateJobId: Number(released.candidateJobId)}) !== released.imageId ||
     !imageId(released.wizardImageId) || proof.images.wizard !== released.wizardImageId ||
     released.registryReference !== env.CI_REGISTRY_IMAGE + '/successor@' + released.registryReference?.split('@')[1] ||
     released.wizardRegistryReference !== env.CI_REGISTRY_IMAGE + '/successor-wizard@' + released.wizardRegistryReference?.split('@')[1] ||

@@ -40,7 +40,8 @@ try {
     'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','gitlab-runner/provision.rb','system/.seed.env',
     'system/persistence-init.js','system/wizard-public.js','system/start-main.sh','system/start.sh','system/docker-compose.yml',
     'system/push.sh','nginx/wizard-aliases.js','system/harvest.sh','system/seed.sh',
-    'system/seed-manifest.js','system/seed-operation.js','system/coordinated-backup.js','bootstrapper/rebind-renewal.py'];
+    'system/seed-manifest.js','system/seed-operation.js','system/coordinated-backup.js','bootstrapper/rebind-renewal.py',
+    'bootstrapper/record-source-installation.js'];
   for(const filename of runtimeInputs) write(filename,'committed runtime input\n');
   write('project-bootstrap/private.env','must not enter the context\n');
   git('add','.'); git('update-index','--chmod=+x','tests/fixture.sh');

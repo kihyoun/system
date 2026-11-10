@@ -11,6 +11,7 @@ const {Adoption} = require('../../project-bootstrap/wizard-source-primary/run');
 const {StorageLease} = require('../../system/seed-operation');
 const {validateProducers, approvedProducers} = require('../../project-bootstrap/preview-setup/producers');
 const binding = require('../../project-bootstrap/wizard-source-primary/binding');
+const {batchedReads} = require('../../project-bootstrap/preview-setup/reads');
 const stateFile = () => path.join(configDirectory(), 'preview-setup.json');
 const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
 const environments = (settings: any) => Object.fromEntries(['review', 'beta'].map(name => [name, {enabled: settings[name].enabled, host: settings[name].host, domainMode: 2, ssl: settings[name].ssl, sslKey: settings[name].sslKey}]));
@@ -32,7 +33,7 @@ function context(settings: any) {
   if (!/^sha256:[a-f0-9]{64}$/.test(helper) || (process.env.SYSTEM_WIZARD_CANONICAL_CONTROLLER || 'system_bootstrapper_1') !== 'system_bootstrapper_1') throw Error('Provision the reviewed immutable System helper and canonical controller before preview setup.');
   if (receipt.repository.managementMode !== 'source-primary') {
     if (receipt.wizardWorkflow || receipt.repository.ciPath !== '.system-bootstrapper/ci.yml') throw Error('Existing managed source history requires its native adoption/upgrade path; initial setup never replaces it.');
-    new Adoption({config: wizardConfigPath(), mainConfig: mainConfigPath(), request: async (): Promise<any> => undefined}).publicRelease(main);
+    new Adoption({config: wizardConfigPath(), mainConfig: mainConfigPath(), request: async (): Promise<any> => undefined}).retainedInstallation(main);
   }
   const previous = state();
   if (previous && hash(JSON.stringify(previous.settings)) !== hash(JSON.stringify(settings))) throw Error('A different setup is already reserved. Inspect its recorded source projects before changing intent.');
@@ -145,30 +146,32 @@ export function applyPreviewSetup(input: any) {
         save({projects: {...current.projects, [selected.kind]: {id: project.id, path: project.path_with_namespace, namespaceId: project.namespace.id}}});
       }
       const projects: any[] = Object.values(current.projects);
-      const request = async (route: string) => (await checked({action: 'preview-setup-read', route, projectIds: [...projects.map(project => project.id), value.receipt.repository.id]})).value;
+      const request = batchedReads(async (routes: string[]) => (await checked({action: 'preview-setup-read-many', routes,
+        projectIds: [...projects.map(project => project.id), value.receipt.repository.id]})).values);
       const selected = current.projects.wizard;
-      const project = await request('projects/' + selected.id);
-      const branch = await request('projects/' + selected.id + '/repository/branches/' + encodeURIComponent(project.default_branch));
+      // Resolve dependent native reads in one bounded, read-only Rails call.
+      // This context belongs only to this apply; adoption still reads afresh.
+      const {project, branch, pipeline: nativePipeline, jobs, trees} = await checked({action: 'preview-setup-source-context',
+        projectId: selected.id, projectIds: [...projects.map(project => project.id), value.receipt.repository.id]});
+      const pipeline = nativePipeline ?? undefined;
       const commit = branch.commit.id;
-      const pipelines = await request('projects/' + selected.id + '/pipelines?sha=' + commit + '&ref=' + encodeURIComponent(project.default_branch) + '&source=push&per_page=100');
-      const pipeline = pipelines.find((row: any) => row.sha === commit && row.source === 'push');
       if (!pipeline || !['success', 'failed'].includes(pipeline.status)) {
         save({phase: 'waiting-build', pipeline: pipeline && {id: pipeline.id, status: pipeline.status, webUrl: pipeline.web_url}, message: 'Wait for the current native default-branch push pipeline, then run preflight and resume. Existing projects require a normal source push; setup never fabricates a successful pipeline.'});
         return publicState(current);
       }
-      const jobs = await request('projects/' + selected.id + '/pipelines/' + pipeline.id + '/jobs?per_page=100&include_retried=false');
       binding.pipelineChecks({...pipeline, ref: project.default_branch}, jobs);
       const buildJob = jobs.find((job: any) => job.name === 'build:wizard');
-      const artifact = await request('projects/' + selected.id + '/jobs/' + buildJob.id + '/artifacts/build-evidence.json');
-      const ciFiles: any[] = [];
-      for (const directory of ['.gitlab', '.system-bootstrapper/build-v1']) {
-        const rows = await request('projects/' + selected.id + '/repository/tree?path=' + encodeURIComponent(directory) + '&ref=' + commit + '&recursive=true&per_page=100');
-        if (rows.length >= 100) throw Error('The approved CI manifest is too large. Review it through the native source-primary tool.');
-        for (const row of rows.filter((row: any) => row.type === 'blob')) {
+      if (!Array.isArray(trees) || trees.length !== 2 || trees.some(rows => !Array.isArray(rows) || rows.length >= 100))
+        throw Error('The approved CI manifest is too large. Review it through the native source-primary tool.');
+      const blobs = trees.flat().filter((row: any) => row.type === 'blob');
+      // Job validation above must finish before any artifact is requested.
+      const [artifact, ciFiles]: [any, any[]] = await Promise.all([
+        request('projects/' + selected.id + '/jobs/' + buildJob.id + '/artifacts/build-evidence.json'),
+        Promise.all(blobs.map(async (row: any) => {
           const file = await request('projects/' + selected.id + '/repository/files/' + encodeURIComponent(row.path) + '?ref=' + commit);
-          ciFiles.push({path: row.path, sha256: hash(Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8'))});
-        }
-      }
+          return {path: row.path, sha256: hash(Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8'))};
+        }))
+      ]);
       ciFiles.sort((a, b) => a.path.localeCompare(b.path));
       validateProducers(ciFiles);
       const canonical = readReceipt(fs.readFileSync(wizardConfigPath(), 'utf8'));

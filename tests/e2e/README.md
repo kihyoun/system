@@ -3,8 +3,9 @@
 `candidate.js` runs an explicit private-daemon smoke or full-platform scenario.
 It is separate from the isolated manifest; offline transports verify its
 lifecycle contract without starting Docker. The required root CI platform gate
-runs the full scenario, including configuration-plus-Seed recovery, uncached
-private Wizard image retrieval and local ACME renewal.
+runs the full scenario, including native guided source/adoption and Review/Beta
+lifecycles, configuration-plus-Seed recovery, uncached private Wizard image
+retrieval and local ACME renewal.
 
 ## Boundary and prerequisites
 
@@ -17,7 +18,7 @@ loopback. No port is published on the outer daemon. HTTP probes run through Node
 the owned candidate, through its private bridge gateway and private NGINX.
 
 The driver creates one randomly named, ownership-labeled **privileged DinD**
-container, an internal network and a Docker-data volume. DinD has its own Unix
+container, an owned network and a Docker-data volume. DinD has its own Unix
 socket; the host socket is never mounted into it. Fixed `system_*` names, inner
 Docker networks, ports 80/8071/5050 and service volumes are confined to that daemon.
 The inner bootstrapper receives that **inner** socket because normal System
@@ -30,9 +31,39 @@ coordinator's resource lease and agree a test window. The DinD container is
 limited to four CPUs and 12 GiB RAM. Budget additional headroom on the outer
 host, image archives, image extraction and GitLab's data volume; Docker's volume
 does not enforce a disk quota. Disk/RAM checks and a lease must happen outside
-this driver before invocation. An internal outer network prevents external
-dependency downloads; service images must be preloaded. The full runner/registry
-scenario also needs its declared helper and build-image inputs.
+this driver before invocation. Smoke scenarios use an internal outer network.
+The full guided scenario explicitly permits outbound access on its owned bridge
+for the public HTTPS Git origin and native package, browser and image downloads;
+it still publishes no outer ports. Service images remain declared and preloaded.
+The full runner/registry scenario also needs its declared helper and build inputs.
+
+The guided scenario uses the pinned submodule's public origin from `.gitmodules`;
+an operator fork can set `SYSTEM_TEST_WIZARD_ORIGIN` to its public HTTPS Git URL.
+The native public-address and approved-producer checks remain active. A changed
+upstream producer is a failing input, not permission to copy different CI into
+the source project. Private origins are not supported by this import acceptance.
+GitLab, Sync, Wizard, Review and Beta use exact-host TLS through the existing
+local ACME authority. The registry remains the existing private HTTP endpoint
+on port 5050; this scenario does not claim HTTPS registry verification.
+
+The full gate performs guided setup once on its fresh original platform, then
+uses the same platform's normal imported-default, merge-request and merged-default
+pipelines. It plays the real manual Review/Beta Deploy and Stop jobs, preserving
+the original main configuration and running Wizard image throughout setup.
+The publication gate requires those native stages and identities; passing offline
+fixtures cannot substitute for them. These stages share the scenario's fixed
+absolute deadline described below. Per-stage timings include the work, and a
+timeout fails acceptance without an automatic extension.
+
+Only the original disposable guided platform's single managed Docker runner
+opts into two concurrent jobs, each limited to 2 GiB RAM and one CPU. This lets
+the native source pipeline schedule its browser checks alongside image delivery.
+The fixture refuses conflicting runner settings and preserves the registered
+identity, endpoints, public trust and source CI bytes. The existing 4-GiB/two-CPU
+delivery builder and 1-GiB/one-CPU verifier browser keep their own limits; all
+nested work still shares the candidate's hard 12-GiB/four-CPU ceiling. These are
+ceilings rather than reservations. Only the final full-platform CI run establishes
+acceptance and any elapsed-time improvement; offline contracts do not measure it.
 
 Disposable GitLab instances use `puma['worker_processes'] = 2` through the
 official `GITLAB_OMNIBUS_CONFIG` environment variable. Nested containers can
@@ -82,9 +113,12 @@ For example, the shape of one role is:
 ```
 
 `readinessMilliseconds` is optional (1,000–1,200,000; default 1,200,000 per smoke
-readiness gate). The ordinary lifecycle has a twenty-minute budget; full ACME
-recovery shares one twenty-five-minute budget across all owners. Both are checked
-between bounded Docker/HTTP operations. Each streamed archive load is capped at
+readiness gate). Ordinary smoke has a twenty-minute budget; ACME without a GitLab
+upgrade shares one twenty-five-minute budget across all owners. A GitLab upgrade
+without guided previews has sixty minutes. Only `guidedPreviewAcceptance === true`
+and `gitlabUpgradeAcceptance === true` together select seventy-five minutes.
+Each scenario uses one absolute deadline, checked between bounded Docker/HTTP
+operations. Each streamed archive load is capped at
 ten minutes;
 other Docker operations at two minutes and individual HTTP requests at ten
 seconds. An explicit event-loop yield before every Docker operation delivers
@@ -185,8 +219,10 @@ existing publishing stage. Its trusted Node 24 / Alpine parent installs the same
 pinned CLI utilities as System, builds the full System context and the Wizard
 from the validated pinned snapshot, and preloads the pinned service images.
 The job is serialized with a GitLab resource group. Image preparation has a
-separate bounded budget; private execution has an ordinary twenty-minute limit, extended to one shared
-twenty-five-minute limit for ACME recovery.
+separate bounded budget. The combined guided-preview/GitLab-upgrade execution has
+one fixed seventy-five-minute limit, shared by the original host, restored host,
+ACME authority and side owners. The runner script allows eighty minutes, the
+separate cleanup allows two minutes and the job limit is eighty-five minutes.
 The runner host needs twelve GiB candidate RAM plus its existing platform/job
 headroom and enough free disk for image archives, extraction and GitLab state.
 
@@ -291,14 +327,18 @@ Without the explicit `privateWizardRecovery` scenario, a restored private Wizard
 registry pin fails with `wizard-pin-recovery-artifact-not-declared`; it is never
 silently changed to the local fixture image.
 
-The private-image scenario publishes a derivative of the declared source-built
-Wizard image through a real CI job on a separate branch of the managed Wizard
-project. A unique marker layer makes its image ID different from every prepared
-archive. The actual exported configuration pins that CI-published registry digest.
+In the full guided scenario, private-image recovery reuses the actual Wizard
+artifact from its verified merged-default pipeline. It independently checks the
+canonical source receipt, native required jobs and artifacts, registry digest,
+image ID and source label. No extra private-image build is needed. Its image must
+be absent from every prepared archive. The nonguided fixture instead publishes a
+derivative through its existing owned CI branch and unique marker layer.
+The actual exported configuration pins the CI-published registry digest.
 The new daemon must have neither its digest reference nor its private image ID
 before startup. After Seed restoration, the fresh-source startup helper retrieves
 the exact image using a temporary project-scoped `read_registry` deploy token.
-The adapter verifies the running Wizard's image ID and marker and verifies that
+The adapter verifies the running Wizard's exact image ID and source revision
+(or the legacy fixture's marker), and verifies that
 no live reserved recovery token remains. Only then may the report state
 `privateWizardPinVerified: true`. The fixture does not supply an old Docker login,
 private image archive or substitute image. This scenario requires actual passing
@@ -321,10 +361,13 @@ internal Docker bridge with no published port. They survive the original platfor
 daemon's deletion. Each uses the existing ownership journal and guarded cleanup,
 with at most one container/network/volume per owner. A short initializer runs
 without network and overrides image-declared volumes with tmpfs. Every owner
-inherits the original candidate's absolute deadline and cancellation. The expanded
-`acmeRenewalAcceptance: true` scenario has one shared 1,500-second lifecycle
-budget, including both platform hosts and these fixture owners. Ordinary
-candidates retain their 1,200-second budget; no individual stage resets it.
+inherits the original candidate's absolute deadline and cancellation. An
+`acmeRenewalAcceptance: true` scenario without a GitLab upgrade has one shared
+1,500-second lifecycle budget, including both platform hosts and these fixture
+owners. GitLab upgrades use the sixty-minute budget, or seventy-five minutes
+when guided previews are also enabled. Ordinary smoke retains 1,200 seconds.
+Starting a stage or replacing a host never resets the deadline or extends it
+automatically.
 The outer script and CI-job limits must also retain preparation, publication
 and independent cleanup reserve beyond the lifecycle budget. Forced-kill cleanup
 must remove heavy platform owners before these fixture owners.
@@ -392,15 +435,21 @@ The outer receipt copies the bounded migration proof; the detailed migration
 stages belong to the restored candidate receipt. Raw private checkpoints,
 configuration, credentials and database logs are never public CI artifacts.
 
-The optional successor scenario shares a finite 60-minute overall candidate
-budget, including the preceding cold-recovery scenarios and both version
-transitions. Native upgrade and rollback readiness each allow 900 seconds, within
+The successor scenario uses one fixed 75-minute overall candidate budget only
+when both `guidedPreviewAcceptance === true` and `gitlabUpgradeAcceptance === true`.
+The budget includes the three actual native Wizard push/MR/push pipelines with
+four required jobs each, manual Review/Beta Deploy and Stop, cold recovery and
+both GitLab version transitions. It is an upper bound, not a runtime guarantee.
+An upgrade without guided previews retains its 60-minute budget. Original and
+restored candidates, the ACME authority and all side owners share the original
+absolute deadline; no phase or host switch resets it, and no timeout extends it
+automatically. Native upgrade and rollback readiness each allow 900 seconds, within
 a 1,200-second invocation limit and the same absolute candidate deadline. Readiness
 still requires completed background migrations; a successful migration batch alone
 does not satisfy that condition. The scenario uses the existing serialized resource
-group and 12-GiB private daemon ceiling; check actual host headroom before starting
-it. The platform job allows a 65-minute script and a separate two-minute cleanup
-within a 70-minute job limit, leaving time for preparation, publication and artifact
+group and 12-GiB/four-CPU private daemon ceiling; check actual host headroom before
+starting it. The platform job allows an 80-minute script and a separate two-minute cleanup
+within an 85-minute job limit, leaving time for preparation, publication and artifact
 collection. Ordinary smoke and ACME-only lifecycle budgets remain unchanged. A
 passing mocked adapter contract is not a successful real migration; use the
 complete platform CI gate for that proof.
