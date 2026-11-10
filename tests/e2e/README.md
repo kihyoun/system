@@ -51,9 +51,9 @@ uses the same platform's normal imported-default, merge-request and merged-defau
 pipelines. It plays the real manual Review/Beta Deploy and Stop jobs, preserving
 the original main configuration and running Wizard image throughout setup.
 The publication gate requires those native stages and identities; passing offline
-fixtures cannot substitute for them. The existing candidate job and overall
-deadline remain unchanged. Per-stage timings include the new work, and a timeout
-remains a failure rather than a reason to extend the deadline automatically.
+fixtures cannot substitute for them. These stages share the scenario's fixed
+absolute deadline described below. Per-stage timings include the work, and a
+timeout fails acceptance without an automatic extension.
 
 Only the original disposable guided platform's single managed Docker runner
 opts into two concurrent jobs, each limited to 2 GiB RAM and one CPU. This lets
@@ -113,9 +113,12 @@ For example, the shape of one role is:
 ```
 
 `readinessMilliseconds` is optional (1,000–1,200,000; default 1,200,000 per smoke
-readiness gate). The ordinary lifecycle has a twenty-minute budget; full ACME
-recovery shares one twenty-five-minute budget across all owners. Both are checked
-between bounded Docker/HTTP operations. Each streamed archive load is capped at
+readiness gate). Ordinary smoke has a twenty-minute budget; ACME without a GitLab
+upgrade shares one twenty-five-minute budget across all owners. A GitLab upgrade
+without guided previews has sixty minutes. Only `guidedPreviewAcceptance === true`
+and `gitlabUpgradeAcceptance === true` together select seventy-five minutes.
+Each scenario uses one absolute deadline, checked between bounded Docker/HTTP
+operations. Each streamed archive load is capped at
 ten minutes;
 other Docker operations at two minutes and individual HTTP requests at ten
 seconds. An explicit event-loop yield before every Docker operation delivers
@@ -216,8 +219,10 @@ existing publishing stage. Its trusted Node 24 / Alpine parent installs the same
 pinned CLI utilities as System, builds the full System context and the Wizard
 from the validated pinned snapshot, and preloads the pinned service images.
 The job is serialized with a GitLab resource group. Image preparation has a
-separate bounded budget; private execution has an ordinary twenty-minute limit, extended to one shared
-twenty-five-minute limit for ACME recovery.
+separate bounded budget. The combined guided-preview/GitLab-upgrade execution has
+one fixed seventy-five-minute limit, shared by the original host, restored host,
+ACME authority and side owners. The runner script allows eighty minutes, the
+separate cleanup allows two minutes and the job limit is eighty-five minutes.
 The runner host needs twelve GiB candidate RAM plus its existing platform/job
 headroom and enough free disk for image archives, extraction and GitLab state.
 
@@ -356,10 +361,13 @@ internal Docker bridge with no published port. They survive the original platfor
 daemon's deletion. Each uses the existing ownership journal and guarded cleanup,
 with at most one container/network/volume per owner. A short initializer runs
 without network and overrides image-declared volumes with tmpfs. Every owner
-inherits the original candidate's absolute deadline and cancellation. The expanded
-`acmeRenewalAcceptance: true` scenario has one shared 1,500-second lifecycle
-budget, including both platform hosts and these fixture owners. Ordinary
-candidates retain their 1,200-second budget; no individual stage resets it.
+inherits the original candidate's absolute deadline and cancellation. An
+`acmeRenewalAcceptance: true` scenario without a GitLab upgrade has one shared
+1,500-second lifecycle budget, including both platform hosts and these fixture
+owners. GitLab upgrades use the sixty-minute budget, or seventy-five minutes
+when guided previews are also enabled. Ordinary smoke retains 1,200 seconds.
+Starting a stage or replacing a host never resets the deadline or extends it
+automatically.
 The outer script and CI-job limits must also retain preparation, publication
 and independent cleanup reserve beyond the lifecycle budget. Forced-kill cleanup
 must remove heavy platform owners before these fixture owners.
@@ -427,15 +435,21 @@ The outer receipt copies the bounded migration proof; the detailed migration
 stages belong to the restored candidate receipt. Raw private checkpoints,
 configuration, credentials and database logs are never public CI artifacts.
 
-The optional successor scenario shares a finite 60-minute overall candidate
-budget, including the preceding cold-recovery scenarios and both version
-transitions. Native upgrade and rollback readiness each allow 900 seconds, within
+The successor scenario uses one fixed 75-minute overall candidate budget only
+when both `guidedPreviewAcceptance === true` and `gitlabUpgradeAcceptance === true`.
+The budget includes the three actual native Wizard push/MR/push pipelines with
+four required jobs each, manual Review/Beta Deploy and Stop, cold recovery and
+both GitLab version transitions. It is an upper bound, not a runtime guarantee.
+An upgrade without guided previews retains its 60-minute budget. Original and
+restored candidates, the ACME authority and all side owners share the original
+absolute deadline; no phase or host switch resets it, and no timeout extends it
+automatically. Native upgrade and rollback readiness each allow 900 seconds, within
 a 1,200-second invocation limit and the same absolute candidate deadline. Readiness
 still requires completed background migrations; a successful migration batch alone
 does not satisfy that condition. The scenario uses the existing serialized resource
-group and 12-GiB private daemon ceiling; check actual host headroom before starting
-it. The platform job allows a 65-minute script and a separate two-minute cleanup
-within a 70-minute job limit, leaving time for preparation, publication and artifact
+group and 12-GiB/four-CPU private daemon ceiling; check actual host headroom before
+starting it. The platform job allows an 80-minute script and a separate two-minute cleanup
+within an 85-minute job limit, leaving time for preparation, publication and artifact
 collection. Ordinary smoke and ACME-only lifecycle budgets remain unchanged. A
 passing mocked adapter contract is not a successful real migration; use the
 complete platform CI gate for that proof.

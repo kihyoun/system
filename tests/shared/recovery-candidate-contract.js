@@ -70,12 +70,13 @@ test('failed original-host removal prevents a second daemon',async t=>{
   assert(!first.events.includes('new-host-created'));
 });
 
-test('upgrade recovery preserves spent lifecycle time and refuses fresh work after the original deadline',async t=>{
+for(const [budget,guided]of [[3600000,false],[4500000,true]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
   const {Candidate}=require('./disposable-candidate');
   const input=fixture(t),first=original(),deps=dependencies(first,input),calls=[];
-  first.startedAt=1000;first.deadline=first.startedAt+3600000;
+  first.startedAt=1000;first.deadline=first.startedAt+budget;
   first.spec.gitlabUpgradeAcceptance=true;
-  let now=first.startedAt+35*60000;
+  first.spec.guidedPreviewAcceptance=guided;
+  let now=first.deadline-25*60000;
   deps.Candidate.prototype.start=async function(){
     assert(first.removed);
     assert.equal(this.deadline,first.deadline,'fresh host must inherit the original absolute end');

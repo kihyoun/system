@@ -29,7 +29,12 @@ assert.throws(()=>configuration(example.replace('https://www.system-bootstrapper
 assert.throws(()=>new Candidate({...spec,daemonImage:'docker:latest'}));
 assert.throws(()=>new Candidate({...spec,images:{}}));
 for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},1200000],[{acmeRenewalAcceptance:true},1500000],
-  [{gitlabUpgradeAcceptance:true},3600000],[{gitlabUpgradeAcceptance:true,acmeRenewalAcceptance:true},3600000]]) {
+  [{guidedPreviewAcceptance:true},1200000],[{guidedPreviewAcceptance:true,acmeRenewalAcceptance:true},1500000],
+  [{gitlabUpgradeAcceptance:true},3600000],[{gitlabUpgradeAcceptance:true,acmeRenewalAcceptance:true},3600000],
+  [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:false},3600000],
+  [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:'true'},3600000],
+  [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true},4500000],
+  [{gitlabUpgradeAcceptance:true,acmeRenewalAcceptance:true,guidedPreviewAcceptance:true},4500000]]) {
   const bounded=new Candidate({...spec,...options},{now:()=>123});
   assert.equal(bounded.deadline,123+budget);
 }

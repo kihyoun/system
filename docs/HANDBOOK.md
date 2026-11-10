@@ -1801,10 +1801,23 @@ operator selects that accepted source plus the two digest references and uses
 Existing installations retain their saved selectors and require the appropriate
 reviewed promotion/migration procedure instead.
 
-For the declared GitLab migration, the disposable candidate has one shared
-40-minute execution budget; the CI job has a 45-minute deadline including image
-preparation, publication and cleanup. These are upper bounds, not a prediction
-that every change takes that long. Documentation-only changes retain their short
+For combined guided previews and GitLab migration, `guidedPreviewAcceptance === true`
+and `gitlabUpgradeAcceptance === true` select one fixed 75-minute execution budget.
+An upgrade without guided previews retains 60 minutes; ACME without an upgrade
+retains 25 minutes; ordinary smoke retains 20 minutes. The original candidate,
+restored candidate, ACME authority and all side owners share the original absolute
+deadline. Starting a phase or replacing a host never resets it; a timeout fails
+acceptance without an automatic extension.
+
+The full platform CI job allows an 80-minute runner script, a separate two-minute
+`after_script` and an 85-minute job limit for preparation, execution, publication
+and artifact collection. The 75-minute ceiling includes three actual native Wizard
+pipelines (imported default branch, merge request and merged default branch), each
+with four required jobs, plus manual Review/Beta Deploy and Stop. This ceiling is
+an upper bound, not a runtime guarantee. The candidate remains limited to 12 GiB
+RAM and four CPUs. Only the original guided platform's single managed Docker
+runner allows two concurrent jobs, each capped at 2 GiB RAM and one CPU; all nested
+work shares the candidate ceiling. Documentation-only changes retain their short
 lane. No earlier passing fixture or MR run replaces the required acceptance for
 the exact merged source being promoted.
 
