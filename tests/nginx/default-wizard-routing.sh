@@ -43,6 +43,36 @@ test "$(grep -c 'server_name localhost;' /templates/default.conf.template)" -eq 
 ! grep -q wizard_prod /templates/default.conf.template
 ! grep -q 'wizard_runner\|wizard_prod' "$TRACE"
 echo 'PASS: exactly one real Wizard route and no extra proxy/runner lifecycle resources.'
+# Every environment combination is valid, including Beta-only and none.
+# The provisioning entry point enables errexit for this renderer.
+for prod in false true; do
+  for beta in false true; do
+    for review in false true; do
+      cat > "$fixture/system/.projects.env/.application.env" <<EOF
+PROJECT_NAME=application
+USE_PROD_HOST=$prod
+USE_BETA_HOST=$beta
+USE_REVIEW_HOST=$review
+EOF
+      cp "$fixture/system/.projects.env/.application.env" "$fixture/nginx-proxy/.projects/.application.env"
+      for env in PROD BETA REVIEW; do
+        printf '%s_DOMAIN_MODE=0\n%s_PROXY=127.0.0.1\n%s_HOST=%s.localhost\n' "$env" "$env" "$env" "$env" >> "$fixture/nginx-proxy/.projects/.application.env"
+      done
+      : > "$TRACE"
+      bash -e start.sh reload
+      for env in PROD BETA REVIEW; do
+        flag=$(printf '%s' "$env" | tr '[:upper:]' '[:lower:]')
+        count=$(grep -c "server_name $env.localhost;" /templates/default.conf.template || true)
+        if [ "${!flag}" = true ]; then test "$count" -eq 1; else test "$count" -eq 0; fi
+      done
+      grep -q 'nginx -t' "$TRACE"
+      grep -q 'nginx -s reload' "$TRACE"
+      grep -q 'server_name localhost;' /templates/default.conf.template
+      grep -q 'server_name sync.localhost;' /templates/default.conf.template
+    done
+  done
+done
+echo 'PASS: all eight application environment combinations render and reload under errexit.'
 bash -e start.sh recovery
 grep -q 'server_name gitlab.localhost;' /templates/default.conf.template
 grep -q 'server_name registry.localhost;' /templates/default.conf.template
