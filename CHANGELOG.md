@@ -9,6 +9,8 @@ one accepted System source revision and tested controller/Wizard image attempt.
 
 - Start and reload application routing when Review, Beta or Production hosts
   are disabled, while preserving failures in enabled route rendering.
+- Resume pending project setup after Fetch without treating its receipt as a
+  configuration change or replacing edits in the already bound repository.
 - Refresh unavailable Alpine Docker CLI and Git package pins for candidate
   builds without changing historical build recipes.
 - Serve HTTP-01 challenges for exact HTTP application hosts so certificates
