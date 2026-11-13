@@ -69,7 +69,8 @@ generate_nginx_conf $GITLAB_REGISTRY_DOMAIN_MODE \
 function generate_proxy_config {
   source ../nginx-proxy/.projects/.$PROJECT_NAME.env
 
-  [ $USE_PROD_HOST = true ] && generate_nginx_conf $PROD_DOMAIN_MODE \
+  if [ "$USE_PROD_HOST" = true ]; then
+    generate_nginx_conf $PROD_DOMAIN_MODE \
     ${PROJECT_NAME}_prod \
     $PROD_PROXY \
     80 \
@@ -77,8 +78,10 @@ function generate_proxy_config {
     $PROD_SSL \
     $PROD_SSL_KEY \
     >> /templates/default.conf.template
+  fi
 
-  [ $USE_BETA_HOST = true ] && generate_nginx_conf $BETA_DOMAIN_MODE \
+  if [ "$USE_BETA_HOST" = true ]; then
+    generate_nginx_conf $BETA_DOMAIN_MODE \
     ${PROJECT_NAME}_beta \
     $BETA_PROXY \
     80 \
@@ -86,8 +89,10 @@ function generate_proxy_config {
     $BETA_SSL \
     $BETA_SSL_KEY \
     >> /templates/default.conf.template
+  fi
 
-  [ $USE_REVIEW_HOST = true ] && generate_nginx_conf $REVIEW_DOMAIN_MODE \
+  if [ "$USE_REVIEW_HOST" = true ]; then
+    generate_nginx_conf $REVIEW_DOMAIN_MODE \
     ${PROJECT_NAME}_review \
     $REVIEW_PROXY \
     80 \
@@ -95,6 +100,7 @@ function generate_proxy_config {
     $REVIEW_SSL \
     $REVIEW_SSL_KEY \
     >> /templates/default.conf.template
+  fi
 }
 
 for i in $(find -H ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
