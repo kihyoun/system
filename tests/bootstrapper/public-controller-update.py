@@ -28,6 +28,7 @@ def load(name, path):
 tool = load('public_controller_update', ROOT / 'bootstrapper/update-controller.py')
 fixtures = load('successor_fixtures', ROOT / 'tests/bootstrapper/successor-host-tools.py')
 runtime, recovery = successor.runtime, successor.recovery
+inspect_runtime_services = runtime.inspect_services
 
 
 class PublicControllerUpdate(unittest.TestCase):
@@ -82,7 +83,8 @@ class PublicControllerUpdate(unittest.TestCase):
                           ('system_gitlab_1', 'GITLAB_IMAGE'), ('system_wizard_1', 'WIZARD_IMAGE'),
                           ('runner_docker_1', 'GITLAB_RUNNER_IMAGE'), ('runner_docker_2', 'GITLAB_RUNNER_IMAGE')]:
             service = name.split('_')[1]
-            self.rows[name] = {'Id': name + '-old', 'Image': self.images[self.config[key]]['Id'],
+            self.rows[name] = {'Name': '/' + name, 'Id': name + '-old', 'Image': self.images[self.config[key]]['Id'],
+                               'ExecIDs': [],
                                'State': {'Running': True, 'StartedAt': 'original'},
                                'Config': {'Labels': {'com.docker.compose.project': 'system',
                                                      'com.docker.compose.service': service}},
@@ -92,13 +94,14 @@ class PublicControllerUpdate(unittest.TestCase):
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(successor, 'verify_checkout'))
-        self.stack.enter_context(patch.object(successor, 'sync_idle'))
+        self.sync_idle = self.stack.enter_context(patch.object(successor, 'sync_idle'))
         self.stack.enter_context(patch.object(successor, 'environment', return_value={}))
         self.stack.enter_context(patch.object(recovery, 'inspect_image', side_effect=lambda ref: self.images[ref]))
-        self.stack.enter_context(patch.object(runtime, 'inspect_services', side_effect=lambda config: copy.deepcopy(self.rows)))
-        self.stack.enter_context(patch.object(runtime, 'verify_mounts', return_value=20))
+        self.stack.enter_context(patch.object(runtime, 'inspect_services', side_effect=self.services))
+        self.mounts = self.stack.enter_context(patch.object(runtime, 'verify_mounts', return_value=20))
         self.routes = self.stack.enter_context(patch.object(runtime, 'verify_routes'))
-        self.stack.enter_context(patch.object(runtime, 'verify_sync'))
+        self.management = self.stack.enter_context(patch.object(runtime, 'verify_management_routes'))
+        self.sync = self.stack.enter_context(patch.object(runtime, 'verify_sync'))
         self.contacts = self.stack.enter_context(patch.object(runtime, 'runner_contacts',
                                                              return_value={'checked': True, 'online': 2}))
         self.stack.enter_context(patch.object(runtime, 'run', side_effect=self.git))
@@ -111,6 +114,12 @@ class PublicControllerUpdate(unittest.TestCase):
         self.checked = self.stack.enter_context(patch.object(tool.installer, 'checked_image', side_effect=lambda *a, **k: self.pulled))
         self.checkpoint = self.root / 'recovery/controller-updates/attempt'
         self.controller_template = copy.deepcopy(self.rows['system_bootstrapper_1'])
+
+    def services(self, config, stopped_controller_id=None):
+        # Exercise the actual runtime state boundary, rather than mocking away
+        # the default all-running requirement or its one canonical exception.
+        with patch.object(runtime, 'run', return_value=json.dumps(list(self.rows.values())).encode()):
+            return inspect_runtime_services(config, stopped_controller_id=stopped_controller_id)
 
     def git(self, command, **kwargs):
         if command[-2:] == ['status', '--porcelain']: return b''
@@ -136,13 +145,23 @@ class PublicControllerUpdate(unittest.TestCase):
             return (name + '\n').encode() if name in self.rows else b''
         if 'stop' in command:
             self.rows['system_bootstrapper_1']['State']['Running'] = False
+        if command[2:3] == ['update']:
+            for row in self.rows.values():
+                if row['Id'] == command[-1]:
+                    policy = next(word.removeprefix('--restart=') for word in command if word.startswith('--restart='))
+                    row['HostConfig']['RestartPolicy'] = {'Name': policy, 'MaximumRetryCount': 0}
         if 'compose' in command:
             if self.compose_fail: raise recovery.RecoveryError('synthetic-compose-failure')
             self.settings(None)
-            row = self.rows.setdefault('system_bootstrapper_1', copy.deepcopy(self.controller_template))
-            row.update(Id='controller-replaced', Image=self.images[self.config['BOOTSTRAPPER_IMAGE']]['Id'])
-            row['State'] = {'Running': True, 'StartedAt': 'replacement'}
-            if getattr(self, 'paired', False):
+            if command[-1] == 'bootstrapper':
+                row = self.rows.setdefault('system_bootstrapper_1', copy.deepcopy(self.controller_template))
+                row.update(Id='controller-replaced', Image=self.images[self.config['BOOTSTRAPPER_IMAGE']]['Id'])
+                row['State'] = {'Running': True, 'StartedAt': 'replacement'}
+                if 'create' in command:
+                    row['State'].update(Status='created', Running=False, Paused=False, Restarting=False,
+                                        Dead=False, OOMKilled=False, Pid=0, ExitCode=0)
+                row['HostConfig']['RestartPolicy'] = {'Name': 'always', 'MaximumRetryCount': 0}
+            if getattr(self, 'paired', False) and ('create' not in command or command[-1] == 'wizard'):
                 row = self.rows.setdefault('system_wizard_1', copy.deepcopy(self.wizard_template))
                 row.update(Id='wizard-replaced', Image=self.images[self.config['WIZARD_IMAGE']]['Id'])
                 row['State'] = {'Running': True, 'StartedAt': 'replacement'}
@@ -186,6 +205,353 @@ class PublicControllerUpdate(unittest.TestCase):
                                    ('BOOTSTRAPPER_IMAGE=' + self.old + '\nWIZARD_IMAGE=' +
                                     self.config['WIZARD_IMAGE'] + '\n').encode())
         return value
+
+    def enable_repair(self):
+        self.accepted_metadata()
+        row = self.rows['system_bootstrapper_1']
+        row['State'].update(Status='exited', Running=False, Paused=False, Restarting=False,
+                            Dead=False, OOMKilled=False, Pid=0, ExitCode=1)
+        row['ExecIDs'] = None  # Docker also represents an empty exec set as null.
+        row['HostConfig']['RestartPolicy'] = {'Name': 'no', 'MaximumRetryCount': 0}
+        for index in (3, 4):
+            directory = self.root / f'runners/runner/{index}/config'
+            directory.mkdir(parents=True)
+            (directory / '.runner_system_id').write_text(f's_manager{index}\n')
+            self.rows[f'runner_docker_{index}'] = copy.deepcopy(self.rows['runner_docker_1'])
+            self.rows[f'runner_docker_{index}'].update(Name=f'/runner_docker_{index}', Id=f'runner-{index}')
+        for name, peer in self.rows.items():
+            if name.startswith('runner_docker_'):
+                peer['Config']['Labels'].update({'com.docker.compose.project': 'runner',
+                                               'com.docker.compose.service': 'docker'})
+        self.config['GITLAB_RUNNER_SCALE'] = '4'
+        self.raw = self.raw.replace(b"export GITLAB_RUNNER_SCALE='2'", b"export GITLAB_RUNNER_SCALE='4'")
+        successor.atomic_bytes(self.config['_main'], self.raw)
+        self.pending = self.root / 'configuration/.projects.env/failed.env'
+        self.pending.write_text('# retained bootstrapPending project receipt\n')
+        self.contacts.return_value = {'checked': True, 'online': 4}
+
+    def repair(self, **extra):
+        return self.update(wizard=self.wizard, release_metadata=self.metadata,
+                           repair_stopped_controller=True, **extra)
+
+    def test_stopped_repair_updates_exact_pair_and_runs_full_readiness_only_after_start(self):
+        self.enable_repair()
+        original = copy.deepcopy(self.rows['system_bootstrapper_1'])
+        pending = self.pending.read_bytes()
+        record = self.repair()
+        self.assertEqual(record['phase'], 'completed')
+        self.assertTrue(record['repairStoppedController'])
+        self.assertEqual(record['previousController']['containerId'], original['Id'])
+        self.assertEqual(record['previousController']['state'], original['State'])
+        self.assertEqual(record['previousController']['restartPolicy'], original['HostConfig']['RestartPolicy'])
+        self.assertEqual(self.pending.read_bytes(), pending)
+        self.sync_idle.assert_not_called()
+        self.sync.assert_called_once()
+        self.contacts.assert_called_once()
+        self.routes.assert_called_once()
+        self.assertEqual(self.management.call_count, 2)
+        self.assertEqual(self.rows['system_bootstrapper_1']['Image'], self.release['imageId'])
+        self.assertEqual(self.rows['system_wizard_1']['Image'], self.release['wizardImageId'])
+        self.assertTrue((self.checkpoint / 'verification.json').is_file())
+        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
+        self.assertFalse(any('stop' in command for command in self.commands))
+
+    def test_stopped_repair_check_only_keeps_stopped_services_selectors_and_pending_receipt(self):
+        self.enable_repair()
+        rows, selection = copy.deepcopy(self.rows), tool.release_selection(self.config)
+        result = self.repair(check_only=True)
+        self.assertTrue(result['repairStoppedController'])
+        self.assertEqual(result['phase'], 'preflight-passed')
+        self.assertEqual(self.rows, rows)
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertEqual(tool.release_selection(self.config), selection)
+        self.assertFalse(self.checkpoint.exists())
+        self.assertEqual(self.commands, [])
+        self.sync_idle.assert_not_called()
+        self.sync.assert_not_called()
+        self.contacts.assert_not_called()
+        self.routes.assert_not_called()
+        self.management.assert_called_once()
+
+    def test_stopped_exception_is_explicit_canonical_only_and_requires_accepted_pair(self):
+        self.enable_repair()
+        with self.assertRaisesRegex(recovery.RecoveryError, 'service-not-running'):
+            self.update(check_only=True)
+        with self.assertRaisesRegex(recovery.RecoveryError, 'requires-public-baseline'):
+            runtime.capture(self.config, ROOT, stopped_controller_id=self.rows['system_bootstrapper_1']['Id'])
+        for extra in ({}, {'wizard': self.wizard}, {'release_metadata': self.metadata}):
+            with self.subTest(extra=extra), self.assertRaisesRegex(recovery.RecoveryError, 'requires-paired'):
+                self.update(repair_stopped_controller=True, check_only=True, **extra)
+        self.assertFalse(self.checkpoint.exists())
+        self.assertEqual(self.commands, [])
+
+    def test_stopped_repair_rejects_ambiguous_live_signaled_and_unknown_controller_states(self):
+        self.enable_repair()
+        original = copy.deepcopy(self.rows['system_bootstrapper_1'])
+        for field, value in [('Running', True), ('Paused', True), ('Restarting', True), ('Dead', True),
+                             ('OOMKilled', True), ('Pid', 17), ('ExitCode', 0), ('ExitCode', 128),
+                             ('ExitCode', 137), ('ExitCode', -1), ('ExitCode', None), ('ExitCode', True),
+                             ('Pid', False), ('Status', 'dead')]:
+            self.rows['system_bootstrapper_1'] = copy.deepcopy(original)
+            self.rows['system_bootstrapper_1']['State'][field] = value
+            with self.subTest(field=field, value=value), self.assertRaisesRegex(recovery.RecoveryError, 'quiescent'):
+                self.repair(check_only=True)
+        self.rows['system_bootstrapper_1'] = original
+        for key in ('ExecIDs', 'Pid', 'Paused'):
+            changed = copy.deepcopy(original)
+            del (changed if key == 'ExecIDs' else changed['State'])[key]
+            self.rows['system_bootstrapper_1'] = changed
+            with self.subTest(missing=key), self.assertRaises(recovery.RecoveryError):
+                self.repair(check_only=True)
+        self.rows['system_bootstrapper_1'] = copy.deepcopy(original)
+        self.rows['system_bootstrapper_1']['ExecIDs'] = ['active-exec']
+        with self.assertRaisesRegex(recovery.RecoveryError, 'execs'):
+            self.repair(check_only=True)
+        self.rows['system_bootstrapper_1'] = copy.deepcopy(original)
+        self.rows['system_bootstrapper_1']['HostConfig']['RestartPolicy']['Name'] = 'always'
+        with self.assertRaisesRegex(recovery.RecoveryError, 'restart-policy'):
+            self.repair(check_only=True)
+        self.rows['system_bootstrapper_1'] = copy.deepcopy(original)
+        self.rows['system_bootstrapper_1']['HostConfig']['RestartPolicy']['MaximumRetryCount'] = 1
+        with self.assertRaisesRegex(recovery.RecoveryError, 'restart-policy'):
+            self.repair(check_only=True)
+        del self.rows['system_bootstrapper_1']
+        with self.assertRaisesRegex(recovery.RecoveryError, 'missing-container'):
+            self.repair(check_only=True)
+        self.assertEqual(self.commands, [])
+        self.assertFalse(self.checkpoint.exists())
+
+    def test_stopped_repair_requires_owned_healthy_idle_peers_and_exact_mounts_and_images(self):
+        self.enable_repair()
+        original = copy.deepcopy(self.rows)
+        for name in original:
+            for changed in ('owner', 'image', 'running', 'health', 'exec'):
+                if name == 'system_bootstrapper_1' and changed in ('running', 'health'):
+                    continue
+                self.rows = copy.deepcopy(original)
+                row = self.rows[name]
+                if changed == 'owner': row['Config']['Labels']['com.docker.compose.project'] = 'foreign'
+                elif changed == 'image': row['Image'] = 'sha256:' + '9' * 64
+                elif changed == 'running': row['State']['Running'] = False
+                elif changed == 'health': row['State']['Health'] = {'Status': 'unhealthy'}
+                else: row['ExecIDs'] = ['provisioning-exec']
+                with self.subTest(name=name, changed=changed), self.assertRaises(recovery.RecoveryError):
+                    self.repair(check_only=True)
+        self.rows = original
+        with patch.object(runtime, 'verify_mounts', side_effect=recovery.RecoveryError('essential-persistent-mount-is-misdirected')):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'misdirected'):
+                self.repair(check_only=True)
+        self.assertEqual(self.commands, [])
+        self.assertFalse(self.checkpoint.exists())
+
+    def test_stopped_repair_refuses_unfinished_operations_and_live_guarded_children(self):
+        self.enable_repair()
+        paths = ['configuration/.gitlab-upgrade-lock', 'configuration/.storage-operation-lock',
+                 'configuration/.projects.env/.wizard.env.environments.lock', 'configuration/preview-setup.json.lock',
+                 'host/letsencrypt/.system-bootstrapper-certificate-lock',
+                 'gitlab/data/.system-bootstrapper-restore-incomplete',
+                 'configuration/.wizard-image-recovery.lock', 'configuration/.wizard-image-recovery.pending']
+        for relative in paths:
+            marker = self.root / relative
+            marker.mkdir()
+            with self.subTest(relative=relative), self.assertRaisesRegex(recovery.RecoveryError, 'unfinished-operation'):
+                self.repair(check_only=True)
+            marker.rmdir()
+        marker = self.root / paths[0]
+        marker.symlink_to(self.root / 'absent')
+        with self.assertRaisesRegex(recovery.RecoveryError, 'unfinished-operation'):
+            self.repair(check_only=True)
+        marker.unlink()
+        guard = self.root / 'configuration/.controller-host-guard.lock'
+        descriptor = os.open(guard, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            tool.fcntl.flock(descriptor, tool.fcntl.LOCK_EX | tool.fcntl.LOCK_NB)
+            with self.assertRaisesRegex(recovery.RecoveryError, 'still-running'):
+                self.repair(check_only=True)
+        finally:
+            os.close(descriptor)
+        self.assertEqual(self.commands, [])
+
+    def test_stopped_repair_does_not_ignore_live_child_beneath_its_own_lease(self):
+        self.enable_repair()
+        acquire = successor.Lease.__enter__
+        def acquire_then_publish_child(lease):
+            result = acquire(lease)
+            successor.atomic_json(lease.paths[0] / 'host-child.json',
+                                  {'operation': lease.operation, 'phase': 'completed', 'childPgid': 123456})
+            return result
+        with patch.object(successor.Lease, '__enter__', acquire_then_publish_child), \
+                patch.object(successor, 'group_live', return_value=True):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'repair-host-child-is-still-running'):
+                self.repair()
+        self.assertEqual(self.commands, [])
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
+
+    def test_stopped_repair_rechecks_identity_configuration_mounts_and_gates_under_lease(self):
+        self.enable_repair()
+        original_rows, original_raw = copy.deepcopy(self.rows), self.raw
+        acquire = successor.Lease.__enter__
+        for changed in ('identity', 'state', 'configuration', 'mounts', 'pipeline', 'publication', 'marker'):
+            self.checkpoint = self.root / 'recovery/controller-updates' / changed
+            def acquire_then_change(lease):
+                result = acquire(lease)
+                if changed == 'identity': self.rows['system_bootstrapper_1']['Id'] = 'different-controller'
+                elif changed == 'state': self.rows['system_bootstrapper_1']['State']['ExitCode'] = 2
+                elif changed == 'configuration': successor.atomic_bytes(self.config['_main'], self.raw + b'export EDIT=1\n')
+                elif changed == 'mounts': self.mounts.side_effect = recovery.RecoveryError('changed-mount')
+                elif changed == 'pipeline': self.api.branch['commit']['id'] = '9' * 40
+                elif changed == 'publication': self.source['wizardRevision'] = '9' * 40
+                else: (self.root / 'configuration/preview-setup.json.lock').mkdir()
+                return result
+            with self.subTest(changed=changed), patch.object(successor.Lease, '__enter__', acquire_then_change):
+                with self.assertRaises(recovery.RecoveryError): self.repair()
+            self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
+            self.assertEqual(self.commands, [])
+            self.rows = copy.deepcopy(original_rows)
+            successor.atomic_bytes(self.config['_main'], original_raw)
+            self.mounts.side_effect = None
+            self.api.branch['commit']['id'] = self.release['sourceRevision']
+            self.source['wizardRevision'] = self.release['wizardRevision']
+            marker = self.root / 'configuration/preview-setup.json.lock'
+            if marker.exists(): marker.rmdir()
+
+    def test_stopped_repair_preserves_CI_publication_image_and_metadata_acceptance(self):
+        self.enable_repair()
+        for changed in ('merge-gate', 'failed-job', 'image', 'metadata'):
+            if changed == 'merge-gate': self.api.project['only_allow_merge_if_pipeline_succeeds'] = False
+            elif changed == 'failed-job': self.api.jobs[0]['status'] = 'failed'
+            elif changed == 'image': self.pulled['candidateJobId'] += 1
+            else:
+                metadata = json.loads(self.metadata.read_bytes()); metadata['acceptance']['evidenceSha256'] = '0' * 64
+                self.metadata.write_text(json.dumps(metadata))
+            with self.subTest(changed=changed), self.assertRaises((recovery.RecoveryError, tool.installer.ReleaseError)):
+                self.repair(check_only=True)
+            self.api.project['only_allow_merge_if_pipeline_succeeds'] = True
+            self.api.jobs[0]['status'] = 'success'
+            self.pulled['candidateJobId'] = self.release['candidateJobId']
+        self.assertEqual(self.commands, [])
+        self.assertFalse(self.checkpoint.exists())
+
+    def test_stopped_repair_full_post_start_readiness_failure_retains_lease_and_checkpoint(self):
+        self.enable_repair()
+        self.sync.side_effect = recovery.RecoveryError('sync-login-failed')
+        with self.assertRaisesRegex(recovery.RecoveryError, 'readiness-failed:sync-login-failed'):
+            self.repair(timeout=0)
+        self.sync.assert_called_once()
+        self.sync_idle.assert_not_called()
+        self.assertTrue((self.root / 'configuration/.storage-operation-lock').exists())
+        record = json.loads((self.checkpoint / 'operation.json').read_bytes())
+        self.assertEqual(record['phase'], 'controller-start-started')
+        self.assertTrue((self.checkpoint / 'baseline-after.json').is_file())
+        self.assertFalse((self.checkpoint / 'verification.json').exists())
+
+    def test_stopped_repair_still_requires_full_Wizard_routes_after_start(self):
+        self.enable_repair()
+        self.routes.side_effect = recovery.RecoveryError('wizard-public-not-ready')
+        with self.assertRaisesRegex(recovery.RecoveryError, 'readiness-failed:wizard-public-not-ready'):
+            self.repair(timeout=0)
+        self.management.assert_has_calls([unittest.mock.call(self.config), unittest.mock.call(self.config)])
+        self.routes.assert_called_once()
+        self.assertTrue((self.root / 'configuration/.storage-operation-lock').exists())
+
+    def test_stopped_repair_still_requires_fresh_runner_contacts_after_start(self):
+        self.enable_repair()
+        self.contacts.side_effect = recovery.RecoveryError('runner-manager-contact-not-fresh')
+        with self.assertRaisesRegex(recovery.RecoveryError, 'readiness-failed:runner-manager-contact-not-fresh'):
+            self.repair(timeout=0)
+        self.sync.assert_called_once()
+        self.contacts.assert_called_once()
+        self.assertTrue((self.root / 'configuration/.storage-operation-lock').exists())
+
+    def test_repair_rollback_restores_selectors_and_never_starts_old_controller(self):
+        self.enable_repair()
+        selection = tool.release_selection(self.config)
+        self.repair()
+        self.commands.clear()
+        with patch.object(tool, 'wait_ready', side_effect=AssertionError('Stopped rollback cannot claim full readiness')):
+            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(record['phase'], 'rolled-back-stopped')
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertEqual(tool.release_selection(self.config), selection)
+        controller = self.rows['system_bootstrapper_1']
+        self.assertEqual(controller['Image'], self.images[self.old]['Id'])
+        self.assertEqual(controller['State']['Status'], 'created')
+        self.assertFalse(controller['State']['Running'])
+        self.assertEqual(controller['State']['Pid'], 0)
+        self.assertEqual(controller['HostConfig']['RestartPolicy']['Name'], 'no')
+        self.assertEqual(self.rows['system_wizard_1']['Image'], self.wizard_template['Image'])
+        self.assertTrue(any('create' in command and '--force-recreate' in command for command in self.commands))
+        self.assertFalse(any('up' in command and command[-1] == 'bootstrapper' for command in self.commands))
+        receipt = json.loads((self.checkpoint / 'rollback-verification.json').read_bytes())
+        self.assertTrue(receipt['controllerStopped'])
+        self.assertFalse(receipt['syncAvailable'])
+        self.assertFalse(receipt['runnerContactFreshnessChecked'])
+        self.assertEqual(receipt['runnerContainerIds'], record['previousRunnerContainerIds'])
+        self.assertEqual(len(receipt['runnerManagerIdentitySha256']), 4)
+        self.contacts.assert_called_once()  # Repair success, never stopped rollback.
+        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
+        self.checkpoint = self.root / 'recovery/controller-updates/retry'
+        self.assertEqual(self.repair(check_only=True)['phase'], 'preflight-passed')
+
+    def test_failed_repair_can_rollback_under_adopted_lease_without_starting_previous_code(self):
+        self.enable_repair()
+        self.compose_fail = True
+        with self.assertRaisesRegex(recovery.RecoveryError, 'compose-failure'): self.repair()
+        self.compose_fail = False
+        self.contacts.side_effect = AssertionError('Stopped fallback cannot require fresh runner API contacts')
+        with patch.object(successor, 'process_start', return_value='different-process'):
+            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(record['phase'], 'rolled-back-stopped')
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertFalse(self.rows['system_bootstrapper_1']['State']['Running'])
+        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
+
+    def test_stopped_rollback_refuses_changed_runner_container_identity(self):
+        self.enable_repair()
+        self.repair()
+        after = self.config['_main'].read_bytes()
+        self.commands.clear()
+        self.rows['runner_docker_4']['Id'] = 'different-manager-container'
+        with self.assertRaisesRegex(recovery.RecoveryError, 'runner-containers-changed'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(self.config['_main'].read_bytes(), after)
+        self.assertFalse(any(word in command for command in self.commands for word in ('stop', 'update', 'compose')))
+        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
+
+    def test_stopped_rollback_refuses_foreign_operation_or_provisioning_exec_before_mutation(self):
+        self.enable_repair()
+        self.repair()
+        self.commands.clear()
+        after = self.config['_main'].read_bytes()
+        self.rows['system_gitlab_1']['ExecIDs'] = ['provisioning-exec']
+        with self.assertRaisesRegex(recovery.RecoveryError, 'active-or-unknown-execs'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertFalse(any(word in command for command in self.commands for word in ('stop', 'update', 'compose')))
+        self.assertEqual(self.config['_main'].read_bytes(), after)
+        self.rows['system_gitlab_1']['ExecIDs'] = []
+        marker = self.root / 'configuration/preview-setup.json.lock'
+        marker.mkdir()
+        with self.assertRaisesRegex(recovery.RecoveryError, 'unfinished-operation'):
+            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertFalse(any(word in command for command in self.commands for word in ('stop', 'update', 'compose')))
+        self.assertEqual(self.config['_main'].read_bytes(), after)
+        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
+
+    def test_stopped_rollback_rechecks_foreign_operations_after_stopping_before_selector_writes(self):
+        self.enable_repair()
+        self.repair()
+        after = self.config['_main'].read_bytes()
+        def stop_then_publish_operation(command, **kwargs):
+            result = self.command(command, **kwargs)
+            if 'stop' in command:
+                (self.root / 'configuration/preview-setup.json.lock').mkdir()
+            return result
+        with patch.object(tool, 'run', side_effect=stop_then_publish_operation):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'unfinished-operation'):
+                tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(self.config['_main'].read_bytes(), after)
+        self.assertTrue((self.root / 'configuration/.storage-operation-lock').exists())
 
     def test_metadata_refresh_is_checkpointed_and_restores_exact_prior_selection(self):
         accepted = self.accepted_metadata()

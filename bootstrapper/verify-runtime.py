@@ -141,7 +141,8 @@ def public_images(config, services):
     return images
 
 
-def capture(config, checkout, manifest=None, public=False):
+def capture(config, checkout, manifest=None, public=False, stopped_controller_id=None):
+    require(stopped_controller_id is None or public, 'stopped-controller-requires-public-baseline')
     root = config['_root']
     cube(config['_main'].read_bytes())
     require(not run(['git', '-C', str(checkout), 'status', '--porcelain']).strip(),
@@ -150,7 +151,8 @@ def capture(config, checkout, manifest=None, public=False):
     # Ordinary recovery/baseline callers always load the archive-backed manifest.
     if public:
         public_manifest_absent(config)
-        services = inspect_services(config)
+        services = (inspect_services(config) if stopped_controller_id is None else
+                    inspect_services(config, stopped_controller_id=stopped_controller_id))
         images = public_images(config, services)
         controller = recovery.inspect_image(images['system_bootstrapper_1']['reference'])
         source = controller.get('Config', {}).get('Labels', {}).get('org.opencontainers.image.revision')
@@ -221,7 +223,25 @@ def assert_baseline(config, baseline):
     cube(config['_main'].read_bytes())
 
 
-def inspect_services(config):
+def failed_stopped_controller(row, expected_id):
+    """Permit only a positively quiescent canonical container, never an absent one."""
+    state = row.get('State', {})
+    require(isinstance(expected_id, str) and bool(expected_id) and
+            row.get('Name') == '/system_bootstrapper_1' and row.get('Id') == expected_id,
+            'stopped-controller-identity-mismatch')
+    exited = state.get('Status') == 'exited' and type(state.get('ExitCode')) is int and 0 < state['ExitCode'] < 128
+    # Native stopped rollback uses Compose create, without ever starting old code.
+    created = state.get('Status') == 'created' and type(state.get('ExitCode')) is int and state['ExitCode'] == 0
+    require((exited or created) and type(state.get('Pid')) is int and state['Pid'] == 0 and
+            all(state.get(key) is False for key in ('Running', 'Paused', 'Restarting', 'Dead', 'OOMKilled')),
+            'controller-is-not-quiescent-stopped-failure')
+    require('ExecIDs' in row and row['ExecIDs'] in (None, []), 'stopped-controller-active-or-unknown-execs')
+    policy = row.get('HostConfig', {}).get('RestartPolicy', {})
+    require(policy.get('Name') == 'no' and policy.get('MaximumRetryCount', 0) == 0,
+            'stopped-controller-restart-policy-must-be-no')
+
+
+def inspect_services(config, stopped_controller_id=None):
     names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1']
     if config['WIZARD_ENABLE'] == 'true':
         names.append('system_wizard_1')
@@ -229,6 +249,9 @@ def inspect_services(config):
     rows = json.loads(run([*DOCKER, 'inspect', *names]))
     require({row['Name'].lstrip('/') for row in rows} == set(names), 'expected-services-missing')
     for row in rows:
+        if stopped_controller_id is not None and row['Name'] == '/system_bootstrapper_1':
+            failed_stopped_controller(row, stopped_controller_id)
+            continue
         require(row['State']['Running'] and not row['State'].get('OOMKilled'), 'service-not-running')
         if row['State'].get('Health'):
             require(row['State']['Health']['Status'] == 'healthy', 'service-not-healthy')
@@ -340,7 +363,7 @@ def verify_sync(config):
             'authenticated-fetch-does-not-match-saved-config')
 
 
-def verify_routes(config, services, redirect_from=None):
+def verify_management_routes(config):
     status, _, _ = http(origin(config, 'GITLAB') + '/users/sign_in')
     require(status == 200, 'gitlab-sign-in-not-ready')
     ready = json.loads(run([*DOCKER, 'exec', 'system_gitlab_1', 'curl', '-fsS', '--max-time', '10',
@@ -351,6 +374,10 @@ def verify_routes(config, services, redirect_from=None):
         registry += ':5050'
     status, _, headers = http(registry + '/v2/')
     require(status == 401 and headers.get('WWW-Authenticate', '').startswith('Bearer '), 'registry-authentication-not-ready')
+
+
+def verify_routes(config, services, redirect_from=None):
+    verify_management_routes(config)
     if config['WIZARD_ENABLE'] == 'true':
         public = origin(config, 'WIZARD')
         status, body, _ = http(public + '/')

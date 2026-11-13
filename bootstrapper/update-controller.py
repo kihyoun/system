@@ -7,6 +7,7 @@ GitLab or restores a Seed.
 """
 import argparse
 import copy
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -148,8 +149,9 @@ def rollback_services(config, baseline, record):
     return services
 
 
-def current_services(config, release, evidence, security):
-    services = runtime.inspect_services(config)
+def current_services(config, release, evidence, security, stopped_controller_id=None):
+    services = (runtime.inspect_services(config) if stopped_controller_id is None else
+                runtime.inspect_services(config, stopped_controller_id=stopped_controller_id))
     runtime.verify_mounts(config, services)
     runtime.public_images(config, services)
     controller = services['system_bootstrapper_1']
@@ -162,7 +164,93 @@ def current_services(config, release, evidence, security):
         if name.startswith('runner_docker_'):
             require(row['Image'] == upgrade.get('runnerImageId'), 'controller-update-requires-current-runner-image')
     promoter.gitlab_preflight(dict(security, fromVersion=security['toVersion']), services['system_gitlab_1'])
+    if stopped_controller_id is not None:
+        stopped_services(services, stopped_controller_id)
     return services
+
+
+def stopped_services(services, controller_id):
+    runtime.failed_stopped_controller(services['system_bootstrapper_1'], controller_id)
+    promoter.owned(services['system_bootstrapper_1'], 'bootstrapper')
+    repair_peer_services(services)
+
+
+def repair_peer_services(services):
+    for name, row in services.items():
+        if name == 'system_bootstrapper_1':
+            continue
+        labels = row.get('Config', {}).get('Labels', {})
+        if name.startswith('runner_docker_'):
+            require(labels.get('com.docker.compose.project') == 'runner' and
+                    labels.get('com.docker.compose.service') == 'docker', 'owned-runner-container-required')
+        else:
+            promoter.owned(row, name.split('_')[1])
+        state = row['State']
+        require(state.get('Running') is True and not any(state.get(key) for key in
+                ('Paused', 'Restarting', 'Dead', 'OOMKilled')), 'repair-peer-service-not-running')
+        require(not state.get('Health') or state['Health'].get('Status') == 'healthy', 'repair-peer-service-not-healthy')
+        # A controller-launched Rails/provisioning exec can outlive its caller.
+        require('ExecIDs' in row and row['ExecIDs'] in (None, []), 'repair-peer-active-or-unknown-execs')
+
+
+def verify_runner_containers(services, expected):
+    actual = {name: row['Id'] for name, row in services.items() if name.startswith('runner_docker_')}
+    require(actual == expected, 'repair-runner-containers-changed')
+
+
+def stopped_operations_idle(config, lease=None):
+    """Absence of writers replaces Sync's idle API only for a proven stopped PID."""
+    root = config['_root']
+    locks = [root / 'configuration/.gitlab-upgrade-lock', root / 'configuration/.storage-operation-lock',
+             root / 'host/letsencrypt/.system-bootstrapper-certificate-lock',
+             root / 'configuration/.projects.env/.wizard.env.environments.lock']
+    if config.get('SEED_DIR'):
+        locks.append(Path(config['SEED_DIR']) / '.operation-lock')
+    for path in locks:
+        if lease is not None and path in lease.held:
+            require(path.is_dir() and not path.is_symlink(), 'repair-operation-lease-changed')
+            owner = json.loads(successor.private_input(path / 'controller-owner.json'))
+            require(owner.get('operation') == lease.operation and owner.get('pid') == os.getpid() and
+                    owner.get('processStart') == successor.process_start(os.getpid()), 'repair-operation-lease-changed')
+            allowed = {'controller-owner.json'}
+            journal = path / 'host-child.json'
+            if journal.exists() or journal.is_symlink():
+                child = json.loads(successor.private_input(journal))
+                require(child.get('operation') == lease.operation and child.get('phase') == 'completed' and
+                        not successor.group_live(child.get('childPgid')), 'repair-host-child-is-still-running')
+                allowed.add('host-child.json')
+            require({entry.name for entry in path.iterdir()} <= allowed, 'repair-operation-lease-changed')
+        else:
+            require(not path.exists() and not path.is_symlink(), 'unfinished-operation-blocks-stopped-repair')
+    for relative in ('gitlab/data/.system-bootstrapper-restore-incomplete',
+                     'configuration/.wizard-image-recovery.lock', 'configuration/.wizard-image-recovery.pending',
+                     'configuration/preview-setup.json.lock'):
+        path = root / relative
+        require(not path.exists() and not path.is_symlink(), 'unfinished-operation-blocks-stopped-repair')
+    # Passive project/bootstrapPending receipts are intentionally retained. They
+    # are not proof of a live writer; the process, exec and operation guards are.
+    if lease is None:
+        guard = root / 'configuration/.controller-host-guard.lock'
+        if guard.exists() or guard.is_symlink():
+            descriptor = os.open(guard, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                info = os.fstat(descriptor)
+                require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and not info.st_mode & 0o077,
+                        'private-controller-host-guard-required')
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    raise recovery.RecoveryError('controller-host-command-or-coordinator-still-running') from None
+            finally:
+                os.close(descriptor)
+
+
+def repair_baseline(config, baseline, services, lease=None):
+    stopped_operations_idle(config, lease)
+    runtime.assert_baseline(config, baseline)
+    require(runtime.public_images(config, services) == baseline['selectedImages'],
+            'controller-update-images-changed-before-stop')
+    runtime.verify_management_routes(config)
 
 
 def wait_ready(config, baseline, token_file, redirect_from, timeout):
@@ -275,25 +363,35 @@ def verify_release_selection_checkpoint(checkpoint, selection):
 
 def update(config, release, evidence, api, release_bytes, evidence_bytes, security,
            controller, checkpoint, token_file, redirect_from=None, timeout=1200, check_only=False, wizard=None,
-           release_metadata=None):
+           release_metadata=None, repair_stopped_controller=False):
     runtime.public_manifest_absent(config)
     require(api.base == runtime.origin(config, 'GITLAB'), 'GitLab-origin-does-not-match-saved-config')
     successor.verify_checkout(release, ROOT)
     require(release_metadata is None or wizard is not None, 'release-metadata-requires-paired-update')
+    require(not repair_stopped_controller or (wizard is not None and release_metadata is not None),
+            'stopped-repair-requires-paired-accepted-release-metadata')
     pipeline = successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
     publication = None
     if wizard is not None:
         controller, wizard = installer.reference(controller), installer.reference(wizard)
         require(config.get('WIZARD_ENABLE') == 'true', 'paired-update-requires-enabled-Wizard')
         publication = successor.verify_public_pair(api, release, evidence, controller, wizard)
-    original = current_services(config, release, evidence, security)
+    stopped_id = None
+    if repair_stopped_controller:
+        stopped_id = promoter.inspect('system_bootstrapper_1')['Id']
+        stopped_operations_idle(config)
+    original = current_services(config, release, evidence, security, stopped_id)
     if wizard is not None:
         promoter.owned(original['system_wizard_1'], 'wizard')
-    baseline = runtime.capture(config, ROOT, public=True)
+    baseline = (runtime.capture(config, ROOT, public=True) if stopped_id is None else
+                runtime.capture(config, ROOT, public=True, stopped_controller_id=stopped_id))
     require(len(baseline['runnerManagerIdentitySha256']) == runtime.runner_count(config),
             'all-current-runner-identities-required')
-    wait_ready(config, baseline, token_file, redirect_from, timeout)
-    successor.sync_idle(config)
+    if stopped_id is None:
+        wait_ready(config, baseline, token_file, redirect_from, timeout)
+        successor.sync_idle(config)
+    else:
+        repair_baseline(config, baseline, original)
     pulled = installer.checked_image(controller, {'sourceCommit': release['sourceRevision']})
     require(pulled['imageId'] == release['imageId'] and pulled['candidateJobId'] == release['candidateJobId'],
             'public-controller-does-not-match-accepted-candidate')
@@ -331,6 +429,7 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
     metadata = {'mode': stat.S_IMODE(info.st_mode), 'uid': info.st_uid, 'gid': info.st_gid}
     if check_only:
         return {'phase': 'preflight-passed', 'controller': pulled, 'pipeline': pipeline,
+                **({'repairStoppedController': True} if stopped_id else {}),
                 **({'wizard': pulled_wizard, 'publication': publication} if pulled_wizard else {}),
                 **({'productRelease': {'version': accepted['version'], 'tag': accepted['tag']},
                     'releaseSelectionWillRefresh': True} if selection else {})}
@@ -350,6 +449,11 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
               'configurationMetadata': metadata, 'previousController': {
                   'reference': config['BOOTSTRAPPER_IMAGE'], 'imageId': original['system_bootstrapper_1']['Image'],
                   'restartPolicy': original['system_bootstrapper_1']['HostConfig']['RestartPolicy']}}
+    if stopped_id:
+        record['repairStoppedController'] = True
+        record['previousController'].update(containerId=stopped_id, state=original['system_bootstrapper_1']['State'])
+        record['previousRunnerContainerIds'] = {name: row['Id'] for name, row in original.items()
+                                                if name.startswith('runner_docker_')}
     if pulled_wizard:
         record.update(wizard=pulled_wizard, publication=publication,
                       previousWizard={'reference': config['WIZARD_IMAGE'],
@@ -364,14 +468,22 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
         runtime.assert_baseline(config, baseline)
         if selection:
             verify_release_selection(config, selection)
-        require(runtime.public_images(config, runtime.inspect_services(config)) == baseline['selectedImages'],
-                'controller-update-images-changed-before-stop')
+        if stopped_id is None:
+            require(runtime.public_images(config, runtime.inspect_services(config)) == baseline['selectedImages'],
+                    'controller-update-images-changed-before-stop')
         successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
         if pulled_wizard:
             require(successor.verify_public_pair(api, release, evidence, controller, wizard) == publication,
                     'paired-publication-changed-before-stop')
-        successor.sync_idle(config)
-        current_services(config, release, evidence, security)
+        if stopped_id is None:
+            successor.sync_idle(config)
+            current_services(config, release, evidence, security)
+        else:
+            current = current_services(config, release, evidence, security, stopped_id)
+            require(current['system_bootstrapper_1'] == original['system_bootstrapper_1'],
+                    'stopped-controller-changed-before-repair')
+            verify_runner_containers(current, record['previousRunnerContainerIds'])
+            repair_baseline(config, baseline, current, lease)
         if selection:
             verify_release_selection(config, selection)
             verify_release_selection_checkpoint(checkpoint, selection)
@@ -397,7 +509,10 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
         after['startedAt'] = restarted_at
         successor.atomic_json(checkpoint / 'baseline-after.json', after)
         receipt = wait_ready(config, after, token_file, redirect_from, timeout)
-        unchanged_services(runtime.inspect_services(config), baseline, wizard_optional=bool(pulled_wizard))
+        services = runtime.inspect_services(config)
+        unchanged_services(services, baseline, wizard_optional=bool(pulled_wizard))
+        if stopped_id:
+            verify_runner_containers(services, record['previousRunnerContainerIds'])
         successor.atomic_json(checkpoint / 'verification.json', receipt)
         record.update(phase='completed', completedAt=runtime.now(), serviceImagesPreserved=not bool(pulled_wizard),
                       configurationChangedOnlyControllerImage=not bool(pulled_wizard), databaseRewound=False)
@@ -422,9 +537,41 @@ def paired_rollback_baseline(config, baseline, record):
         runtime.assert_baseline(config, current)
 
 
+def restore_stopped_controller(config, baseline, record, lease):
+    """Restore selectors and a never-started old controller, not its failed code."""
+    previous = record['previousController']
+    require(previous['restartPolicy'].get('Name') == 'no', 'stopped-rollback-requires-original-no-restart')
+    arguments = [*DOCKER, 'compose', '--compatibility', '-p', 'system', '-f',
+                 str(ROOT / 'system/docker-compose.yml')]
+    environment = successor.environment(config, previous['reference'], staged=True)
+    run([*arguments, 'create', '--force-recreate', '--no-build', '--no-deps', '--pull', 'never', 'bootstrapper'],
+        env=environment)
+    row = promoter.inspect('system_bootstrapper_1')
+    promoter.owned(row, 'bootstrapper')
+    require(row['Image'] == previous['imageId'] and row['State'].get('Status') == 'created' and
+            row['State'].get('Pid') == 0 and row['State'].get('Running') is False,
+            'stopped-rollback-controller-was-started-or-changed')
+    run([*DOCKER, 'update', '--restart=no', row['Id']])
+    if record.get('wizard'):
+        run([*arguments, 'up', '--no-build', '--no-deps', '--pull', 'never', '-d', 'wizard'], env=environment)
+    services = runtime.inspect_services(config, stopped_controller_id=row['Id'])
+    stopped_services(services, row['Id'])
+    verify_runner_containers(services, record['previousRunnerContainerIds'])
+    unchanged_services(services, baseline)
+    runtime.verify_mounts(config, services)
+    repair_baseline(config, baseline, services, lease)
+    return {'passed': True, 'at': runtime.now(), 'controllerStopped': True, 'controllerId': row['Id'],
+            'controllerImageId': previous['imageId'], 'controllerStatus': 'created', 'syncAvailable': False,
+            'wizardPublicRouteChecked': False, 'configurationUnchanged': True,
+            'runnerContainerIds': record['previousRunnerContainerIds'],
+            'runnerManagerIdentitySha256': baseline['runnerManagerIdentitySha256'],
+            'runnerContactFreshnessChecked': False}
+
+
 def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
     checkpoint, record = load_operation(config, checkpoint)
-    require(record.get('phase') != 'rolled-back' and record.get('leaseOperation'), 'controller-update-not-rollbackable')
+    require(record.get('phase') not in ('rolled-back', 'rolled-back-stopped') and record.get('leaseOperation'),
+            'controller-update-not-rollbackable')
     successor.verify_checkout(record['release'], ROOT)
     before = successor.private_input(checkpoint / 'main-before.env')
     baseline = json.loads(successor.private_input(checkpoint / 'baseline-before.json'))
@@ -459,27 +606,43 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
             verify_release_selection(config, selection, rollback=True)
             verify_release_selection_checkpoint(checkpoint, selection)
         services = rollback_services(config, baseline, record)
+        if record.get('repairStoppedController'):
+            stopped_operations_idle(config, lease)
+            repair_peer_services(services)
+            verify_runner_containers(services, record['previousRunnerContainerIds'])
+            controller = services.get('system_bootstrapper_1')
+            require(controller is None or ('ExecIDs' in controller and controller['ExecIDs'] in (None, [])),
+                    'repair-controller-active-or-unknown-execs')
         record['phase'] = 'rollback-started'
         successor.atomic_json(checkpoint / 'operation.json', record)
         lease.critical = True
         if 'system_bootstrapper_1' in services:
             stop_controller(services['system_bootstrapper_1'])
+        if record.get('repairStoppedController'):
+            stopped_operations_idle(config, lease)
+            stopped = rollback_services(config, baseline, record)
+            repair_peer_services(stopped)
+            verify_runner_containers(stopped, record['previousRunnerContainerIds'])
         write_configuration(config, before, record['configurationMetadata'])
         if selection:
             write_release_selection(config, checkpoint, selection, 'before')
         config = runtime.settings(config['_persistence_env'])
-        compose(config, previous['reference'])
-        baseline['startedAt'] = runtime.now()
-        receipt = wait_ready(config, baseline, token_file, redirect_from, timeout)
-        unchanged_services(runtime.inspect_services(config), baseline)
-        policy = previous['restartPolicy']['Name']
-        require(policy in ('no', 'always', 'unless-stopped', 'on-failure'), 'invalid-original-restart-policy')
-        retries = previous['restartPolicy'].get('MaximumRetryCount', 0)
-        if policy == 'on-failure' and retries:
-            policy += ':' + str(int(retries))
-        run([*DOCKER, 'update', '--restart=' + policy, promoter.inspect('system_bootstrapper_1')['Id']])
+        if record.get('repairStoppedController'):
+            receipt = restore_stopped_controller(config, baseline, record, lease)
+        else:
+            compose(config, previous['reference'])
+            baseline['startedAt'] = runtime.now()
+            receipt = wait_ready(config, baseline, token_file, redirect_from, timeout)
+            unchanged_services(runtime.inspect_services(config), baseline)
+            policy = previous['restartPolicy']['Name']
+            require(policy in ('no', 'always', 'unless-stopped', 'on-failure'), 'invalid-original-restart-policy')
+            retries = previous['restartPolicy'].get('MaximumRetryCount', 0)
+            if policy == 'on-failure' and retries:
+                policy += ':' + str(int(retries))
+            run([*DOCKER, 'update', '--restart=' + policy, promoter.inspect('system_bootstrapper_1')['Id']])
         successor.atomic_json(checkpoint / 'rollback-verification.json', receipt)
-        record.update(phase='rolled-back', rolledBackAt=runtime.now(), databaseRewound=False)
+        record.update(phase='rolled-back-stopped' if record.get('repairStoppedController') else 'rolled-back',
+                      rolledBackAt=runtime.now(), databaseRewound=False)
         successor.atomic_json(checkpoint / 'operation.json', record)
     except BaseException:
         lease.__exit__(*sys.exc_info())
@@ -504,9 +667,12 @@ def main():
     parser.add_argument('--redirect-from')
     parser.add_argument('--timeout', type=int, default=1200)
     parser.add_argument('--check-only', action='store_true')
+    parser.add_argument('--repair-stopped-controller', action='store_true',
+                        help='Repair a positively quiescent failed public controller using an accepted paired release.')
     args = parser.parse_args()
     require(os.geteuid() == 0 and 60 <= args.timeout <= 3600, 'root-and-bounded-readiness-timeout-required')
     require(not args.check_only or args.operation == 'update', 'check-only-requires-update')
+    require(not args.repair_stopped_controller or args.operation == 'update', 'stopped-repair-requires-update')
     config = runtime.settings(args.persistence_env)
     config['_persistence_env'] = args.persistence_env
     if args.operation == 'status':
@@ -518,8 +684,10 @@ def main():
         return
     require(bool(args.token_file), 'private-API-token-file-required')
     if args.operation == 'rollback':
-        rollback(config, args.checkpoint_dir, args.token_file, args.redirect_from, args.timeout)
-        print('Previous controller/configuration restored; service images/data preserved.')
+        record = rollback(config, args.checkpoint_dir, args.token_file, args.redirect_from, args.timeout)
+        print('Previous selectors and stopped controller restored; Sync remains unavailable; checkpoint retained.'
+              if record['phase'] == 'rolled-back-stopped' else
+              'Previous controller/configuration restored; service images/data preserved.')
         return
     require(all((args.release, args.evidence, args.controller, args.gitlab_url)), 'public-controller-release-inputs-required')
     release_bytes, evidence_bytes = successor.private_input(args.release), successor.private_input(args.evidence)
@@ -528,7 +696,7 @@ def main():
     api = successor.GitLab(args.gitlab_url, args.token_file)
     update(config, release, evidence, api, release_bytes, evidence_bytes, security, args.controller,
            args.checkpoint_dir, args.token_file, args.redirect_from, args.timeout, args.check_only, args.wizard,
-           args.release_metadata)
+           args.release_metadata, args.repair_stopped_controller)
     print(('Public controller/Wizard pair preflight passed.' if args.wizard else
            'Public controller preflight passed.') if args.check_only else
           ('Accepted public controller/Wizard pair updated; other service images/data preserved.' if args.wizard else
