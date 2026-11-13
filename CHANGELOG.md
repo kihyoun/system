@@ -13,6 +13,9 @@ one accepted System source revision and tested controller/Wizard image attempt.
   builds without changing historical build recipes.
 - Serve HTTP-01 challenges for exact HTTP application hosts so certificates
   can be issued before switching an existing application to HTTPS.
+- Repair an already stopped public controller through the accepted paired-update
+  workflow, retaining strict state guards, full post-start verification and a
+  stopped rollback that does not run the previously failed code.
 
 ### Documentation and verification
 

@@ -447,6 +447,103 @@ prefix is normalized for digest verification; private registry names and ports
 remain exact. This mode does not make image archives, private registry payloads
 or the matching configuration-plus-Seed recovery inputs unnecessary.
 
+### Repairing an already stopped controller
+
+Use `--repair-stopped-controller` only when a controller startup failure prevents
+the ordinary healthy update. This explicit mode requires the same accepted
+controller/Wizard pair, `--wizard` and `--release-metadata`. It does not relax
+source, CI, publication, image or storage verification, migrate GitLab, apply a
+Seed or discard pending project receipts.
+
+The exact canonical controller must still exist with its selected image and
+mounts. It must have exited normally with a nonzero status below 128, no live
+PID or exec sessions, no OOM, and restart policy `no`. A never-started controller
+retained by this mode's stopped rollback is also accepted. Running, paused,
+restarting, missing or ambiguously owned containers are refused. GitLab, the
+entry proxy, the enabled Wizard container and all selected runner managers must
+still be running with the expected images and mounts. Public GitLab and registry
+routes must work. Public Wizard/Sync readiness is required after the repair.
+
+Do not use this option to kill a healthy controller or remove an unfinished
+operation's locks. Inspect the failed controller first:
+
+```sh
+sudo docker inspect --format '{{json .State}} {{json .HostConfig.RestartPolicy}} {{json .Config.Labels}}' system_bootstrapper_1
+```
+
+For a confirmed failed restart loop with PID zero, disable only its restart
+policy and stop the already exited container. Do not force-kill an active
+process. Resolve any active or interrupted storage, certificate, image-recovery
+or upgrade operation through its own recovery procedure before continuing.
+
+```sh
+sudo docker update --restart=no system_bootstrapper_1
+sudo docker stop --timeout 30 system_bootstrapper_1
+```
+
+If the entry proxy is absent, inspect the generated templates and included
+fragments before restoring routing. They can contain application routes and
+aliases as well as GitLab and registry. Require complete expected routes,
+correct existing service addresses and certificates. Use the existing live
+directory and already selected NGINX image, replacing the examples below with
+their verified values. Validate the configuration without starting a listener,
+then start only `web` through the committed Compose definition:
+
+```sh
+sudo env PERSISTENT_DIR=/var/lib/system-bootstrapper/platform \
+  NGINX_IMAGE=nginx@sha256:REPLACE_WITH_64_HEX_DIGEST \
+  docker --host unix:///var/run/docker.sock compose --compatibility \
+  --env-file /dev/null -p system -f system/docker-compose.yml \
+  run --rm --no-deps --pull never web nginx -t
+sudo env PERSISTENT_DIR=/var/lib/system-bootstrapper/platform \
+  NGINX_IMAGE=nginx@sha256:REPLACE_WITH_64_HEX_DIGEST \
+  docker --host unix:///var/run/docker.sock compose --compatibility \
+  --env-file /dev/null -p system -f system/docker-compose.yml \
+  up --no-deps --no-build --pull never -d web
+```
+
+Do not use full-project `up`, `down`, orphan removal or a new image selection
+for this routing step. Verify GitLab HTTPS and the registry authentication
+challenge with normal certificate validation. This restores only the routes
+actually present in the inspected templates; it does not establish a completed
+platform restore.
+
+Then preflight the accepted repair from its clean reviewed checkout:
+
+```sh
+sudo python3 bootstrapper/update-controller.py \
+  --repair-stopped-controller \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --release /root/accepted-release/release.json \
+  --evidence /root/accepted-release/candidate-results.json \
+  --controller docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST \
+  --wizard docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST \
+  --release-metadata /root/accepted-release/system-release-vX.Y.Z.json \
+  --gitlab-url https://gitlab.example.com \
+  --token-file /root/private-gitlab-api-token \
+  --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/repair-example \
+  --check-only
+```
+
+The preflight checks the surviving management services and proves that the old
+controller cannot write instead of asking its unavailable Sync API for an idle
+queue. The same identity, operation and configuration guards are checked again
+under the shared maintenance lease. Passive pending-project receipts remain
+unchanged for subsequent **Fetch → Edit → Save** recovery.
+
+Repeat without `--check-only` using the same accepted inputs. Only the two
+release-image selectors and their release metadata change. Completion still
+requires the ordinary full runtime verification: authenticated Sync Fetch,
+public Wizard and configured aliases, storage/image identities, certificate
+integration and fresh contact by every current runner manager.
+
+The usual `status` and `rollback` commands use the retained repair checkpoint.
+Repair rollback restores the exact previous configuration and release selectors
+and recreates the previous controller **without starting its failed code**.
+It reports a stopped rollback, not a healthy platform; Wizard/Sync may remain
+unavailable. GitLab data is never rewound. Keep the checkpoint, prior images and
+matching Seed/configuration backup until the repaired release is accepted.
+
 ## Promoting a tested successor controller
 
 `promote-controller.py` consumes the frozen `release.json` and
