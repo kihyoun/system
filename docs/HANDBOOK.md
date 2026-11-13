@@ -679,7 +679,10 @@ and renewal setup.
 Initial issuance saved **standalone** as the authenticator. Leaving that setting
 unchanged would make later renewal compete with NGINX for port 80. The current
 mode-2 proxy serves HTTP-01 from the shared webroot; the initial startup proxy
-and ordinary HTTP mode do not provide that route for each configured host.
+does not provide that route for each configured host. Current ordinary HTTP
+routes also serve the shared webroot, allowing an existing application to obtain
+a certificate before switching to HTTPS. See the [application HTTPS procedure](PROJECT_BOOTSTRAP_GUIDE.md#give-an-application-a-trusted-https-hostname)
+for an independent application lineage and browser-data considerations.
 
 On the server, create a harmless probe in the actual webroot:
 
