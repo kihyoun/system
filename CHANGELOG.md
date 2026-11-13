@@ -3,6 +3,26 @@
 Versions follow [Semantic Versioning](https://semver.org/). A version belongs to
 one accepted System source revision and tested controller/Wizard image attempt.
 
+## 1.1.3
+
+### Fixes
+
+- Start and reload application routing when Review, Beta or Production hosts
+  are disabled, while preserving failures in enabled route rendering.
+- Refresh unavailable Alpine Docker CLI and Git package pins for candidate
+  builds without changing historical build recipes.
+- Serve HTTP-01 challenges for exact HTTP application hosts so certificates
+  can be issued before switching an existing application to HTTPS.
+
+### Documentation and verification
+
+- Document application certificate issuance, deployment and renewal, including
+  browser-data boundaries when changing HTTP origins to HTTPS.
+- Verify every environment combination during start and reload, and exercise
+  application HTTPS hostname validation, SPA routing and byte-range responses
+  in the existing isolated NGINX probe.
+- Update the integrated English, German and Korean guides.
+
 ## 1.1.2
 
 ### Fixes
