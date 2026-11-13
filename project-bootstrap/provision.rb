@@ -97,6 +97,24 @@ begin
       result = {pipeline: {id: pipeline.fetch('id'), webUrl: pipeline.fetch('web_url'), status: pipeline.fetch('status')}}
     elsif input['action'] == 'availability'
       result = {availability: code == 404 ? 'available' : 'occupied', path: full_path}
+    elsif input['action'] == 'create' && input['resumeRepository']
+      # Sync supplies this binding from its durable receipt after repository
+      # setup succeeded. Routing retries must preserve subsequent user edits.
+      repository = input.fetch('resumeRepository')
+      raise BootstrapError, 'Invalid pending repository binding' unless repository.is_a?(Hash)
+      id = repository['id']
+      ci_path = '.system-bootstrapper/ci.yml'
+      marker = 'System Bootstrapper operation ' + input.fetch('operation')
+      raise BootstrapError, 'Pending repository identity changed; inspect the saved operation' unless
+        code == 200 && id.is_a?(Integer) && id > 0 && project['id'] == id &&
+        repository['path'] == full_path && project['path_with_namespace'] == full_path &&
+        repository['namespaceId'].is_a?(Integer) && repository['namespaceId'] == namespace_id && project.dig('namespace', 'id') == namespace_id &&
+        project['visibility'] == 'private' && project['description'] == marker &&
+        !repository['defaultBranch'].to_s.empty? && project['default_branch'] == repository['defaultBranch'] &&
+        repository['ciPath'] == ci_path && project['ci_config_path'] == ci_path
+      file_code, = api.call(Net::HTTP::Get, "projects/#{id}/repository/files/#{URI.encode_www_form_component(ci_path)}?ref=#{URI.encode_www_form_component(repository.fetch('defaultBranch'))}")
+      raise BootstrapError, 'Pending repository managed CI is missing; inspect the saved operation' unless file_code == 200
+      result = {repository: repository}
     else
       marker = 'System Bootstrapper operation ' + input.fetch('operation')
       if code == 200 && project['description'] != marker

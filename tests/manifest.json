@@ -3,6 +3,7 @@
   {"component":"gitlab","file":"gitlab/startup.sh","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/application-templates.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/project-bootstrap.js","timeoutSeconds":45,"port":8071},
+  {"component":"gitlab","file":"gitlab/project-bootstrap-resume.rb","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/source-import.rb","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/wizard-build.rb","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/wizard-registry-token.rb","timeoutSeconds":20},
