@@ -13,6 +13,8 @@ const active = new Set<string>();
 export const projectBusy = () => active.size > 0;
 const digest = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
 const receiptLine = '# BOOTSTRAPPER_PROJECT=';
+// Fetch carries this server-owned state back through the Wizard form.
+const withoutReceipt = (data: string) => data.split('\n').filter(line => !line.startsWith(receiptLine)).join('\n');
 const wizardAliases = require('../../nginx/wizard-aliases');
 
 export function validateAliasProject(data: string, projectKey: string) {
@@ -135,7 +137,7 @@ export function readReceipt(content: string) {
 }
 export function writeReceipt(file: string, data: string, receipt: any) {
   const temporary = file + '.tmp';
-  fs.writeFileSync(temporary, data + '\n' + receiptLine + Buffer.from(JSON.stringify(receipt)).toString('base64') + '\n', {mode: 0o600});
+  fs.writeFileSync(temporary, withoutReceipt(data) + '\n' + receiptLine + Buffer.from(JSON.stringify(receipt)).toString('base64') + '\n', {mode: 0o600});
   fs.renameSync(temporary, file);
 }
 function trimJobs() {
@@ -174,7 +176,8 @@ export function queryGitlab(input: any) {
 export function createProject(input: any, defaultProject = false) {
   if (input.template === 'wizard' && !defaultProject) { throw new Error('The system Wizard project is managed automatically.'); }
   const settings = validateProject(input);
-  input = {...input, files: undefined, templateVersion: undefined, ...prepareApplication(input.template || 'empty', input.projectKey, settings)};
+  input = {...input, data: withoutReceipt(input.data), resumeRepository: undefined, files: undefined, templateVersion: undefined,
+    ...prepareApplication(input.template || 'empty', input.projectKey, settings)};
   const file = path.join(directory, '.' + input.projectKey + '.env');
   const stableData = input.data.split('\n').filter((line: string) => !line.startsWith('# created on ') && !line.startsWith('# BOOTSTRAPPER_REPOSITORY=') && line !== 'PROJECT_TEMPLATE="empty"').join('\n');
   const identity = [String(input.namespaceId), input.projectKey, stableData, input.ci];
@@ -196,7 +199,7 @@ export function createProject(input: any, defaultProject = false) {
   active.add(id);
   return startJob(id, async () => {
     try {
-      const result = await rails({...input, action: 'create', operation: id});
+      const result = await rails({...input, action: 'create', operation: id, resumeRepository: receipt.repository});
       if (result.state === 'failed') {
         if (result.conflict && !receipt.repository) { fs.unlinkSync(file); }
         return result;
