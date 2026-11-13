@@ -182,7 +182,8 @@ def repair_peer_services(services):
         labels = row.get('Config', {}).get('Labels', {})
         if name.startswith('runner_docker_'):
             require(labels.get('com.docker.compose.project') == 'runner' and
-                    labels.get('com.docker.compose.service') == 'docker', 'owned-runner-container-required')
+                    labels.get('com.docker.compose.service') == name.removeprefix('runner_'),
+                    'owned-runner-container-required')
         else:
             promoter.owned(row, name.split('_')[1])
         state = row['State']
@@ -544,7 +545,7 @@ def restore_stopped_controller(config, baseline, record, lease):
     arguments = [*DOCKER, 'compose', '--compatibility', '-p', 'system', '-f',
                  str(ROOT / 'system/docker-compose.yml')]
     environment = successor.environment(config, previous['reference'], staged=True)
-    run([*arguments, 'create', '--force-recreate', '--no-build', '--no-deps', '--pull', 'never', 'bootstrapper'],
+    run([*arguments, 'create', '--force-recreate', '--no-build', '--pull', 'never', 'bootstrapper'],
         env=environment)
     row = promoter.inspect('system_bootstrapper_1')
     promoter.owned(row, 'bootstrapper')

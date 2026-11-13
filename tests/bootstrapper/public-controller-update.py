@@ -222,7 +222,7 @@ class PublicControllerUpdate(unittest.TestCase):
         for name, peer in self.rows.items():
             if name.startswith('runner_docker_'):
                 peer['Config']['Labels'].update({'com.docker.compose.project': 'runner',
-                                               'com.docker.compose.service': 'docker'})
+                                               'com.docker.compose.service': name.removeprefix('runner_')})
         self.config['GITLAB_RUNNER_SCALE'] = '4'
         self.raw = self.raw.replace(b"export GITLAB_RUNNER_SCALE='2'", b"export GITLAB_RUNNER_SCALE='4'")
         successor.atomic_bytes(self.config['_main'], self.raw)
@@ -341,6 +341,21 @@ class PublicControllerUpdate(unittest.TestCase):
         with patch.object(runtime, 'verify_mounts', side_effect=recovery.RecoveryError('essential-persistent-mount-is-misdirected')):
             with self.assertRaisesRegex(recovery.RecoveryError, 'misdirected'):
                 self.repair(check_only=True)
+        self.assertEqual(self.commands, [])
+        self.assertFalse(self.checkpoint.exists())
+
+    def test_stopped_repair_requires_each_native_runner_service_index(self):
+        self.enable_repair()
+        for index in range(1, 5):
+            labels = self.rows[f'runner_docker_{index}']['Config']['Labels']
+            self.assertEqual(labels['com.docker.compose.service'], f'docker_{index}')
+            for wrong_service in ('docker', 'foreign', f'docker_{index % 4 + 1}'):
+                labels['com.docker.compose.service'] = wrong_service
+                with self.subTest(index=index, service=wrong_service), \
+                        self.assertRaisesRegex(recovery.RecoveryError, 'owned-runner-container-required'):
+                    self.repair(check_only=True)
+            labels['com.docker.compose.service'] = f'docker_{index}'
+        self.assertEqual(self.repair(check_only=True)['phase'], 'preflight-passed')
         self.assertEqual(self.commands, [])
         self.assertFalse(self.checkpoint.exists())
 
@@ -481,7 +496,8 @@ class PublicControllerUpdate(unittest.TestCase):
         self.assertEqual(controller['State']['Pid'], 0)
         self.assertEqual(controller['HostConfig']['RestartPolicy']['Name'], 'no')
         self.assertEqual(self.rows['system_wizard_1']['Image'], self.wizard_template['Image'])
-        self.assertTrue(any('create' in command and '--force-recreate' in command for command in self.commands))
+        creates = [command[command.index('create'):] for command in self.commands if 'create' in command]
+        self.assertEqual(creates, [['create', '--force-recreate', '--no-build', '--pull', 'never', 'bootstrapper']])
         self.assertFalse(any('up' in command and command[-1] == 'bootstrapper' for command in self.commands))
         receipt = json.loads((self.checkpoint / 'rollback-verification.json').read_bytes())
         self.assertTrue(receipt['controllerStopped'])
