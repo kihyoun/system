@@ -32,6 +32,18 @@ Lockdatei und führt `npm run build` aus, dessen Prebuild ESLint ohne automatisc
 Laufzeit- und gemeinsame Bibliotheksversionen werden beim Bau ausgegeben. Diese Ruby-
 Testlaufzeit ist von GitLabs eingebetteter Rails-Laufzeit getrennt.
 
+Die Vorbereitung der Kandidaten-Images führt außerdem
+`tests/wizard/configuration-routing-export.js` mit dem tatsächlichen
+Konfigurationsexporter des gebauten Wizards vor dem Start der vollständigen Plattform aus.
+Die Prüfung umfasst den ersten Save/Fetch/Backup-Rundlauf, den exakten Erhalt des
+Serverbelegs und selektives Routing, wenn Fetch die abgeleiteten Repository-Metadaten ergänzt.
+Für einen separaten Lauf bauen Sie den Wizard-Exporter mit `npm run build:config-export`
+im initialisierten `wizard`-Checkout und führen anschließend Folgendes aus:
+
+```sh
+node tests/wizard/configuration-routing-export.js --exporter wizard/build-tools/export-configuration.cjs
+```
+
 Das Image setzt `SYSTEM_TEST_ISOLATED=1` und ruft `node tests/run.js` auf. Wählen Sie
 `all` oder eines von `gitlab`, `sync`, `gitlab-runner`, `bootstrapper`, `nginx`, `wizard`,
 `shared` und `performance`. Prüfungen laufen nacheinander mit erzwungenen Zeitlimits je

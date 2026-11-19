@@ -31,6 +31,17 @@ Ruby 3.4.11을 Python 및 셸 도구와 함께 제공합니다. 커밋된 Sync �
 런타임과 공유 라이브러리 버전을 출력합니다. 이 Ruby 픽스처 런타임은 GitLab 내장
 Rails 런타임과 별개입니다.
 
+후보 이미지 준비 과정은 전체 플랫폼을 시작하기 전에 빌드된 Wizard의 실제
+구성 내보내기 도구로 `tests/wizard/configuration-routing-export.js`도 실행합니다.
+첫 Save/Fetch/Backup 왕복 과정, 서버 확인 기록의 정확한 보존, Fetch가 파생된
+저장소 메타데이터를 채울 때 선택적 라우팅이 유지되는지를 검증합니다.
+별도로 실행하려면 `npm run build:config-export` 명령을 초기화된 `wizard`
+체크아웃에서 실행하여 Wizard 내보내기 도구를 빌드한 다음 아래 명령을 실행하세요.
+
+```sh
+node tests/wizard/configuration-routing-export.js --exporter wizard/build-tools/export-configuration.cjs
+```
+
 이미지는 `SYSTEM_TEST_ISOLATED=1`을 설정하고 `node tests/run.js`를 호출합니다.
 `all` 또는 `gitlab`, `sync`, `gitlab-runner`, `bootstrapper`, `nginx`, `wizard`,
 `shared`, `performance` 중 하나를 선택하세요. 검사는 항목별 제한 시간을 강제하며
