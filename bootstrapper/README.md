@@ -274,6 +274,13 @@ and alias declarations through the normal reviewed operator workflow first.
 
 ## Updating a public controller with already-current services
 
+For a supported unmodified official release, use `upgrade-release.py` with the
+[public upgrade guide](../docs/RELEASES.md#upgrade-and-rollback). It downloads public
+provenance, validates the exact transition, coordinates a matching backup and
+requires the reviewed plan SHA-256 before invoking the paired updater below.
+Only the operator’s own installation API token is required. Status and recovery
+reuse the same retained plan directory; publishing a release starts no upgrade.
+
 Use `update-controller.py` when an existing public-release installation already
 runs the GitLab and Runner images accepted by the current security profile and
 has **no `recovery/images.json` archive manifest**. This explicit path refuses an

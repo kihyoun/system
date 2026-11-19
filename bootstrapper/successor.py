@@ -267,6 +267,9 @@ def normalized_job(name):
 
 
 def verify_pipeline(api, release, release_bytes, evidence_bytes):
+    from public_release import PublicReleaseAuthority
+    if isinstance(api, PublicReleaseAuthority):
+        return api.verify_pipeline(release, release_bytes, evidence_bytes)
     return _verify_pipeline(api, release, release_bytes, evidence_bytes, current=True)
 
 
@@ -283,6 +286,9 @@ def wizard_release(release, evidence):
 
 def verify_public_pair(api, release, evidence, controller, wizard):
     """Bind a deliberate paired update to the exact successful public CI copy."""
+    from public_release import PublicReleaseAuthority
+    if isinstance(api, PublicReleaseAuthority):
+        return api.verify_pair(release, evidence, controller, wizard)
     wizard_release(release, evidence)
     prefix = '/projects/' + str(release['projectId'])
     pipeline = api.get(prefix + '/pipelines/' + str(release['pipelineId']))

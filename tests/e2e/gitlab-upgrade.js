@@ -62,6 +62,7 @@ async function run(candidate,dependencies={}){
     await (dependencies.verifyRegistryBlob||recovery.verifyRegistryBlob)(candidate,{expected});
     candidate.evidence.gitlabUpgrade.registryVerified=true;
   });
+  if(candidate.spec.publicUpgrade)await (dependencies.publicUpgrade||require('./public-upgrade').run)(candidate,expected);
   await candidate.stage('gitlab-upgrade-restored-checkpoint',async()=>{
     const result=await call(candidate,'rollback',checkpointSha256);
     if(result.status!=='restored-checkpoint'||result.checkpointSha256!==checkpointSha256)throw Error('upgrade-checkpoint-proof-invalid');

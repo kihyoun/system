@@ -104,12 +104,144 @@ assumed to be a usable API token. Public metadata never embeds these credentials
 
 ## Upgrade and rollback
 
-Publication is presentation and distribution; it does not promote Production.
-An existing operator uses the accepted source/image inputs with the native
-[controller promotion](../bootstrapper/README.md),
-[GitLab migration and cold-checkpoint recovery](HANDBOOK.md#5-evolving-a-running-system)
-and [configuration plus Seed recovery](RECOVERY_CONTRACT.md) workflows.
-Keep the prior controller/image, configuration, matching Seed or cold checkpoint,
-source and independently accessible credentials. A container rollback cannot
-reverse a database migration. Review each release's declared compatibility and
-run the prescribed verification before deliberate promotion.
+Publication never upgrades an existing installation. Quickstart remains the
+fresh-install path; rerunning it or pulling Git is not an upgrade. The Wizard
+Docs release chapter provides manual installed-version and target-version
+selectors without Sync. Selection is informational and runs no command.
+
+The initial declared transition is **1.1.3 → 1.2.0**, for an unmodified official
+controller/Wizard pair on Ubuntu 24.04 / 26.04 x86_64. It changes those two images
+and the retained release selection only. GitLab, databases, runners, NGINX,
+application projects, domains and storage selections remain selected. The target
+must publish matching transition evidence before CLI preflight accepts it.
+Unknown releases, changed image/source identities, private Wizard substitutions,
+downgrades and undeclared service/database transitions fail before maintenance.
+No required database stop is implied by compatible product version numbers.
+
+1. Obtain the selected target release source and its exact Wizard gitlink. Keep
+   the old checkout and recovery inputs separately available. Use the version
+   whose public metadata and publisher you deliberately trust.
+
+```bash
+git clone https://github.com/kihyoun/system.git system-upgrade
+cd system-upgrade
+git checkout --detach v1.2.0
+git submodule update --init --recursive
+```
+
+2. Reserve a maintenance window and wait for running jobs, pending platform
+   operations and GitLab background migrations to finish. Avoid repository or
+   account changes between plan and acceptance: read-only operational samples
+   compare up to ten existing projects/repository heads, users, issues, merge
+   requests and registry records. These samples complement preserved mount,
+   image and configuration checks; they do not enumerate every user record.
+   The host requires at least 8 GiB RAM and 8 GiB additional free space on both
+   live recovery storage and Docker storage. Native Harvest separately checks
+   the explicitly selected backup filesystem, UUID and required capacity.
+
+3. Attach that backup medium and select a new configuration ZIP filename on it.
+   Replace every example path below with your own. Use the existing private
+   storage selector and a mode-0600 API-token file for **your installation**, with
+   permission to read its runners and managers. No publisher GitLab account,
+   API token or private artifact access is needed. The plan fetches and verifies
+   the public target pair before dependent maintenance, validates current source
+   and image identities, checks routes, authenticated Fetch, idle operations,
+   migration prerequisites and runner contacts, and prints impact and recovery.
+
+```bash
+sudo python3 bootstrapper/upgrade-release.py \
+  --target 1.2.0 \
+  --persistence-env /root/system-storage.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-1.2.0 \
+  --backup-file /mnt/backup/configuration-before-1.2.0.zip \
+  --token-file /root/system-api-token
+```
+
+A failed read-only preflight remains inspectable through status. After correcting
+its prerequisites, repeat planning in the same directory only when status says
+failed and no reviewed plan or updater checkpoint exists. If a lost process left
+a checking attempt, retain that directory and select a new plan directory. Native
+lease checks still refuse active or unfinished operations; do not delete leases.
+
+4. Review the complete plan and its SHA-256. Replace `PLAN_SHA256` with the
+   exact printed hash; apply refuses a missing or different confirmation. It
+   rechecks the publication and retained configuration, performs the existing
+   coordinated backup, and verifies the exact configuration ZIP against its
+   completed Seed generation and manifest. Missing media fails explicitly;
+   there is no backup fallback directory on the system disk. Both backup inputs
+   must remain independently accessible. Prior controller/Wizard image payloads,
+   public provenance, selection files and native update checkpoints are retained
+   beneath the selected live recovery directory before the paired update starts.
+
+```bash
+sudo python3 bootstrapper/upgrade-release.py --operation apply \
+  --persistence-env /root/system-storage.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-1.2.0 \
+  --token-file /root/system-api-token \
+  --confirm-plan PLAN_SHA256
+```
+
+5. The cold matching backup pauses GitLab and later resumes it; the paired
+   update restarts controller/Sync and Wizard. Existing jobs must finish first.
+   Duration depends on data and host performance; there is no fixed downtime
+   promise. The existing updater owns live-state leases and rollback checkpoints.
+   Completion requires saved configuration and authenticated Fetch equality,
+   expected service/mount identities, management routes, registry authentication,
+   fresh runner-manager contacts and matching read-only data samples. The private
+   operation records the exact accepted version/source; retain all verification
+   and recovery inputs until you accept the result. Consumers do not run the
+   development platform test suite on their installation.
+
+6. After interruption, inspect status before taking further action. A backup
+   that failed before the controller updater started must be inspected through
+   the retained coordinated-backup operation; resolve its native status and
+   leases before creating a new plan. When an updater checkpoint exists, recover
+   verifies and loads the retained prior image payloads and invokes the existing
+   paired rollback, including its owned interrupted-lease recovery. Never delete
+   active leases or run an old database image against migrated data.
+
+```bash
+sudo python3 bootstrapper/upgrade-release.py --operation status \
+  --persistence-env /root/system-storage.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-1.2.0
+sudo python3 bootstrapper/upgrade-release.py --operation recover \
+  --persistence-env /root/system-storage.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-1.2.0 \
+  --token-file /root/system-api-token \
+  --confirm-plan PLAN_SHA256
+```
+
+The current public graph contains only controller/Wizard transitions. A
+container rollback cannot reverse a database migration. Future declared service
+transitions must use the existing [GitLab migration and cold-checkpoint recovery](HANDBOOK.md#5-evolving-a-running-system)
+procedure with its required intermediate versions and independently retained
+recovery inputs; the public CLI rejects unimplemented transition kinds. Full
+[configuration and Seed recovery](RECOVERY_CONTRACT.md) remains the fresh-storage
+recovery path. A graph path with intermediate releases is shown in order; apply
+requires the first intermediate release's own checkout, new backup and separately
+confirmed plan, then repeats for the next stop. It never jumps to the final tag.
+
+Unchanged official source builds without a release-selection receipt and modified
+forks use the existing accepted-successor workflow: merge upstream, resolve
+conflicts, build and test their own successor, and deliberately promote it with
+its native evidence. Public official-release evidence cannot authorize local
+modifications or infer a missing source identity.
+
+The public manifest binds `system-upgrade-vX.Y.Z.json` by SHA-256. That
+allowlisted provenance includes the exact source/image identities, successful
+same-attempt required jobs, original evidence hash, storage/migration proof and
+tested transition. Raw logs, private registry addresses and configuration are
+excluded. Trust comes from the explicitly selected publisher repository over
+HTTPS and its reviewed publication workflow. Hashes establish a consistent
+publication; a checksum alongside its payload is not an independent signature.
+No consumer check disables the publisher's native merge or acceptance gates.
+
+Maintain `bootstrapper/upgrade-paths.json` with each supported release. Add only
+explicitly exercised ascending edges, prerequisites, ordered steps and the named
+candidate stage; preserve mandatory intermediate releases. The CLI and offline
+Wizard bundle use this same metadata. Export the Docs bundle, review English,
+German and Korean content, run metadata/UI and failure/recovery checks, then run
+the existing candidate's targeted previous-public-release transition. Previous
+images are obtained from their public metadata, not maintainer-owned pins. The
+publisher refuses an edge without matching passed runtime transition evidence;
+changing metadata does not manufacture compatibility.

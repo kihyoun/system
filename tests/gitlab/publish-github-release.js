@@ -170,6 +170,7 @@ test('complete publisher derives deterministic public assets from one accepted r
   for (const name of ['quickstart.sh', 'install.sh']) fs.copyFileSync(path.join(__dirname, '../../bootstrapper', name), path.join(root, 'bootstrapper', name));
   fs.writeFileSync(path.join(root, 'CHANGELOG.md'), '# Changelog\n\n## 1.0.0\n\nReviewed fixture release. See [Quickstart](docs/QUICKSTART.md).\n');
   fs.writeFileSync(path.join(root, 'VERSION'), '1.0.0\n');
+  fs.writeFileSync(path.join(root, 'bootstrapper/upgrade-paths.json'), JSON.stringify({format: 'system-upgrade-paths-v1', versions: ['1.0.0'], transitions: []}));
   fs.writeFileSync(path.join(root, '.gitmodules'), '[submodule "wizard"]\npath = wizard\nurl = https://github.com/kihyoun/system-wizard.git\n');
   git('add', '.'); git('update-index', '--add', '--cacheinfo', '160000,' + wizard + ',wizard'); git('commit', '--quiet', '-m', 'Accepted fixture');
   const commit = git('rev-parse', 'HEAD'), sourceTree = git('rev-parse', 'HEAD^{tree}');
@@ -270,7 +271,7 @@ test('complete publisher derives deterministic public assets from one accepted r
   assert.equal(published.quickstart.sha256, hash(fs.readFileSync(path.join(root, 'test-results/public-release/quickstart.sh'))));
   assert.match(fs.readFileSync(path.join(root, 'test-results/public-release/quickstart.sh'), 'utf8'), /ACCEPTED_RELEASE_TAG = 'v1.0.0'/);
   assert(!JSON.stringify(published).includes('registry.example.test'));
-  assert.equal(fixture.getRelease().assets.length, 4);
+  assert.equal(fixture.getRelease().assets.length, 5);
   fixture.calls.length = 0;
   await publish(env, root, request);
   assert(!fixture.calls.some(row => row.options.method), 'full native publication retry reuses the identical evidence/assets');

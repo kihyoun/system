@@ -1727,6 +1727,12 @@ See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
 
 ## 5. Evolving a running system
 
+For an unmodified official release, start with the [public upgrade guide](RELEASES.md#upgrade-and-rollback)
+and its version-selectable Wizard Docs checklist. The committed public release
+command plans and explicitly applies only declared tested transitions; Quickstart
+is the fresh-install path. Source builds and forks use the accepted-successor
+workflow below. Publication never upgrades a running installation.
+
 See [architecture, origins and vision](ARCHITECTURE.md) for the generation model,
 repository map, historical diagram and the boundary between today’s tools and
 future autonomous renewal.

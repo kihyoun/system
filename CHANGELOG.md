@@ -3,6 +3,14 @@
 Versions follow [Semantic Versioning](https://semver.org/). A version belongs to
 one accepted System source revision and tested controller/Wizard image attempt.
 
+## 1.2.0
+
+### Features
+
+- Upgrade supported official releases through a deliberate public preflight and
+  paired controller/Wizard update, retaining matching backups and recovery inputs.
+- Select installed and target versions in the offline Wizard Docs migration guide.
+
 ## 1.1.3
 
 ### Fixes

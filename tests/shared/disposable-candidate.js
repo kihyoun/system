@@ -116,7 +116,7 @@ class Candidate {
       if (!/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-image-input');
     }
     for(const [role,image] of Object.entries(spec.supportImages || {})) {
-      if(!['helper','previousGitlab','previousRunner','previousHelper','proxy'].includes(role) || !/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-support-image');
+      if(!['helper','previousGitlab','previousRunner','previousHelper','previousController','previousWizard','proxy'].includes(role) || !/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-support-image');
     }
     this.spec=spec; this.exec=options.docker || docker;
     this.request=options.request || ((url,requestOptions)=>{
@@ -197,7 +197,7 @@ class Candidate {
       if(this.spec.restore&&this.spec.guidedPreviewAcceptance===true)this.gitlabUrl='https://gitlab.candidate.test';
     });
     await this.stage('candidate-images',async()=>{
-      const tags={proxy:'candidate-proxy:under-test',candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous',previousRunner:'candidate-runner:previous',previousHelper:'candidate-helper:previous'};
+      const tags={proxy:'candidate-proxy:under-test',candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous',previousRunner:'candidate-runner:previous',previousHelper:'candidate-helper:previous',previousController:'candidate-controller:previous-public',previousWizard:'candidate-wizard:previous-public'};
       for (const [role,image] of Object.entries({...this.spec.images,...this.spec.supportImages})) {
         // Stream the explicit archive from an open descriptor. No buffering a
         // multi-gigabyte image in Node and no outer-host bind path assumptions.

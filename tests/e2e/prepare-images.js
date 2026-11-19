@@ -62,7 +62,7 @@ function verifyPreparedTrust(tags,execute=execFileSync){
     if(trust.check(trust.certificates(bundle))<50)throw Error('Incomplete prepared '+role+' CA trust.');
   }
 }
-function prepare(){
+async function prepare(){
   if(process.arch!=='x64'||process.platform!=='linux')throw Error('Current pinned candidate images require Linux amd64.');
   const tags=identifiers();
   const identity=ciIdentity();
@@ -117,14 +117,15 @@ function prepare(){
     if(!/^sha256:[a-f0-9]{64}$/.test(id))throw Error('Invalid inspected image identity.');
     const filename=path.join(output,role+'.tar');run(['image','save','--output',filename,reference]);images[role]={id,archive:filename};
   }
+  const publicUpgrade=await require('./public-upgrade').prepare(output);
   const acmeImages=acmeRenewalAcceptance?require('./prepare-acme-images').prepare(output):undefined;
   if(acmeRenewalAcceptance)require('./local-acme').validate({acmeImages});
   const spec={sourceRevision:process.env.CI_COMMIT_SHA,sourceTree,wizardSourceRevision:snapshot.sourceRevision,
     ciIdentity:identity,
     guidedPreviewAcceptance:true,guidedPreviewSettings,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab','previousRunner','previousHelper','proxy'].includes(role))),
-    supportImages:{proxy:images.proxy,helper:images.helper,previousGitlab:images.previousGitlab,previousRunner:images.previousRunner,previousHelper:images.previousHelper},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
+    publicUpgrade, supportImages:{...publicUpgrade.images,proxy:images.proxy,helper:images.helper,previousGitlab:images.previousGitlab,previousRunner:images.previousRunner,previousHelper:images.previousHelper},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});
   console.log('Prepared pinned full-platform candidate images for '+process.env.CI_COMMIT_SHA);
 }
 module.exports={defaults,identifiers,ciIdentity,guidedSettings,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust};
-if(require.main===module){try{prepare();}catch{console.error('Candidate image preparation failed; see public build log.');process.exitCode=1;}}
+if(require.main===module)prepare().catch(()=>{console.error('Candidate image preparation failed; see public build log.');process.exitCode=1;});

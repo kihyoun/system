@@ -179,7 +179,7 @@ async function present(ci, assets, github, anonymous = github) {
   return publicRelease;
 }
 async function publish(env = process.env, root = process.cwd(), request = fetch) {
-  const ci = context(env, root), {released} = readEvidence(root, ci, env);
+  const ci = context(env, root), {released, proof} = readEvidence(root, ci, env);
   const origin = new URL(env.CI_API_V4_URL);
   requireValue(origin.protocol === 'https:' && !origin.username && !origin.password && !origin.search && !origin.hash,
     'Trusted HTTPS GitLab API required.');
@@ -208,12 +208,14 @@ async function publish(env = process.env, root = process.cwd(), request = fetch)
     .replace(repositoryMarker, "REPOSITORY = '" + ci.repository + "'  # Accepted public mirror."));
   ci.hostInstallerSha256 = hash(bounded(path.join(root, 'bootstrapper/install.sh')));
   const metadata = publicMetadata(ci, released, publication, source, notes, quickstart);
+  const upgradeAssets = require('./public-upgrade-release').publicUpgrade(metadata, released, proof,
+    JSON.parse(bounded(path.join(root, 'bootstrapper/upgrade-paths.json'))), jobs);
   ci.sourceTree = released.sourceTree;
   const identity = spawnSync('git', ['rev-parse', 'HEAD', 'HEAD^{tree}'], {cwd: root, encoding: 'utf8'});
   requireValue(identity.status === 0 && identity.stdout.trim() === ci.sourceRevision + '\n' + released.sourceTree, 'Checkout must match the accepted source/tree.');
   const mapping = spawnSync('git', ['config', '--blob', 'HEAD:.gitmodules', '--get', 'submodule.wizard.url'], {cwd: root, encoding: 'utf8'});
   requireValue(mapping.status === 0 && mapping.stdout.trim() === source.repository, 'Accepted public Wizard repository mapping mismatch.');
-  const git = spawnSync('git', ['diff', '--quiet', '--exit-code', 'HEAD', '--', 'VERSION', 'CHANGELOG.md', 'bootstrapper/quickstart.sh'], {cwd: root});
+  const git = spawnSync('git', ['diff', '--quiet', '--exit-code', 'HEAD', '--', 'VERSION', 'CHANGELOG.md', 'bootstrapper/quickstart.sh', 'bootstrapper/upgrade-paths.json', 'gitlab/public-upgrade-release.js'], {cwd: root});
   requireValue(git.status === 0, 'Release inputs must be reviewed committed source.');
   for (const role of ['controller', 'wizard']) {
     const [repository, digest] = metadata.images[role].reference.replace(/^docker\.io\//, '').split('@');
@@ -222,7 +224,7 @@ async function publish(env = process.env, root = process.cwd(), request = fetch)
   }
   const bytes = Buffer.from(JSON.stringify(metadata, null, 2) + '\n'), name = 'system-release-' + ci.tag + '.json';
   const assets = {[name]: bytes, [name + '.sha256']: Buffer.from(hash(bytes) + '  ' + name + '\n'),
-    'quickstart.sh': quickstart, 'release-notes.md': notes};
+    'quickstart.sh': quickstart, 'release-notes.md': notes, ...upgradeAssets};
   const credential = token(env, 'GITHUB_RELEASE_TOKEN');
   const base = api('https://api.github.com', 'Bearer ' + credential, 'Authorization', request);
   const github = (route, options) => route.startsWith('/uploads/')

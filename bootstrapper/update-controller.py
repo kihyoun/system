@@ -364,7 +364,7 @@ def verify_release_selection_checkpoint(checkpoint, selection):
 
 def update(config, release, evidence, api, release_bytes, evidence_bytes, security,
            controller, checkpoint, token_file, redirect_from=None, timeout=1200, check_only=False, wizard=None,
-           release_metadata=None, repair_stopped_controller=False):
+           release_metadata=None, repair_stopped_controller=False, expected_baseline=None):
     runtime.public_manifest_absent(config)
     require(api.base == runtime.origin(config, 'GITLAB'), 'GitLab-origin-does-not-match-saved-config')
     successor.verify_checkout(release, ROOT)
@@ -381,6 +381,8 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
     if repair_stopped_controller:
         stopped_id = promoter.inspect('system_bootstrapper_1')['Id']
         stopped_operations_idle(config)
+    if expected_baseline is not None:
+        runtime.assert_baseline(config, expected_baseline)
     original = current_services(config, release, evidence, security, stopped_id)
     if wizard is not None:
         promoter.owned(original['system_wizard_1'], 'wizard')
@@ -409,7 +411,9 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
                     'wizardSourceRevision': release['wizardRevision']}
         accepted = installer.accepted_metadata(release_metadata, identity, controller, wizard)
         require(accepted['version'] == (ROOT / 'VERSION').read_text().strip() and
-                accepted['acceptance'].get('evidenceSha256') == release['candidateEvidenceSha256'] and
+                accepted['acceptance'].get('evidenceSha256') == (
+                    api.metadata['acceptance']['evidenceSha256'] if isinstance(api, __import__('public_release').PublicReleaseAuthority)
+                    else release['candidateEvidenceSha256']) and
                 all(accepted['images'][role]['imageId'] == release[key] for role, key in
                     (('controller', 'imageId'), ('wizard', 'wizardImageId'))),
                 'public-release-metadata-differs-from-accepted-candidate')
@@ -467,6 +471,8 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
         record.update(leaseOperation=lease.operation, phase='lease-acquired')
         successor.atomic_json(checkpoint / 'operation.json', record)
         runtime.assert_baseline(config, baseline)
+        if expected_baseline is not None:
+            runtime.assert_baseline(config, expected_baseline)
         if selection:
             verify_release_selection(config, selection)
         if stopped_id is None:

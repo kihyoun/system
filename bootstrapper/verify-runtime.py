@@ -84,7 +84,22 @@ def settings(persistence):
     require(main.is_file() and not main.is_symlink(), 'saved-configuration-required')
     auth = root / 'configuration/sync-auth.env'
     require(not auth.is_symlink(), 'sync-auth-must-not-be-symlink')
-    result = read_values(([auth] if auth.is_file() else []) + [main])
+    profile = root / 'configuration/.release-images.env'
+    profiles = []
+    if profile.exists() or profile.is_symlink():
+        require(profile.is_file() and not profile.is_symlink() and profile.stat().st_uid == 0 and
+                profile.stat().st_mode & 0o777 == 0o600 and profile.stat().st_size <= 1024,
+                'private-release-profile-required')
+        lines = profile.read_bytes().decode('ascii').split('\n')
+        if lines[-1] == '':
+            lines.pop()
+        records = [re.fullmatch(r'(BOOTSTRAPPER_IMAGE|WIZARD_IMAGE)=(docker\.io/[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64})', line) for line in lines]
+        require(len(records) == 2 and all(records) and
+                {record[1] for record in records} == {'BOOTSTRAPPER_IMAGE', 'WIZARD_IMAGE'},
+                'invalid-release-profile-assignments')
+        profiles = [profile]
+    # Match native startup: public defaults first, saved configuration wins.
+    result = read_values(profiles + ([auth] if auth.is_file() else []) + [main])
     result.update(storage)  # Host-selected storage always wins over saved settings.
     result['_root'] = root
     result['_main'] = main
