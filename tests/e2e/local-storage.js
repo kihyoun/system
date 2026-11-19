@@ -100,7 +100,10 @@ async function refuseInvalidRestore(candidate,base) {
 }
 async function verifyControlWithoutBackup(candidate) {
   await assertAbsent(candidate);
-  const before=await candidate.inner(['inspect','--format','{{.RestartCount}}','system_bootstrapper_1']);
+  const identity=async()=>JSON.parse(await candidate.inner(['inspect','--format',
+    '{"id":{{json .Id}},"image":{{json .Image}},"started":{{json .State.StartedAt}},"running":{{json .State.Running}}}',
+    'system_bootstrapper_1']));
+  const before=await identity();
   const networks=JSON.parse(await candidate.inner(['inspect','--format','{{json .NetworkSettings.Networks}}','system_bootstrapper_1']));
   const gateway=networks.bridge?.Gateway;
   if(!/^\d+\.\d+\.\d+\.\d+$/.test(gateway||''))throw Error('missing-private-gateway');
@@ -119,14 +122,24 @@ async function verifyControlWithoutBackup(candidate) {
     const boundary='storage-acceptance-'+require('crypto').randomBytes(16).toString('hex');
     const body=Buffer.concat([Buffer.from('--'+boundary+'\r\nContent-Disposition: form-data; name="bootstrapper.zip"; filename="bootstrapper.zip"\r\nContent-Type: application/zip\r\n\r\n'),fs.readFileSync('/system/bootstrapper.zip'),Buffer.from('\r\n--'+boundary+'--\r\n')]);
     const response=await request('/config/zip',body,{'Content-Type':'multipart/form-data; boundary='+boundary,Authorization:'Bearer '+JSON.parse(login.body).accessToken});
-    if(response.status!==200||JSON.parse(response.body).status?.needRestart!==true)throw Error();
+    const result=JSON.parse(response.body);
+    if(response.status!==200||result.applyMode!=='none'||result.status?.needRestart!==false)throw Error();
     process.stdout.write('accepted');
   }.toString()+")(input);}catch{process.exitCode=1;}});";
   const certificate=candidate.spec.restore?.expected?.acme?require('./local-acme').ISSUANCE_CA:'/ssl/live/recovery-fixture/fullchain.pem';
   const result=await candidate.inner(['exec','-i','system_bootstrapper_1','node','-e',script],
     {input:JSON.stringify({gateway,certificate,user:candidate.secrets.user,password:candidate.secrets.password}),timeout:30000});
   if(result!=='accepted')throw Error('storage-push-without-backup-failed');
-  await candidate.wait(async()=>Number(await candidate.inner(['inspect','--format','{{.RestartCount}}','system_bootstrapper_1']))>Number(before),180000);
+  if(!before.running||JSON.stringify(await identity())!==JSON.stringify(before))throw Error('storage-unchanged-push-restarted-controller');
+  // An unchanged Push no longer requests a platform restart. Exercise that
+  // contract first, then deliberately restart this same owned controller to
+  // retain the independent no-backup startup and authenticated Fetch proof.
+  await candidate.inner(['restart','--time','30','system_bootstrapper_1']);
+  await candidate.wait(async()=>{
+    const after=await identity();
+    if(after.id!==before.id||after.image!==before.image)throw Object.assign(Error('storage-restart-controller-identity-changed'),{noRetry:true});
+    return after.running&&after.started!==before.started;
+  },180000);
   const recovery=require('./recovery');
   await candidate.wait(async()=>{
     const page=await recovery.tlsProbe(candidate,'wizard.candidate.test','/',{},{certificate});return page.status===200&&/<html/i.test(page.body);

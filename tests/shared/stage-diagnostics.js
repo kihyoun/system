@@ -22,6 +22,8 @@ const REASONS = new Set([
   'storage-guard-changed-live-service',
   'storage-completed-seed-required',
   'storage-push-without-backup-failed',
+  'storage-unchanged-push-restarted-controller',
+  'storage-restart-controller-identity-changed',
   'upgrade-jobs-active',
   'upgrade-previous-ingress-not-ready',
   'upgrade-restored-payload-mismatch',
