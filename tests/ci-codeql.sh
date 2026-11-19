@@ -65,16 +65,21 @@ timeout 15 docker --config "$temporary/docker-config" create --name "$resource" 
   --init --user 1000:1000 --network none --memory 6g --memory-swap 6g --cpus 2 --pids-limit 256 \
   --cap-drop ALL --security-opt no-new-privileges "$image" >/dev/null
 timeout 15 docker start "$resource" >/dev/null
-status=$(timeout 900 docker wait "$resource")
-timeout 15 docker logs "$resource" > "$report/scan.log" 2>&1
+wait_status=0
+status=$(timeout 900 docker wait "$resource") || wait_status=$?
+# Preserve available diagnostics before cleanup even when the client wait times
+# out or loses its daemon connection. The primary failure remains authoritative.
+log_status=0
+timeout 15 docker logs "$resource" > "$report/scan.log" 2>&1 || log_status=$?
 cat "$report/scan.log"
 copy_failed=0
 for file in tool.json results.sarif gate.json; do
   timeout 15 docker cp "$resource:/reports/$file" "$report/$file" 2>/dev/null || copy_failed=1
 done
 cp .codeql-context/manifest.json "$report/source.json"
+if [ "$wait_status" -ne 0 ]; then exit "$wait_status"; fi
 case "$status" in
-  0) [ "$copy_failed" -eq 0 ] || { echo 'Missing successful scan evidence.' >&2; exit 1; } ;;
+  0) [ "$copy_failed" -eq 0 ] && [ "$log_status" -eq 0 ] || { echo 'Missing successful scan evidence.' >&2; exit 1; } ;;
   ''|*[!0-9]*) exit 1 ;;
   *) exit "$status" ;;
 esac

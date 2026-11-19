@@ -20,7 +20,7 @@ try {
 const fs=require('node:fs');let a=process.argv.slice(2);if(a[0]==='--config')a=a.slice(2);
 fs.appendFileSync(${JSON.stringify(trace)},JSON.stringify(a)+'\\n');
 if(a[0]==='build')fs.writeFileSync('received-context',fs.readFileSync(0));
-if(a[0]==='wait')console.log(process.env.MOCK_STATUS||'0');
+if(a[0]==='wait'){if(process.env.MOCK_WAIT_TIMEOUT)process.exit(124);console.log(process.env.MOCK_STATUS||'0');}
 if(a[0]==='logs')console.log('public source scan');
 if(a[0]==='cp' && !process.env.MOCK_MISSING)fs.writeFileSync(a[2],'{}');
 if(a[0]==='cp' && process.env.MOCK_MISSING)process.exitCode=1;
@@ -46,6 +46,9 @@ if(process.env.MOCK_REMOVE_FAIL&&(a[0]==='rm'||(a[0]==='image'&&a[1]==='rm')))pr
   assert(!create.some(arg => ['--mount', '-v', '--volume', '--privileged', '--env', '-e'].includes(arg)));
   assert(calls.findIndex(args => args[0] === 'cp') < calls.findIndex(args => args[0] === 'rm'));
   assert.equal(invoke({MOCK_STATUS: '7'}).status, 7, 'Preserve failed scan exit.');
+  fs.rmSync(path.join(root, 'test-results/codeql/scan.log'));
+  assert.equal(invoke({MOCK_WAIT_TIMEOUT: '1'}).status, 124, 'Preserve client timeout exit.');
+  assert(fs.readFileSync(path.join(root, 'test-results/codeql/scan.log'), 'utf8').includes('public source scan'), 'Retain diagnostics before timed-out container cleanup.');
   assert.equal(invoke({MOCK_MISSING: '1'}).status, 1, 'Success requires retained evidence.');
   assert.equal(invoke({MOCK_REMOVE_FAIL: '1'}).status, 1, 'Cleanup failure fails a successful scan.');
   assert.equal(invoke({MOCK_STATUS: '7', MOCK_REMOVE_FAIL: '1'}).status, 7);
