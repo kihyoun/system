@@ -1,5 +1,11 @@
 ## 5. Ein laufendes System weiterentwickeln
 
+Für ein unverändertes offizielles Release mit dem [öffentlichen Upgrade-Leitfaden](RELEASES.md#upgrade-and-rollback)
+und der versionsabhängigen Wizard-Docs-Checkliste beginnen. Der Repository-Befehl
+plant und bestätigt ausschließlich deklarierte getestete Übergänge. Quickstart
+bleibt für Neuinstallationen. Eigene Quellbuilds und Forks nutzen den unten
+beschriebenen Nachfolgerablauf; eine Veröffentlichung aktualisiert keine Installation.
+
 [Architektur, Ursprung und Vision](ARCHITECTURE.md) erläutert das Generationenmodell,
 den Repository-Wegweiser, das historische Diagramm und die Grenze zwischen heutigen
 Werkzeugen und künftiger autonomer Erneuerung.

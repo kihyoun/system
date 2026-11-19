@@ -254,6 +254,13 @@ sudo python3 bootstrapper/verify-runtime.py check \
 
 ## 서비스가 이미 최신인 공개 컨트롤러 업데이트하기
 
+지원되는 변경되지 않은 공식 릴리스는 `upgrade-release.py`와
+[공개 업그레이드 안내](../docs/RELEASES.md#upgrade-and-rollback)를 사용하세요. 공개
+검증 자료를 내려받고 정확한 전환을 검증하며 일치하는 백업을 조정한 후 아래의
+쌍 업데이터를 호출하기 전에 검토된 계획 SHA-256을 요구합니다. 자신의 설치 API
+토큰만 필요합니다. 상태와 복구는 같은 보관된 계획 디렉터리를 사용하며 릴리스
+게시는 업그레이드를 시작하지 않습니다.
+
 `update-controller.py`는 기존 공개 릴리스 설치가 현재 보안 프로필에서 승인한
 GitLab 및 Runner 이미지를 이미 실행하고 있으며 **`recovery/images.json` 아카이브
 매니페스트가 없을 때** 사용하세요. 이 명시적 경로는 끊어진 링크를 포함한 기존

@@ -274,6 +274,13 @@ und Alias-Deklarationen über den normalen geprüften Betreiberablauf.
 
 ## Öffentlichen Controller bei bereits aktuellen Diensten aktualisieren
 
+Für ein unterstütztes unverändertes offizielles Release `upgrade-release.py` mit dem
+[öffentlichen Upgrade-Leitfaden](../docs/RELEASES.md#upgrade-and-rollback) verwenden.
+Der Befehl lädt öffentliche Nachweise, prüft den genauen Übergang, koordiniert
+eine passende Sicherung und verlangt vor dem Paar-Updater den geprüften Plan-SHA-256.
+Nur das API-Token der eigenen Installation ist nötig. Status und Wiederherstellung
+verwenden denselben gespeicherten Planpfad; eine Veröffentlichung startet kein Upgrade.
+
 Verwenden Sie `update-controller.py`, wenn eine bestehende öffentliche Release-Installation bereits
 die vom aktuellen Sicherheitsprofil freigegebenen GitLab- und Runner-Images ausführt und
 **kein Archivmanifest `recovery/images.json` besitzt**. Dieser ausdrückliche Weg lehnt ein

@@ -21,6 +21,11 @@ The default **Overview** page introduces the platform. **Install System Bootstra
 Select **Docs** in the top toolbar to read and search the integrated handbook,
 including Quick Start, installation and configuration guides. Docs works without
 a Sync connection; `/docs#docs/getting-started` opens its first chapter directly.
+The public releases chapter also provides an offline migration guide: select the
+installed and target versions to read the exact declared steps and mandatory
+intermediate releases. The same maintained transition metadata drives CLI
+preflight. Selection starts no operation; upgrades require a reviewed plan and
+explicit confirmation in the operator’s terminal.
 Select **Wizard** in the main navigation to configure an instance. `/configuration` remains a direct entry to the Wizard workspace.
 Switching between Overview, Wizard, Docs and the footer's Privacy/Imprint views preserves the
 current connection, configuration and in-progress form state in the browser.
