@@ -136,7 +136,7 @@ test('gates bind required successful jobs and byte-identical artifacts before Gi
     'test-results/dockerhub/release.json', 'test-results/github/wizard-source.json'];
   for (const file of files) { fs.mkdirSync(path.dirname(path.join(root, file)), {recursive: true}); fs.writeFileSync(path.join(root, file), file); }
   const names = ['check:documentation', 'prepare:wizard-source', 'test:candidate-image', 'test:platform-candidate', 'build',
-    'test:wizard-browser', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
+    'test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
   const jobs = names.map((name, index) => ({name, id: index + 1, status: 'success', allow_failure: false,
     pipeline: {id: 10}, commit: {id: sha}}));
   const gitlab = async (route, options) => {
@@ -220,17 +220,17 @@ test('complete publisher derives deterministic public assets from one accepted r
     candidateEvidencePath: 'test-results/successor/candidate-results.json',
     registryReference: env.CI_REGISTRY_IMAGE + '/successor@' + digests.controller,
     wizardRegistryReference: env.CI_REGISTRY_IMAGE + '/successor-wizard@' + digests.wizard};
-  const publicPair = {...publication, sourceRevision: commit, sourceTree, publicationJobId: 7,
+  const publicPair = {...publication, sourceRevision: commit, sourceTree, publicationJobId: 8,
     upstreamRelease: {...publication.upstreamRelease, candidateEvidenceSha256: hash(proofBytes)},
     controller: {...publication.controller, sourceRevision: commit, reference: 'example/system@' + digests.controller},
     wizard: {...publication.wizard, reference: 'example/wizard@' + digests.wizard}};
-  const publicSource = {...source, systemRevision: commit, publicationJobId: 8};
+  const publicSource = {...source, systemRevision: commit, publicationJobId: 9};
   const inputs = {'test-results/successor/release.json': Buffer.from(JSON.stringify(accepted)),
     'test-results/successor/candidate-results.json': proofBytes, 'test-results/dockerhub/release.json': Buffer.from(JSON.stringify(publicPair)),
     'test-results/github/wizard-source.json': Buffer.from(JSON.stringify(publicSource))};
   for (const [file, bytes] of Object.entries(inputs)) { fs.mkdirSync(path.dirname(path.join(root, file)), {recursive: true}); fs.writeFileSync(path.join(root, file), bytes); }
   const names = ['check:documentation', 'prepare:wizard-source', 'test:candidate-image', 'test:platform-candidate', 'build',
-    'test:wizard-browser', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
+    'test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
   const jobs = names.map((name, index) => ({name, id: name === 'test:platform-candidate' ? 20 : index + 1,
     status: 'success', allow_failure: false, pipeline: {id: 10}, commit: {id: commit}}));
   const fixture = githubFixture();

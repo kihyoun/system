@@ -395,6 +395,10 @@ def _verify_pipeline(api, release, release_bytes, evidence_bytes, current):
         require(key not in selected, 'successor-duplicate-job-identity')
         selected[key] = row
     required = [('job', name) for name in REQUIRED_JOBS] + [('component', name) for name in COMPONENTS]
+    # New promotions require static analysis. Retained historical receipts from
+    # before this gate remain recoverable; a recorded CodeQL job must still pass.
+    if current or ('job', 'test:codeql') in selected:
+        required.append(('job', 'test:codeql'))
     for key in required:
         row = selected.get(key, {})
         require(row.get('status') == 'success' and row.get('allow_failure') is False,
