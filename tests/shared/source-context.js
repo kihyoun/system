@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const {pack} = require('../../project-bootstrap/wizard-source/package');
 const {prepareContext} = require('../prepare-context');
 const {prepareCandidate} = require('../prepare-candidate');
+const {prepare: prepareCodeql} = require('../prepare-codeql');
 const root = fs.mkdtempSync(path.join(os.tmpdir(),'committed-test-context-'));
 const source = path.resolve(__dirname,'../..');
 const gitSelectors = {SYSTEM_SOURCE_GIT_DIR:process.env.SYSTEM_SOURCE_GIT_DIR,WIZARD_SOURCE_GIT_DIR:process.env.WIZARD_SOURCE_GIT_DIR};
@@ -27,6 +28,7 @@ try {
   wizardGit('add','.'); wizardGit('commit','-m','Committed Wizard fixture');
   const wizardRevision=wizardGit('rev-parse','HEAD');
   write('tests/Dockerfile','FROM scratch\n');
+  for (const name of ['Dockerfile', 'scan.sh', 'check-sarif.js']) write('tests/codeql/' + name, 'public scanner fixture\n');
   write('.gitlab-ci.yml','stages: [test]\n');
   write('VERSION','1.1.0\n');
   write('system/Dockerfile','FROM scratch\n');
@@ -76,6 +78,12 @@ try {
   assert(!candidate.files.some(name=>/private\.env|credentials|untracked-secret|seed\/data|old\.xml|^tests\//.test(name)));
   assert.equal(execFileSync('tar',['-xOf',path.join(root,'.candidate-context/context.tar'),'sync/src/public.ts'],{encoding:'utf8'}),'committed source\n');
   assert.equal(candidate.wizardRevision,snapshot.sourceRevision);
+  const staticContext = prepareCodeql(root);
+  const staticArchive = path.join(root, '.codeql-context/context.tar');
+  assert.equal(execFileSync('tar', ['-xOf', staticArchive, 'source/sync/src/public.ts'], {encoding:'utf8'}), 'committed source\n');
+  assert(staticContext.files.includes('tests/fixture.sh'), 'Static analysis includes committed test sources');
+  assert(staticContext.files.includes('wizard/src/api/Helper.tsx'), 'Static analysis includes the exact Wizard pin');
+  assert(!staticContext.files.some(name => /private\.env|credentials|untracked-secret|seed\/data|old\.xml/.test(name)));
   const forged=JSON.parse(JSON.stringify(snapshot));
   const changed=forged.files.find(file=>file.path==='start.sh');
   changed.content=Buffer.from('#!/bin/sh\necho uncommitted-snapshot-injection\n').toString('base64');
@@ -85,6 +93,7 @@ try {
   write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(forged));
   assert.throws(()=>prepareContext(root),/differs from committed source/);
   assert.throws(()=>prepareCandidate(root),/differs from committed source/);
+  assert.throws(()=>prepareCodeql(root),/differs from committed source/);
   write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(snapshot));
   // Dirty Wizard worktree source is ignored: only pinned blobs define provenance.
   write('wizard/start.sh','dirty-worktree-marker\n');
@@ -97,6 +106,7 @@ try {
   git('update-index','--add','--cacheinfo','120000,'+git('hash-object','sync/package.json')+',tests/unsafe-link');
   git('commit','-m','Reject links');
   assert.throws(()=>prepareContext(root),/links and nested submodules/);
+  assert.throws(()=>prepareCodeql(root),/links and nested submodules/);
   console.log('PASS: committed-only context, ignored/private/dirty exclusions, verified snapshot, executable bytes, stale snapshot and link refusal.');
 } finally {
   fs.rmSync(root,{recursive:true,force:true});

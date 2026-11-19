@@ -130,9 +130,10 @@ prepare:wizard-source:
     - node tests/prepare-context.js
     - node tests/prepare-candidate.js
     - node tests/prepare-wizard-browser.js
+    - node tests/prepare-codeql.js
   artifacts:
     expire_in: 1 day
-    paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/]
+    paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/, .codeql-context/]
   rules: *runtime-rules
 
 # The existing trusted socket runner launches a socket-free test child.
@@ -164,6 +165,32 @@ test:isolated:
     paths: [test-results/]
     reports:
       junit: test-results/*/junit.xml
+  rules: *runtime-rules
+
+# Independent static gate; no database services or platform execution.
+test:codeql:
+  stage: test
+  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+  services: []
+  tags: [docker]
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    GIT_SUBMODULE_STRATEGY: none
+    RUNNER_SCRIPT_TIMEOUT: 32m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+  resource_group: system-codeql-static
+  timeout: 35m
+  allow_failure: false
+  cache: []
+  dependencies: [prepare:wizard-source]
+  script:
+    - sh tests/ci-codeql.sh
+  after_script:
+    - sh tests/ci-codeql.sh cleanup
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths: [test-results/codeql/]
   rules: *runtime-rules
 
 # Build the complete runtime and packaged Sync/Wizard source before publishing.

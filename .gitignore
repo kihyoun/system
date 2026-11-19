@@ -17,3 +17,5 @@ project-bootstrap/wizard-source/snapshot.json
 __pycache__/
 
 .candidate-images/
+
+.codeql-context/

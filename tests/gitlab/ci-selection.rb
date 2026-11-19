@@ -10,7 +10,7 @@ raise 'Cube signature changed' unless text[807] == '$' && Digest::MD5.hexdigest(
 config = YAML.safe_load(text, aliases: true)
 jobs = config.select { |name, value| !name.start_with?('.') && value.is_a?(Hash) && value.key?('script') }
 jobs.transform_values! { |job| job['extends'] ? config.fetch(job['extends']).merge(job) : job }
-full = %w[prepare:wizard-source test:isolated test:candidate-image test:wizard-browser test:platform-candidate build]
+full = %w[prepare:wizard-source test:codeql test:isolated test:candidate-image test:wizard-browser test:platform-candidate build]
 baseline = {'CI_PIPELINE_SOURCE' => 'merge_request_event', 'CI_DEFAULT_BRANCH' => 'master',
             'GITHUB_BACKUP_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'false'}
 condition = lambda do |expression, environment|
