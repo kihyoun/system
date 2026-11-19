@@ -42,8 +42,10 @@ def publication(fixture):
     source = {'repository': previous['source']['repository'], 'revision': spec['sourceRevision'],
               'tree': spec['sourceTree'], 'wizardRevision': spec['wizardSourceRevision']}
     metadata.update(source=source, compatibility={'versions': ['24.04'], 'minimumMemoryGiB': 8})
+    # The config comes from each prepared archive; the daemon's local ID can
+    # instead name its manifest. Future publication transport remains synthetic.
     images = {role: {'reference': 'system-upgrade-fixture/' + role + '@' + spec['images'][key]['id'],
-                     'imageId': spec['images'][key]['id'], 'configDigest': spec['images'][key]['id']}
+                     'imageId': spec['images'][key]['id'], 'configDigest': spec['images'][key]['configDigest']}
               for role, key in [('controller', 'candidate'), ('wizard', 'wizard')]}
     metadata['images'] = images
     release, evidence = proof['release'], proof['evidence']

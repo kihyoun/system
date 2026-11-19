@@ -164,6 +164,14 @@ failed and no reviewed plan or updater checkpoint exists. If a lost process left
 a checking attempt, retain that directory and select a new plan directory. Native
 lease checks still refuse active or unfinished operations; do not delete leases.
 
+Official upgrades require the exact runtime image IDs recorded by publication.
+Docker image stores can report a manifest digest or config digest as the local
+image ID; those digests are verified separately. An installation whose local ID
+differs from the recorded accepted ID fails closed, even if fresh installation
+accepted that store's identity. Use the documented source/recovery workflow for
+different IDs. The CLI does not convert image stores; changing metadata or runtime
+selectors does not reconcile this limitation.
+
 4. Review the complete plan and its SHA-256. Replace `PLAN_SHA256` with the
    exact printed hash; apply refuses a missing or different confirmation. It
    rechecks the publication and retained configuration, retains the previous

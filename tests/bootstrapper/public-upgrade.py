@@ -78,6 +78,29 @@ def authority(metadata, proof, security):
 
 
 class Authority(unittest.TestCase):
+    def test_containerd_manifest_image_ids_are_bound_separately_from_config_digests(self):
+        metadata, proof, security = fixture()
+        for role, key, evidence_key in [('controller', 'imageId', 'candidate'), ('wizard', 'wizardImageId', 'wizard')]:
+            image = metadata['images'][role]
+            image['imageId'] = image['reference'].split('@')[1]
+            self.assertNotEqual(image['imageId'], image['configDigest'])
+            proof['release'][key] = image['imageId']
+            proof['evidence']['images'][evidence_key] = image['imageId']
+        proof['release']['candidateEvidenceSha256'] = hashlib.sha256(encoded(proof['evidence'])).hexdigest()
+        accepted = authority(metadata, proof, security)
+        self.assertEqual(accepted.release['imageId'], metadata['images']['controller']['imageId'])
+        self.assertEqual(accepted.release['wizardImageId'], metadata['images']['wizard']['imageId'])
+        for invalid in (None, '', 'sha256:invalid', 'SHA256:' + '1' * 64):
+            changed, changed_proof = copy.deepcopy((metadata, proof))
+            changed['images']['controller']['configDigest'] = invalid
+            with self.subTest(configDigest=invalid), self.assertRaisesRegex(
+                    successor.recovery.RecoveryError, 'candidate-identity-mismatch'):
+                authority(changed, changed_proof, security)
+        changed, changed_proof = copy.deepcopy((metadata, proof))
+        changed['images']['controller']['imageId'] = 'sha256:' + '1' * 64
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'candidate-identity-mismatch'):
+            authority(changed, changed_proof, security)
+
     def test_public_authority_dispatches_without_private_API_or_credentials(self):
         metadata, proof, security = fixture()
         accepted = authority(metadata, proof, security)
@@ -127,6 +150,7 @@ class Authority(unittest.TestCase):
             lambda p: p['publication']['jobs'][0].update(pipelineId=999),
             lambda p: p['publication']['jobs'][0].update(sourceRevision='0' * 40),
             lambda p: p['images']['controller'].update(imageId='sha256:' + '9' * 64),
+            lambda p: p['images']['controller'].update(configDigest='sha256:' + '9' * 64),
             lambda p: p['publication']['jobs'].append(p['publication']['jobs'][0])]
         for change in changes:
             metadata, proof, security = fixture()
@@ -244,14 +268,16 @@ class Host(unittest.TestCase):
         value = {'runId': 'f' * 24, 'previous': previous, 'gitlabUpgrade': upgrade,
             'spec': {'sourceRevision': source['revision'], 'sourceTree': source['tree'],
                 'wizardSourceRevision': source['wizardRevision'], 'ciIdentity': {'projectId': 4, 'pipelineId': 17, 'candidateJobId': 29},
-                'images': {'candidate': {'id': metadata['images']['controller']['imageId']},
-                    'wizard': {'id': metadata['images']['wizard']['imageId']},
+                'images': {'candidate': {'id': metadata['images']['controller']['imageId'], 'configDigest': 'sha256:' + '2' * 64},
+                    'wizard': {'id': metadata['images']['wizard']['imageId'], 'configDigest': 'sha256:' + '3' * 64},
                     'gitlab': {'id': upgrade['toImageId']}, 'runner': {'id': upgrade['runnerImageId']}}}}
         target, raw_proof, _ = adapter.publication(value)
         accepted = PublicReleaseAuthority(target, raw_proof, 'https://own-gitlab.example.invalid', security)
         self.assertEqual(accepted.release['sourceRevision'], source['revision'])
         self.assertEqual(accepted.release['candidateJobId'], 29)
         self.assertEqual(accepted.release['imageId'], value['spec']['images']['candidate']['id'])
+        self.assertEqual(target['images']['controller']['configDigest'], value['spec']['images']['candidate']['configDigest'])
+        self.assertNotEqual(target['images']['controller']['configDigest'], accepted.release['imageId'])
         self.assertEqual(accepted.evidence['evidence']['publicUpgrade']['fromSourceRevision'], previous['source']['revision'])
 
     def test_nominal_8GiB_host_tolerates_kernel_reservation(self):
@@ -293,6 +319,38 @@ class Paths(unittest.TestCase):
 
 
 class ReleaseProfile(unittest.TestCase):
+    def test_different_daemon_store_ID_remains_an_actionable_fail_closed_upgrade(self):
+        metadata, _, _ = fixture()
+        with tempfile.TemporaryDirectory(prefix='upgrade-image-store-') as temporary:
+            root = Path(temporary)
+            state = root / 'configuration'
+            state.mkdir()
+            config = {'_root': root}
+            selected = {'productRelease': {'version': metadata['version']},
+                **{key: metadata['source'][field] for key, field in
+                    [('sourceCommit', 'revision'), ('sourceTree', 'tree'), ('wizardSourceRevision', 'wizardRevision')]},
+                'images': {}}
+            rows, profile = {}, ''
+            for role, key, name in [('controller', 'BOOTSTRAPPER_IMAGE', 'system_bootstrapper_1'),
+                                    ('wizard', 'WIZARD_IMAGE', 'system_wizard_1')]:
+                image = metadata['images'][role]
+                config[key] = image['reference']
+                local_id = image['reference'].split('@')[1]
+                selected['images'][role] = {'reference': image['reference'], 'imageId': local_id}
+                rows[name] = {'Image': local_id}
+                profile += key + '=' + tool.updater.installer.reference(image['reference']) + '\n'
+            successor.atomic_json(state / '.release-images.json', selected)
+            successor.atomic_bytes(state / '.release-images.env', profile.encode())
+            with patch.object(tool, 'fetch', return_value=encoded(metadata)), \
+                    patch.object(successor, 'verify_source_objects'), \
+                    patch.object(tool.runtime, 'inspect_services', return_value=rows), \
+                    patch.object(tool.runtime, 'verify_mounts'), patch.object(tool.runtime, 'public_images'), \
+                    patch.object(tool.recovery, 'inspect_image') as inspect_image:
+                with self.assertRaisesRegex(successor.recovery.RecoveryError,
+                        'official-upgrade-requires-recorded-runtime-image-id-see-source-recovery-guide'):
+                    tool.installed(config, 'example/system')
+                inspect_image.assert_not_called()
+
     def test_native_fallback_is_literal_private_and_saved_configuration_wins(self):
         with tempfile.TemporaryDirectory(prefix='upgrade-profile-') as temporary:
             root = Path(temporary)

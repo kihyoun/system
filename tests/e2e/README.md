@@ -458,9 +458,10 @@ complete platform CI gate for that proof.
 
 `public-upgrade.js` extends the same restored candidate after GitLab migration
 and before its existing cold database rollback. Preparation selects the explicit
-previous public release from the upgrade graph, verifies its immutable images
-and source/job labels, and retains a clean target checkout with both releases'
-Git objects and Wizard gitlinks. No second platform is allocated.
+previous public release from the upgrade graph, verifies public manifest/config
+digests separately from recorded daemon IDs and source/job labels, and retains a
+clean target checkout with both releases' Git objects and Wizard gitlinks. No
+second platform is allocated.
 
 The stage runs the committed public CLI's actual `plan`, rejected unconfirmed
 `apply`, successful confirmed `apply`, and `status`. Apply retains independent
@@ -487,8 +488,9 @@ A bounded 512-MiB/one-CPU helper reuses the declared GitLab image's embedded
 Python and the prepared controller's Docker/Compose binaries and musl loader.
 Its mounts belong only to the private daemon. Committed test adapters model
 Ubuntu/systemd and the host mount view, plus the not-yet-published target's
-public metadata and exact digest-to-prepared-image transport. Real public
-authority validation, source checks, backup, updater, leases, journals and
+public metadata and exact digest-to-prepared-image transport. Target config
+digests come from hashed config blobs in the already saved image archives. Real
+public authority validation, source checks, backup, updater, leases, journals and
 recovery run unchanged. Previous-digest mapping stays disabled during archive
 recovery. Synthetic future publication inputs are never exported as release
 evidence. This fixture does not establish real systemd scheduling or verify a

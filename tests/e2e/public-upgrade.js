@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const os = require('node:os');
 const {execFileSync} = require('node:child_process');
 const graph = require('../../bootstrapper/upgrade-paths.json');
+const {manifest} = require('../../gitlab/publish-dockerhub');
 const recovery = require('./recovery');
 const hash = raw => crypto.createHash('sha256').update(raw).digest('hex');
 const required = (value, code) => { if (!value) throw Error(code); };
@@ -37,7 +38,7 @@ async function download(repository, version, request = fetch) {
   }
   throw Error('public-upgrade-download-redirect-limit');
 }
-async function prepare(output, env = process.env, execute = execFileSync, request = fetch) {
+async function prepare(output, env = process.env, execute = execFileSync, request = fetch, inspectManifest = manifest) {
   const version = fs.readFileSync(path.join(root, 'VERSION'), 'utf8').trim();
   const incoming = graph.transitions.filter(row => row.to === version);
   required(incoming.length === 1, 'one-explicit-previous-public-upgrade-fixture-required');
@@ -48,17 +49,41 @@ async function prepare(output, env = process.env, execute = execFileSync, reques
     const row = metadata.images[role];
     required(/^(?:docker\.io\/)?[a-z0-9_-]+\/[a-z0-9._-]+@sha256:[a-f0-9]{64}$/.test(row.reference || '') &&
       /^sha256:[a-f0-9]{64}$/.test(row.imageId || '') && /^sha256:[a-f0-9]{64}$/.test(row.configDigest || ''), 'previous-public-image-reference-invalid');
+    const [repository, digest] = row.reference.replace(/^docker.io\//, '').split('@');
+    let published;
+    try { published = await inspectManifest(repository, digest, request); }
+    catch { throw Error('previous-public-manifest-verification-failed'); }
+    required(published?.digest === digest && published.configDigest === row.configDigest,
+      'previous-public-manifest-identity-mismatch');
     execute('docker', ['pull', row.reference], {stdio: 'inherit', timeout: 600000});
     const image = JSON.parse(execute('docker', ['image', 'inspect', row.reference], {encoding: 'utf8'}))[0];
-    required(image.Id === row.imageId && image.Id === row.configDigest &&
+    // Docker's classic store reports the config ID; containerd may report the
+    // manifest ID. The publisher records its accepted local ID independently.
+    required(image.Id === row.imageId && image.Os === 'linux' && image.Architecture === 'amd64' &&
       (image.RepoDigests || []).map(value => value.replace(/^docker.io\//, '')).includes(row.reference.replace(/^docker.io\//, '')) &&
       image.Config?.Labels?.['org.opencontainers.image.revision'] === metadata.source[role === 'controller' ? 'revision' : 'wizardRevision'] &&
-      image.Config?.Labels?.['org.system-bootstrapper.test-job'] === String(metadata.acceptance.candidateJobId), 'previous-public-image-identity-mismatch');
+      image.Config?.Labels?.['org.system-bootstrapper.test-job'] === String(metadata.acceptance.candidateJobId) &&
+      (role !== 'wizard' || image.Config?.Labels?.['org.system-bootstrapper.source-revision'] === metadata.source.revision),
+    'previous-public-image-identity-mismatch');
     const archive = path.join(output, 'previous-public-' + role + '.tar');
     execute('docker', ['image', 'save', '--output', archive, row.reference], {stdio: 'inherit', timeout: 600000});
     images[role === 'controller' ? 'previousController' : 'previousWizard'] = {id: image.Id, archive};
   }
   return {metadata, edge, images};
+}
+function archiveConfigDigest(archive, execute = execFileSync) {
+  // Reuse the saved candidate archive, since its future public manifest does
+  // not exist yet. Docker save emits this compatibility manifest in both stores.
+  try {
+    const read = filename => execute('tar', ['-xOf', archive, filename],
+      {timeout: 120000, maxBuffer: 8 * 1024 ** 2});
+    const rows = JSON.parse(read('manifest.json'));
+    required(Array.isArray(rows) && rows.length === 1 &&
+      /^(?:[a-f0-9]{64}\.json|blobs\/sha256\/[a-f0-9]{64})$/.test(rows[0].Config || ''), 'invalid-config');
+    const digest = 'sha256:' + hash(read(rows[0].Config));
+    required(rows[0].Config.replace(/^blobs\/sha256\//, '').replace(/\.json$/, '') === digest.slice(7), 'invalid-config');
+    return digest;
+  } catch { throw Error('public-upgrade-candidate-archive-config-invalid'); }
 }
 async function configuration(candidate) {
   return JSON.parse(await candidate.inner(['exec', 'system_bootstrapper_1', 'node', '-e',
@@ -284,4 +309,4 @@ async function run(candidate, expected, dependencies = {}) {
       configurationPreserved: true, dataPreserved: true, runnerRegistryVerified: true, rollbackVerified: true};
   });
 }
-module.exports = {download, prepare, prepareSource, configuration, preserved, replaceController, NativeCLI, run};
+module.exports = {download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, NativeCLI, run};

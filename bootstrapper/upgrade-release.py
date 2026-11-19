@@ -93,8 +93,10 @@ def installed(config, repository, target=None):
         expected, retained = metadata['images'][role], selected.get('images', {}).get(role, {})
         require(updater.installer.reference(config[key]) == updater.installer.reference(expected['reference']) and
                 updater.installer.reference(retained.get('reference')) == updater.installer.reference(expected['reference']) and
-                retained.get('imageId') == expected['imageId'] and services[name]['Image'] == expected['imageId'],
+                retained.get('imageId') == services[name]['Image'],
                 'modified-or-inconsistent-official-image-selection')
+        require(services[name]['Image'] == expected['imageId'],
+                'official-upgrade-requires-recorded-runtime-image-id-see-source-recovery-guide')
         image = recovery.inspect_image(config[key])
         labels = image.get('Config', {}).get('Labels', {})
         require(image['Id'] == expected['imageId'] and

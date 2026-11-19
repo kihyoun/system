@@ -4,8 +4,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
-const {download, prepare, prepareSource, run, preserved, NativeCLI} = require('../e2e/public-upgrade');
+const {download, prepare, archiveConfigDigest, prepareSource, run, preserved, NativeCLI} = require('../e2e/public-upgrade');
+const {preparationFailure} = require('../e2e/prepare-images');
 const edge = require('../../bootstrapper/upgrade-paths.json').transitions[0];
 const id = char => 'sha256:' + char.repeat(64);
 function fixture() {
@@ -22,25 +24,84 @@ test('previous public fixture is selected explicitly and redirects stay anonymou
   await assert.rejects(download('example/system', edge.from, async () => new Response(null, {status: 302, headers: {location: 'http://attacker.invalid/file'}})), /redirect/);
   await assert.rejects(download('example/system', edge.from, async () => new Response(null, {status: 404})), /unavailable/);
 });
-test('image preparation verifies official labels, source/job and exact digests before saving archives', async () => {
+test('image preparation verifies manifest/config independently of the exact accepted daemon ID before saving archives', async () => {
   const metadata = fixture(), calls = [];
-  let bad = false;
+  let corrupt = image => image, badManifest = false;
+  const inspectManifest = async (repository, digest) => {
+    calls.push(['manifest', repository, digest]);
+    const row = metadata.images[repository.endsWith('wizard') ? 'wizard' : 'controller'];
+    return {digest, configDigest: badManifest ? id('f') : row.configDigest};
+  };
   const execute = (_command, args) => {
     calls.push(args);
     if (args[0] === 'image' && args[1] === 'inspect') {
       const role = args.at(-1).includes('wizard') ? 'wizard' : 'controller';
       const row = metadata.images[role];
-      return JSON.stringify([{Id: bad ? id('f') : row.imageId, RepoDigests: [row.reference],
+      return JSON.stringify([corrupt({Id: row.imageId, Os: 'linux', Architecture: 'amd64', RepoDigests: ['docker.io/' + row.reference],
         Config: {Labels: {'org.opencontainers.image.revision': metadata.source[role === 'controller' ? 'revision' : 'wizardRevision'],
-          'org.system-bootstrapper.test-job': '31'}}}]);
+          'org.system-bootstrapper.test-job': '31', 'org.system-bootstrapper.source-revision': metadata.source.revision}}})]);
     }
     return '';
   };
-  const result = await prepare('/tmp/public-upgrade-fixture', {SYSTEM_TEST_PUBLIC_RELEASE_REPOSITORY: 'example/system'}, execute, async () => Response.json(metadata));
-  assert.equal(result.images.previousController.id, metadata.images.controller.imageId);
-  assert.equal(calls.filter(args => args[0] === 'image' && args[1] === 'save').length, 2);
-  bad = true;
-  await assert.rejects(prepare('/tmp/public-upgrade-fixture', {SYSTEM_TEST_PUBLIC_RELEASE_REPOSITORY: 'example/system'}, execute, async () => Response.json(metadata)), /identity-mismatch/);
+  const invoke = (inspect = inspectManifest) => prepare('/tmp/public-upgrade-fixture',
+    {SYSTEM_TEST_PUBLIC_RELEASE_REPOSITORY: 'example/system'}, execute, async () => Response.json(metadata), inspect);
+  for (const store of ['classic', 'containerd']) {
+    if (store === 'containerd') for (const row of Object.values(metadata.images)) row.imageId = row.reference.split('@')[1];
+    calls.length = 0;
+    const result = await invoke();
+    assert.equal(result.images.previousController.id, metadata.images.controller.imageId);
+    assert.equal(calls.filter(args => args[0] === 'image' && args[1] === 'save').length, 2);
+    assert.deepEqual(calls[0], ['manifest', 'example/system', id('1')]);
+    assert.equal(calls[1][0], 'pull');
+  }
+  for (const change of [image => { image.Id = id('f'); }, image => { image.Os = 'other'; },
+    image => { image.Architecture = 'arm64'; }, image => { image.RepoDigests = []; },
+    image => { image.Config.Labels['org.opencontainers.image.revision'] = 'f'.repeat(40); },
+    image => { image.Config.Labels['org.system-bootstrapper.test-job'] = '32'; },
+    image => { image.Config.Labels['org.system-bootstrapper.source-revision'] = 'f'.repeat(40); }]) {
+    corrupt = image => { change(image); return image; };
+    await assert.rejects(invoke(), /image-identity-mismatch/);
+  }
+  corrupt = image => image; badManifest = true; calls.length = 0;
+  await assert.rejects(invoke(), /manifest-identity-mismatch/);
+  assert.equal(calls.some(args => args[0] === 'pull'), false);
+  for (const inspect of [async () => null, async () => ({digest: id('f'), configDigest: id('3')})]) {
+    await assert.rejects(invoke(inspect), /manifest-identity-mismatch/);
+  }
+  await assert.rejects(invoke(async () => { throw Error('private upstream body'); }), /^Error: previous-public-manifest-verification-failed$/);
+});
+test('future publication config digests come from verified saved archive bytes in either Docker layout', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'public-upgrade-config-'));
+  try {
+    const config = Buffer.from('{"architecture":"amd64","os":"linux","config":{"Labels":{"fixture":"distinct-config"}}}\n');
+    const digest = crypto.createHash('sha256').update(config).digest('hex');
+    for (const filename of [digest + '.json', 'blobs/sha256/' + digest]) {
+      fs.mkdirSync(path.dirname(path.join(directory, filename)), {recursive: true});
+      fs.writeFileSync(path.join(directory, filename), config);
+      fs.writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify([{Config: filename, Layers: []}]));
+      const archive = path.join(directory, 'image.tar');
+      execFileSync('tar', ['-cf', archive, '-C', directory, 'manifest.json', filename]);
+      assert.equal(archiveConfigDigest(archive), 'sha256:' + digest);
+    }
+    fs.writeFileSync(path.join(directory, 'blobs/sha256/' + digest), 'changed-config');
+    const archive = path.join(directory, 'changed.tar');
+    execFileSync('tar', ['-cf', archive, '-C', directory, 'manifest.json', 'blobs/sha256/' + digest]);
+    assert.throws(() => archiveConfigDigest(archive), /candidate-archive-config-invalid/);
+    fs.writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify([{Config: '../unowned'}]));
+    execFileSync('tar', ['-cf', archive, '-C', directory, 'manifest.json']);
+    assert.throws(() => archiveConfigDigest(archive), /candidate-archive-config-invalid/);
+    assert.throws(() => archiveConfigDigest(archive, (_command, _args, options) => {
+      assert.equal(options.maxBuffer, 8 * 1024 ** 2);
+      assert.equal(options.timeout, 120000);
+      throw Object.assign(Error('private oversized archive output'), {code: 'ENOBUFS'});
+    }), /^Error: public-upgrade-candidate-archive-config-invalid$/);
+  } finally { fs.rmSync(directory, {recursive: true, force: true}); }
+});
+test('preparation diagnostics expose only bounded source-owned failure codes', () => {
+  assert.match(preparationFailure(Error('previous-public-image-identity-mismatch')), /failed: previous-public-image-identity-mismatch;/);
+  assert.match(preparationFailure(Error('previous-public-manifest-identity-mismatch')), /failed: previous-public-manifest-identity-mismatch;/);
+  assert.equal(preparationFailure(Error('secret token and private upstream output')),
+    'Candidate image preparation failed: candidate-preparation-failed; see public build log.');
 });
 test('source preparation keeps exact target and previous Git objects with a clean native checkout', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'public-upgrade-source-contract-'));

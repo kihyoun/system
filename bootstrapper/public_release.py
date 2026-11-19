@@ -63,7 +63,10 @@ class PublicReleaseAuthority:
         r = self.release
         require(all(r[key] == metadata['source'][field] for key, field in
                     [('sourceRevision', 'revision'), ('sourceTree', 'tree'), ('wizardRevision', 'wizardRevision')]) and
-                all(r[key] == metadata['images'][role]['imageId'] == metadata['images'][role]['configDigest'] for role, key in
+                # The publisher separately verifies the public manifest's
+                # config digest. Its accepted local image ID is store-specific.
+                all(r[key] == metadata['images'][role]['imageId'] and
+                    successor.recovery.image_id(metadata['images'][role].get('configDigest')) for role, key in
                     [('controller', 'imageId'), ('wizard', 'wizardImageId')]) and
                 r['registryReference'] == metadata['images']['controller']['reference'] and
                 r['wizardRegistryReference'] == metadata['images']['wizard']['reference'] and

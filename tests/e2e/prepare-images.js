@@ -116,6 +116,7 @@ async function prepare(){
     const id=execFileSync('docker',['image','inspect','--format','{{.Id}}',reference],{encoding:'utf8'}).trim();
     if(!/^sha256:[a-f0-9]{64}$/.test(id))throw Error('Invalid inspected image identity.');
     const filename=path.join(output,role+'.tar');run(['image','save','--output',filename,reference]);images[role]={id,archive:filename};
+    if(['candidate','wizard'].includes(role))images[role].configDigest=require('./public-upgrade').archiveConfigDigest(filename);
   }
   const publicUpgrade=await require('./public-upgrade').prepare(output);
   publicUpgrade.source=require('./public-upgrade').prepareSource(output,publicUpgrade.metadata);
@@ -128,5 +129,13 @@ async function prepare(){
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});
   console.log('Prepared pinned full-platform candidate images for '+process.env.CI_COMMIT_SHA);
 }
-module.exports={defaults,identifiers,ciIdentity,guidedSettings,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust};
-if(require.main===module)prepare().catch(()=>{console.error('Candidate image preparation failed; see public build log.');process.exitCode=1;});
+function preparationFailure(error){
+  const known=new Set(['one-explicit-previous-public-upgrade-fixture-required','public-upgrade-repository-invalid',
+    'public-upgrade-download-redirect','public-upgrade-download-redirect-limit','previous-public-release-unavailable',
+    'previous-public-metadata-too-large','previous-public-release-identity-invalid','previous-public-image-reference-invalid',
+    'previous-public-manifest-verification-failed','previous-public-manifest-identity-mismatch','previous-public-image-identity-mismatch',
+    'public-upgrade-candidate-archive-config-invalid','public-upgrade-exact-source-required','previous-public-source-identity-mismatch']);
+  return 'Candidate image preparation failed: '+(known.has(error?.message)?error.message:'candidate-preparation-failed')+'; see public build log.';
+}
+module.exports={defaults,identifiers,ciIdentity,guidedSettings,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust,preparationFailure};
+if(require.main===module)prepare().catch(error=>{console.error(preparationFailure(error));process.exitCode=1;});
