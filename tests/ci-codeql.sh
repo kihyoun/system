@@ -45,7 +45,7 @@ case "${CI_COMMIT_SHA:-}" in ''|*[!0-9a-f]*) echo 'Full source revision required
 checksum=$(cat .codeql-context/sha256)
 case "$checksum" in ''|*[!0-9a-f]*) exit 2;; esac
 [ "${#checksum}" -eq 64 ] || exit 2
-printf '%s  %s\n' "$checksum" .codeql-context/context.tar | sha256sum --check -
+printf '%s  %s\n' "$checksum" .codeql-context/context.tar | sha256sum -c -
 on_exit() {
   primary=$?
   trap - EXIT INT TERM
