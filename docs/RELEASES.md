@@ -183,8 +183,8 @@ sudo python3 bootstrapper/upgrade-release.py --operation apply \
 ```
 
 5. The cold matching backup pauses GitLab and later resumes it; the paired
-   update restarts controller/Sync and Wizard; core proxies can also be recreated
-   when target Compose policies change. Existing jobs must finish first.
+   update restarts controller/Sync and Wizard; core containers (including GitLab,
+   proxies and runner managers) can also be recreated when target Compose policies change. Existing jobs must finish first.
    Duration depends on data and host performance; there is no fixed downtime
    promise. The existing updater owns live-state leases and rollback checkpoints.
    Completion requires saved configuration and authenticated Fetch equality,
