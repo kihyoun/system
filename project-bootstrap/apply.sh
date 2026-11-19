@@ -24,6 +24,6 @@ finish() {
 trap finish EXIT
 # Reuse the established proxy networks and templates, without stopping GitLab.
 cd ../nginx-proxy
-bash -e start.sh "$@"
+SYSTEM_PROJECT_ROUTING_ONLY=true bash -e start.sh "$@"
 cd ../nginx
 bash -e start.sh reload

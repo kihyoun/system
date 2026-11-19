@@ -26,6 +26,15 @@ test('targeted proxy setup prepares only the selected application without recrea
   assert.doesNotMatch(commands, /unrelated|beta|--remove-orphans|--force-recreate|gitlab|stop|restart/);
   assert.equal(fs.readFileSync(path.join(root, 'nginx-proxy/.projects/.unrelated.env'), 'utf8'), 'unchanged sibling');
   assert.equal(fs.readFileSync(path.join(root, 'nginx-proxy/.projects/.selected.env'), 'utf8'), 'PROD_PROXY=172.20.0.2\nREVIEW_PROXY=172.20.0.2\n');
+  fs.writeFileSync(trace, '');
+  const startup = spawnSync('bash', ['start.sh'], {cwd: path.join(root, 'nginx-proxy'), encoding: 'utf8', env: {...process.env,
+    PATH: bin + ':' + process.env.PATH, TRACE: trace, SYSTEM_PROJECT_ROUTING_ONLY: 'false'}});
+  assert.equal(startup.status, 0, startup.stderr);
+  const startupCommands = fs.readFileSync(trace, 'utf8');
+  assert.match(startupCommands, /-p selected up --remove-orphans --no-build -d prod/);
+  assert.match(startupCommands, /-p unrelated up --remove-orphans --no-build -d prod/);
+  assert.doesNotMatch(startupCommands, /--no-recreate/, 'normal controller startup must apply changed Compose logging and image settings');
+
 });
 
 test('failed native apply restores previous proxy address records', t => {

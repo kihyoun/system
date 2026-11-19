@@ -3,6 +3,10 @@ set -euo pipefail
 if [[ -f ../system/.docker.env ]]; then source ../system/.docker.env; fi
 export NGINX_PROXY_IMAGE=${NGINX_PROXY_IMAGE:-}
 mkdir -p ./.projects
+compose_arguments=(up --remove-orphans --no-build -d)
+if [[ ${SYSTEM_PROJECT_ROUTING_ONLY:-false} == true ]] || (( $# )); then
+    compose_arguments=(up --no-recreate --no-build -d)
+fi
 next=
 trap '[[ -z $next ]] || rm -f -- "$next"' EXIT
 for file in ../system/.projects.env/*.env ../system/.projects.env/.*.env ../system/projects.env/*.env ../system/projects.env/.*.env; do
@@ -23,8 +27,9 @@ for file in ../system/.projects.env/*.env ../system/.projects.env/.*.env ../syst
         upper=${environment^^}
         enabled=USE_${upper}_HOST
         if [[ ${!enabled} == true ]]; then
-            # Keep existing proxies, images and all sibling environment containers.
-            docker-compose -p "$PROJECT_NAME" up --no-recreate --no-build -d "$environment"
+            # Routing preserves the running generation. Normal controller startup
+            # applies changed Compose settings, including image/logging policy.
+            docker-compose -p "$PROJECT_NAME" "${compose_arguments[@]}" "$environment"
             printf '%s_PROXY=' "$upper" >> "$next"
             docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${PROJECT_NAME}_${environment}_1" >> "$next"
         fi
