@@ -15,6 +15,7 @@ const defaults={
   runner:securityRelease.runner.toImage,
   previousRunner:securityRelease.runner.fromImage,
   previousHelper:securityRelease.runner.fromHelperImage,
+  proxy:'jwilder/nginx-proxy@sha256:9f45a8096a1c78c8842500029e819984d3bdd77f60b6e459091bd80561301746',
   nginx:'nginx@sha256:332d0beea97cff8c0d5d27976c0778a4b00345b9d74c2feaaf8efde548314948',
   helper:securityRelease.runner.helperImage
 };
@@ -120,8 +121,8 @@ function prepare(){
   if(acmeRenewalAcceptance)require('./local-acme').validate({acmeImages});
   const spec={sourceRevision:process.env.CI_COMMIT_SHA,sourceTree,wizardSourceRevision:snapshot.sourceRevision,
     ciIdentity:identity,
-    guidedPreviewAcceptance:true,guidedPreviewSettings,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab','previousRunner','previousHelper'].includes(role))),
-    supportImages:{helper:images.helper,previousGitlab:images.previousGitlab,previousRunner:images.previousRunner,previousHelper:images.previousHelper},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
+    guidedPreviewAcceptance:true,guidedPreviewSettings,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab','previousRunner','previousHelper','proxy'].includes(role))),
+    supportImages:{proxy:images.proxy,helper:images.helper,previousGitlab:images.previousGitlab,previousRunner:images.previousRunner,previousHelper:images.previousHelper},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});
   console.log('Prepared pinned full-platform candidate images for '+process.env.CI_COMMIT_SHA);
 }

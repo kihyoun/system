@@ -353,8 +353,10 @@ publication without retrieving the authenticated Sync configuration.
    configuration, or **Backup → bootstrapper.zip** for JSON plus generated
    environment files. Both contain credentials; keep them private.
 2. Select **Synchronize → Push** and confirm the transfer. This sends the Wizard
-   settings to the instance and automatically restarts services after a successful
-   import. The interface is temporarily unavailable while services start.
+   settings to the instance. Review the displayed service impact: existing
+   application routing edits reload the proxy while GitLab stays available; wider
+   changes restart services. The interface is temporarily unavailable during a
+   platform restart.
 3. Wait for the interface to return, then reconnect and Fetch to verify the settings.
 
 **Push transfers and applies settings. No separate Restart click is required.**
@@ -1379,7 +1381,7 @@ bypass guards or restore a stale Seed to make a host replacement continue.
 | Open | Loads a configuration file from your computer into the Wizard |
 | Backup | Downloads configuration as JSON or a ZIP containing JSON, generated environment files, `recovery.json` and `RECOVERY.md` |
 | Fetch | Retrieves saved instance settings; without a configuration, the current version loads marked suggestions |
-| Push | Transfers the Wizard configuration and automatically restarts the instance |
+| Push | Reviews and applies configuration; existing application routing reloads the proxy, while wider changes restart the instance |
 | Restart | Restarts services using the transferred configuration |
 | Register / Unregister | Checks/registers or unregisters configured runner managers |
 | Harvest | Publishes a cold snapshot of GitLab data, certificates and certificate-renewal state in the seed directory |

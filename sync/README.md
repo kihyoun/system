@@ -44,13 +44,26 @@ lockfile when reviewing dependencies; advisory results depend on their date.
 ## Configuration Push and restart
 
 The Wizard uploads `bootstrapper.zip` through authenticated `POST /config/zip`.
-Sync imports it while keeping the management interface available. A successful
-import responds with HTTP 200 and `needRestart: true`, then exits Sync after the
-response finishes. The controller's restart policy brings services back using
-the saved configuration, including runner scale; a separate Restart click is
-unnecessary. A failed import does not trigger that restart. The regression
-`tests/sync/push-restart-api.js` covers the authenticated multipart path and the
-response-before-restart ordering in a disposable process.
+Sync imports it while keeping the management interface available until a
+validated apply or restart. Authenticated `POST /config/impact` accepts the same
+multipart archive and returns the expected mode, affected project keys and a
+configuration fingerprint without changing saved state. The Wizard includes that
+fingerprint in Push; changed inputs or saved state require another impact review.
+
+Existing ordinary application routing changes use the native project apply path
+and gracefully reload the entry proxy, returning `applyMode: routing` and
+`needRestart: false`. GitLab and application images remain running. No effective
+service change returns `applyMode: none`. Changes outside the narrow routing
+allowlist return `applyMode: restart` and `needRestart: true`, then exit Sync after
+the response finishes. The controller restarts with the saved configuration.
+Failed imports do not trigger a restart; failed route applies restore the saved
+configuration and proxy reloads restore the previous active configuration.
+
+The multipart routing fixture covers preflight, stale-plan rejection, scoped
+apply and rollback. `tests/sync/push-restart-api.js` retains coverage of
+response-before-restart ordering in a disposable process. The full candidate
+scenario verifies real GitLab container continuity and readiness during routing
+Push, alongside its existing ACME and Seed recovery gates.
 
 Build the complete controller with [the supported runtime](../bootstrapper/README.md).
 Do not copy these dependencies or Debian Node binaries into the historical

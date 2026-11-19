@@ -1,3 +1,4 @@
+import {configurationImpact} from './ConfigurationImpact';
 import {recoveryObservation} from './RecoveryObservation';
 import {mainConfigPath, projectsDirectory, wizardConfigPath, projectConfigPath} from './StatePaths';
 import express from "express";
@@ -26,6 +27,7 @@ import {startBackupWorkflow, backupWorkflowStatus, backupWorkflowDownload} from 
 import {registerSystemDiagnostics} from './SystemDiagnostics';
 import {tokenOverview} from './TokenOverview';
 const wizardAliases = require('../../nginx/wizard-aliases');
+const applicationAliases = require('../../nginx/application-aliases');
 
 export const app = express();
 // Aggregate limits cannot be bypassed with forwarded client headers.
@@ -385,19 +387,31 @@ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
   }
 });
 
+app.post("/config/impact", authenticateJWT, (req, res) => {
+  const file = req.files?.['bootstrapper.zip'];
+  if (!file || Array.isArray(file) || file.name !== 'bootstrapper.zip') { res.sendStatus(400); return; }
+  try { res.json(configurationImpact(file.data)); }
+  catch (error) { res.status(400).json({message: error.message}); }
+});
+
 app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
   try {
     const file = req.files?.['bootstrapper.zip'];
     if (file && !Array.isArray(file) && file.name==='bootstrapper.zip') {
+      if (req.body?.impact && req.body.impact !== configurationImpact(file.data).fingerprint) {
+        res.status(409).json({message: 'Configuration changed since impact review. Review Push again.'}); return;
+      }
       fs.writeFileSync('../bootstrapper.zip', file.data);
-      const out2 = execSync('cd ../system; bash push.sh');
-      status.needRestart = true;
+      const out2 = execSync('cd ../system; bash push.sh', {env: {...process.env, SYSTEM_PUSH_IMPACT: typeof req.body?.impact === 'string' ? req.body.impact : ''}});
+      const mode = /^APPLY_MODE=(none|routing|restart)$/m.exec(out2.toString())?.[1] || 'restart';
+      status.needRestart = mode === 'restart';
       // Keep the Wizard available until import succeeds and the response is sent.
       // Exiting Sync lets the controller stop services and restart with the saved
       // configuration, including runner scale; no second UI action is required.
-      res.once('finish', () => setImmediate(stopExecution));
-      res.status(200).json({message: 'Config written. Restarting system.',
-        status, output: out2.toString()});
+      if (status.needRestart) res.once('finish', () => setImmediate(stopExecution));
+      res.status(200).json({message: status.needRestart ? 'Config written. Restarting system.' :
+        mode === 'routing' ? 'Application routing applied. GitLab remains available.' : 'Config written. No service restart required.',
+        applyMode: mode, status, output: out2.toString()});
     } else {
       res.sendStatus(400);
     }
@@ -411,7 +425,9 @@ app.post( "/config/main", authenticateJWT, async ( req, res ) => {
     const file = req.files?.['.docker.env'];
     if (file && !Array.isArray(file) && file.name==='.docker.env') {
       try {
-        wizardAliases.validate(file.data.toString('utf8'), wizardAliases.projectFiles(projectsDirectory()).map((project: {content: string}) => project.content));
+        const contents = wizardAliases.projectFiles(projectsDirectory()).map((project: {content: string}) => project.content);
+        wizardAliases.validate(file.data.toString('utf8'), contents);
+        applicationAliases.validate(file.data.toString('utf8'), contents, fs.existsSync(mainConfigPath()));
       } catch (error) { res.status(400).json({message: error.message}); return; }
       console.log('Stopping intermediate services...');
       const out = execSync('cd ../system; bash stop-intermediate.sh');

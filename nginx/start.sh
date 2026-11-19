@@ -13,6 +13,23 @@ fi
 # template also clears a previous alias after it is disabled or during the
 # registry-only recovery phase; envsubst replaces the matching .conf file.
 wizard_aliases=$(node ./wizard-aliases.js render ../system/.docker.env ../system/.projects.env "${1:-}") || exit $?
+application_aliases=$(node ./application-aliases.js render ../system/.docker.env ../system/.projects.env "${1:-}") || exit $?
+
+# A failed reload restores generated templates as well as the active config.
+template_snapshot=$(mktemp -d /tmp/system-routing-templates.XXXXXXXX)
+mkdir -p /templates
+cp -a /templates/. "$template_snapshot/"
+restore_templates() {
+  result=$?
+  trap - EXIT
+  if [ "$result" != 0 ]; then
+    find /templates -maxdepth 1 -type f -name "*.template" -delete
+    cp -a "$template_snapshot/." /templates/ || result=1
+  fi
+  rm -rf -- "$template_snapshot"
+  exit "$result"
+}
+trap restore_templates EXIT
 
 function generate_conf {
     cat $1 | sed -e "s@\${PROXY_UPSTREAM}@$2@g" \
@@ -43,6 +60,7 @@ mkdir -p /templates
 cp ./.templates/acme-http01.conf.template /templates/00-acme-http01.conf.template
 # Sort after default.conf so enabling aliases does not select a new default TLS host.
 printf '%s\n' "$wizard_aliases" > /templates/zz-wizard-aliases.conf.template
+printf '%s\n' "$application_aliases" > /templates/zz-application-aliases.conf.template
 
 generate_nginx_conf $GITLAB_DOMAIN_MODE \
   gitlab \
@@ -136,9 +154,29 @@ done
 if [ "${1:-}" = reload ]; then
     # Render the updated shared templates and reload the existing entry proxy.
     # The asynchronous project status endpoint stays reachable during setup.
-    docker exec system_web_1 /docker-entrypoint.d/20-envsubst-on-templates.sh
-    docker exec system_web_1 nginx -t
-    docker exec system_web_1 nginx -s reload
+    docker exec system_web_1 sh -ec '
+      snapshot=$(mktemp -d /tmp/system-routing-conf.XXXXXXXX)
+      cp -a /etc/nginx/conf.d/. "$snapshot/"
+      rollback() {
+        result=$?
+        trap - EXIT
+        if [ "$result" != 0 ]; then
+          rm -f /etc/nginx/conf.d/*.conf
+          cp -a "$snapshot/." /etc/nginx/conf.d/
+          nginx -t && nginx -s reload || {
+            echo "Previous proxy configuration could not be reloaded; inspect the proxy before retrying." >&2
+            result=1
+          }
+        fi
+        rm -rf "$snapshot"
+        exit "$result"
+      }
+      trap rollback EXIT
+      /docker-entrypoint.d/20-envsubst-on-templates.sh
+      nginx -t
+      nginx -s reload
+    '
+
 else
     docker-compose -f ../system/docker-compose.yml up --build --remove-orphans --force-recreate -d web
 fi

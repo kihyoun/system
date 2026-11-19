@@ -8,7 +8,7 @@ services:
 
   review:
     logging: *bounded-logging
-    image: 'jwilder/nginx-proxy'
+    image: '${NGINX_PROXY_IMAGE:-jwilder/nginx-proxy@sha256:9f45a8096a1c78c8842500029e819984d3bdd77f60b6e459091bd80561301746}'
     restart: always
     networks:
       - review
@@ -17,7 +17,7 @@ services:
 
   prod:
     logging: *bounded-logging
-    image: 'jwilder/nginx-proxy'
+    image: '${NGINX_PROXY_IMAGE:-jwilder/nginx-proxy@sha256:9f45a8096a1c78c8842500029e819984d3bdd77f60b6e459091bd80561301746}'
     restart: always
     networks:
       - prod
@@ -26,7 +26,7 @@ services:
 
   beta:
     logging: *bounded-logging
-    image: 'jwilder/nginx-proxy'
+    image: '${NGINX_PROXY_IMAGE:-jwilder/nginx-proxy@sha256:9f45a8096a1c78c8842500029e819984d3bdd77f60b6e459091bd80561301746}'
     restart: always
     networks:
       - beta

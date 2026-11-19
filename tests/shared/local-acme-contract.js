@@ -173,7 +173,7 @@ test('initial issuance exposes fixed subphases and stops at the exact failing op
     x.instance.certbot=async(_candidate,base,args)=>{
       assert.equal(base,'/candidate-data/platform');
       const domains=args.flatMap((arg,index)=>arg==='-d'?[args[index+1]]:[]);
-      assert.deepEqual(domains,['wizard.candidate.test','sync.candidate.test',require('../e2e/recovery').WIZARD_ALIAS]);
+      assert.deepEqual(domains,['wizard.candidate.test','sync.candidate.test',require('../e2e/recovery').WIZARD_ALIAS,...require('../e2e/application-routing').certificateHosts]);
       fault(phases[3]);
     };
     x.instance.identity=async()=>{fault(phases[5]);return {serial:'fixture-issued'};};

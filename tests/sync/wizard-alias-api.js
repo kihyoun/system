@@ -52,6 +52,14 @@ require(path.join(source, 'sync/dist/index'));
       assert.deepEqual(fs.readdirSync(path.join(root, 'system/.projects.env')), []);
       assert.equal(fs.readFileSync(mainFile, 'utf8'), main);
     }
+    for (const alias of ['gitlab.example.test', 'www.app.example.test', '*.example.test', 'oldapp.example.test OLDAPP.EXAMPLE.TEST']) {
+      const data = project.replace('PROD_HOST="example.test"', 'PROD_HOST="www.app.example.test"') + 'PROD_ALIASES="' + alias + '"\n';
+      const response = await fetch(base + '/config/project', {method: 'POST', headers: jsonHeaders,
+        body: JSON.stringify({projectKey: 'aliasowner', data})});
+      assert.equal(response.status, 400, 'application alias ' + alias);
+      assert.equal(transports, 0, 'application alias rejection must precede service work');
+      assert.deepEqual(fs.readdirSync(path.join(root, 'system/.projects.env')), []);
+    }
     const upload = new FormData();
     upload.append('.docker.env', new Blob([main.replace('WIZARD_ALIASES="example.test"', 'WIZARD_ALIASES="gitlab.example.test"')]), '.docker.env');
     const response = await fetch(base + '/config/main', {method: 'POST', headers: authorization, body: upload});

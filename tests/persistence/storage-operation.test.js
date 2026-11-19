@@ -156,7 +156,7 @@ test('unchanged Wizard JSZip DOS backups and mixed Unix entries retain strict me
 test('a real configuration import preserves the acquired server-owned environment mutex',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',system=f.root+'/source/system';
   fs.mkdirSync(system,{recursive:true});fs.mkdirSync(f.root+'/source/project-bootstrap');fs.mkdirSync(f.root+'/source/nginx');
-  for(const relative of ['system/push.sh','nginx/wizard-aliases.js','project-bootstrap/preserve-system-project.js'])
+  for(const relative of ['system/push.sh','nginx/wizard-aliases.js','nginx/application-aliases.js','project-bootstrap/routing-impact.js','project-bootstrap/configuration-archive.js','project-bootstrap/preserve-system-project.js'])
     fs.copyFileSync(path.join(__dirname,'../..',relative),f.root+'/source/'+relative);
   execFileSync('python3',['-c',
     'import zipfile,sys\nwith zipfile.ZipFile(sys.argv[1],"w") as z:\n z.writestr(".docker.env","export SYNC_ENABLE=true\\n")\n z.writestr(".projects.env/new.env","export PROJECT=new\\n")',f.root+'/source/bootstrapper.zip']);
