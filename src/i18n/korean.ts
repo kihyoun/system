@@ -2,6 +2,9 @@ import {nativeOperationKorean} from './nativeOperationMessages';
 
 const korean: Record<string, string> = {
   ...nativeOperationKorean,
+  "6.4 Host workload compatibility and logs": "6.4 호스트 워크로드 호환성 및 로그",
+  "Access to the Linux x86_64 Docker daemon host and the selected immutable workload images.": "Linux x86_64 Docker 데몬 호스트와 선택한 불변 워크로드 이미지에 대한 접근 권한.",
+  "You distinguish CPU, upstream-kernel and image failures and verify bounded logs with preserved settings.": "CPU, 업스트림 커널 및 이미지 오류를 구분하고 설정을 보존한 상태에서 크기가 제한된 로그를 검증할 수 있습니다.",
   "Overview": "개요",
   "Privacy": "개인정보 보호",
   "Imprint": "운영자 정보",

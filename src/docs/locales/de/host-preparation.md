@@ -97,6 +97,14 @@ CI führt Veröffentlichungen nacheinander aus und lehnt einen bereits widerspr�
 Prüfung kann den gleichzeitigen Push eines anderen externen Herausgebers nicht atomar ausschließen.
 Der aufgezeichnete Digest bleibt anstelle eines Alias maßgeblich für die Installation.
 
+## Container-Host-Kompatibilität und Protokollierung
+
+Führen Sie vor der Auswahl von Datenbank-Images für Anwendungen oder geplanter
+Kernel-Wartung die [native Host-Kompatibilitätsprüfung](docs/HOST_OPERATIONS.md) aus.
+Container teilen Kernel und CPU des Daemon-Hosts; Ubuntus ABI-Nummer allein reicht
+nicht aus. Derselbe Leitfaden beschreibt die begrenzten Docker-Protokollvorgaben,
+den Konfigurationssicherungsvertrag und die Prüfung nach bewusster Container-Neuerstellung.
+
 ## Lokaler Integrationstest
 
 Wählen Sie kompatible GitLab- und Runner-Releases ausdrücklich aus. Das folgende Beispiel verwendet

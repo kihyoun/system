@@ -14,6 +14,13 @@ Image in einer Registry veröffentlicht wurde. Beide Images haben nützliche Auf
 nur ein getesteter vollständiger Controller und der passende Wizard bilden das öffentliche Start-
 Release.
 
+## Host-Workload-Kompatibilität und Protokollierung
+
+Führen Sie die [native Host-Kompatibilitätsprüfung und den Protokollrichtlinien-Inspektor](../docs/HOST_OPERATIONS.md)
+auf dem Docker-Daemon-Host aus, wenn Sie MongoDB-Images auswählen, Kernel-Wartung
+planen oder eine bewusste Auslieferung prüfen. Der Leitfaden beschreibt den Vertrag
+zur begrenzten Protokollierung, die erhaltene Konfiguration und die Grenzen größenbasierter Aufbewahrung.
+
 ## Neuinstallation aus öffentlichen Images
 
 `install-release.py` ist der Host-Einstiegspunkt für eine leere Installation. Es erwartet

@@ -13,6 +13,8 @@
 | Der Start meldet fehlenden persistenten Speicher | Prüfe den gewählten Modus und das Verzeichnis; hänge ein ausdrücklich ausgewähltes aktives Volume ein, statt durch einen Moduswechsel dessen Schutz zu umgehen |
 | Eine Pipeline wartet nach einem GitLab-Neustart auf ihren Runner | Registrieren prüft den Pool und aktualisiert verwaltete interne IP-Endpunkte auf den stabilen Docker-Dienstnamen |
 | Eine Pipeline kann `registry.localhost` nicht auflösen | Führe in Ubuntu erneut `sudo bash bootstrapper/prepare-local.sh` aus; WSL kann lokale Hosts-Einträge beim Start zurücksetzen |
+| MongoDB scheitert vor der Datenbankinitialisierung | Führen Sie `bootstrapper/container-preflight.py` auf dem Daemon-Host aus; unterscheiden Sie CPU, Ubuntu-Upstream-Kernel und Image-Ausführung anhand des [Host-Betriebsleitfadens](HOST_OPERATIONS.md) |
+| Für Container-Protokolle ist keine Rotation nachgewiesen | Prüfen Sie die exakten Container mit `bootstrapper/log-policy.py`; wenden Sie die begrenzte Richtlinie durch eine bewusste Auslieferung an und prüfen Sie sie, ohne ein Höchstalter anzunehmen |
 | `docker ps` zeigt keinen separaten Sync-Node-Container | Erwartetes Verhalten: Node läuft im Bootstrapper-Container. `system_sync_1` ist beim ersten Start der NGINX-Zugangspunkt |
 
 Weitere technische Einzelheiten findest du in [Prepare-Host.md](../Prepare-Host.md).
