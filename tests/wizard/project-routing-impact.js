@@ -74,3 +74,13 @@ test('the native Wizard omission of inactive main TLS paths does not restart an 
   f.write(main + 'GITLAB_DOMAIN_MODE="2"\n', '.docker.env');
   assert.equal(f.plan().mode, 'restart', 'active TLS changes must restart the platform');
 });
+
+test('additional archive configuration files cannot enter a routing-only Push', t => {
+  const f = fixture(t); f.write(project + 'PROD_ALIASES="example.test"\n');
+  const reviewed = f.plan().fingerprint;
+  f.write('UNKNOWN="changed"\n', '.other.env');
+  assert.equal(f.plan().mode, 'restart');
+  assert.notEqual(f.plan().fingerprint, reviewed, 'the reviewed plan includes all imported configuration');
+  fs.writeFileSync(path.join(f.current, '.other.env'), 'UNKNOWN="changed"\n');
+  assert.equal(f.plan().mode, 'routing', 'unchanged additional files preserve their effective settings');
+});

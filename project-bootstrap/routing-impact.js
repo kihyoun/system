@@ -29,8 +29,12 @@ function impact(archive, current) {
   const previousMain = path.join(current, '.docker.env');
   const previous = routing.projectFiles(path.join(current, '.projects.env'));
   const snapshot = {main: fs.existsSync(previousMain) ? fs.readFileSync(previousMain, 'utf8') : '', projects: previous};
+  const extraFiles = fs.readdirSync(archive).filter(name => name.endsWith('.env') && name !== '.docker.env' && name !== '.projects.env').sort()
+    .map(name => ({name, incoming: fs.readFileSync(path.join(archive, name), 'utf8'),
+      previous: fs.existsSync(path.join(current, name)) ? fs.readFileSync(path.join(current, name), 'utf8') : null}));
   let mode = 'restart', projects = [];
   try {
+    if (extraFiles.some(file => file.incoming !== file.previous)) throw Error('Additional configuration changed.');
     const oldMain = mainSemantic(snapshot.main), newMain = mainSemantic(incoming.main);
     if (stable(oldMain) !== stable(newMain)) throw Error('Main settings changed.');
     if (stable(previous.map(file => file.name)) !== stable(incoming.projects.map(file => file.name).sort())) throw Error('Project set changed.');
@@ -51,7 +55,7 @@ function impact(archive, current) {
     try { return {main: semantic(state.main), projects: state.projects.map(file => ({name: file.name, data: semantic(file.content)})).sort((a, b) => a.name.localeCompare(b.name))}; }
     catch (_) { return state; }
   };
-  const fingerprint = crypto.createHash('sha256').update(stable({previous: normalized(snapshot), incoming: normalized(incoming)})).digest('hex');
+  const fingerprint = crypto.createHash('sha256').update(stable({previous: normalized(snapshot), incoming: normalized(incoming), extraFiles})).digest('hex');
   return {mode, projects: projects.sort(), fingerprint};
 }
 module.exports = {semantic, impact};
