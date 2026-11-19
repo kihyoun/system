@@ -58,7 +58,8 @@ function run({helperImage,configurationExporter,backup}) {
       const bytes=fs.readFileSync(configurationExporter.archive);
       assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),configurationExporter.sha256);
       const example=fs.readFileSync(path.join(sourceRoot,'system/.docker.env.example'),'utf8');
-      const main=example.replace(/^(?:export )?GITLAB_IMAGE=.*$/m,"export GITLAB_IMAGE='fixture-gitlab:under-test'");
+      const main=example.replace(/^(?:export )?GITLAB_IMAGE=.*$/m,"export GITLAB_IMAGE='fixture-gitlab:under-test'") +
+        "\nexport SYSTEM_LOG_MAX_SIZE='20m'\nexport SYSTEM_LOG_MAX_FILES='4'\n";
       code(initializer,`const fs=require('node:fs');fs.writeFileSync('/system/export-configuration.cjs',Buffer.from(${JSON.stringify(bytes.toString('base64'))},'base64'));
         fs.writeFileSync('/system/input.json',JSON.stringify({main:{data:${JSON.stringify(main)}},projects:[]}));`);
       phase='actual-wizard-export';docker(['exec',initializer,'node','/system/export-configuration.cjs','/system/input.json','/host/bootstrapper.zip']);
@@ -90,7 +91,9 @@ function run({helperImage,configurationExporter,backup}) {
         'configuration/.projects.env/.wizard.env.environments.lock','host/letsencrypt/.system-bootstrapper-certificate-lock'])assert(!fs.existsSync('/live/'+relative));
       const main=fs.readFileSync('/live/configuration/.docker.env');assert.equal(main[807],36);
       assert.equal(crypto.createHash('md5').update(main.subarray(0,1184)).digest('hex'),'bd4a8426355824593a5e21ad759830c1');
-      assert(fs.existsSync('/live/configuration/.projects.env'));`);
+      assert(fs.existsSync('/live/configuration/.projects.env'));
+      ${configurationExporter ? `assert.match(main.toString(), /export SYSTEM_LOG_MAX_SIZE=[\"']20m[\"']/);
+      assert.match(main.toString(), /export SYSTEM_LOG_MAX_FILES=[\"']4[\"']/);` : ''}`);
     console.log('Native restore ZIP probe passed: unchanged Wizard DOS backup, actual import/Seed/rsync, retained private modes.');
   }catch(error){
     console.error('Native restore ZIP probe failed at '+phase+'.');

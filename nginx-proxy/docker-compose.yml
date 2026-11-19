@@ -1,7 +1,13 @@
 version: '3'
+x-bounded-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: '${SYSTEM_LOG_MAX_SIZE:-10m}'
+    max-file: '${SYSTEM_LOG_MAX_FILES:-3}'
 services:
 
   review:
+    logging: *bounded-logging
     image: 'jwilder/nginx-proxy'
     restart: always
     networks:
@@ -10,6 +16,7 @@ services:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
   prod:
+    logging: *bounded-logging
     image: 'jwilder/nginx-proxy'
     restart: always
     networks:
@@ -18,6 +25,7 @@ services:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
   beta:
+    logging: *bounded-logging
     image: 'jwilder/nginx-proxy'
     restart: always
     networks:

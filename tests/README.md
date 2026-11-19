@@ -55,6 +55,13 @@ docker run --rm --network none \
   -v "$PWD/test-results:/candidate/test-results" system-component-tests all
 ```
 
+The host compatibility/logging fixtures run in the `bootstrapper` component.
+Candidate image preparation also runs a small real Docker rotation probe with two
+owned disposable container generations. It verifies actual file sizes/count and
+log readback; the native recovery probe checks custom logging settings through
+the real configuration exporter and Seed restore. See
+[host operations](../docs/HOST_OPERATIONS.md) for scope and commands.
+
 ## Test organization
 
 | Directory | Scope |

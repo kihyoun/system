@@ -1,6 +1,12 @@
 version: '3'
+x-bounded-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: '${SYSTEM_LOG_MAX_SIZE:-10m}'
+    max-file: '${SYSTEM_LOG_MAX_FILES:-3}'
 services:
   bootstrapper:
+    logging: *bounded-logging
     image: ${BOOTSTRAPPER_IMAGE:-system_bootstrapper}
     restart: always
     environment:
@@ -18,6 +24,8 @@ services:
       SYSTEM_WIZARD_ENVIRONMENT_IMAGE: ${SYSTEM_WIZARD_ENVIRONMENT_IMAGE:-}
       SYSTEM_WIZARD_CANONICAL_CONTROLLER: ${SYSTEM_WIZARD_CANONICAL_CONTROLLER:-system_bootstrapper_1}
       GITLAB_HOST: ${GITLAB_HOST:-gitlab.example.com}
+      SYSTEM_LOG_MAX_SIZE: ${SYSTEM_LOG_MAX_SIZE:-10m}
+      SYSTEM_LOG_MAX_FILES: ${SYSTEM_LOG_MAX_FILES:-3}
       COMPOSE_COMPATIBILITY: "1"
       GITLAB_IMAGE: ${GITLAB_IMAGE:-gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c}
       GITLAB_RUNNER_IMAGE: ${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd}
@@ -51,6 +59,7 @@ services:
       #   - IMAGE=bootstrapper_system
 
   web:
+    logging: *bounded-logging
     image: ${NGINX_IMAGE:-nginx}
     volumes:
       - templates:/etc/nginx/templates
@@ -58,12 +67,14 @@ services:
     network_mode: "host"
 
   sync:
+    logging: *bounded-logging
     image: ${NGINX_IMAGE:-nginx}
     volumes:
       - synctemplates:/etc/nginx/templates
     network_mode: "host"
 
   wizard:
+    logging: *bounded-logging
     restart: always
     image: ${WIZARD_IMAGE:-systembootstrapper/wizard}
     volumes:
@@ -72,6 +83,7 @@ services:
     #   context: ../wizard
 
   gitlab:
+    logging: *bounded-logging
     image: '${GITLAB_IMAGE:-gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c}'
     shm_size: '256m'
     restart: always

@@ -14,6 +14,13 @@ image has been published to a registry. Both images have useful roles in CI;
 only a tested complete controller and matching Wizard form the public startup
 release.
 
+## Host workload compatibility and logging
+
+Run the [native host compatibility check and log-policy inspector](../docs/HOST_OPERATIONS.md)
+on the Docker daemon host when choosing MongoDB images, planning kernel
+maintenance or verifying a deliberate deployment. The guide defines the bounded
+logging contract, preserved configuration and limits of size-based retention.
+
 ## Fresh installation from public images
 
 `install-release.py` is the host entry point for an empty installation. It takes

@@ -2192,3 +2192,10 @@ gates. In this chapter, autonomous execution means carrying out the authorized
 version transition and its verification using repository-owned tools. Choosing
 arbitrary improvements and recursively promoting them without acceptance remains
 a separate capability that must not be inferred from a successful patch upgrade.
+
+## Host compatibility and container logs
+
+Use [container compatibility and bounded logs](HOST_OPERATIONS.md) before choosing
+MongoDB images or planning kernel maintenance, and when configuring or verifying
+Docker log retention. It covers Ubuntu upstream-kernel evidence, CPU/image failure
+diagnoses, size/count rotation, preserved configuration and deliberate recreation.

@@ -25,6 +25,13 @@ for (const template of ['angular', 'react', 'web']) {
   assert(generated.ci.includes('--network templatecheck_review'));
   assert(generated.ci.includes('when: manual'));
   assert(generated.ci.includes('test:http:'));
+  const runs = generated.ci.split('\n').filter(line => line.includes('docker run -d'));
+  assert.equal(runs.length, 3);
+  assert(runs.every(line => line.includes('--log-driver json-file') && line.includes('max-size=$APP_LOG_MAX_SIZE') && line.includes('max-file=$APP_LOG_MAX_FILES')));
+  assert(generated.ci.includes("APP_LOG_MAX_SIZE: '10m'"));
+  assert(generated.ci.includes("APP_LOG_MAX_FILES: '3'"));
+  const validation = generated.ci.indexOf('echo "$APP_LOG_MAX_SIZE" | grep -Eq');
+  assert(validation >= 0 && validation < generated.ci.indexOf('docker rm -f "templatecheck-prod"'));
   assert(!generated.ci.includes('cypress') || generated.ci.substr(0, 1184).includes('cypress'));
   assert.equal(generated.ci.substr(807, 1), '$');
   assert.equal(crypto.createHash('md5').update(generated.ci.substr(0, 1184)).digest('hex'), 'bd4a8426355824593a5e21ad759830c1');

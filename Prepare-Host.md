@@ -97,6 +97,14 @@ CI serializes its publishers and refuses an already conflicting alias, but that
 check cannot atomically exclude another external publisher's simultaneous push.
 The recorded digest, rather than an alias, remains the installation authority.
 
+## Container host compatibility and logging
+
+Before choosing application database images or planning kernel maintenance, run
+the [native host compatibility preflight](docs/HOST_OPERATIONS.md). Containers
+share the daemon host kernel and CPU; Ubuntu ABI numbers alone are insufficient.
+The same guide defines the bounded Docker logging defaults, configuration backup
+contract and verification after deliberate container recreation.
+
 ## Local integration test
 
 Select compatible GitLab and Runner releases explicitly. The example below uses
