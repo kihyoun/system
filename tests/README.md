@@ -236,6 +236,13 @@ TypeScript code-scanning suite. No rules, paths or old findings are suppressed.
 The pinned public CLI bundle is checksum-verified before use. The scan child has
 no network, Docker socket or credentials and cannot run application builds.
 
+The CodeQL CLI has its own [license terms](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md).
+Free automated use requires an open-source codebase hosted and maintained on
+GitHub; an external GitLab runner is supported. A private or GitLab-only fork
+must establish its own licensing eligibility before running this job. The
+project's MIT license does not grant a CodeQL license, and this job purchases no
+subscription. Runner compute and storage remain the operator's responsibility.
+
 `node tests/prepare-codeql.js` packages committed inputs after the ordinary Wizard
 source preparation. `sh tests/ci-codeql.sh` runs that verified context on the
 selected trusted Docker runner with its ordinary CI identity variables. The
