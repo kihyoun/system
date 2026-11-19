@@ -114,8 +114,10 @@ installierte und gewünschte Version ohne Sync. Die Auswahl informiert nur und
 führt keinen Befehl aus.
 
 Der erste deklarierte Übergang ist **1.1.3 → 1.2.0** für ein unverändertes
-offizielles Controller-/Wizard-Paar auf Ubuntu 24.04 / 26.04 x86_64. Nur diese
-beiden Images und die gespeicherte Release-Auswahl ändern sich. GitLab,
+offizielles Controller-/Wizard-Paar auf Ubuntu 24.04 / 26.04 x86_64. Diese
+beiden Images und die gespeicherte Release-Auswahl ändern sich. Kern-Container
+können durch neue Compose-Richtlinien einschließlich Protokolllimits ebenfalls
+neu erstellt werden. GitLab,
 Datenbanken, Runner, NGINX, Anwendungsprojekte, Domains und Speicherauswahl bleiben
 erhalten. Das Ziel muss passende Übergangsnachweise veröffentlichen, bevor die
 CLI-Vorprüfung es akzeptiert. Unbekannte Releases, abweichende Quellcode-/Image-
@@ -173,8 +175,9 @@ lehnen aktive und unfertige Operationen weiterhin ab; Leases niemals löschen.
 
 4. Den vollständigen Plan und SHA-256 prüfen. `PLAN_SHA256` durch den genau
    ausgegebenen Hash ersetzen; Apply verweigert fehlende oder andere Bestätigung.
-   Es prüft Veröffentlichung und gespeicherte Konfiguration erneut, führt die
-   bestehende koordinierte Sicherung aus und verifiziert die genaue ZIP-Datei
+   Es prüft Veröffentlichung und gespeicherte Konfiguration erneut, sichert zuerst
+   die bisherigen Controller-/Wizard-Images und führt danach die bestehende
+   koordinierte Sicherung aus und verifiziert die genaue ZIP-Datei
    anhand abgeschlossener Seed-Generation und Manifest. Fehlende Medien ergeben
    ausdrücklich einen Fehler ohne Ausweichverzeichnis auf der Systemplatte.
    Beide Sicherungseingaben müssen unabhängig verfügbar bleiben. Bisherige
@@ -191,7 +194,8 @@ sudo python3 bootstrapper/upgrade-release.py --operation apply \
 ```
 
 5. Die passende kalte Sicherung pausiert GitLab und setzt es später fort; das
-   Paar-Update startet Controller/Sync und Wizard neu. Laufende Jobs müssen
+   Paar-Update startet Controller/Sync und Wizard neu. Kern-Proxys können durch
+   geänderte Compose-Richtlinien ebenfalls neu erstellt werden. Laufende Jobs müssen
    vorher enden. Die Dauer hängt von Daten und Host ab; eine feste Ausfallzeit
    wird nicht garantiert. Der bestehende Updater besitzt die Live-State-Leases
    und Rollback-Checkpoints. Abschluss verlangt identische gespeicherte
@@ -219,6 +223,19 @@ sudo python3 bootstrapper/upgrade-release.py --operation recover \
   --token-file /root/system-api-token \
   --confirm-plan PLAN_SHA256
 ```
+
+Docker-Archive erhalten Image-IDs, können aber Registry-Digest-Auswahlen verlieren.
+Recover speichert deshalb geprüfte `system-bootstrapper-recovery:…`-Aliase in
+`BOOTSTRAPPER_IMAGE` und `WIZARD_IMAGE` samt privatem Image-ID-Beleg. So startet
+auch der vorherige Controller offline, nachdem er seine gespeicherte Konfiguration
+neu eingelesen hat. Alle anderen Konfigurationsbytes bleiben unverändert. Die
+ursprüngliche Konfiguration und Release-Auswahl bleiben im Controller-Checkpoint;
+Status zeigt deren Pfad und den ausdrücklich gewählten Wiederherstellungsmodus.
+Vor einem weiteren offiziellen Upgrade die ursprünglichen Controller- und Wizard-
+Digest-Referenzen aus diesem Checkpoint beziehen, deren gespeicherte Image-IDs
+prüfen und nur diese beiden Auswahlen über den normalen Konfigurationsablauf
+wiederherstellen. Keine anderen aktuellen Einstellungen ersetzen und die
+Wiederherstellungseingaben nicht löschen.
 
 Der öffentliche Graph enthält derzeit nur Controller-/Wizard-Übergänge. Ein
 Image-Rollback macht keine Datenbankmigration rückgängig. Künftige deklarierte
