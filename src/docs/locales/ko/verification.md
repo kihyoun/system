@@ -52,6 +52,13 @@ docker run --rm --network none \
   -v "$PWD/test-results:/candidate/test-results" system-component-tests all
 ```
 
+호스트 호환성 및 로깅 픽스처는 `bootstrapper` 구성 요소에서 실행됩니다.
+후보 이미지 준비 시 소유권이 있는 폐기 가능한 컨테이너 두 세대를 사용하는
+작은 실제 Docker 로그 순환 검사도 실행합니다. 실제 파일 크기와 개수 및 로그를
+다시 읽은 결과를 검증합니다. 기본 복구 검사는 실제 구성 내보내기 도구와 Seed
+복원을 통해 사용자 정의 로깅 설정을 검사합니다. 범위와 명령은
+[호스트 운영](../docs/HOST_OPERATIONS.md)을 참고하세요.
+
 ## 테스트 구성
 
 | 디렉터리 | 범위 |
@@ -204,6 +211,25 @@ GitLab/Runner/레지스트리 CI, 의도적 실패 관문, 구성 내보내기, 
 [Docker attestation 문서](https://docs.docker.com/build/metadata/attestations/)를 확인하세요.
 레지스트리 다이제스트, 가져오기/실행 및 아티팩트 검사는 여전히 필수입니다. 해당 경로는
 attestation 검증을 주장하지 않습니다. 다른 후보 이미지 메타데이터 동작은 그대로입니다.
+
+## 정적 보안 검사
+
+런타임 Merge Request와 기본 브랜치 빌드는 구성 요소 검사와 나란히 필수
+`test:codeql` 작업을 실행합니다. CodeQL 2.27.4와 공식 기본 JavaScript/TypeScript
+코드 스캐닝 모음으로 커밋된 System 소스와 정확한 Wizard gitlink를 검사합니다.
+규칙, 경로 또는 이전 발견 사항을 억제하지 않습니다. 고정된 공개 CLI 번들은
+사용 전에 체크섬을 검증합니다. 검사 자식 컨테이너에는 네트워크, Docker 소켓
+또는 자격 증명이 없으며 애플리케이션 빌드를 실행할 수 없습니다.
+
+`node tests/prepare-codeql.js`는 일반적인 Wizard 소스 준비 후 커밋된 입력을
+패키징합니다. `sh tests/ci-codeql.sh`는 선택한 신뢰된 Docker Runner에서 일반 CI
+식별 변수와 함께 검증된 컨텍스트를 실행합니다. 자식 컨테이너는 RAM 6 GiB와
+CPU 두 개로 제한하며 이미지 준비와 검사는 각각 최대 15분입니다. 이 정적
+작업은 폐기 가능한 플랫폼을 시작하지 않습니다. SARIF 결과, 추출 범위, 소스
+식별 정보 및 정리 근거는 `test-results/codeql/` 아래에 보존합니다. 추출 범위가
+누락되거나 발견 사항이 하나라도 있으면 작업이 실패합니다. 더 넓은 품질 검사
+모음은 별도로 실행하여 검토할 수 있지만, 추가 휴리스틱은 이 기본 보안 게이트와
+동일하지 않습니다.
 
 ## 명시적 라이브 어댑터
 

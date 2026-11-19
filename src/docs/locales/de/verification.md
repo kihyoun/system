@@ -55,6 +55,15 @@ docker run --rm --network none \
   -v "$PWD/test-results:/candidate/test-results" system-component-tests all
 ```
 
+Die Testumgebungen für Host-Kompatibilität und Protokollierung laufen in der
+Komponente `bootstrapper`. Die Vorbereitung des Kandidaten-Images führt zusätzlich
+eine kleine echte Docker-Rotationsprüfung mit zwei eigenen verwerfbaren
+Container-Generationen aus. Sie prüft die tatsächlichen Dateigrößen und die
+Dateianzahl sowie das erneute Lesen der Protokolle. Die native
+Wiederherstellungsprüfung prüft eigene Protokollierungseinstellungen mit dem
+echten Konfigurationsexporter und einer Seed-Wiederherstellung. Umfang und
+Befehle stehen im [Host-Betriebsleitfaden](../docs/HOST_OPERATIONS.md).
+
 ## Testorganisation
 
 | Verzeichnis | Umfang |
@@ -219,6 +228,29 @@ eine vor ihrem Gegenstand hochgeladene Attestierung mit `blob unknown to registr
 Registry-Digest-, Pull-/Run- und Artefaktprüfungen bleiben erforderlich; diese Wege
 beanspruchen keine Attestierungsprüfung. Anderes Metadatenverhalten von Kandidaten-Images bleibt
 unverändert.
+
+## Statische Sicherheitsprüfung
+
+Merge Requests mit Laufzeitänderungen und Builds des Standardbranches führen den
+erforderlichen Job `test:codeql` parallel zu den Komponentenprüfungen aus. Er prüft
+den versionierten System-Quellcode und den exakten Wizard-Gitlink mit CodeQL 2.27.4
+und dessen offizieller Standard-Code-Scanning-Suite für JavaScript/TypeScript.
+Keine Regeln, Pfade oder alten Befunde werden unterdrückt. Das festgelegte
+öffentliche CLI-Bundle wird vor der Verwendung anhand seiner Prüfsumme geprüft.
+Der Scan-Kindcontainer hat weder Netzwerk noch Docker-Socket oder Zugangsdaten
+und kann keine Anwendungs-Builds ausführen.
+
+`node tests/prepare-codeql.js` paketiert nach der normalen Wizard-Quellvorbereitung
+die versionierten Eingaben. `sh tests/ci-codeql.sh` führt diesen geprüften Kontext
+auf dem ausgewählten vertrauenswürdigen Docker-Runner mit dessen üblichen
+CI-Identitätsvariablen aus. Der Kindcontainer ist auf 6 GiB RAM und zwei CPUs
+begrenzt; Image-Vorbereitung und Scan haben jeweils ein Zeitlimit von 15 Minuten.
+Dieser statische Job startet keine verwerfbare Plattform. SARIF-Ergebnisse,
+Extraktionsabdeckung, Quellidentitäten und Bereinigungsnachweise werden unter
+`test-results/codeql/` aufbewahrt. Fehlende Abdeckung oder ein beliebiger Befund
+lassen den Job fehlschlagen. Breitere Qualitätssuites können getrennt zur
+Einzelfallprüfung ausgeführt werden; ihre zusätzlichen Heuristiken sind nicht
+mit dieser Standard-Sicherheitsprüfung gleichzusetzen.
 
 ## Ausdrückliche Live-Adapter
 
