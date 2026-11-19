@@ -9,7 +9,7 @@ export const wizardConfigPath = () => path.join(projectsDirectory(), '.wizard.en
 export function projectConfigPath(key: unknown): string {
   if (typeof key !== 'string' || !/^[a-z0-9]+$/.test(key)) throw Error('Invalid project key');
   const root = projectsDirectory();
-  const filename = path.resolve(root, '.' + key + '.env');
+  const filename = path.resolve(root, '.' + path.basename(key) + '.env');
   if (path.dirname(filename) !== root) throw Error('Invalid project path');
   return filename;
 }

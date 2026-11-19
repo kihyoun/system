@@ -14,7 +14,7 @@ const failures={
   'runner-pull-policy':/PullPolicies[^\n]{0,200}AllowedPullPolicies|pull_policy[^\n]*not[^\n]*allowed/i,
   'checkout-failed':/fatal: unable to access|fatal:.*could not read Username|Authentication failed|Repository not found/i,
   'artifact-failed':/No files to upload|Uploading artifacts[^\n]*failed/i,
-  'trace-unavailable':/$a/
+  'trace-unavailable':/(?!)/
 };
 const reasons=new Set(['script_failure','runner_configuration_error','runner_system_failure','job_execution_timeout','stuck_or_timeout_failure','api_failure','unknown_failure']);
 const failureReason=value=>reasons.has(value)?value:undefined;

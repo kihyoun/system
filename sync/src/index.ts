@@ -348,7 +348,7 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
     } else {
       try { validateAliasProject(req.body.data, req.body.projectKey); }
       catch (error) { res.status(400).json({message: error.message}); return; }
-      console.log('Stopping intermediate Services...')
+      console.log('Stopping intermediate Services...');
       const out = execSync('cd ../system; bash stop-intermediate.sh');
       fs.writeFileSync(projectConfigPath(req.body.projectKey),
         req.body.data);

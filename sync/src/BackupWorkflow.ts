@@ -8,7 +8,7 @@ const active = new Set<string>();
 function operationDirectory(id: string): string {
   if (typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id)) throw Error('invalid-backup-operation');
   const parent = path.resolve(configDirectory(), '.coordinated-backups');
-  const root = path.resolve(parent, id);
+  const root = path.resolve(parent, path.basename(id));
   if (path.dirname(root) !== parent || fs.lstatSync(parent).isSymbolicLink() || fs.lstatSync(root).isSymbolicLink())
     throw Error('unsafe-backup-directory');
   return root;

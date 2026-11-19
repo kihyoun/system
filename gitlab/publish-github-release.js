@@ -7,7 +7,6 @@ const {spawnSync} = require('node:child_process');
 const {context: hubContext, readEvidence, manifest: inspectManifest} = require('./publish-dockerhub');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const requireValue = (condition, message) => { if (!condition) throw Error(message); };
-const revision = value => /^[a-f0-9]{40}$/.test(value || '');
 const semver = value => /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(value || '');
 const bounded = file => {
   const stat = fs.lstatSync(file);

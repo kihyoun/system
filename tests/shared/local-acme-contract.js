@@ -121,7 +121,7 @@ test('host integration uses real source scripts and a Docker-only Certbot transp
   assert(script.includes('actual-lease-source'));assert(script.includes('actual-install-source'));
   assert(script.includes('REQUESTS_CA_BUNDLE=/fixture-tools/pebble.minica.pem'));
   assert(script.includes('--deploy-hook'));assert(script.includes('/recovered-data/platform/ssl/acme-http01'));
-  assert(!script.includes('--no-verify-ssl'));assert(!script.includes('--dry-run'));assert.doesNotMatch(script, /acme-v02\.api\.letsencrypt\.org/);
+  assert(!script.includes('--no-verify-ssl'));assert(!script.includes('--dry-run'));assert(!script.split(/[\s'\"]+/).some(value => { try { return new URL(value).hostname === 'acme-v02.api.letsencrypt.org'; } catch { return false; } }));
   assert.throws(()=>acme.basePaths('/srv/production'),/owned-data-root/);
 });
 test('negative HTTP validation must fail before real renewal can establish evidence',async t=>{

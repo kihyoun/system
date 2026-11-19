@@ -1,6 +1,5 @@
 import {mainConfigPath, wizardConfigPath} from './StatePaths';
 import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
 import {rails, readReceipt, writeReceipt, startJob, lookupJob, withProjectLock, validateProject} from './ProjectBootstrap';
 import {wizardCi, readSettings} from './DefaultWizard';

@@ -3,7 +3,6 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {execFileSync} = require('child_process');
-const crypto = require('crypto');
 const {pack, validate, safePath} = require('../../project-bootstrap/wizard-source/package');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-source-'));
 const source = path.resolve(__dirname, '../..');
