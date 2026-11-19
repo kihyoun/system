@@ -23,6 +23,7 @@ try {
   write('wizard/src/api/Helper.tsx',Buffer.from(sourceSnapshot.files.find(file=>file.path==='src/api/Helper.tsx').content,'base64'));
   write('wizard/.gitlab-ci.yml','stages: [test]\n');
   write('wizard/start.sh','#!/bin/sh\nexit 0\n');
+  write('wizard/.system-bootstrapper/build-v1/smoke/check.js','public historical build check\n');
   const wizardGit = (...args) => execFileSync('git',['-C',path.join(root,'wizard'),...args],{stdio:['ignore','pipe','pipe']}).toString().trim();
   wizardGit('init'); wizardGit('config','user.name','Fixture'); wizardGit('config','user.email','fixture@example.invalid');
   wizardGit('add','.'); wizardGit('commit','-m','Committed Wizard fixture');
@@ -83,6 +84,7 @@ try {
   assert.equal(execFileSync('tar', ['-xOf', staticArchive, 'source/sync/src/public.ts'], {encoding:'utf8'}), 'committed source\n');
   assert(staticContext.files.includes('tests/fixture.sh'), 'Static analysis includes committed test sources');
   assert(staticContext.files.includes('wizard/src/api/Helper.tsx'), 'Static analysis includes the exact Wizard pin');
+  assert(staticContext.files.includes('wizard/.system-bootstrapper/build-v1/smoke/check.js'), 'Static analysis retains historical committed build recipes omitted from deployment snapshots');
   assert(!staticContext.files.some(name => /private\.env|credentials|untracked-secret|seed\/data|old\.xml/.test(name)));
   const forged=JSON.parse(JSON.stringify(snapshot));
   const changed=forged.files.find(file=>file.path==='start.sh');

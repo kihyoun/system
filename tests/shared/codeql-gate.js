@@ -1,6 +1,16 @@
 'use strict';
 const assert = require('node:assert/strict');
 const {assess} = require('../codeql/check-sarif');
+const {includes} = require('../codeql/extractor-includes');
+const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codeql-includes-'));
+try {
+  fs.mkdirSync(path.join(root, 'wizard/.system-bootstrapper/build-v1/.nested'), {recursive: true});
+  fs.mkdirSync(path.join(root, 'wizard/.gitlab'), {recursive: true});
+  assert.deepEqual(includes(root), ['.', 'wizard/.gitlab', 'wizard/.system-bootstrapper', 'wizard/.system-bootstrapper/build-v1/.nested']);
+  fs.mkdirSync(path.join(root, '.git'));
+  assert.throws(() => includes(root), /metadata/);
+} finally { fs.rmSync(root, {recursive: true, force: true}); }
 const complete = () => ({version: '2.1.0', runs: [{tool: {driver: {name: 'CodeQL', semanticVersion: '2.27.4', rules: [{id: 'js/example'}]}},
   invocations: [{executionSuccessful: true, toolExecutionNotifications: ['js/baseline/expected-extracted-files',
     'js/diagnostics/successfully-extracted-files'].map(id => ({descriptor: {id},

@@ -14,8 +14,12 @@ function included(name) {
 }
 function prepare(root) {
   root = path.resolve(root);
-  const git = (...args) => execFileSync('git', ['--no-replace-objects', '-c', 'safe.directory=' + root,
-    '-c', 'core.hooksPath=/dev/null', '-C', root, ...args], {maxBuffer: 32 * 1024 * 1024});
+  const at = (cwd, ...args) => {
+    const gitdir = cwd === root ? process.env.SYSTEM_SOURCE_GIT_DIR : process.env.WIZARD_SOURCE_GIT_DIR;
+    return execFileSync('git', ['--no-replace-objects', '-c', 'safe.directory=' + cwd,
+      '-c', 'core.hooksPath=/dev/null', '-C', cwd, ...(gitdir ? ['--git-dir=' + gitdir] : []), ...args], {maxBuffer: 32 * 1024 * 1024});
+  };
+  const git = (...args) => at(root, ...args);
   const revision = git('rev-parse', 'HEAD').toString().trim();
   const snapshot = validate(JSON.parse(fs.readFileSync(path.join(root, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8')));
   verifyCommitted(root, snapshot);
@@ -39,13 +43,21 @@ function prepare(root) {
     const archive = path.join(temporary, 'context.tar');
     git('archive', '--format=tar', '--output=' + archive, 'HEAD', '--', ...entries.map(entry => entry.name));
     execFileSync('tar', ['-xf', archive, '-C', source]);
-    const wizardFiles = snapshot.files.filter(file => included(file.path));
-    for (const file of wizardFiles) {
-      const target = path.join(source, 'wizard', file.path);
-      fs.mkdirSync(path.dirname(target), {recursive: true});
-      fs.writeFileSync(target, Buffer.from(file.content, 'base64'), {mode: file.mode === '100755' ? 0o755 : 0o644});
-    }
-    const files = [...entries.map(entry => entry.name), ...wizardFiles.map(file => 'wizard/' + file.path)].sort();
+    // Deployment snapshots intentionally omit historical managed build recipes.
+    // Static analysis scans all public committed Wizard blobs at that same pin.
+    const wizard = path.join(root, 'wizard');
+    const wizardFiles = at(wizard, 'ls-tree', '-rz', snapshot.sourceRevision).toString().split('\0').filter(Boolean).map(entry => {
+      const match = /^(\d+) (\w+) [a-f0-9]{40}\t(.+)$/.exec(entry);
+      if (!match) throw Error('Unexpected committed Wizard entry.');
+      return {mode: match[1], type: match[2], name: match[3]};
+    }).filter(entry => included(entry.name));
+    if (wizardFiles.some(entry => entry.type !== 'blob' || !['100644', '100755'].includes(entry.mode)))
+      throw Error('Static scan refuses Wizard links and nested submodules.');
+    const wizardArchive = path.join(temporary, 'wizard.tar');
+    at(wizard, 'archive', '--format=tar', '--output=' + wizardArchive, snapshot.sourceRevision, '--', ...wizardFiles.map(file => file.name));
+    fs.mkdirSync(path.join(source, 'wizard'));
+    execFileSync('tar', ['-xf', wizardArchive, '-C', path.join(source, 'wizard')]);
+    const files = [...entries.map(entry => entry.name), ...wizardFiles.map(file => 'wizard/' + file.name)].sort();
     const manifest = {revision, wizardRevision: snapshot.sourceRevision, files};
     fs.writeFileSync(path.join(source, 'scan-source.json'), JSON.stringify(manifest) + '\n');
     execFileSync('tar', ['-cf', archive, '-C', temporary, 'source']);
