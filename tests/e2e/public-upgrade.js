@@ -123,7 +123,7 @@ class NativeCLI {
     required(prepared && recovery.hashFile(prepared.archive) === prepared.sha256, 'public-upgrade-source-archive-required');
     await candidate.call(['exec', candidate.daemon, 'mkdir', '-p', this.fixture + '/source', this.fixture + '/bin']);
     await candidate.call(['exec', '-i', candidate.daemon, 'tar', '-xzf', '-', '-C', this.fixture + '/source'], {inputFile: prepared.archive});
-    await candidate.inner(['run', '--rm', '--network', 'none', '--entrypoint', '/bin/sh',
+    await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25', '--entrypoint', '/bin/sh',
       '--volume', this.fixture + ':' + this.fixture, candidate.spec.images.candidate.id, '-ec',
       'cp /usr/bin/docker "$1/docker.native"; cp -L /usr/bin/docker-compose "$1/docker-compose.native"; '+
       'cp /lib/ld-musl-x86_64.so.1 "$1/ld-musl-x86_64.so.1"; chmod 755 "$1"/*.native; '+
