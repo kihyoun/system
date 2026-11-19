@@ -38,3 +38,50 @@ test('selective candidate Push must retain every previous container ID, image, s
   for (const key of ['id', 'image', 'started', 'restarts'])
     assert.throws(() => application.assertPreserved(before, {...before, '/system_gitlab_1': {...before['/system_gitlab_1'], [key]: 'changed'}}), /existing-container-changed/);
 });
+test('native namespace and create requests wait for completed jobs through the authenticated API before using their merged results', async () => {
+  const namespaceJob='a'.repeat(64),projectJob='b'.repeat(48),requests=[];
+  let clock=0,namespacePolls=0,projectPolls=0;
+  const candidate={url:'https://sync.candidate.test',secrets:{user:'fixture',password:'private-fixture-password'},
+    now:()=>clock,deadline:300000,sleep:async milliseconds=>{clock+=milliseconds;}};
+  candidate.wait=(check,budget)=>require('./disposable-candidate').Candidate.prototype.wait.call(candidate,check,budget);
+  const tlsProbe=async (_candidate,host,path,options)=>{
+    assert.equal(host,'sync.candidate.test');requests.push({path,options});
+    if(path==='/login')return {status:200,body:JSON.stringify({accessToken:'private-fixture-token'})};
+    assert.equal(options.headers.Authorization,'Bearer private-fixture-token');
+    const data=path==='/projects/namespaces'?{id:namespaceJob,state:'running'}:
+      path==='/projects/jobs/'+namespaceJob?{id:namespaceJob,state:++namespacePolls===1?'running':'complete',namespaces:[{id:9,path:'root'}]}:
+      path==='/projects'?{id:projectJob,state:'running'}:
+      path==='/projects/jobs/'+projectJob?(projectPolls++,{id:projectJob,state:'complete',repository:{id:42,namespaceId:9,path:'root/routingproof'}}):[];
+    return {status:202,body:JSON.stringify(data)};
+  };
+  const sync=await application.session(candidate,{}, {tlsProbe});
+  const namespaces=await sync.request('/projects/namespaces');
+  assert.deepEqual(namespaces.namespaces,[{id:9,path:'root'}]);assert.equal(namespacePolls,2);
+  const payload={projectKey:'routingproof',namespaceId:namespaces.namespaces[0].id,template:'empty',data:'signed project configuration',ci:'# CI_DEFAULT_BRANCH'};
+  const project=await sync.request('/projects',payload);
+  assert.equal(project.repository.id,42);assert.equal(projectPolls,1);
+  assert.equal(requests.filter(row=>row.path==='/projects').length,1,'polling must never replay native project creation');
+  assert.equal(requests.find(row=>row.path==='/projects').options.body,JSON.stringify(payload));
+  assert.deepEqual(await sync.request('/config/projects'),[],'ordinary authenticated Fetch stays synchronous');
+});
+test('failed and malformed native jobs stop immediately with bounded source-owned diagnostics', async () => {
+  const job='a'.repeat(64),marker='private-native-job-error-and-token';
+  for(const [route,result,code] of [
+    ['/projects/namespaces',{id:job,state:'failed',message:marker},'application-routing-namespace-job-failed'],
+    ['/projects',{id:job,state:'failed',message:marker},'application-routing-project-failed'],
+    ['/projects/namespaces',{id:'../../private',state:'running'},'application-routing-job-identity-invalid'],
+    ['/projects/namespaces',{id:job,state:'unknown-private-state'},'application-routing-job-state-invalid'],
+    ['/projects/namespaces',{id:'b'.repeat(64),state:'complete'},'application-routing-job-identity-invalid']]){
+    let polls=0,sleeps=0;
+    const candidate={url:'https://sync.candidate.test',secrets:{user:'fixture',password:marker},now:()=>0,deadline:300000,
+      sleep:async()=>{sleeps++;assert.fail('terminal native failure was retried');}};
+    candidate.wait=(check,budget)=>require('./disposable-candidate').Candidate.prototype.wait.call(candidate,check,budget);
+    const tlsProbe=async (_candidate,_host,path)=>({status:200,body:JSON.stringify(path==='/login'?{accessToken:marker}:
+      path===route?{id:job,state:'running'}:(polls++,result))});
+    const sync=await application.session(candidate,{}, {tlsProbe});
+    await assert.rejects(()=>sync.request(route,route==='/projects'?{}:undefined),error=>
+      error.message===code&&error.noRetry===true&&!error.message.includes(marker));
+    assert.equal(polls,1);assert.equal(sleeps,0);
+    assert.equal(require('./stage-diagnostics').failureReason(code),code);
+  }
+});

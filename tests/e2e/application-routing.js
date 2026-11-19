@@ -10,18 +10,37 @@ async function controller(candidate,action,input){
   const result=await candidate.inner(['exec','-i','system_bootstrapper_1','node','-e',script],{input:JSON.stringify(input),timeout:180000});
   return result?JSON.parse(result):undefined;
 }
-async function session(candidate,connection){
-  const probe=require('./recovery').tlsProbe;
+const fail=code=>{throw Object.assign(Error(code),{noRetry:true});};
+async function projectRequest(candidate,request,path,data){
+  let result=await request(path,data);
+  if(!result||!Object.hasOwn(result,'state'))return result;
+  const failed=path==='/projects/namespaces'?'application-routing-namespace-job-failed':'application-routing-project-failed';
+  if(result.state==='failed')fail(failed);
+  const id=result.id;
+  if(!/^[a-f0-9]{48}(?:[a-f0-9]{16})?$/.test(id||''))fail('application-routing-job-identity-invalid');
+  await candidate.wait(async()=>{
+    if(result.state==='running')result=await request('/projects/jobs/'+id);
+    if(result?.id!==id)fail('application-routing-job-identity-invalid');
+    if(result.state==='failed')fail(failed);
+    if(!['running','complete'].includes(result.state))fail('application-routing-job-state-invalid');
+    return result.state==='complete';
+  },180000);
+  return result;
+}
+async function session(candidate,connection,dependencies={}){
+  const probe=dependencies.tlsProbe||require('./recovery').tlsProbe;
   const login=await probe(candidate,'sync.candidate.test','/login',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})},connection);
   if(login.status!==200)throw Error('application-routing-login-failed');
-  const token=JSON.parse(login.body).accessToken;
-  return {token,request:async(path,data)=>{
+  let token;try{token=JSON.parse(login.body).accessToken;}catch{fail('application-routing-login-failed');}
+  if(typeof token!=='string'||!token)fail('application-routing-login-failed');
+  const request=async(path,data)=>{
     const response=await probe(candidate,'sync.candidate.test',path,{headers:{Authorization:'Bearer '+token,...(data?{'Content-Type':'application/json'}:{})},
       ...(data?{method:'POST',body:JSON.stringify(data)}:{})},connection);
     if(![200,202].includes(response.status))throw Error('application-routing-api-failed');
-    return JSON.parse(response.body);
-  }};
+    try{return JSON.parse(response.body);}catch{fail('application-routing-api-invalid-response');}
+  };
+  return {token,request:(path,data)=>projectRequest(candidate,request,path,data)};
 }
 async function upload(candidate,token,path,archive,fingerprint){
   return controller(candidate,async function(input){
@@ -67,7 +86,8 @@ function assertPreserved(before,after){
 async function setup(candidate,connection={}){
   await candidate.stage('application-routing-native-project-and-selective-push',async()=>{
     const sync=await session(candidate,connection),namespaces=await sync.request('/projects/namespaces');
-    const namespace=namespaces.namespaces.find(row=>row.path==='root');if(!namespace)throw Error('application-routing-namespace-required');
+    const namespace=Array.isArray(namespaces?.namespaces)?namespaces.namespaces.find(row=>row.path==='root'):undefined;
+    if(!Number.isSafeInteger(namespace?.id)||namespace.id<1)throw Error('application-routing-namespace-required');
     const data=await controller(candidate,function(input){
       const fs=require('fs'),cube=fs.readFileSync('/state/.docker.env','utf8').slice(0,1184);
       const values={PROJECT_NAME:input.project,PROJECT_TEMPLATE:'empty',USE_PROD_HOST:'true',PROD_HOST:input.host,PROD_DOMAIN_MODE:'2',PROD_DEPLOY_MODE:'0',
@@ -75,8 +95,7 @@ async function setup(candidate,connection={}){
         USE_BETA_HOST:'true',BETA_HOST:input.beta,BETA_DOMAIN_MODE:'0',BETA_DEPLOY_MODE:'0',USE_REVIEW_HOST:'false',REVIEW_DEPLOY_MODE:'0',GITLAB_RUNNER_SCALE:'0',GITLAB_RUNNER_TOKEN:''};
       return cube+'\n'+Object.entries(values).map(([key,value])=>key+'='+JSON.stringify(value)).join('\n')+'\n';
     },{project:PROJECT,host:APP_HOST,beta:BETA_HOST});
-    let job=await sync.request('/projects',{projectKey:PROJECT,namespaceId:namespace.id,template:'empty',data,ci:'workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n'});
-    await candidate.wait(async()=>{if(job.state==='running')job=await sync.request('/projects/jobs/'+job.id);if(job.state==='failed')throw Error('application-routing-project-failed');return job.state==='complete';},180000);
+    await sync.request('/projects',{projectKey:PROJECT,namespaceId:namespace.id,template:'empty',data,ci:'workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n'});
     // Exercise stable Production/Beta application images while only Review
     // routing and the Production alias change through the native Wizard export.
     for(const [environment,host]of [['prod',APP_HOST],['beta',BETA_HOST]])
@@ -113,4 +132,4 @@ async function setup(candidate,connection={}){
     await controller(candidate,function(){const fs=require('fs');for(const file of ['/tmp/application-routing-fetch.json','/tmp/application-routing.zip'])fs.rmSync(file,{force:true});},{});
   });
 }
-module.exports={certificateHosts,APP_HOST,APP_ALIAS,BETA_HOST,PROJECT,verify,setup,snapshot,upload,assertPreserved};
+module.exports={certificateHosts,APP_HOST,APP_ALIAS,BETA_HOST,PROJECT,verify,setup,snapshot,upload,assertPreserved,session};
