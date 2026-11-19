@@ -18,4 +18,4 @@ unset LGTM_INDEX_EXCLUDE LGTM_INDEX_FILTERS LGTM_REPOSITORY_FOLDERS_CSV
   codeql/javascript-queries:codeql-suites/javascript-code-scanning.qls \
   --threads=2 --ram=4096 --format=sarifv2.1.0 --sarif-category=javascript-typescript \
   --sarif-add-baseline-file-info --output="$report_dir/results.sarif"
-node "$(dirname -- "$0")/check-sarif.js" "$report_dir/results.sarif" > "$report_dir/gate.json"
+node "$(dirname -- "$0")/check-sarif.js" "$report_dir/results.sarif" "$source_dir/scan-source.json" > "$report_dir/gate.json"

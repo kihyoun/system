@@ -1,6 +1,6 @@
 'use strict';
 const fs = require('node:fs');
-function assess(sarif) {
+function assess(sarif, manifest) {
   if (sarif?.version !== '2.1.0' || !Array.isArray(sarif.runs) || sarif.runs.length !== 1)
     throw Error('Expected one complete SARIF 2.1.0 CodeQL run.');
   const run = sarif.runs[0];
@@ -23,14 +23,22 @@ function assess(sarif) {
   const extracted = files('js/diagnostics/successfully-extracted-files');
   if (!expected.size || !extracted.size || [...expected].some(file => !extracted.has(file)))
     throw Error('Missing or incomplete extraction coverage diagnostics.');
+  if (!Array.isArray(manifest?.files) || manifest.files.some(file => typeof file !== 'string'))
+    throw Error('Missing committed source manifest.');
+  const committed = manifest.files.filter(file => /\.(?:[cm]?js|jsx|tsx?)$/i.test(file));
+  // CodeQL's baseline can omit nested packages even when the extractor visits
+  // them. Require all committed JavaScript/TypeScript inputs independently.
+  if (!committed.length || committed.some(file => !extracted.has(file)))
+    throw Error('Committed JavaScript/TypeScript source was not fully extracted.');
   // Gate every emitted result, including baseline/suppressed results. No rule,
   // severity, path or pre-existing-finding exemptions are applied here.
-  return {passed: run.results.length === 0, findings: run.results.length, expectedFiles: expected.size, extractedFiles: extracted.size};
+  return {passed: run.results.length === 0, findings: run.results.length, expectedFiles: expected.size, extractedFiles: extracted.size, committedFiles: committed.length};
 }
 module.exports = {assess};
 if (require.main === module) {
   try {
-    const result = assess(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')));
+    const result = assess(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')),
+      JSON.parse(fs.readFileSync(process.argv[3], 'utf8')));
     console.log(JSON.stringify(result));
     if (!result.passed) process.exitCode = 1;
   } catch (error) { console.error(error.message); process.exitCode = 2; }
