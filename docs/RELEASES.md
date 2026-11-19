@@ -111,7 +111,8 @@ selectors without Sync. Selection is informational and runs no command.
 
 The initial declared transition is **1.1.3 → 1.2.0**, for an unmodified official
 controller/Wizard pair on Ubuntu 24.04 / 26.04 x86_64. It changes those two images
-and the retained release selection only. GitLab, databases, runners, NGINX,
+and the retained release selection. Core containers can also be recreated when
+the target applies updated Compose policies, including log limits. GitLab, databases, runners, NGINX,
 application projects, domains and storage selections remain selected. The target
 must publish matching transition evidence before CLI preflight accepts it.
 Unknown releases, changed image/source identities, private Wizard substitutions,
@@ -182,7 +183,8 @@ sudo python3 bootstrapper/upgrade-release.py --operation apply \
 ```
 
 5. The cold matching backup pauses GitLab and later resumes it; the paired
-   update restarts controller/Sync and Wizard. Existing jobs must finish first.
+   update restarts controller/Sync and Wizard; core proxies can also be recreated
+   when target Compose policies change. Existing jobs must finish first.
    Duration depends on data and host performance; there is no fixed downtime
    promise. The existing updater owns live-state leases and rollback checkpoints.
    Completion requires saved configuration and authenticated Fetch equality,
@@ -210,6 +212,18 @@ sudo python3 bootstrapper/upgrade-release.py --operation recover \
   --token-file /root/system-api-token \
   --confirm-plan PLAN_SHA256
 ```
+
+Docker archives preserve image IDs but may lose registry digest selectors.
+Recovery therefore saves verified `system-bootstrapper-recovery:…` aliases in
+`BOOTSTRAPPER_IMAGE` and `WIZARD_IMAGE`, with a private image-ID receipt. This
+also lets the previous controller start offline after reloading its saved
+configuration. All other configuration bytes remain unchanged. The original
+configuration and release selectors stay in the controller checkpoint; status
+reports that original configuration path and the deliberate recovery selector
+mode. Before another official upgrade, pull the original controller and Wizard
+digest references from that checkpoint, verify their recorded image IDs, and
+restore those two selectors through the normal configuration workflow. Do not
+replace any other current setting or delete the retained recovery inputs.
 
 The current public graph contains only controller/Wizard transitions. A
 container rollback cannot reverse a database migration. Future declared service

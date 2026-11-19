@@ -64,6 +64,8 @@ def public_inputs(repository, version, config):
 
 
 def installed(config, repository, target=None):
+    require(not recovery.recovery_alias(config['BOOTSTRAPPER_IMAGE']) and not recovery.recovery_alias(config['WIZARD_IMAGE']),
+            'archive-recovered-selectors-repull-original-public-images-and-restore-checkpoint-selectors-see-upgrade-guide')
     selected = json.loads(successor.private_input(config['_root'] / 'configuration/.release-images.json'))
     version = selected.get('productRelease', {}).get('version')
     require(isinstance(version, str) and upgrade_paths.SEMVER.fullmatch(version),
@@ -201,8 +203,9 @@ def plan(args, config):
             'dataSample': data_sample(),
             'baselineSha256': digest(successor.private_input(target / 'baseline.json')),
             'checkpoint': str(checkpoint), 'backupDestination': config['SEED_DIR'], 'configurationBackup': str(backup),
-            'minimumFreeGiB': required // 1024 ** 3, 'affectedServices': ['controller', 'Wizard'],
-            'interruption': 'Cold matching backup pauses GitLab; controller/Sync and Wizard restart during update. Wait for running CI jobs first.',
+            'minimumFreeGiB': required // 1024 ** 3,
+            'affectedServices': ['controller', 'Sync', 'Wizard', 'GitLab', 'core proxies'],
+            'interruption': 'Cold matching backup pauses GitLab; controller/Sync, Wizard and core proxies may restart or be recreated during update. Wait for running CI jobs first.',
             'recovery': 'Use this command with --operation recover and the same --plan-dir. Service/database images remain unchanged on these declared transitions.'}
         successor.atomic_json(target / 'plan.json', value)
         attempt['phase'] = 'passed'
@@ -388,12 +391,10 @@ def main():
             require((checkpoint / 'operation.json').is_file(), 'no-controller-update-started-inspect-backup-status-and-retained-operation')
             with coordinator(target):
                 retained = json.loads(successor.private_input(target / 'previous-images.json'))
-                for role in ('controller', 'wizard'):
-                    require(re.fullmatch(r'images/controller-[a-f0-9-]+\.tar\.gz', retained[role]['file']) and
-                            recovery.sha(target / retained[role]['file']) == retained[role]['sha256'], 'previous-image-archive-changed')
-                    run([*successor.DOCKER, 'image', 'load', '--input', str(target / retained[role]['file'])], timeout=600)
-                updater.rollback(config, checkpoint, args.token_file, timeout=args.timeout)
-                state.update(phase='rolled-back', databaseRewound=False, completedAt=runtime.now())
+                updater.rollback(config, checkpoint, args.token_file, timeout=args.timeout,
+                                 retained_images=(target, retained))
+                state.update(phase='rolled-back', databaseRewound=False, recoveryImageSelectors=True,
+                    originalConfiguration=str(checkpoint / 'main-before.env'), completedAt=runtime.now())
                 successor.atomic_json(state_file, state)
         backup_operation = json.loads(successor.private_input(target / 'backup-operation.json')) if (target / 'backup-operation.json').exists() else None
         if backup_operation:

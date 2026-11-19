@@ -131,7 +131,7 @@ def public_manifest_absent(config):
 def public_images(config, services):
     """Resolve saved selections against actual images; never invent an archive manifest."""
     require(re.fullmatch(r'(?:docker\.io/)?[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64}',
-                         config['BOOTSTRAPPER_IMAGE'] or '') is not None,
+                         config['BOOTSTRAPPER_IMAGE'] or '') is not None or recovery.recovery_alias(config['BOOTSTRAPPER_IMAGE']),
             'public-controller-digest-required')
     selected = [('system_bootstrapper_1', 'BOOTSTRAPPER_IMAGE', ''),
                 ('system_web_1', 'NGINX_IMAGE', 'nginx'), ('system_gitlab_1', 'GITLAB_IMAGE', '')]
@@ -146,6 +146,8 @@ def public_images(config, services):
         image = recovery.inspect_image(reference)
         require(recovery.image_id(image.get('Id')) and services[name]['Image'] == image['Id'],
                 'service-image-selection-mismatch')
+        if recovery.recovery_alias(reference):
+            require(recovery.recovered_image(config, reference, image['Id']), 'recovered-image-alias-mismatch')
         if '@sha256:' in reference:
             # Docker omits its default Docker Hub hostname in some inspections.
             # Keep explicit private registry hosts/ports as part of identity.

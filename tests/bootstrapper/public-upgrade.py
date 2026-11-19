@@ -33,6 +33,7 @@ def load(name, file):
 
 fixtures = load('public_upgrade_fixtures', ROOT / 'tests/bootstrapper/successor-host-tools.py')
 tool = load('public_upgrade_tool', ROOT / 'bootstrapper/upgrade-release.py')
+inspect_retained_image = successor.recovery.inspect_image
 
 
 def fixture():
@@ -133,6 +134,83 @@ class Authority(unittest.TestCase):
             change(proof)
             with self.subTest(change=change), self.assertRaises(successor.recovery.RecoveryError):
                 authority(metadata, proof, security)
+
+    def test_paired_rollback_loads_verified_archives_when_previous_digests_are_absent(self):
+        native = load('public_upgrade_archive_fixture', ROOT / 'tests/bootstrapper/public-controller-update.py')
+        case = native.PublicControllerUpdate('runTest')
+        case.setUp()
+        try:
+            case.accepted_metadata()
+            case.update(wizard=case.wizard, release_metadata=case.metadata)
+            record = native.tool.load_operation(case.config, case.checkpoint)[1]
+            expected = {'controller': record['previousController'], 'wizard': record['previousWizard']}
+            retained = case.root / 'archives'
+            (retained / 'images').mkdir(parents=True)
+            descriptors, payloads, commands = {}, {}, []
+            for index, (role, selected) in enumerate(expected.items()):
+                relative = 'images/controller-' + str(index) + '.tar.gz'
+                successor.atomic_bytes(retained / relative, ('archived-' + role).encode())
+                descriptors[role] = {'file': relative, 'imageId': selected['imageId'],
+                    'sha256': successor.recovery.sha(retained / relative)}
+                payloads[str(retained / relative)] = copy.deepcopy(case.images.pop(selected['reference']))
+                payloads[str(retained / relative)]['RepoDigests'] = []
+            def docker(command, **unused):
+                commands.append(command)
+                action = command[3]
+                if action == 'load':
+                    row = payloads[command[-1]]
+                    case.images[row['Id']] = row
+                    return b''
+                if action == 'tag':
+                    case.images[command[-1]] = copy.deepcopy(case.images[command[-2]])
+                    return b''
+                if action == 'inspect':
+                    row = case.images.get(command[-1])
+                    successor.require(row is not None, 'missing-image')
+                    return json.dumps([row]).encode()
+                raise AssertionError(command)
+            def environment(config, reference, **unused):
+                return {'BOOTSTRAPPER_IMAGE': reference, 'WIZARD_IMAGE': config['WIZARD_IMAGE']}
+            with patch.object(successor.recovery, 'inspect_image', side_effect=inspect_retained_image), \
+                    patch.object(successor.recovery, 'run', side_effect=docker), \
+                    patch.object(successor, 'environment', side_effect=environment):
+                result = native.tool.rollback(case.config, case.checkpoint, '/private/own-token',
+                    retained_images=(retained, descriptors))
+            self.assertEqual(result['phase'], 'rolled-back')
+            expected_raw = case.raw
+            for role, key in [('controller', 'BOOTSTRAPPER_IMAGE'), ('wizard', 'WIZARD_IMAGE')]:
+                expected_raw = native.tool.assignment(expected_raw, result['recoveredImages'][role]['reference'], key)
+            self.assertEqual(case.config['_main'].read_bytes(), expected_raw)
+            self.assertEqual((case.checkpoint / 'main-before.env').read_bytes(), case.raw)
+            for role, name in [('controller', 'system_bootstrapper_1'), ('wizard', 'system_wizard_1')]:
+                self.assertEqual(case.rows[name]['Image'], expected[role]['imageId'])
+                self.assertNotIn(expected[role]['reference'], case.images)
+            self.assertEqual(sum(command[3] == 'load' for command in commands), 2)
+            self.assertFalse(any('pull' in command for command in commands))
+            # A subsequent independent verification still proves the aliases;
+            # old startup reads these exact saved selectors after a restart.
+            with patch.object(successor.recovery, 'inspect_image', side_effect=inspect_retained_image), \
+                    patch.object(successor.recovery, 'run', side_effect=docker):
+                selected = successor.runtime.public_images(case.config, case.rows)
+            self.assertEqual(selected['system_bootstrapper_1']['reference'], result['recoveredImages']['controller']['reference'])
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'archive-recovered-selectors'):
+                tool.installed(case.config, 'example/system', '1.2.0')
+        finally:
+            case.doCleanups()
+
+    def test_retained_archive_mismatch_fails_before_loading_or_creating_aliases(self):
+        with tempfile.TemporaryDirectory(prefix='retained-upgrade-') as temporary:
+            directory = Path(temporary)
+            (directory / 'images').mkdir()
+            successor.atomic_bytes(directory / 'images/controller-a.tar.gz', b'changed')
+            descriptor = {'controller': {'file': 'images/controller-a.tar.gz', 'sha256': '0' * 64,
+                'imageId': 'sha256:' + '1' * 64}}
+            expected = {'controller': {'reference': 'example/system@sha256:' + '2' * 64,
+                'imageId': 'sha256:' + '1' * 64}}
+            with patch.object(successor.recovery, 'run') as docker:
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'archive-changed'):
+                    successor.recovery.restore_retained_images(directory, descriptor, expected)
+                docker.assert_not_called()
 
     def test_published_graph_requires_actual_matching_transition_evidence(self):
         for key in ('dataPreserved', 'configurationPreserved', 'runnerRegistryVerified', 'rollbackVerified'):

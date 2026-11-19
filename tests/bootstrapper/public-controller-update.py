@@ -155,7 +155,8 @@ class PublicControllerUpdate(unittest.TestCase):
             self.settings(None)
             if command[-1] == 'bootstrapper':
                 row = self.rows.setdefault('system_bootstrapper_1', copy.deepcopy(self.controller_template))
-                row.update(Id='controller-replaced', Image=self.images[self.config['BOOTSTRAPPER_IMAGE']]['Id'])
+                selector = kwargs.get('env', {}).get('BOOTSTRAPPER_IMAGE', self.config['BOOTSTRAPPER_IMAGE'])
+                row.update(Id='controller-replaced', Image=self.images[selector]['Id'])
                 row['State'] = {'Running': True, 'StartedAt': 'replacement'}
                 if 'create' in command:
                     row['State'].update(Status='created', Running=False, Paused=False, Restarting=False,
@@ -163,7 +164,8 @@ class PublicControllerUpdate(unittest.TestCase):
                 row['HostConfig']['RestartPolicy'] = {'Name': 'always', 'MaximumRetryCount': 0}
             if getattr(self, 'paired', False) and ('create' not in command or command[-1] == 'wizard'):
                 row = self.rows.setdefault('system_wizard_1', copy.deepcopy(self.wizard_template))
-                row.update(Id='wizard-replaced', Image=self.images[self.config['WIZARD_IMAGE']]['Id'])
+                selector = kwargs.get('env', {}).get('WIZARD_IMAGE', self.config['WIZARD_IMAGE'])
+                row.update(Id='wizard-replaced', Image=self.images[selector]['Id'])
                 row['State'] = {'Running': True, 'StartedAt': 'replacement'}
         return b''
 
