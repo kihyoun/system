@@ -466,6 +466,54 @@ sammlung. Normale Smoke- und reine ACME-Lebenszyklusbudgets bleiben unverändert
 erfolgreicher nachgebildeter Adaptervertrag ist keine erfolgreiche echte Migration; verwenden Sie die
 vollständige Plattform-CI-Schranke für diesen Nachweis.
 
+## Abnahme des öffentlichen Release-Upgrades über die CLI
+
+`public-upgrade.js` erweitert denselben wiederhergestellten Kandidaten nach der
+GitLab-Migration und vor dem bestehenden kalten Datenbank-Rollback. Die Vorbereitung
+wählt das ausdrücklich vorherige öffentliche Release aus dem Upgrade-Graphen,
+prüft dessen unveränderliche Images und Quell-/Job-Labels und hält einen sauberen
+Ziel-Checkout mit Git-Objekten und Wizard-Gitlinks beider Releases vor. Es wird
+keine zweite Plattform angelegt.
+
+Die Phase führt tatsächlich `plan`, abgelehntes unbestätigtes `apply`, erfolgreiches
+bestätigtes `apply` und `status` der eingecheckten öffentlichen CLI aus. Apply
+sichert unabhängige vorherige Image-Archive und erstellt eine native passende
+Konfigurations-ZIP samt abgeschlossenem Seed. Dafür ist eine zusätzliche kalte
+Sicherung des aktuellen Servicezustands nötig: Der frühere GitLab-Migrations-
+Checkpoint enthält die alte Datenbank und kann dieses passende Paar nicht ersetzen.
+Die Phase verbindet dasselbe eigene Sicherungsgerät erneut und trennt es vor der
+Wiederherstellung vollständig. Sie verwendet den vorherigen Registry-CI-Job weiter; schreibgeschützte
+Identitäts-, Registry-Tag-, Datenstichproben- und Runner-Prüfungen erzeugen keine
+weiteren Jobs oder Repository-Commits.
+
+Vor `recover` werden beide vorherigen Image-IDs entfernt und der Transport über
+ihre ursprünglichen Digests abgeschaltet. Ein einmaliger Compose-Fehler
+unterbricht den ersten nativen Rollback, nachdem dessen kritischer Journal- und
+Lease-Zustand gesichert wurde. Status muss diesen Checkpoint anzeigen. Die nächste
+Wiederherstellung muss ihn übernehmen, geprüfte Archive laden und dauerhafte
+Wiederherstellungsaliase wählen. Ein Neustart des vorherigen Controllers in einem
+separaten Prozess muss diese Auswahl erhalten und Status- sowie Datenprüfungen
+bestehen. Vor dem anschließenden bestehenden Datenbank-Rollback werden die genaue
+ursprüngliche Testkonfiguration und die Release-Profile wiederhergestellt.
+Der abschließende normale Controller startet nach vollständiger physischer Trennung
+des Sicherungsgeräts und besteht authentifiziertes Fetch. Fehlgeschlagene Schritte
+veröffentlichen keinen Upgrade-Erfolg.
+
+Ein auf 512 MiB und eine CPU begrenzter Helfer verwendet das eingebettete Python
+des angegebenen GitLab-Images sowie Docker-/Compose-Binärdateien und den
+musl-Loader des vorbereiteten Controllers. Seine Mounts gehören ausschließlich
+zum privaten Daemon. Eingecheckte Testadapter bilden Ubuntu/systemd und die
+Host-Mountansicht sowie die öffentlichen Metadaten des noch unveröffentlichten
+Ziels und den genauen Transport vom Digest zum vorbereiteten Image nach. Die echte
+öffentliche Autoritätsprüfung, Quellprüfung, Sicherung, der Updater, Leases,
+Journale und Wiederherstellung laufen unverändert. Die Zuordnung vorheriger
+Digests bleibt während der Archivwiederherstellung abgeschaltet. Synthetische
+zukünftige Veröffentlichungseingaben werden niemals als Release-Nachweis exportiert.
+Dieser Test belegt weder tatsächliche systemd-Zeitplanung noch einen zukünftigen
+öffentlichen Upload; Host- und Veröffentlichungsprüfungen bleiben verpflichtend.
+Offline-Vertragstests prüfen die Adaptergrenzen; erst die vollständige native
+Kandidatenphase liefert den Upgrade-Abnahmenachweis.
+
 ## Geführte Vorschau-Abnahme nach dem Deployment
 
 Das [native Werkzeug zur geführten Vorschau-Abnahme](GUIDED_PREVIEW_ACCEPTANCE.md)

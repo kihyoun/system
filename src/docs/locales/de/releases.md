@@ -194,8 +194,9 @@ sudo python3 bootstrapper/upgrade-release.py --operation apply \
 ```
 
 5. Die passende kalte Sicherung pausiert GitLab und setzt es später fort; das
-   Paar-Update startet Controller/Sync und Wizard neu. Kern-Proxys können durch
-   geänderte Compose-Richtlinien ebenfalls neu erstellt werden. Laufende Jobs müssen
+   Paar-Update startet Controller/Sync und Wizard neu. Kern-Container einschließlich
+   GitLab, Proxys und Runner-Manager können durch geänderte Compose-Richtlinien
+   ebenfalls neu erstellt werden. Laufende Jobs müssen
    vorher enden. Die Dauer hängt von Daten und Host ab; eine feste Ausfallzeit
    wird nicht garantiert. Der bestehende Updater besitzt die Live-State-Leases
    und Rollback-Checkpoints. Abschluss verlangt identische gespeicherte
