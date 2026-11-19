@@ -173,6 +173,15 @@ vorliegt. Bei einer nach Prozessverlust weiter als prüfend markierten Vorprüfu
 das Verzeichnis behalten und einen neuen Planpfad wählen. Native Lease-Prüfungen
 lehnen aktive und unfertige Operationen weiterhin ab; Leases niemals löschen.
 
+Offizielle Upgrades benötigen die exakt bei der Veröffentlichung erfassten
+Laufzeit-Image-IDs. Docker-Image-Speicher können einen Manifest- oder
+Konfigurations-Digest als lokale Image-ID melden; diese Digests werden getrennt
+geprüft. Weicht die lokale ID von der akzeptierten ID ab, wird das Upgrade
+abgelehnt, auch wenn die Neuinstallation diese Speicheridentität akzeptiert hat.
+Für abweichende IDs den dokumentierten Quell-/Wiederherstellungsablauf verwenden.
+Die CLI konvertiert keine Image-Speicher; Änderungen an Metadaten oder
+Laufzeitselektoren beseitigen diese Einschränkung nicht.
+
 4. Den vollständigen Plan und SHA-256 prüfen. `PLAN_SHA256` durch den genau
    ausgegebenen Hash ersetzen; Apply verweigert fehlende oder andere Bestätigung.
    Es prüft Veröffentlichung und gespeicherte Konfiguration erneut, sichert zuerst

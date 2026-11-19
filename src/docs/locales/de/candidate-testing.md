@@ -471,7 +471,8 @@ vollständige Plattform-CI-Schranke für diesen Nachweis.
 `public-upgrade.js` erweitert denselben wiederhergestellten Kandidaten nach der
 GitLab-Migration und vor dem bestehenden kalten Datenbank-Rollback. Die Vorbereitung
 wählt das ausdrücklich vorherige öffentliche Release aus dem Upgrade-Graphen,
-prüft dessen unveränderliche Images und Quell-/Job-Labels und hält einen sauberen
+prüft öffentliche Manifest-/Konfigurations-Digests getrennt von erfassten
+Daemon-IDs und Quell-/Job-Labels und hält einen sauberen
 Ziel-Checkout mit Git-Objekten und Wizard-Gitlinks beider Releases vor. Es wird
 keine zweite Plattform angelegt.
 
@@ -504,7 +505,9 @@ des angegebenen GitLab-Images sowie Docker-/Compose-Binärdateien und den
 musl-Loader des vorbereiteten Controllers. Seine Mounts gehören ausschließlich
 zum privaten Daemon. Eingecheckte Testadapter bilden Ubuntu/systemd und die
 Host-Mountansicht sowie die öffentlichen Metadaten des noch unveröffentlichten
-Ziels und den genauen Transport vom Digest zum vorbereiteten Image nach. Die echte
+Ziels und den genauen Transport vom Digest zum vorbereiteten Image nach.
+Die Konfigurations-Digests des Ziels stammen aus gehashten Konfigurationsdateien
+der bereits gespeicherten Image-Archive. Die echte
 öffentliche Autoritätsprüfung, Quellprüfung, Sicherung, der Updater, Leases,
 Journale und Wiederherstellung laufen unverändert. Die Zuordnung vorheriger
 Digests bleibt während der Archivwiederherstellung abgeschaltet. Synthetische
