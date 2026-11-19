@@ -166,8 +166,8 @@ lease checks still refuse active or unfinished operations; do not delete leases.
 
 4. Review the complete plan and its SHA-256. Replace `PLAN_SHA256` with the
    exact printed hash; apply refuses a missing or different confirmation. It
-   rechecks the publication and retained configuration, performs the existing
-   coordinated backup, and verifies the exact configuration ZIP against its
+   rechecks the publication and retained configuration, retains the previous
+   controller/Wizard image payloads, then performs the existing coordinated backup, and verifies the exact configuration ZIP against its
    completed Seed generation and manifest. Missing media fails explicitly;
    there is no backup fallback directory on the system disk. Both backup inputs
    must remain independently accessible. Prior controller/Wizard image payloads,
