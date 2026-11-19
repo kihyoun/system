@@ -7,10 +7,38 @@ const routing = require('../nginx/wizard-aliases');
 const application = require('../nginx/application-aliases');
 const {managed} = require('./preserve-system-project');
 const routeKey = /^(?:USE_(?:PROD|BETA|REVIEW)_HOST|(?:PROD|BETA|REVIEW)_(?:HOST|DOMAIN_MODE|DEPLOY_MODE|SSL|SSL_KEY|ALIASES))$/;
+const stable = value => JSON.stringify(value, (_, item) => item && !Array.isArray(item) && typeof item === 'object'
+  ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+function ownership(content, values) {
+  const lines = content.split('\n').filter(line => /^# BOOTSTRAPPER_(?:PROJECT|REPOSITORY)=/.test(line));
+  const receipts = lines.filter(line => line.startsWith('# BOOTSTRAPPER_PROJECT='));
+  const annotations = lines.filter(line => line.startsWith('# BOOTSTRAPPER_REPOSITORY='));
+  if (receipts.length > 1 || annotations.length > 1) throw Error('Duplicate project ownership metadata.');
+  let repository;
+  if (annotations.length) repository = JSON.parse(decodeURIComponent(annotations[0].slice('# BOOTSTRAPPER_REPOSITORY='.length)));
+  if (!receipts.length) return lines;
+  const encoded = receipts[0].slice('# BOOTSTRAPPER_PROJECT='.length), bytes = Buffer.from(encoded, 'base64');
+  if (bytes.toString('base64') !== encoded || !Buffer.from(bytes.toString('utf8')).equals(bytes)) throw Error('Invalid project receipt.');
+  const receipt = JSON.parse(bytes.toString('utf8'));
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) throw Error('Invalid project receipt.');
+  if (!receipt.repository) return lines;
+  const authoritative = receipt.repository;
+  if (receipt.state !== 'complete' || receipt.template !== values.PROJECT_TEMPLATE ||
+      !Number.isSafeInteger(authoritative.id) || authoritative.id <= 0 ||
+      !Number.isSafeInteger(authoritative.namespaceId) || authoritative.namespaceId <= 0 ||
+      !['string', 'number'].includes(typeof receipt.namespaceId) || String(receipt.namespaceId) !== String(authoritative.namespaceId) ||
+      typeof authoritative.path !== 'string' || !authoritative.path ||
+      typeof authoritative.defaultBranch !== 'string' || !authoritative.defaultBranch) throw Error('Invalid project repository identity.');
+  if (repository !== undefined && repository !== null && stable(repository) !== stable(authoritative)) throw Error('Project repository annotation differs from its receipt.');
+  // Save can precede repository creation. Fetch derives this annotation from
+  // the receipt; only that verified projection may be absent/null/refreshed.
+  // Retain the authoritative line byte-for-byte in comparisons/fingerprints.
+  return receipts;
+}
 function semantic(content) {
   routing.signature(content);
   const values = routing.settings(content, new Set(routing.records(content).map(record => record.key)));
-  return {values, ownership: content.split('\n').filter(line => /^# BOOTSTRAPPER_(?:PROJECT|REPOSITORY)=/.test(line))};
+  return {values, ownership: ownership(content, values)};
 }
 function mainSemantic(content) {
   const result = semantic(content);
@@ -22,8 +50,6 @@ function mainSemantic(content) {
     }
   return result;
 }
-const stable = value => JSON.stringify(value, (_, item) => item && !Array.isArray(item) && typeof item === 'object'
-  ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 function impact(archive, current) {
   const incoming = application.imported(archive, current);
   const previousMain = path.join(current, '.docker.env');

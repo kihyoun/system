@@ -32,6 +32,18 @@ lockfile and runs `npm run build`, whose prebuild checks ESLint without autofix.
 Runtime and shared-library versions are printed during construction. This Ruby
 fixture runtime is separate from GitLab's embedded Rails runtime.
 
+Candidate image preparation also runs
+`tests/wizard/configuration-routing-export.js` with the built Wizard's actual
+configuration exporter before starting the full platform. It verifies the first
+Save/Fetch/Backup round trip, exact server receipt preservation and selective
+routing when Fetch fills the derived repository annotation. To run it separately,
+build the Wizard exporter with `npm run build:config-export` in the initialized
+`wizard` checkout, then run:
+
+```sh
+node tests/wizard/configuration-routing-export.js --exporter wizard/build-tools/export-configuration.cjs
+```
+
 The image sets `SYSTEM_TEST_ISOLATED=1` and invokes `node tests/run.js`. Select
 `all` or one of `gitlab`, `sync`, `gitlab-runner`, `bootstrapper`, `nginx`, `wizard`,
 `shared` and `performance`. Checks execute sequentially with enforced per-entry
