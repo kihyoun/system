@@ -54,7 +54,14 @@ app.use(cors((req, callback) => callback(null, {
 })));
 app.use(bodyParser.json({limit: '5mb'}));
 app.use(bodyParser.urlencoded({extended: false, limit: '5mb'}));
-app.use(fileUpload({limits: {fileSize: 50 * 1024 * 1024, files: 1}, abortOnLimit: true}));
+// Parse at most a second file so duplicates cannot be silently truncated into
+// a valid single-file request by the multipart parser's file-count limit.
+app.use(fileUpload({limits: {fileSize: 50 * 1024 * 1024, files: 2}, abortOnLimit: true}));
+app.use((req, res, next) => {
+  const files = Object.values(req.files || {}).flat();
+  if (files.length > 1) { res.status(400).json({message: 'Upload exactly one file.'}); return; }
+  next();
+});
 app.use(morgan('combined'));
 const serverSecret = randomBytes(64).toString('base64url');
 const serverTokenSecret = randomBytes(64).toString('base64url');

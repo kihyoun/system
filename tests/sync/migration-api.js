@@ -53,6 +53,9 @@ function multipart(field, count) {
     assert.equal((await request('/token', 'POST', JSON.stringify({token: 'invalid'}))).status, 403);
     const type = 'multipart/form-data; boundary=sync-migration';
     assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 2), accessToken, type)).status, 400);
+    assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 3), accessToken, type)).status, 400);
+    const mixed = multipart('.docker.env', 1).replace('--sync-migration--\r\n', '') + multipart('unexpected.txt', 1);
+    assert.equal((await request('/config/main', 'POST', mixed, accessToken, type)).status, 400);
     assert.equal((await request('/config/zip', 'POST', multipart('bootstrapper.zip', 2), accessToken, type)).status, 400);
     assert(!fs.existsSync(path.join(root, 'state/.docker.env')));
     assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 1), accessToken, type)).status, 200);
