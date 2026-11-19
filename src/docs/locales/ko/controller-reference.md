@@ -49,7 +49,7 @@ docker build -t system-runtime:candidate ./bootstrapper
 전체 System 이미지도 저장소 빌드 컨텍스트에서 `bootstrapper/install-runtime.sh`를
 실행합니다. 별도로 게시된 System 베이스를 요구하는 대신 같은 공식 다이제스트 고정
 Node 24.22.0 / Alpine 3.24 이미지에서 시작합니다. 공유 설치 프로그램은 Node 24.22.0과
-npm 11.19.1을 확인한 뒤 고정된 Docker CLI 29.9.3-r1, Compose 5.6.1, Buildx 0.38.1,
+npm 11.19.1을 확인한 뒤 고정된 Docker CLI 29.9.3-r1, Compose 5.7.2, Buildx 0.38.1,
 Git 2.54.1-r0 및 기존 셸 유틸리티를 설치합니다. `docker-compose`와 `docker compose`를 모두 계속
 사용할 수 있습니다. 사용자 지정 `IMAGE` 재정의도 같은 런타임 검사를 통과해야 합니다.
 

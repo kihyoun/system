@@ -221,6 +221,13 @@ attestation 검증을 주장하지 않습니다. 다른 후보 이미지 메타�
 사용 전에 체크섬을 검증합니다. 검사 자식 컨테이너에는 네트워크, Docker 소켓
 또는 자격 증명이 없으며 애플리케이션 빌드를 실행할 수 없습니다.
 
+CodeQL CLI에는 별도의 [라이선스 조건](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md)이 적용됩니다.
+무료 자동 분석은 GitHub에 호스팅되고 유지 관리되는 오픈 소스 코드베이스를
+전제로 하며 외부 GitLab Runner도 지원됩니다. 비공개 포크나 GitLab에서만
+관리되는 포크는 이 작업을 실행하기 전에 자체 라이선스 사용 자격을 확인해야
+합니다. 프로젝트의 MIT 라이선스는 CodeQL 라이선스를 부여하지 않으며 이 작업은
+유료 구독을 구매하지 않습니다. Runner의 연산 및 저장 공간은 운영자가 부담합니다.
+
 `node tests/prepare-codeql.js`는 일반적인 Wizard 소스 준비 후 커밋된 입력을
 패키징합니다. `sh tests/ci-codeql.sh`는 선택한 신뢰된 Docker Runner에서 일반 CI
 식별 변수와 함께 검증된 컨텍스트를 실행합니다. 자식 컨테이너는 RAM 6 GiB와

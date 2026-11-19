@@ -240,6 +240,14 @@ Keine Regeln, Pfade oder alten Befunde werden unterdrückt. Das festgelegte
 Der Scan-Kindcontainer hat weder Netzwerk noch Docker-Socket oder Zugangsdaten
 und kann keine Anwendungs-Builds ausführen.
 
+Für die CodeQL CLI gelten eigene [Lizenzbedingungen](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md).
+Die kostenlose automatisierte Nutzung setzt eine auf GitHub gehostete und gepflegte
+Open-Source-Codebasis voraus; ein externer GitLab-Runner wird unterstützt. Ein privater
+oder ausschließlich auf GitLab gepflegter Fork muss seine Lizenzberechtigung vor
+Ausführung dieses Jobs klären. Die MIT-Lizenz des Projekts gewährt keine CodeQL-Lizenz,
+und der Job schließt kein Abonnement ab. Rechenleistung und Speicher des Runners
+liegen weiterhin in der Verantwortung des Betreibers.
+
 `node tests/prepare-codeql.js` paketiert nach der normalen Wizard-Quellvorbereitung
 die versionierten Eingaben. `sh tests/ci-codeql.sh` führt diesen geprüften Kontext
 auf dem ausgewählten vertrauenswürdigen Docker-Runner mit dessen üblichen

@@ -54,7 +54,7 @@ Das vollständige System-Image führt ebenfalls `bootstrapper/install-runtime.sh
 Repository-Build-Kontext aus. Es beginnt mit demselben offiziellen, per Digest festgelegten Node-
 24.22.0-/Alpine-3.24-Image, statt eine separat veröffentlichte System-
 Basis zu verlangen. Das gemeinsame Installationsprogramm prüft Node 24.22.0 und npm 11.19.1, bevor es
-die festgelegten Versionen Docker CLI 29.9.3-r1, Compose 5.6.1, Buildx 0.38.1, Git 2.54.1-r0
+die festgelegten Versionen Docker CLI 29.9.3-r1, Compose 5.7.2, Buildx 0.38.1, Git 2.54.1-r0
 und die bestehenden Shell-Werkzeuge installiert.
 Sowohl `docker-compose` als auch `docker compose` bleiben verfügbar. Eigene `IMAGE`-
 Überschreibungen müssen dieselben Laufzeitprüfungen erfüllen.
