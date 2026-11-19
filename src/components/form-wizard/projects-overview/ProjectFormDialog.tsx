@@ -1,3 +1,4 @@
+import {applicationAliasError} from '../../../api/ApplicationAliases';
 import { useI18n } from '../../../i18n';
 import { makeStyles } from 'tss-react/mui';
 import React, { useEffect, useState } from 'react';
@@ -130,6 +131,8 @@ const ProjectFormDialog = observer((props: any) => {
     const handleSave = async () => {
         if (busy)
             return;
+        const aliasError = applicationAliasError(projectConfig);
+        if (aliasError) { setOpenAlert(aliasError); return; }
         if (props.activeProject === '' || projectConfig.bootstrapPending) {
             if (!projectConfig.bootstrapPending && availability !== 'available')
                 return;

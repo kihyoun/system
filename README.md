@@ -164,7 +164,13 @@ Backup/Open. See the
 [project guide](https://github.com/kihyoun/system/blob/master/docs/PROJECT_BOOTSTRAP_GUIDE.md)
 for error recovery and deployment details. Ordinary edits to an existing
 project's environments retain the configuration/Push workflow; they do not
-rename its repository or rewrite committed CI automatically.
+rename its repository or rewrite committed CI automatically. Optional per-environment
+exact host aliases redirect HTTP and HTTPS to the existing canonical host,
+preserving the path and query and allowing ACME HTTP-01. Provision a certificate
+covering the canonical host and aliases. Push reviews its expected service impact:
+existing application routing edits use a proxy reload while GitLab remains
+available; wider changes require a platform restart. Fetch, JSON/ZIP Backup/Open
+and Push retain alias settings and environment ownership.
 
 ### The default Wizard project
 

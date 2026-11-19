@@ -1,3 +1,4 @@
+import ApplicationAliasesFields from './ApplicationAliasesFields';
 import { useI18n } from '../../../../i18n';
 import { makeStyles } from 'tss-react/mui';
 import React, { useEffect, useState } from 'react';
@@ -81,6 +82,7 @@ const ReviewFields = observer((props: any) => {
             {props.config.main.config.seedDir}</InputAdornment>
         }
     }}/>
+      <ApplicationAliasesFields config={props.config} context="review"/>
     </>);
 });
 export default ReviewFields;

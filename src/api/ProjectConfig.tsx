@@ -31,6 +31,7 @@ export default class ProjectConfig {
       });
     }
 
+    prodAliases = "";
     prodHost!: string;
     useProdHost!:string;
     _prodDomainMode!:number;
@@ -51,6 +52,7 @@ export default class ProjectConfig {
     prodSSLKey!:string;
 
     useBetaHost!:string;
+    betaAliases = "";
     betaHost!:string;
     _betaDomainMode!:number;
     get betaDomainMode() {
@@ -70,6 +72,7 @@ export default class ProjectConfig {
     betaSSLKey!:string;
 
     useReviewHost!:string;
+    reviewAliases = "";
     reviewHost!:string;
     _reviewDomainMode!:number;
     get reviewDomainMode() {
@@ -130,6 +133,7 @@ export default class ProjectConfig {
   generateProdProxyConfig(_config: any | undefined = undefined): void {
     runInAction(() => {
       this.useProdHost = _config?.useProdHost ?? 'true';
+      this.prodAliases = _config?.prodAliases ?? '';
       this.prodHost = _config?.prodHost ?? `www.${this.projectKey}.com`;
       this.prodDomainMode = _config ? parseInt(_config.prodDomainMode, 10) : 2;
       this.prodDeployMode = _config ? parseInt(_config.prodDeployMode, 10) : 1;
@@ -158,6 +162,7 @@ export default class ProjectConfig {
   generateBetaProxyConfig(_config: any | undefined = undefined): void {
     runInAction(() => {
       this.useBetaHost = _config?.useBetaHost ?? 'false';
+      this.betaAliases = _config?.betaAliases ?? '';
       this.betaHost = _config?.betaHost ?? `beta.${this.projectKey}.com`;
       this.betaDomainMode = _config ? parseInt(_config.betaDomainMode, 10) || 0 : 2;
       this.betaDeployMode = _config ? parseInt(_config.betaDeployMode, 10) || 0 : 1;
@@ -184,6 +189,7 @@ export default class ProjectConfig {
  generateReviewProxyConfig(_config: any | undefined = undefined): void {
     runInAction(() => {
       this.useReviewHost = _config?.useReviewHost ?? 'true';
+      this.reviewAliases = _config?.reviewAliases ?? '';
       this.reviewHost = _config?.reviewHost ?? `${this.projectKey}.com`;
       this.reviewDomainMode = _config ? parseInt(_config.reviewDomainMode, 10) || 0 : 1;
       this.reviewDeployMode = _config ? parseInt(_config.reviewDeployMode, 10) || 0 : 1;
@@ -221,16 +227,19 @@ export default class ProjectConfig {
      case 'PROJECT_TEMPLATE': this.template = Helper.unquote(value); break;
      case 'PROJECT_NAME': this.projectKey = Helper.unquote(value); break;
      case 'USE_PROD_HOST': this.useProdHost = Helper.unquote(value); break;
+     case 'PROD_ALIASES': this.prodAliases = Helper.unquote(value); break;
      case 'PROD_HOST': this.prodHost = Helper.unquote(value); break;
      case 'PROD_DOMAIN_MODE': this.prodDomainMode = parseInt(Helper.unquote(value), 10); break;
      case 'PROD_SSL': this.prodSSL = Helper.unquote(value).replace(/;/g, ''); break;
      case 'PROD_SSL_KEY': this.prodSSLKey = Helper.unquote(value).replace(/;/g, ''); break;
      case 'USE_BETA_HOST': this.useBetaHost = Helper.unquote(value); break;
+     case 'BETA_ALIASES': this.betaAliases = Helper.unquote(value); break;
      case 'BETA_HOST': this.betaHost = Helper.unquote(value); break;
      case 'BETA_DOMAIN_MODE': this.betaDomainMode = parseInt(Helper.unquote(value), 10); break;
      case 'BETA_SSL': this.betaSSL = Helper.unquote(value).replace(/;/g, ''); break;
      case 'BETA_SSL_KEY': this.betaSSLKey = Helper.unquote(value).replace(/;/g, ''); break;
      case 'USE_REVIEW_HOST': this.useReviewHost = Helper.unquote(value); break;
+     case 'REVIEW_ALIASES': this.reviewAliases = Helper.unquote(value); break;
      case 'REVIEW_HOST': this.reviewHost = Helper.unquote(value); break;
      case 'REVIEW_DOMAIN_MODE': this.reviewDomainMode = parseInt(Helper.unquote(value), 10); break;
      case 'REVIEW_SSL': this.reviewSSL = Helper.unquote(value).replace(/;/g, ''); break;
@@ -293,11 +302,13 @@ export GITLAB_RUNNER_SCALE=${Helper.quote(this.gitlabRunnerScale)}
      const createdOn = `# created on ${new Date()}`;
      return ret
      + (this.useProdHost === 'true' && prod || '')
-     + (this.prodDomainMode > 1 && prodSSL || '')
+     + ((this.prodDomainMode > 1 || this.prodAliases.trim()) && prodSSL || '')
      + betaUse + (this.useBetaHost === 'true' && beta || '')
-     + (this.betaDomainMode > 1 && betaSSL || '')
+     + ((this.betaDomainMode > 1 || this.betaAliases.trim()) && betaSSL || '')
      + reviewUse + (this.useReviewHost === 'true' && reviewHost || '')
-     + (this.reviewDomainMode > 1 && reviewSSL || '')
+     + ((this.reviewDomainMode > 1 || this.reviewAliases.trim()) && reviewSSL || '')
+     + (['prod', 'beta', 'review'] as const).filter(context => this[`${context}Aliases`].trim())
+       .map(context => `\n${context.toUpperCase()}_ALIASES=${Helper.quote(this[`${context}Aliases`])}\n`).join('')
      + gitlabRunner
      + extraEnvironment(this.runtimeOptions)
      + (this.bootstrapperProject ? `# BOOTSTRAPPER_PROJECT=${this.bootstrapperProject}\n` : '')
@@ -465,18 +476,21 @@ deploy:prod:
        bootstrapperProject: this.bootstrapperProject,
        runtimeOptions   : {...this.runtimeOptions},
        useProdHost      : this.useProdHost,
+       prodAliases     : this.prodAliases,
        prodHost         : this.prodHost,
        prodDomainMode   : this.prodDomainMode,
        prodDeployMode   : this.prodDeployMode,
        prodSSL          : this.prodSSL,
        prodSSLKey       : this.prodSSLKey,
        useBetaHost      : this.useBetaHost,
+       betaAliases     : this.betaAliases,
        betaHost         : this.betaHost,
        betaDomainMode   : this.betaDomainMode,
        betaDeployMode   : this.betaDeployMode,
        betaSSL          : this.betaSSL,
        betaSSLKey       : this.betaSSLKey,
        useReviewHost    : this.useReviewHost,
+       reviewAliases     : this.reviewAliases,
        reviewHost       : this.reviewHost,
        reviewDomainMode : this.reviewDomainMode,
        reviewDeployMode : this.reviewDeployMode,

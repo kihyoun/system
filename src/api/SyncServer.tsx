@@ -136,11 +136,20 @@ export default class SyncServer {
     return skipCount;
   }
 
-  async push() {
+  async pushImpact() {
+    const content = await this.main.generateZip();
+    const formData = new FormData();
+    formData.append('bootstrapper.zip', new File([content], 'bootstrapper.zip'));
+    await this.token();
+    return (await axios.post(this.serverAddress + '/config/impact', formData, this.getFileHeaders())).data;
+  }
+
+  async push(impact?: string) {
     const bootstrapperRaw = await this.main.generateZip();
     const file = new File([bootstrapperRaw], 'bootstrapper.zip');
     const formData = new FormData();
     formData.append('bootstrapper.zip', file);
+    if (impact) formData.append('impact', impact);
     await this.token();
     return axios.post(this.serverAddress + '/config/zip', formData, this.getFileHeaders());
   }

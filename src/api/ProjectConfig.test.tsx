@@ -74,3 +74,25 @@ test('application template and canonical generated CI survive Fetch and JSON', (
   expect(copy.template).toBe('react');
   expect(copy.gitlabCi).toBe(ci);
 });
+
+test('per-environment application aliases and ownership survive ENV, JSON Backup/Open and ZIP', async () => {
+  const main = new Main();
+  const project = new ProjectConfig(main, {projectKey: 'aliases', prodHost: 'www.example.test', prodDomainMode: 2,
+    prodAliases: 'example.test old.example.test', useBetaHost: 'true', betaHost: 'beta.example.test', betaDomainMode: 0,
+    betaAliases: 'oldbeta.example.test', betaSSL: '/ssl/beta/fullchain.pem', betaSSLKey: '/ssl/beta/privkey.pem',
+    useReviewHost: 'false', reviewAliases: 'oldreview.example.test', bootstrapperProject: 'server-owned-receipt',
+    repository: {id: 17, namespaceId: 1, path: 'root/aliases'}});
+  main.addProject(project);
+  const fetched = new Main(); fetched.importProjectEnvData(project.content);
+  for (const key of ['prodAliases', 'betaAliases', 'reviewAliases', 'bootstrapperProject'] as const)
+    expect(fetched.projects.get('aliases')![key]).toBe(project[key]);
+  expect(fetched.projects.get('aliases')!.betaSSL).toBe('/ssl/beta/fullchain.pem');
+  const opened = new Main(); opened.importJson(new File([], 'backup.json'), JSON.stringify(main.asJson));
+  expect(opened.projects.get('aliases')!.asJson).toEqual(project.asJson);
+  const archive = await main.generateZip();
+  const zip = await (await import('jszip')).default.loadAsync(await archive.arrayBuffer());
+  expect(await zip.file('.projects.env/.aliases.env')!.async('string')).toContain('PROD_ALIASES="example.test old.example.test"');
+  expect(project.content[807]).toBe('$');
+  expect(md5(project.content.slice(0, 1184))).toBe('bd4a8426355824593a5e21ad759830c1');
+  expect(new ProjectConfig(new Main(), {projectKey: 'legacy'}).content).not.toContain('_ALIASES=');
+});

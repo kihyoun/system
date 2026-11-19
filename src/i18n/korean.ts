@@ -1,6 +1,8 @@
+import {routingKorean} from './routing';
 import {nativeOperationKorean} from './nativeOperationMessages';
 
 const korean: Record<string, string> = {
+  ...routingKorean,
   ...nativeOperationKorean,
   "6.4 Host workload compatibility and logs": "6.4 호스트 워크로드 호환성 및 로그",
   "Access to the Linux x86_64 Docker daemon host and the selected immutable workload images.": "Linux x86_64 Docker 데몬 호스트와 선택한 불변 워크로드 이미지에 대한 접근 권한.",

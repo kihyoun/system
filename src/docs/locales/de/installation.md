@@ -336,8 +336,10 @@ Veröffentlichung, ohne die authentifizierte Sync-Konfiguration abzurufen.
    Konfiguration zu speichern, oder **Sichern → bootstrapper.zip** für JSON plus erzeugte
    Umgebungsdateien. Beide enthalten Zugangsdaten; bewahren Sie sie privat auf.
 2. Wählen Sie **Synchronisieren → Übertragen** und bestätigen Sie die Übertragung. Dies sendet die Wizard-
-   Einstellungen an die Instanz und startet die Dienste nach einem erfolgreichen
-   Import automatisch neu. Die Oberfläche ist während des Dienststarts vorübergehend nicht verfügbar.
+   Einstellungen an die Instanz. Prüfe die angezeigten Auswirkungen: Bestehende
+   Anwendungsrouten laden den Proxy neu, während GitLab verfügbar bleibt;
+   weitergehende Änderungen starten die Dienste neu. Die Oberfläche ist
+   während eines Plattformneustarts vorübergehend nicht verfügbar.
 3. Warten Sie, bis die Oberfläche zurückkehrt, verbinden Sie sich erneut und prüfen Sie die Einstellungen mit Abrufen.
 
 **Übertragen sendet Einstellungen an die Instanz und wendet sie an. Ein zusätzlicher Klick auf Neustarten ist nicht erforderlich.**

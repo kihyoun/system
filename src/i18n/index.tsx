@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { createInstance, type i18n } from 'i18next';
 import { I18nextProvider, initReactI18next, useTranslation } from 'react-i18next';
+import {routingGerman} from './routing';
 import shell from './shell';
 import wizard from './wizard';
 import docs from './docs';
@@ -14,7 +15,7 @@ import {nativeOperationGerman} from './nativeOperationMessages';
 export type Locale = 'en' | 'de' | 'ko';
 type Values = Record<string, string | number>;
 export const localeStorageKey = 'system-bootstrapper.locale';
-export const german: Record<string, string> = { ...shell, ...wizard, ...docs, ...credentials, ...diagnostics, ...previewSetup, ...operationsDocs, ...nativeOperationGerman,
+export const german: Record<string, string> = { ...routingGerman, ...shell, ...wizard, ...docs, ...credentials, ...diagnostics, ...previewSetup, ...operationsDocs, ...nativeOperationGerman,
   'Korean': 'Koreanisch',
   'Platform operations': 'Plattformbetrieb',
   'Harvest and configuration backup': 'Harvest und Konfigurationssicherung',

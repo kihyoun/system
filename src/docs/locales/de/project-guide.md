@@ -173,9 +173,10 @@ Umgebung mit diesen Werten und verwende den tatsächlichen Namen deiner Zertifik
 
 Speichere die Umgebungsänderung und wende die Konfiguration über **Übertragen** an.
 Verwende die innerhalb der `/ssl`-Einbindung der Plattform sichtbaren Pfade statt
-der `/etc/letsencrypt`-Pfade des Hosts. Dies folgt dem gewöhnlichen Ablauf für
-Dienstneustarts; plane die Unterbrechung ein, verbinde dich danach erneut und
-rufe die Konfiguration ab. Dabei wird weder ein Zertifikat ausgestellt noch das
+der `/etc/letsencrypt`-Pfade des Hosts. Prüfe die vor Übertragen angezeigten
+Auswirkungen. Eine reine Routingänderung einer bestehenden Anwendung hält GitLab
+verfügbar; weitergehende Änderungen starten die Plattform neu. Verbinde dich danach
+erneut und rufe die Konfiguration ab. Dabei wird weder ein Zertifikat ausgestellt noch das
 Repository umbenannt oder eingecheckte Umgebungs-URLs in CI neu geschrieben.
 Prüfe diese URLs im Anwendungsrepository, wenn sich das Protokoll geändert hat.
 
@@ -311,3 +312,64 @@ die zugehörige authentifizierte Live-Prüfung. Lokale HTTP-Fixtures belegen wed
 echtes DNS noch Zertifikatsausstellung/-erneuerung, GitLab-Job-Ausführung oder
 einen erfolgreichen Production-Rollout. Prüfe diese Freigabebedingungen separat
 auf einer ausdrücklich zugeordneten Testplattform.
+
+
+## Anwendungsaliase und Routingänderungen
+
+Jede gewöhnliche Anwendungsumgebung bietet optional `PROD_ALIASES`,
+`BETA_ALIASES` oder `REVIEW_ALIASES`. Trage zusätzliche exakte DNS-Hosts durch
+Leerzeichen getrennt ein. Der vorhandene Host der Umgebung ist das kanonische
+Ziel; verwende den exakten Domainmodus 0 oder 2. Beim kanonischen Host
+`www.example.com` ergänze beispielsweise `example.com` als Production-Alias.
+Deaktivierte Umgebungen behalten ihre Aliase, ohne eine Route zu veröffentlichen.
+
+HTTP- und HTTPS-Aliase antworten mit einer dauerhaften 308-Weiterleitung zum
+kanonischen Host mit dessen Protokoll und behalten Pfad und Abfrage bei.
+Zertifikat und passender privater Schlüssel der Umgebung müssen unter
+`/ssl` verfügbar und aktuell gültig sein. Die alternativen Antragstellernamen
+müssen den kanonischen Host und alle Aliase abdecken. Das gilt auch für ein
+kanonisches HTTP-Ziel, weil die Aliase HTTPS annehmen. Bereite DNS und Zertifikate
+vor der Aktivierung vor. ACME-HTTP-01-Prüfdateien bleiben unter
+`/.well-known/acme-challenge/` direkt erreichbar; Weiterleitungen und Erneuerungen
+erfordern keinen Proxy-Stopp. Platzhalter, Selbstweiterleitungen, doppelte Aliase
+und Konflikte mit Plattformhosts, Wizard-Aliasen oder aktiven Anwendungsrouten
+werden abgelehnt.
+
+Rufe die Konfiguration vor Änderungen ab. Sichere sie privat, speichere das
+Projekt und öffne Übertragen. Der Server vergleicht gespeicherte und vorgeschlagene
+Konfiguration und zeigt vor der Bestätigung die Auswirkungen. Host-, Protokoll-,
+Aktivierungs-, Zertifikats-, Alias- und Deploymentmodus-Änderungen bestehender
+gewöhnlicher Anwendungen verwenden den nativen Routingpfad. Nur benötigte
+Proxys/Netzwerke betroffener Projekte werden vorbereitet, der Eingangsproxy wird
+validiert und sanft neu geladen. GitLab sowie laufende Anwendungscontainer und
+Images bleiben erhalten. Änderungen an Haupteinstellungen, Projektbestand,
+Eigentümerschaft, Runnern oder unbekannten Einstellungen verwenden den
+Plattformneustart. Eine geänderte Konfiguration macht die geprüfte Übertragung
+ungültig; prüfe sie erneut. Unveränderte wirksame Einstellungen erfordern keinen
+Dienstneustart.
+
+Routing bewahrt servereigene Belege und den System Cube. Fehlgeschlagene
+Proxyvalidierung oder Neuladung stellt vorherige generierte und aktive
+Proxykonfiguration wieder her; ein fehlgeschlagenes Anwenden stellt die vorherige
+gespeicherte Konfiguration wieder her. Prüfe den gemeldeten Fehler und rufe die
+Konfiguration vor dem Wiederholen ab. Bearbeite keine generierten Proxydateien
+und setze Projektbelege nicht zurück. Deploymentmodus-Änderungen schreiben keine
+bereits eingecheckte Anwendungs-CI um; prüfe deren Umgebungsjobs gesondert.
+
+Aliase und ihre Umgebungszuordnung überstehen Abrufen/Übertragen und JSON- oder
+ZIP-Sichern/Öffnen. Bewahre für die Wiederherstellung die passende
+Konfigurationssicherung und einen abgeschlossenen Seed mit Zertifikaten und
+Dienstdaten auf. Ein frischer Konfigurationsimport darf der Seed-Wiederherstellung
+vorausgehen; der Start prüft die Zertifikatsabdeckung vor Veröffentlichung eines
+Alias. Folge dem normalen Wiederherstellungsablauf und prüfe anschließend
+kanonische und Alias-URLs mit Pfad/Abfrage und einer HTTP-01-Prüfdatei.
+
+Die isolierten Routing-, Multipart-Übertragungs-, Rollback- und
+Wizard-Konfigurationsprüfungen gehören zum festgeschriebenen Komponentenmanifest.
+Der vorhandene entbehrliche Plattformkandidat erstellt eine gewöhnliche Anwendung
+über Sync, wendet Review- und Aliasänderungen über den Abrufen/ZIP/Übertragen-Pfad
+des Wizards an und prüft durchgängige GitLab-Bereitschaft und Containeridentität,
+bestehende Production-/Beta-Images und -Routen, HTTP-/HTTPS-Weiterleitungen,
+HTTP-01, Proxyneustart, Seed-Wiederherstellung und erneuerte Zertifikate. Führe das
+verpflichtende Kandidaten-Gate für die vollständige geprüfte Änderung aus; es ist
+kein Schritt eines Betreiber-Upgrades.

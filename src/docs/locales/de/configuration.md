@@ -8,7 +8,7 @@
 | Öffnen | Lädt eine Konfigurationsdatei von deinem Computer in den Wizard |
 | Sichern | Lädt Konfiguration als JSON oder als ZIP mit JSON, erzeugten Umgebungsdateien, `recovery.json` und `RECOVERY.md` herunter |
 | Abrufen | Ruft gespeicherte Instanzeinstellungen ab; ohne Konfiguration lädt die aktuelle Version gekennzeichnete Vorschläge |
-| Übertragen | Überträgt die Wizard-Konfiguration und startet die Instanz automatisch neu |
+| Übertragen | Prüft und überträgt die Konfiguration; bestehendes Anwendungsrouting lädt den Proxy neu, weitergehende Änderungen starten die Instanz neu |
 | Neustarten | Startet die Dienste mit der übertragenen Konfiguration neu |
 | Registrieren / Registrierung aufheben | Prüft/registriert die konfigurierten Runner-Manager oder hebt ihre Registrierung auf |
 | Harvest | Veröffentlicht einen kalten Schnappschuss der GitLab-Daten, Zertifikate und des Zertifikatserneuerungszustands im Seed-Verzeichnis |
