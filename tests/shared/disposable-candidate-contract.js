@@ -24,7 +24,7 @@ const sourcedImages=require('child_process').execFileSync('bash',['-s'],{
 }).split('\0').slice(0,-1);
 assert.deepEqual(sourcedImages,Object.values(baselineImages),
   'the actual shell startup must source the same saved baseline aliases');
-assert(config.includes('https://www.system-bootstrapper.com'));
+assert(config.split('\n').some(line=>line==='#    +------+ https://www.system-bootstrapper.com'));
 assert.throws(()=>configuration(example.replace('https://www.system-bootstrapper.com','http://www.system-bootstrapper.com'),{}));
 assert.throws(()=>new Candidate({...spec,daemonImage:'docker:latest'}));
 assert.throws(()=>new Candidate({...spec,images:{}}));

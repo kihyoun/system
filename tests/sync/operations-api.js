@@ -149,4 +149,4 @@ function request(route, method = 'GET', token, body) {
   } finally {
     child.kill(); await closed; fs.rmSync(root,{recursive:true,force:true});
   }
-})().catch(error => { console.error(error, serverErrors); process.exitCode = 1; });
+})().catch(error => { console.error('%s\n%s', String(error), serverErrors); process.exitCode = 1; });

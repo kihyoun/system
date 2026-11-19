@@ -192,7 +192,7 @@ async function publish(env = process.env, root = process.cwd(), request = fetch)
   const source = JSON.parse(bounded(path.join(root, 'test-results/github/wizard-source.json')));
   requireValue(source.publicationJobId === jobs.find(row => row.name === 'deploy:github').id, 'Source publisher job mismatch.');
   const changelog = bounded(path.join(root, 'CHANGELOG.md')).toString();
-  const escapedVersion = ci.version.replace(/\./g, '\\.');
+  const escapedVersion = RegExp.escape(ci.version);
   const match = new RegExp('^## ' + escapedVersion + '\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))', 'm').exec(changelog);
   requireValue(match, 'Reviewed version changelog entry required.');
   const entries = match[1].trim().replace(/\]\((docs\/[^)]+)\)/g, '](' + 'https://github.com/' + ci.repository + '/blob/' + ci.tag + '/$1)');

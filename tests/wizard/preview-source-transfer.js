@@ -25,7 +25,7 @@ child.execFile = (command, args, options, callback) => {
   assert.equal(command, 'git');
   if (native) {
     const mapped = args.map(value => value === origin ? native.source : value === destination ? native.destination : value);
-    return originalExec(command, ['-c', 'protocol.file.allow=always', ...mapped], options, (error, stdout, stderr) => {
+    return originalExec(command, ['-c', 'protocol.file.allow=always', ...mapped], {...options, shell: false}, (error, stdout, stderr) => {
       if (!error && args.includes('clone')) fixtureGit(args.at(-1), 'config', 'push.followTags', 'true');
       callback(error, stdout, stderr);
     });

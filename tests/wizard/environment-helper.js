@@ -74,7 +74,7 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
     const firstRoute = fixture.readFragment('review');
     assert(firstRoute.includes('server_name review.example.test;'));
     assert(firstRoute.includes('location ^~ /.well-known/acme-challenge/'));
-    assert(!firstRoute.includes('system-bootstrapper.com'));
+    assert.doesNotMatch(firstRoute, /system-bootstrapper\.com/);
     assert.strictEqual(state.hash(firstRoute), first.routeHash);
     assert(fixture.containers.has(first.containerName));
     fixture.request = request(11, 21);

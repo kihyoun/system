@@ -149,8 +149,8 @@ test('failed setup still revokes temporary token and checks the distinct configu
   try {
     await assert.rejects(()=>adapter.run(candidate),/guided-preview-sync-request-failed/);
     assert.ok(apiCalls.some(call=>call.route==='/personal_access_tokens/self'&&call.method==='DELETE'));
-    assert.ok(requests.includes('https://gitlab.example.test/api/v4/user'));
-    assert.ok(!requests.includes('https://sync.example.test/api/v4/user'));
+    assert.ok(requests.some(url=>url==='https://gitlab.example.test/api/v4/user'));
+    assert.ok(!requests.some(url=>url==='https://sync.example.test/api/v4/user'));
   } finally {proof.restore();}
 });
 test('retained public receipt cannot substitute for the actual running public image identity',async()=>{

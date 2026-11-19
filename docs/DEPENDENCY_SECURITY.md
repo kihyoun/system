@@ -53,3 +53,27 @@ those checks. Preserve third-party license notices when refreshing packages.
 Use [Renovate's approval-controlled batches](DEPENDENCY_UPDATES.md) for continued
 discovery. A bot proposal, successful audit or published release does not itself
 promote Production; release acceptance and deliberate deployment remain required.
+
+## Sync HTTP boundary
+
+Sync limits the whole control API to 600 requests per minute and failed login or
+refresh attempts to 20 per 15 minutes. These are shared process limits, including
+requests through the reverse proxy; client-supplied forwarding headers cannot
+increase the allowance. Successful authentication does not consume the failed
+authentication allowance. A restart resets these in-memory counters. Clients
+must respect HTTP 429 and its retry headers instead of retrying continuously.
+
+Browser access accepts exact configured Wizard and Sync origins, enabled Wizard
+Review/Beta origins, and the request's same origin for local access. Additional
+browser clients require explicit origins in the preserved main runtime setting
+`SYNC_ALLOWED_ORIGINS`, for example `http://localhost:5173`. Separate multiple
+origins with spaces or commas; include the scheme and optional port, without a
+path, wildcard or trailing slash. Origins do not grant authentication: API
+clients still need the normal credentials and tokens. Non-browser clients that
+omit Origin remain supported. Public access requires the documented TLS proxy.
+
+JSON and URL-encoded bodies are limited to 5 MiB; a configuration ZIP upload is
+limited to one file of 50 MiB. Error responses do not include internal exception
+stacks or filesystem paths. Configuration downloads validate the operation
+directory and read a regular, size-bounded file without following symlinks,
+then verify and serve those same bytes.

@@ -1,5 +1,5 @@
 import {recoveryObservation} from './RecoveryObservation';
-import {mainConfigPath, projectsDirectory, wizardConfigPath} from './StatePaths';
+import {mainConfigPath, projectsDirectory, wizardConfigPath, projectConfigPath} from './StatePaths';
 import express from "express";
 import bodyParser from 'body-parser';
 import fs from 'fs';
@@ -9,9 +9,9 @@ import path from 'path';
 import { execSync, execFile } from "child_process";
 import fileUpload from 'express-fileupload';
 import jwt from 'jsonwebtoken';
-import sha256 from 'crypto-js/sha256';
-import hmacSHA512 from 'crypto-js/hmac-sha512';
-import Base64 from 'crypto-js/enc-base64';
+import {randomBytes} from 'node:crypto';
+import {rateLimit} from 'express-rate-limit';
+import {allowedBrowserOrigin} from './HttpSecurity';
 import cors from 'cors';
 import Helper from "./Helper";
 import os from 'os';
@@ -28,30 +28,36 @@ import {tokenOverview} from './TokenOverview';
 const wizardAliases = require('../../nginx/wizard-aliases');
 
 export const app = express();
-app.use(bodyParser.json());
-app.use(cors({
-  "origin": "*",
-  "methods": "GET,HEAD,PUT,PATCH,POST,DELETE",
-  "preflightContinue": false,
-  "optionsSuccessStatus": 204
-}));
+// Aggregate limits cannot be bypassed with forwarded client headers.
+app.use(rateLimit({windowMs: 60000, limit: 600, keyGenerator: () => 'sync',
+  standardHeaders: 'draft-8', legacyHeaders: false,
+  message: {message: 'Too many control requests. Retry shortly.'}}));
+app.use(['/login', '/token'], rateLimit({windowMs: 15 * 60000, limit: 20,
+  keyGenerator: () => 'sync-auth', skipSuccessfulRequests: true,
+  standardHeaders: 'draft-8', legacyHeaders: false,
+  message: {message: 'Too many failed authentication attempts. Retry later.'}}));
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers",
-   "Origin, X-Requested-With, Content-Type, Accept");
-  next();
+  try {
+    if (!allowedBrowserOrigin(req)) {
+      res.status(403).json({message: 'Browser origin is not configured for this Sync endpoint.'}); return;
+    }
+    next();
+  } catch { res.status(503).json({message: 'Browser origin settings are unavailable.'}); }
 });
-app.use(bodyParser.urlencoded({extended: true}));
-app.use(fileUpload({createParentPath: true}));
-app.use(morgan('combined'))
-const privateKey = Math.random().toString(36).slice(-8);
-const nonce = Math.random().toString(36).slice(-8);
-const message = Math.random().toString(36).slice(-8);
-const hashDigest = sha256(nonce + message);
-const serverSecret = Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
-const serverTokenSecret = Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
-const SYNC_USER = process.env.SYNC_USER || Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
-const SYNC_PASS = process.env.SYNC_PASS || Base64.stringify(hmacSHA512(Math.random().toString(36).slice(-8) + hashDigest, privateKey));
+app.use(cors((req, callback) => callback(null, {
+  origin: req.headers.origin || false,
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  allowedHeaders: ['Authorization', 'Content-Type'],
+  preflightContinue: false, optionsSuccessStatus: 204
+})));
+app.use(bodyParser.json({limit: '5mb'}));
+app.use(bodyParser.urlencoded({extended: false, limit: '5mb'}));
+app.use(fileUpload({limits: {fileSize: 50 * 1024 * 1024, files: 1}, abortOnLimit: true}));
+app.use(morgan('combined'));
+const serverSecret = randomBytes(64).toString('base64url');
+const serverTokenSecret = randomBytes(64).toString('base64url');
+const SYNC_USER = process.env.SYNC_USER || randomBytes(32).toString('base64url');
+const SYNC_PASS = process.env.SYNC_PASS || randomBytes(32).toString('base64url');
 let refreshTokens: any[] = [];
 
 const status = {
@@ -178,9 +184,7 @@ app.get('/backup/:id/download', authenticateJWT, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const output = backupWorkflowDownload(req.params.id);
-    res.download(output.filename, 'bootstrapper.zip', {dotfiles: 'allow'}, error => {
-      if (error && !res.headersSent) res.status(500).json({message: 'Configuration backup transfer failed. Retry the download.'});
-    });
+    res.attachment('bootstrapper.zip').type('application/zip').send(output.bytes);
   } catch { res.status(409).json({message: 'The matching configuration backup is not available for download.'}); }
 });
 
@@ -320,7 +324,7 @@ app.get('/projects/availability', authenticateJWT, (req, res) => {
   if (!validProjectKey(req.query.projectKey) || !/^[1-9][0-9]*$/.test(String(req.query.namespaceId))) {
     res.status(400).json({message: 'Invalid Project Key or namespace.'}); return;
   }
-  if (fs.existsSync(path.join(projectsDirectory(), '.' + req.query.projectKey + '.env'))) {
+  if (fs.existsSync(projectConfigPath(req.query.projectKey))) {
     res.json({state: 'complete', availability: 'occupied'}); return;
   }
   try { res.status(202).json(queryGitlab({action: 'availability', projectKey: req.query.projectKey, namespaceId: req.query.namespaceId})); }
@@ -346,14 +350,14 @@ app.post( "/config/project", authenticateJWT, async ( req, res ) => {
       catch (error) { res.status(400).json({message: error.message}); return; }
       console.log('Stopping intermediate Services...')
       const out = execSync('cd ../system; bash stop-intermediate.sh');
-      fs.writeFileSync(path.join(projectsDirectory(), '.'+ req.body.projectKey+'.env'),
+      fs.writeFileSync(projectConfigPath(req.body.projectKey),
         req.body.data);
       status.needRestart = true;
       res.status(200).json({message: 'New Project added.', status,
         output: out.toString()});
     }
   } catch (err) {
-    res.status(500).send(err);
+    res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
   }
 });
 
@@ -377,7 +381,7 @@ app.get( "/config/projects", authenticateJWT, async ( req, res ) => {
   }
     res.status(200).json(ret);
   } catch (e) {
-    res.status(500).send(e.toString());
+    res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
   }
 });
 
@@ -398,7 +402,7 @@ app.post( "/config/zip", authenticateJWT, async ( req, res ) => {
       res.sendStatus(400);
     }
   } catch (err) {
-    res.status(500).send(err)
+    res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
   }
 });
 
@@ -419,7 +423,7 @@ app.post( "/config/main", authenticateJWT, async ( req, res ) => {
       res.sendStatus(400);
     }
   } catch (err) {
-    res.status(500).send(err)
+    res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
   }
 });
 
@@ -433,13 +437,13 @@ app.delete( "/config/projects", authenticateJWT, async ( req, res ) => {
       res.status(200).json({message: "Deleting project configuration done.",
         status, output: out.toString() + out2.toString()});
     } catch (e) {
-      res.status(500).send(e.toString());
+      res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
     }
 });
 
 app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
   if (!fs.existsSync(mainConfigPath())) {
-     res.status(404).send('File does not exist.');
+     res.status(404).send('File does not exist.'); return;
   }
 
   try {
@@ -451,7 +455,7 @@ app.delete( "/config/main", authenticateJWT, async ( req, res ) => {
     res.status(200).json({ message: "Main config deleted.", status,
       output: out.toString()});
   } catch (e) {
-    res.status(500).send(e.toString());
+    res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
   }
 });
 
@@ -464,7 +468,7 @@ app.patch( "/command/system/patch", authenticateJWT, async ( req, res, next) => 
       res.status(200).json({ message: "Repository updated.", status,
         output: out.toString()});
     } catch (err) {
-      res.status(500).send(err.toString());
+      res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
     }
 });
 
@@ -478,7 +482,7 @@ app.patch( "/command/seed", authenticateJWT, async ( req, res ) => {
       res.status(200).json({ message: "Seed has been applied. Restarting system.", status,
         output: out.toString()});
     } catch (err) {
-      res.status(500).send(err.toString());
+      res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
     }
 });
 
@@ -490,7 +494,7 @@ app.patch( "/command/restart", authenticateJWT, async ( req, res, next ) => {
         output: out.toString()});
       next();
     } catch (err) {
-      res.status(500).send(err.toString());
+      res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
     }
 });
 
@@ -529,6 +533,11 @@ app.patch( "/command/runners/unregister", authenticateJWT, async ( req, res ) =>
       res.status(200).json({ message: "Runner unregistered.", status,
         output: out.toString() });
     } catch (err) {
-      res.status(500).send(err.toString());
+      res.status(500).json({message: 'The operation failed. Inspect the protected service logs.'});
     }
+});
+
+// Parser errors must not fall through to a development HTML/stack response.
+app.use((_error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (!res.headersSent) res.status(400).json({message: 'Invalid request.'});
 });

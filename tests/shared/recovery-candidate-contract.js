@@ -210,7 +210,7 @@ test('actual TLS probe validates its CA, SNI and host using Node 24 DNS lookup s
   }
   const server=https.createServer({cert:fs.readFileSync(cert),key:fs.readFileSync(key)},(req,res)=>{
     const host=req.headers.host.split(':')[0];assert.equal(req.socket.servername,host);
-    if(host===recovery.WIZARD_ALIAS){res.writeHead(308,{Location:'https://wizard.candidate.test'+req.url});res.end();}
+    if(host===recovery.WIZARD_ALIAS){assert.equal(req.url,recovery.ALIAS_ROUTE);res.writeHead(308,{Location:'https://wizard.candidate.test'+recovery.ALIAS_ROUTE});res.end();}
     else {assert.equal(host,'wizard.candidate.test');res.end('verified synthetic TLS');}
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -238,7 +238,7 @@ test('HTTP routing probe preserves the raw path/query and response Location with
   const {spawn}=require('node:child_process'),http=require('node:http');
   const server=http.createServer((req,res)=>{
     assert.equal(req.headers.host.split(':')[0],recovery.WIZARD_ALIAS);assert.equal(req.url,recovery.ALIAS_ROUTE);
-    res.writeHead(308,{Location:'https://wizard.candidate.test'+req.url});res.end();
+    res.writeHead(308,{Location:'https://wizard.candidate.test'+recovery.ALIAS_ROUTE});res.end();
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
   const candidate={inner:async(args,options)=>{

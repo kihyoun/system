@@ -1,4 +1,5 @@
 [
+  {"component":"sync","file":"sync/security-api.js","timeoutSeconds":30,"port":8071},
   {"component":"gitlab","file":"gitlab/root-password.js","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/startup.sh","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/application-templates.js","timeoutSeconds":20},
