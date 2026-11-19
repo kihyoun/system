@@ -454,6 +454,48 @@ collection. Ordinary smoke and ACME-only lifecycle budgets remain unchanged. A
 passing mocked adapter contract is not a successful real migration; use the
 complete platform CI gate for that proof.
 
+## Public release CLI upgrade acceptance
+
+`public-upgrade.js` extends the same restored candidate after GitLab migration
+and before its existing cold database rollback. Preparation selects the explicit
+previous public release from the upgrade graph, verifies its immutable images
+and source/job labels, and retains a clean target checkout with both releases'
+Git objects and Wizard gitlinks. No second platform is allocated.
+
+The stage runs the committed public CLI's actual `plan`, rejected unconfirmed
+`apply`, successful confirmed `apply`, and `status`. Apply retains independent
+previous-image archives and creates a native matching configuration ZIP and
+completed Seed. This needs one additional cold backup of the current service
+state: the earlier GitLab migration checkpoint contains the old database and
+cannot be that matching pair. The stage reattaches the same owned backup device,
+then fully detaches it before recovery. It reuses the preceding registry CI job;
+read-only identity, registry-tag, data-sample and runner checks create no extra
+jobs or repository commits.
+
+Before `recover`, both previous image IDs are removed and their original digest
+transport is disabled. A one-shot Compose failure interrupts the first native
+rollback after its critical journal/lease is retained. Status must show that
+checkpoint; the next recover must adopt it, load verified archives and select
+durable recovery aliases. Restarting the previous controller in a separate
+process must retain those selectors and pass status and data checks. The exact
+original fixture configuration and release profiles are restored before the
+existing database rollback continues. The final normal controller starts and
+passes authenticated Fetch after full physical backup detachment. Failed steps
+publish no upgrade success.
+
+A bounded 512-MiB/one-CPU helper reuses the declared GitLab image's embedded
+Python and the prepared controller's Docker/Compose binaries and musl loader.
+Its mounts belong only to the private daemon. Committed test adapters model
+Ubuntu/systemd and the host mount view, plus the not-yet-published target's
+public metadata and exact digest-to-prepared-image transport. Real public
+authority validation, source checks, backup, updater, leases, journals and
+recovery run unchanged. Previous-digest mapping stays disabled during archive
+recovery. Synthetic future publication inputs are never exported as release
+evidence. This fixture does not establish real systemd scheduling or verify a
+future public upload; production host and publication checks remain mandatory.
+Offline contracts verify the adapter boundaries; only the full native candidate
+stage supplies upgrade acceptance evidence.
+
 ## Postdeployment guided preview acceptance
 
 The [native guided preview acceptance tool](GUIDED_PREVIEW_ACCEPTANCE.md) checks

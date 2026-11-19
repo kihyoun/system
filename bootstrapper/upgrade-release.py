@@ -204,8 +204,8 @@ def plan(args, config):
             'baselineSha256': digest(successor.private_input(target / 'baseline.json')),
             'checkpoint': str(checkpoint), 'backupDestination': config['SEED_DIR'], 'configurationBackup': str(backup),
             'minimumFreeGiB': required // 1024 ** 3,
-            'affectedServices': ['controller', 'Sync', 'Wizard', 'GitLab', 'core proxies'],
-            'interruption': 'Cold matching backup pauses GitLab; controller/Sync, Wizard and core proxies may restart or be recreated during update. Wait for running CI jobs first.',
+            'affectedServices': ['controller', 'Sync', 'Wizard', 'GitLab', 'core proxies', 'runner managers'],
+            'interruption': 'Cold matching backup pauses GitLab; controller/Sync and Wizard restart. Core containers, including GitLab, proxies and runner managers, may be recreated when target Compose policies change. Service/database image and data selections stay pinned. Wait for running CI jobs first.',
             'recovery': 'Use this command with --operation recover and the same --plan-dir. Service/database images remain unchanged on these declared transitions.'}
         successor.atomic_json(target / 'plan.json', value)
         attempt['phase'] = 'passed'
@@ -394,7 +394,7 @@ def main():
                 updater.rollback(config, checkpoint, args.token_file, timeout=args.timeout,
                                  retained_images=(target, retained))
                 state.update(phase='rolled-back', databaseRewound=False, recoveryImageSelectors=True,
-                    originalConfiguration=str(checkpoint / 'main-before.env'), completedAt=runtime.now())
+                    restoredVersion=value['installedVersion'], originalConfiguration=str(checkpoint / 'main-before.env'), completedAt=runtime.now())
                 successor.atomic_json(state_file, state)
         backup_operation = json.loads(successor.private_input(target / 'backup-operation.json')) if (target / 'backup-operation.json').exists() else None
         if backup_operation:

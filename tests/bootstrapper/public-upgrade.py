@@ -227,6 +227,33 @@ class Authority(unittest.TestCase):
 
 
 class Host(unittest.TestCase):
+    def test_candidate_future_publication_passes_real_authority_with_exact_prepared_identities(self):
+        adapter = load('candidate_public_upgrade_host_fixture', ROOT / 'tests/e2e/public-upgrade-host.py')
+        metadata, proof, _ = fixture()
+        security = json.loads((ROOT / 'gitlab/security-release.json').read_bytes())
+        upgrade = proof['evidence']['evidence']['gitlabUpgrade']
+        upgrade.update(fromImage=security['fromImage'], toImage=security['toImage'],
+            runnerImage=security['runner']['toImage'], runnerVersion=security['runner']['toVersion'],
+            helperImage=security['runner']['helperImage'], jobCaBundleSha256=security['jobCaBundleSha256'],
+            runnerImageId='sha256:' + '5' * 64, fromRunnerImageId='sha256:' + '6' * 64,
+            helperImageId='sha256:' + '7' * 64, fromHelperImageId='sha256:' + '9' * 64,
+            securityTrustVerified=True, runnerUpgradeVerified=True, runnerManagerIdentityPreserved=False)
+        previous = copy.deepcopy(metadata)
+        previous.update(version='1.1.3', tag='v1.1.3')
+        source = metadata['source']
+        value = {'runId': 'f' * 24, 'previous': previous, 'gitlabUpgrade': upgrade,
+            'spec': {'sourceRevision': source['revision'], 'sourceTree': source['tree'],
+                'wizardSourceRevision': source['wizardRevision'], 'ciIdentity': {'projectId': 4, 'pipelineId': 17, 'candidateJobId': 29},
+                'images': {'candidate': {'id': metadata['images']['controller']['imageId']},
+                    'wizard': {'id': metadata['images']['wizard']['imageId']},
+                    'gitlab': {'id': upgrade['toImageId']}, 'runner': {'id': upgrade['runnerImageId']}}}}
+        target, raw_proof, _ = adapter.publication(value)
+        accepted = PublicReleaseAuthority(target, raw_proof, 'https://own-gitlab.example.invalid', security)
+        self.assertEqual(accepted.release['sourceRevision'], source['revision'])
+        self.assertEqual(accepted.release['candidateJobId'], 29)
+        self.assertEqual(accepted.release['imageId'], value['spec']['images']['candidate']['id'])
+        self.assertEqual(accepted.evidence['evidence']['publicUpgrade']['fromSourceRevision'], previous['source']['revision'])
+
     def test_nominal_8GiB_host_tolerates_kernel_reservation(self):
         metadata = {'platform': 'linux/amd64', 'compatibility': {'versions': ['24.04'], 'minimumMemoryGiB': 8}}
         with patch.object(tool.platform, 'freedesktop_os_release', return_value={'ID': 'ubuntu', 'VERSION_ID': '24.04'}), \

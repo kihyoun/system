@@ -21,9 +21,9 @@ async function attach(candidate) {
   await candidate.call(['exec',candidate.daemon,'sh','-ec',
     'test -d '+DEVICE+'; mkdir -p '+MOUNT+'; mount --bind '+DEVICE+' '+MOUNT+'; mkdir -p '+SEED]);
 }
-async function detach(candidate) {
+async function detach(candidate,{retainDevice=false}={}) {
   await candidate.call(['exec',candidate.daemon,'sh','-ec',
-    'umount '+MOUNT+'; umount '+DEVICE+'; rmdir '+MOUNT+' '+DEVICE]);
+    retainDevice?'umount '+MOUNT+'; rmdir '+MOUNT:'umount '+MOUNT+'; umount '+DEVICE+'; rmdir '+MOUNT+' '+DEVICE]);
   await assertAbsent(candidate);
 }
 async function assertAbsent(candidate) {

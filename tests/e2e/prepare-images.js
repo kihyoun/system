@@ -118,6 +118,7 @@ async function prepare(){
     const filename=path.join(output,role+'.tar');run(['image','save','--output',filename,reference]);images[role]={id,archive:filename};
   }
   const publicUpgrade=await require('./public-upgrade').prepare(output);
+  publicUpgrade.source=require('./public-upgrade').prepareSource(output,publicUpgrade.metadata);
   const acmeImages=acmeRenewalAcceptance?require('./prepare-acme-images').prepare(output):undefined;
   if(acmeRenewalAcceptance)require('./local-acme').validate({acmeImages});
   const spec={sourceRevision:process.env.CI_COMMIT_SHA,sourceTree,wizardSourceRevision:snapshot.sourceRevision,

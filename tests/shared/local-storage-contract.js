@@ -70,6 +70,13 @@ test('backup target detaches before absence verification and cleanup will not re
   assert.equal(removed,false);
 });
 
+test('public upgrade reuses the owned device while its configured backup target is detached',async()=>{
+  const calls=[],candidate={daemon:'owned',call:async args=>{calls.push(args);return calls.length===1?'':'absent';}};
+  await storage.detach(candidate,{retainDevice:true});
+  assert.equal(calls[0].at(-1),'umount /external-seed; rmdir /external-seed');
+  assert(calls[1].at(-1).includes('test ! -e /external-seed/seed'));
+});
+
 test('a failed payload refusal cannot publish acceptance or leave the corruption injected by its fixture',async()=>{
   const calls=[],candidate={daemon:'owned',stage:async(_name,action)=>action(),call:async args=>{calls.push(args);return args.includes('readlink')?'snapshots/completed':'';},inner:async args=>{
     if(args.at(-1)==='seed.sh'&&calls.some(call=>call.at(-1).includes('printf corrupt')))throw Error('docker-exec-failed');

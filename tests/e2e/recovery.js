@@ -382,7 +382,7 @@ async function bootstrapRestore(candidate,dependencies={}) {
     ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','bash','seed.sh'],
     {timeout:180000,failureCodes:SEED_RESTORE_FAILURE_CODES}));
   if(candidate.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(candidate);
-  await storageAdapter.detach(candidate);
+  await storageAdapter.detach(candidate,{retainDevice:!!candidate.spec.publicUpgrade});
   candidate.externalSeedRestored=true;
   // Execute the actual fresh-source host rewriter, using the already declared
   // GitLab image's embedded Python; never install/download an undeclared tool.
