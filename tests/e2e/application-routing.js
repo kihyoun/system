@@ -43,17 +43,46 @@ async function session(candidate,connection,dependencies={}){
   return {token,request:(path,data)=>projectRequest(candidate,request,path,data)};
 }
 async function upload(candidate,token,path,archive,fingerprint){
-  return controller(candidate,async function(input){
+  const result=await controller(candidate,async function(input){
     const fs=require('fs'),http=require('http'),boundary='application-routing-fixture';
     const body=Buffer.concat([Buffer.from('--'+boundary+'\r\nContent-Disposition: form-data; name="bootstrapper.zip"; filename="bootstrapper.zip"\r\nContent-Type: application/zip\r\n\r\n'),
       fs.readFileSync(input.archive),Buffer.from('\r\n'+(input.fingerprint?'--'+boundary+'\r\nContent-Disposition: form-data; name="impact"\r\n\r\n'+input.fingerprint+'\r\n':'')+'--'+boundary+'--\r\n')]);
-    return new Promise((resolve,reject)=>{
-      const req=http.request({host:'127.0.0.1',port:8071,path:input.path,method:'POST',timeout:150000,headers:{Authorization:'Bearer '+input.token,
+    let request,child,pending=true,readinessChecks=0,readinessFailed=false;
+    const applying=new Promise((resolve,reject)=>{
+      request=http.request({host:'127.0.0.1',port:8071,path:input.path,method:'POST',timeout:150000,headers:{Authorization:'Bearer '+input.token,
         'Content-Type':'multipart/form-data; boundary='+boundary,'Content-Length':body.length}},res=>{
-        let raw='';res.on('data',part=>raw+=part);res.on('end',()=>{try{resolve({status:res.statusCode,data:JSON.parse(raw)});}catch{reject(Error());}});
-      });req.on('error',reject);req.on('timeout',()=>req.destroy(Error()));req.end(body);
-    });
-  },{token,path,archive,fingerprint});
+        let raw='';res.on('data',part=>raw+=part);res.on('error',reject);
+        res.on('end',()=>{try{resolve({status:res.statusCode,data:JSON.parse(raw)});}catch{reject(Error());}});
+      });request.on('error',reject);request.on('timeout',()=>request.destroy(Error()));request.end(body);
+    }).finally(()=>{pending=false;});
+    // The outer Docker transport is synchronous. Observe readiness here in
+    // the controller's event loop while the actual HTTP Push is still pending.
+    const observing=input.observeReadiness?(async()=>{
+      while(pending){
+        try{
+          await new Promise((resolve,reject)=>{
+            child=require('child_process').execFile('docker',['exec','system_gitlab_1','curl','-fsS','--max-time','3',
+              '--output','/dev/null','http://127.0.0.1/-/readiness'],{timeout:5000,killSignal:'SIGKILL',maxBuffer:4096},error=>{
+              child=undefined;if(error)reject(Error());else resolve();
+            });
+          });
+        }catch{readinessFailed=true;request.destroy(Error());throw Error();}
+        if(pending)readinessChecks++;
+        if(pending)await new Promise(resolve=>setTimeout(resolve,100));
+      }
+    })():Promise.resolve();
+    let applied;
+    try{[applied]=await Promise.all([applying,observing]);}
+    catch(error){if(!readinessFailed)throw error;}
+    finally{
+      pending=false;request.destroy();if(child)child.kill('SIGKILL');
+      await Promise.allSettled([applying,observing]);
+    }
+    return readinessFailed?{readinessFailed:true,readinessChecks}:{...applied,readinessChecks};
+  },{token,path,archive,fingerprint,observeReadiness:path==='/config/zip'});
+  if(result.readinessFailed)throw Error('application-routing-gitlab-readiness-failed');
+  if(path==='/config/zip'&&!result.readinessChecks)throw Error('application-routing-no-concurrent-readiness-check');
+  return result;
 }
 async function snapshot(candidate){
   const names=(await candidate.inner(['ps','--format','{{.Names}}'])).split('\n').filter(Boolean).sort();
@@ -112,14 +141,8 @@ async function setup(candidate,connection={}){
     await candidate.inner(['exec','system_bootstrapper_1','node','/opt/system-bootstrapper/export-configuration.cjs','/tmp/application-routing-fetch.json','/tmp/application-routing.zip']);
     const plan=await upload(candidate,sync.token,'/config/impact','/tmp/application-routing.zip');
     if(plan.status!==200||plan.data.mode!=='routing'||JSON.stringify(plan.data.projects)!==JSON.stringify([PROJECT]))throw Error('application-routing-impact-mismatch');
-    let completed=false;
-    const applying=upload(candidate,sync.token,'/config/zip','/tmp/application-routing.zip',plan.data.fingerprint).then(result=>{completed=true;return {result};},error=>{completed=true;return {error};});
-    let readinessChecks=0;
-    while(!completed){
-      await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness']);readinessChecks++;
-      if(!completed)await new Promise(resolve=>setTimeout(resolve,100));
-    }
-    const outcome=await applying;if(outcome.error)throw outcome.error;const applied=outcome.result;
+    const applied=await upload(candidate,sync.token,'/config/zip','/tmp/application-routing.zip',plan.data.fingerprint);
+    const readinessChecks=applied.readinessChecks;
     if(!readinessChecks||applied.status!==200||applied.data.applyMode!=='routing'||applied.data.status.needRestart)throw Error('application-routing-push-restarted-platform');
     const after=await snapshot(candidate);
     assertPreserved(before,after);

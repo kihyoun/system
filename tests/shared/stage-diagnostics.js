@@ -104,6 +104,8 @@ const REASONS = new Set([
   'application-routing-fetch-required',
   'application-routing-impact-mismatch',
   'application-routing-push-restarted-platform',
+  'application-routing-gitlab-readiness-failed',
+  'application-routing-no-concurrent-readiness-check',
   'application-routing-existing-container-changed',
   'application-routing-existing-route-changed',
   'application-alias-redirect-failed',

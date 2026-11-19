@@ -85,3 +85,63 @@ test('failed and malformed native jobs stop immediately with bounded source-owne
     assert.equal(require('./stage-diagnostics').failureReason(code),code);
   }
 });
+test('the actual controller upload counts only readiness probes completed during Push and cleans up failed probes', async () => {
+  const vm=require('node:vm'),{EventEmitter}=require('node:events');
+  function transport(){
+    const events=[],probes=[];let request,response,started,exit;
+    const began=new Promise(resolve=>{started=resolve;});
+    const candidate={inner:async(args,options)=>{
+      assert.equal(args[0],'exec');assert(!args.join(' ').includes('private-fixture-token'));
+      return new Promise((resolve,reject)=>{
+        const stdin=new EventEmitter(),runtime={stdin,stdout:{write:resolve}};
+        Object.defineProperty(runtime,'exitCode',{set:value=>{exit=value;if(value)reject(Error('controller-program-failed'));}});
+        const http={request:(_options,callback)=>{
+          request=new EventEmitter();response=new EventEmitter();response.statusCode=200;
+          request.end=()=>{events.push('push-started');callback(response);started();};
+          request.destroy=error=>{if(error){events.push('push-aborted');request.emit('error',error);}};
+          return request;
+        }};
+        const childProcess={execFile:(command,args,limits,callback)=>{
+          assert.equal(command,'docker');assert.deepEqual(Array.from(args),['exec','system_gitlab_1','curl','-fsS','--max-time','3',
+            '--output','/dev/null','http://127.0.0.1/-/readiness']);
+          assert.equal(limits.timeout,5000);assert.equal(limits.killSignal,'SIGKILL');assert.equal(limits.maxBuffer,4096);
+          events.push('probe-started');
+          const child={kill:signal=>{assert.equal(signal,'SIGKILL');events.push('probe-killed');queueMicrotask(()=>callback(Error('private-child-output')));}};
+          probes.push({complete:error=>{events.push(error?'probe-failed':'probe-completed');callback(error);},child});
+          return child;
+        }};
+        vm.runInNewContext(args.at(-1),{process:runtime,Buffer,setTimeout,require:name=>
+          name==='fs'?{readFileSync:()=>Buffer.from('owned-configuration-zip')}:name==='http'?http:name==='child_process'?childProcess:require(name)});
+        stdin.emit('data',options.input);stdin.emit('end');
+      });
+    }};
+    return {candidate,events,probes,began,get exit(){return exit;},
+      finish:()=>{events.push('push-completed');response.emit('data',JSON.stringify({applyMode:'routing',status:{needRestart:false}}));response.emit('end');},
+      fail:()=>request.emit('error',Error('private-request-output'))};
+  }
+  for(const mode of ['during','after','probe-failure','request-failure','impact']){
+    const f=transport(),pending=application.upload(f.candidate,'private-fixture-token',mode==='impact'?'/config/impact':'/config/zip','/tmp/owned.zip','reviewed-fingerprint');
+    await f.began;
+    if(mode==='impact'){
+      assert.equal(f.probes.length,0);f.finish();assert.equal((await pending).readinessChecks,0);continue;
+    }
+    assert.equal(f.probes.length,1);
+    if(mode==='during'){
+      f.probes[0].complete();await Promise.resolve();f.finish();
+      const applied=await pending;assert.equal(applied.status,200);assert.equal(applied.readinessChecks,1);
+      assert(f.events.indexOf('probe-completed')<f.events.indexOf('push-completed'));
+    }else if(mode==='after'){
+      f.finish();await Promise.resolve();f.probes[0].complete();
+      await assert.rejects(pending,/^Error: application-routing-no-concurrent-readiness-check$/);
+    }else if(mode==='probe-failure'){
+      f.probes[0].complete(Error('private-readiness-failure-output'));
+      await assert.rejects(pending,/^Error: application-routing-gitlab-readiness-failed$/);
+      assert(f.events.includes('push-aborted'));
+    }else{
+      f.fail();await assert.rejects(pending,/^Error: controller-program-failed$/);assert(f.events.includes('probe-killed'));assert.equal(f.exit,1);
+    }
+    assert.equal(f.probes.length,1,'no probes run after request completion');
+  }
+  for(const code of ['application-routing-no-concurrent-readiness-check','application-routing-gitlab-readiness-failed'])
+    assert.equal(require('./stage-diagnostics').failureReason(code),code);
+});
