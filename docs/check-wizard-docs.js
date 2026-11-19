@@ -6,6 +6,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 function check(root) {
+  if (!fs.readFileSync(path.join(root, 'bootstrapper/upgrade-paths.json')).equals(
+    fs.readFileSync(path.join(root, 'wizard/src/docs/upgrade-paths.json'))))
+    throw Error('Bundled Wizard migration metadata is stale; regenerate from repository sources.');
   const content = JSON.parse(fs.readFileSync(path.join(root, 'wizard/src/docs/content.json'), 'utf8'));
   if (!content || !Array.isArray(content.chapters) || !content.sources ||
       !Object.keys(content.sources).length || new Set(content.chapters.map(c => c.id)).size !== content.chapters.length)

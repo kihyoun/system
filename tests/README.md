@@ -227,6 +227,25 @@ Registry digest, pull/run and artifact checks remain required; those paths do
 not claim attestation verification. Other candidate-image metadata behavior is
 unchanged.
 
+## Static security scanning
+
+Runtime merge requests and default-branch builds run the required `test:codeql`
+job alongside the component checks. It scans the committed System source and
+exact Wizard gitlink using CodeQL 2.27.4 and its official default JavaScript/
+TypeScript code-scanning suite. No rules, paths or old findings are suppressed.
+The pinned public CLI bundle is checksum-verified before use. The scan child has
+no network, Docker socket or credentials and cannot run application builds.
+
+`node tests/prepare-codeql.js` packages committed inputs after the ordinary Wizard
+source preparation. `sh tests/ci-codeql.sh` runs that verified context on the
+selected trusted Docker runner with its ordinary CI identity variables. The
+child is bounded to 6 GiB RAM and two CPUs; image preparation and scanning each
+have a 15-minute ceiling. This static job does not start a disposable platform.
+SARIF results, extraction coverage, source identities and cleanup evidence are
+retained under `test-results/codeql/`. Missing coverage or any finding fails the
+job. Broader quality suites can be run separately for triage; their additional
+heuristics are not equivalent to this default security gate.
+
 ## Explicit live adapters
 
 Scripts under `*/live/` require an operator-prepared disposable platform. Several

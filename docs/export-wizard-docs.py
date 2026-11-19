@@ -13,6 +13,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "wizard/src/docs/content.json"
+UPGRADE_GRAPH = ROOT / "bootstrapper/upgrade-paths.json"
+UPGRADE_OUTPUT = ROOT / "wizard/src/docs/upgrade-paths.json"
 
 
 def slug(text):
@@ -209,13 +211,17 @@ def main():
     parser.add_argument("--check", action="store_true", help="fail when the committed Wizard content differs")
     args = parser.parse_args()
     content = json.dumps(build(), ensure_ascii=False, indent=2) + "\n"
+    upgrade_graph = UPGRADE_GRAPH.read_bytes()
     if args.check:
         if not OUTPUT.is_file() or OUTPUT.read_text() != content:
             parser.exit(1, "Wizard docs are stale. Run python3 docs/export-wizard-docs.py and commit the generated content.\n")
+        if not UPGRADE_OUTPUT.is_file() or UPGRADE_OUTPUT.read_bytes() != upgrade_graph:
+            parser.exit(1, "Wizard migration metadata is stale. Regenerate the bundled documentation.\n")
         print("Wizard documentation matches repository sources.")
     else:
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)
         OUTPUT.write_text(content)
+        UPGRADE_OUTPUT.write_bytes(upgrade_graph)
         print(f"Exported {len(json.loads(content)['chapters'])} chapters to {OUTPUT.relative_to(ROOT)}")
 
 
