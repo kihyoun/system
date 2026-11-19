@@ -1211,6 +1211,13 @@ message in an existing chat. Check each run's time, exit result and log: an old
 `latest.md` is not evidence of a new successful run. See the official
 [Codex non-interactive documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
 
+### Host compatibility and container logs
+
+Use [container compatibility and bounded logs](HOST_OPERATIONS.md) before choosing
+MongoDB images or planning kernel maintenance, and when configuring or verifying
+Docker log retention. It covers Ubuntu upstream-kernel evidence, CPU/image failure
+diagnoses, size/count rotation, preserved configuration and deliberate recreation.
+
 ## Replace a host while retaining its data volume
 
 This section is the explicit volume-backed reuse path. For fresh local working
@@ -1709,6 +1716,8 @@ to the shared instance pool.
 | Startup reports missing persistent storage | Check the selected mode and directory; mount an explicitly selected live volume instead of changing modes to bypass its guard |
 | A pipeline waits for its runner after a GitLab restart | Register checks the pool and updates managed internal IP endpoints to the stable Docker service name |
 | A pipeline cannot resolve `registry.localhost` | Run `sudo bash bootstrapper/prepare-local.sh` again in Ubuntu; WSL may reset local hosts entries at startup |
+| MongoDB fails before database initialization | Run `bootstrapper/container-preflight.py` on the daemon host; distinguish CPU, Ubuntu upstream kernel and image execution using the [host operations guide](HOST_OPERATIONS.md) |
+| Container logs have no verified rotation | Inspect the exact containers with `bootstrapper/log-policy.py`; apply and verify the bounded policy through a deliberate deployment, with no assumed maximum age |
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
 
 See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
@@ -2192,10 +2201,3 @@ gates. In this chapter, autonomous execution means carrying out the authorized
 version transition and its verification using repository-owned tools. Choosing
 arbitrary improvements and recursively promoting them without acceptance remains
 a separate capability that must not be inferred from a successful patch upgrade.
-
-## Host compatibility and container logs
-
-Use [container compatibility and bounded logs](HOST_OPERATIONS.md) before choosing
-MongoDB images or planning kernel maintenance, and when configuring or verifying
-Docker log retention. It covers Ubuntu upstream-kernel evidence, CPU/image failure
-diagnoses, size/count rotation, preserved configuration and deliberate recreation.

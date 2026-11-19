@@ -140,6 +140,7 @@ A source import installs source. A build produces a candidate. Review and Beta a
     guides = [
         ("docs/DEVELOPMENT_PREVIEWS.md", "development-previews", "8.13 Set up development previews", "Evolution"),
         ("docs/COORDINATED_BACKUP.md", "coordinated-backup", "7.3 Coordinated backup", "Recovery"),
+        ("docs/HOST_OPERATIONS.md", "host-operations", "6.4 Host workload compatibility and logs", "Operations"),
         ("docs/TOKEN_EXPIRY.md", "token-expiry", "6.2 Credential expiry", "Operations"),
         ("docs/SYSTEM_DIAGNOSTICS.md", "system-diagnostics", "6.3 System diagnostics", "Operations"),
         ("docs/DEPENDENCY_SECURITY.md", "dependency-security", "8.12 Dependency security", "Evolution"),
@@ -171,6 +172,7 @@ A source import installs source. A build produces a candidate. Review and Beta a
     contexts = {
         "development-previews": ("Healthy GitLab, registry and runners; selected source projects, exact preview DNS names and certificates.", "Explicit setup creates verified preview bindings while the accepted Production image remains selected."),
         "coordinated-backup": ("A configured platform and the selected mounted external backup medium with sufficient free space.", "A native Harvest and matching configuration ZIP form two independently retained recovery inputs."),
+        "host-operations": ("Access to the Linux x86_64 Docker daemon host and the selected immutable workload images.", "You distinguish CPU, upstream-kernel and image failures and verify bounded logs with preserved settings."),
         "token-expiry": ("An authenticated Sync connection and explicit automation project paths in saved configuration.", "Known expiry dates and honest unknown states guide renewal without exposing or rotating credentials."),
         "system-diagnostics": ("An authenticated Sync connection and configured registry, helper image and managed runner pool.", "Bounded server checks and an optional explicit Docker pull distinguish connectivity from authentication and image availability."),
         "guided-preview-acceptance": ("A retained installation identity, matching native controller/source, TLS hosts and runner prerequisites are available.", "Native acceptance verifies import, MR and merged-default checks plus Review/Beta lifecycles while Production stays unchanged."),
