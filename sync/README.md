@@ -19,7 +19,7 @@ TypeScript's non-strict defaults are explicit; `noImplicitAny`
 remains enabled. Multipart uploads accept one file per expected field and reject
 multiple files with HTTP 400.
 
-The compiler is TypeScript 6.0.3 because typescript-eslint 8.71.2 currently
+The compiler is TypeScript 6.0.3 because typescript-eslint 8.72.2 currently
 supports TypeScript versions below 6.1. Keep compiler upgrades compatible with the lint toolchain. Express 5.3.0, jsonwebtoken 9.0.3 and
 Node-24 type definitions are pinned with the other direct dependencies.
 
@@ -36,9 +36,10 @@ and uses temporary configuration only. Other component suites cover default
 Wizard registration, project provisioning, suggestions and signature checks.
 See [the test guide](../tests/README.md) for the isolated component runner.
 
-CryptoJS 4.2.0 is retained for protocol compatibility. Authentication changes
-must preserve existing clients or provide an explicit migration; updating the
-runtime alone does not redesign that protocol. Run `npm audit` against the
+Node’s built-in cryptographic random generator creates ephemeral signing secrets
+and fallback credentials; CryptoJS is no longer required. The existing JWT login
+and refresh API remains compatible. Authentication changes must preserve existing
+clients or provide an explicit migration. Run `npm audit` against the
 lockfile when reviewing dependencies; advisory results depend on their date.
 
 ## Configuration Push and restart

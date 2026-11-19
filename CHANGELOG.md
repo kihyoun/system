@@ -10,6 +10,24 @@ one accepted System source revision and tested controller/Wizard image attempt.
 - Upgrade supported official releases through a deliberate public preflight and
   paired controller/Wizard update, retaining matching backups and recovery inputs.
 - Select installed and target versions in the offline Wizard Docs migration guide.
+- Configure exact application aliases with canonical redirects, preserved request
+  paths and query strings, TLS coverage and direct HTTP-01 challenge handling.
+- Review configuration Push impact and apply application-only routing edits
+  without restarting GitLab or existing application containers.
+- Inspect host CPU/kernel compatibility for selected MongoDB images and configure
+  bounded Docker logging for platform services, proxies, runners and new projects.
+
+### Security and verification
+
+- Restrict browser origins, bound Sync request and authentication attempts, harden
+  configuration/backup paths and return structured errors without stack traces.
+- Replace deprecated CryptoJS with Node's built-in secure random generator and
+  update compatible Sync lint/upload dependencies.
+- Require pinned, isolated CodeQL analysis with complete source coverage and no
+  findings before accepting new runtime releases.
+- Extend the existing candidate checks for application routing, backup/recovery,
+  certificate renewal and bounded log rotation; retain the mandatory merge gates.
+- Update the complete English, German and Korean Wizard documentation.
 
 ## 1.1.3
 
