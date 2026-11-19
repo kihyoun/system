@@ -80,10 +80,11 @@ async function setup(candidate,connection={}){
     // Exercise stable Production/Beta application images while only Review
     // routing and the Production alias change through the native Wizard export.
     for(const [environment,host]of [['prod',APP_HOST],['beta',BETA_HOST]])
-      await candidate.inner(['run','-d','--name','application-routing-'+environment,'--network',PROJECT+'_'+environment,'--env','VIRTUAL_HOST='+host,'nginx:latest']);
+      await candidate.inner(['run','--pull','never','-d','--name','application-routing-'+environment,'--network',PROJECT+'_'+environment,'--env','VIRTUAL_HOST='+host,'nginx:latest']);
     const {tlsProbe,httpProbe}=require('./recovery');
     await candidate.wait(async()=>{const prod=await tlsProbe(candidate,APP_HOST,'/',{},connection),beta=await httpProbe(candidate,BETA_HOST,'/',{},connection);return prod.status===200&&beta.status===200;},30000);
     const before=await snapshot(candidate);
+    for(const environment of ['prod','beta'])if(before['/application-routing-'+environment]?.image!==candidate.spec.images.nginx.id)throw Error('application-routing-preloaded-image-mismatch');
     const fetched=await require('./recovery').syncFetch(candidate,connection);
     const application=fetched.projects.find(file=>file.filename==='.'+PROJECT+'.env');
     if(!application)throw Error('application-routing-fetch-required');
@@ -106,6 +107,8 @@ async function setup(candidate,connection={}){
     for(const [probe,host]of [[tlsProbe,APP_HOST],[httpProbe,BETA_HOST]])if((await probe(candidate,host,'/',{},connection)).status!==200)throw Error('application-routing-existing-route-changed');
     await verify(candidate,connection);
     await candidate.inner(['restart','system_web_1']);await verify(candidate,connection);
+    const unchangedDuringProxyRestart=Object.fromEntries(Object.entries(after).filter(([name])=>name!=='/system_web_1'));
+    assertPreserved(unchangedDuringProxyRestart,await snapshot(candidate));
     candidate.evidence.applicationRouting={selectivePush:true,gitlabIdentityPreserved:true,existingContainersPreserved:true,readinessChecks,aliasHttp01Verified:true,proxyRestartVerified:true};
     await controller(candidate,function(){const fs=require('fs');for(const file of ['/tmp/application-routing-fetch.json','/tmp/application-routing.zip'])fs.rmSync(file,{force:true});},{});
   });
