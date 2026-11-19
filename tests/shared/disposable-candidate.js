@@ -449,8 +449,12 @@ delivery-must-not-run:
           const {url,options}=JSON.parse(input);
           const request=http.request(url,{method:options.method||'GET',headers:options.headers,
             signal:AbortSignal.timeout(10000)},response=>{
+            const trace=(options.method||'GET')==='GET'&&/^\/api\/v4\/projects\/[1-9][0-9]*\/jobs\/[1-9][0-9]*\/trace$/.test(new URL(url).pathname);
             const chunks=[];let size=0;
-            response.on('data',chunk=>{size+=chunk.length;if(size>524288)request.destroy();else chunks.push(chunk);});
+            response.on('data',chunk=>{
+              if(trace){chunks.splice(0,chunks.length,Buffer.from(Buffer.concat([...chunks,chunk]).subarray(-65536)));return;}
+              size+=chunk.length;if(size>524288)request.destroy();else chunks.push(chunk);
+            });
             response.on('error',()=>{process.exitCode=1;});
             response.on('end',()=>{if(size<=524288)process.stdout.write(JSON.stringify({status:response.statusCode,body:Buffer.concat(chunks).toString('utf8')}));else process.exitCode=1;});
           });

@@ -411,7 +411,11 @@ async function routingProbe(candidate,host,route,options={},connection={}) {
         ...(input.tls?{servername:input.host,ca:fs.readFileSync(input.certificate),rejectUnauthorized:true}:{}),
         method:input.options.method||'GET',headers:input.options.headers||{},timeout:input.timeoutMilliseconds},response=>{
         const serial=input.tls?response.socket.getPeerCertificate().serialNumber:undefined;
-        const chunks=[];let size=0;response.on('data',chunk=>{size+=chunk.length;if(size>524288){request.destroy();reject(Error());}else chunks.push(chunk);});
+        const trace=(input.options.method||'GET')==='GET'&&/^\/api\/v4\/projects\/[1-9][0-9]*\/jobs\/[1-9][0-9]*\/trace$/.test(input.route);
+        const chunks=[];let size=0;response.on('data',chunk=>{
+          if(trace){chunks.splice(0,chunks.length,Buffer.from(Buffer.concat([...chunks,chunk]).subarray(-65536)));return;}
+          size+=chunk.length;if(size>524288){request.destroy();reject(Error());}else chunks.push(chunk);
+        });
         response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,body:Buffer.concat(chunks).toString('utf8'),serial}));
       });
       request.on('error',reject);request.on('timeout',()=>request.destroy(Error()));

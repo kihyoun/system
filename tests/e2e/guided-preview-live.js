@@ -34,7 +34,23 @@ function readInput(filename) {
   acceptance.settings({id:'a'.repeat(24),spec:{operatorAcceptance:true,guidedPreviewAcceptance:true,guidedPreviewSettings:input.settings}});
   return input;
 }
-const requestScript=`let raw='';process.stdin.on('data',part=>raw+=part);process.stdin.on('end',()=>{try{const input=JSON.parse(raw),url=new URL(input.url);if(url.protocol!=='https:'||!Number.isSafeInteger(input.timeoutMilliseconds)||input.timeoutMilliseconds<1||input.timeoutMilliseconds>300000)throw Error();const transport=require('node:https');const req=transport.request(url,{...input.options,signal:AbortSignal.timeout(input.timeoutMilliseconds)},res=>{let body='';res.on('data',part=>{body+=part;if(body.length>8000000)req.destroy();});res.on('error',()=>process.exitCode=1);res.on('end',()=>process.stdout.write(JSON.stringify({status:res.statusCode,body})));});req.on('error',()=>process.exitCode=1);req.end(input.options.body); }catch{process.exitCode=1;}});`;
+const requestScript='('+function(){
+  let raw='';process.stdin.on('data',part=>raw+=part);process.stdin.on('end',()=>{try{
+    const input=JSON.parse(raw),url=new URL(input.url);
+    if(url.protocol!=='https:'||!Number.isSafeInteger(input.timeoutMilliseconds)||input.timeoutMilliseconds<1||input.timeoutMilliseconds>300000)throw Error();
+    const trace=(input.options.method||'GET')==='GET'&&/^\/api\/v4\/projects\/[1-9][0-9]*\/jobs\/[1-9][0-9]*\/trace$/.test(url.pathname);
+    const transport=require('node:https');
+    const req=transport.request(url,{...input.options,signal:AbortSignal.timeout(input.timeoutMilliseconds)},res=>{
+      let body='';const chunks=[];
+      res.on('data',part=>{
+        if(trace){chunks.splice(0,chunks.length,Buffer.from(Buffer.concat([...chunks,part]).subarray(-65536)));return;}
+        body+=part;if(body.length>8000000)req.destroy();
+      });
+      res.on('error',()=>process.exitCode=1);
+      res.on('end',()=>process.stdout.write(JSON.stringify({status:res.statusCode,body:trace?Buffer.concat(chunks).toString('utf8'):body})));
+    });req.on('error',()=>process.exitCode=1);req.end(input.options.body);
+  }catch{process.exitCode=1;}});
+}.toString()+')()';
 class Operator {
   constructor(input,{command=spawnSync,now=()=>Date.now(),sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}) {
     this.input=input;this.command=command;this.now=now;this.sleep=sleep;this.id=crypto.randomBytes(12).toString('hex');

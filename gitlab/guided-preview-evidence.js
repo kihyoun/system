@@ -10,6 +10,17 @@ const positive=value=>Number.isSafeInteger(value)&&value>0;
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const image=value=>typeof value==='string'&&/^sha256:[a-f0-9]{64}$/.test(value);
+const diagnostics=require('./job-diagnostics');
+const pipelineStatuses=['created','pending','running','success','failed','canceled','skipped','manual','scheduled','waiting_for_resource','preparing'];
+function jobDetails(job) {
+  const clean={};
+  if(positive(job.runnerId))clean.runnerId=job.runnerId;
+  if(positive(job.pipelineId))clean.pipelineId=job.pipelineId;
+  if(sha(job.sourceCommit))clean.sourceCommit=job.sourceCommit;
+  if(diagnostics.failureReason(job.failureReason))clean.failureReason=diagnostics.failureReason(job.failureReason);
+  const diagnostic=diagnostics.sanitize(job.diagnostics);if(diagnostic)clean.diagnostics=diagnostic;
+  return clean;
+}
 function sanitize(value) {
   if(!value||typeof value!=='object')return undefined;
   const clean={};
@@ -18,6 +29,17 @@ function sanitize(value) {
   if(image(value.productionImageId))clean.productionImageId=value.productionImageId;
   if(typeof value.betaEnabled==='boolean')clean.betaEnabled=value.betaEnabled;
   if(typeof value.credentialCleanupUncertain==='boolean')clean.credentialCleanupUncertain=value.credentialCleanupUncertain;
+  if(value.setup&&typeof value.setup==='object'){
+    const setup={};
+    if(['not-started','preflight','source-registration','waiting-build','binding','environments','ready','needs-inspection','needs-attention'].includes(value.setup.phase))setup.phase=value.setup.phase;
+    if(['running','complete','completed','failed'].includes(value.setup.state))setup.state=value.setup.state;
+    if(typeof value.setup.uncertain==='boolean')setup.uncertain=value.setup.uncertain;
+    if(['preview-source-push','preview-setup-project','preview-setup-revoke','preview-setup-system'].includes(value.setup.uncertainAction))setup.uncertainAction=value.setup.uncertainAction;
+    if(diagnostics.setupFailureCode(value.setup.failureCode))setup.failureCode=value.setup.failureCode;
+    for(const key of ['projectId','pipelineId'])if(positive(value.setup[key]))setup[key]=value.setup[key];
+    if(pipelineStatuses.includes(value.setup.pipelineStatus))setup.pipelineStatus=value.setup.pipelineStatus;
+    if(Object.keys(setup).length)clean.setup=setup;
+  }
   if(Array.isArray(value.previousProjectIds))clean.previousProjectIds=value.previousProjectIds.filter(positive).slice(0,100);
   if(value.productionRetained){const retained={};if(hash(value.productionRetained.mainSha256))retained.mainSha256=value.productionRetained.mainSha256;
     if(image(value.productionRetained.runningImage))retained.runningImage=value.productionRetained.runningImage;clean.productionRetained=retained;}
@@ -27,10 +49,11 @@ function sanitize(value) {
     for(const key of ['projectId','systemProjectId','pipelineId','mergeRequestIid'])if(positive(row[key]))item[key]=row[key];
     for(const key of ['sourceCommit','mergeCommit'])if(sha(row[key]))item[key]=row[key];
     if(['push','merge_request_event'].includes(row.source))item.source=row.source;
+    if(pipelineStatuses.includes(row.pipelineStatus))item.pipelineStatus=row.pipelineStatus;
     for(const key of ['merged','normalGate','artifactsVerified'])if(typeof row[key]==='boolean')item[key]=row[key];
     if(image(row.imageDigest))item.imageDigest=row.imageDigest;
-    if(Array.isArray(row.jobs))item.jobs=row.jobs.filter(job=>job&&positive(job.id)&&requiredJobs.includes(job.name)&&['success','failed','canceled','skipped','running','pending'].includes(job.status))
-      .map(job=>({id:job.id,name:job.name,status:job.status,...(positive(job.runnerId)?{runnerId:job.runnerId}:{})}));
+    if(Array.isArray(row.jobs))item.jobs=row.jobs.filter(job=>job&&positive(job.id)&&requiredJobs.includes(job.name)&&pipelineStatuses.includes(job.status)).slice(0,8)
+      .map(job=>({id:job.id,name:job.name,status:job.status,...jobDetails(job)}));
     for(const action of ['deploy','stop']) {
       const job=row[action];if(job&&positive(job.id)&&job.name===action+':'+context&&['manual','success','failed','canceled','running','pending'].includes(job.status))
         item[action]={id:job.id,name:job.name,status:job.status,...(positive(job.runnerId)?{runnerId:job.runnerId}:{})};
