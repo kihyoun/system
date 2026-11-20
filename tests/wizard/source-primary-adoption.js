@@ -480,6 +480,41 @@ async function bindingRefresh(f) {
   nativeApiOutput=JSON.stringify({id:42,token:'private-fixture-bootstrap'});await nativeApi.bootstrap(nativeApiContext,'f'.repeat(48));
   const bootstrapCall=nativeApiCalls.at(-1);assert(bootstrapCall.args.includes('gitlab-rails'));assert(bootstrapCall.options.input.includes('admin.personal_access_tokens.create!'));
   assert(!bootstrapCall.args.includes('private-fixture-bootstrap'));
+  const {GitlabAuthJournalService}=require('../../operations/dist/gitlab-provision/auth-journal.service');
+  const {GitlabAuthBootstrapService}=require('../../operations/dist/gitlab-provision/auth-bootstrap.service');
+  const authDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-auth-journal-'));
+  try {
+    const journals=new GitlabAuthJournalService();let creations=0, loseBootstrap=true, revoked=false, loseRevocation=true, expectedName;
+    const bootstrapApi={async bootstrap(context,operation){creations++;expectedName='system-bootstrapper-initial-'+operation;
+      assert.equal(JSON.parse(fs.readFileSync(path.join(authDirectory,'system-bootstrapper-auth/journal.json'))).phase,'bootstrap-requested');
+      if(loseBootstrap)throw Object.assign(Error('lost response'),{uncertain:true});
+      return {id:42,userId:1,token:'temporary-private-token',name:expectedName,expiresAt:'2026-11-21'};
+    },async request(context,token,method,route){
+      assert.equal(token,'replacement-private-token');
+      if(route==='user')return {status:200,value:{id:7,is_admin:true,state:'active'}};
+      if(route==='personal_access_tokens/self')return {status:200,value:{id:43,user_id:7,active:true,revoked:false,scopes:['api'],expires_at:'2027-02-01'}};
+      assert.equal(route,'personal_access_tokens/42');
+      if(method==='DELETE'){revoked=true;if(loseRevocation)throw Object.assign(Error('lost revocation'),{uncertain:true});return {status:204,value:null};}
+      return {status:200,value:{id:42,user_id:1,name:expectedName,revoked}};
+    }};
+    const lifecycle=new GitlabAuthBootstrapService(journals,bootstrapApi);
+    await assert.rejects(()=>lifecycle.initial(nativeApiContext,authDirectory),/lost response/);
+    await assert.rejects(()=>lifecycle.initial(nativeApiContext,authDirectory),/reconciliation-required/);
+    assert.equal(creations,1,'lost response must not mint another token');
+    const journalPath=path.join(authDirectory,'system-bootstrapper-auth/journal.json');
+    assert.equal(fs.statSync(path.dirname(journalPath)).mode&0o777,0o700);assert.equal(fs.statSync(journalPath).mode&0o777,0o600);
+    // An independent fresh installation completes; interrupted revocation resumes by readback.
+    fs.unlinkSync(journalPath);loseBootstrap=false;
+    const started=await lifecycle.initial(nativeApiContext,authDirectory);assert.equal(started.phase,'bootstrap-received');
+    const replacement={id:43,userId:7,token:'replacement-private-token',expiresAt:'2027-02-01'};
+    await assert.rejects(()=>lifecycle.complete(nativeApiContext,authDirectory,replacement),/lost revocation/);
+    assert.equal(JSON.parse(fs.readFileSync(journalPath)).phase,'replacement-verified');
+    await lifecycle.complete(nativeApiContext,authDirectory,replacement);
+    const ready=JSON.parse(fs.readFileSync(journalPath));assert.equal(ready.phase,'ready');assert(!ready.bootstrap);assert(!fs.readFileSync(journalPath,'utf8').includes('temporary-private-token'));
+    fs.chmodSync(journalPath,0o644);await assert.rejects(()=>lifecycle.initial(nativeApiContext,authDirectory),/private-state-invalid/);fs.chmodSync(journalPath,0o600);
+    await journals.withJournal(authDirectory,async()=>{await assert.rejects(()=>journals.withJournal(authDirectory,async()=>{}),/mutex is busy/);});
+    fs.unlinkSync(journalPath);fs.symlinkSync('/dev/null',journalPath);await assert.rejects(()=>lifecycle.initial(nativeApiContext,authDirectory),/private-state-invalid/);
+  } finally {fs.rmSync(authDirectory,{recursive:true,force:true});}
   // Shared typed activation: the same reservation survives uncertain writes.
   const {SourcePrimaryActivationService} = require('../../operations/dist/gitlab-provision/source-primary-activation.service');
   const activationService = new SourcePrimaryActivationService();
