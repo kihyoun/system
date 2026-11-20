@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { ProcessFailure } from './process';
 export interface ChildOptions {
@@ -5,6 +6,8 @@ export interface ChildOptions {
   env: NodeJS.ProcessEnv;
   signal?: AbortSignal;
   input?: string;
+  /** Stream a regular file directly to stdin without buffering an archive in memory. */
+  inputFile?: string;
   /** null is reserved for foreground services, which have no wall-clock deadline. */
   timeout: number | null;
   maxBuffer?: number;
@@ -23,13 +26,30 @@ export class ManagedChildProcess implements LifecycleProcess {
     if (options.signal?.aborted)
       return Promise.reject(new ProcessFailure(binary, null, 'SIGTERM', true));
     return new Promise((resolve, reject) => {
-      const child = spawn(binary, [...args], {
-        cwd: options.cwd,
-        env: options.env,
-        detached: !options.inheritGroup,
-        shell: false,
-        stdio: ['pipe', options.inherit ? 'inherit' : 'pipe', options.inherit ? 'inherit' : 'pipe'],
-      });
+      if (options.inputFile && options.input !== undefined) throw Error('ambiguous-process-input');
+      const inputFd = options.inputFile
+        ? fs.openSync(options.inputFile, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
+        : undefined;
+      if (inputFd !== undefined && !fs.fstatSync(inputFd).isFile()) {
+        fs.closeSync(inputFd);
+        throw Error('regular-process-input-required');
+      }
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn(binary, [...args], {
+          cwd: options.cwd,
+          env: options.env,
+          detached: !options.inheritGroup,
+          shell: false,
+          stdio: [
+            inputFd ?? 'pipe',
+            options.inherit ? 'inherit' : 'pipe',
+            options.inherit ? 'inherit' : 'pipe',
+          ],
+        });
+      } finally {
+        if (inputFd !== undefined) fs.closeSync(inputFd);
+      }
       let output = '',
         bytes = 0,
         uncertain = false,
