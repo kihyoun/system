@@ -57,3 +57,24 @@ GitHub provides the public source and accepted release documentation.
 The [operation architecture and entry-point inventory](ARCHITECTURE.md) maps
 API/CLI compatibility paths, privileges, durable ownership, native boundaries,
 focused tests and failure/recovery responsibilities across the platform.
+
+Portable project CI jobs can carry `wizard/.gitlab/runtime/project-ci.cjs` from
+an exact source snapshot. This bundle creates the same `ProjectCiModule` standalone
+Nest context and invokes its browser, environment and mirror services. It does not
+fetch an npm runtime at job execution. Run with the pinned Node version; native
+Docker/Git/SSH tools remain explicit job prerequisites. The accompanying
+`LICENSES.txt` contains the bundled dependency licenses.
+
+After preparing the pinned Wizard and operations dependencies, rebuild and verify
+this source artifact from the compiled operations runtime:
+
+```sh
+npm --prefix operations run build
+node operations/scripts/bundle-project-ci.mjs
+node operations/scripts/bundle-project-ci.mjs --check
+node --test operations/tests/project-ci-portable.test.cjs
+```
+
+The check compares both runtime bytes and license notices. Source producers must
+include these exact committed files in their approved source manifest; copying a
+bundle from another candidate does not establish matching source provenance.
