@@ -101,12 +101,12 @@ Seed 백업 저장소는 독립적입니다. 일반 시작 중 `SEED_DIR`은 선
 
 완료된 외부 Seed와 일치하는 비공개 구성 ZIP이 있으면 쓰기 시작 전에 커밋된 호스트
 진입점을 사용하세요. 먼저 [새 대상 절차](../docs/RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation)에
-나온 대로 `bootstrapper/persistence.sh`와 비공개 호스트 선택자로 빈 라이브 골격을
+나온 대로 `bootstrapper/persistence.js`와 비공개 호스트 선택자로 빈 라이브 골격을
 준비하세요. 읽기 전용 사전 검사는 해당 디렉터리가 이미 있어야 합니다.
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh restore \
+  node bootstrapper/seed-operation.js restore \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --configuration-backup /root/recovery/bootstrapper.zip \
   --check-only
@@ -127,7 +127,7 @@ sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
 소스 번들로 같은 검토된 Git 객체를 제공할 수 있습니다. 도구는 초기화 중 자신을
 패치하거나 업데이트하거나 복제하지 않습니다.
 
-`initialize.sh`는 **라이브** 서비스 데이터를 유지하면서 호스트를 교체합니다.
+`initialize.js`는 **라이브** 서비스 데이터를 유지하면서 호스트를 교체합니다.
 파일시스템 포맷, 최초 인증서 발급, GitLab 버전 마이그레이션, Seed 적용 또는 빈
 파일시스템을 기존 설치로 전환하는 동작은 수행하지 않습니다. 새 설치는
 [핸드북](../docs/HANDBOOK.md)의 최초 설치 경로를 따르세요.
@@ -197,13 +197,13 @@ GitLab은 유휴 작업 폴링에 응답하는 동안 이전 접속 시각을 �
 명령을 별도로 실행할 수도 있습니다.
 
 ```sh
-sudo python3 bootstrapper/verify-runtime.py baseline \
+sudo node bootstrapper/verify-runtime.js baseline \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/pre-start-baseline.json
 # Start the retained platform through the committed recovery entry point.
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/recover-volume.sh
-sudo python3 bootstrapper/verify-runtime.py check \
+  node bootstrapper/recover-volume.js
+sudo node bootstrapper/verify-runtime.js check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/pre-start-baseline.json \
   --output /root/runtime-verification.json --timeout 1200
@@ -260,7 +260,7 @@ sudo python3 bootstrapper/verify-runtime.py check \
 기록한 컨트롤러 커밋을 검증할 수 있지만, 컨트롤러 소스/트리/gitlink 선언은 여전히
 정확한 아카이브 식별 정보와 일치해야 합니다.
 
-시작 전에 `recover-volume.sh --verify`는 소스 식별 정보 누락, Git 트리/gitlink 불일치,
+시작 전에 `recover-volume.js --verify`는 소스 식별 정보 누락, Git 트리/gitlink 불일치,
 선언되지 않은 이미지 선택, 손상되거나 경로를 벗어나는 아카이브, 가변 공개 이미지 참조
 및 중복되거나 근거가 없는 별칭을 거부합니다. 일반 복구는 선언된 각 아카이브를 로드하고
 정확한 이미지 ID를 검증하며 서비스를 시작하기 전에 **모든** `localImages` 별칭을
@@ -428,10 +428,10 @@ System 프로젝트의 `successor-wizard` 레지스트리 저장소에 게시된
 이미지 모드를 선택하세요.
 
 ```sh
-sudo python3 bootstrapper/verify-runtime.py baseline --public-images \
+sudo node bootstrapper/verify-runtime.js baseline --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/public-runtime-baseline.json
-sudo python3 bootstrapper/verify-runtime.py check --public-images \
+sudo node bootstrapper/verify-runtime.js check --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/public-runtime-baseline.json --output /root/public-runtime-check.json \
   --gitlab-token-file /root/private-gitlab-api-token --timeout 1200 \
@@ -693,7 +693,7 @@ sudo python3 bootstrapper/record-recovery-images.py \
 
 중단된 내보내기는 이전 입력을 선택한 채로 두고 완료된 추가 아카이브를 보존합니다.
 재시도는 이를 덮어쓰거나 삭제하는 대신 다른 작업 아카이브를 만듭니다. 내보내기 도구와
-`recover-volume.sh --verify`가 통과할 때까지 호스트를 삭제하지 마세요.
+`recover-volume.js --verify`가 통과할 때까지 호스트를 삭제하지 마세요.
 
 격리 계약은 `node --test tests/bootstrapper/native-initialization.js`와
 `python3 tests/bootstrapper/successor-host-tools.py`로 실행합니다. 명시적인 작은

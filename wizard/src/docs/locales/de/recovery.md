@@ -165,7 +165,7 @@ die öffentliche Adresse ändert. Für öffentliches HTTPS müssen die Ports 80 
    optionalen Token-/Weiterleitungsargumente:
 
    ```bash
-   sudo python3 bootstrapper/verify-runtime.py check \
+   sudo node bootstrapper/verify-runtime.js check \
      --persistence-env /etc/system-bootstrapper/persistence.env \
      --baseline /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/baseline.json \
      --output /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/recheck.json \

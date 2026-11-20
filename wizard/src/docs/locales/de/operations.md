@@ -26,7 +26,7 @@ Führe jeden Durchlauf wie folgt aus; bewahre Belege außerhalb des Quellcode-Ch
    Speicherzustand, Paketsperre, `dpkg --audit`-Befund oder einem nicht abgeschlossenen
    Plattformvorgang.
 2. Erfasse vom akzeptierten Remote-Checkout eine neue private Baseline und führe
-   vor Änderungen `bootstrapper/verify-runtime.py check` dagegen aus. Verwende
+   vor Änderungen `bootstrapper/verify-runtime.js check` dagegen aus. Verwende
    die [dokumentierten Optionen](../bootstrapper/README.md#reviewed-replacement-host-initialization).
    Behalte Hashes der gespeicherten Konfiguration/Authentifizierung und exakte
    Image-Identitäten unverändert. Aktualisiere Paketindizes mit `sudo apt-get update`
@@ -59,7 +59,7 @@ Führe jeden Durchlauf wie folgt aus; bewahre Belege außerhalb des Quellcode-Ch
    dieselben GitLab-Dienste/den Proxy wieder aufnehmen und verschieben; Runner
    und Controller bleiben unberührt. Stoppe erst nach diesem abschließenden
    Nachweis von null Jobs den Haupt-Runner-Pool über
-   `docker exec -w /system/gitlab-runner system_bootstrapper_1 bash -e ./stop.sh main`
+   `docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js runner-stop /system main`
    und bewahre dabei die Registrierungen. Halte die ursprünglichen Neustartrichtlinien
    von Controller/GitLab privat fest und führe dann
    `docker update --restart=no system_bootstrapper_1 system_gitlab_1` aus, damit
@@ -67,8 +67,8 @@ Führe jeden Durchlauf wie folgt aus; bewahre Belege außerhalb des Quellcode-Ch
    ([Semantik der Neustartrichtlinien](https://docs.docker.com/engine/containers/start-containers-automatically/)).
    Stoppe den beibehaltenen Controller mit `docker stop --time 30 system_bootstrapper_1`
    und warte, bis ausstehende GitLab-Docker-Exec-Aufrufe abgeschlossen sind.
-   Verwende weder das oberste `stop.sh` noch `bootstrapper/stop.sh`, da diese
-   Container entfernen. Stoppe alle GitLab-Dienste mit `gitlab-ctl stop`, prüfe,
+   Verwende hier nicht den Host-CLI-Befehl `stop`: Er entfernt den Controller,
+   statt ihn für diesen Wartungsablauf zu erhalten. Stoppe alle GitLab-Dienste mit `gitlab-ctl stop`, prüfe,
    dass jeder runit-Dienst gestoppt ist, und führe dann
    `docker stop --time 60 system_gitlab_1` aus; verlange Exitcode null und keinen OOM.
 5. Installiere nur den geprüften Plan und behalte veränderte Paketkonfigurationsdateien:

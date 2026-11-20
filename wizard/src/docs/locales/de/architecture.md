@@ -246,7 +246,7 @@ Containerdefinitionen sind reproduzierbar; GitLab-Repositorys, Datenbanken, Regi
 
 | Pfad | Zweck in der vorhandenen Implementierung |
 | --- | --- |
-| `start.sh`, `stop.sh` | Dünne Host-Lebenszykluseinstiege zur vorbereiteten Betriebslaufzeit. |
+| `system-bootstrapper start --checkout /absolute/reviewed/source`, `system-bootstrapper stop --checkout /absolute/reviewed/source` | Dünne Host-Lebenszykluseinstiege zur vorbereiteten Betriebslaufzeit. |
 | `bootstrapper/` | Basis-Image, Hostinitialisierung, Wiederherstellung, Laufzeitprüfung sowie akzeptierte Controller-Freigabe-/Exportwerkzeuge. |
 | `system/` | Zentrale Compose-Definition, Controller-Kompatibilitätseinstiege und Zustandsinitialisierung. |
 | `gitlab/` | GitLab-Konfiguration/Ruby-Adapter sowie Kompatibilitätseinstiege für typisierte Upgrades und Veröffentlichung. |

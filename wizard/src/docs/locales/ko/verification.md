@@ -18,7 +18,7 @@ docker run --rm --network none system-component-tests sync
 
 이 자식 컨테이너에 Docker 소켓, 비공개 구성, 호스트 네트워크 또는 플랫폼 볼륨을
 마운트하지 마세요. 신뢰된 호스트에 Node가 없으면
-`bash project-bootstrap/wizard-source/prepare.sh`가 소스 패키징 대안을 제공합니다.
+`node project-bootstrap/wizard-source/package.js`가 소스 패키징 대안을 제공합니다.
 컨텍스트에는 현재 커밋된 Git 트리의 허용된 blob과 일반
 `wizard/` 트리가 포함됩니다(`system-monorepo-v1`). 과거 gitlink 소스는 별도의 검증된 Wizard 스냅샷과
 정확한 재귀 서브모듈이 필요합니다(`git submodule update --init --recursive`). Git 메타데이터, 비공개/무시/미추적 파일 및 작업

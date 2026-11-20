@@ -21,7 +21,7 @@
    유닛을 기록하세요. 예상하지 못한 식별 정보, 저장소, 패키지 잠금, `dpkg --audit` 문제나
    완료되지 않은 플랫폼 작업 상태가 있으면 연기하세요.
 2. 원격의 승인된 체크아웃에서 새 비공개 기준선을 캡처하고, 변경 전에 그 기준선에 대해
-   `bootstrapper/verify-runtime.py check`를 실행하세요.
+   `bootstrapper/verify-runtime.js check`를 실행하세요.
    [문서화된 옵션](../bootstrapper/README.md#reviewed-replacement-host-initialization)을 사용하세요.
    저장된 구성/인증 해시와 정확한 이미지 식별 정보를 그대로 유지하세요.
    `sudo apt-get update`로 인덱스를 갱신한 뒤
@@ -46,14 +46,15 @@
    `puma`, `sidekiq` 각각에 실행하세요. 중지되었는지 확인한 뒤 데이터베이스를 중지하기 전에
    사전 검사를 반복하세요. 경합으로 작업이 시작되었다면 같은 GitLab 서비스/프록시를 재개하고
    Runner/컨트롤러는 그대로 둔 채 연기하세요. 이 최종 작업 수 0 증거를 확보한 뒤에만
-   `docker exec -w /system/gitlab-runner system_bootstrapper_1 bash -e ./stop.sh main`으로
+   `docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js runner-stop /system main`으로
    기본 Runner 풀을 중지하고 등록은 보존하세요. 원래 컨트롤러/GitLab 다시 시작 정책을
    비공개로 기록한 다음 `docker update --restart=no system_bootstrapper_1 system_gitlab_1`을
    실행해 패키지에 의해 Docker가 다시 시작되어도 이 쓰기 주체들이 살아나지 않도록 하세요.
    ([다시 시작 정책 의미](https://docs.docker.com/engine/containers/start-containers-automatically/)).
    `docker stop --time 30 system_bootstrapper_1`으로 보존된 컨트롤러를 중지하고,
    진행 중인 GitLab Docker exec가 모두 끝날 때까지 기다리세요.
-   컨테이너를 제거하는 최상위 `stop.sh`나 `bootstrapper/stop.sh`를 사용하지 마세요.
+   이 유지 관리에서는 Host CLI의 `stop` 명령을 사용하지 마세요. 이 명령은
+   Controller 컨테이너를 보존하지 않고 제거합니다.
    `gitlab-ctl stop`으로 모든 GitLab 서비스를 중지하고 모든 runit 서비스가 내려갔는지
    검증한 뒤 `docker stop --time 60 system_gitlab_1`을 실행하세요. 종료 코드 0이며
    OOM이 없어야 합니다.

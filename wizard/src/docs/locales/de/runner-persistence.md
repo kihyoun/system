@@ -1,6 +1,6 @@
 # Runner-Persistenz
 
-Der Kompatibilitätseinstieg `start.sh` ruft den gemeinsamen `RunnerLifecycleService` auf.
+Der Kompatibilitätseinstieg `node operations/dist/lifecycle/entry.js runner-start /system main` ruft den gemeinsamen `RunnerLifecycleService` auf.
 Dieser liest das `PERSISTENT_DIR` der Plattform und erzeugt einen Compose-Dienst
 für jeden Runner-Manager. Manager `runner_docker_1` bindet ein:
 
@@ -20,12 +20,12 @@ je Manager gespeicherte Konfiguration hält diese Identitäten über Neustarts s
 
 Anzahlen von null bis 50 werden unterstützt. Beim Verkleinern werden überzählige
 Container entfernt, ihre Verzeichnisse aber behalten; Vergrößern verwendet diese
-Verzeichnisse wieder. Auch `stop.sh` behält Registrierung und Daten bei. Führe
-`unregister.sh` nur ausdrücklich aus, wenn die Registrierung bewusst entfernt
+Verzeichnisse wieder. Auch `runner-stop` behält Registrierung und Daten bei. Führe
+`runner-unregister` nur ausdrücklich aus, wenn die Registrierung bewusst entfernt
 werden soll. Die erzeugte Compose-Datei ist vorübergehend; ihre Pfade sind
 deterministisch und werden bei jedem Aufruf neu aufgebaut.
 
-Wenn du diese Skripte innerhalb des Bootstrappers aufrufst, binde das
+Wenn du diese Befehle innerhalb des Bootstrappers aufrufst, binde das
 `PERSISTENT_DIR` des Hosts unter demselben absoluten Pfad im Container ein. Die
 Runner-Verzeichnisse werden dort vorbereitet, bevor der Docker-Daemon des Hosts
 sie einbindet. Die Plattform muss vor dem Start prüfen, ob das persistente Volume

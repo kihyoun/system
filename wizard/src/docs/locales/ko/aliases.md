@@ -80,7 +80,7 @@ Wizard에서 **열기**를 선택하고 `candidate.docker.env`를 여세요. 열
 
 ## 렌더링, 다시 시작, 복구
 
-`nginx/start.sh`는 시작하거나 다시 불러올 때마다 저장된 기본 구성과 프로젝트 구성으로
+`ProjectsRoutingService`는 시작하거나 다시 불러올 때마다 저장된 기본 구성과 프로젝트 구성으로
 `zz-wizard-aliases.conf.template`을 재구성합니다. 별칭이 비활성화되면 템플릿을 빈 내용으로
 덮어쓰므로, 이전에 생성한 라우트가 제거 후에도 남지 않습니다. Registry 전용 복구 단계에서도
 이를 비우며, 정상 시작에서는 Wizard가 사용 가능해진 뒤 재구성합니다. 비공개 도우미나 보관된
@@ -96,7 +96,7 @@ Seed는 인증서와 서비스 상태를 유지하며, 별도 구성이 별칭 �
 일반적인 구성 서비스 검사에 더해, 운영자가 제공한 별칭 원본 주소로 기본 검증기를 실행하세요.
 
 ```sh
-sudo python3 bootstrapper/verify-runtime.py check \
+sudo node bootstrapper/verify-runtime.js check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline "$private_config_dir/pre-start-baseline.json" \
   --output "$private_config_dir/runtime-check.json" \

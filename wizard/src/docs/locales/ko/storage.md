@@ -130,7 +130,7 @@ Sync 자격 증명 및 GitLab 토큰은 절대 복사하지 않습니다. 공개
 전체 Certbot 트리를 `host/letsencrypt` 아래에 보존하세요. 계정 키,
 `archive`, `live`, 갱신 구성 및 훅을 포함해야 합니다. `live` 심볼릭 링크만으로는 부족합니다.
 Certbot을 별도로 설치한 다음 선택한 체크아웃에서
-`sudo bash bootstrapper/install-volume-host.sh`를 실행하세요. 호환성 이름을 가진
+`sudo node bootstrapper/install-volume-host.js`를 실행하세요. 호환성 이름을 가진
 설치 프로그램은 두 라이브 저장 모드를 모두 처리합니다. 볼륨 모드는 fstab/Docker
 마운트 의존성을 유지하며 로컬 모드는 외부 저장소 사전 요구사항을 추가하지 않습니다.
 두 모드 모두 분리 가능한 Seed 매체에 대한 의존성을 추가하지 않습니다.
@@ -177,7 +177,7 @@ Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/
 2. 호환되는 Ubuntu 호스트를 프로비저닝하고 볼륨을 연결하여 기존 파일시스템을
    마운트하세요. 기록된 Wizard 트리를 포함한 의도한 System 리비전을 가져오세요.
    과거 gitlink 릴리스에만 정확한 서브모듈 초기화가 필요합니다.
-   `sudo bash bootstrapper/install.sh`로 Docker를 설치하고 Certbot은 별도로 설치하세요.
+   `sudo node bootstrapper/install.js`로 Docker를 설치하고 Certbot은 별도로 설치하세요.
 3. `/etc/system-bootstrapper/persistence.env`를 `PERSISTENCE_MODE=volume`과 보존된
    마운트/디렉터리/UUID 선택자로 다시 만드세요. 마운트/UUID 및 저장 구성을 확인하고
    위의 호스트 통합을 실행하세요. 보존된 라이브 데이터에 이전 Seed를 적용하지 마세요.
@@ -186,13 +186,13 @@ Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/
    불변 비공개 Wizard 고정값을 유지하세요. 선택적 관리형 Review/Beta 도우미의 이전
    로컬 이미지가 없으면 각각 깨끗하게 다시 빌드하고 명시적으로 재프로비저닝해야 합니다.
    [관리형 환경 가이드](../project-bootstrap/wizard-environments/README.md)를 확인하세요.
-5. 해당 체크아웃에서 `sudo bash start.sh`를 실행하세요. 저장소를 확인하고 컨트롤러를
+5. 해당 체크아웃에서 `sudo node operations/dist/cli.js start --checkout "$PWD"`를 실행하세요. 저장소를 확인하고 컨트롤러를
    빌드한 뒤 보존된 구성으로 서비스를 시작합니다. 컨테이너 IP, 네트워크 및 프록시
    구성은 다시 생성됩니다. 호스트 주소가 바뀌면 구성된 도메인 이름을 유지하면서 DNS를 바꾸세요.
 6. Wizard/Sync, GitLab, 레지스트리 인증, Runner 관리자 및 TLS 갱신을 확인하세요.
    보존된 모든 마운트와 이름 있는 볼륨 장치를 연결된 파일시스템과 대조하세요.
 
-대안인 아카이브 기반 경로는 `bootstrapper/recover-volume.sh`입니다. 운영자가 준비한
+대안인 아카이브 기반 경로는 `bootstrapper/recover-volume.js`입니다. 운영자가 준비한
 `PERSISTENT_DIR/recovery/images.json`, SHA-256 값이 있는 참조 gzip 이미지 아카이브,
 공개 이미지 참조 및 보존된 선택자 파일이 필요합니다. 이러한 비공개 복구 아티팩트는
 소스 체크아웃에서 제공하지 않습니다. `PERSISTENCE_ENV_FILE`을 해당 선택자로 설정하고
@@ -236,7 +236,7 @@ Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/
 부여합니다. 이는 저장 구성을 바꾸지 않습니다. 선택된 참조나 별칭이 해당 구성과
 일치하는지 확인하세요. 비공개 Wizard 이미지는 정확한 레지스트리 다이제스트로 유지하고
 시작 시 보존된 레지스트리에서 복구할 수 있습니다. 매니페스트와 아카이브를 보호하고,
-예상 체크섬의 독립 기록을 보관하며, 시작 전에 `recover-volume.sh --verify`로 검증하세요.
+예상 체크섬의 독립 기록을 보관하며, 시작 전에 `recover-volume.js --verify`로 검증하세요.
 이미지 아카이브는 라이브 파일시스템, 완전한 저장 구성 또는 Certbot 상태를 대체하지 않습니다.
 
 로컬과 볼륨 배치 사이에서 라이브 데이터를 의도적으로 옮기기 전에 쓰기를 중지하고

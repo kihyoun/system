@@ -51,7 +51,7 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo bash bootstrapper/install.sh
+sudo node bootstrapper/install.js
 ```
 
 설치 프로그램은 오케스트레이션 스크립트용 `docker-compose` 래퍼를 제공합니다.
@@ -60,7 +60,7 @@ sudo bash bootstrapper/install.sh
 
 ## 네이티브 호스트 런타임 준비
 
-호스트의 `start.sh`, `stop.sh`, `bootstrapper/persistence.sh`, 릴리스 설치 및 호스트 작업 진입점,
+호스트의 `system-bootstrapper start --checkout /absolute/reviewed/source`, `system-bootstrapper stop --checkout /absolute/reviewed/source`, `bootstrapper/persistence.js`, 릴리스 설치 및 호스트 작업 진입점,
 교체/복원 도구는 첫 호출 **전에** Node와 컴파일된 `operations`가 필요합니다. Docker만
 설치하거나 초기화 도구에 `--install-host`를 전달해도 이 런타임은 준비되지 않습니다.
 아래 준비 경로 중 하나를 선택하여 시작 절차나 복구 절차 전에 완료하세요.
@@ -78,8 +78,8 @@ nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
 호스트 수명 주기, 영구 저장 또는 설치 진입점을 호출하기 전에 다음 명령으로 런타임을 준비하세요.
 
 ```sh
-sudo python3 bootstrapper/prepare-host-runtime.py \
-  --checkout "$PWD" --release-metadata /absolute/path/release.json
+SYSTEM_RELEASE_TAG=v2.0.0
+sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
 ```
 
 기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
@@ -121,19 +121,19 @@ test -f operations/dist/host-lifecycle/entry.js
 
 ```bash
 sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  bash start.sh
+  node operations/dist/cli.js start --checkout "$PWD"
 ```
 
 `SYSTEM_NODE_BIN`을 유지하여 이후 `sudo env "PATH=..."` 호출에서
-`stop.sh`, `bootstrapper/persistence.sh`, Python 호스트 도구에 전달하세요. sudo는 보통 대화형
+`system-bootstrapper stop --checkout /absolute/reviewed/source`, `bootstrapper/persistence.js`, 네이티브 호스트 도구에 전달하세요. sudo는 보통 대화형
 nvm PATH를 제거합니다. 또는 승인된 이미지 경로로 준비한 전용 런타임을 사용하세요.
 기존 승인 릴리스 프로필에서 빌드를 비활성화하지 않았다면 소스 시작은 여전히 컨트롤러와
 Wizard 이미지를 빌드합니다. 복구 기록에 필요한 이미지를 다시 빌드하여 대체해도 된다는
 뜻은 아닙니다.
 
 오프라인 복구를 위해 원래 호스트를 잃기 전에 Node 설치와 `operations/dist`,
-`operations/node_modules`를 포함한 일치하는 체크아웃을 보관하세요. `initialize.sh`나
-`recover-volume.sh`가 저장소를 확인하기 전에 검증된 도구를 복원하세요. 없다면 유지보수
+`operations/node_modules`를 포함한 일치하는 체크아웃을 보관하세요. `initialize.js`나
+`recover-volume.js`가 저장소를 확인하기 전에 검증된 도구를 복원하세요. 없다면 유지보수
 전에 호환되는 검토된 도구를 별도로 준비하세요. 중지된 플랫폼이나 npm 가용성은 복구의
 전제 조건이 아닙니다. 기록된 서비스 이미지와 소스 식별 정보를 유지하세요.
 
@@ -193,7 +193,7 @@ export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 
 GitLab, Registry, Sync, Wizard 호스트로 각각 `gitlab.localhost`, `registry.localhost`,
 `sync.localhost`, `localhost`를 사용하고, 도메인 모드는 0(HTTP), 외부 URL은 일치하도록
-설정하세요. `sudo bash bootstrapper/prepare-local.sh`를 실행하면 로컬 호스트 이름과
+설정하세요. `sudo node bootstrapper/prepare-local.js`를 실행하면 로컬 호스트 이름과
 `registry.localhost:5050`에 대한 Docker HTTP 예외를 추가합니다. 이 도우미는 로컬 테스트에
 명시적으로 선택하는 도구입니다. 운영 환경에서는 구성된 도메인과 인증서를 사용해야 합니다.
 다른 Docker 데몬 설정은 보존합니다. 위 포트 재정의는 GitLab SSH와 Registry에 적용되며
@@ -246,7 +246,7 @@ WSL에서는 Windows 마운트 데이터 디렉터리 대신 Linux 파일시스�
 [작업 저장소와 백업 매체](docs/PERSISTENT_VOLUME.md)를 참조하세요.
 
 HTTPS를 사용하는 호스트에는 Certbot을 별도로 설치한 뒤
-`sudo bash bootstrapper/install-volume-host.sh`를 실행해 영구 TLS 상태와 갱신 통합을
+`sudo node bootstrapper/install-volume-host.js`를 실행해 영구 TLS 상태와 갱신 통합을
 구성하세요. 로컬 모드에는 추가 마운트 의존성이 필요하지 않습니다. Docker, 정상 서비스 시작,
 인증서 갱신 중 어느 것도 외부 Seed 대상에 의존하지 않습니다.
 
@@ -254,7 +254,7 @@ HTTPS를 사용하는 호스트에는 Certbot을 별도로 설치한 뒤
 정보와 대조해 검증합니다. 재설치를 업그레이드로 취급하지 않고, 기존 기본 구성이나 GitLab
 데이터가 있으면 거부합니다. 비공개 `configuration/.release-images.env`에는 두 릴리스
 이미지 선택자만 기록하고 빌드를 비활성화하여 기본 시작을 호출합니다. 이후 일반적인
-`sudo bash start.sh` 호출은 이 프로필을 재사용합니다. 저장된 기본 구성에 명시한 선택자가
+`sudo node operations/dist/cli.js start --checkout "$PWD"` 호출은 이 프로필을 재사용합니다. 저장된 기본 구성에 명시한 선택자가
 여전히 우선합니다. Docker 설치를 아직 실행하지 않았다면 `--install-host`로 수행할 수
 있습니다. 이 설치 프로그램은 Seed 복원, 구성 ZIP 가져오기, 인증서 발급을 수행하지 않습니다.
 
@@ -359,5 +359,5 @@ python3 tests/seed/recovery-contract.py
 준비된 호스트 런타임을 사용하세요. 소스 개발 경로에서는 위의 명시적 Node PATH를 전달하세요.
 
 ```bash
-sudo bash stop.sh
+sudo node operations/dist/cli.js stop --checkout "$PWD"
 ```

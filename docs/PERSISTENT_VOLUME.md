@@ -135,7 +135,7 @@ remain empty. The file can be regenerated from configuration.
 Persist the full Certbot tree beneath `host/letsencrypt`: account keys,
 `archive`, `live`, renewal configuration and hooks. `live` symlinks alone are
 insufficient. Install Certbot separately, then run
-`sudo bash bootstrapper/install-volume-host.sh` from the selected checkout.
+`sudo node bootstrapper/install-volume-host.js` from the selected checkout.
 The compatibility-named installer handles both live storage modes. Volume mode
 retains its fstab/Docker mount dependency; local mode adds no external-storage
 prerequisite. Neither mode adds a dependency on removable Seed media.
@@ -185,7 +185,7 @@ available offline before maintenance.
 2. Provision a compatible Ubuntu host, attach the volume and mount its existing
    filesystem. Fetch the intended System revision and its recorded Wizard tree;
    initialize exact submodules only for a historical gitlink release. Install
-   Docker using `sudo bash bootstrapper/install.sh`; install Certbot separately.
+   Docker using `sudo node bootstrapper/install.js`; install Certbot separately.
 3. Recreate `/etc/system-bootstrapper/persistence.env` with
    `PERSISTENCE_MODE=volume` and the retained mount/directory/UUID selectors.
    Check mount/UUID and saved configuration. Run the host integration described
@@ -203,7 +203,7 @@ available offline before maintenance.
    renewal. Inspect every retained mount and named-volume device against the
    attached filesystem.
 
-An alternative archive-based path is `bootstrapper/recover-volume.sh`. It requires
+An alternative archive-based path is `bootstrapper/recover-volume.js`. It requires
 operator-prepared `PERSISTENT_DIR/recovery/images.json`, the referenced gzip image
 archives with SHA-256 values, public image references and a retained selector file;
 these private recovery artifacts are not supplied by a source checkout. Set
@@ -251,7 +251,7 @@ saved configuration. Ensure its selected reference or alias matches that
 configuration. The private Wizard image can remain an exact registry digest and
 be recovered from the retained registry during startup. Protect the manifest and
 archives, retain an independent record of their expected checksums and verify
-them with `recover-volume.sh --verify` before startup. Image archives do not
+them with `recover-volume.js --verify` before startup. Image archives do not
 replace the live filesystem, complete saved configuration or Certbot state.
 
 Before deliberately moving live data between local and volume layouts, stop

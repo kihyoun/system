@@ -60,7 +60,7 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo bash bootstrapper/install.sh
+sudo node bootstrapper/install.js
 ```
 
 [공개 릴리스 선택](../Prepare-Host.md#install-a-tested-public-release)에 따라
@@ -72,7 +72,7 @@ sudo bash bootstrapper/install.sh
 Ubuntu 24.04 [패키지는 이 인터페이스를 제공합니다](https://packages.ubuntu.com/noble/certbot).
 아래 호스트 통합은 `/usr/bin/certbot`과 `certbot.timer`를 호출하므로
 별도 Snap 설치 대신 배포판 패키지를 사용합니다.
-`bootstrapper/prepare-local.sh`를 실행하지 마세요.
+`bootstrapper/prepare-local.js`를 실행하지 마세요.
 공개 DNS와 신뢰할 수 있는 HTTPS 레지스트리가 로컬 hosts 파일과 비보안 레지스트리 변경을 대체합니다.
 
 ### 공개 2. 작업 저장소 선택 및 인증서 통합 설치
@@ -95,11 +95,11 @@ PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-sudo bash bootstrapper/install-volume-host.sh
+sudo node bootstrapper/install-volume-host.js
 sudo systemctl stop certbot.timer
 ```
 
-호환성을 위한 이름과 달리 `install-volume-host.sh`는 로컬 저장소도 지원합니다.
+호환성을 위한 이름과 달리 `install-volume-host.js`는 로컬 저장소도 지원합니다.
 작업 저장소를 검증하고 `/etc/letsencrypt`를
 `PERSISTENT_DIR/host/letsencrypt`에 연결하며 `system-certbot` 잠금 래퍼와 인증서 배포 훅을 설치합니다.
 외부 Seed 대상을 Docker 또는 갱신의 의존성으로 추가하지 않습니다.
@@ -323,7 +323,7 @@ systemctl list-timers certbot.timer
 ```
 
 `reconfigure`는 CA 스테이징 서비스로 검사한 뒤 성공한 웹 루트 방식을 다음 갱신용으로 저장합니다.
-`install-volume-host.sh`는 복구 시 기존 **webroot** 경로를 다시 연결하지만,
+`install-volume-host.js`는 복구 시 기존 **webroot** 경로를 다시 연결하지만,
 standalone 계보를 웹 루트 갱신으로 변환하지는 않습니다.
 재설정 또는 시험 실행이 실패하면 설정을 완료하지 마세요.
 잠금이 활성/중단된 갱신이나 Harvest를 보고하면 실행 중일 수 있는 잠금을 삭제하는 대신 소유 작업을 해결하세요.
@@ -496,8 +496,8 @@ export GITLAB_REGISTRY_BIND='127.0.0.1:5050'
 호스트에서 승인된 컨트롤러 내부의 기존 진입점을 실행하세요.
 
 ```bash
-sudo docker exec -w /system/gitlab system_bootstrapper_1 bash -e ./start.sh
-sudo docker exec -w /system/nginx system_bootstrapper_1 bash -e ./start.sh reload
+sudo docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js gitlab-start /system
+sudo docker exec system_bootstrapper_1 node /system/operations/dist/projects-routing/entry.js routing reload /system /templates
 ```
 
 GitLab 컨테이너 IP가 바뀌었으면 NGINX 다시 불러오기가 HTTPS/레지스트리 업스트림을 재생성합니다.

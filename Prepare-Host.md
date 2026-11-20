@@ -147,7 +147,7 @@ it is not permission to rebuild an image required by a recovery receipt.
 
 For offline recovery retain the Node installation and matching checkout with
 `operations/dist` and `operations/node_modules` before losing the original host.
-Restore those verified tools before `initialize.sh` or `recover-volume.sh` checks
+Restore those verified tools before `initialize.js` or `recover-volume.js` checks
 storage. If they are absent, prepare compatible reviewed tools separately before
 maintenance; neither the stopped platform nor npm availability is a recovery
 prerequisite. Preserve the recorded service images and source identities.
@@ -215,7 +215,7 @@ export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 
 Use `gitlab.localhost`, `registry.localhost`, `sync.localhost` and `localhost`
 as the respective GitLab, registry, sync and wizard hosts, with domain mode 0
-(HTTP) and matching external URLs. Run `sudo bash bootstrapper/prepare-local.sh`
+(HTTP) and matching external URLs. Run `sudo node bootstrapper/prepare-local.js`
 to add the local hostnames and the Docker HTTP exception for
 `registry.localhost:5050`. This helper is opt-in for local tests; production
 should use its configured domains and certificates. It preserves other Docker
@@ -273,7 +273,7 @@ replacement data. Changing the mode never migrates an existing installation.
 See [working storage and backup media](docs/PERSISTENT_VOLUME.md).
 
 Install Certbot separately on hosts using HTTPS, then run
-`sudo bash bootstrapper/install-volume-host.sh` for persistent TLS state and
+`sudo node bootstrapper/install-volume-host.js` for persistent TLS state and
 renewal integration. Local mode needs no extra mount dependency. Neither Docker,
 normal service startup nor certificate renewal depends on an external Seed target.
 

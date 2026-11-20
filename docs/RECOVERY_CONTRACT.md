@@ -105,7 +105,7 @@ and its matching configuration before depending on a replacement host.
 
 ## Creating a completed recovery Seed
 
-Install host integration with `bootstrapper/install-volume-host.sh` so scheduled
+Install host integration with `bootstrapper/install-volume-host.js` so scheduled
 Certbot renewals use `system-certbot`. For manual renewal and renewal dry-runs,
 use the same wrapper, for example `system-certbot renew --dry-run`. It shares a
 filesystem lease with Harvest. Do not run an unmanaged Certbot command or modify
@@ -150,7 +150,7 @@ promote a `.harvest-*` staging directory to `current`.
 ### Run from the Wizard or the host
 
 With the target available, **Harvest** in the authenticated Wizard uses the
-same repository-owned dispatcher as `system/harvest.sh`. You can instead run
+same repository-owned dispatcher as `system/seed-operation.js harvest`. You can instead run
 from a reviewed host checkout using an available, accepted complete controller
 image. Resolve and record its actual image identity, then use the Node executable
 prepared by Quickstart below. A source installation uses its explicitly retained
@@ -242,7 +242,7 @@ verified image archives. The former live data directory is not an input.
    directory and adds traversal permission to the SSL root while keeping private
    certificate directories and key files unchanged. The retained Seed is unchanged.
    Install Certbot as needed and run
-   `sudo bash bootstrapper/install-volume-host.sh`. This rebinds webroot renewal
+   `sudo node bootstrapper/install-volume-host.js`. This rebinds webroot renewal
    paths to the new live directory and installs the renewal/deploy integration.
    Set the required image selectors, then start with `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"`.
    Reprovision optional Review/Beta helpers explicitly if their old immutable
@@ -313,7 +313,7 @@ CI and TLS-renewal checks. It checks restored service/data identities, uncached 
 recovery and actual ACME account/renewal/deployment through a local authority.
 These checks do not emulate a new VM's OS installation or systemd timer scheduling.
 
-The retained-volume `recover-volume.sh` path is separate: its image archives are
+The retained-volume `recover-volume.js` path is separate: its image archives are
 explicit inputs, whereas the configuration-plus-Seed scenario rebuilds declared
 custom images from source. Neither path makes an older Seed a matching backup for
 a newer configuration. Capture compatible inputs and verify the intended GitLab

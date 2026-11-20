@@ -81,8 +81,8 @@ UTC 타임스탬프와 경과 초를 사용하여 첫 SSH 명령부터 선언된
    직전에 단조 시계 기반 스톱워치를 시작하세요. 시도 중 해결한 실패를 포함하여
    운영자 입력, 대기 및 재시도 내내 계속 측정하세요. 각 이정표의 UTC와 경과 시간을
    비공개로 기록하고 검사 실패 후 시계를 초기화하지 마세요.
-3. 새 초기화는 검토된 릴리스 체크아웃의 `bootstrapper/install.sh`,
-   `bootstrapper/install-release.py` 및 `bootstrapper/install-volume-host.sh`를
+3. 새 초기화는 검토된 릴리스 체크아웃의 `bootstrapper/install.js`,
+   `bootstrapper/install-release.py` 및 `bootstrapper/install-volume-host.js`를
    사용하여 [공개 HTTPS 안내](#public-server-own-domain-and-https)를 따르세요.
    릴리스의 불변 컨트롤러와 이에 맞는 Wizard 이미지를 선택하세요. Wizard 가져오기,
    백업 및 보내기로 구성하고 이번 실행의 수를 재현하려면 관리자를 4개로 설정하세요.
@@ -90,10 +90,10 @@ UTC 타임스탬프와 경과 초를 사용하여 첫 SSH 명령부터 선언된
    검사를 완료하세요.
 4. [외부 Seed 복원](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation)을
    따르세요. 네이티브 저장소 준비와 실제 복원 전
-   `bootstrapper/seed-operation.sh restore --check-only`를 포함하며 일치하는 구성
+   `bootstrapper/seed-operation.js restore --check-only`를 포함하며 일치하는 구성
    백업을 사용해야 합니다. 복원 검증이 끝날 때까지 GitLab을 중지해 두세요. 이번 실행의
    저장소 분리를 재현하려면 도우미 완료 후 시작 전에 백업 매체를 마운트 해제하세요.
-   호스트 인증서 통합을 설치하고 `start.sh`로 시작하세요.
+   호스트 인증서 통합을 설치하고 `system-bootstrapper start --checkout /absolute/reviewed/source`로 시작하세요.
    [네이티브 비공개 Wizard 복구](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image)는
    저장된 다이제스트를 유지하고 범위가 지정된 임시 레지스트리 접속을 정리합니다.
 5. 신뢰된 TLS로 공개 Wizard, GitLab 및 레지스트리를 확인하고 인증된 Sync 가져오기와

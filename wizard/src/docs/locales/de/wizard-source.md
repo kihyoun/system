@@ -67,10 +67,10 @@ Gitlinks werden nur initialisiert, wenn der gewählte Commit sie benötigt:
 
 ```sh
 node gitlab/prepare-wizard-source.js
-bash project-bootstrap/wizard-source/prepare.sh
+node project-bootstrap/wizard-source/package.js
 ```
 
-Das normale oberste `start.sh` ruft die Vorbereitung auf, bevor Compose das
+Das normale oberste `system-bootstrapper start --checkout /absolute/reviewed/source` ruft die Vorbereitung auf, bevor Compose das
 System-Image baut. Manuelle System-Image-Builds müssen zuerst denselben Befehl
 ausführen. Der Image-Build prüft das erzeugte Manifest und die Datei-Hashes;
 er schlägt fehl, wenn die Vorbereitung ausgelassen wurde. Checke die erzeugte

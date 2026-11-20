@@ -492,7 +492,7 @@ Manifest, bevor Sie sich darauf verlassen:
 
 ```bash
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/recover-volume.sh --verify
+  node bootstrapper/recover-volume.js --verify
 ```
 
 Diese Prüfung validiert Eingaben, ohne Dienste neu zu starten. Der nächste

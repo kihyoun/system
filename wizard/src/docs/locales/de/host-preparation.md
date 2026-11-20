@@ -57,7 +57,7 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo bash bootstrapper/install.sh
+sudo node bootstrapper/install.js
 ```
 
 Das Installationsprogramm stellt einen `docker-compose`-Wrapper für die Orchestrierungsskripte bereit.
@@ -67,7 +67,7 @@ Plattformabnahme sind separate Schritte.
 
 ## Native Host-Laufzeit vorbereiten
 
-Host-`start.sh`, `stop.sh`, `bootstrapper/persistence.sh`, der Release-Installer
+Host-`system-bootstrapper start --checkout /absolute/reviewed/source`, `system-bootstrapper stop --checkout /absolute/reviewed/source`, `bootstrapper/persistence.js`, der Release-Installer
 und Ersatz-/Wiederherstellungswerkzeuge benötigen Node und kompilierte `operations`
 **vor** ihrem ersten Aufruf. Docker-Installation allein oder `--install-host` am
 Initialisierer bereiten diese Laufzeit nicht vor. Wählen Sie einen der folgenden
@@ -87,8 +87,8 @@ geprüften Release-Checkout wählen und die öffentlichen Metadaten anhand des [
 Danach vor jedem Host-Lebenszyklus-, Persistenz- oder Installationseinstieg ausführen:
 
 ```sh
-sudo python3 bootstrapper/prepare-host-runtime.py \
-  --checkout "$PWD" --release-metadata /absolute/path/release.json
+SYSTEM_RELEASE_TAG=v2.0.0
+sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
 ```
 
 Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery
@@ -132,11 +132,11 @@ danach diesen Quellstart anstelle des Installers für öffentliche Images:
 
 ```bash
 sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  bash start.sh
+  node operations/dist/cli.js start --checkout "$PWD"
 ```
 
 Behalten Sie `SYSTEM_NODE_BIN` für weitere `sudo env "PATH=..."`-Aufrufe von
-`stop.sh`, `bootstrapper/persistence.sh` und Python-Hostwerkzeugen: sudo verwirft
+`system-bootstrapper stop --checkout /absolute/reviewed/source`, `bootstrapper/persistence.js` und nativen Hostwerkzeugen: sudo verwirft
 normalerweise den interaktiven nvm-PATH. Alternativ nutzen Sie die beim Weg über
 akzeptierte Images vorbereitete eigene Laufzeit. Beim Quellstart werden weiterhin
 Controller-/Wizard-Images gebaut, sofern ein vorhandenes akzeptiertes Release-Profil
@@ -146,7 +146,7 @@ neu gebaut und ersetzt werden.
 Behalten Sie für Offline-Recovery die Node-Installation und den passenden Checkout
 mit `operations/dist` und `operations/node_modules`, bevor der ursprüngliche Host
 verloren geht. Stellen Sie diese geprüften Werkzeuge wieder her, bevor
-`initialize.sh` oder `recover-volume.sh` den Speicher prüft. Fehlen sie, bereiten
+`initialize.js` oder `recover-volume.js` den Speicher prüft. Fehlen sie, bereiten
 Sie kompatible geprüfte Werkzeuge getrennt vor der Wartung vor. Weder die gestoppte
 Plattform noch npm-Verfügbarkeit ist eine Recovery-Voraussetzung. Erhalten Sie die
 aufgezeichneten Dienst-Images und Quellidentitäten.
@@ -214,7 +214,7 @@ export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 
 Verwenden Sie `gitlab.localhost`, `registry.localhost`, `sync.localhost` und `localhost`
 als GitLab-, Registry-, Sync- bzw. Wizard-Host mit Domain-Modus 0
-(HTTP) und passenden externen URLs. Führen Sie `sudo bash bootstrapper/prepare-local.sh` aus,
+(HTTP) und passenden externen URLs. Führen Sie `sudo node bootstrapper/prepare-local.js` aus,
 um die lokalen Hostnamen und die Docker-HTTP-Ausnahme für
 `registry.localhost:5050` zu ergänzen. Dieser Helfer wird für lokale Tests ausdrücklich aktiviert; Production
 sollte ihre konfigurierten Domains und Zertifikate verwenden. Er erhält andere Docker-
@@ -272,7 +272,7 @@ Ersatzdaten anzulegen. Ein Moduswechsel migriert niemals eine bestehende Install
 Siehe [Arbeitsdatenspeicher und Backup-Medien](docs/PERSISTENT_VOLUME.md).
 
 Installieren Sie auf HTTPS-Hosts Certbot separat und führen Sie dann
-`sudo bash bootstrapper/install-volume-host.sh` für persistenten TLS-Zustand und
+`sudo node bootstrapper/install-volume-host.js` für persistenten TLS-Zustand und
 Erneuerungsintegration aus. Der lokale Modus benötigt keine zusätzliche Mount-Abhängigkeit. Weder Docker
 noch normaler Dienststart oder Zertifikatserneuerung hängen von einem externen Seed-Ziel ab.
 
@@ -281,7 +281,7 @@ gegen die Identitäten der geladenen öffentlichen Images. Es lehnt eine bestehe
 konfiguration oder GitLab-Daten ab, statt eine Neuinstallation als Upgrade zu behandeln.
 Es verzeichnet nur die beiden Release-Image-Selektoren in der privaten Datei
 `configuration/.release-images.env` und ruft den nativen Start mit deaktivierten
-Builds auf. Normale spätere Aufrufe von `sudo bash start.sh` verwenden dieses Profil erneut;
+Builds auf. Normale spätere Aufrufe von `sudo node operations/dist/cli.js start --checkout "$PWD"` verwenden dieses Profil erneut;
 ausdrückliche Selektoren in der gespeicherten Hauptkonfiguration haben weiterhin Vorrang. `--install-host`
 kann die Docker-Installation ausführen, wenn sie noch nicht erfolgt ist. Dieses
 Installationsprogramm stellt keinen Seed wieder her, importiert keine Konfigurations-ZIP und stellt keine Zertifikate aus.
@@ -396,5 +396,5 @@ Verwenden Sie die vorbereitete Host-Laufzeit; geben Sie beim Quellentwicklungswe
 den oben gezeigten ausdrücklichen Node-PATH an.
 
 ```bash
-sudo bash stop.sh
+sudo node operations/dist/cli.js stop --checkout "$PWD"
 ```

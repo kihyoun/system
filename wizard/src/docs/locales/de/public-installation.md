@@ -61,7 +61,7 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo bash bootstrapper/install.sh
+sudo node bootstrapper/install.js
 ```
 
 Wählen Sie Quellcodeversion und beide öffentlichen Image-Digests aus einem freigegebenen
@@ -75,7 +75,7 @@ Nutzen Sie Certbot **ab Version 2.3.0**, das `reconfigure` unterstützt; das Ubu
 Die folgende Host-Integration ruft
 `/usr/bin/certbot` und `certbot.timer` auf; dieses Rezept verwendet daher das Distributions-
 paket statt einer separaten Snap-Installation. Führen Sie
-`bootstrapper/prepare-local.sh` nicht aus: Öffentliches DNS und eine vertrauenswürdige HTTPS-Registry ersetzen
+`bootstrapper/prepare-local.js` nicht aus: Öffentliches DNS und eine vertrauenswürdige HTTPS-Registry ersetzen
 dessen Änderungen an lokaler Hosts-Datei und unsicherer Registry.
 
 ### Öffentlich 2. Arbeitsdatenspeicher wählen und Zertifikatsintegration installieren
@@ -100,11 +100,11 @@ PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-sudo bash bootstrapper/install-volume-host.sh
+sudo node bootstrapper/install-volume-host.js
 sudo systemctl stop certbot.timer
 ```
 
-Trotz seines Kompatibilitätsnamens unterstützt `install-volume-host.sh` lokalen Speicher.
+Trotz seines Kompatibilitätsnamens unterstützt `install-volume-host.js` lokalen Speicher.
 Es prüft den Arbeitsdatenspeicher, verbindet `/etc/letsencrypt` mit
 `PERSISTENT_DIR/host/letsencrypt` und installiert den Sperr-Wrapper `system-certbot`
 sowie den Zertifikats-Deploy-Hook. Es erzeugt keine Docker- oder Erneuerungsabhängigkeit von
@@ -330,7 +330,7 @@ systemctl list-timers certbot.timer
 ```
 
 `reconfigure` testet gegen den Staging-Dienst der CA und speichert dann die erfolgreiche
-Webroot-Methode für künftige Erneuerungen. `install-volume-host.sh` bindet bei einer Wiederherstellung bestehende
+Webroot-Methode für künftige Erneuerungen. `install-volume-host.js` bindet bei einer Wiederherstellung bestehende
 **webroot**-Pfade neu ein; es wandelt eine Standalone-Zertifikatslinie nicht für Sie in eine
 Webroot-Erneuerung um. Schließen Sie die Einrichtung nicht ab, wenn Neukonfiguration oder Trockenlauf
 fehlschlagen. Meldet eine Sperre eine aktive oder unterbrochene Erneuerung oder Harvest, klären Sie den
@@ -511,8 +511,8 @@ desselben Images und der persistenten Daten neu. Führen Sie vom Host aus die be
 innerhalb des freigegebenen Controllers aus:
 
 ```bash
-sudo docker exec -w /system/gitlab system_bootstrapper_1 bash -e ./start.sh
-sudo docker exec -w /system/nginx system_bootstrapper_1 bash -e ./start.sh reload
+sudo docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js gitlab-start /system
+sudo docker exec system_bootstrapper_1 node /system/operations/dist/projects-routing/entry.js routing reload /system /templates
 ```
 
 Das Neuladen von NGINX erzeugt die HTTPS-/Registry-Upstreams neu, falls sich GitLabs Container-IP

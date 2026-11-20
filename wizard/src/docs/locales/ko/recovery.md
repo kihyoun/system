@@ -133,7 +133,7 @@ A/AAAA 레코드를 갱신하세요. 공개 HTTPS를 사용하려면 포트 80�
    필요에 따라 선택적 토큰/리디렉션 인수를 추가하세요.
 
    ```bash
-   sudo python3 bootstrapper/verify-runtime.py check \
+   sudo node bootstrapper/verify-runtime.js check \
      --persistence-env /etc/system-bootstrapper/persistence.env \
      --baseline /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/baseline.json \
      --output /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/recheck.json \

@@ -156,7 +156,7 @@ Speichern Sie den vollständigen Certbot-Baum unter `host/letsencrypt`:
 Kontoschlüssel, `archive`, `live`, Erneuerungskonfiguration und Hooks. Die
 symbolischen Links unter `live` allein reichen nicht aus. Installieren Sie
 Certbot gesondert und führen Sie anschließend
-`sudo bash bootstrapper/install-volume-host.sh` aus dem ausgewählten Checkout
+`sudo node bootstrapper/install-volume-host.js` aus dem ausgewählten Checkout
 aus. Der aus Kompatibilitätsgründen so benannte Installer behandelt beide Modi
 für produktive Daten. Der Volume-Modus behält seine fstab-/Docker-Mount-Abhängigkeit;
 der lokale Modus ergänzt keine Voraussetzung für externen Speicher. Keiner der
@@ -215,7 +215,7 @@ Halten Sie die geprüfte Node-Installation, `operations/dist` und
 2. Stellen Sie einen kompatiblen Ubuntu-Host bereit, schließen Sie das Volume an
    und hängen Sie sein vorhandenes Dateisystem ein. Laden Sie die vorgesehene
    Systemrevision mit aufgezeichnetem Wizard-Baum; nur historische Gitlink-Releases benötigen exakt initialisierte Submodule. Installieren Sie Docker mit
-   `sudo bash bootstrapper/install.sh`; installieren Sie Certbot gesondert.
+   `sudo node bootstrapper/install.js`; installieren Sie Certbot gesondert.
 3. Erstellen Sie `/etc/system-bootstrapper/persistence.env` mit
    `PERSISTENCE_MODE=volume` und den aufbewahrten Mount-/Verzeichnis-/UUID-Angaben
    neu. Prüfen Sie Einhängung/UUID und gespeicherte Konfiguration. Führen Sie die
@@ -228,7 +228,7 @@ Halten Sie die geprüfte Node-Installation, `operations/dist` und
    verwaltete Review-/Beta-Helfer benötigen einen eigenen sauberen Neuaufbau und
    eine ausdrückliche erneute Bereitstellung, falls ihr bisheriges lokales Image
    fehlt; siehe [Leitfaden für verwaltete Umgebungen](../project-bootstrap/wizard-environments/README.md).
-5. Führen Sie `sudo bash start.sh` aus diesem Checkout aus. Es prüft den Speicher,
+5. Führen Sie `sudo node operations/dist/cli.js start --checkout "$PWD"` aus diesem Checkout aus. Es prüft den Speicher,
    erstellt den Controller und startet Dienste mit der aufbewahrten
    Konfiguration. Container-IPs, Netzwerke und Proxy-Konfiguration werden neu
    erstellt. Ändern Sie DNS, wenn sich die Host-Adresse geändert hat, und
@@ -237,7 +237,7 @@ Halten Sie die geprüfte Node-Installation, `operations/dist` und
    TLS-Erneuerung. Gleichen Sie jede aufbewahrte Einhängung und jedes Gerät eines
    benannten Volumes mit dem angeschlossenen Dateisystem ab.
 
-Ein alternativer archivbasierter Weg ist `bootstrapper/recover-volume.sh`.
+Ein alternativer archivbasierter Weg ist `bootstrapper/recover-volume.js`.
 Er benötigt das vom Betreiber vorbereitete `PERSISTENT_DIR/recovery/images.json`,
 die referenzierten gzip-Image-Archive mit SHA-256-Werten, öffentliche
 Image-Referenzen und eine aufbewahrte Auswahldatei; diese privaten
@@ -293,7 +293,7 @@ Wizard-Image kann ein exakter Registry-Digest bleiben und während des Starts
 aus der aufbewahrten Registry wiederhergestellt werden. Schützen Sie Manifest
 und Archive, bewahren Sie eine unabhängige Aufzeichnung ihrer erwarteten
 Prüfsummen auf und prüfen Sie sie vor dem Start mit
-`recover-volume.sh --verify`. Image-Archive ersetzen weder das produktive
+`recover-volume.js --verify`. Image-Archive ersetzen weder das produktive
 Dateisystem noch die vollständige gespeicherte Konfiguration oder den
 Certbot-Zustand.
 

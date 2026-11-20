@@ -96,19 +96,19 @@ sind Beobachtungen, keine Garantie für Installationszeiten.
    Fehlern, die innerhalb des Versuchs behoben werden. Erfassen Sie UTC
    und verstrichene Zeit jedes Meilensteins privat; setzen Sie die Uhr nach einer fehlgeschlagenen Prüfung nicht zurück.
 3. Folgen Sie bei einer Neuinitialisierung der [öffentlichen HTTPS-Anleitung](#public-server-own-domain-and-https)
-   mit `bootstrapper/install.sh`, `bootstrapper/install-release.py` und
-   `bootstrapper/install-volume-host.sh` aus dem geprüften Release-Checkout.
+   mit `bootstrapper/install.js`, `bootstrapper/install-release.py` und
+   `bootstrapper/install-volume-host.js` aus dem geprüften Release-Checkout.
    Verwenden Sie die unveränderlichen Controller- und passenden Wizard-Image-Auswahlen des Releases.
    Konfigurieren Sie über Wizard-Abrufen, Sichern und Übertragen; stellen Sie vier Manager ein, wenn Sie
    die Anzahl dieses Durchlaufs nachbilden. Schließen Sie die erste Zertifikatsausstellung und die
    dokumentierte Webroot-Erneuerungs-/Deploy-Hook-Prüfung mit `system-certbot` ab.
 4. Folgen Sie zur Wiederherstellung der [externen Seed-Wiederherstellung](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation),
    einschließlich nativer Speichervorbereitung und
-   `bootstrapper/seed-operation.sh restore --check-only` vor der tatsächlichen
+   `bootstrapper/seed-operation.js restore --check-only` vor der tatsächlichen
    Wiederherstellung mit passendem Konfigurationsbackup. Lassen Sie GitLab gestoppt, bis
    die Wiederherstellungsprüfung endet. Hängen Sie nach Abschluss des Helfers das
    Backup-Medium vor dem Start aus, um die Speichertrennung dieses Durchlaufs nachzubilden.
-   Installieren Sie die Host-Zertifikatsintegration und starten Sie über `start.sh`. Die
+   Installieren Sie die Host-Zertifikatsintegration und starten Sie über `system-bootstrapper start --checkout /absolute/reviewed/source`. Die
    [native Wiederherstellung des privaten Wizards](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image)
    erhält dessen gespeicherten Digest und bereinigt den begrenzten temporären Registry-Zugriff.
 5. Prüfen Sie öffentliche Wizard-, GitLab- und Registry-Zugriffe mit vertrauenswürdigem TLS, authentifizierten

@@ -1,6 +1,6 @@
 # Runner 데이터 영속성
 
-호환성 진입점 `start.sh`는 공유 `RunnerLifecycleService`를 호출합니다. 이 서비스는
+호환성 진입점 `node operations/dist/lifecycle/entry.js runner-start /system main`는 공유 `RunnerLifecycleService`를 호출합니다. 이 서비스는
 플랫폼의 `PERSISTENT_DIR`를 읽고 각 Runner 관리자에 대한 Compose
 서비스를 생성합니다. `runner_docker_1` 관리자는 다음 경로를 바인드합니다.
 
@@ -19,11 +19,11 @@ Runner의 **Runner managers** 항목에 표시합니다. 관리자별 설정을 
 
 지원하는 관리자 수는 0개부터 50개까지입니다. 축소하면 초과 컨테이너는
 제거하지만 해당 디렉터리는 보관하며, 확장하면 그 디렉터리를 다시 사용합니다.
-`stop.sh`도 등록 정보와 데이터를 보존합니다. 등록을 의도적으로 제거할 때만
-`unregister.sh`를 직접 실행하세요. 생성된 Compose 파일은 임시 파일이지만 경로는
+`runner-stop`도 등록 정보와 데이터를 보존합니다. 등록을 의도적으로 제거할 때만
+`runner-unregister`를 직접 실행하세요. 생성된 Compose 파일은 임시 파일이지만 경로는
 결정적이며, 호출할 때마다 다시 구성됩니다.
 
-Bootstrapper 안에서 이 스크립트들을 호출할 때는 호스트의 `PERSISTENT_DIR`를
+Bootstrapper 안에서 이 명령을 호출할 때는 호스트의 `PERSISTENT_DIR`를
 컨테이너 안에서도 같은 절대 경로에 마운트하세요. 호스트 Docker 데몬이 마운트하기
 전에 그 위치에 Runner 디렉터리를 준비합니다. 플랫폼은 시작 전에 영구 볼륨이
 마운트되어 있는지 확인해야 합니다. 익명 볼륨에서 이전할 경우, 컨테이너를

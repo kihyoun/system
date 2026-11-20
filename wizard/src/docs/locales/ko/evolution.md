@@ -394,7 +394,7 @@ Registry 부팅에 이전 Docker 로그인이 필요하지 않습니다.
 
 ```bash
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/recover-volume.sh --verify
+  node bootstrapper/recover-volume.js --verify
 ```
 
 이 검사는 서비스를 다시 시작하지 않고 입력을 검증합니다. 다음 교체 호스트는 A를 설명하는

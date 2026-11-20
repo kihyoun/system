@@ -118,7 +118,7 @@ Sie sich auf einen Ersatzhost verlassen.
 
 ## Einen abgeschlossenen Wiederherstellungs-Seed erstellen
 
-Installieren Sie die Hostintegration mit `bootstrapper/install-volume-host.sh`,
+Installieren Sie die Hostintegration mit `bootstrapper/install-volume-host.js`,
 damit geplante Certbot-Erneuerungen `system-certbot` verwenden. Verwenden Sie für
 manuelle Erneuerungen und Erneuerungs-Probeläufe denselben Wrapper, etwa
 `system-certbot renew --dry-run`. Er teilt sich eine Dateisystemsperre mit
@@ -173,18 +173,18 @@ veraltete Sperre. Erheben Sie kein Zwischenverzeichnis `.harvest-*` zu `current`
 ### Aus dem Wizard oder auf dem Host ausführen
 
 Bei verfügbarem Ziel verwendet **Harvest** im authentifizierten Wizard denselben
-repositoryeigenen Dispatcher wie `system/harvest.sh`. Alternativ können Sie den
+repositoryeigenen Dispatcher wie `system/seed-operation.js harvest`. Alternativ können Sie den
 Vorgang aus einem geprüften Host-Checkout mit einem verfügbaren, freigegebenen,
 vollständigen Controller-Image ausführen. Ermitteln und dokumentieren Sie seine
 tatsächliche Image-Identität und verwenden Sie dann:
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh harvest \
+  node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --check-only
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh harvest \
+  node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
 ```
 
@@ -221,7 +221,7 @@ Datenverzeichnis ist keine Eingabe.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash -euc 'set -a; source "$PERSISTENCE_ENV_FILE"; source bootstrapper/storage-env.sh; set +a; exec bash bootstrapper/persistence.sh'
+     node bootstrapper/persistence.js
    ```
 
    Dieser Schritt startet keine Container und benötigt kein Sicherungsmedium.
@@ -241,12 +241,12 @@ Datenverzeichnis ist keine Eingabe.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/seed-operation.sh restore \
+     node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip \
      --check-only
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/seed-operation.sh restore \
+     node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip
    ```
@@ -278,10 +278,10 @@ Datenverzeichnis ist keine Eingabe.
    SSL-Wurzelverzeichnisses, während private Zertifikatsverzeichnisse und
    Schlüsseldateien unverändert bleiben. Der aufbewahrte Seed bleibt
    unverändert. Installieren Sie Certbot bei Bedarf und führen Sie
-   `sudo bash bootstrapper/install-volume-host.sh` aus. Dies bindet
+   `sudo node bootstrapper/install-volume-host.js` aus. Dies bindet
    Webroot-Erneuerungspfade an das neue produktive Verzeichnis und installiert
    die Erneuerungs-/Deploy-Integration. Setzen Sie die erforderlichen
-   Image-Auswahlwerte und starten Sie dann mit `sudo bash start.sh`.
+   Image-Auswahlwerte und starten Sie dann mit `sudo node operations/dist/cli.js start --checkout "$PWD"`.
    Stellen Sie optionale Review-/Beta-Helfer ausdrücklich erneut bereit, falls
    ihr altes unveränderliches Image fehlt; siehe
    [Umgebungsverfahren](../project-bootstrap/wizard-environments/README.md).
@@ -364,7 +364,7 @@ Bereitstellung über eine lokale Zertifizierungsstelle. Diese Prüfungen bilden
 weder die Betriebssysteminstallation einer neuen VM noch die Planung durch
 systemd-Timer nach.
 
-Der Weg mit aufbewahrtem Volume über `recover-volume.sh` ist gesondert:
+Der Weg mit aufbewahrtem Volume über `recover-volume.js` ist gesondert:
 Seine Image-Archive sind explizite Eingaben, während das Szenario mit
 Konfiguration und Seed deklarierte eigene Images aus Quellcode neu erstellt.
 Keiner der Wege macht einen älteren Seed zu einer passenden Sicherung für eine

@@ -285,7 +285,7 @@ available locally. A newer reviewed host-tools checkout may validate an older
 recorded controller commit; the controller source/tree/gitlink declarations must
 still agree with its exact archived identity.
 
-Before startup, `recover-volume.sh --verify` rejects missing source identity, a
+Before startup, `recover-volume.js --verify` rejects missing source identity, a
 mismatching Git tree/gitlink, undeclared image selections, corrupt/escaping archives,
 mutable public image references and duplicate or unbacked aliases. Normal recovery
 loads each declared archive, verifies its exact image ID and reconstructs **all**
@@ -752,7 +752,7 @@ running migrated image, so recovery cannot silently select the preceding version
 
 An interrupted export leaves prior inputs selected and any completed extra archive
 retained. A retry creates another operation archive instead of overwriting or deleting
-it. Do not delete the host until the exporter and `recover-volume.sh --verify` pass.
+it. Do not delete the host until the exporter and `recover-volume.js --verify` pass.
 
 Isolated contracts run with `node --test tests/bootstrapper/native-initialization.js` and
 `python3 tests/bootstrapper/successor-host-tools.py`. The explicit tiny Docker

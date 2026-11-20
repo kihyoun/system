@@ -98,7 +98,7 @@ SEED_UUID=REPLACE_WITH_BACKUP_FILESYSTEM_UUID
 
 ## 완료된 복구 Seed 만들기
 
-`bootstrapper/install-volume-host.sh`로 호스트 통합을 설치하여 예약된 Certbot 갱신이
+`bootstrapper/install-volume-host.js`로 호스트 통합을 설치하여 예약된 Certbot 갱신이
 `system-certbot`을 사용하게 하세요. 수동 갱신과 갱신 시험 실행에도 같은 래퍼를
 사용하세요. 예: `system-certbot renew --dry-run`. 이 래퍼는 Harvest와 파일시스템
 임대를 공유합니다. Harvest 중에는 관리되지 않는 Certbot 명령이나 수동 인증서 상태
@@ -139,18 +139,18 @@ Harvest/복원/갱신 프로세스가 남아 있지 않은지 확인하고 필�
 
 ### Wizard 또는 호스트에서 실행하기
 
-대상을 사용할 수 있을 때 인증된 Wizard의 **Harvest**는 `system/harvest.sh`와
+대상을 사용할 수 있을 때 인증된 Wizard의 **Harvest**는 `system/seed-operation.js harvest`와
 같은 저장소 관리 디스패처를 사용합니다. 사용 가능한 승인된 전체 컨트롤러 이미지를
 사용하여 검토된 호스트 체크아웃에서 실행할 수도 있습니다. 실제 이미지 식별 정보를
 확인하고 기록한 다음 다음을 사용하세요.
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh harvest \
+  node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --check-only
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh harvest \
+  node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
 ```
 
@@ -180,7 +180,7 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash -euc 'set -a; source "$PERSISTENCE_ENV_FILE"; source bootstrapper/storage-env.sh; set +a; exec bash bootstrapper/persistence.sh'
+     node bootstrapper/persistence.js
    ```
 
    이 단계는 컨테이너를 시작하지 않으며 백업 매체도 필요하지 않습니다. 새 대상에서는
@@ -196,12 +196,12 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/seed-operation.sh restore \
+     node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip \
      --check-only
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/seed-operation.sh restore \
+     node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip
    ```
@@ -223,9 +223,9 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
    쓰기나 인증서 갱신 시작 전에 1단계의 네이티브 준비 명령을 다시 실행하세요.
    공개 챌린지 디렉터리를 준비하고 SSL 루트에 탐색 권한을 추가하되 비공개 인증서
    디렉터리와 키 파일은 변경하지 않습니다. 보존 Seed도 변경하지 않습니다.
-   필요하면 Certbot을 설치하고 `sudo bash bootstrapper/install-volume-host.sh`를
+   필요하면 Certbot을 설치하고 `sudo node bootstrapper/install-volume-host.js`를
    실행하세요. webroot 갱신 경로를 새 라이브 디렉터리에 다시 바인딩하고 갱신/배포
-   통합을 설치합니다. 필수 이미지 선택자를 설정하고 `sudo bash start.sh`로 시작하세요.
+   통합을 설치합니다. 필수 이미지 선택자를 설정하고 `sudo node operations/dist/cli.js start --checkout "$PWD"`로 시작하세요.
    이전 불변 이미지가 없으면 선택적 Review/Beta 도우미를 명시적으로 재프로비저닝하세요.
    [환경 절차](../project-bootstrap/wizard-environments/README.md)를 확인하세요.
    Runner 관리자/작업 공간은 구성과 복원 GitLab 상태에서 다시 만들어지므로 이전
@@ -283,7 +283,7 @@ Runner CI 및 TLS 갱신 검사 전에 백업 마운트를 분리합니다. 복�
 갱신/배포를 확인합니다. 이 검사는 새 VM의 OS 설치나 systemd 타이머 예약을
 에뮬레이션하지 않습니다.
 
-보존 볼륨 `recover-volume.sh` 경로는 별개입니다. 이미지 아카이브가 명시적 입력인 반면,
+보존 볼륨 `recover-volume.js` 경로는 별개입니다. 이미지 아카이브가 명시적 입력인 반면,
 구성과 Seed 시나리오는 선언된 사용자 지정 이미지를 소스에서 다시 빌드합니다.
 어느 경로도 이전 Seed를 더 새로운 구성에 일치하는 백업으로 만들지 않습니다.
 호환 입력을 확보하고 복구 전에 의도한 GitLab 이미지 식별 정보를 검증하세요.

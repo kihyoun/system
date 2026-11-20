@@ -542,7 +542,7 @@ sudo node bootstrapper/install-volume-host.js
 sudo systemctl stop certbot.timer
 ```
 
-Despite its compatibility name, `install-volume-host.sh` supports local storage.
+Despite its compatibility name, `install-volume-host.js` supports local storage.
 It validates working storage, connects `/etc/letsencrypt` to
 `PERSISTENT_DIR/host/letsencrypt`, and installs the `system-certbot` lock wrapper
 and certificate deploy hook. It does not add a Docker or renewal dependency on
@@ -768,7 +768,7 @@ systemctl list-timers certbot.timer
 ```
 
 `reconfigure` tests against the CA staging service, then saves the successful
-webroot method for future renewals. `install-volume-host.sh` rebinds existing
+webroot method for future renewals. `install-volume-host.js` rebinds existing
 **webroot** paths on recovery; it does not convert a standalone lineage into
 webroot renewal for you. Do not finish setup if reconfiguration or the dry-run
 fails. If a lock reports an active/interrupted renewal or Harvest, resolve the
@@ -949,8 +949,8 @@ the same image and persistent data. From the host, run the existing entry points
 inside the accepted controller:
 
 ```bash
-sudo docker exec -w /system/gitlab system_bootstrapper_1 bash -e ./start.sh
-sudo docker exec -w /system/nginx system_bootstrapper_1 bash -e ./start.sh reload
+sudo docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js gitlab-start /system
+sudo docker exec system_bootstrapper_1 node /system/operations/dist/projects-routing/entry.js routing reload /system /templates
 ```
 
 The NGINX reload regenerates HTTPS/registry upstreams if GitLab's container IP
@@ -1085,11 +1085,11 @@ are observations, not an installation-time guarantee.
    documented webroot renewal/deploy-hook check with `system-certbot`.
 4. For recovery, follow [external Seed restore](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation),
    including native storage preparation and
-   `bootstrapper/seed-operation.sh restore --check-only` before the actual
+   `bootstrapper/seed-operation.js restore --check-only` before the actual
    restore with the matching configuration backup. Keep GitLab stopped until
    restore verification finishes. After the helper completes, unmount the
    backup medium before startup to reproduce this run's storage separation.
-   Install host certificate integration and start through `start.sh`. The
+   Install host certificate integration and start through `system-bootstrapper start --checkout /absolute/reviewed/source`. The
    [native private-Wizard recovery](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image)
    preserves its saved digest and cleans up scoped temporary registry access.
 5. Check the public Wizard, GitLab and registry with trusted TLS, authenticated
@@ -1135,7 +1135,7 @@ Perform each run as follows; preserve receipts outside the source checkout:
    kernel, held packages and existing failed units. Defer on unexpected identity,
    storage, package-lock, `dpkg --audit` or unfinished platform-operation state.
 2. From the remote accepted checkout, capture a new private baseline and run
-   `bootstrapper/verify-runtime.py check` against it before changes. Use its
+   `bootstrapper/verify-runtime.js check` against it before changes. Use its
    [documented options](../bootstrapper/README.md#reviewed-replacement-host-initialization).
    Keep saved configuration/auth hashes and exact image identities unchanged.
    Refresh indexes with `sudo apt-get update`, then inspect
@@ -1162,14 +1162,15 @@ Perform each run as follows; preserve receipts outside the source checkout:
    repeat the preflight before stopping databases. A raced job means resume the
    same GitLab services/proxy and defer with runners/controller untouched.
    Only after this final jobs-zero proof, stop the main runner pool through
-   `docker exec -w /system/gitlab-runner system_bootstrapper_1 bash -e ./stop.sh main`,
+   `docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js runner-stop /system main`,
    preserving registrations. Privately record the original controller/GitLab
    restart policies, then `docker update --restart=no system_bootstrapper_1 system_gitlab_1`
    so a package-triggered Docker restart cannot revive these writers
    ([restart-policy semantics](https://docs.docker.com/engine/containers/start-containers-automatically/)). Stop the
    retained controller with `docker stop --time 30 system_bootstrapper_1`;
    wait for outstanding GitLab Docker execs to drain.
-   Do not use top-level `stop.sh` or `bootstrapper/stop.sh`, which remove containers.
+   Do not use the host CLI `stop` command here: it removes the controller
+   container instead of retaining it for this maintenance procedure.
    Stop all GitLab services with `gitlab-ctl stop`, verify every runit service is
    down, then `docker stop --time 60 system_gitlab_1`; require exit zero and no OOM.
 5. Install only the reviewed plan, keeping modified package configuration files:
@@ -1697,8 +1698,8 @@ to the shared instance pool.
 | Startup reports missing persistent storage | Check the selected mode and directory; mount an explicitly selected live volume instead of changing modes to bypass its guard |
 | A pipeline waits for its runner after a GitLab restart | Register checks the pool and updates managed internal IP endpoints to the stable Docker service name |
 | A pipeline cannot resolve `registry.localhost` | Run `sudo node bootstrapper/prepare-local.js` again in Ubuntu; WSL may reset local hosts entries at startup |
-| MongoDB fails before database initialization | Run `bootstrapper/container-preflight.py` on the daemon host; distinguish CPU, Ubuntu upstream kernel and image execution using the [host operations guide](HOST_OPERATIONS.md) |
-| Container logs have no verified rotation | Inspect the exact containers with `bootstrapper/log-policy.py`; apply and verify the bounded policy through a deliberate deployment, with no assumed maximum age |
+| MongoDB fails before database initialization | Run `bootstrapper/container-preflight.js` on the daemon host; distinguish CPU, Ubuntu upstream kernel and image execution using the [host operations guide](HOST_OPERATIONS.md) |
+| Container logs have no verified rotation | Inspect the exact containers with `bootstrapper/log-policy.js`; apply and verify the bounded policy through a deliberate deployment, with no assumed maximum age |
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
 
 See [Prepare-Host.md](../Prepare-Host.md) for further technical details.

@@ -63,7 +63,7 @@ gitlinks are initialized only when the selected commit requires them:
 
 ```sh
 node gitlab/prepare-wizard-source.js
-bash project-bootstrap/wizard-source/prepare.sh
+node project-bootstrap/wizard-source/package.js
 ```
 
 The host CLI `start --checkout /absolute/reviewed/source` invokes preparation before Compose builds the System

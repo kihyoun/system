@@ -19,7 +19,7 @@ docker run --rm --network none system-component-tests sync
 
 Binden Sie weder Docker-Socket noch private Konfiguration, Host-Netzwerk oder Plattform-
 Volumes in dieses Kind ein. Fehlt Node auf dem vertrauenswürdigen Host,
-bietet `bash project-bootstrap/wizard-source/prepare.sh` den Ersatzweg zur Quellcode-
+bietet `node project-bootstrap/wizard-source/package.js` den Ersatzweg zur Quellcode-
 paketierung. Der Kontext enthält nur erlaubte Blobs aus dem aktuellen versionierten
 Git-Baum einschließlich des regulären `wizard/`-Baums bei `system-monorepo-v1`.
 Historische Gitlink-Quellen benötigen zusätzlich den validierten separaten Wizard-Snapshot

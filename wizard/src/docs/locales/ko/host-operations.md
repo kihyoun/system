@@ -8,9 +8,9 @@ Ubuntu 릴리스 이름이나 이미지 사용자 공간의 배포판만으로�
 활성화하기 전에 **해당 Linux x86_64 호스트에서** 저장소의 사전 검사를 실행하세요.
 
 ```sh
-python3 bootstrapper/container-preflight.py --mongodb-version 8.0.37
+node bootstrapper/container-preflight.js --mongodb-version 8.0.37
 # Pull the exact reviewed digest separately, then test its executable as well:
-python3 bootstrapper/container-preflight.py --mongodb-version 8.0.37 \
+node bootstrapper/container-preflight.js --mongodb-version 8.0.37 \
   --image 'docker.io/library/mongo@sha256:REPLACE_WITH_64_HEX_DIGEST'
 ```
 
@@ -114,7 +114,7 @@ export SYSTEM_LOG_MAX_FILES='3'
 적용 전에 원하는 값을 검증하세요.
 
 ```sh
-python3 bootstrapper/log-policy.py --max-size 10m --max-files 3
+node bootstrapper/log-policy.js --max-size 10m --max-files 3
 ```
 
 Wizard의 기존 추가 런타임 옵션은 Fetch/Push와 JSON/ZIP Backup/Open에서
@@ -148,8 +148,8 @@ Compose가 계획한 재생성과 중단/복구 요구 사항을 검토하세요
 반복하세요. 실제 배포의 이름을 사용하세요.
 
 ```sh
-python3 bootstrapper/log-policy.py system_web_1 system_sync_1
-python3 bootstrapper/log-policy.py --max-size 10m --max-files 3 YOUR_APP_CONTAINER
+node bootstrapper/log-policy.js system_web_1 system_sync_1
+node bootstrapper/log-policy.js --max-size 10m --max-files 3 YOUR_APP_CONTAINER
 ```
 
 불일치는 종료 코드 1을 반환하고 실제 `HostConfig.LogConfig`를 표시합니다.

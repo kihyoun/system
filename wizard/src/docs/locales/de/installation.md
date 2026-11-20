@@ -77,7 +77,7 @@ finden Sie den Unterschied zwischen einem vollständigen Controller und einer La
 Installieren Sie die erforderlichen Docker-Werkzeuge:
 
 ```bash
-sudo bash bootstrapper/install.sh
+sudo node bootstrapper/install.js
 ```
 
 Das Installationsprogramm installiert Docker und Compose und prüft Docker mit einem Test-
@@ -85,7 +85,7 @@ Container. Konfigurieren Sie für den lokalen HTTP-Test außerdem die lokalen Ho
 HTTP-Ausnahme der Registry:
 
 ```bash
-sudo bash bootstrapper/prepare-local.sh
+sudo node bootstrapper/prepare-local.js
 ```
 
 WSL kann `/etc/hosts` beim Start neu erzeugen. Falls die Registry oder andere lokale

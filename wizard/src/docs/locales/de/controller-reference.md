@@ -115,13 +115,13 @@ noch normale Dienste und Erneuerung blockieren.
 
 Verwenden Sie für einen abgeschlossenen externen Seed und die passende private Konfigurations-ZIP den
 versionierten Host-Einstiegspunkt, bevor schreibende Dienste starten. Bereiten Sie zuerst die leeren Live-
-Grundverzeichnisse mit `bootstrapper/persistence.sh` und dem privaten Host-Selektor vor, wie
+Grundverzeichnisse mit `bootstrapper/persistence.js` und dem privaten Host-Selektor vor, wie
 im [Verfahren für neue Ziele](../docs/RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation) gezeigt.
 Die schreibgeschützte Vorprüfung verlangt, dass diese Verzeichnisse existieren:
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh restore \
+  node bootstrapper/seed-operation.js restore \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --configuration-backup /root/recovery/bootstrapper.zip \
   --check-only
@@ -144,7 +144,7 @@ GitLab der Installation nicht verfügbar, kann ein unabhängig verfügbarer Spie
 Quellcode-Bundle dieselben geprüften Git-Objekte liefern. Das Werkzeug patcht,
 aktualisiert oder klont sich während der Initialisierung niemals selbst.
 
-`initialize.sh` behandelt den Austausch eines Hosts bei Erhalt **aktiver** Dienstdaten.
+`initialize.js` behandelt den Austausch eines Hosts bei Erhalt **aktiver** Dienstdaten.
 Es formatiert kein Dateisystem, stellt keine ersten Zertifikate aus, migriert keine GitLab-Versionen,
 wendet keinen Seed an und macht aus einem leeren Dateisystem keine bestehende Installation. Folgen Sie
 bei einer Neuinstallation dem Erstinstallationsweg im [Handbuch](../docs/HANDBOOK.md).
@@ -218,13 +218,13 @@ anwendungsspezifische Abnahme bleibt Aufgabe der jeweiligen Anwendung.
 Die Befehle können auch separat ausgeführt werden:
 
 ```sh
-sudo python3 bootstrapper/verify-runtime.py baseline \
+sudo node bootstrapper/verify-runtime.js baseline \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/pre-start-baseline.json
 # Start the retained platform through the committed recovery entry point.
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/recover-volume.sh
-sudo python3 bootstrapper/verify-runtime.py check \
+  node bootstrapper/recover-volume.js
+sudo node bootstrapper/verify-runtime.js check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/pre-start-baseline.json \
   --output /root/runtime-verification.json --timeout 1200
@@ -283,7 +283,7 @@ lokal verfügbar sein. Ein neuerer geprüfter Host-Werkzeug-Checkout kann einen 
 aufgezeichneten Controller-Commit validieren; die Quellcode-/Baum-/Gitlink-Deklarationen des Controllers müssen
 weiterhin zu dessen exakter archivierter Identität passen.
 
-Vor dem Start lehnt `recover-volume.sh --verify` fehlende Quellcodeidentität,
+Vor dem Start lehnt `recover-volume.js --verify` fehlende Quellcodeidentität,
 einen abweichenden Git-Baum/-Gitlink, nicht deklarierte Image-Auswahlen, beschädigte oder ausbrechende Archive,
 veränderliche öffentliche Image-Referenzen und doppelte oder nicht abgesicherte Aliasse ab. Die normale Wiederherstellung
 lädt jedes deklarierte Archiv, prüft dessen exakte Image-ID und rekonstruiert **alle**
@@ -470,10 +470,10 @@ Wählen Sie für unabhängige Laufzeitprüfungen dieses Installationstyps den au
 Modus für öffentliche Images sowohl für Ausgangszustand als auch Prüfung:
 
 ```sh
-sudo python3 bootstrapper/verify-runtime.py baseline --public-images \
+sudo node bootstrapper/verify-runtime.js baseline --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/public-runtime-baseline.json
-sudo python3 bootstrapper/verify-runtime.py check --public-images \
+sudo node bootstrapper/verify-runtime.js check --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/public-runtime-baseline.json --output /root/public-runtime-check.json \
   --gitlab-token-file /root/private-gitlab-api-token --timeout 1200 \
@@ -764,7 +764,7 @@ laufenden migrierten Image, sodass Wiederherstellung nicht still die vorherige V
 
 Ein unterbrochener Export lässt vorherige Daten ausgewählt und erhält jedes abgeschlossene zusätzliche Archiv.
 Ein erneuter Versuch erzeugt ein weiteres Vorgangsarchiv, statt es zu überschreiben oder zu löschen.
-Löschen Sie den Host erst, wenn Exporter und `recover-volume.sh --verify` erfolgreich sind.
+Löschen Sie den Host erst, wenn Exporter und `recover-volume.js --verify` erfolgreich sind.
 
 Isolierte Vertragsprüfungen laufen mit `node --test tests/bootstrapper/native-initialization.js` und
 `python3 tests/bootstrapper/successor-host-tools.py`. Der ausdrückliche kleine Docker-

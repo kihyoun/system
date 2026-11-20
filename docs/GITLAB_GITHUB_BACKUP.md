@@ -105,12 +105,11 @@ The development and test path must not need a successful GitHub read to proceed.
 
 ## Helper contract
 
-`gitlab/github-backup.sh` runs in a checkout with an `origin` pointing to the
-intended primary GitLab project. The CI integration provides its pinned Node 24
-runtime, Git, OpenSSH client/agent and a POSIX shell with `mkdir` and `rmdir`.
-Keep the companion
-`github-backup-transport.js` beside the shell helper. Configuration comes from
-the protected CI job:
+`node operations/dist/mirror/entry.js ci` runs in a checkout with an `origin`
+pointing to the intended primary GitLab project. Prepare the pinned Node runtime
+and compiled operations package first. The shared `MirrorModule` owns transport,
+locking and cleanup through native Git and OpenSSH tools. Configuration comes
+from the protected CI job:
 
 | Variable | Required value |
 | --- | --- |

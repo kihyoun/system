@@ -95,7 +95,7 @@ Alias-Routing erneut, bevor Vorlagen ersetzt werden.
 
 ## Erzeugung, Neustart und Wiederherstellung
 
-`nginx/start.sh` erstellt bei jedem Start und Neuladen
+`ProjectsRoutingService` erstellt bei jedem Start und Neuladen
 `zz-wizard-aliases.conf.template` aus der gespeicherten Haupt- und Projektkonfiguration
 neu. Wenn Aliase deaktiviert sind, überschreibt es diese Vorlage mit leerem Inhalt,
 sodass eine früher erzeugte Route nach dem Entfernen nicht bestehen bleiben kann.
@@ -117,7 +117,7 @@ Führe die native Prüfung neben den üblichen Prüfungen der konfigurierten Die
 auch mit dem vom Betreiber angegebenen Alias-Ursprung aus:
 
 ```sh
-sudo python3 bootstrapper/verify-runtime.py check \
+sudo node bootstrapper/verify-runtime.js check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline "$private_config_dir/pre-start-baseline.json" \
   --output "$private_config_dir/runtime-check.json" \

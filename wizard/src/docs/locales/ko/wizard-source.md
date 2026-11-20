@@ -57,10 +57,10 @@ System 이미지를 빌드하기 전에 커밋된 소스 레이아웃을 확인�
 
 ```sh
 node gitlab/prepare-wizard-source.js
-bash project-bootstrap/wizard-source/prepare.sh
+node project-bootstrap/wizard-source/package.js
 ```
 
-일반적인 루트 `start.sh`는 Compose가 System 이미지를 빌드하기 전에 준비를 호출합니다.
+일반적인 루트 `system-bootstrapper start --checkout /absolute/reviewed/source`는 Compose가 System 이미지를 빌드하기 전에 준비를 호출합니다.
 수동으로 System 이미지를 빌드할 때도 먼저 같은 명령을 실행해야 합니다. 이미지 빌드는 생성된
 매니페스트와 파일 해시를 검증하며, 준비를 생략하면 실패합니다. 생성된 `snapshot.json`은
 커밋하지 마세요.

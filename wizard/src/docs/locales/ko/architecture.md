@@ -230,7 +230,7 @@ Engine 업데이트에는 자체 유지 관리 경로가 필요합니다.
 
 | 경로 | 기존 구현에서의 목적 |
 | --- | --- |
-| `start.sh`, `stop.sh` | 준비된 운영 런타임을 호출하는 얇은 호스트 수명 주기 진입점입니다. |
+| `system-bootstrapper start --checkout /absolute/reviewed/source`, `system-bootstrapper stop --checkout /absolute/reviewed/source` | 준비된 운영 런타임을 호출하는 얇은 호스트 수명 주기 진입점입니다. |
 | `bootstrapper/` | 기반 이미지, 호스트 초기화, 복구, 런타임 검증, 승인된 컨트롤러 승격/내보내기 도구입니다. |
 | `system/` | 기본 Compose 정의, 컨트롤러 호환 진입점과 상태 초기화입니다. |
 | `gitlab/` | GitLab 구성/Ruby 어댑터와 타입이 지정된 업그레이드/게시 호환 진입점입니다. |

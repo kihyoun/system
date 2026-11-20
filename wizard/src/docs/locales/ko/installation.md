@@ -74,14 +74,14 @@ Git 체크아웃만 갱신해도 이미지가 갱신되지는 않습니다.
 필요한 Docker 도구를 설치하세요.
 
 ```bash
-sudo bash bootstrapper/install.sh
+sudo node bootstrapper/install.js
 ```
 
 설치 프로그램은 Docker와 Compose를 설치하고 테스트 컨테이너로 Docker를 확인합니다.
 로컬 HTTP 테스트에는 로컬 호스트 이름과 레지스트리의 HTTP 예외도 설정하세요.
 
 ```bash
-sudo bash bootstrapper/prepare-local.sh
+sudo node bootstrapper/prepare-local.js
 ```
 
 WSL은 시작할 때 `/etc/hosts`를 다시 만들 수 있습니다.
