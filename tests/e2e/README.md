@@ -117,7 +117,7 @@ readiness gate). Ordinary smoke has a twenty-minute budget; ACME without a GitLa
 upgrade shares one twenty-five-minute budget across all owners. A GitLab upgrade
 without guided previews has sixty minutes. `guidedPreviewAcceptance === true`
 and `gitlabUpgradeAcceptance === true` together select seventy-five minutes;
-adding a prepared `publicUpgrade` fixture selects ninety minutes for its
+adding a prepared `publicUpgrade` fixture selects 110 minutes for its
 additional native public CLI, backup and recovery coverage.
 Each scenario uses one absolute deadline, checked between bounded Docker/HTTP
 operations. Each streamed archive load is capped at
@@ -222,11 +222,11 @@ pinned CLI utilities as System, builds the full System context and the Wizard
 from the validated pinned snapshot, and preloads the pinned service images.
 The job is serialized with a GitLab resource group. Image preparation has a
 separate bounded budget. The combined guided-preview/GitLab-upgrade execution
-with a public-release upgrade fixture has one fixed ninety-minute limit, shared
+with a public-release upgrade fixture has one fixed 110-minute limit, shared
 by the original host, restored host, ACME authority and side owners. Without that
 additional fixture the combined scenario retains seventy-five minutes. The runner
-script allows ninety-five minutes, the separate cleanup allows two minutes and
-the job limit is one hundred minutes.
+script allows 115 minutes, the separate cleanup allows two minutes and
+the job limit is 120 minutes.
 The runner host needs twelve GiB candidate RAM plus its existing platform/job
 headroom and enough free disk for image archives, extraction and GitLab state.
 
@@ -370,7 +370,7 @@ inherits the original candidate's absolute deadline and cancellation. An
 1,500-second lifecycle budget, including both platform hosts and these fixture
 owners. GitLab upgrades use the sixty-minute budget, or seventy-five minutes
 when guided previews are also enabled. Adding the public-release upgrade fixture
-to that combined scenario selects ninety minutes. Ordinary smoke retains 1,200 seconds.
+to that combined scenario selects 110 minutes. Ordinary smoke retains 1,200 seconds.
 Starting a stage or replacing a host never resets the deadline or extends it
 automatically.
 The outer script and CI-job limits must also retain preparation, publication
