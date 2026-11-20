@@ -68,7 +68,9 @@ trusted release evidence. These are operator inputs: replace the placeholders
 below with that release's values. Public Docker Hub pulls do not require an
 account. The declared release targets `linux/amd64`.
 
-Install Git and check out that exact release, including its Wizard submodule:
+Install Git and check out that exact release including its Wizard source. New
+releases include wizard/ directly; submodule initialization below applies only
+to historical releases that record a Wizard gitlink:
 
 ```bash
 sudo apt-get update
@@ -1249,7 +1251,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
 
 1. On the replacement Ubuntu host, fetch source as in section 0.1. Select a
    reviewed tools revision containing the initialization entry point and initialize
-   its exact submodules. A prepublished accepted source mirror or Git bundle
+   its exact source, initializing submodules only for historical layouts. A prepublished accepted source mirror or Git bundle
    containing the required commits can provide this checkout while the platform's
    own GitLab is unavailable:
 
@@ -1262,8 +1264,8 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
    A plain source ZIP without Git history does not satisfy the initialization
    tool's commit/tree verification. Keep the checkout clean. The recorded
    controller source in the image manifest may be an earlier accepted revision;
-   the tool checks its tree and Wizard
-   gitlink separately and records the host-tools revision too. Do not update a
+   the tool checks its tree and layout-specific Wizard
+   identity separately and records the host-tools revision too. Do not update a
    submodule to its latest branch or change saved service versions to match the
    fresh-install examples.
 
@@ -1386,7 +1388,7 @@ bypass guards or restore a stale Seed to make a host replacement continue.
 | Register / Unregister | Checks/registers or unregisters configured runner managers |
 | Harvest | Publishes a cold snapshot of GitLab data, certificates and certificate-renewal state in the seed directory |
 | Harvest and configuration backup | Coordinates a native Harvest with a matching configuration ZIP to download and store independently |
-| Set up development previews | Explicitly prepares canonical source/build bindings for optional Review and Beta while preserving Production |
+| Configure System Beta | Explicitly reserves an existing shared source project and optional fixed Beta address; no extra build or Production change |
 | Credential expiry | Reads selected automation credential metadata and shows known dates, warnings and unknown states |
 | System diagnostics | Checks configured registry connectivity; an optional separate action pulls the exact helper image through the selected runner daemon |
 | Seed | Validates a completed Seed and restores into fresh live service-data directories |
@@ -1585,104 +1587,49 @@ for the complete instructions, including recovery after errors.
 
 ### 3.2 The automatically registered System Wizard
 
-After the platform has a main configuration and GitLab is available, startup
-automatically registers **wizard** as the first project when the Wizard is
-enabled. Use Fetch after registration completes. Its Production URL, HTTP/HTTPS
-mode and certificate paths come from the actual Wizard settings under General;
-locally, the existing interface remains at `http://localhost`.
+Startup retains the managed Wizard project and its Production identity. Use
+Fetch to read its existing repository and routing settings. The running Wizard
+address and certificates remain configured under General; repeated startup does
+not replace the interface or overwrite an unrelated repository.
 
-The project starts with a private `root/wizard` repository scaffold containing
-README and managed CI. Expand its row and select **Initialize Wizard source**
-to preview and explicitly import the pinned application source. See the
-[source initialization guide](WIZARD_SOURCE.md) for preparation and safe retry.
-This source-only action does not start a pipeline or deploy another interface.
-After initialization, **Build and verify Wizard** opens a separate read-only
-preview. **Enable build pipeline** explicitly installs the managed recipe and
-starts or recovers its initial pipeline. See the [build workflow guide](WIZARD_BUILD.md)
-for required matching versions, verified candidate evidence and safe recovery.
-Build activation does not deploy the candidate. Optional Review and Beta
-environments require explicit configuration and manual GitLab deployment jobs;
-Production promotion uses its separate guarded operator workflow. The existing
-Wizard container and Production route are reused, with no duplicate project proxy.
-Manage the interface settings under General; the system project is read-only in
-the project list. Its repository links and configuration survive Fetch, Backup,
-Open, Push and restart. Repeated startup reuses the same repository.
+System and Wizard now share one repository, with ordinary application source
+under wizard/. Develop, review and test their changes together in the System
+pipeline. The System row no longer offers separate source import, standalone
+build activation or System Review deployment. Ordinary application projects
+retain their independent Review, Beta and Production environments.
 
-If a local `wizard` key or an unrelated GitLab repository already exists, the
-Bootstrapper reports the conflict without overwriting it. A registration failure
-does not replace or stop the working interface. Check the Bootstrapper output,
-resolve the reported conflict/readiness problem and restart to retry.
+Choose **Configure System Beta** to select an existing private System source
+project, a protected default branch, a suitable runner and an optional fixed
+HTTPS Beta address with valid certificates. Preflight is read-only; confirmation
+reserves settings without creating projects, starting builds or deploying.
+Follow the [System Beta guide](SYSTEM_CANDIDATE_REVIEW.md) to bind the already
+accepted System candidate and deliberately run its manual Deploy or Stop job.
+The Beta uses that candidate's exact Wizard image and creates no additional build.
 
-#### Build and check the Wizard manually
+Old JSON/ZIP configuration and fetched settings remain readable. Explicitly
+migrate version 1 preview settings through Configure System Beta; a saved Review
+hostname never becomes a Beta hostname automatically. Retain repository/import
+history, source edits, bindings, generation floors and tombstones. Stop legacy
+resources using their original owned job and helper before migration; active,
+pending, retired or uncleared stopped routes block setup. Never delete receipts
+to bypass these checks. Configuration backup and matching Harvest/Seed recovery
+remain separate requirements.
 
-Before starting, use matching System and Wizard versions that expose the source
-and build actions. The System image must contain its prepared pinned Wizard
-source package. GitLab, its project registry and a shared runner accepting the
-`docker` tag must be available. The runner needs the reviewed Docker executor
-setup used by the managed recipe, including Docker/Buildx access and registry
-connectivity. Confirm sufficient physical disk and RAM for the build; avoid
-running competing infrastructure builds at the same time. New imports use the
-pinned Node 24/React 19/Vite 8 source and matching modern build recipe. Existing
-legacy imports require the explicit [upgrade procedure](../project-bootstrap/wizard-upgrade/README.md);
-reimporting source is not an upgrade mechanism.
+#### Inspect the shared candidate
 
-For the local WSL setup, run `sudo bash bootstrapper/prepare-local.sh` again
-after a WSL restart if `registry.localhost` no longer resolves. WSL can regenerate
-`/etc/hosts`. The preparation reloads Docker configuration without restarting
-the running containers; retry the failed job in the same pipeline afterwards.
+Open the selected System project's pipeline and wait for all required component,
+image, browser and disposable platform checks. A green job alone is insufficient:
+the Beta binding checks the candidate release artifact, shared commit, Wizard
+source tree, exact image identities and ownership. Expired or inconsistent
+artifacts prevent a new deployment. Stop uses the retained binding and helper.
+Production stays selected until a separate deliberate, verified promotion.
 
-1. Open the existing Wizard address. Use the pencil icon beside **Connect** to
-   enter the configured Sync address and your current Sync credentials, then
-   choose **Submit**. After first setup, use the configured Sync domain rather
-   than assuming the initial `http://localhost/sync` path is still correct.
-2. Select **Synchronize → Fetch**. In **Projects**, expand the first **wizard**
-   entry. Check its repository link and the existing Production address. If the
-   managed entry is missing, resolve registration first; do not create a second
-   Wizard project with **Add Project**.
-3. If source is already initialized, retain its receipt and skip to step 4;
-   do not reimport after managed build activation. Otherwise choose
-   **Initialize Wizard source**. Check the preview's **Repository**,
-   **Source revision** and **Files**, then choose **Import source**. Wait for
-   completion. This imports the source pinned by this System version without
-   starting a pipeline. If source was already imported, retain that receipt;
-   reimporting is not a source-upgrade mechanism.
-4. Close the source dialog and choose **Build and verify Wizard**. Check the
-   **Repository**, **Imported commit** and **Recipe version**. The preview alone
-   does not create a pipeline or change the repository.
-5. Choose **Enable build pipeline** once. Wait for the controller operation to
-   finish; it records the managed recipe and initial pipeline. An interrupted
-   browser response is a reason to inspect/refresh the saved operation, not to
-   delete its receipt or create another project.
-6. Choose **Open pipeline** in the build dialog. In GitLab, inspect the same
-   pipeline's `build:wizard` and `test:wizard` jobs. The first runs the
-   pinned application checks and production build, then publishes a candidate
-   image. The second pulls the immutable image and checks HTTP, rendered UI, Projects and SPA
-   navigation in an isolated browser candidate. A pending runner or running job
-   has not passed these checks.
-7. Return to the Wizard and choose **Refresh status** after the jobs finish.
-   Wait for **Candidate checks and the immutable artifact are verified** and
-   **Verified candidate image**. Record the pipeline and the image reference
-   ending in `@sha256:…`. A green pipeline alone does not replace the controller's
-   required-job and matching-artifact verification.
-8. Inspect the GitLab job artifacts if evidence is needed: `build-evidence.json`
-   from `build:wizard`, and `wizard-evidence.json` plus `browser-evidence/` from
-   `test:wizard`. Evidence belongs to that pipeline and commit. The recipe
-   currently retains these artifacts for seven days; an expired artifact may
-   prevent a later verification even when an earlier job was green.
-9. Confirm the existing Wizard still opens at its original address. Fetch again
-   and check that the same project/repository and Production address remain.
-   Build verification does not replace the running interface. To deploy the
-   candidate, configure the [managed Review and Beta environments](../project-bootstrap/wizard-environments/README.md)
-   and use their manual GitLab jobs. Production promotion and rollback use the
-   separate [guarded operator procedure](../project-bootstrap/wizard-production/README.md).
+The disposable platform test runs real shared setup, binding, Beta containers,
+TLS, Stop and cleanup. Its authorization verifier uses explicit contract fixtures
+because the parent candidate is still running. This is lifecycle coverage plus
+positive and negative production-verifier contracts, not proof of authorization
+by a completed native candidate pipeline. See the [acceptance boundary](../tests/e2e/GUIDED_PREVIEW_ACCEPTANCE.md).
 
-For failures, use the [build status and recovery table](WIZARD_BUILD.md#status-and-safe-continuation).
-Retry failed jobs in the same GitLab pipeline, then refresh status. Resume only
-when the dialog offers **Resume activation**, after **Refresh preview** confirms
-the current state. **Pipeline creation has an uncertain outcome. Refresh only.** permits refresh
-only and needs administrator inspection; never clear its durable checkpoint to
-force another pipeline. Keep credentials out of screenshots, issue comments and
-job-log excerpts.
 
 ### 3.3 Shared and additional runners
 
@@ -1760,7 +1707,7 @@ Before opening the change, prepare the following:
 
 | Input | Requirement |
 | --- | --- |
-| Accepted source | A clean, reviewed System revision and its exact recursive Wizard submodule commit. Every initialization, recovery, verification and deployment entry point must be versioned in that checkout. |
+| Accepted source | A clean, reviewed System revision including its Wizard source tree (or the exact Wizard gitlink for a historical release). Every initialization, recovery, verification and deployment entry point must be versioned in that checkout. |
 | Existing generation | Record the GitLab version and edition, immutable service-image references and controller/Wizard source identities. Saved configuration takes precedence over first-install examples. |
 | Candidate resources | A trusted runner/host with capacity for Production and a separate disposable platform, including image archives and database copies. Obtain the resource lease before starting the heavy job. The current harness allows 12 GiB candidate RAM; this is not the total host requirement. |
 | Isolated state | Separate candidate containers, networks, Docker daemon and data directories. Never attach A's writable database or registry directories to B while A is running. |
@@ -1810,7 +1757,7 @@ these required checks on the protected default branch or a protected version
 tag. It copies the accepted complete controller and matching Wizard rather
 than rebuilding either after acceptance. Each receives a full-source-commit
 tag; a protected `vX.Y.Z` tag can add a version alias. The release receipt binds
-source revision/tree, Wizard gitlink, image IDs and immutable Docker Hub
+source revision/tree, layout-specific Wizard source identity, image IDs and immutable Docker Hub
 references. Existing conflicting aliases are rejected, and anonymous pull
 verification checks that both public images can be retrieved without publisher
 credentials. See [publisher configuration](../Prepare-Host.md#publish-your-own-public-releases).
@@ -1835,17 +1782,20 @@ acceptance without an automatic extension.
 
 The full platform CI job allows a 115-minute runner script, a separate two-minute
 `after_script` and a 120-minute job limit for preparation, execution, publication
-and artifact collection. Both combined-scenario ceilings include three actual native Wizard
-pipelines (imported default branch, merge request and merged default branch), each
-with four required jobs, plus manual Review/Beta Deploy and Stop. This ceiling is
-an upper bound, not a runtime guarantee. The candidate remains limited to 12 GiB
-RAM and four CPUs. Only the original guided platform's single managed Docker
-runner allows two concurrent jobs, each capped at 2 GiB RAM and one CPU; all nested
-work shares the candidate ceiling. Completed subprocess failures abort their step
-immediately. Readiness polling retries temporary startup conditions; confirmed
-terminal container or identity failures abort immediately. Per-operation deadlines
-remain in force, and reports distinguish a timed-out invocation from a process
-exit. The overall ceiling is an additional safeguard, not a required wait.
+and artifact collection. The shared System Beta scenario reuses the existing
+candidate images and starts no additional Wizard build or System pipeline. Its
+native setup, binding, Beta deployment, TLS, Stop and owned cleanup are verified;
+authorization uses contract fixtures because the parent candidate has not yet
+completed. This does not prove authorization by a completed native pipeline.
+Ordinary application Review/Beta checks remain required. The deadline is an upper
+bound, not a runtime guarantee or a measured saving. The candidate remains limited
+to 12 GiB RAM and four CPUs. All nested work shares this ceiling. Completed
+subprocess failures abort their step immediately. Readiness polling retries
+transient startup states; confirmed container or identity failures abort
+immediately. Per-operation deadlines remain in force, and reports distinguish a
+timed-out invocation from a process exit. The overall ceiling is an additional
+safeguard, not a required wait.
+
 Documentation-only changes retain their short
 lane. No earlier passing fixture or MR run replaces the required acceptance for
 the exact merged source being promoted.
@@ -1889,8 +1839,10 @@ declares a GitLab CE **19.5.3 → 19.6.1** transition and a GitLab Runner
 and [Docker upgrade guidance](https://docs.gitlab.com/update/docker/) describe
 its prerequisites. The already completed 19.5 upgrade stop permits this direct
 transition; see the
-[version-specific procedure](../gitlab/UPGRADE.md#supported-transition). Required
-database and post-deployment migrations must finish;
+[operator procedure](#migrate-gitlab-through-the-accepted-controller). Earlier
+installations must complete their accepted upgrade path to 19.5.3 first. Preflight
+rejects unfinished background migrations in every configured database, including
+failed or paused work. Required database and post-deployment migrations must finish;
 check the source/target upgrade path rather than treating any newer image as an
 interchangeable patch.
 
@@ -1918,12 +1870,21 @@ Before stopping A, retain the accepted source and required tools outside the
 GitLab service being upgraded. Preserve the exact image evidence and a verified
 checkpoint on storage that remains accessible during maintenance. Preload the
 required images if their registry will be unavailable during the switch. A
-prepublished accepted mirror or Git bundle, including the required pinned
+prepublished accepted mirror or Git bundle, including any historical pinned
 submodule sources, breaks the dependency on needing GitLab to recover GitLab; a
 private local script does not.
 
 To retain source independently, run these standard Git commands from the clean
 accepted checkout on your management host while its sources are available:
+
+New releases include ordinary wizard/ source in the System bundle. The conditional
+Wizard bundle commands apply only to a historical commit whose tree records a
+gitlink; preserve that exact second repository for its historical recovery.
+Source identity is layout-specific: shared releases record sourceLayout as
+system-monorepo-v1, sourceRevision as the System commit and wizardSourceTree as
+the Wizard directory tree. A missing source layout retains the strict historical
+gitlink interpretation. Neither configuration imports nor Seed restores rewrite
+this evidence or published Git history.
 
 ```bash
 umask 077
@@ -1931,9 +1892,11 @@ git submodule update --init --recursive
 SOURCE_BUNDLE_DIR=/root/system-successor/source
 install -d -m 0700 "$SOURCE_BUNDLE_DIR"
 git bundle create "$SOURCE_BUNDLE_DIR/system.bundle" HEAD
-git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
 git bundle verify "$SOURCE_BUNDLE_DIR/system.bundle"
-git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+if git ls-tree HEAD wizard | grep -q '^160000 '; then
+  git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
+  git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+fi
 git rev-parse HEAD
 ```
 
@@ -1944,16 +1907,18 @@ recorded revision and initialize the Wizard without contacting GitLab or GitHub:
 ```bash
 git clone "$SOURCE_BUNDLE_DIR/system.bundle" /opt/system
 git -C /opt/system checkout --detach "$SYSTEM_TOOLS_REVISION"
-git -C /opt/system \
-  -c protocol.file.allow=always \
-  -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
-  submodule update --init --recursive
+if git -C /opt/system ls-tree HEAD wizard | grep -q '^160000 '; then
+  git -C /opt/system \
+    -c protocol.file.allow=always \
+    -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
+    submodule update --init --recursive
+fi
 ```
 
 Transfer the private bundles to that host first and set `SOURCE_BUNDLE_DIR` and
 `SYSTEM_TOOLS_REVISION` deliberately. The file-protocol override applies only to
-this invocation using the verified local bundles. These commands cover the repository's Wizard
-submodule; include equivalent recorded bundles if your fork adds more submodules.
+this invocation using the verified local bundles. The conditional commands cover historical Wizard
+submodules; include equivalent recorded bundles if your fork adds more submodules.
 A plain source ZIP does not contain the Git objects needed by initialization.
 
 Production promotion uses the committed operator entry point from that accepted
@@ -1976,7 +1941,7 @@ candidate evidence; publishing a runtime base alone does not meet this condition
 
 #### Stage the accepted controller from the host
 
-Check out the accepted merged source with its pinned submodules. Download these
+Check out the accepted merged source, including any historical pinned submodules. Download these
 **frozen** artifacts from its `test:platform-candidate` job:
 
 - `test-results/successor/release.json`

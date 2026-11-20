@@ -31,7 +31,7 @@ die öffentliche Adresse ändert. Für öffentliches HTTPS müssen die Ports 80 
 
 1. Laden Sie auf dem neuen Ubuntu-Host den Quellcode wie in Abschnitt 0.1.
    Wählen Sie eine geprüfte Werkzeugrevision mit dem Initialisierungseinstieg und
-   initialisieren Sie ihre exakten Submodule. Ein zuvor veröffentlichter,
+   initialisieren Sie exakte Submodule nur bei historischen Quellaufbauten. Ein zuvor veröffentlichter,
    freigegebener Quellcodespiegel oder ein Git-Bundle mit den benötigten Commits
    kann diesen Checkout bereitstellen, solange das plattformeigene GitLab nicht
    verfügbar ist:
@@ -46,7 +46,7 @@ die öffentliche Adresse ändert. Für öffentliches HTTPS müssen die Ports 80 
    des Initialisierungswerkzeugs nicht. Halten Sie den Checkout unverändert. Der
    im Image-Manifest aufgezeichnete Controller-Quellcode kann eine frühere
    freigegebene Revision sein; das Werkzeug prüft dessen Tree und den
-   Wizard-Gitlink separat und zeichnet zusätzlich die Revision der Host-Werkzeuge
+   aufbauabhängige Wizard-Quellidentität separat und zeichnet zusätzlich die Revision der Host-Werkzeuge
    auf. Aktualisieren Sie ein Submodul nicht auf seinen neuesten Branch und
    ändern Sie gespeicherte Dienstversionen nicht, um sie den Beispielen für eine
    Neuinstallation anzugleichen.

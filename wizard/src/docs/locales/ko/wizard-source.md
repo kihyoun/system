@@ -65,7 +65,7 @@ bash project-bootstrap/wizard-source/prepare.sh
 매니페스트와 파일 해시를 검증하며, 준비를 생략하면 실패합니다. 생성된 `snapshot.json`은
 커밋하지 마세요.
 
-준비는 System의 HEAD에 커밋된 Wizard gitlink의 Git 객체를 읽습니다. 수정된 체크아웃 파일,
+준비는 선택한 System HEAD에 커밋된 일반 Wizard 트리 또는 과거 Wizard gitlink의 Git 객체를 읽습니다. 수정된 체크아웃 파일,
 추적되지 않는 파일, 다르게 체크아웃된 Wizard 브랜치는 스냅샷을 변경할 수 없습니다. 바이너리
 바이트와 실행 권한 모드를 보존하고 심볼릭 링크와 중첩 서브모듈을 거부하며, dotenv 파일,
 자격 증명 파일 규칙에 해당하는 파일, Seed, 의존성 디렉터리, 빌드 출력을 제외합니다. 커밋된

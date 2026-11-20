@@ -46,7 +46,9 @@ wsl --install -d Ubuntu
 이는 운영자가 제공할 입력값입니다. 아래 자리표시자를 선택한 릴리스 값으로 바꾸세요.
 공개 Docker Hub 다운로드에는 계정이 필요하지 않습니다. 지정된 릴리스 대상은 `linux/amd64`입니다.
 
-Git을 설치하고 Wizard 서브모듈을 포함하여 정확한 릴리스를 체크아웃하세요.
+Git을 설치하고 Wizard 소스를 포함한 정확한 릴리스를 체크아웃하세요.
+새 릴리스는 wizard/를 직접 포함합니다. 아래 서브모듈 초기화는 Wizard gitlink를
+기록한 과거 릴리스에만 적용됩니다.
 
 ```bash
 sudo apt-get update

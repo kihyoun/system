@@ -3,8 +3,7 @@
 `candidate.js` führt ein ausdrückliches Smoke- oder vollständiges Plattformszenario mit privatem Daemon aus.
 Es ist vom isolierten Manifest getrennt; Offline-Transporte prüfen seinen
 Lebenszyklusvertrag, ohne Docker zu starten. Die erforderliche Root-CI-Plattformschranke
-führt das vollständige Szenario aus, einschließlich nativer geführter
-Quelleinrichtung/Übernahme und Review-/Beta-Lebenszyklen,
+führt das vollständige Szenario aus, einschließlich nativer gemeinsamer System-Einrichtung und Beta-Lebenszyklen,
 Konfigurations-plus-Seed-Wiederherstellung, ungecachter Beschaffung privater
 Wizard-Images und lokaler ACME-Erneuerung.
 
@@ -33,44 +32,31 @@ auf vier CPUs und 12 GiB RAM begrenzt. Planen Sie zusätzliche Reserve auf dem �
 Host, für Image-Archive, Image-Entpackung und GitLabs Datenvolume ein; Dockers Volume
 erzwingt keine Speicherplatzquote. Speicherplatz-/RAM-Prüfungen und eine Lease müssen außerhalb
 dieses Treibers vor dessen Aufruf erfolgen. Smoke-Szenarien verwenden ein internes
-äußeres Netzwerk. Das vollständige geführte Szenario erlaubt ausdrücklich ausgehenden
-Zugriff auf seiner eigenen Bridge für den öffentlichen HTTPS-Git-Ursprung sowie native
-Paket-, Browser- und Image-Downloads; es veröffentlicht weiterhin keine äußeren Ports.
-Dienst-Images bleiben deklariert und vorgeladen. Das vollständige Runner-/Registry-
-Szenario benötigt außerdem seine deklarierten Helfer- und Build-Eingaben.
+äußeres Netzwerk. Das geführte Szenario verwendet den exakten bestehenden System-
+Kandidatencommit aus einem privaten Git-Bundle. Es prüft Commitbaum und nativen
+`wizard/`-Baum, pusht mit `ci.skip` ausschließlich in sein bestehendes eigenes
+Testprojekt und verwendet die vorgebauten Helper-/Wizard-Images. Es erzeugt keinen
+zusätzlichen System-Build oder Kandidatenpipeline. Normale Anwendungs-Review-/Beta-Tests bleiben.
 
-Das geführte Szenario verwendet den öffentlichen Ursprung des festgelegten
-Submoduls aus `.gitmodules`; ein Betreiber-Fork kann `SYSTEM_TEST_WIZARD_ORIGIN`
-auf seine öffentliche HTTPS-Git-URL setzen. Die nativen Prüfungen öffentlicher
-Adressen und freigegebener Erzeuger bleiben aktiv. Ein geänderter Upstream-Erzeuger
-ist eine fehlerhafte Eingabe und keine Erlaubnis, andere CI in das Quellprojekt zu
-kopieren. Private Ursprünge werden für diese Importabnahme nicht unterstützt.
-GitLab, Sync, Wizard, Review und Beta verwenden TLS für exakte Hosts über die
-vorhandene lokale ACME-Stelle. Die Registry bleibt der vorhandene private
-HTTP-Endpunkt auf Port 5050; dieses Szenario behauptet keine HTTPS-Registry-Prüfung.
+GitLab, Sync, Wizard und System Beta verwenden exaktes Host-TLS über die bestehende
+lokale ACME-Stelle. Die Registry behält den privaten HTTP-Endpunkt auf Port 5050;
+das Szenario behauptet keine HTTPS-Registry-Verifikation.
 
-Die vollständige Prüfschranke führt die geführte Einrichtung einmal auf ihrer
-frischen ursprünglichen Plattform aus und nutzt dann deren normale Pipelines
-für den importierten Standardbranch, den Merge-Request und den Standardbranch
-nach dem Merge. Sie startet die echten manuellen Review-/Beta-Deploy- und Stop-Jobs
-und erhält die ursprüngliche Hauptkonfiguration und das laufende Wizard-Image
-während der gesamten Einrichtung. Die Veröffentlichungsschranke verlangt diese
-nativen Phasen und Identitäten; bestandene Offline-Testfälle können sie nicht
-ersetzen. Diese Phasen teilen die unten beschriebene feste absolute Szenariofrist.
-Die Phasenlaufzeiten enthalten die Arbeit; eine Zeitüberschreitung lässt die
-Abnahme ohne automatische Verlängerung scheitern.
+Die v2-Nachweisgrenze lautet `native-lifecycle-with-contract-verifier`. Echte native
+Einrichtung reserviert Beta im gemeinsamen Projekt; echte Bindung, Docker-Deployment,
+Image-Eigentum, TLS, Stop und Bereinigung laufen auf der eigenen Plattform.
+Positive und negative Vertragstests des unveränderten Production-Prüfers prüfen
+die Pipelineautorisierung. Der Test-Helper wählt ausdrücklich `contract-fixture`;
+die Production-Runtime hat keinen Fixture-Schalter. Pipeline-/Job-Identitäten sind
+als Fixtures gekennzeichnet und werden nie als erfolgreiche native CI veröffentlicht.
+Der übergeordnete Kandidat läuft noch, sein Abschluss kann ihn daher nicht selbst
+autorisieren. Production-Konfiguration und laufendes Image müssen stets unverändert bleiben.
 
-Nur der einzelne verwaltete Docker-Runner der ursprünglichen geführten Testplattform
-erlaubt zwei gleichzeitige Jobs mit jeweils höchstens 2 GiB RAM und einer CPU.
-Dadurch kann die native Quellpipeline Browserprüfungen parallel zur Image-Auslieferung
-ausführen. Die Testumgebung lehnt widersprüchliche Runner-Einstellungen ab und erhält
-registrierte Identität, Endpunkte, öffentliches Vertrauen und Quell-CI-Bytes.
-Der bestehende Auslieferungs-Builder mit 4 GiB und zwei CPUs sowie der
-Verifier-Browser mit 1 GiB und einer CPU behalten ihre eigenen Grenzen; sämtliche
-verschachtelten Vorgänge teilen weiterhin die feste Kandidatengrenze von 12 GiB
-und vier CPUs. Dies sind Obergrenzen, keine Reservierungen. Nur der abschließende
-vollständige Plattform-CI-Lauf belegt Abnahme und tatsächliche Laufzeitverbesserungen;
-Offline-Verträge messen diese nicht.
+Der Veröffentlichungsvalidator akzeptiert dieses explizite v2-Schema und erhält
+die historische v1-Prüfung. Weder Offline-Harness-Tests noch reine Betreiber-Vorprüfung
+belegen einen abgeschlossenen nativen wegwerfbaren Lauf. Alle nativen Phasen teilen
+die feste absolute Frist mit begrenzter Bereinigung und ohne automatische Verlängerung.
+
 
 Verwerfbare GitLab-Instanzen verwenden `puma['worker_processes'] = 2` über die
 offizielle Umgebungsvariable `GITLAB_OMNIBUS_CONFIG`. Verschachtelte Container können
@@ -338,14 +324,16 @@ Ohne das ausdrückliche Szenario `privateWizardRecovery` scheitert eine wiederhe
 Registry-Festlegung mit `wizard-pin-recovery-artifact-not-declared`; sie wird niemals
 still auf das lokale Test-Image geändert.
 
-Im vollständigen geführten Szenario verwendet die Wiederherstellung privater Images
-das tatsächliche Wizard-Artefakt aus der geprüften Standardbranch-Pipeline nach dem
-Merge erneut. Sie prüft unabhängig den kanonischen Quellbeleg, native Pflichtjobs
-und Artefakte, Registry-Digest, Image-ID und Quelllabel. Ein zusätzlicher Build für
-ein privates Image ist nicht nötig. Sein Image darf in keinem vorbereiteten Archiv
-vorhanden sein. Der nicht geführte Testfall veröffentlicht stattdessen ein Derivat
-über seinen bestehenden eigenen CI-Branch und eine eindeutige Markerschicht.
-Die tatsächlich exportierte Konfiguration legt den per CI veröffentlichten Registry-Digest fest.
+Im vollständigen geführten Szenario verwendet die private Image-Wiederherstellung
+den exakten vorgebauten Wizard-Kandidaten aus der privaten Registry des eigenen
+gemeinsamen Projekts. Sie prüft kanonische Bindung, Registry-Digest, Image-ID und
+Quelllabel. Es wird weder ein zusätzlicher Build noch eine erfolgreiche Pipeline
+behauptet. Der wiederhergestellte Daemon lässt das Wizard-Archiv weg und lehnt jede
+andere Archivrolle mit derselben ID ab. Die nicht geführte Fixture behält ihren
+bestehenden eigenen CI-Branch und die Markerschicht. Die tatsächlich exportierte
+Konfiguration legt den Registry-Digest fest.
+
+
 Der neue Daemon darf vor dem Start weder dessen Digest-Referenz noch dessen private Image-ID
 besitzen. Nach der Seed-Wiederherstellung beschafft der Starthelfer aus neuem Quellcode
 das exakte Image mit einem temporären projektbegrenzten `read_registry`-Deploy-Token.
@@ -453,9 +441,8 @@ Das Nachfolgerszenario verwendet nur dann ein festes Gesamt-Kandidatenbudget von
 110 Minuten, wenn sowohl `guidedPreviewAcceptance === true` als auch
 `gitlabUpgradeAcceptance === true` gelten und eine vorbereitete `publicUpgrade`-
 Testumgebung vorhanden ist. Das kombinierte Szenario ohne diese Testumgebung behält
-75 Minuten. Beide umfassen drei echte native Wizard-Push-/MR-/Push-Pipelines mit
-jeweils vier erforderlichen Jobs, manuelles Review/Beta Deploy und Stop,
-Kaltwiederherstellung und beide GitLab-Versionsübergänge. Die öffentliche Release-
+75 Minuten. Beide umfassen native gemeinsame System-Einrichtung und Beta-Deploy/Stop
+mit expliziter Vertragsprüfergrenze, Kaltwiederherstellung und beide GitLab-Versionsübergänge. Die öffentliche Release-
 Testumgebung führt zusätzlich den echten öffentlichen CLI-Plan und dessen Anwendung,
 eine neue passende kalte Seed-/Konfigurationssicherung, unterbrochene Offline-Image-
 Wiederherstellung und einen separaten Controller-Neustart mit dauerhaften
@@ -546,11 +533,7 @@ Kandidatenphase liefert den Upgrade-Abnahmenachweis.
 
 ## Geführte Vorschau-Abnahme nach dem Deployment
 
-Das [native Werkzeug zur geführten Vorschau-Abnahme](GUIDED_PREVIEW_ACCEPTANCE.md)
-prüft den frischen Quellimport, die tatsächlich erforderlichen Wizard-Push-/MR-Pipelines,
-die Source-Primary-Übernahme und Review-Deploy/Stop nach dem bewussten Deployment
-eines akzeptierten Controllers. Es verwendet ausdrücklich bereitgestellte private
-Betreibereingaben und den nativen lokalen Docker-Socket. Weder die Spezifikation
-der isolierten Testplattform noch eine zusätzliche CI-Pipeline aktiviert es.
-Ein reiner Prüfplan oder ein erfolgreicher Offline-Fixture-Test belegt nicht,
-dass die echte Betreiberabnahme durchgeführt wurde.
+Das [Betreiber-Vorprüfungswerkzeug](GUIDED_PREVIEW_ACCEPTANCE.md) prüft explizite
+private System-Beta-Einstellungen gegen einen ausgewählten lokalen Controller.
+Es liest nur und lehnt `--apply` ab. Die wegwerfbare Fixture-Auswahl läuft niemals
+auf einer Benutzerinstallation. Ein erfolgreicher Plan belegt keine native Abnahme.

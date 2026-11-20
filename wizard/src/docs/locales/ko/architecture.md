@@ -26,29 +26,30 @@ Angular, React, 일반 웹 프로젝트를 제공하며, NestJS는 내부 Sync �
 
 ## 운영 안내 지도
 
-애플리케이션 스타터는 Angular, React, 일반 웹 프로젝트를 지원합니다.
-[프로젝트 안내](PROJECT_BOOTSTRAP_GUIDE.md)는 비공개 저장소 생성, 편집 가능한 소스,
-CI, 애플리케이션 환경을 설명합니다. Wizard 자체도 관리형 프로젝트로 등록됩니다.
-명시적인 [소스 초기화](WIZARD_SOURCE.md), [빌드 구성](WIZARD_BUILD.md),
-[Review/Beta 환경](../project-bootstrap/wizard-environments/README.md),
-[제어된 운영 환경 승격](../project-bootstrap/wizard-production/README.md)은 각각 검사 가능한
-별도 작업입니다. 소스를 빌드하거나 병합하는 것만으로 실행 중인 관리 인터페이스가 교체되지는
-않습니다.
+애플리케이션 스타터는 독립 저장소와 Review, Beta, Production 환경을 유지합니다.
+[프로젝트 안내](PROJECT_BOOTSTRAP_GUIDE.md)는 생성, 편집 가능한 소스와 CI를 설명합니다.
+반면 System과 Wizard는 System 저장소와 후보 파이프라인을 공유합니다. Wizard 소스는
+일반 디렉터리이며 원래 저장소 이력은 가져오기 병합을 통해 계속 추적할 수 있습니다.
+새 커밋에는 별도 Wizard gitlink가 없습니다.
 
-기존 Wizard 개발 저장소를 가진 운영자는 대신
-[하나의 소스 우선 Wizard 프로젝트](../project-bootstrap/wizard-source-primary/README.md)를
-소스, 기본 검사, 후보 환경, 프로덕션 이미지에 채택할 수 있습니다. 사용자 변경 위로 소스를
-가져오지 않으면서 개발과 전달을 하나의 저장소에서 유지합니다. 다른 설정을 위해 레거시
-관리형 초기화도 계속 사용할 수 있습니다.
+선택적인 [System 후보 Beta](SYSTEM_CANDIDATE_REVIEW.md)는 이미 승인된 System 후보의
+정확한 Wizard 이미지를 고정 HTTPS 주소에서 재사용합니다. 설정은 기존 공유 프로젝트를
+선택하고 구성만 예약합니다. 추가 빌드나 전체 플랫폼 파이프라인을 만들지 않습니다.
+Production 승격은 별도의 의도적인 작업입니다. 일반 프로젝트 Review Apps는 계속
+지원하지만 새 System Review 연결과 배포는 폐지되었습니다. 기존 System Review 리소스는
+명시적인 Beta 이전 전에 원래 소유권이 확인된 Stop 작업과 정리를 거쳐야 합니다.
 
-운영자는 선택적인 [GitHub 코드 미러](GITLAB_GITHUB_BACKUP.md)와 함께 GitLab을 개발 및
-이슈 추적 플랫폼으로 선택할 수도 있습니다. 해당 안내는 소스 이력 매핑, 검토된 병합,
-트래커 마이그레이션, 검증을 다룹니다. 미러는 병합된 코드를 전달하고, 선택한 라이브 저장소와
-복구 계약이 GitLab 서비스 상태를 보존합니다.
+과거 소스 기록, JSON/ZIP 구성, 연결, 세대 하한값, tombstone과 일치하는 Seed는
+계속 유효한 복구 입력입니다. 기록된 소스 레이아웃과 식별 정보를 보존하세요.
+과거 Wizard 커밋을 공유 소스 트리로 재해석하거나 사용자 변경 위로 다시 가져오지 마세요.
+[소스 안내](WIZARD_SOURCE.md)는 두 레이아웃을 설명합니다. GitLab은 선택적인
+[GitHub 코드 미러](GITLAB_GITHUB_BACKUP.md)와 함께 개발 플랫폼으로 사용할 수 있습니다.
+미러링된 소스만으로 GitLab 서비스 데이터가 백업되지는 않습니다.
 
-번들 System/Wizard 변경에서는 선택적인 [System 후보 Review 작업](SYSTEM_CANDIDATE_REVIEW.md)이
-테스트된 Wizard 이미지를 구성된 Review HTTPS 호스트에 재사용하여, 명시적인 운영 환경
-승격 전에 개인 UI 승인 검사를 할 수 있습니다.
+폐기 가능한 Beta 인수 테스트는 실제 설정, 연결, 컨테이너 수명 주기, TLS, 정리를
+수행합니다. 상위 파이프라인이 실행 중인 동안 후보 권한 부여는 명시적 계약 fixture를
+사용합니다. 완료된 네이티브 권한 부여 파이프라인을 입증한다고 주장하지 않습니다.
+[검증 경계](../tests/e2e/GUIDED_PREVIEW_ACCEPTANCE.md)를 참조하세요.
 
 영구 서비스 데이터는 `PERSISTENT_DIR` 아래에 있습니다. 일반적으로 Ubuntu/WSL 시스템
 디스크의 `/var/lib/system-bootstrapper/platform`입니다. 플랫폼 시작이나 운영에 두 번째
@@ -196,7 +197,7 @@ Engine 업데이트에는 자체 유지 관리 경로가 필요합니다.
 | `nginx/` | 진입점 리버스 프록시 구성과 수명 주기 스크립트입니다. |
 | `nginx-proxy/` | 운영 환경, Beta, Review 프록시 구성입니다. |
 | `sync/` | 구성, 프로젝트 작업 흐름, 운영 작업, 진단을 위한 모듈형 NestJS API입니다. |
-| `wizard/` | 구성 Wizard 서브모듈입니다. |
+| `wizard/` | 원래 이력을 유지하는 일반 Wizard 애플리케이션 소스입니다. |
 | `.gitlab-ci.yml` | 짧은 문서 경로, 필수 런타임 컴포넌트/이미지/폐기 가능한 플랫폼 검사, 이미지 게시, 선택적 GitHub 미러입니다. |
 | [tests/](../tests/README.md) | 컴포넌트 목록, 격리 테스트 명령, 명시적인 라이브 통합 경계입니다. |
 | [Prepare-Host.md](../Prepare-Host.md) | 호스트 설치, 서비스 이미지 선택, 시작입니다. |

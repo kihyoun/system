@@ -81,3 +81,12 @@ Zugangsdatenbereinigung und Stop mit abgelaufenen Artefakten. Vergleiche Laufzei
 und Ressourcenverbrauch vergleichbarer akzeptierter Kandidatenläufe. Das Entfernen
 optionaler Review-Jobs verkürzt allein nicht den vollständigen isolierten
 Plattformtest; eine gemessene Einsparung wird damit nicht behauptet.
+
+Das wegwerfbare Plattformszenario deklariert `native-lifecycle-with-contract-verifier`.
+Gemeinsame Einrichtung, Bindung, Docker-Beta-Deploy/Stop, exaktes Host-TLS, Erhalt
+von Production und eigene Ressourcenbereinigung laufen nativ. Sein Autorisierungsprüfer
+verwendet `contract-fixture`-Nachweise: Der übergeordnete Kandidat läuft noch und kann
+sich nicht als abgeschlossene Pipeline selbst autorisieren. Positive und negative
+Verträge prüfen den Production-Verifier separat. Production-Launcher besitzen keinen
+Fixture-Schalter. Offline-Tests oder eine reine Vorprüfung belegen keinen abgeschlossenen
+nativen Lauf.

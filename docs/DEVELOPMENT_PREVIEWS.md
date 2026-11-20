@@ -75,3 +75,11 @@ fixtures cover foreign ownership, stale jobs, image/source mismatches, credentia
 cleanup and expiring-artifact Stop. Compare durations and resource use from
 comparable accepted candidate runs. Removing optional Review jobs does not by
 itself shorten the isolated full platform test; no measured saving is implied.
+
+The disposable platform scenario declares `native-lifecycle-with-contract-verifier`.
+Shared setup, binding, Docker Beta deploy/stop, exact-host TLS, Production
+preservation and owned cleanup run natively. Its authorization verifier uses
+`contract-fixture` evidence: the parent candidate is still running, so it cannot
+authorize itself as a completed pipeline. Positive and negative contracts exercise
+the production verifier separately. Production launchers have no fixture switch.
+Offline tests or check-only preflight do not establish a completed native run.

@@ -29,31 +29,33 @@ provides the isolated verification commands.
 
 ## Operational guide map
 
-Application starters cover Angular, React and general web projects. The
-[project guide](PROJECT_BOOTSTRAP_GUIDE.md) explains private repository creation,
-editable source, CI and application environments. The Wizard is itself registered
-as a managed project: explicit [source initialization](WIZARD_SOURCE.md),
-[build configuration](WIZARD_BUILD.md),
-[Review/Beta environments](../project-bootstrap/wizard-environments/README.md) and
-[controlled Production promotion](../project-bootstrap/wizard-production/README.md)
-provide separate, inspectable operations. Building or merging source alone does
-not replace the running management interface.
+Application starters retain independent repositories and Review, Beta and
+Production environments. The [project guide](PROJECT_BOOTSTRAP_GUIDE.md) explains
+creation, editable source and CI. System and Wizard instead share the System
+repository and candidate pipeline. Wizard source is an ordinary directory;
+its original repository history remains reachable through the import merge.
+There is no separate Wizard gitlink in new commits.
 
-An operator with an existing Wizard development repository can instead adopt
-[one source-primary Wizard project](../project-bootstrap/wizard-source-primary/README.md)
-for source, native checks, candidate environments and production images. This
-keeps development and delivery in one repository without importing over user
-changes. The legacy managed initialization remains available for other setups.
+The optional [System candidate Beta](SYSTEM_CANDIDATE_REVIEW.md) reuses the exact
+Wizard image from an already accepted System candidate at a fixed HTTPS address.
+Setup selects an existing shared project and reserves configuration only. It
+creates no extra build or complete platform pipeline. Production promotion stays
+separate and deliberate. Normal project Review Apps remain supported; new System
+Review bindings and deployments are retired. Existing System Review resources
+require their original owned Stop and cleanup before explicit Beta migration.
 
-An operator can also select GitLab as the development and issue-tracking
-platform with an optional [GitHub code mirror](GITLAB_GITHUB_BACKUP.md).
-That guide covers source-history mapping, reviewed merges, tracker migration
-and verification. The mirror forwards merged code; selected live storage
-and the recovery contract retain GitLab's service state.
+Historical source receipts, JSON/ZIP configuration, bindings, generation floors,
+tombstones and matching Seeds remain valid recovery inputs. Preserve their
+recorded layout and identities; never reinterpret an old Wizard commit as a
+shared source tree or reimport over user edits. The [source guide](WIZARD_SOURCE.md)
+describes both layouts. GitLab can remain the development platform with an
+optional [GitHub code mirror](GITLAB_GITHUB_BACKUP.md); mirrored source alone does
+not back up GitLab service data.
 
-For a bundled System/Wizard change, optional [System candidate Review jobs](SYSTEM_CANDIDATE_REVIEW.md)
-reuse the tested Wizard image on the configured Review HTTPS host for personal
-UI acceptance before deliberate Production promotion.
+The disposable Beta acceptance test performs real setup, binding, container
+lifecycle, TLS and cleanup. Candidate authorization uses explicit contract
+fixtures while its parent pipeline is running. It does not claim a completed
+native authorization pipeline; see the [verification boundary](../tests/e2e/GUIDED_PREVIEW_ACCEPTANCE.md).
 
 Persistent service data lives beneath `PERSISTENT_DIR`, normally
 `/var/lib/system-bootstrapper/platform` on the Ubuntu/WSL system disk. No second
@@ -200,7 +202,7 @@ The container definitions can be reproduced; GitLab repositories, database conte
 | `nginx/` | Entry-point reverse-proxy configuration and lifecycle scripts. |
 | `nginx-proxy/` | Production, beta, and review proxy configuration. |
 | `sync/` | Modular NestJS API for configuration, project workflows, operations and diagnostics. |
-| `wizard/` | Configuration wizard submodule. |
+| `wizard/` | Regular Wizard application source, with original history retained by the import merge. |
 | `.gitlab-ci.yml` | Short documentation lane; required runtime component, image and disposable platform checks; image publishing and optional GitHub mirror. |
 | [tests/](../tests/README.md) | Component inventory, isolated test commands and explicit live-integration boundaries. |
 | [Prepare-Host.md](../Prepare-Host.md) | Host installation, service-image selection and startup. |

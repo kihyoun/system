@@ -31,31 +31,35 @@ Die [Testanleitung](../tests/README.md) beschreibt die isolierten Prüfbefehle.
 
 ## Wegweiser für den Betrieb
 
-Anwendungsvorlagen decken Angular, React und allgemeine Webprojekte ab. Die
-[Projektanleitung](PROJECT_BOOTSTRAP_GUIDE.md) erläutert private Repositorys,
-bearbeitbaren Quellcode, CI und Anwendungsumgebungen. Der Wizard selbst wird
-als verwaltetes Projekt registriert: explizite [Quellcodeinitialisierung](WIZARD_SOURCE.md),
-[Build-Konfiguration](WIZARD_BUILD.md),
-[Review-/Beta-Umgebungen](../project-bootstrap/wizard-environments/README.md) und
-[kontrollierte Production-Freigabe](../project-bootstrap/wizard-production/README.md)
-bilden getrennte, überprüfbare Vorgänge. Ein Build oder Merge allein ersetzt
-die laufende Verwaltungsoberfläche nicht.
+Anwendungsvorlagen behalten unabhängige Repositorys und Review-, Beta- sowie
+Production-Umgebungen. Die [Projektanleitung](PROJECT_BOOTSTRAP_GUIDE.md) beschreibt
+Erstellung, bearbeitbaren Quellcode und CI. System und Wizard teilen dagegen das
+System-Repository und seine Kandidatenpipeline. Der Wizard ist ein reguläres
+Quellverzeichnis; seine ursprüngliche Repositoryhistorie bleibt über den Importmerge
+erreichbar. Neue Commits enthalten keinen separaten Wizard-Gitlink.
 
-Betreiber mit einem vorhandenen Wizard-Entwicklungsrepository können stattdessen
-[ein quellcodeführendes Wizard-Projekt](../project-bootstrap/wizard-source-primary/README.md)
-für Quellcode, native Prüfungen, Kandidatenumgebungen und Production-Images übernehmen.
-Entwicklung und Auslieferung bleiben in einem Repository, ohne Benutzeränderungen
-beim Import zu überschreiben. Die bisherige verwaltete Initialisierung bleibt für andere Aufbauten verfügbar.
+Die optionale [System-Kandidaten-Beta](SYSTEM_CANDIDATE_REVIEW.md) verwendet das
+exakte Wizard-Image eines bereits geprüften System-Kandidaten unter einer festen
+HTTPS-Adresse. Die Einrichtung wählt ein bestehendes gemeinsames Projekt und
+reserviert nur Konfiguration. Sie erzeugt weder einen zusätzlichen Build noch eine
+weitere vollständige Plattformpipeline. Production-Freigabe bleibt getrennt und
+bewusst. Normale Projekt-Review-Apps bleiben unterstützt; neue System-Review-Bindungen
+und -Deployments entfallen. Bestehende System-Review-Ressourcen benötigen vor der
+expliziten Beta-Migration ihren ursprünglichen eigenen Stop und die Bereinigung.
 
-Betreiber können außerdem GitLab als Entwicklungs- und Aufgabenplattform mit
-einem optionalen [GitHub-Quellcodespiegel](GITLAB_GITHUB_BACKUP.md) wählen.
-Diese Anleitung behandelt die Zuordnung der Quellcodehistorie, geprüfte Merges,
-Tracker-Migration und Verifikation. Der Spiegel überträgt zusammengeführten Code;
-der ausgewählte Live-Speicher und der Wiederherstellungsvertrag bewahren GitLabs Dienstzustand.
+Historische Quellbelege, JSON-/ZIP-Konfiguration, Bindungen, Generationsuntergrenzen,
+Tombstones und passende Seeds bleiben gültige Wiederherstellungseingaben. Bewahre
+ihren aufgezeichneten Aufbau und ihre Identitäten. Deute einen alten Wizard-Commit
+niemals als gemeinsamen Quellbaum um und importiere nicht über Benutzeränderungen.
+Die [Quellanleitung](WIZARD_SOURCE.md) beschreibt beide Aufbauten. GitLab kann die
+Entwicklungsplattform mit optionalem [GitHub-Quellcodespiegel](GITLAB_GITHUB_BACKUP.md)
+bleiben; gespiegelter Quellcode allein sichert keine GitLab-Dienstdaten.
 
-Für eine gebündelte System-/Wizard-Änderung verwenden optionale [System-Kandidaten-Review-Jobs](SYSTEM_CANDIDATE_REVIEW.md)
-das geprüfte Wizard-Image auf dem konfigurierten Review-HTTPS-Host für die persönliche
-Oberflächenabnahme vor einer bewussten Production-Freigabe.
+Der wegwerfbare Beta-Abnahmetest führt Einrichtung, Bindung, Containerlebenszyklus,
+TLS und Bereinigung tatsächlich aus. Die Kandidatenautorisierung verwendet
+explizite Vertragsfixtures, solange die übergeordnete Pipeline läuft. Sie behauptet
+keine abgeschlossene native Autorisierungspipeline; siehe die
+[Verifikationsgrenze](../tests/e2e/GUIDED_PREVIEW_ACCEPTANCE.md).
 
 Persistente Dienstdaten liegen unter `PERSISTENT_DIR`, normalerweise
 `/var/lib/system-bootstrapper/platform` auf der Ubuntu-/WSL-Systemplatte. Eine zweite
@@ -202,7 +206,7 @@ Containerdefinitionen sind reproduzierbar; GitLab-Repositorys, Datenbanken, Regi
 | `nginx/` | Konfiguration und Lebenszyklusskripte des zentralen Reverse-Proxys. |
 | `nginx-proxy/` | Konfiguration der Production-, Beta- und Review-Proxys. |
 | `sync/` | Modulare NestJS-API für Konfiguration, Projektabläufe, Betriebsaufgaben und Diagnose. |
-| `wizard/` | Submodul des Konfigurations-Wizards. |
+| `wizard/` | Regulärer Wizard-Anwendungscode mit erhaltener ursprünglicher Historie. |
 | `.gitlab-ci.yml` | Kurzer Dokumentationspfad; erforderliche Komponenten-, Image- und kurzlebige Plattformprüfungen; Image-Veröffentlichung und optionaler GitHub-Spiegel. |
 | [tests/](../tests/README.md) | Komponentenübersicht, isolierte Testbefehle und explizite Grenzen für Live-Integration. |
 | [Prepare-Host.md](../Prepare-Host.md) | Hostinstallation, Auswahl von Dienst-Images und Start. |

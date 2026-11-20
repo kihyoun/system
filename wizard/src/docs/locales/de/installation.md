@@ -49,7 +49,9 @@ Release-Nachweisen des Herausgebers. Dies sind Betreiberparameter: Ersetzen Sie 
 unten durch die Werte dieses Releases. Öffentliche Docker-Hub-Downloads benötigen kein
 Konto. Das deklarierte Release ist für `linux/amd64` vorgesehen.
 
-Installieren Sie Git und checken Sie genau dieses Release einschließlich seines Wizard-Submoduls aus:
+Installieren Sie Git und checken Sie genau dieses Release einschließlich Wizard-Quellcode aus.
+Neue Releases enthalten wizard/ direkt; die folgende Submodulinitialisierung gilt nur
+für historische Releases mit gespeichertem Wizard-Gitlink:
 
 ```bash
 sudo apt-get update

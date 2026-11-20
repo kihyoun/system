@@ -29,7 +29,7 @@
 
 | 입력 | 요구 사항 |
 | --- | --- |
-| 승인된 소스 | 깨끗하고 검토된 System 리비전과 정확한 재귀 Wizard 서브모듈 커밋이 필요합니다. 모든 초기화, 복구, 검증, 배포 진입점이 그 체크아웃에 버전 관리되어야 합니다. |
+| 승인된 소스 | Wizard 소스 트리를 포함하는 깨끗하고 검토된 System 리비전이 필요합니다. 과거 릴리스에는 정확한 Wizard gitlink가 필요합니다. 모든 초기화, 복구, 검증, 배포 진입점이 그 체크아웃에 버전 관리되어야 합니다. |
 | 기존 세대 | GitLab 버전과 에디션, 불변 서비스 이미지 참조, 컨트롤러/Wizard 소스 식별 정보를 기록하세요. 저장된 구성이 최초 설치 예시보다 우선합니다. |
 | 후보 자원 | 이미지 아카이브와 데이터베이스 사본을 포함해 운영 환경과 별도의 폐기 가능한 플랫폼을 수용할 용량이 있는 신뢰할 수 있는 Runner/호스트가 필요합니다. 무거운 작업을 시작하기 전에 자원 임대를 얻으세요. 현재 하네스는 후보 RAM 12 GiB를 허용하지만 이는 호스트 전체 요구량이 아닙니다. |
 | 격리된 상태 | 후보 컨테이너, 네트워크, Docker 데몬, 데이터 디렉터리를 분리하세요. A 실행 중에 A의 쓰기 가능한 데이터베이스나 Registry 디렉터리를 B에 연결하지 마세요. |
@@ -73,7 +73,7 @@ Wizard와 GitLab을 제공할 수 있는 작은 호스트가 두 번째 전체 �
 공개 배포를 활성화하면 Docker Hub 게시 작업은 보호된 기본 브랜치나 보호 버전 태그에서
 이 필수 검사를 뒤따릅니다. 승인 후 다시 빌드하지 않고 승인된 완전한 컨트롤러와 일치하는
 Wizard를 복사합니다. 각각 전체 소스 커밋 태그를 받으며, 보호된 `vX.Y.Z` 태그는 버전 별칭을
-추가할 수 있습니다. 릴리스 기록은 소스 리비전/트리, Wizard gitlink, 이미지 ID, 불변 Docker
+추가할 수 있습니다. 릴리스 기록은 소스 리비전/트리, 레이아웃별 Wizard 소스 식별 정보, 이미지 ID, 불변 Docker
 Hub 참조를 연결합니다. 기존의 충돌 별칭은 거부하며, 익명 가져오기 검증으로 게시자 자격
 증명 없이 두 공개 이미지를 가져올 수 있는지 확인합니다.
 [게시자 구성](../Prepare-Host.md#publish-your-own-public-releases)을 참조하세요.
@@ -97,16 +97,18 @@ Hub 참조를 연결합니다. 기존의 충돌 별칭은 거부하며, 익명 �
 
 전체 플랫폼 CI 작업은 준비, 실행, 게시 및 아티팩트 수집을 위해
 115분 Runner 스크립트, 별도의 2분 `after_script`, 120분 작업 제한을 허용합니다.
-결합 시나리오의 두 상한에는 모두 가져온 기본 브랜치, 병합 요청 및 병합된 기본 브랜치의
-실제 네이티브 Wizard 파이프라인 세 개가 포함되며, 각각 필수 작업 네 개를 실행합니다.
-수동 Review/Beta Deploy 및 Stop도 포함됩니다. 이는 상한이며 실행 시간 보장이 아닙니다.
-후보의 제한은 RAM 12 GiB와 CPU 네 개로 유지됩니다.
-원래 안내형 플랫폼의 단일 관리형 Docker Runner만 동시 작업 두 개를 허용하며,
-각 작업은 RAM 2 GiB와 CPU 한 개로 제한됩니다. 모든 중첩 작업은 후보 상한을 공유합니다.
-완료된 하위 프로세스가 실패하면 해당 단계를 즉시 중단합니다. 준비 상태 조회는 일시적인
-시작 상태를 재시도하지만, 확인된 최종 컨테이너 또는 식별 정보 오류는 즉시 중단합니다.
-개별 작업의 제한 시간은 그대로 적용되며 보고서는 호출 시간 초과와 프로세스 종료를 구분합니다.
-전체 상한은 추가 보호 장치이며 반드시 기다려야 하는 시간이 아닙니다.
+공유 System Beta 시나리오는 기존 후보 이미지를 재사용하며 추가 Wizard 빌드나
+System 파이프라인을 시작하지 않습니다. 실제 설정, 연결, Beta 배포, TLS, Stop과
+소유 리소스 정리를 검증합니다. 상위 후보가 아직 완료되지 않았으므로 권한 부여는
+계약 fixture를 사용합니다. 완료된 네이티브 파이프라인의 권한 부여를 입증하지는
+않습니다. 일반 애플리케이션 Review/Beta 검사는 계속 필수입니다. 마감 시간은 상한이며
+실행 시간 보장이나 측정된 절감 효과가 아닙니다. 후보의 제한은 RAM 12 GiB와 CPU
+네 개입니다. 모든 중첩 작업은 이 상한을 공유합니다. 완료된 하위 프로세스가 실패하면
+해당 단계를 즉시 중단합니다. 준비 상태 조회는 일시적인 시작 상태를 재시도하지만
+확인된 컨테이너 또는 식별 정보 오류는 즉시 중단합니다. 개별 작업의 제한 시간은
+그대로 적용되며 보고서는 호출 시간 초과와 프로세스 종료를 구분합니다. 전체 상한은
+추가 보호 장치이며 반드시 기다려야 하는 시간이 아닙니다.
+
 문서 전용 변경은 짧은 경로를 유지합니다. 이전에 통과한
 픽스처나 MR 실행은 승격하려는 정확한 병합 소스에 필요한 승인을 대신하지 못합니다.
 
@@ -138,11 +140,16 @@ Hub 참조를 연결합니다. 기존의 충돌 별칭은 거부하며, 익명 �
 ### 5.4 예시: GitLab 보안 패치도 시스템 진화입니다
 
 커밋된 [보안 릴리스 프로필](../gitlab/security-release.json)은 GitLab CE
-**19.4.3 → 19.5.3** 전환과 일치하는 Helper를 포함한 GitLab Runner **19.4.0 → 19.5.1**
+**19.5.3 → 19.6.1** 전환과 일치하는 Helper를 포함한 GitLab Runner **19.5.1 → 19.6.0**
 전환을 선언합니다. 연결된 업스트림
-[패치 공지](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-3-released/)와
+[패치 공지](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-6-1-released/)와
 [Docker 업그레이드 안내](https://docs.gitlab.com/update/docker/)가 사전 조건을 설명합니다.
-필수 데이터베이스 및 배포 후 마이그레이션이 완료되어야 합니다. 더 새 이미지라면 아무거나
+이미 완료된 19.5 업그레이드 중간 단계 덕분에 직접 전환할 수 있습니다.
+[운영자 절차](#migrate-gitlab-through-the-accepted-controller)를 참조하세요.
+이전 설치는 먼저 승인된 업그레이드 경로로 19.5.3에 도달해야 합니다. 사전 검사는
+구성된 모든 데이터베이스에서 완료되지 않은 백그라운드 마이그레이션을 거부하며
+실패하거나 일시 중지된 작업도 포함합니다. 필수 데이터베이스 및 배포 후 마이그레이션이
+완료되어야 합니다. 더 새 이미지라면 아무거나
 서로 바꿔 쓸 수 있는 패치로 취급하지 말고 원본/대상 업그레이드 경로를 확인하세요.
 
 선택된 System/CI 이미지와 새 버전의 Wizard 레시피는 커밋된 공개 CA 번들도 설치합니다.
@@ -164,12 +171,20 @@ Wizard의 두 컨테이너 프록시 전환은 GitLab 데이터베이스 업그�
 
 A를 중지하기 전에 승인된 소스와 필수 도구를 업그레이드 대상 GitLab 서비스 밖에 보관하세요.
 유지 관리 중에도 접근 가능한 저장소에 정확한 이미지 증거와 검증된 체크포인트를 보존하세요.
-전환 중 Registry를 사용할 수 없다면 필수 이미지를 미리 불러오세요. 필요한 고정 서브모듈
+전환 중 Registry를 사용할 수 없다면 필수 이미지를 미리 불러오세요. 필요한 경우 과거 고정 서브모듈
 소스를 포함하여 미리 게시된 승인 미러나 Git bundle은 GitLab 복구에 GitLab이 필요한
 의존성을 끊어 줍니다. 비공개 로컬 스크립트는 그렇지 않습니다.
 
 소스를 독립적으로 보관하려면 소스를 사용할 수 있는 동안 관리 호스트의 깨끗한 승인
 체크아웃에서 다음 표준 Git 명령을 실행하세요.
+
+새 릴리스는 일반 wizard/ 소스를 System bundle에 포함합니다. 조건부 Wizard bundle
+명령은 트리에 gitlink를 기록한 과거 커밋에만 적용됩니다. 해당 과거 버전을 복구하려면
+정확한 두 번째 저장소도 보존하세요. 소스 식별 정보는 레이아웃에 따라 다릅니다.
+공유 릴리스는 sourceLayout을 system-monorepo-v1로, sourceRevision을 System 커밋으로,
+wizardSourceTree를 Wizard 디렉터리 트리로 기록합니다. 소스 레이아웃이 없으면 엄격한
+과거 gitlink 해석이 유지됩니다. 구성 가져오기나 Seed 복원은 이러한 증거나 공개된
+Git 이력을 다시 작성하지 않습니다.
 
 ```bash
 umask 077
@@ -177,9 +192,11 @@ git submodule update --init --recursive
 SOURCE_BUNDLE_DIR=/root/system-successor/source
 install -d -m 0700 "$SOURCE_BUNDLE_DIR"
 git bundle create "$SOURCE_BUNDLE_DIR/system.bundle" HEAD
-git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
 git bundle verify "$SOURCE_BUNDLE_DIR/system.bundle"
-git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+if git ls-tree HEAD wizard | grep -q '^160000 '; then
+  git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
+  git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+fi
 git rev-parse HEAD
 ```
 
@@ -190,15 +207,17 @@ git rev-parse HEAD
 ```bash
 git clone "$SOURCE_BUNDLE_DIR/system.bundle" /opt/system
 git -C /opt/system checkout --detach "$SYSTEM_TOOLS_REVISION"
-git -C /opt/system \
-  -c protocol.file.allow=always \
-  -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
-  submodule update --init --recursive
+if git -C /opt/system ls-tree HEAD wizard | grep -q '^160000 '; then
+  git -C /opt/system \
+    -c protocol.file.allow=always \
+    -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
+    submodule update --init --recursive
+fi
 ```
 
 먼저 비공개 bundle을 해당 호스트로 전송하고 `SOURCE_BUNDLE_DIR`과
 `SYSTEM_TOOLS_REVISION`을 명시적으로 설정하세요. 파일 프로토콜 재정의는 검증된 로컬
-bundle을 사용하는 이 호출에만 적용됩니다. 이 명령은 저장소의 Wizard 서브모듈을 다룹니다.
+bundle을 사용하는 이 호출에만 적용됩니다. 이 조건부 명령은 과거 Wizard 서브모듈을 다룹니다.
 포크에 서브모듈을 더 추가했다면 이에 상응하는 기록된 bundle도 포함하세요. 일반 소스 ZIP에는
 초기화에 필요한 Git 객체가 없습니다.
 
@@ -207,11 +226,11 @@ bundle을 사용하는 이 호출에만 적용됩니다. 이 명령은 저장소
 GitLab을 중지할 때 CI 작업이 살아남으리라 의존하지 말고, 호스트나 독립적인 관리 연결에서
 실행하세요.
 
-선언된 CE 19.4.3 → 19.5.3 전환에 허용되는 이미지 고정값은
+선언된 CE 19.5.3 → 19.6.1 전환에 허용되는 이미지 고정값은
 [`gitlab/security-release.json`](../gitlab/security-release.json)에 있습니다. 계획하거나 중단에
 들어가기 전에 여섯 이미지 참조를 모두 가져오세요. `fromImage`, `toImage`, `runner.fromImage`,
 `runner.toImage`, `runner.fromHelperImage`, `runner.helperImage`입니다. 두 GitLab 버전과
-이전 및 대상 Runner/Helper 쌍이 포함됩니다. 먼저 저장된 19.4.3 GitLab 선택을 보존하면서
+이전 및 대상 Runner/Helper 쌍이 포함됩니다. 먼저 저장된 19.5.3 GitLab 선택을 보존하면서
 승인된 도구가 포함된 **정확히 테스트된 완전한 컨트롤러 이미지**를 배포하세요. 같은 태그로
 다른 이미지를 다시 빌드하고 테스트된 식별 정보를 가졌다고 가정하지 마세요. 도우미는 실행 중인
 컨트롤러가 승인된 후보 증거에 기록된 이미지와 일치할 것을 요구합니다. 런타임 기반 이미지만
@@ -219,7 +238,7 @@ GitLab을 중지할 때 CI 작업이 살아남으리라 의존하지 말고, 호
 
 #### 호스트에서 승인된 컨트롤러 준비
 
-고정된 서브모듈과 함께 승인된 병합 소스를 체크아웃하세요. 해당 `test:platform-candidate`
+해당 버전에 과거 서브모듈이 있으면 함께 초기화하고 승인된 병합 소스를 체크아웃하세요. 해당 `test:platform-candidate`
 작업에서 다음 **고정된** 아티팩트를 다운로드하세요.
 
 - `test-results/successor/release.json`

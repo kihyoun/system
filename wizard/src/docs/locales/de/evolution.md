@@ -35,7 +35,7 @@ Folgendes vor:
 
 | Eingabe | Anforderung |
 | --- | --- |
-| Freigegebener Quellcode | Eine unveränderte, geprüfte Systemrevision und ihr exakter rekursiver Wizard-Submodul-Commit. Jeder Einstieg für Initialisierung, Wiederherstellung, Prüfung und Bereitstellung muss in diesem Checkout versioniert sein. |
+| Freigegebener Quellcode | Eine unveränderte, geprüfte Systemrevision einschließlich Wizard-Quellbaum (bei historischen Releases der exakte Wizard-Gitlink). Jeder Einstieg für Initialisierung, Wiederherstellung, Prüfung und Bereitstellung muss in diesem Checkout versioniert sein. |
 | Vorhandene Generation | Zeichnen Sie GitLab-Version und -Edition, unveränderliche Dienst-Image-Referenzen und die Quellcode-Identitäten von Controller/Wizard auf. Gespeicherte Konfiguration hat Vorrang vor Erstinstallationsbeispielen. |
 | Kandidatenressourcen | Ein vertrauenswürdiger Runner/Host mit Kapazität für die Produktionsumgebung und eine gesonderte Wegwerfplattform einschließlich Image-Archiven und Datenbankkopien. Erwerben Sie vor dem Start des aufwendigen Jobs die Ressourcensperre. Der aktuelle Testrahmen erlaubt 12 GiB Kandidaten-RAM; dies ist nicht der gesamte Host-Bedarf. |
 | Isolierter Zustand | Getrennte Kandidatencontainer, Netzwerke, Docker-Daemon und Datenverzeichnisse. Binden Sie niemals beschreibbare Datenbank- oder Registry-Verzeichnisse von A in B ein, während A läuft. |
@@ -95,7 +95,7 @@ geschützten Versionstag. Er kopiert den freigegebenen vollständigen Controller
 und den passenden Wizard, statt einen von beiden nach der Abnahme neu zu
 erstellen. Beide erhalten ein Tag mit dem vollständigen Quellcode-Commit;
 ein geschütztes Tag `vX.Y.Z` kann einen Versionsalias ergänzen. Der Release-Beleg
-bindet Quellcoderevision/Tree, Wizard-Gitlink, Image-IDs und unveränderliche
+bindet Quellcoderevision/Tree, aufbauabhängige Wizard-Quellidentität, Image-IDs und unveränderliche
 Docker-Hub-Referenzen. Vorhandene widersprüchliche Aliase werden abgewiesen;
 eine Prüfung durch anonymes Abrufen kontrolliert, dass beide öffentlichen
 Images ohne Publikationszugangsdaten abgerufen werden können. Siehe
@@ -124,20 +124,21 @@ sie zurück; eine Zeitüberschreitung lässt die Abnahme ohne automatische Verl�
 
 Der vollständige Plattform-CI-Job erlaubt ein 115-minütiges Runner-Skript, ein
 separates zweiminütiges `after_script` und ein Job-Limit von 120 Minuten für
-Vorbereitung, Ausführung, Veröffentlichung und Artefaktsammlung. Beide Grenzen des
-kombinierten Szenarios umfassen drei echte native Wizard-Pipelines für den importierten
-Standardbranch, den Merge Request und den gemergten Standardbranch mit jeweils
-vier erforderlichen Jobs sowie manuelles Review/Beta Deploy und Stop. Diese Grenze
-ist eine Obergrenze, keine Laufzeitgarantie. Der Kandidat bleibt auf 12 GiB RAM
-und vier CPUs begrenzt. Nur der einzelne verwaltete Docker-Runner der ursprünglichen
-geführten Plattform erlaubt zwei gleichzeitige Jobs mit jeweils höchstens 2 GiB
-RAM und einer CPU; alle verschachtelten Vorgänge teilen die Kandidatengrenze.
-Abgeschlossene Unterprozesse mit Fehlerstatus brechen ihren Schritt sofort ab.
-Bereitschaftsabfragen wiederholen vorübergehende Startzustände; bestätigte endgültige
-Container- oder Identitätsfehler führen zum sofortigen Abbruch. Die Fristen einzelner
-Vorgänge gelten weiterhin, und Berichte unterscheiden einen zeitüberschrittenen Aufruf
-von einem Prozessende. Die Gesamtgrenze ist eine zusätzliche Absicherung und keine
-vorgeschriebene Wartezeit.
+Vorbereitung, Ausführung, Veröffentlichung und Artefaktsammlung. Das gemeinsame
+System-Beta-Szenario verwendet bestehende Kandidatenimages und startet keinen
+zusätzlichen Wizard-Build oder System-Pipeline. Native Einrichtung, Bindung,
+Beta-Deployment, TLS, Stop und eigene Ressourcenbereinigung werden geprüft.
+Die Autorisierung verwendet Vertragsfixtures, weil der übergeordnete Kandidat
+noch läuft. Dies belegt keine Autorisierung durch eine abgeschlossene native
+Pipeline. Normale Anwendungs-Review-/Beta-Prüfungen bleiben erforderlich. Die Frist
+ist eine Obergrenze, keine Laufzeitgarantie und keine gemessene Einsparung. Der
+Kandidat bleibt auf 12 GiB RAM und vier CPUs begrenzt. Alle verschachtelten Vorgänge
+teilen diese Grenze. Fehlgeschlagene Unterprozesse brechen ihren Schritt sofort ab.
+Bereitschaftsabfragen wiederholen vorübergehende Startzustände; bestätigte Container-
+oder Identitätsfehler führen sofort zum Abbruch. Vorgangsfristen gelten weiterhin;
+Berichte unterscheiden Zeitüberschreitung und Prozessende. Die Gesamtgrenze ist
+eine zusätzliche Absicherung und keine vorgeschriebene Wartezeit.
+
 Reine Dokumentationsänderungen behalten ihren kurzen Pfad. Kein früherer
 erfolgreicher Fixture- oder MR-Lauf ersetzt die erforderliche Abnahme des exakten
 gemergten Quellcodes, der freigegeben wird.
@@ -181,11 +182,16 @@ Migrationsergebnisse für Quell- und Zielversion.
 ### 5.4 Beispiel: Ein GitLab-Sicherheitspatch ist eine Systemweiterentwicklung
 
 Das eingecheckte [Sicherheitsrelease-Profil](../gitlab/security-release.json)
-deklariert einen Übergang von GitLab CE **19.4.3 → 19.5.3** sowie von GitLab
-Runner **19.4.0 → 19.5.1** mit passendem Helfer. Die verlinkte
-[Patch-Mitteilung](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-3-released/)
+deklariert einen Übergang von GitLab CE **19.5.3 → 19.6.1** sowie von GitLab
+Runner **19.5.1 → 19.6.0** mit passendem Helfer. Die verlinkte
+[Patch-Mitteilung](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-6-1-released/)
 und die [Docker-Upgrade-Anleitung](https://docs.gitlab.com/update/docker/)
-beschreiben die Voraussetzungen. Erforderliche Datenbank- und
+beschreiben die Voraussetzungen. Der bereits abgeschlossene Upgrade-Stopp bei 19.5
+erlaubt diesen direkten Übergang; siehe das
+[Betreiberverfahren](#migrate-gitlab-through-the-accepted-controller). Frühere
+Installationen müssen zunächst ihren akzeptierten Upgrade-Pfad bis 19.5.3 abschließen.
+Die Vorprüfung verwirft unfertige Hintergrundmigrationen in jeder konfigurierten
+Datenbank, auch fehlgeschlagene oder pausierte Arbeit. Erforderliche Datenbank- und
 Nachbereitstellungsmigrationen müssen abschließen; prüfen Sie den Upgrade-Pfad
 von Quell- zu Zielversion, statt jedes neuere Image als austauschbaren Patch
 zu behandeln.
@@ -220,7 +226,7 @@ die exakten Image-Nachweise und einen geprüften Prüfpunkt auf Speicher, der
 während der Wartung zugänglich bleibt. Laden Sie benötigte Images vorab, falls
 ihre Registry während des Wechsels nicht verfügbar sein wird. Ein zuvor
 veröffentlichter freigegebener Spiegel oder ein Git-Bundle einschließlich der
-erforderlichen festgelegten Submodulquellen löst die Abhängigkeit, GitLab zur
+gegebenenfalls erforderlichen historischen festgelegten Submodulquellen löst die Abhängigkeit, GitLab zur
 Wiederherstellung von GitLab zu benötigen; ein privates lokales Skript tut das
 nicht.
 
@@ -228,15 +234,26 @@ Um Quellcode unabhängig aufzubewahren, führen Sie diese Standard-Git-Befehle a
 dem unveränderten freigegebenen Checkout auf Ihrem Administrationshost aus,
 solange seine Quellen verfügbar sind:
 
+Neue Releases enthalten regulären wizard/-Quellcode im System-Bundle. Die bedingten
+Wizard-Bundle-Befehle gelten nur für historische Commits mit Gitlink im Baum;
+bewahre dieses exakte zweite Repository für deren historische Wiederherstellung.
+Die Quellidentität hängt vom Aufbau ab: gemeinsame Releases speichern sourceLayout
+als system-monorepo-v1, sourceRevision als System-Commit und wizardSourceTree als
+Baum des Wizard-Verzeichnisses. Ohne Quelllayout bleibt die strenge historische
+Gitlink-Auslegung erhalten. Weder Konfigurationsimporte noch Seed-Wiederherstellung
+schreiben diese Belege oder veröffentlichte Git-Historie um.
+
 ```bash
 umask 077
 git submodule update --init --recursive
 SOURCE_BUNDLE_DIR=/root/system-successor/source
 install -d -m 0700 "$SOURCE_BUNDLE_DIR"
 git bundle create "$SOURCE_BUNDLE_DIR/system.bundle" HEAD
-git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
 git bundle verify "$SOURCE_BUNDLE_DIR/system.bundle"
-git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+if git ls-tree HEAD wizard | grep -q '^160000 '; then
+  git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
+  git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+fi
 git rev-parse HEAD
 ```
 
@@ -248,16 +265,18 @@ oder GitHub initialisieren:
 ```bash
 git clone "$SOURCE_BUNDLE_DIR/system.bundle" /opt/system
 git -C /opt/system checkout --detach "$SYSTEM_TOOLS_REVISION"
-git -C /opt/system \
-  -c protocol.file.allow=always \
-  -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
-  submodule update --init --recursive
+if git -C /opt/system ls-tree HEAD wizard | grep -q '^160000 '; then
+  git -C /opt/system \
+    -c protocol.file.allow=always \
+    -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
+    submodule update --init --recursive
+fi
 ```
 
 Übertragen Sie zuerst die privaten Bundles auf diesen Host und setzen Sie
 `SOURCE_BUNDLE_DIR` und `SYSTEM_TOOLS_REVISION` bewusst. Die
 Dateiprotokollfreigabe gilt ausschließlich für diesen Aufruf mit den geprüften
-lokalen Bundles. Diese Befehle decken das Wizard-Submodul des Repositorys ab;
+lokalen Bundles. Die bedingten Befehle decken historische Wizard-Submodule ab;
 nehmen Sie gleichwertige aufgezeichnete Bundles auf, falls Ihr Fork weitere
 Submodule ergänzt. Ein einfaches Quellcode-ZIP enthält nicht die für die
 Initialisierung benötigten Git-Objekte.
@@ -269,7 +288,7 @@ Installation binden. Führen Sie ihn vom Host oder einer unabhängigen
 Administrationsverbindung aus, statt darauf zu vertrauen, dass ein CI-Job das
 Stoppen des GitLab überlebt, das ihn koordiniert.
 
-Für den deklarierten Übergang CE 19.4.3 → 19.5.3 enthält
+Für den deklarierten Übergang CE 19.5.3 → 19.6.1 enthält
 [`gitlab/security-release.json`](../gitlab/security-release.json) die zulässigen
 Image-Festlegungen. Rufen Sie vor der Planung oder dem Beginn der Ausfallzeit
 alle sechs Image-Referenzen ab: `fromImage`, `toImage`, `runner.fromImage`,
@@ -277,7 +296,7 @@ alle sechs Image-Referenzen ab: `fromImage`, `toImage`, `runner.fromImage`,
 umfassen beide GitLab-Versionen sowie die bisherigen und die Zielpaare aus
 Runner/Helfer. Stellen Sie zuerst das **exakte getestete vollständige
 Controller-Image** mit den freigegebenen Werkzeugen bereit und behalten Sie dabei
-die gespeicherte GitLab-Auswahl 19.4.3 bei. Bauen Sie nicht ein anderes Image aus
+die gespeicherte GitLab-Auswahl 19.5.3 bei. Bauen Sie nicht ein anderes Image aus
 demselben Tag neu und nehmen Sie dann seine getestete Identität an. Der Helfer
 verlangt, dass der laufende Controller dem Image entspricht, das in den
 freigegebenen Kandidatennachweisen aufgezeichnet wurde; die Veröffentlichung
@@ -286,7 +305,7 @@ einer bloßen Laufzeitbasis erfüllt diese Bedingung nicht.
 #### Den freigegebenen Controller vom Host aus vorbereiten
 
 Checken Sie den freigegebenen gemergten Quellcode mit seinen festgelegten
-Submodulen aus. Laden Sie diese **eingefrorenen** Artefakte aus seinem Job
+historischen Submodulen aus, sofern vorhanden. Laden Sie diese **eingefrorenen** Artefakte aus seinem Job
 `test:platform-candidate` herunter:
 
 - `test-results/successor/release.json`

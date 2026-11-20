@@ -13,7 +13,7 @@
 | Registrieren / Registrierung aufheben | Prüft/registriert die konfigurierten Runner-Manager oder hebt ihre Registrierung auf |
 | Harvest | Veröffentlicht einen kalten Schnappschuss der GitLab-Daten, Zertifikate und des Zertifikatserneuerungszustands im Seed-Verzeichnis |
 | Harvest und Konfigurationssicherung | Koordiniert einen nativen Harvest mit einer passenden Konfigurations-ZIP zum getrennten Herunterladen und Aufbewahren |
-| Entwicklungsvorschauen einrichten | Bereitet ausdrücklich die kanonische Quellcode-/Build-Zuordnung für optionale Review- und Beta-Umgebungen vor und erhält Production |
+| System Beta konfigurieren | Reserviert ausdrücklich ein bestehendes gemeinsames Quellprojekt und eine optionale feste Beta-Adresse; kein zusätzlicher Build und keine Production-Änderung |
 | Ablauf von Zugangsdaten | Liest Metadaten ausgewählter Automatisierungszugänge und zeigt bekannte Daten, Warnungen und unbekannte Zustände |
 | Systemdiagnose | Prüft die konfigurierte Registry-Verbindung; eine optionale getrennte Aktion lädt das exakte Helper-Image über den ausgewählten Runner-Daemon |
 | Seed | Prüft einen abgeschlossenen Seed und stellt ihn in frischen Verzeichnissen für die aktiven Dienstdaten wieder her |
