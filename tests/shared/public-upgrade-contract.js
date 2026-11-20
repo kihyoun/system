@@ -328,12 +328,14 @@ test('fixed Python diagnostic markers survive the real Docker sanitizer and nati
     candidate.daemon='owned-disposable-daemon';
     const native=new NativeCLI(candidate);
     for(const operation of ['initialize','restore-original','plan','apply','status','recover']){
-      process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR='private-token\n'+diagnostics.marker+'docker-command-failed\nprivate-stderr';
-      await assert.rejects(()=>native.invoke(['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation]),error=>{
-        assert.equal(error.message,'public-upgrade-native-'+operation+'-docker-command-failed');
-        assert.equal(failureReason(error.message),error.message);
-        assert.equal(error.exitCode,7);assert(!JSON.stringify(error).includes('private'));return true;
-      });
+      for(const code of ['docker-command-failed','release-changed-after-plan','image-archive-failed-or-timed-out']){
+        process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR='private-token\n'+diagnostics.marker+code+'\nprivate-stderr';
+        await assert.rejects(()=>native.invoke(['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation]),error=>{
+          assert.equal(error.message,'public-upgrade-native-'+operation+'-'+code);
+          assert.equal(failureReason(error.message),error.message);
+          assert.equal(error.exitCode,7);assert(!JSON.stringify(error).includes('private'));return true;
+        });
+      }
     }
     for(const message of [diagnostics.marker+'private-token',diagnostics.marker+'docker-command-failed private-token','prefix '+diagnostics.marker+'docker-command-failed']){
       process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR=message;

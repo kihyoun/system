@@ -39,6 +39,9 @@ inspect_retained_image = successor.recovery.inspect_image
 
 def fixture():
     release, evidence, security = fixtures.fixture()
+    # The shared fixture contains set-derived maps. Publication is regenerated
+    # in separate CLI processes, so stabilize bytes before hashing evidence.
+    evidence = json.loads(json.dumps(evidence, sort_keys=True))
     release.update(wizardImageId='sha256:' + '8' * 64, registryRepository='example/system',
                    registryReference='example/system@sha256:' + 'e' * 64,
                    wizardRegistryReference='example/wizard@sha256:' + '9' * 64)
@@ -58,8 +61,8 @@ def fixture():
                    for role, key, idkey in [('controller', 'registryReference', 'imageId'), ('wizard', 'wizardRegistryReference', 'wizardImageId')]},
         'acceptance': {'evidenceSha256': 'f' * 64, 'candidateJobId': release['candidateJobId'],
                        'requiredChecksPassed': True, 'controllerWizardSameAttempt': True}}
-    names = list(successor.REQUIRED_JOBS) + ['test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github']
-    names += ['test:isolated: [' + component + ']' for component in successor.COMPONENTS]
+    names = sorted(successor.REQUIRED_JOBS) + ['test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github']
+    names += ['test:isolated: [' + component + ']' for component in sorted(successor.COMPONENTS)]
     jobs = [{'id': release['candidateJobId'] if name == 'test:platform-candidate' else index + 100,
              'name': name, 'status': 'success', 'allow_failure': False,
              'pipelineId': release['pipelineId'], 'sourceRevision': release['sourceRevision']} for index, name in enumerate(names)]
@@ -378,8 +381,8 @@ class Authority(unittest.TestCase):
 
 
 class Host(unittest.TestCase):
-    def test_candidate_future_publication_passes_real_authority_with_exact_prepared_identities(self):
-        adapter = load('candidate_public_upgrade_host_fixture', ROOT / 'tests/e2e/public-upgrade-host.py')
+    @staticmethod
+    def publication_fixture():
         metadata, proof, _ = fixture()
         security = json.loads((ROOT / 'gitlab/security-release.json').read_bytes())
         upgrade = proof['evidence']['evidence']['gitlabUpgrade']
@@ -392,13 +395,18 @@ class Host(unittest.TestCase):
         previous = copy.deepcopy(metadata)
         previous.update(version='1.1.3', tag='v1.1.3')
         source = metadata['source']
-        value = {'runId': 'f' * 24, 'previous': previous, 'gitlabUpgrade': upgrade,
+        return {'runId': 'f' * 24, 'previous': previous, 'gitlabUpgrade': upgrade,
             'spec': {'sourceRevision': source['revision'], 'sourceTree': source['tree'],
                 'wizardSourceRevision': source['wizardRevision'], 'ciIdentity': {'projectId': 4, 'pipelineId': 17, 'candidateJobId': 29},
                 'images': {'candidate': {'id': metadata['images']['controller']['imageId'], 'configDigest': 'sha256:' + '2' * 64},
                     'wizard': {'id': metadata['images']['wizard']['imageId'], 'configDigest': 'sha256:' + '3' * 64},
                     'gitlab': {'id': upgrade['toImageId']}, 'runner': {'id': upgrade['runnerImageId']}}}}
-        target, raw_proof, _ = adapter.publication(value)
+
+    def test_candidate_future_publication_passes_real_authority_with_exact_prepared_identities(self):
+        adapter = load('candidate_public_upgrade_host_fixture', ROOT / 'tests/e2e/public-upgrade-host.py')
+        value = self.publication_fixture()
+        previous, source = value['previous'], value['previous']['source']
+        target, raw_proof, security = adapter.publication(value)
         accepted = PublicReleaseAuthority(target, raw_proof, 'https://own-gitlab.example.invalid', security)
         self.assertEqual(accepted.release['sourceRevision'], source['revision'])
         self.assertEqual(accepted.release['candidateJobId'], 29)
@@ -406,6 +414,80 @@ class Host(unittest.TestCase):
         self.assertEqual(target['images']['controller']['configDigest'], value['spec']['images']['candidate']['configDigest'])
         self.assertNotEqual(target['images']['controller']['configDigest'], accepted.release['imageId'])
         self.assertEqual(accepted.evidence['evidence']['publicUpgrade']['fromSourceRevision'], previous['source']['revision'])
+
+    def test_native_publication_is_byte_stable_across_fresh_plan_and_apply_processes(self):
+        script = '''
+import argparse, hashlib, importlib.util, json, sys
+from contextlib import ExitStack
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+root, operation = Path(sys.argv[2]), sys.argv[3]
+spec = importlib.util.spec_from_file_location('native_publication_contract', sys.argv[1])
+contract = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(contract)
+adapter = contract.load('fresh_native_host', contract.ROOT / 'tests/e2e/public-upgrade-host.py')
+fixture = json.loads((root / 'fixture.json').read_bytes())
+metadata, proof, security = adapter.publication(fixture)
+if operation == 'changed-apply':
+    publication = json.loads(proof)
+    publication['publication']['jobs'][-1]['id'] += 1
+    proof = contract.encoded(publication)
+    metadata['publicUpgrade']['sha256'] = hashlib.sha256(proof).hexdigest()
+raw = contract.encoded(metadata)
+authority = contract.PublicReleaseAuthority(metadata, proof, 'https://own-gitlab.example.invalid', security)
+tool, successor = adapter.tool, adapter.successor
+live = root / 'live'
+config = {'_root': live, '_main': live / 'configuration/.docker.env', 'SEED_DIR': str(root / 'backup')}
+target = live / 'recovery/public-upgrades/test'
+args = argparse.Namespace(plan_dir=str(target), repository='example/system', target=metadata['version'],
+    backup_file=str(root / 'configuration.zip'), token_file='fixture-token', timeout=60)
+with ExitStack() as stack:
+    stack.enter_context(patch.object(tool, 'public_inputs', return_value=(raw, proof, authority, security)))
+    if operation == 'plan':
+        config['_main'].parent.mkdir(parents=True)
+        for name in ('.docker.env', '.release-images.json', '.release-images.env'):
+            successor.atomic_bytes(config['_main'].parent / name, b'fixture-input')
+        stack.enter_context(patch.object(tool, 'installed', return_value=({}, fixture['previous'])))
+        for owner, name in ((successor, 'verify_checkout'), (successor, 'sync_idle'),
+                            (tool, 'host'), (tool, 'invoke')):
+            stack.enter_context(patch.object(owner, name))
+        stack.enter_context(patch.object(tool, 'run', return_value=str(root).encode()))
+        stack.enter_context(patch.object(tool.shutil, 'disk_usage', return_value=SimpleNamespace(free=1024 ** 4)))
+        stack.enter_context(patch.object(tool, 'backup_target', return_value=Path(args.backup_file)))
+        stack.enter_context(patch.object(tool.runtime, 'capture', return_value={}))
+        stack.enter_context(patch.object(tool, 'data_sample', return_value={'sha256': 'a' * 64}))
+        tool.plan(args, config)
+        result = 'planned'
+    else:
+        class AcceptedPublication(Exception): pass
+        checked = stack.enter_context(patch.object(tool, 'installed', side_effect=AcceptedPublication))
+        args.confirm_plan = tool.digest(successor.private_input(target / 'plan.json'))
+        try:
+            tool.apply(args, config)
+        except AcceptedPublication:
+            result = 'accepted-publication-before-installed-checks'
+        except successor.recovery.RecoveryError as error:
+            assert str(error) == 'public-release-changed-after-plan'
+            checked.assert_not_called()
+            result = str(error)
+print(json.dumps({'metadata': raw.decode(), 'proof': proof.decode(), 'result': result}))
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            successor.atomic_json(root / 'fixture.json', self.publication_fixture())
+            outputs = []
+            for seed, operation in [('1', 'plan'), ('2', 'apply'), ('12345', 'apply'), ('3', 'changed-apply')]:
+                raw = subprocess.check_output([sys.executable, '-c', script, str(Path(__file__).resolve()), temporary, operation],
+                    env=dict(os.environ, PYTHONHASHSEED=seed), timeout=30, text=True)
+                outputs.append(json.loads(raw))
+            for output in outputs[1:3]:
+                self.assertEqual(output['metadata'], outputs[0]['metadata'])
+                self.assertEqual(output['proof'], outputs[0]['proof'])
+                self.assertEqual(output['result'], 'accepted-publication-before-installed-checks')
+            self.assertEqual(outputs[0]['result'], 'planned')
+            self.assertEqual(outputs[3]['result'], 'public-release-changed-after-plan')
+            self.assertNotEqual(outputs[3]['proof'], outputs[0]['proof'])
 
     def test_nominal_8GiB_host_tolerates_kernel_reservation(self):
         metadata = {'platform': 'linux/amd64', 'compatibility': {'versions': ['24.04'], 'minimumMemoryGiB': 8}}
