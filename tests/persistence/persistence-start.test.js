@@ -22,6 +22,7 @@ function fixture(t, configured = false, reset = false) {
   for (const relative of ['start.sh', 'sync/start.sh', 'bootstrapper/persistence.sh', 'bootstrapper/storage-env.sh', 'system/.docker.env.example', 'system/.seed.env']) {
     fs.copyFileSync(path.join(root, relative), path.join(dir, relative));
   }
+  fs.symlinkSync(path.join(root, 'operations'), path.join(dir, 'operations'), 'dir');
   const mount = path.join(dir, 'mounted'), persistent = path.join(mount, 'platform');
   const hostSeed = path.join(mount, 'seed'), savedSeed = path.join(mount, 'saved-seed');
   const canonical = path.join(persistent, 'configuration/.docker.env');
