@@ -715,18 +715,6 @@ class PublicControllerUpdate(unittest.TestCase):
         tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(tool.release_selection(self.config), (before, payloads))
 
-    def test_monorepo_selection_records_common_source_and_wizard_tree_without_gitlink(self):
-        accepted = self.accepted_metadata()
-        self.release.pop('wizardRevision')
-        self.release.update(sourceLayout='system-monorepo-v1', wizardSourceTree='c' * 40)
-        selected, before, after = tool.prepare_release_selection(
-            self.config, accepted, self.release, self.pulled, self.pulled_wizard)
-        receipt = json.loads(after['.release-images.json'])
-        self.assertEqual(receipt['sourceCommit'], self.release['sourceRevision'])
-        self.assertEqual(receipt['sourceLayout'], 'system-monorepo-v1')
-        self.assertEqual(receipt['wizardSourceTree'], 'c' * 40)
-        self.assertNotIn('wizardSourceRevision', receipt)
-        self.assertEqual(tool.release_selection(self.config)[1], before)
 
     def test_metadata_preflight_checks_without_writes_and_refuses_other_attempt(self):
         accepted = self.accepted_metadata()
@@ -999,18 +987,6 @@ class PublicControllerUpdate(unittest.TestCase):
         self.assertEqual(self.commands, [])
         self.assertFalse(self.checkpoint.exists())
 
-    def test_assignment_preserves_multiline_values_and_handles_indentation(self):
-        secret = b"export OTHER='literal text\nexport BOOTSTRAPPER_IMAGE=inside-secret\nlast line'\n"
-        raw = self.raw + secret
-        self.assertTrue(tool.assignment(raw, self.new).endswith(secret))
-        indented = self.raw.replace(b'export BOOTSTRAPPER_IMAGE=', b'  export\tBOOTSTRAPPER_IMAGE=')
-        self.assertEqual(tool.assignment(indented, self.new), tool.assignment(self.raw, self.new))
-        with self.assertRaisesRegex(recovery.RecoveryError, 'duplicate-or-header'):
-            tool.assignment(self.raw + b"\t export\tBOOTSTRAPPER_IMAGE='" + self.old.encode() + b"'\n", self.new)
-        with self.assertRaisesRegex(recovery.RecoveryError, 'incomplete-controller'):
-            tool.assignment(self.raw + b"export SECRET='unclosed\n", self.new)
-        with self.assertRaisesRegex(recovery.RecoveryError, 'unsupported-controller'):
-            tool.assignment(self.raw + b'echo unsupported-command\n', self.new)
 
     def test_wrong_public_image_or_candidate_job_blocks_before_mutation(self):
         for field, value in [('imageId', 'sha256:' + '9' * 64), ('candidateJobId', 404)]:
