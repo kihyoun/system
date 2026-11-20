@@ -43,6 +43,10 @@ technical documentation remain appropriate.
   may choose its own workflow; the maintainer's tracker is not product architecture.
 - Reuse existing issues and implement their acceptance criteria. Do not create
   new issues or planning files for routine cleanup when the user says not to.
+- Mark an issue **In Progress** as soon as work on it starts. Move it to
+  **Review** when implementation is ready for acceptance, and close it only
+  after its acceptance criteria have been met. Return it to **In Progress**
+  when a review or acceptance failure requires further work.
 - When authorized to coordinate delivery, delegate independent work, review the
   results, merge passing changes and close completed issues. Do not repeatedly
   ask for merge approval already granted in the conversation.
