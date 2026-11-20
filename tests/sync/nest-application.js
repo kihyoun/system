@@ -30,20 +30,21 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   // Requiring the executable entry must be safe for embedding and test setup.
   const {createSyncApplication} = require(path.join(source, 'index'));
   assert.equal(typeof createSyncApplication, 'function');
-  const modules = ['auth', 'configuration', 'projects', 'operations', 'diagnostics', 'runtime'];
+  const modules = [['auth', 'auth'], ['configuration', 'config'], ['projects', 'projects'],
+    ['operations', 'operations'], ['diagnostics', 'diagnostics'], ['runtime', 'runtime']];
   for (let generation = 0; generation < 2; generation++) {
     const application = await createSyncApplication(); applications.push(application);
     await application.init();
     assert.equal(application.getHttpServer().listening, false);
-    for (const name of modules) {
+    for (const [name, directory] of modules) {
       const title = name[0].toUpperCase() + name.slice(1);
-      const Module = require(path.join(source, name, name + '.module'))[title + 'Module'];
-      const Service = require(path.join(source, name, name + '.service'))[title + 'Service'];
+      const Module = require(path.join(source, directory, name + '.module'))[title + 'Module'];
+      const Service = require(path.join(source, directory, name + '.service'))[title + 'Service'];
       const provider = application.select(Module).get(Service, {strict: true});
       assert(provider instanceof Service, name + ' must be constructed by its native Nest module');
       assert.equal(application.get(Service), provider, name + ' must resolve the same application-scoped provider');
       if (name !== 'runtime') {
-        const Controller = require(path.join(source, name, name + '.controller'))[title + 'Controller'];
+        const Controller = require(path.join(source, directory, name + '.controller'))[title + 'Controller'];
         assert(application.select(Module).get(Controller, {strict: true}) instanceof Controller,
           name + ' routes must belong to a native Nest controller');
       }

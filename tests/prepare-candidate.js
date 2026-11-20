@@ -22,11 +22,14 @@ function prepareCandidate(root) {
   const snapshot=validate(JSON.parse(fs.readFileSync(path.join(root,snapshotPath),'utf8')));
   if(!pin || pin[1]!==snapshot.sourceRevision) throw Error('Candidate snapshot must match the committed Wizard gitlink.');
   verifyCommitted(root,snapshot);
-  const files=git('ls-tree','-rz','HEAD').toString().split('\0').filter(Boolean).map(entry=>{
+  const entries=git('ls-tree','-rz','HEAD').toString().split('\0').filter(Boolean).map(entry=>{
     const match=/^(\d+) (\w+) ([a-f0-9]{40})\t(.+)$/.exec(entry);
     if(!match) throw Error('Invalid committed candidate entry.');
     return {mode:match[1],type:match[2],name:match[4]};
-  }).filter(file=>included(file.name));
+  });
+  if(entries.some(file=>file.name.startsWith('sync/src/') && /\.[cm]?[jt]sx?$/.test(file.name) && !included(file.name)))
+    throw Error('Sync source path conflicts with a private-data exclusion.');
+  const files=entries.filter(file=>included(file.name));
   if(files.some(file=>file.type!=='blob'||!['100644','100755'].includes(file.mode))) throw Error('Candidate context refuses links and nested submodules.');
   if(!files.some(file=>file.name==='system/Dockerfile') || !snapshot.files.some(file=>file.path==='start.sh')) throw Error('Incomplete full-System candidate source.');
   const output=path.join(root,'.candidate-context');

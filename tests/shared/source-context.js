@@ -35,6 +35,7 @@ try {
   write('system/Dockerfile','FROM scratch\n');
   write('sync/package.json','{}\n');
   write('sync/src/public.ts','committed source\n');
+  write('sync/src/config/configuration.module.ts','committed feature module\n');
   write('tests/fixture.sh','#!/bin/sh\nexit 0\n');
   const binary=Buffer.from([0,255,128,13,10]);
   write('tests/binary.png',binary);
@@ -78,6 +79,7 @@ try {
   assert(candidate.files.includes('wizard/start.sh'));
   assert(!candidate.files.some(name=>/private\.env|credentials|untracked-secret|seed\/data|old\.xml|^tests\//.test(name)));
   assert.equal(execFileSync('tar',['-xOf',path.join(root,'.candidate-context/context.tar'),'sync/src/public.ts'],{encoding:'utf8'}),'committed source\n');
+  assert.equal(execFileSync('tar',['-xOf',path.join(root,'.candidate-context/context.tar'),'sync/src/config/configuration.module.ts'],{encoding:'utf8'}),'committed feature module\n');
   assert.equal(candidate.wizardRevision,snapshot.sourceRevision);
   const staticContext = prepareCodeql(root);
   const staticArchive = path.join(root, '.codeql-context/context.tar');
@@ -105,6 +107,13 @@ try {
   assert.throws(()=>prepareContext(root),/stale|manifest hash/);
   assert.throws(()=>prepareCandidate(root),/snapshot|manifest hash/);
   write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(snapshot));
+  write('sync/src/configuration/conflicting.module.ts','reserved-directory source\n');
+  git('add','sync/src/configuration/conflicting.module.ts');
+  git('commit','-m','Source path conflicts with private data exclusion');
+  assert.throws(()=>prepareCandidate(root),/Sync source path conflicts with a private-data exclusion/);
+  git('rm','sync/src/configuration/conflicting.module.ts');
+  git('commit','-m','Remove conflicting source path');
+  prepareCandidate(root);
   git('update-index','--add','--cacheinfo','120000,'+git('hash-object','sync/package.json')+',tests/unsafe-link');
   git('commit','-m','Reject links');
   assert.throws(()=>prepareContext(root),/links and nested submodules/);
