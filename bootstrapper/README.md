@@ -145,12 +145,12 @@ installation's GitLab is unavailable, an independently available mirror or retai
 source bundle can provide the same reviewed Git objects. The tool never patches,
 updates or clones itself during initialization.
 
-`initialize.sh` handles replacement of a host while retaining **live** service data.
+`node bootstrapper/initialize.js` handles replacement of a host while retaining **live** service data.
 It does not format a filesystem, issue first certificates, migrate GitLab versions,
 apply a Seed or convert an empty filesystem into an existing installation. Follow
 the [handbook](../docs/HANDBOOK.md) first-install path for a new installation.
 
-Requirements are root access on supported Ubuntu, Git and Python 3, selected
+Requirements are root access on supported Ubuntu, Git and the pinned Node runtime, selected
 local or explicitly volume-backed live storage, saved configuration and the
 recovery manifest described below. A selected live volume must already be
 mounted; local mode uses the system disk. The normal host installer supplies

@@ -35,6 +35,10 @@ export class GithubPublicationService {
     const { request, execute: command } = this.ports;
     const ci = githubContext(env, root, this.ports.images.context),
       { released, proof } = this.ports.images.readEvidence(root, ci, env);
+    requireValue(
+      released.sourceLayout === 'system-monorepo-v1',
+      'Publish historical releases with their own accepted source; this publisher requires the monorepo CLI artifact.',
+    );
     const origin = new URL(env.CI_API_V4_URL ?? '');
     requireValue(
       origin.protocol === 'https:' &&
@@ -62,20 +66,6 @@ export class GithubPublicationService {
       released.candidateJobId === jobs.find((row) => row.name === 'test:platform-candidate')!.id,
       'Accepted candidate job mismatch.',
     );
-    let source: Record<string, unknown> | undefined;
-    if (released.sourceLayout !== 'system-monorepo-v1') {
-      requireValue(
-        env.WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED === 'true',
-        'Historical Wizard source publication must be enabled.',
-      );
-      source = record(
-        JSON.parse(bounded(path.join(root, 'test-results/github/wizard-source.json')).toString()),
-      );
-      requireValue(
-        source.publicationJobId === jobs.find((row) => row.name === 'deploy:github')!.id,
-        'Source publisher job mismatch.',
-      );
-    }
     const changelog = bounded(path.join(root, 'CHANGELOG.md')).toString();
     const escapedVersion = ci.version.replaceAll('.', '\\.');
     const match = new RegExp(
@@ -97,14 +87,9 @@ export class GithubPublicationService {
         '\n\n' +
         'Exact source: `' +
         released.sourceRevision +
-        '`; Wizard ' +
-        (released.sourceLayout === 'system-monorepo-v1'
-          ? 'tree: `' + released.wizardSourceTree
-          : 'commit: `' + released.wizardRevision) +
-        '`.\n' +
-        (released.sourceLayout === 'system-monorepo-v1'
-          ? 'Wizard sources are included in this System commit and its source archives.\n'
-          : 'Clone with Git, check out this tag and run `git submodule update --init --recursive`. GitHub source archives omit submodule contents.\n') +
+        '`; Wizard tree: `' +
+        released.wizardSourceTree +
+        '`.\nWizard sources are included in this System commit and its source archives.\n' +
         'See [Quickstart](https://github.com/' +
         ci.repository +
         '/blob/' +
@@ -135,9 +120,7 @@ export class GithubPublicationService {
           "const REPOSITORY = '" + ci.repository + "'; // Accepted public mirror.",
         ),
     );
-    if (released.sourceLayout !== 'system-monorepo-v1')
-      ci.hostInstallerSha256 = hash(bounded(path.join(root, 'bootstrapper/install.sh')));
-    const metadata = publicMetadata(ci, released, publication, source, notes, quickstart);
+    const metadata = publicMetadata(ci, released, publication, undefined, notes, quickstart);
     const cliAssets: Record<string, Buffer> = {};
     if (released.sourceLayout === 'system-monorepo-v1') {
       const job = jobs.find((row) => row.name === 'test:npm-package')!;
@@ -178,17 +161,6 @@ export class GithubPublicationService {
     );
     ci.sourceTree = released.sourceTree;
     verifyCheckout(released, root, command);
-    if (source) {
-      const mapping = command(
-        'git',
-        ['config', '--blob', 'HEAD:.gitmodules', '--get', 'submodule.wizard.url'],
-        { cwd: root },
-      );
-      requireValue(
-        mapping === source.repository,
-        'Accepted public Wizard repository mapping mismatch.',
-      );
-    }
     command(
       'git',
       [
@@ -237,17 +209,6 @@ export class GithubPublicationService {
           )(route.slice(8), options)
         : base(route, options);
     const anonymous = api('https://api.github.com', '', 'X-System-Public-Verification', request);
-    if (source) {
-      requireValue(typeof source.repository === 'string', 'Historical Wizard repository required.');
-      const wizardRepository = source.repository.slice('https://github.com/'.length, -4);
-      const wizardSource = record(
-        await anonymous('/repos/' + wizardRepository + '/git/commits/' + released.wizardRevision),
-      );
-      requireValue(
-        wizardSource?.sha === released.wizardRevision,
-        'Exact pinned Wizard source must remain public.',
-      );
-    }
     const result = await present(ci, assets, github, anonymous);
     const output = path.join(root, 'test-results/public-release');
     fs.mkdirSync(output, { recursive: true });

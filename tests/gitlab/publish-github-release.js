@@ -158,7 +158,7 @@ test('gates bind required successful jobs and byte-identical artifacts before Gi
   await assert.rejects(gates(ci, environment, root, gitlab), /differs/);
 });
 
-for (const monorepo of [false, true]) test('complete publisher derives deterministic public assets from ' + (monorepo ? 'monorepo' : 'historical') + ' Git checkout without rebuilding', async t => {
+for (const monorepo of [false, true]) test(monorepo ? 'publisher derives deterministic monorepo assets without rebuilding' : 'publisher refuses historical layout before external publication', async t => {
   const {spawnSync} = require('node:child_process');
   const {publish} = require('../../gitlab/publish-github-release');
   const {candidates, validateEvidence} = require('../../gitlab/publish-successor');
@@ -171,7 +171,7 @@ for (const monorepo of [false, true]) test('complete publisher derives determini
   };
   git('init', '--quiet'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   fs.mkdirSync(path.join(root, 'bootstrapper'));
-  for (const name of ['quickstart.sh', 'install.sh']) fs.copyFileSync(path.join(__dirname, '../../bootstrapper', name), path.join(root, 'bootstrapper', name));
+  fs.copyFileSync(path.join(__dirname, '../../bootstrapper/quickstart.sh'), path.join(root, 'bootstrapper/quickstart.sh'));
   fs.writeFileSync(path.join(root, 'CHANGELOG.md'), '# Changelog\n\n## 1.0.0\n\nReviewed fixture release. See [Quickstart](docs/QUICKSTART.md).\n');
   fs.writeFileSync(path.join(root, 'VERSION'), '1.0.0\n');
   fs.writeFileSync(path.join(root, 'bootstrapper/upgrade-paths.json'), JSON.stringify({format: 'system-upgrade-paths-v1', versions: ['1.0.0'], transitions: []}));
@@ -303,6 +303,11 @@ for (const monorepo of [false, true]) test('complete publisher derives determini
     if (result === null) return new Response(null, {status: 404});
     return Buffer.isBuffer(result) ? new Response(result) : Response.json(result);
   };
+  if (!monorepo) {
+    await assert.rejects(publish(env, root, request), /historical releases.*own accepted source/);
+    assert.equal(fixture.calls.length, 0, 'historical releases cannot publish a new incompatible installer');
+    return;
+  }
   const result = await publish(env, root, request);
   assert.equal(result.tag, 'v1.0.0');
   const published = JSON.parse(fs.readFileSync(path.join(root, 'test-results/public-release/system-release-v1.0.0.json')));
