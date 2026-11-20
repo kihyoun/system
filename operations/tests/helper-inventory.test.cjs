@@ -14,9 +14,10 @@ test('helper identity includes compiled implementation, native adapters and reso
   write('operations/package.json', JSON.stringify({name: 'fixture', dependencies: {fixture: '1.0.0'}}));
   write('operations/node_modules/fixture/package.json', JSON.stringify({name: 'fixture', version: '1.0.0', main: 'index.js'}));
   write('operations/node_modules/fixture/index.js', 'runtime');
-  for (const name of ['refresh-ca.sh', 'ca/cacert-2026-10-20.crt', 'ca/provenance.json', 'ca/check.js']) write('bootstrapper/' + name, 'fixture');
+  for (const name of ['ca/cacert-2026-10-20.crt', 'ca/provenance.json', 'ca/check.js']) write('bootstrapper/' + name, 'fixture');
+  write('tools/gitlab/bootstrap-token.rb', 'bootstrap adapter');
   const baseline = helperInventory(root);
-  for (const name of ['project-bootstrap/helper.js', 'operations/dist/project-lifecycle/state.js', 'operations/node_modules/fixture/index.js']) {
+  for (const name of ['project-bootstrap/helper.js', 'operations/dist/project-lifecycle/state.js', 'operations/node_modules/fixture/index.js', 'tools/gitlab/bootstrap-token.rb']) {
    const before = fs.readFileSync(path.join(root, name));
    write(name, 'changed'); assert.notEqual(helperInventory(root), baseline, name);
    write(name, before); assert.equal(helperInventory(root), baseline);

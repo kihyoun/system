@@ -19,14 +19,16 @@ export function helperInventory(root = path.resolve(__dirname, '../../..')): str
   walk(path.join(root, 'project-bootstrap'), 'project-bootstrap');
   walk(path.join(root, 'operations/dist'), 'operations/dist');
   for (const relative of [
-    'refresh-ca.sh',
-    'ca/cacert-2026-10-20.crt',
-    'ca/provenance.json',
-    'ca/check.js',
+    'tools/gitlab/bootstrap-token.rb',
+    'bootstrapper/ca/cacert-2026-10-20.crt',
+    'bootstrapper/ca/provenance.json',
+    'bootstrapper/ca/check.js',
   ]) {
+    const filename = path.join(root, relative);
+    if (!fs.lstatSync(filename).isFile()) throw Error('Helper dependency links are unsupported.');
     files.push({
-      path: 'bootstrapper/' + relative,
-      sha256: hash(fs.readFileSync(path.join(root, 'bootstrapper', relative))),
+      path: relative,
+      sha256: hash(fs.readFileSync(filename)),
     });
   }
   const seen = new Set<string>();
