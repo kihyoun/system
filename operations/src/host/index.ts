@@ -14,3 +14,5 @@ export * from './attached-process';
 export * from './storage-entry';
 export * from './upgrade-lifecycle.service';
 export * from './recovery-publication.service';
+export * from './cold-maintenance.service';
+export * from './cold-maintenance-entry';

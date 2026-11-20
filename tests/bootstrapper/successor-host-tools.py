@@ -690,6 +690,9 @@ class ControllerCheckpointBounds(unittest.TestCase):
 class ColdMaintenanceContracts(unittest.TestCase):
     def setUp(self):
         self.commands = []
+        sleeper = patch.object(promoter.time, 'sleep')
+        sleeper.start()
+        self.addCleanup(sleeper.stop)
         def row(name, service):
             return {'Id': name, 'Image': 'old-image', 'Name': name,
                     'State': {'Running': True, 'Paused': False, 'ExitCode': 0, 'OOMKilled': False},
@@ -727,7 +730,7 @@ class ColdMaintenanceContracts(unittest.TestCase):
              patch.object(promoter, 'checkpoint_copy', side_effect=lambda *args: self.commands.append(['checkpoint']) or 'digest'):
             self.assertEqual(self.maintenance.run(), 'digest')
         self.assertEqual([row[0] for row in self.commands],
-                         ['update', 'stop', 'pause', 'drain', 'exec', 'stop', 'exec', 'exec', 'drain', 'stop', 'kill', 'checkpoint'])
+                         ['update', 'stop', 'pause', 'exec', 'stop', 'exec', 'exec', 'stop', 'kill', 'checkpoint'])
         self.assertFalse(any('unpause' in row for row in self.commands))
         self.assertFalse(self.controller['State']['Running'])
     def test_job_claim_after_first_preflight_resumes_without_killing_running_jobs(self):

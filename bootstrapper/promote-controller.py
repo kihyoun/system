@@ -279,112 +279,63 @@ class ColdMaintenance:
         if self.journal:
             self.journal(value, remote_deadline)
 
-    def remote(self, script, seconds, phase):
-        deadline = int(float(Path('/proc/uptime').read_text().split()[0])) + seconds
-        self.phase(phase, deadline)
-        run([*DOCKER, 'exec', '--env', 'SVWAIT=90', self.gitlab['Id'], '/bin/sh', '-ec',
-             script, 'sh', str(deadline)], timeout=seconds + 15)
+    def _execute(self, operation):
+        # Framed native ports keep existing command/guardian adapters; TypeScript
+        # owns all sequencing, observations, deadlines and resume decisions.
+        retained = Path('/opt/system-bootstrapper-runtime/bin/node')
+        node = str(retained.resolve()) if retained.is_file() else 'node'
+        context = {'controller': self.controller, 'gitlab': self.gitlab, 'web': self.web,
+                   'runners': self.runners, 'deadline': self.deadline, 'mainHash': self.main_hash}
+        child = subprocess.Popen([node, str(successor.HERE.parent / 'operations/dist/host/cold-maintenance-entry.js')],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        try:
+            child.stdin.write(json.dumps({'operation': operation, 'input': context}) + '\n')
+            child.stdin.flush()
+            while True:
+                raw = child.stdout.readline(16 * 1024 ** 2 + 1)
+                require(raw.endswith('\n') and len(raw) <= 16 * 1024 ** 2, 'cold-maintenance-native-port-disconnected')
+                message = json.loads(raw)
+                if message.get('complete'):
+                    child.wait(timeout=10)
+                    if message.get('error'):
+                        raise (ActiveJobs if message.get('activeJobs') else recovery.RecoveryError)(message['error'])
+                    require(child.returncode == 0, 'cold-maintenance-runtime-failed')
+                    return message.get('value')
+                args, method = message.get('args', []), message.get('method')
+                try:
+                    if method == 'command':
+                        run([*DOCKER, *args[0]], **({'timeout': args[1]} if args[1] is not None else {}))
+                        value = None
+                    elif method == 'inspect': value = inspect(args[0])
+                    elif method == 'phase':
+                        self.phase(*args)
+                        value = None
+                    elif method == 'probe': value = gitlab_probe(self.security, self.gitlab)
+                    elif method == 'checkpoint': value = checkpoint_copy(self.config, self.checkpoint, self.image)
+                    elif method == 'now': value = time.monotonic()
+                    elif method == 'sleep':
+                        time.sleep(args[0])
+                        value = None
+                    elif method == 'uptime': value = float(Path('/proc/uptime').read_text().split()[0])
+                    elif method == 'mainHash': value = recovery.sha(self.config['_main']) if self.main_hash else None
+                    else: raise recovery.RecoveryError('unknown-cold-maintenance-native-port')
+                    response = {'value': value}
+                except Exception as error:
+                    response = {'error': str(error) if isinstance(error, recovery.RecoveryError) else 'cold-maintenance-native-port-failed'}
+                child.stdin.write(json.dumps(response) + '\n')
+                child.stdin.flush()
+        finally:
+            child.stdin.close()
+            child.stdout.close()
+            if child.poll() is None:
+                child.kill()
+                child.wait()
 
     def drain(self):
-        deadline = time.monotonic() + self.deadline
-        consecutive = 0
-        while time.monotonic() < deadline:
-            current = inspect(self.gitlab['Id'])
-            require('ExecIDs' in current, 'Docker-exec-drain-inspection-is-unavailable')
-            require(current['Id'] == self.gitlab['Id'] and current['State']['Running'], 'GitLab-changed-during-drain')
-            if current['ExecIDs'] in (None, []):
-                consecutive += 1
-                if consecutive >= 2:
-                    return
-            else:
-                consecutive = 0
-            time.sleep(1)
-        raise recovery.RecoveryError('remote-GitLab-exec-drain-timeout')
-
-    def resume_unmodified(self):
-        current = inspect(self.gitlab['Id'])
-        require(current['State']['Running'] and current['Image'] == self.gitlab['Image'],
-                'previous-GitLab-generation-is-not-safe-to-resume')
-        if self.main_hash:
-            require(recovery.sha(self.config['_main']) == self.main_hash, 'configuration-changed-before-maintenance-resume')
-        self.remote(SCHEDULING_START, 150, 'old-ingress-resume-started')
-        deadline = time.monotonic() + 90
-        while True:
-            try:
-                run([*DOCKER, 'exec', self.gitlab['Id'], 'curl', '-fsS', '--max-time', '5',
-                     'http://127.0.0.1/-/readiness'], timeout=10)
-                break
-            except recovery.RecoveryError:
-                if time.monotonic() >= deadline:
-                    raise recovery.RecoveryError('previous-GitLab-ingress-not-ready') from None
-                time.sleep(2)
-        controller = inspect(self.controller['Id'])
-        require(controller['Image'] == self.controller['Image'] and controller['State']['Running'],
-                'previous-controller-is-not-safe-to-resume')
-        policy = self.policy['Name']
-        require(policy in ('no', 'always', 'unless-stopped', 'on-failure'), 'invalid-original-restart-policy')
-        if policy == 'on-failure' and self.policy.get('MaximumRetryCount'):
-            policy += ':' + str(int(self.policy['MaximumRetryCount']))
-        run([*DOCKER, 'update', '--restart=' + policy, controller['Id']])
-        if controller['State'].get('Paused'):
-            run([*DOCKER, 'unpause', controller['Id']])
-        if not inspect(self.web['Id'])['State']['Running']:
-            run([*DOCKER, 'start', self.web['Id']])
-        require(inspect(self.controller['Id'])['State']['Running'] and
-                not inspect(self.controller['Id'])['State'].get('Paused') and
-                inspect(self.web['Id'])['State']['Running'], 'previous-control-plane-did-not-resume')
-        self.phase('old-generation-resumed-without-database-stop')
-
-    def quiesce_ingress(self):
-        self.remote(SCHEDULING_STOP, 110, 'scheduling-ingress-stop-started')
-        proof = gitlab_probe(self.security, self.gitlab)
-        if proof['runningJobs'] != 0:
-            self.resume_unmodified()
-            raise ActiveJobs('new-running-jobs-refused-maintenance-old-generation-resumed')
-        self.phase('scheduling-ingress-stopped-final-jobs-zero')
-
-    def clean_gitlab_stop(self):
-        self.remote(ALL_SERVICES_STOP, 110, 'GitLab-services-stop-started')
-        run([*DOCKER, 'exec', self.gitlab['Id'], 'timeout', '-k', '1', '20', '/bin/sh', '-ec',
-             ALL_SERVICES_DOWN], timeout=25)
-        self.drain()
-        run([*DOCKER, 'stop', '--time', '60', self.gitlab['Id']], timeout=70)
-        state = inspect(self.gitlab['Id'])['State']
-        require(not state['Running'] and state['ExitCode'] == 0 and not state.get('OOMKilled'),
-                'GitLab-stop-was-not-clean')
-        self.phase('GitLab-container-cleanly-stopped')
+        return self._execute('drain')
 
     def run(self):
-        owned(self.web, 'web')
-        owned(self.controller, 'bootstrapper')
-        require(self.controller['State']['Running'] and not self.controller['State'].get('Paused'),
-                'running-unpaused-controller-required')
-        run([*DOCKER, 'update', '--restart=no', self.controller['Id']])
-        self.phase('public-web-stop-started')
-        run([*DOCKER, 'stop', '--time', '30', self.web['Id']])
-        require(not inspect(self.web['Id'])['State']['Running'], 'public-web-stop-failed')
-        self.phase('old-controller-freeze-started')
-        run([*DOCKER, 'pause', self.controller['Id']])
-        frozen = inspect(self.controller['Id'])
-        require(frozen['State']['Paused'] and frozen['HostConfig']['RestartPolicy']['Name'] == 'no',
-                'old-controller-was-not-frozen-with-restart-disabled')
-        self.drain()
-        # External runners can claim jobs through GitLab directly even when the
-        # entry proxy is stopped. Close all scheduling ingress before the final
-        # jobs=0 observation, and never kill a job that raced the first check.
-        self.quiesce_ingress()
-        self.phase('owned-runners-stop-started')
-        for runner in self.runners:
-            run([*DOCKER, 'stop', '--time', '30', runner['Id']])
-            require(not inspect(runner['Id'])['State']['Running'], 'owned-runner-stop-failed')
-        self.clean_gitlab_stop()
-        run([*DOCKER, 'kill', self.controller['Id']])
-        stopped = inspect(self.controller['Id'])
-        require(not stopped['State']['Running'] and stopped['State']['ExitCode'] == 137 and
-                not stopped['State'].get('OOMKilled') and stopped.get('ExecIDs') in (None, []),
-                'old-controller-stop-is-uncertain')
-        self.phase('old-controller-killed-before-cold-checkpoint')
-        return checkpoint_copy(self.config, self.checkpoint, self.image)
+        return self._execute('run')
 
 
 def wait_for_staged(config, original, baseline, release, expected_gitlab_id, timeout):

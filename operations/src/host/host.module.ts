@@ -1,3 +1,4 @@
+import { ColdMaintenanceService, type ColdMaintenancePort } from './cold-maintenance.service';
 import { RecoveryPublicationService } from './recovery-publication.service';
 import { UpgradeLifecycleService } from './upgrade-lifecycle.service';
 import { NativeHostAttachedProcess, type HostAttachedProcess } from './attached-process';
@@ -12,12 +13,14 @@ import { HostSourceService } from './source';
 import { RecoveryImageService } from './recovery-images';
 import { RecoveryManifestService } from './recovery-manifest';
 import { RuntimeInspectionService } from './runtime-inspection';
+export const HOST_COLD_MAINTENANCE_PORT = Symbol('HOST_COLD_MAINTENANCE_PORT');
 export const HOST_ATTACHED_PROCESS = Symbol('HOST_ATTACHED_PROCESS');
 export const HOST_PROCESS_RUNNER = Symbol('HOST_PROCESS_RUNNER');
 export const HOST_LIFECYCLE_EVIDENCE = Symbol('HOST_LIFECYCLE_EVIDENCE');
 export const HOST_ENVIRONMENT = Symbol('HOST_ENVIRONMENT');
 export interface HostModuleOptions {
   lifecycleEvidence?: LifecycleEvidencePort;
+  coldMaintenancePort?: ColdMaintenancePort;
   runner?: ProcessRunner;
   attachedProcess?: HostAttachedProcess;
   environment?: NodeJS.ProcessEnv;
@@ -38,9 +41,31 @@ export class HostModule {
       RecoveryManifestService,
       RuntimeInspectionService,
     ];
+    const nativePortRequired = () => {
+      throw Error('cold-maintenance-native-port-required');
+    };
     return {
       module: HostModule,
       providers: [
+        {
+          provide: HOST_COLD_MAINTENANCE_PORT,
+          useValue: options.coldMaintenancePort ?? {
+            command: nativePortRequired,
+            inspect: nativePortRequired,
+            phase: nativePortRequired,
+            probe: nativePortRequired,
+            checkpoint: nativePortRequired,
+            now: nativePortRequired,
+            sleep: nativePortRequired,
+            uptime: nativePortRequired,
+            mainHash: nativePortRequired,
+          },
+        },
+        {
+          provide: ColdMaintenanceService,
+          inject: [HOST_COLD_MAINTENANCE_PORT],
+          useFactory: (port: ColdMaintenancePort) => new ColdMaintenanceService(port),
+        },
         { provide: RecoveryPublicationService, useFactory: () => new RecoveryPublicationService() },
         { provide: UpgradeLifecycleService, useFactory: () => new UpgradeLifecycleService() },
         {
@@ -89,6 +114,7 @@ export class HostModule {
         })),
       ],
       exports: [
+        ColdMaintenanceService,
         RecoveryPublicationService,
         UpgradeLifecycleService,
         HostStorageService,
