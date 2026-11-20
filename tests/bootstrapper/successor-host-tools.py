@@ -720,79 +720,8 @@ class ColdMaintenanceContracts(unittest.TestCase):
             self.rows[words[-1]]['State']['Running'] = True
         elif words[0] == 'kill':
             self.rows[words[-1]]['State'].update(Running=False, Paused=False, ExitCode=137)
+        if 'status' in words: return b'down: native-service: 0s\n'
         return b''
-    def test_legacy_order_freezes_control_then_cleanly_stops_GitLab_before_checkpoint(self):
-        def drain():
-            self.commands.append(['drain'])
-        with patch.object(promoter, 'run', side_effect=self.run_command), \
-             patch.object(promoter, 'inspect', side_effect=lambda name: self.rows[name]), \
-             patch.object(self.maintenance, 'drain', side_effect=drain), \
-             patch.object(promoter, 'checkpoint_copy', side_effect=lambda *args: self.commands.append(['checkpoint']) or 'digest'):
-            self.assertEqual(self.maintenance.run(), 'digest')
-        self.assertEqual([row[0] for row in self.commands],
-                         ['update', 'stop', 'pause', 'exec', 'stop', 'exec', 'exec', 'stop', 'kill', 'checkpoint'])
-        self.assertFalse(any('unpause' in row for row in self.commands))
-        self.assertFalse(self.controller['State']['Running'])
-    def test_job_claim_after_first_preflight_resumes_without_killing_running_jobs(self):
-        self.proof['runningJobs'] = 1
-        with patch.object(promoter, 'run', side_effect=self.run_command), \
-             patch.object(promoter, 'inspect', side_effect=lambda name: self.rows[name]), \
-             patch.object(self.maintenance, 'drain'), patch.object(promoter, 'checkpoint_copy') as copied:
-            with self.assertRaisesRegex(promoter.ActiveJobs, 'old-generation-resumed'):
-                self.maintenance.run()
-            copied.assert_not_called()
-        self.assertTrue(self.runner['State']['Running'])
-        self.assertTrue(self.gitlab['State']['Running'])
-        self.assertTrue(self.web['State']['Running'])
-        self.assertTrue(self.controller['State']['Running'])
-        self.assertFalse(self.controller['State']['Paused'])
-        self.assertEqual(self.controller['HostConfig']['RestartPolicy']['Name'], 'always')
-        self.assertFalse(any(row[0] == 'kill' for row in self.commands))
-
-    def test_expired_remote_stop_budget_never_reaches_unbounded_timeout_zero(self):
-        for value in (promoter.SCHEDULING_STOP, promoter.ALL_SERVICES_STOP):
-            controlled_clock = value.replace('read -r uptime rest </proc/uptime', 'uptime=10')
-            result = subprocess.run(['/bin/sh', '-ec', controlled_clock, 'sh', '10'], capture_output=True)
-            self.assertEqual(result.returncode, 124, result.stderr)
-
-    def test_remote_stop_scripts_parse_in_actual_POSIX_shell(self):
-        for value in (promoter.SCHEDULING_STOP, promoter.SCHEDULING_START,
-                      promoter.ALL_SERVICES_STOP, promoter.ALL_SERVICES_DOWN):
-            result = subprocess.run(['/bin/sh', '-n', '-c', value], capture_output=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_uncertain_GitLab_service_stop_cannot_reach_kill_or_checkpoint(self):
-        def operation(args, **kwargs):
-            if promoter.ALL_SERVICES_STOP in args:
-                raise successor.recovery.RecoveryError('synthetic-stop-timeout')
-            return self.run_command(args, **kwargs)
-        with patch.object(promoter, 'run', side_effect=operation), \
-             patch.object(promoter, 'inspect', side_effect=lambda name: self.rows[name]), \
-             patch.object(self.maintenance, 'drain'), patch.object(promoter, 'checkpoint_copy') as copied:
-            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'stop-timeout'):
-                self.maintenance.run()
-            copied.assert_not_called()
-        self.assertTrue(self.controller['State']['Paused'])
-        self.assertFalse(any(row[0] == 'kill' for row in self.commands))
-    def test_unfinished_remote_execs_fail_with_bounded_drain(self):
-        self.gitlab['ExecIDs'] = ['pending-exec']
-        with patch.object(promoter, 'inspect', return_value=self.gitlab), \
-             patch.object(promoter, 'time') as clock:
-            clock.monotonic.side_effect = [0, 1, 1000]
-            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'exec-drain-timeout'):
-                self.maintenance.drain()
-    def test_old_GitLab_forced_stop_is_not_a_completed_checkpoint(self):
-        def operation(args, **kwargs):
-            result = self.run_command(args, **kwargs)
-            if args[2:3] == ['stop'] and args[-1] == 'gitlab':
-                self.gitlab['State']['ExitCode'] = 137
-            return result
-        with patch.object(promoter, 'run', side_effect=operation), \
-             patch.object(promoter, 'inspect', side_effect=lambda name: self.rows[name]), \
-             patch.object(self.maintenance, 'drain'), patch.object(promoter, 'checkpoint_copy') as copied:
-            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'not-clean'):
-                self.maintenance.run()
-            copied.assert_not_called()
     def test_live_owner_refusal_precedes_checkpoint_helper_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

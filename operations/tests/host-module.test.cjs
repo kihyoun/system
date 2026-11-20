@@ -68,3 +68,33 @@ test('native controller lease preserves critical ownership, excludes contenders 
  assert(orphan?.guardFd>=0);orphan.release();
 
 });
+test('cold maintenance shares awaited native sequencing, bounded drain and fail-closed recovery',async()=>{
+ const {ColdMaintenanceService,ActiveMaintenanceJobs}=require('../dist/host/cold-maintenance.service');
+ for(const scenario of ['success','claimed-job','expired','uncertain-stop','busy-exec','forced-stop','service-up']){
+  const row=(Id,service)=>({Id,Image:'old-image',State:{Running:true,Paused:false,ExitCode:0,OOMKilled:false},HostConfig:{RestartPolicy:{Name:'always'}},ExecIDs:[],Config:{Labels:{'com.docker.compose.project':'system','com.docker.compose.service':service}}});
+  const rows={controller:row('controller','bootstrapper'),gitlab:row('gitlab','gitlab'),web:row('web','web'),runner:row('runner','docker_1')};
+  const input={controller:structuredClone(rows.controller),gitlab:structuredClone(rows.gitlab),web:structuredClone(rows.web),runners:[structuredClone(rows.runner)],deadline:180,mainHash:null};
+  const calls=[];let clock=0,uptime=100,copied=false;
+  const port={inspect:async id=>structuredClone(rows[id]),phase:async()=>{},probe:async()=>({runningJobs:scenario==='claimed-job'?1:0}),checkpoint:async()=>{copied=true;calls.push(['checkpoint']);return 'digest';},now:()=>clock,sleep:async seconds=>{clock+=seconds;},uptime:()=>{const value=uptime;if(scenario==='expired')uptime+=200;return value;},mainHash:()=>null,
+   command:async args=>{calls.push(args);assert(!args.includes('/bin/sh'));assert(!args.includes('-ec'));const target=rows[args.at(-1)];
+    if(args.includes('gitlab-ctl')&&args.at(-1)==='stop'&&scenario==='uncertain-stop')throw Error('uncertain-stop');
+    if(args[0]==='update')target.HostConfig.RestartPolicy.Name=args[1].split('=')[1];
+    if(args[0]==='pause')target.State.Paused=true;
+    if(args[0]==='unpause')target.State.Paused=false;
+    if(args[0]==='start')target.State.Running=true;
+    if(args[0]==='stop'){target.State.Running=false;if(target===rows.gitlab&&scenario==='forced-stop')target.State.ExitCode=137;}
+    if(args[0]==='kill')Object.assign(target.State,{Running:false,Paused:false,ExitCode:137});
+    if(args.includes('status'))return scenario==='service-up'?'run: puma: 3s':'down: native-service: 0s\n';return '';
+   }};
+  if(scenario==='busy-exec')rows.gitlab.ExecIDs=['pending'];
+  const service=new ColdMaintenanceService(port);
+  if(scenario==='success'){
+   assert.equal(await service.run(input),'digest');assert(copied);assert(!rows.controller.State.Running);
+   const stop=calls.findIndex(args=>args[0]==='stop'&&args.at(-1)==='gitlab'),kill=calls.findIndex(args=>args[0]==='kill');assert(stop>=0&&kill>stop&&calls.at(-1)[0]==='checkpoint');
+  }else{
+   await assert.rejects(service.run(input),scenario==='claimed-job'?ActiveMaintenanceJobs:/expired|uncertain-stop|drain-timeout|not-clean/);
+   assert(!copied);assert(!calls.some(args=>args[0]==='kill'));
+   if(scenario==='claimed-job'){for(const value of Object.values(rows))assert(value.State.Running);assert(!rows.controller.State.Paused);assert.equal(rows.controller.HostConfig.RestartPolicy.Name,'always');}
+  }
+ }
+});

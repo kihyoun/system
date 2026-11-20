@@ -248,25 +248,6 @@ class ActiveJobs(recovery.RecoveryError):
     pass
 
 
-SCHEDULING_STOP = ('for service in nginx gitlab-workhorse puma; do '
-    'read -r uptime rest </proc/uptime; remaining=$(($1 - ${uptime%%.*})); '
-    'if [ "$remaining" -le 0 ] || [ "$remaining" -gt 110 ]; then exit 124; fi; '
-    'timeout -k 2 "$remaining" gitlab-ctl stop "$service"; '
-    'state=$(/opt/gitlab/embedded/bin/sv status "/opt/gitlab/service/$service"); '
-    'case "$state" in down:*) ;; *) exit 1 ;; esac; done')
-SCHEDULING_START = ('for service in nginx gitlab-workhorse puma; do '
-    'read -r uptime rest </proc/uptime; remaining=$(($1 - ${uptime%%.*})); '
-    'if [ "$remaining" -le 0 ] || [ "$remaining" -gt 150 ]; then exit 124; fi; '
-    'timeout -k 2 "$remaining" gitlab-ctl start "$service"; done')
-ALL_SERVICES_STOP = ('read -r uptime rest </proc/uptime; remaining=$(($1 - ${uptime%%.*})); '
-    'if [ "$remaining" -le 0 ] || [ "$remaining" -gt 110 ]; then exit 124; fi; '
-    'timeout -k 2 "$remaining" gitlab-ctl stop')
-ALL_SERVICES_DOWN = ('found=false; for service in /opt/gitlab/service/*; do '
-    '[ -L "$service" ] || continue; found=true; '
-    'state=$(/opt/gitlab/embedded/bin/sv status "$service"); '
-    'case "$state" in down:*) ;; *) exit 1 ;; esac; done; [ "$found" = true ]')
-
-
 class ColdMaintenance:
     def __init__(self, config, controller, gitlab, web, runners, checkpoint, image,
                  deadline=180, security=None, journal=None):
@@ -287,7 +268,7 @@ class ColdMaintenance:
                    'runners': self.runners, 'deadline': self.deadline, 'mainHash': self.main_hash}
         def dispatch(method, args):
             if method == 'command':
-                run([*DOCKER, *args[0]], **({'timeout': args[1]} if args[1] is not None else {}))
+                return run([*DOCKER, *args[0]], **({'timeout': args[1]} if args[1] is not None else {})).decode()
             elif method == 'inspect': return inspect(args[0])
             elif method == 'phase': self.phase(*args)
             elif method == 'probe': return gitlab_probe(self.security, self.gitlab)
@@ -469,7 +450,7 @@ def abort_promotion(config, checkpoint, timeout=1200):
             try: return inspect(args[0])
             except recovery.RecoveryError: return None
         elif method == 'inspect': return inspect(args[0])
-        elif method == 'command': run([*DOCKER, *args[0]], **({'timeout': args[1]} if args[1] is not None else {}))
+        elif method == 'command': return run([*DOCKER, *args[0]], **({'timeout': args[1]} if args[1] is not None else {})).decode()
         elif method == 'verifyCheckpoint': verify_cold_checkpoint(checkpoint, args[0])
         elif method == 'bootId': return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
         elif method == 'uptime': return float(Path('/proc/uptime').read_text().split()[0])

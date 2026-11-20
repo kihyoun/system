@@ -31,7 +31,8 @@ export async function promotionAbortMain(): Promise<void> {
       },
       inspect: (id) => record(channel.call('inspect', [id])),
       command: (args, timeout) => {
-        channel.call('command', [args, timeout]);
+        const output = channel.call('command', [args, timeout]);
+        return typeof output === 'string' ? output : undefined;
       },
       verifyCheckpoint: (hash) => {
         channel.call('verifyCheckpoint', [hash]);
@@ -81,7 +82,7 @@ export async function promotionAbortMain(): Promise<void> {
     const app = await runtime.application(
       HostModule.register({ promotionAbortPort: port, coldMaintenancePort: port }),
     );
-    app.get(PromotionAbortService).run(input);
+    await app.get(PromotionAbortService).run(input);
     channel.write({ complete: true, value: null });
   } catch (error) {
     channel.write({

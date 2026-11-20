@@ -19,7 +19,8 @@ export async function coldMaintenanceMain(): Promise<void> {
       input = record(initial.input) as unknown as ColdMaintenanceInput;
     const port: ColdMaintenancePort = {
       command: (args, timeout) => {
-        channel.call('command', [args, timeout]);
+        const output = channel.call('command', [args, timeout]);
+        return typeof output === 'string' ? output : undefined;
       },
       inspect: (id) => record(channel.call('inspect', [id])),
       phase: (value, deadline) => {
@@ -41,7 +42,7 @@ export async function coldMaintenanceMain(): Promise<void> {
     const service = app.get(ColdMaintenanceService);
     if (initial.operation !== 'run' && initial.operation !== 'drain')
       throw Error('invalid-cold-maintenance-operation');
-    const value = initial.operation === 'run' ? service.run(input) : service.drain(input);
+    const value = await (initial.operation === 'run' ? service.run(input) : service.drain(input));
     channel.write({ complete: true, value: value ?? null });
   } catch (error) {
     channel.write({

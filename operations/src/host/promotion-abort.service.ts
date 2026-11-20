@@ -15,25 +15,25 @@ export interface PromotionAbortInput {
   timeout: number;
 }
 export interface PromotionAbortPort extends ColdMaintenancePort {
-  main(): string;
-  checkout(release: Row): void;
-  image(id: string): Row;
-  adopt(operation: string): void;
-  helper(): Row | null;
-  inspectOptional(id: string): Row | null;
-  verifyCheckpoint(hash: string): void;
-  bootId(): string;
-  runners(): Row[];
-  writeConfiguration(base64: string): void;
-  reload(): void;
-  services(): Record<string, Row>;
-  mounts(rows: Record<string, Row>): void;
-  routes(rows: Record<string, Row>): void;
-  sync(): void;
-  journal(value: Row): void;
-  timestamp(): string;
-  release(): void;
-  compose(args: string[], previousImage: string): void;
+  main(): string | Promise<string>;
+  checkout(release: Row): void | Promise<void>;
+  image(id: string): Row | Promise<Row>;
+  adopt(operation: string): void | Promise<void>;
+  helper(): (Row | null) | Promise<Row | null>;
+  inspectOptional(id: string): (Row | null) | Promise<Row | null>;
+  verifyCheckpoint(hash: string): void | Promise<void>;
+  bootId(): string | Promise<string>;
+  runners(): Row[] | Promise<Row[]>;
+  writeConfiguration(base64: string): void | Promise<void>;
+  reload(): void | Promise<void>;
+  services(): Record<string, Row> | Promise<Record<string, Row>>;
+  mounts(rows: Record<string, Row>): void | Promise<void>;
+  routes(rows: Record<string, Row>): void | Promise<void>;
+  sync(): void | Promise<void>;
+  journal(value: Row): void | Promise<void>;
+  timestamp(): string | Promise<string>;
+  release(): void | Promise<void>;
+  compose(args: string[], previousImage: string): void | Promise<void>;
 }
 /** Resumes the exact pre-migration generation; an uncertain abort retains its lease. */
 export class PromotionAbortService {
@@ -41,7 +41,7 @@ export class PromotionAbortService {
     readonly port: PromotionAbortPort,
     readonly cold: ColdMaintenanceService,
   ) {}
-  run(input: PromotionAbortInput): void {
+  async run(input: PromotionAbortInput): Promise<void> {
     const state = { ...input.record };
     ensure(
       state.format === 'system-controller-promotion-v1' &&
@@ -58,57 +58,61 @@ export class PromotionAbortService {
       Number.isFinite(input.timeout) && input.timeout > 0 && input.checkout.startsWith('/'),
       'invalid-controller-abort-input',
     );
-    this.port.checkout(record(state.release));
+    await this.port.checkout(record(state.release));
     const before = Buffer.from(input.before, 'base64');
     const hash = (value: string) =>
       crypto.createHash('sha256').update(Buffer.from(value, 'base64')).digest('hex');
     ensure(
       hash(input.before) === state.configurationBeforeSha256 &&
         [state.configurationBeforeSha256, state.configurationAfterSha256].includes(
-          hash(this.port.main()),
+          hash(await this.port.main()),
         ),
       'controller-abort-configuration-hash-mismatch',
     );
     cube(before);
-    const gitlab = this.port.inspect('system_gitlab_1');
+    const gitlab = await this.port.inspect('system_gitlab_1');
     this.owned(gitlab, 'gitlab');
     ensure(
       gitlab.Image === record(state.oldGitLab).imageId,
       'controller-abort-refuses-GitLab-image-change-use-database-checkpoint-recovery',
     );
     const previous = record(state.previousController),
-      old = this.port.image(String(previous.imageId));
+      old = await this.port.image(String(previous.imageId));
     ensure(old.Id === previous.imageId, 'previous-controller-image-is-unavailable');
-    this.port.adopt(String(state.leaseOperation));
-    const helper = this.port.helper();
+    await this.port.adopt(String(state.leaseOperation));
+    const helper = await this.port.helper();
     if (helper) {
-      const remaining = this.port.inspectOptional(String(helper.name));
+      const remaining = await this.port.inspectOptional(String(helper.name));
       if (remaining) {
         ensure(
           record(record(remaining.Config).Labels)['org.system-bootstrapper.controller-copy'] ===
             helper.owner,
           'checkpoint-helper-ownership-changed',
         );
-        this.port.command(['rm', '--force', this.id(remaining)]);
+        await this.port.command(['rm', '--force', this.id(remaining)]);
       }
     }
-    if (state.coldCheckpointSha256) this.port.verifyCheckpoint(String(state.coldCheckpointSha256));
-    if (state.remoteCommandDeadlineUptime && this.port.bootId() === state.remoteCommandBootId) {
-      const remaining = Number(state.remoteCommandDeadlineUptime) - this.port.uptime();
+    if (state.coldCheckpointSha256)
+      await this.port.verifyCheckpoint(String(state.coldCheckpointSha256));
+    if (
+      state.remoteCommandDeadlineUptime &&
+      (await this.port.bootId()) === state.remoteCommandBootId
+    ) {
+      const remaining = Number(state.remoteCommandDeadlineUptime) - (await this.port.uptime());
       ensure(
         Number.isFinite(remaining) && remaining < 180,
         'controller-abort-remote-deadline-invalid',
       );
-      if (remaining > 0) this.port.sleep(remaining + 2);
+      if (remaining > 0) await this.port.sleep(remaining + 2);
     }
-    const current = this.port.inspect('system_bootstrapper_1'),
-      web = this.port.inspect('system_web_1');
+    const current = await this.port.inspect('system_bootstrapper_1'),
+      web = await this.port.inspect('system_web_1');
     this.owned(current, 'bootstrapper');
     this.owned(web, 'web');
-    if (this.state(web).Running) this.port.command(['stop', '--time', '30', this.id(web)]);
+    if (this.state(web).Running) await this.port.command(['stop', '--time', '30', this.id(web)]);
     if (this.state(current).Running) {
-      this.port.command(['update', '--restart=no', this.id(current)]);
-      if (!this.state(current).Paused) this.port.command(['pause', this.id(current)]);
+      await this.port.command(['update', '--restart=no', this.id(current)]);
+      if (!this.state(current).Paused) await this.port.command(['pause', this.id(current)]);
     }
     if (this.state(gitlab).Running) {
       const context: ColdMaintenanceInput = {
@@ -117,10 +121,10 @@ export class PromotionAbortService {
         web,
         runners: [],
         deadline: 180,
-        mainHash: hash(this.port.main()),
+        mainHash: hash(await this.port.main()),
       };
-      this.cold.drain(context);
-      this.cold.quiesce(context);
+      await this.cold.drain(context);
+      await this.cold.quiesce(context);
       const early = [
         'public-web-stop-started',
         'old-controller-freeze-started',
@@ -129,32 +133,32 @@ export class PromotionAbortService {
         'old-ingress-resume-started',
         'old-generation-resumed-without-database-stop',
       ].includes(String(state.coldPhase));
-      if (early && current.Image === old.Id && this.port.main() === input.before) {
+      if (early && current.Image === old.Id && (await this.port.main()) === input.before) {
         const controller = {
           ...current,
           HostConfig: { ...record(current.HostConfig), RestartPolicy: previous.restartPolicy },
         };
-        this.cold.resume({ ...context, controller });
-        this.complete(state);
+        await this.cold.resume({ ...context, controller });
+        await this.complete(state);
         return;
       }
-      for (const runner of this.port.runners())
-        this.port.command(['stop', '--time', '30', this.id(runner)]);
-      this.cold.cleanStop(context);
+      for (const runner of await this.port.runners())
+        await this.port.command(['stop', '--time', '30', this.id(runner)]);
+      await this.cold.cleanStop(context);
     } else
       ensure(
         this.state(gitlab).ExitCode === 0 && !this.state(gitlab).OOMKilled,
         'controller-abort-requires-clean-old-GitLab-state',
       );
     if (this.state(current).Running) {
-      this.port.command(['kill', this.id(current)]);
+      await this.port.command(['kill', this.id(current)]);
       ensure(
-        !this.state(this.port.inspect(this.id(current))).Running,
+        !this.state(await this.port.inspect(this.id(current))).Running,
         'controller-abort-stop-uncertain',
       );
     }
-    this.port.writeConfiguration(input.before);
-    this.port.compose(
+    await this.port.writeConfiguration(input.before);
+    await this.port.compose(
       [
         'compose',
         '--compatibility',
@@ -172,25 +176,25 @@ export class PromotionAbortService {
       ],
       String(previous.imageId),
     );
-    this.port.reload();
-    const deadline = this.port.now() + input.timeout;
+    await this.port.reload();
+    const deadline = (await this.port.now()) + input.timeout;
     let rows: Record<string, Row>;
     for (;;) {
       try {
-        rows = this.port.services();
+        rows = await this.port.services();
         ensure(
           rows.system_bootstrapper_1.Image === old.Id &&
             rows.system_gitlab_1.Image === record(state.oldGitLab).imageId,
           'controller-abort-image-mismatch',
         );
-        this.port.mounts(rows);
-        this.port.routes(rows);
-        this.port.sync();
-        ensure(this.port.main() === input.before, 'controller-abort-config-changed');
+        await this.port.mounts(rows);
+        await this.port.routes(rows);
+        await this.port.sync();
+        ensure((await this.port.main()) === input.before, 'controller-abort-config-changed');
         break;
       } catch {
-        if (this.port.now() >= deadline) throw Error('controller-abort-acceptance-timeout');
-        this.port.sleep(3);
+        if ((await this.port.now()) >= deadline) throw Error('controller-abort-acceptance-timeout');
+        await this.port.sleep(3);
       }
     }
     const policy = record(previous.restartPolicy);
@@ -207,17 +211,21 @@ export class PromotionAbortService {
       );
       restart += ':' + String(policy.MaximumRetryCount);
     }
-    this.port.command(['update', '--restart=' + restart, this.id(rows.system_bootstrapper_1)]);
-    this.complete(state);
+    await this.port.command([
+      'update',
+      '--restart=' + restart,
+      this.id(rows.system_bootstrapper_1),
+    ]);
+    await this.complete(state);
   }
-  private complete(state: Row) {
-    this.port.journal({
+  private async complete(state: Row): Promise<void> {
+    await this.port.journal({
       ...state,
       phase: 'aborted',
-      abortedAt: this.port.timestamp(),
+      abortedAt: await this.port.timestamp(),
       databaseRewound: false,
     });
-    this.port.release();
+    await this.port.release();
   }
   private state(row: Row) {
     return record(row.State);
