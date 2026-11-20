@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import type {Express, RequestHandler, Request, Response} from 'express';
 import {readSettings} from './DefaultWizard';
 import {mainConfigPath, projectsDirectory} from './StatePaths';
 import {nativeProbe, diagnosticCode, ProbeDriver} from './SystemDiagnosticsProbe';
@@ -87,47 +86,4 @@ export interface DiagnosticDependencies {
   probe: ProbeDriver;
   inspect: typeof inspectRunner;
   pull: typeof pullHelper;
-}
-export function registerSystemDiagnostics(app: Express, authenticate: RequestHandler,
-  dependencies: Partial<DiagnosticDependencies> = {}) {
-  const deps: DiagnosticDependencies = {targets: diagnosticTargets, probe: nativeProbe, inspect: inspectRunner, pull: pullHelper, ...dependencies};
-  let active = 0;
-  // No result store, background scheduler or automatic retry. Each caller holds
-  // at most its current response. A shared limit covers metadata and both actions.
-  const bounded = (run: (req: Request, res: Response) => Promise<void>): RequestHandler => async (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    if (active >= 2) { res.status(429).json({message: 'Diagnostics are busy. Retry after the current checks finish.'}); return; }
-    active++;
-    try { await run(req, res); }
-    catch (_) { res.status(503).json({message: 'Diagnostics could not inspect the configured service or runner. Check server configuration and daemon availability.'}); }
-    finally { active--; }
-  };
-  app.get('/diagnostics', authenticate, bounded(async (_req, res) => { res.json(await deps.targets()); }));
-  app.post('/diagnostics/connection', authenticate, bounded(async (req, res) => {
-    if (!req.body || Object.keys(req.body).length !== 1 || !['registry', 'helper'].includes(req.body.target)) {
-      res.status(400).json({message: 'Choose a configured registry target.'}); return;
-    }
-    const targets = await deps.targets();
-    res.json(await checkRegistry(req.body.target === 'registry' ? targets.registry : targets.helper, deps.probe));
-  }));
-  let pulling = false;
-  app.post('/diagnostics/pull', authenticate, bounded(async (req, res) => {
-    if (!req.body || Object.keys(req.body).length !== 1 || typeof req.body.runner !== 'string') {
-      res.status(400).json({message: 'Choose a configured runner manager.'}); return;
-    }
-    if (pulling) { res.status(429).json({message: 'A helper pull is already in progress.'}); return; }
-    pulling = true;
-    try {
-      const targets = await deps.targets();
-      if (!targets.runners.includes(req.body.runner)) { res.status(400).json({message: 'The selected runner is not an available configured manager.'}); return; }
-      const context = await deps.inspect(req.body.runner);
-      if (context.image !== targets.helperImage) { res.status(409).json({message: 'The runner helper image differs from the configured immutable helper image. Review runner configuration before retrying.'}); return; }
-      const start = performance.now();
-      const result = await deps.pull(context);
-      res.json({runner: context.runner, image: context.image, context: context.daemon, authentication: context.authentication,
-        durationMs: Math.round(performance.now() - start), success: result.success, code: result.code,
-        detail: result.success ? 'The selected daemon completed this exact helper-image pull. CI startup, runner credentials and other images remain unverified.' :
-          'The selected daemon did not confirm a completed pull. This result alone does not establish a network ban, credential failure or missing digest. Layers may have been cached; a timed-out daemon operation may continue.'});
-    } finally { pulling = false; }
-  }));
 }

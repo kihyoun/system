@@ -1,15 +1,19 @@
 {
     "compilerOptions": {
-        "module": "node16",
+        "module": "node20",
         "esModuleInterop": true,
         "target": "es2022",
         "noImplicitAny": true,
         "strict": false,
         "moduleResolution": "node16",
-        "types": ["node"],
+        "types": [
+            "node"
+        ],
         "sourceMap": true,
         "outDir": "dist",
-        "rootDir": "src"
+        "rootDir": "src",
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true
     },
     "include": [
         "src/**/*"
