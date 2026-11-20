@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import {
+  runtimeImageSelectors,
+  verifyImageInspections,
   RuntimeInspectionService,
   inspectServiceRows,
   failedStoppedController,
@@ -32,6 +34,15 @@ export function compatibility(input: {
   const args = input.arguments,
     host = new HostInstallService(undefined, undefined, undefined, undefined, input.deadline);
   switch (input.operation) {
+    case 'runtimeImageSelectors':
+      return runtimeImageSelectors(args[0] as RuntimeConfig);
+    case 'verifyImageInspections':
+      return verifyImageInspections(
+        args[0] as RuntimeConfig,
+        args[1] as RecoveryManifest,
+        args[2] as Record<string, ContainerRow>,
+        args[3] as Parameters<typeof verifyImageInspections>[3],
+      );
     case 'inspectServiceRows':
       return inspectServiceRows(
         args[0] as RuntimeConfig,

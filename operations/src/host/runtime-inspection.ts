@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import { canonicalDigest, declaredImage, type RecoveryManifest } from './recovery-manifest';
+import { RecoveryImageService } from './recovery-images';
 import path from 'node:path';
 import { HostInstallService, requireValue as ensure } from './install';
 import { record } from '../release/source-identity';
@@ -78,6 +80,55 @@ export function inspectServiceRows(
   }
   return Object.fromEntries(rows.map((row, i) => [actual[i], row]));
 }
+export function runtimeImageSelectors(config: RuntimeConfig): Record<string, string> {
+  const selected: Record<string, string> = {
+    system_bootstrapper_1: config.BOOTSTRAPPER_IMAGE || 'system_bootstrapper',
+    system_web_1: config.NGINX_IMAGE || 'nginx',
+    system_gitlab_1: config.GITLAB_IMAGE,
+  };
+  for (let i = 1; i <= runnerCount(config); i++)
+    selected[`runner_docker_${i}`] = config.GITLAB_RUNNER_IMAGE;
+  if (config.WIZARD_ENABLE === 'true') selected.system_wizard_1 = config.WIZARD_IMAGE;
+  return selected;
+}
+export function verifyImageInspections(
+  config: RuntimeConfig,
+  manifest: RecoveryManifest,
+  services: Record<string, ContainerRow>,
+  inspections: Record<string, { Id: string; RepoDigests?: string[] }>,
+): void {
+  const selected = runtimeImageSelectors(config),
+    expected: Record<string, string> = {
+      system_bootstrapper_1: manifest.currentController.imageId,
+    };
+  for (const [name, reference] of Object.entries(selected)) {
+    if (name === 'system_bootstrapper_1') continue;
+    ensure(reference, 'saved-image-selection-required');
+    const inspected = inspections[reference];
+    ensure(inspected, 'saved-image-inspection-required');
+    expected[name] = inspected.Id;
+    if (reference.includes('@sha256:'))
+      ensure(
+        inspected.RepoDigests?.includes(canonicalDigest(reference)),
+        'running-image-digest-not-verified',
+      );
+  }
+  for (const [key, fallback] of [
+    ['BOOTSTRAPPER_IMAGE', 'system_bootstrapper'],
+    ['NGINX_IMAGE', 'nginx'],
+    ['GITLAB_IMAGE', ''],
+    ['GITLAB_RUNNER_IMAGE', ''],
+  ]) {
+    const reference = config[key] || fallback,
+      match = declaredImage(manifest, reference);
+    ensure(match, 'saved-image-is-not-declared-in-manifest');
+    ensure(inspections[reference], 'saved-image-inspection-required');
+    if (match.imageId)
+      ensure(inspections[reference].Id === match.imageId, 'image-alias-retargeted');
+  }
+  for (const [name, id] of Object.entries(expected))
+    ensure(services[name]?.Image === id, 'service-image-selection-mismatch');
+}
 const docker = ['--host=unix:///var/run/docker.sock'];
 const within = (root: string, target: string) =>
   target === root || target.startsWith(root + path.sep);
@@ -88,6 +139,28 @@ export class RuntimeInspectionService {
       config,
       JSON.parse(this.host.run('docker', [...docker, 'inspect', ...serviceNames(config)])),
       stoppedId,
+    );
+  }
+  images(
+    config: RuntimeConfig,
+    manifest: RecoveryManifest,
+    services: Record<string, ContainerRow>,
+  ): void {
+    const images = new RecoveryImageService(this.host),
+      selectors = new Set([
+        ...Object.values(runtimeImageSelectors(config)),
+        config.GITLAB_RUNNER_IMAGE,
+      ]);
+    verifyImageInspections(
+      config,
+      manifest,
+      services,
+      Object.fromEntries(
+        [...selectors].map((reference) => {
+          ensure(reference, 'saved-image-selection-required');
+          return [reference, images.inspect(reference)];
+        }),
+      ),
     );
   }
   mounts(config: RuntimeConfig, services: Record<string, ContainerRow>): number {

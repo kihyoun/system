@@ -255,29 +255,10 @@ def inspect_services(config, stopped_controller_id=None):
 
 
 def verify_images(config, manifest, services):
-    expected = {'system_bootstrapper_1': manifest['currentController']['imageId']}
-    selected = [('system_web_1', 'NGINX_IMAGE', 'nginx'), ('system_gitlab_1', 'GITLAB_IMAGE', '')]
-    selected += [(f'runner_docker_{index}', 'GITLAB_RUNNER_IMAGE', '')
-                 for index in range(1, runner_count(config) + 1)]
-    if config['WIZARD_ENABLE'] == 'true':
-        selected.append(('system_wizard_1', 'WIZARD_IMAGE', ''))
-    for name, key, default in selected:
-        image = config[key] or default
-        require(bool(image), 'saved-image-selection-required')
-        inspected = recovery.inspect_image(image)
-        expected[name] = inspected['Id']
-        if '@sha256:' in image:
-            require(recovery.canonical_digest(image) in inspected.get('RepoDigests', []), 'running-image-digest-not-verified')
-    for key, fallback in [('BOOTSTRAPPER_IMAGE', 'system_bootstrapper'), ('NGINX_IMAGE', 'nginx'),
-                          ('GITLAB_IMAGE', ''), ('GITLAB_RUNNER_IMAGE', '')]:
-        reference = config[key] or fallback
-        match = recovery.declared_image(manifest, reference)
-        require(match is not None, 'saved-image-is-not-declared-in-manifest')
-        inspected = recovery.inspect_image(reference)
-        if match.get('imageId'):
-            require(inspected['Id'] == match['imageId'], 'image-alias-retargeted')
-    for name, image in expected.items():
-        require(services[name]['Image'] == image, 'service-image-selection-mismatch')
+    selected = recovery.host_operation('runtimeImageSelectors', config)
+    references = set(selected.values()) | {config['GITLAB_RUNNER_IMAGE']}
+    inspected = {reference: recovery.inspect_image(reference) for reference in references}
+    return recovery.host_operation('verifyImageInspections', config, manifest, services, inspected)
 
 
 def verify_mounts(config, services):

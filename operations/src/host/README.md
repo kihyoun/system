@@ -69,3 +69,18 @@ without execs or a restart policy. Persistent mount verification checks every
 essential destination, resolves named bind volumes, and rejects duplicate,
 misdirected, cross-filesystem or escaping mounts. The native process adapter owns
 Docker and `findmnt` access; imported validation functions have no side effects.
+
+`HostModule.register()` exposes the shared services in a standalone Nest context.
+Its process runner, environment, initialization guard and deadline are injectable;
+constructing the context performs no host operations. `RuntimeInspectionService.images`
+validates selected service IDs and declared manifest aliases through the same
+native adapter. Compatibility callers supply inspection results to the pure
+validator; their command budgets remain in force, while pure decisions do not
+consume a native-command deadline.
+
+For a native host CLI, resolve `HostStorageService` from `HostModule` and call
+`execute` with the operation, accepted controller image, explicit checkout and
+private persistence selector. It pins the inspected image ID and invokes the
+accepted image with a read-only `/host` mount. Calling the in-container host
+configuration reader directly on the native host does not provide this mount or
+its trusted image selector and is unsupported.

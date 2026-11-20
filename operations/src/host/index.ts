@@ -6,3 +6,5 @@ export * from './recovery-images';
 export * from './upgrade-graph';
 export * from './source';
 export * from './runtime-inspection';
+export * from './host.module';
+export * from './host-storage.service';
