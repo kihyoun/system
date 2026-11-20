@@ -10,7 +10,9 @@
     "build": "tsc",
     "prestart": "npm run build",
     "start": "node .",
-    "test": "npm run check"
+    "test": "npm run check",
+    "format": "prettier --config ../.prettierrc --ignore-path ../.prettierignore --write \"src/**/*.{ts,tsx,js,jsx}\"",
+    "format:check": "prettier --config ../.prettierrc --ignore-path ../.prettierignore --check \"src/**/*.{ts,tsx,js,jsx}\""
   },
   "keywords": [],
   "author": "",
@@ -44,6 +46,7 @@
     "@types/morgan": "1.9.10",
     "@types/node": "24.19.2",
     "eslint": "10.15.0",
+    "prettier": "3.10.1",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.2"
   },

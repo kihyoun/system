@@ -1,12 +1,14 @@
 {
-  "name": "@systembootstrapper/operations",
+  "name": "@systembootstrapper/cli",
   "version": "2.0.0",
   "description": "Shared System Bootstrapper operations runtime",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
-    "test": "node --test tests/*.test.cjs"
+    "test": "node --test tests/*.test.cjs",
+    "format": "prettier --config ../.prettierrc --ignore-path ../.prettierignore --write \"src/**/*.{ts,tsx,js,jsx}\"",
+    "format:check": "prettier --config ../.prettierrc --ignore-path ../.prettierignore --check \"src/**/*.{ts,tsx,js,jsx}\""
   },
   "keywords": [],
   "author": "",
@@ -24,13 +26,17 @@
   },
   "devDependencies": {
     "@types/node": "24.19.2",
+    "prettier": "3.10.1",
     "typescript": "6.0.3"
   },
   "types": "dist/index.d.ts",
-  "private": true,
+  "private": false,
   "files": [
     "dist",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "bin": {
+    "system-bootstrapper": "dist/cli.js"
+  }
 }
