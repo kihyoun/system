@@ -31,6 +31,20 @@ class HostRpc(unittest.TestCase):
         self.assertEqual(worker.sequence, 2)
         lease_entry = entry.with_name('controller-lease-entry.js')
         self.assertIn('error', host_rpc.invoke('node', lease_entry, 'invalid', []))
+        token = 'a' * 32
+        invalid = [[], ['acquire'], ['acquire', {'root': 123}], ['adopt', {'root': '/tmp'}, 3],
+            ['acquire', {'root': '/tmp', 'legacyController': {'Mounts': [42]}}],
+            ['critical', token, 'false'], ['finish', token, 0], ['release', token, True],
+            ['idle', token, '../relative'], ['command', token, ['echo'], 1, 'Zg', None],
+            ['command', token, [42], 1, '', None], ['command', token, ['echo'], '1', '', None],
+            ['command', token, ['echo'], 1801, '', None],
+            ['command', token, ['echo'], 1, '', {'SECRET': 42}]]
+        for arguments in invalid:
+            with self.subTest(arguments=arguments):
+                result = host_rpc.invoke('node', lease_entry, 'controllerLease', arguments)
+                self.assertIn('error', result)
+                self.assertNotIn('lease-not-acquired', result['error'])
+
         lease_worker = next(value for key, value in host_rpc._workers.items() if key[2] == str(lease_entry))
         host_rpc.close(lease_entry.name)
         self.assertIsNotNone(lease_worker.child.poll())
