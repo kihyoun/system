@@ -498,9 +498,10 @@ existing database rollback continues. The final normal controller starts and
 passes authenticated Fetch after full physical backup detachment. Failed steps
 publish no upgrade success.
 
-A bounded 512-MiB/one-CPU helper reuses the declared GitLab image's embedded
-Python while the host upgrade fixture is migrated. Its Docker/Compose transports
-are thin Node adapters backed by a test-only Nest module. Preparation copies the
+A bounded 512-MiB/one-CPU helper uses the declared candidate image and its pinned
+Node runtime. Its thin Node entry invokes the production public-upgrade service;
+only publication transport and disposable host facts use fixture providers.
+Docker/Compose transports are thin Node adapters backed by a test-only Nest module. Preparation copies the
 exact candidate's Node binary, bundled operations, Docker/Compose binaries, musl
 loader and declared C++/GCC libraries with native filesystem APIs. Read-only mounts
 supply that runtime at an explicit path in both the helper and historical

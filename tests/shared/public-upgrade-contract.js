@@ -388,7 +388,7 @@ test('native host helper mounts backup strictly for plan/apply and performs reco
 
 test('native helper diagnostics identify only the declared phase and preserve bounded exit facts', async () => {
   const {failureReason}=require('./stage-diagnostics');
-  const candidate={id:'a'.repeat(24),spec:{restore:{base:'/recovered-data/platform'},images:{gitlab:{id:id('7')}}},
+  const candidate={id:'a'.repeat(24),spec:{restore:{base:'/recovered-data/platform'},images:{candidate:{id:id('7')}}},
     inner:async()=>{throw Object.assign(Error('private credential and upstream stderr'),{exitCode:1,systemCode:'ENOENT'});}};
   const native=new NativeCLI(candidate);
   for(const operation of ['initialize','restore-original','plan','apply','status','recover']){
@@ -411,7 +411,7 @@ test('native helper diagnostics identify only the declared phase and preserve bo
   }
 });
 
-test('fixed Python diagnostic markers survive the real Docker sanitizer and native phase wrapper',async()=>{
+test('fixed native diagnostic markers survive the real Docker sanitizer and native phase wrapper',async()=>{
   const {Candidate}=require('./disposable-candidate');
   const {failureReason}=require('./stage-diagnostics');
   const diagnostics=require('../e2e/public-upgrade-diagnostics.json');
@@ -460,4 +460,85 @@ test('fixture credential revocation uses the authenticated API before any Rails 
   await native.revokeCredential();assert.equal(rails,0);
   candidate.api=async()=>{throw Error('unavailable');};
   await native.revokeCredential();assert.equal(rails,1);
+});
+
+test('native fixture selection adapts only the exact candidate and preserves original selection bytes', () => {
+  const {PublicUpgradeSelectionService} = require('../../operations/dist/testing/public-upgrade-selection.service');
+  const {imageAssignment} = require('../../operations/dist/host/release-selection.service');
+  const service = new PublicUpgradeSelectionService(), directory = fs.mkdtempSync(path.join(os.tmpdir(), 'public-selection-'));
+  try {
+    const live = path.join(directory, 'live'), configuration = path.join(live, 'configuration');
+    fs.mkdirSync(configuration, {recursive:true});
+    const raw = Buffer.concat([fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example')), Buffer.from("\nexport BOOTSTRAPPER_IMAGE='"+id('5')+"'\nexport WIZARD_IMAGE='"+id('6')+"'\n")]);
+    const metadata = fixture(), input = {live,previous:metadata,spec:{images:{candidate:{id:id('5')}}}};
+    const main = path.join(configuration,'.docker.env'), profile = path.join(configuration,'.release-images.env');
+    fs.writeFileSync(main,raw,{mode:0o600});fs.writeFileSync(profile,'original-profile\n',{mode:0o600});
+    assert.throws(()=>imageAssignment(raw,metadata.images.controller.reference),/public-dockerhub-digest-required/);
+    assert.deepEqual(service.execute(directory,'initialize',input),{initialized:true});
+    const initialized=fs.readFileSync(main);
+    assert(initialized.subarray(0,1184).equals(raw.subarray(0,1184)));
+    for(const role of ['controller','wizard'])assert(initialized.includes(metadata.images[role].reference));
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(configuration,'.release-images.json'))).images,metadata.images);
+    assert.throws(()=>service.execute(directory,'initialize',input),/candidate-controller-selector-mismatch|fixture-already-initialized/);
+    assert.deepEqual(service.execute(directory,'restore-original',input),{restored:true});
+    assert.equal(fs.readFileSync(profile,'utf8'),'original-profile\n');assert(!fs.existsSync(path.join(configuration,'.release-images.json')));
+    for(const invalid of [Buffer.from(raw.toString().replace(id('5'),id('7'))),Buffer.concat([raw,Buffer.from("export BOOTSTRAPPER_IMAGE='"+id('5')+"'\n")])]){
+      assert.throws(()=>service.previousConfiguration(invalid,input),/candidate-controller-/);
+    }
+  } finally {fs.rmSync(directory,{recursive:true,force:true});}
+});
+
+test('future publication fixture is deterministic and verified by the production authority', () => {
+  const {PublicUpgradePublicationService} = require('../../operations/dist/testing/public-upgrade-publication.service');
+  const {HostReleaseAuthorityService} = require('../../operations/dist/host/release-authority.service');
+  const root=path.resolve(__dirname,'../..'), security=require('../../gitlab/security-release.json');
+  const input=require('./public-upgrade-fixture').publicationFixture();
+  const service=new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}});
+  const first=service.prepare(root,input), second=service.prepare(root,input);
+  assert(first.proof.equals(second.proof));assert.deepEqual(first.metadata,second.metadata);
+  const generate = "const {PublicUpgradePublicationService}=require('./operations/dist/testing/public-upgrade-publication.service');const input=require('./tests/shared/public-upgrade-fixture').publicationFixture();process.stdout.write(new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}}).prepare(process.cwd(),input).proof)";
+  assert(first.proof.equals(execFileSync(process.execPath,['-e',generate],{cwd:root})), 'fresh CLI process must reproduce publication bytes');
+  const authority=new HostReleaseAuthorityService({});
+  const accepted=authority.publicInputs(first.metadata,first.proof,security);
+  assert.equal(accepted.release.imageId,input.spec.images.candidate.id);assert.equal(accepted.release.wizardImageId,input.spec.images.wizard.id);
+  assert.throws(()=>authority.publicInputs({...first.metadata,publicUpgrade:{...first.metadata.publicUpgrade,sha256:'0'.repeat(64)}},first.proof,security),/provenance-hash/);
+  assert.equal(input.gitlabUpgrade.rollbackVerified,undefined,'synthetic future gates never mutate candidate evidence');
+});
+
+test('native host fixture keeps diagnostics fixed and runs initialization through the shared Nest module', async () => {
+  const {fixtureDiagnostic}=require('../../operations/dist/testing/public-upgrade-host-entry');
+  const {HostPolicyError}=require('../../operations/dist/host/install');
+  const diagnostics=require('../e2e/public-upgrade-diagnostics.json');
+  for(const [label,code] of Object.entries(diagnostics.errors)){
+    assert.equal(fixtureDiagnostic(new HostPolicyError(label),diagnostics),code);
+    for(const error of [new Error(label),new HostPolicyError(label+':private-token'),new HostPolicyError('private-token:'+label)])
+      assert.equal(fixtureDiagnostic(error,diagnostics),diagnostics.fallback);
+  }
+  assert.equal(fixtureDiagnostic(Object.assign(new Error('/private/secret'),{code:'ENOENT'}),diagnostics),'file-missing');
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'public-host-module-'));
+  try{
+    const root=path.resolve(__dirname,'../..'), input=require('./public-upgrade-fixture').publicationFixture();
+    input.live=path.join(directory,'live');fs.mkdirSync(path.join(input.live,'configuration'),{recursive:true});
+    fs.symlinkSync(root,path.join(directory,'source'),'dir');
+    fs.writeFileSync(path.join(directory,'fixture.json'),JSON.stringify(input),{mode:0o600});
+    const main=path.join(input.live,'configuration/.docker.env');
+    fs.writeFileSync(main,Buffer.concat([fs.readFileSync(path.join(root,'system/.docker.env.example')),Buffer.from("\nexport BOOTSTRAPPER_IMAGE='"+input.spec.images.candidate.id+"'\nexport WIZARD_IMAGE='"+input.spec.images.wizard.id+"'\n")]),{mode:0o600});
+    const entry=path.join(root,'operations/dist/testing/public-upgrade-host-entry.js');
+    const result=execFileSync(process.execPath,[entry,'initialize'],{env:{...process.env,SYSTEM_PUBLIC_UPGRADE_FIXTURE:directory},encoding:'utf8'});
+    assert.deepEqual(JSON.parse(result),{initialized:true});
+    const {NestFactory}=require('../../operations/node_modules/@nestjs/core');
+    const {PublicUpgradeHostModule}=require('../../operations/dist/testing/public-upgrade-host.module');
+    const {PublicUpgradeHostService,fixtureHostProcess}=require('../../operations/dist/testing/public-upgrade-host.service');
+    const app=await NestFactory.createApplicationContext(PublicUpgradeHostModule.register(directory,root),{logger:false,abortOnError:false});
+    try{
+      const service=app.get(PublicUpgradeHostService),request=service.transport(directory,root);
+      const previous=await request('https://github.com/example/system/releases/download/v1.1.3/system-release-v1.1.3.json');
+      assert.deepEqual(await previous.json(),input.previous);
+      const target=await request('https://github.com/example/system/releases/download/v1.2.0/system-release-v1.2.0.json');
+      assert.equal((await target.json()).version,'1.2.0');
+      for(const url of ['https://github.com/foreign/system/releases/download/v1.2.0/system-release-v1.2.0.json','https://github.com/example/system/releases/download/v1.2.0/foreign.json'])await assert.rejects(request(url),/candidate-public-/);
+      assert.equal(fixtureHostProcess.run('systemctl',['is-active','certbot.timer']).stdout,'active\n');
+      assert.equal(fixtureHostProcess.run(process.execPath,['-e',"process.stdout.write('native')"]).stdout,'native');
+    }finally{await app.close();}
+  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });

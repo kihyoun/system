@@ -10,6 +10,7 @@ export async function main(action: string, program: string, args: string[]) {
   });
   try {
     if (action === 'prepare') app.get(PublicUpgradeRuntimeService).prepare(program);
+    else if (action === 'verify-host') app.get(PublicUpgradeRuntimeService).verifyHost();
     else if (action === 'write')
       app.get(PublicUpgradeRuntimeService).write(program, fs.readFileSync(0));
     else {

@@ -1,11 +1,32 @@
 import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { fileLock } from '../runtime/file-lock';
 import { spawnSync } from 'node:child_process';
 import { runtimeLibraries } from './public-upgrade-transport.service';
 /** Prepare the candidate-owned runtime closure for helpers and historical controllers. */
 @Injectable()
 export class PublicUpgradeRuntimeService {
+  verifyHost(): void {
+    for (const [binary, args] of [
+      ['git', ['--version']],
+      ['docker', ['--version']],
+      ['unzip', ['-v']],
+    ] as const) {
+      const result = spawnSync(binary, [...args], { timeout: 10000, encoding: 'utf8' });
+      if (result.error || result.status !== 0)
+        throw Error('candidate-public-host-runtime-unavailable');
+    }
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'public-host-runtime-'));
+    try {
+      const release = fileLock(path.join(directory, 'lease'));
+      release();
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
   prepare(fixture: string) {
     if (!path.isAbsolute(fixture)) throw Error('absolute-fixture-required');
     const runtime = path.join(fixture, 'runtime');

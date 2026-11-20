@@ -69,9 +69,7 @@ test('public monorepo authority retains only validated v2 fixture boundary and r
 });
 
 test('future public-upgrade fixture carries real original Beta observations without moving them to restored host',()=>{
-  const script="import importlib.util,json; s=importlib.util.spec_from_file_location('fixture','tests/bootstrapper/public-upgrade.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(json.dumps(m.Host.publication_fixture()))";
-  const initial=spawnSync('python3',['-c',script],{cwd:root,encoding:'utf8'});assert.equal(initial.status,0,initial.stderr);
-  const value=JSON.parse(initial.stdout),spec=value.spec,beta=require('../shared/system-beta-evidence-fixture').proof();
+  const value=require('../shared/public-upgrade-fixture').publicationFixture(),spec=value.spec,beta=require('../shared/system-beta-evidence-fixture').proof();
   spec.sourceLayout='system-monorepo-v1';spec.wizardSourceTree='f'.repeat(40);delete spec.wizardSourceRevision;
   beta.productionImageId=spec.images.wizard.id;beta.productionRetained.runningImage=spec.images.wizard.id;
   Object.assign(beta.candidate,{sourceCommit:spec.sourceRevision,sourceTree:spec.sourceTree,wizardSourceTree:spec.wizardSourceTree,
@@ -79,9 +77,9 @@ test('future public-upgrade fixture carries real original Beta observations with
   beta.setup.sourceCommit=spec.sourceRevision;beta.beta.stoppedThroughPipelineId=spec.ciIdentity.pipelineId;
   for(const row of [beta.beta.deployment,beta.beta.stopped])Object.assign(row,{sourceCommit:spec.sourceRevision,pipelineId:spec.ciIdentity.pipelineId,generation:'p'+spec.ciIdentity.pipelineId+'-j201'});
   value.guidedOrigin={runId:'e'.repeat(24),guidedPreview:beta,results:[...require('../../gitlab/guided-preview-evidence').stagesV2,'recovery-original-host-removed','cleanup'].map(name=>({name,status:'passed'}))};
-  const generate="import importlib.util,json,sys; s=importlib.util.spec_from_file_location('adapter','tests/e2e/public-upgrade-host.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); metadata,raw,security=m.publication(json.load(sys.stdin)); print(raw.decode())";
-  const result=spawnSync('python3',['-c',generate],{cwd:root,encoding:'utf8',input:JSON.stringify(value)});assert.equal(result.status,0,result.stderr);
-  const published=JSON.parse(result.stdout);
+  const {PublicUpgradePublicationService}=require('../../operations/dist/testing/public-upgrade-publication.service');
+  const service=new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}});
+  const published=JSON.parse(service.prepare(root,value).proof);
   assert.equal(require('../../gitlab/publish-successor').validateEvidence(published.evidence,published.release),spec.images.candidate.id);
   assert.equal(published.evidence.guidedPreviewReceipt.runId,value.guidedOrigin.runId);
   assert.equal(published.evidence.evidence.guidedPreview,undefined);

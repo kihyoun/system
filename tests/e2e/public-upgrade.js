@@ -205,11 +205,14 @@ class NativeCLI {
       '--entrypoint', '/usr/local/bin/node', '--volume', this.fixture + ':' + this.fixture,
       candidate.spec.images.candidate.id, '/system/operations/dist/testing/public-upgrade-entry.js',
       'prepare', this.fixture]);
+    await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
+      '--entrypoint', '/usr/local/bin/node', candidate.spec.images.candidate.id,
+      '/system/operations/dist/testing/public-upgrade-entry.js', 'verify-host']);
     const previous = candidate.spec.publicUpgrade.metadata;
-    // Prove the copied interpreter and bundled modules load in both foreign
-    // images before changing the running controller. Offline tests cannot prove
-    // this Alpine/glibc boundary; these probes belong to the real candidate gate.
-    for (const image of [candidate.spec.images.gitlab.id, previous.images.controller.imageId]) {
+    // Prove the copied interpreter and bundled modules load in the candidate
+    // helper and historical controller before changing the running controller.
+    // Offline tests cannot prove this Alpine/glibc boundary; these probes belong to the real candidate gate.
+    for (const image of [candidate.spec.images.candidate.id, previous.images.controller.imageId]) {
       const output = await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
         '--entrypoint', fixtureRuntime + '/node', ...runtimeVolumes(this.fixture).flatMap(value => ['--volume', value]),
         image, '-e', "require('/opt/system-public-upgrade/operations/dist/testing/public-upgrade.module.js');process.stdout.write('runtime-ready')"]);
@@ -245,9 +248,9 @@ class NativeCLI {
   async invoke(args) {
     const candidate = this.candidate, storage = require('./local-storage');
     const command = ['run', '--rm', '-i', '--network', 'host', '--memory', '512m', '--cpus', '1',
-      '--entrypoint', '/opt/gitlab/embedded/bin/python3',
+      '--entrypoint', fixtureRuntime + '/node',
       '--env', 'SYSTEM_PUBLIC_UPGRADE_FIXTURE=' + this.fixture, '--env', 'SYSTEM_PUBLIC_UPGRADE_LIVE=' + this.live,
-      '--env', 'PATH=' + this.fixture + '/bin:' + fixtureRuntime + ':/opt/gitlab/embedded/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      '--env', 'PATH=' + this.fixture + '/bin:' + fixtureRuntime + ':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
       '--env', 'GIT_OPTIONAL_LOCKS=0',
       '--env', 'SSL_CERT_FILE=' + this.fixture + '/ca.pem', '--env', 'DOCKER_CONFIG=/tmp/public-upgrade-docker',
       '--volume', this.live + ':' + this.live,
@@ -265,8 +268,8 @@ class NativeCLI {
       ...Object.values(diagnostics.exceptionTypes), diagnostics.fallback
     ])].map(code => [diagnostics.marker + code, 'public-upgrade-native-' + operation + '-' + code]));
     try {
-      const raw = await candidate.inner([...command, candidate.spec.images.gitlab.id,
-        this.fixture + '/source/tests/e2e/public-upgrade-host.py', ...args], {timeout: 1200000, failureCodes});
+      const raw = await candidate.inner([...command, candidate.spec.images.candidate.id,
+        this.fixture + '/source/tests/e2e/public-upgrade-host.js', ...args], {timeout: 1200000, failureCodes});
       return JSON.parse(raw.split('\n').at(-1));
     } catch (error) {
       if (['canceled-or-overall-timeout', 'readiness-timeout', 'candidate-overall-timeout', 'candidate-cleanup-timeout'].includes(error.message)) throw error;
@@ -279,7 +282,7 @@ class NativeCLI {
   }
   cli(operation, confirmation) {
     const repository = this.candidate.spec.publicUpgrade.metadata.source.repository.replace(/^https:\/\/github.com\//, '').replace(/\.git$/, '');
-    return this.invoke(['--operation', operation, '--persistence-env', this.storage, '--plan-dir', this.planDir,
+    return this.invoke(['--operation', operation, '--checkout', this.fixture + '/source', '--persistence-env', this.storage, '--plan-dir', this.planDir,
       '--repository', repository, '--target', this.candidate.spec.publicUpgrade.edge.to,
       '--backup-file', require('./local-storage').MOUNT + '/public-upgrade-' + this.candidate.id + '.zip',
       ...(this.candidate.spec.publicUpgrade.edge.databaseMigration ? ['--gitlab-checkpoint', this.candidate.spec.restore.base + '/configuration/gitlab-upgrades/candidate-' + this.candidate.id] : []),
