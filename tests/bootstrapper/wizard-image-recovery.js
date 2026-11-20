@@ -126,3 +126,37 @@ test('a failed pending-directory durability barrier mints no token and preserves
   await assert.rejects(recoverImage(f.settings,{...f,syncState(){if(++count===1)throw Error('synthetic-directory-fsync-failure');}}),/directory-fsync-failure/);
   assert.deepEqual(f.actions,[]);assert(fs.existsSync(f.pending));assert.equal(count,2);
 });
+
+test('native registry credentials bind the exact project, expire next UTC day and remove only owned deploy tokens',async()=>{
+  const {RecoveryRegistryCredentialService}=require('../../operations/dist/gitlab-provision/recovery-registry-credential.service');
+  const name='system-bootstrapper-wizard-image-recovery', context={checkout:'/source',containerId:'a'.repeat(64)},calls=[],tokens=new Map();
+  const fixtureToken=(id,scopes=['read_registry'],extra={})=>({id,name,scopes,username:`gitlab+deploy-token-${id}`,token:'fixture-registry-token',expires_at:'2026-11-21T00:00:00.000Z',revoked:false,expired:false,...extra});
+  tokens.set(1,fixtureToken(1,['api'],{name:'unrelated'}));tokens.set(2,fixtureToken(2));
+  let unexpected=false,lost=false;
+  const api={async request(actual,administrator,method,route,body){
+    assert.equal(actual,context);assert.equal(administrator,'fixture-administrator');calls.push({method,route,body});
+    if(route==='projects/12')return {status:200,value:{id:12,path_with_namespace:'root/wizard'}};
+    if(route==='user')return {status:200,value:{is_admin:true,state:'active'}};
+    if(method==='GET'&&route==='projects/12/deploy_tokens?per_page=100&page=1')return {status:200,value:[...tokens.values()]};
+    if(method==='POST'){
+      assert.deepEqual(body,{name,scopes:['read_registry'],expires_at:'2026-11-21T00:00:00Z'});
+      const created=fixtureToken(21,unexpected?['api']:['read_registry']);tokens.set(21,created);
+      if(lost)throw Object.assign(Error('lost response'),{uncertain:true});
+      return {status:201,value:created};
+    }
+    const match=/^projects\/12\/deploy_tokens\/(\d+)$/.exec(route);assert(match,route);const id=Number(match[1]);
+    if(method==='GET')return {status:tokens.has(id)?200:404,value:tokens.get(id)};
+    assert.equal(method,'DELETE');assert.notEqual(id,1);tokens.delete(id);return {status:204,value:null};
+  }};
+  const service=new RecoveryRegistryCredentialService(api),input={projectId:12,projectPath:'root/wizard',action:'create'},now=new Date('2026-11-20T23:59:59Z');
+  assert.deepEqual(await service.execute(context,'fixture-administrator',input,now),{id:21,username:'gitlab+deploy-token-21',token:'fixture-registry-token'});
+  assert(tokens.has(1));assert(!tokens.has(2));
+  await service.execute(context,'fixture-administrator',{...input,action:'revoke',tokenId:21});assert(!tokens.has(21));
+  await service.execute(context,'fixture-administrator',{...input,action:'revoke',tokenId:21});
+  await assert.rejects(service.execute(context,'fixture-administrator',{...input,action:'revoke',tokenId:1}),/ownership/);assert(tokens.has(1));
+  unexpected=true;await assert.rejects(service.execute(context,'fixture-administrator',input,now),/created-token-invalid/);assert(!tokens.has(21));
+  unexpected=false;lost=true;await assert.rejects(service.execute(context,'fixture-administrator',input,now),/lost response/);assert(tokens.has(21));
+  await service.execute(context,'fixture-administrator',{...input,action:'cleanup'});assert(!tokens.has(21));assert(tokens.has(1));
+  const before=calls.length;await assert.rejects(service.execute(context,'fixture-administrator',{...input,projectPath:'wrong/wizard'}),/mismatch/);
+  assert(!calls.slice(before).some(call=>call.method!=='GET'));
+});

@@ -1,4 +1,5 @@
 import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
+import { RecoveryRegistryCredentialService } from './recovery-registry-credential.service';
 import { GitlabActivationSessionService } from './activation-session.service';
 import {
   GitlabLockExecService,
@@ -15,6 +16,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
 @Module({
   imports: [GitlabPreflightModule],
   providers: [
+    RecoveryRegistryCredentialService,
     GitlabActivationSessionService,
     GitlabLockExecService,
     { provide: GITLAB_LOCK_EXEC_HTTP, useClass: GitlabLockExecHttpTransport },
@@ -26,6 +28,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     { provide: GITLAB_PROVISION_PROCESS, useClass: ManagedChildProcess },
   ],
   exports: [
+    RecoveryRegistryCredentialService,
     GitlabActivationSessionService,
     SourcePrimaryActivationService,
     GitlabNativeApiService,
