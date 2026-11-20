@@ -882,6 +882,27 @@ class BackupAndApply(unittest.TestCase):
         finally:
             os.close(descriptor)
 
+    def test_concurrent_plan_cannot_interrupt_or_replace_active_attempt(self):
+        active = {'format': 'system-public-upgrade-preflight-v1', 'phase': 'checking', 'attemptId': 'a' * 32}
+        successor.atomic_json(self.target / 'preflight.json', active)
+        lock = self.config['_main'].parent / '.public-upgrade-plan.lock'
+        code = 'import fcntl,os,sys; fd=os.open(sys.argv[1],os.O_RDWR|os.O_CREAT,0o600); fcntl.flock(fd,fcntl.LOCK_EX); print("locked",flush=True); sys.stdin.read(1)'
+        child = subprocess.Popen([sys.executable, '-c', code, str(lock)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(child.stdout.readline().strip(), 'locked')
+            with patch.object(tool, 'plan_locked') as native:
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'coordinator-is-running'):
+                    tool.plan(argparse.Namespace(plan_dir=str(self.target)), self.config)
+                native.assert_not_called()
+            self.assertEqual(json.loads((self.target / 'preflight.json').read_bytes()), active)
+        finally:
+            child.stdin.close()
+            child.wait(timeout=5)
+            child.stdout.close()
+        with patch.object(tool, 'plan_locked', return_value=('planned', 'digest')) as native:
+            self.assertEqual(tool.plan(argparse.Namespace(plan_dir=str(self.target)), self.config), ('planned', 'digest'))
+            native.assert_called_once()
+
     def test_apply_requires_exact_explicit_plan_before_any_external_calls(self):
         successor.atomic_json(self.target / 'plan.json', {'format': 'system-public-upgrade-plan-v1'})
         args = argparse.Namespace(plan_dir=str(self.target), confirm_plan='0' * 64)

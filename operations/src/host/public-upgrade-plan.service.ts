@@ -6,6 +6,7 @@ import { requireValue as ensure, privateFile, writePrivate } from './install';
 import { upgradePath } from './upgrade-graph';
 type Row = Record<string, unknown>;
 export interface PublicUpgradePlanInput {
+  attemptId: string;
   target: string;
   repository: string;
   directory: string;
@@ -36,7 +37,11 @@ export interface PublicUpgradePlanPort {
 const sha = (bytes: Buffer) => crypto.createHash('sha256').update(bytes).digest('hex');
 export class PublicUpgradePlanService {
   constructor(readonly port: PublicUpgradePlanPort) {}
-  interrupt(directory: string): void {
+  interrupt(directory: string, attemptId: unknown): void {
+    ensure(
+      typeof attemptId === 'string' && /^[a-f0-9]{32}$/.test(attemptId),
+      'public-upgrade-attempt-identity-required',
+    );
     const file = path.join(directory, 'preflight.json');
     if (!fs.existsSync(file)) return;
     ensure(
@@ -45,7 +50,11 @@ export class PublicUpgradePlanService {
     );
     privateFile(file);
     const value = record(JSON.parse(fs.readFileSync(file, 'utf8')));
-    if (value.format === 'system-public-upgrade-preflight-v1' && value.phase === 'checking')
+    if (
+      value.format === 'system-public-upgrade-preflight-v1' &&
+      value.phase === 'checking' &&
+      value.attemptId === attemptId
+    )
       writePrivate(
         file,
         Buffer.from(JSON.stringify({ ...value, phase: 'failed' }, null, 2) + '\n'),
@@ -53,6 +62,7 @@ export class PublicUpgradePlanService {
   }
 
   plan(input: PublicUpgradePlanInput): { value: Row; sha256: string } {
+    ensure(/^[a-f0-9]{32}$/.test(input.attemptId), 'public-upgrade-attempt-identity-required');
     const authority = this.port.publicInputs(input.repository, input.target);
     ensure(
       input.target === fs.readFileSync(path.join(input.checkout, 'VERSION'), 'utf8').trim(),
@@ -143,6 +153,7 @@ export class PublicUpgradePlanService {
     const attempt: Row = {
       format: 'system-public-upgrade-preflight-v1',
       phase: 'checking',
+      attemptId: input.attemptId,
       targetVersion: input.target,
       at: this.port.now(),
     };

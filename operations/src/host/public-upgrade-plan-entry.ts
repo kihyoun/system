@@ -47,7 +47,7 @@ export async function publicUpgradePlanMain(): Promise<void> {
       complete: true,
       value:
         input.operation === 'interrupt'
-          ? app.get(PublicUpgradePlanService).interrupt(String(input.directory))
+          ? app.get(PublicUpgradePlanService).interrupt(String(input.directory), input.attemptId)
           : app.get(PublicUpgradePlanService).plan(input as unknown as PublicUpgradePlanInput),
     });
   } catch (error) {

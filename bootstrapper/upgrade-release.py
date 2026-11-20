@@ -5,6 +5,7 @@ Uses only public release inputs and this installation's own API credentials.
 Quickstart is for a fresh host; source pulls alone never upgrade an installation.
 """
 import argparse
+import secrets
 import base64
 import host_service
 import fcntl
@@ -159,6 +160,13 @@ def data_sample():
 
 
 def plan(args, config):
+    # The native host lock covers attempt creation and interruption cleanup.
+    with coordinator(config['_main'].parent, '.public-upgrade-plan.lock'):
+        return plan_locked(args, config)
+
+
+def plan_locked(args, config):
+    attempt_id = secrets.token_hex(16)
     authority = security = None
     def dispatch(method, arguments):
         nonlocal authority, security
@@ -182,11 +190,11 @@ def plan(args, config):
         elif method == 'now': return runtime.now()
         else: raise recovery.RecoveryError('unknown-public-upgrade-native-port')
     try:
-        result = host_service.invoke('public-upgrade-plan-entry.js', {'target': args.target, 'repository': args.repository,
+        result = host_service.invoke('public-upgrade-plan-entry.js', {'attemptId': attempt_id, 'target': args.target, 'repository': args.repository,
             'directory': str(args.plan_dir), 'backupFile': str(args.backup_file), 'gitlabCheckpoint': getattr(args, 'gitlab_checkpoint', None),
             'root': str(config['_root']), 'checkout': str(ROOT), 'backupDestination': config['SEED_DIR']}, dispatch, recovery.RecoveryError)
     except BaseException:
-        host_service.invoke('public-upgrade-plan-entry.js', {'operation': 'interrupt', 'directory': str(args.plan_dir)}, dispatch, recovery.RecoveryError)
+        host_service.invoke('public-upgrade-plan-entry.js', {'operation': 'interrupt', 'directory': str(args.plan_dir), 'attemptId': attempt_id}, dispatch, recovery.RecoveryError)
         raise
     return result['value'], result['sha256']
 
@@ -255,8 +263,8 @@ def matching_backup(config, target, plan_value, timeout):
 
 
 @contextmanager
-def coordinator(target):
-    descriptor = os.open(target / '.coordinator.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+def coordinator(target, filename='.coordinator.lock'):
+    descriptor = os.open(target / filename, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
