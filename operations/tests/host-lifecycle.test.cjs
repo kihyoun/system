@@ -7,7 +7,7 @@ const { HostLifecycleService } = require('../dist/host-lifecycle/lifecycle.servi
 const { HostLifecycleModule } = require('../dist/host-lifecycle/host-lifecycle.module');
 const { HostPersistenceService } = require('../dist/host-lifecycle/persistence.service');
 const { NestFactory } = require('@nestjs/core');
-function fixture(t, active = true, failure = false) {
+function fixture(t, active = true, failure = false, runtime = {version: '2.0.0', cli: true}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'host-lifecycle-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, 'system'));
@@ -16,6 +16,7 @@ function fixture(t, active = true, failure = false) {
   const child = { async run(binary, args, options) {
     if (binary === 'bash') { calls.push([binary, args]); return 'SELECTOR=fixture\0'; }
     if (args.includes('ps')) { calls.push([binary, args]); return active ? 'owned-controller\n' : ''; }
+    if (args.includes('-e')) { calls.push([binary, args]); return JSON.stringify(runtime); }
     calls.push([binary, args, options]);
     if (failure) throw Error('stop failed');
     return '';
@@ -28,7 +29,7 @@ test('host stop drains the running controller before Compose down and forwards c
   await f.service.execute('stop', f.root, {}, signal);
   const writes = f.calls.filter(call => call[2]);
   assert.equal(writes.length, 2);
-  assert.deepEqual(writes[0][1].slice(-5), ['exec', '-T', 'bootstrapper', 'bash', '/system/system/stop.sh']);
+  assert.deepEqual(writes[0][1].slice(-4), ['node', '/system/operations/dist/lifecycle/entry.js', 'stop', '/system']);
   assert.equal(writes[1][1].at(-1), 'down');
   assert.equal(writes[0][2].signal, signal);
   assert.equal(writes[0][2].env.SELECTOR, 'fixture');
@@ -75,4 +76,13 @@ test('release fallback keeps empty build selector offline and rejects special fi
   assert.equal(releaseFallback(file, { SYSTEM_BOOTSTRAPPER_SKIP_BUILD: '' }).SYSTEM_BOOTSTRAPPER_SKIP_BUILD, '1');
   fs.chmodSync(file, 0o4600);
   assert.throws(() => releaseFallback(file, {}), /Invalid private release/);
+});
+
+test('only immutable pre-Nest releases may use the historical stop entry', async t => {
+  const old = fixture(t, true, false, {version:'1.2.0', cli:false});
+  await old.service.execute('stop', old.root, {});
+  assert(old.calls.some(c=>c[1].includes('/system/system/stop.sh')));
+  const broken = fixture(t, true, false, {version:'2.0.0', cli:false});
+  await assert.rejects(broken.service.execute('stop', broken.root, {}), /controller-lifecycle-cli-missing/);
+  assert(!broken.calls.some(c=>c[1].at(-1)==='down'));
 });

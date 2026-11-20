@@ -88,12 +88,38 @@ export class HostLifecycleService {
           { cwd: root, env, signal, timeout: 15000 },
         )
       ).trim();
-      if (active)
-        await run(
+      if (active) {
+        const probe = await this.child.run(
           'docker-compose',
-          [...compose, 'exec', '-T', 'bootstrapper', 'bash', '/system/system/stop.sh'],
-          env,
+          [
+            ...compose,
+            'exec',
+            '-T',
+            'bootstrapper',
+            'node',
+            '-e',
+            'const fs=require("node:fs");process.stdout.write(JSON.stringify({version:fs.readFileSync("/system/VERSION","utf8").trim(),cli:fs.existsSync("/system/operations/dist/lifecycle/entry.js")}));',
+          ],
+          { cwd: root, env, signal, timeout: 15000 },
         );
+        const runtime: unknown = JSON.parse(probe);
+        if (
+          !runtime ||
+          typeof runtime !== 'object' ||
+          !('version' in runtime) ||
+          typeof runtime.version !== 'string' ||
+          !('cli' in runtime) ||
+          typeof runtime.cli !== 'boolean'
+        )
+          throw new Error('invalid-controller-lifecycle-identity');
+        let command: string[];
+        if (runtime.cli)
+          command = ['node', '/system/operations/dist/lifecycle/entry.js', 'stop', '/system'];
+        else if (/^1\.\d+\.\d+$/.test(runtime.version))
+          command = ['bash', '/system/system/stop.sh']; // Immutable pre-Nest release only.
+        else throw new Error('controller-lifecycle-cli-missing');
+        await run('docker-compose', [...compose, 'exec', '-T', 'bootstrapper', ...command], env);
+      }
       await run('docker-compose', [...compose, 'down'], env);
       return;
     }
