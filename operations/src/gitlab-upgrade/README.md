@@ -64,7 +64,12 @@ Dynamic configuration commands, ERB, unsupported topology, missing tables,
 authentication failures and malformed counts fail closed. The probe copies configured
 connection user, password and TLS parameters into an exclusive container-local
 0700 temporary directory using stdin, with 0600 libpq service/password files.
-The embedded `psql` uses those settings without an interactive password prompt;
+The embedded `psql` runs as GitLab's configured Rails OS user (read from the
+installed `gitlab-rails-rc`, resolved to numeric UID/GID), preserving Omnibus's
+Unix-socket peer mapping. The private files are owned by that identity before
+query execution. A clean environment prevents ambient `PG*` credentials/options
+from overriding the selected configuration. It uses those settings without an
+interactive password prompt;
 credentials never enter command arguments or public results. The exact temporary
 directory is removed after the probe, including failures. Password files preserve
 spaces and escape colons/backslashes; CR/LF/NUL in credentials and service values

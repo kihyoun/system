@@ -142,6 +142,16 @@ export class GitlabPreflightService {
     const topology = databases(
       await exec(['cat', '/var/opt/gitlab/gitlab-rails/etc/database.yml']),
     );
+    const railsConfiguration = await exec(['cat', '/opt/gitlab/etc/gitlab-rails-rc']);
+    const configuredUsers = [
+      ...railsConfiguration.matchAll(/^gitlab_user='([a-z_][a-z0-9_-]*)'$/gm),
+    ];
+    if (configuredUsers.length !== 1) throw Error('gitlab-preflight-service-user-invalid');
+    const user = configuredUsers[0][1];
+    const uid = (await exec(['id', '-u', user])).trim(),
+      gid = (await exec(['id', '-g', user])).trim();
+    if (!/^[1-9][0-9]*$/.test(uid) || !/^[1-9][0-9]*$/.test(gid))
+      throw Error('gitlab-preflight-service-user-invalid');
     const directory = (
       await exec(['mktemp', '-d', '/tmp/system-bootstrapper-gitlab-probe.XXXXXXXXXX'])
     ).trim();
@@ -172,30 +182,39 @@ export class GitlabPreflightService {
       }
       const serviceFile = directory + '/service.conf';
       await privateFile(serviceFile, services.join('\n\n') + '\n');
+      await exec(['chown', '-R', uid + ':' + gid, '--', directory]);
       const query = async (db: Database, sql: string) => {
         const index = topology.all.findIndex(
           (value) => JSON.stringify(value) === JSON.stringify(db),
         );
         if (index < 0) throw Error('gitlab-database-topology-invalid');
         return count(
-          await exec([
-            'env',
-            '-u',
-            'PGPASSWORD',
-            'PGOPTIONS=-c statement_timeout=45000 -c default_transaction_read_only=on',
-            `PGSERVICEFILE=${serviceFile}`,
-            '/opt/gitlab/embedded/bin/psql',
-            '--no-psqlrc',
-            '--no-password',
-            '--tuples-only',
-            '--no-align',
-            '--quiet',
-            '--set=ON_ERROR_STOP=1',
-            '--dbname',
-            `service=database${index}`,
-            '--command',
-            `BEGIN READ ONLY; ${sql}; COMMIT;`,
-          ]),
+          await port.command(
+            [
+              'exec',
+              '--user',
+              uid + ':' + gid,
+              containerId,
+              'env',
+              '-i',
+              'PATH=/opt/gitlab/embedded/bin:/usr/bin:/bin',
+              `HOME=${directory}`,
+              'PGOPTIONS=-c statement_timeout=45000 -c default_transaction_read_only=on',
+              `PGSERVICEFILE=${serviceFile}`,
+              '/opt/gitlab/embedded/bin/psql',
+              '--no-psqlrc',
+              '--no-password',
+              '--tuples-only',
+              '--no-align',
+              '--quiet',
+              '--set=ON_ERROR_STOP=1',
+              '--dbname',
+              `service=database${index}`,
+              '--command',
+              `BEGIN READ ONLY; ${sql}; COMMIT;`,
+            ],
+            60,
+          ),
         );
       };
       let unfinishedBackgroundMigrations = 0;
