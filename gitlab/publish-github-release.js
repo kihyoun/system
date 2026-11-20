@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {spawnSync} = require('node:child_process');
+const {command, publicSource, publicWizardRevision, verifyCheckout} = require('../operations/dist/release');
 const {context: hubContext, readEvidence, manifest: inspectManifest} = require('./publish-dockerhub');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const requireValue = (condition, message) => { if (!condition) throw Error(message); };
@@ -29,7 +29,7 @@ function token(env, name) {
 }
 function context(env, root) {
   requireValue(env.GITLAB_CI === 'true' && env.GITHUB_RELEASE_PUBLISH_ENABLED === 'true' &&
-    env.GITHUB_BACKUP_ENABLED === 'true' && env.WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED === 'true' &&
+    env.GITHUB_BACKUP_ENABLED === 'true' &&
     !env.CI_COMMIT_TAG && env.CI_COMMIT_BRANCH === env.CI_DEFAULT_BRANCH,
     'Protected native default-branch accepted release required.');
   const ci = hubContext(env), version = bounded(path.join(root, 'VERSION')).toString().trim();
@@ -59,7 +59,7 @@ function api(origin, credential, header, request = fetch) {
     return options.raw ? bytes : bytes.length ? JSON.parse(bytes) : {};
   };
 }
-async function gates(ci, env, root, gitlab) {
+async function gates(ci, env, root, gitlab, sourceLayout) {
   const prefix = '/projects/' + ci.projectId;
   const project = await gitlab(prefix), pipeline = await gitlab(prefix + '/pipelines/' + ci.pipelineId);
   requireValue(project?.only_allow_merge_if_pipeline_succeeds === true && project.default_branch === env.CI_DEFAULT_BRANCH &&
@@ -86,7 +86,8 @@ async function gates(ci, env, root, gitlab) {
   requireValue(!jobs.some(row => row.id !== ci.publicationJobId && ['failed', 'canceled'].includes(row.status)), 'A pipeline job failed.');
   const owners = {'test-results/successor/release.json': 'test:platform-candidate',
     'test-results/successor/candidate-results.json': 'test:platform-candidate',
-    'test-results/dockerhub/release.json': 'deploy:dockerhub', 'test-results/github/wizard-source.json': 'deploy:github'};
+    'test-results/dockerhub/release.json': 'deploy:dockerhub',
+    ...(sourceLayout === 'system-monorepo-v1' ? {} : {'test-results/github/wizard-source.json': 'deploy:github'})};
   for (const [file, owner] of Object.entries(owners)) {
     const job = jobs.find(row => row.name === owner);
     const bytes = await gitlab(prefix + '/jobs/' + job.id + '/artifacts/' + file, {raw: true});
@@ -95,27 +96,23 @@ async function gates(ci, env, root, gitlab) {
   return jobs;
 }
 function publicMetadata(ci, released, publication, source, notes, quickstart) {
+  const acceptedSource = publicSource(ci, released, publication, source);
   requireValue(publication.format === 'system-public-release-v1' && publication.versionTag === null &&
-    publication.platform === 'linux/amd64' && ['sourceRevision', 'sourceTree', 'wizardRevision', 'projectId', 'pipelineId']
+    publication.platform === 'linux/amd64' && ['projectId', 'pipelineId']
       .every(key => publication[key] === released[key]) &&
     publication.upstreamRelease?.candidateJobId === released.candidateJobId &&
     publication.upstreamRelease?.candidateEvidenceSha256 === released.candidateEvidenceSha256,
     'Public images must belong to the accepted attempt.');
   for (const [role, id, sourceRevision, internal] of [['controller', released.imageId, released.sourceRevision, released.registryReference],
-    ['wizard', released.wizardImageId, released.wizardRevision, released.wizardRegistryReference]]) {
+    ['wizard', released.wizardImageId, publicWizardRevision(released), released.wizardRegistryReference]]) {
     const row = publication[role];
     requireValue(row?.imageId === id && row.sourceRevision === sourceRevision &&
       /^(?:docker\.io\/)?[a-z0-9_-]+\/[a-z0-9._-]+@sha256:[a-f0-9]{64}$/.test(row.reference || '') &&
       row.reference.split('@')[1] === internal.split('@')[1] && /^sha256:[a-f0-9]{64}$/.test(row.configDigest || ''),
       'Published digest/source pair differs from the accepted image.');
   }
-  requireValue(source.format === 'system-wizard-source-publication-v1' && source.projectId === ci.projectId &&
-    source.pipelineId === ci.pipelineId && source.systemRevision === released.sourceRevision && source.wizardRevision === released.wizardRevision &&
-    /^https:\/\/github\.com\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+\.git$/.test(source.repository || '') && source.ref === 'refs/heads/system-release/' + released.wizardRevision,
-    'Exact pinned Wizard source publication required.');
   return {format: 'system-accepted-release-v1', version: ci.version, tag: ci.tag, platform: 'linux/amd64',
-    source: {repository: 'https://github.com/' + ci.repository + '.git', revision: released.sourceRevision,
-      tree: released.sourceTree, wizardRepository: source.repository, wizardRevision: released.wizardRevision},
+    source: acceptedSource,
     images: Object.fromEntries(['controller', 'wizard'].map(role => [role, {
       reference: publication[role].reference, imageId: publication[role].imageId, configDigest: publication[role].configDigest}])),
     acceptance: {candidateJobId: released.candidateJobId, evidenceSha256: released.candidateEvidenceSha256,
@@ -184,20 +181,24 @@ async function publish(env = process.env, root = process.cwd(), request = fetch)
   requireValue(origin.protocol === 'https:' && !origin.username && !origin.password && !origin.search && !origin.hash,
     'Trusted HTTPS GitLab API required.');
   const gitlab = api(origin.href.replace(/\/$/, ''), token(env, 'SYSTEM_RELEASE_GITLAB_TOKEN'), 'PRIVATE-TOKEN', request);
-  const jobs = await gates(ci, env, root, gitlab);
+  const jobs = await gates(ci, env, root, gitlab, released.sourceLayout);
   const publication = JSON.parse(bounded(path.join(root, 'test-results/dockerhub/release.json')));
   requireValue(publication.publicationJobId === jobs.find(row => row.name === 'deploy:dockerhub').id, 'Image publisher job mismatch.');
   requireValue(released.candidateJobId === jobs.find(row => row.name === 'test:platform-candidate').id, 'Accepted candidate job mismatch.');
-  const source = JSON.parse(bounded(path.join(root, 'test-results/github/wizard-source.json')));
-  requireValue(source.publicationJobId === jobs.find(row => row.name === 'deploy:github').id, 'Source publisher job mismatch.');
+  let source;
+  if (released.sourceLayout !== 'system-monorepo-v1') {
+    requireValue(env.WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED === 'true', 'Historical Wizard source publication must be enabled.');
+    source = JSON.parse(bounded(path.join(root, 'test-results/github/wizard-source.json')));
+    requireValue(source.publicationJobId === jobs.find(row => row.name === 'deploy:github').id, 'Source publisher job mismatch.');
+  }
   const changelog = bounded(path.join(root, 'CHANGELOG.md')).toString();
   const escapedVersion = RegExp.escape(ci.version);
   const match = new RegExp('^## ' + escapedVersion + '\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))', 'm').exec(changelog);
   requireValue(match, 'Reviewed version changelog entry required.');
   const entries = match[1].trim().replace(/\]\((docs\/[^)]+)\)/g, '](' + 'https://github.com/' + ci.repository + '/blob/' + ci.tag + '/$1)');
   const notes = Buffer.from('# System Bootstrapper ' + ci.version + '\n' + entries + '\n\n' +
-    'Exact source: `' + released.sourceRevision + '`; Wizard: `' + released.wizardRevision + '`.\n' +
-    'Clone with Git, check out this tag and run `git submodule update --init --recursive`. GitHub source archives omit submodule contents.\n' +
+    'Exact source: `' + released.sourceRevision + '`; Wizard ' + (released.sourceLayout === 'system-monorepo-v1' ? 'tree: `' + released.wizardSourceTree : 'commit: `' + released.wizardRevision) + '`.\n' +
+    (released.sourceLayout === 'system-monorepo-v1' ? 'Wizard sources are included in this System commit and its source archives.\n' : 'Clone with Git, check out this tag and run `git submodule update --init --recursive`. GitHub source archives omit submodule contents.\n') +
     'See [Quickstart](https://github.com/' + ci.repository + '/blob/' + ci.tag + '/docs/QUICKSTART.md) and the versioned metadata asset.\n');
   const template = bounded(path.join(root, 'bootstrapper/quickstart.sh')).toString();
   const marker = 'ACCEPTED_RELEASE_TAG = None  # Replaced only in the accepted public release asset.';
@@ -211,12 +212,12 @@ async function publish(env = process.env, root = process.cwd(), request = fetch)
   const upgradeAssets = require('./public-upgrade-release').publicUpgrade(metadata, released, proof,
     JSON.parse(bounded(path.join(root, 'bootstrapper/upgrade-paths.json'))), jobs);
   ci.sourceTree = released.sourceTree;
-  const identity = spawnSync('git', ['rev-parse', 'HEAD', 'HEAD^{tree}'], {cwd: root, encoding: 'utf8'});
-  requireValue(identity.status === 0 && identity.stdout.trim() === ci.sourceRevision + '\n' + released.sourceTree, 'Checkout must match the accepted source/tree.');
-  const mapping = spawnSync('git', ['config', '--blob', 'HEAD:.gitmodules', '--get', 'submodule.wizard.url'], {cwd: root, encoding: 'utf8'});
-  requireValue(mapping.status === 0 && mapping.stdout.trim() === source.repository, 'Accepted public Wizard repository mapping mismatch.');
-  const git = spawnSync('git', ['diff', '--quiet', '--exit-code', 'HEAD', '--', 'VERSION', 'CHANGELOG.md', 'bootstrapper/quickstart.sh', 'bootstrapper/upgrade-paths.json', 'gitlab/public-upgrade-release.js'], {cwd: root});
-  requireValue(git.status === 0, 'Release inputs must be reviewed committed source.');
+  verifyCheckout(released, root, command);
+  if (source) {
+    const mapping = command('git', ['config', '--blob', 'HEAD:.gitmodules', '--get', 'submodule.wizard.url'], {cwd: root});
+    requireValue(mapping === source.repository, 'Accepted public Wizard repository mapping mismatch.');
+  }
+  command('git', ['diff', '--quiet', '--exit-code', 'HEAD', '--', 'VERSION', 'CHANGELOG.md', 'bootstrapper/quickstart.sh', 'bootstrapper/upgrade-paths.json', 'gitlab/public-upgrade-release.js'], {cwd: root});
   for (const role of ['controller', 'wizard']) {
     const [repository, digest] = metadata.images[role].reference.replace(/^docker\.io\//, '').split('@');
     const found = await inspectManifest(repository, digest, request);
@@ -231,9 +232,11 @@ async function publish(env = process.env, root = process.cwd(), request = fetch)
     ? api('https://uploads.github.com', 'Bearer ' + credential, 'Authorization', request)(route.slice(8), options)
     : base(route, options);
   const anonymous = api('https://api.github.com', '', 'X-System-Public-Verification', request);
-  const wizardRepository = source.repository.slice('https://github.com/'.length, -4);
-  const wizardSource = await anonymous('/repos/' + wizardRepository + '/git/commits/' + released.wizardRevision);
-  requireValue(wizardSource?.sha === released.wizardRevision, 'Exact pinned Wizard source must remain public.');
+  if (source) {
+    const wizardRepository = source.repository.slice('https://github.com/'.length, -4);
+    const wizardSource = await anonymous('/repos/' + wizardRepository + '/git/commits/' + released.wizardRevision);
+    requireValue(wizardSource?.sha === released.wizardRevision, 'Exact pinned Wizard source must remain public.');
+  }
   const result = await present(ci, assets, github, anonymous);
   const output = path.join(root, 'test-results/public-release'); fs.mkdirSync(output, {recursive: true});
   for (const [file, value] of Object.entries(assets)) fs.writeFileSync(path.join(output, file), value);

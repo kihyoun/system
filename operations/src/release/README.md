@@ -28,6 +28,14 @@ identify the System commit. Mixed, missing and unknown layouts are rejected.
 exact frozen evidence bytes to one accepted pipeline attempt. Historical source
 identity is never inferred from the current checkout.
 
+`publicSource` applies the same discriminator to GitHub release metadata. New
+`system-accepted-release-v1` assets carry `source.sourceLayout` and
+`source.wizardSourceTree`; `source.revision` remains the System commit. Historical
+assets retain `source.wizardRevision` and `source.wizardRepository`. Monorepo
+publication verifies the public System commit/tree, requires no separate Wizard
+repository receipt, and keeps all native pipeline acceptance gates. Public
+upgrade provenance retains the same layout and Wizard tree in its release record.
+
 Run `npm run build` and `node --test tests/release.test.cjs` from `operations/`.
 The repository's existing `tests/gitlab/publish-successor.js` also tests the thin
 entry point, recovery lineage, failed publication and private credential cleanup.

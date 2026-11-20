@@ -7,6 +7,7 @@ export * from './source-identity';
 export * from './evidence';
 export * from './successor-publication';
 export * from './manifest';
+export * from './github-source';
 export * from './command';
 export * from './dockerhub-publication';
 /** Constructible by CLI or a Nest provider without starting an HTTP application. */

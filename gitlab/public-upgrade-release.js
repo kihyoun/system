@@ -33,7 +33,7 @@ function publicUpgrade(metadata, released, proof, graph, jobs) {
       gitlabUpgrade: pick(proof.evidence.gitlabUpgrade, ['fromImage', 'toImage', 'fromImageId', 'toImageId', 'checkpointVerified', 'migrationVerified', 'registryVerified', 'rollbackVerified', 'runnerImage', 'runnerImageId', 'fromRunnerImageId', 'runnerVersion', 'helperImage', 'helperImageId', 'fromHelperImageId', 'jobCaBundleSha256', 'securityTrustVerified', 'runnerUpgradeVerified', 'runnerManagerIdentityPreserved']),
       ...(proof.evidence.publicUpgrade ? {publicUpgrade: pick(proof.evidence.publicUpgrade, ['fromVersion', 'toVersion', 'fromSourceRevision', 'fromControllerImageId', 'fromWizardImageId', 'dataPreserved', 'configurationPreserved', 'runnerRegistryVerified', 'rollbackVerified'])} : {})}};
   const evidenceBytes = bytes(evidence);
-  const release = {...pick(released, ['format', 'sourceRevision', 'sourceTree', 'wizardRevision', 'projectId', 'pipelineId', 'candidateJobId', 'imageId', 'wizardImageId', 'candidateEvidencePath']),
+  const release = {...pick(released, ['format', 'sourceRevision', 'sourceTree', 'sourceLayout', 'wizardSourceTree', 'wizardRevision', 'projectId', 'pipelineId', 'candidateJobId', 'imageId', 'wizardImageId', 'candidateEvidencePath']),
     registryRepository: metadata.images.controller.reference.split('@')[0], registryReference: metadata.images.controller.reference,
     wizardRegistryReference: metadata.images.wizard.reference, candidateEvidenceSha256: hash(evidenceBytes)};
   const value = {format: 'system-public-upgrade-provenance-v1', version: metadata.version, source: metadata.source,
