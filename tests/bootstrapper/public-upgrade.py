@@ -557,17 +557,6 @@ print(json.dumps({'metadata': raw.decode(), 'proof': proof.decode(), 'result': r
             self.assertEqual(outputs[3]['result'], 'public-release-changed-after-plan')
             self.assertNotEqual(outputs[3]['proof'], outputs[0]['proof'])
 
-    def test_nominal_8GiB_host_tolerates_kernel_reservation(self):
-        metadata = {'platform': 'linux/amd64', 'compatibility': {'versions': ['24.04'], 'minimumMemoryGiB': 8}}
-        with patch.object(tool.platform, 'freedesktop_os_release', return_value={'ID': 'ubuntu', 'VERSION_ID': '24.04'}), \
-                patch.object(tool.platform, 'machine', return_value='x86_64'), \
-                patch.object(tool.Path, 'read_text', return_value='MemTotal: 7864320 kB\n'):
-            tool.host(metadata)
-        with patch.object(tool.platform, 'freedesktop_os_release', return_value={'ID': 'ubuntu', 'VERSION_ID': '24.04'}), \
-                patch.object(tool.platform, 'machine', return_value='x86_64'), \
-                patch.object(tool.Path, 'read_text', return_value='MemTotal: 7800000 kB\n'):
-            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'insufficient-upgrade-memory'):
-                tool.host(metadata)
 
 
 class Paths(unittest.TestCase):

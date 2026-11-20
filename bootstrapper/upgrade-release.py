@@ -14,7 +14,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import platform
 import re
 import shutil
 import sys
@@ -114,13 +113,7 @@ def installed(config, repository, target=None):
 
 
 def host(metadata):
-    os_release = platform.freedesktop_os_release()
-    compatibility = metadata.get('compatibility', {})
-    require(os_release.get('ID') == 'ubuntu' and os_release.get('VERSION_ID') in compatibility.get('versions', []) and
-            platform.machine() == 'x86_64' and metadata.get('platform') == 'linux/amd64',
-            'supported-Ubuntu-amd64-host-required')
-    memory = int(re.search(r'^MemTotal:\s+(\d+) kB$', Path('/proc/meminfo').read_text(), re.M)[1]) * 1024
-    require(memory >= compatibility.get('minimumMemoryGiB', 8) * 1024 ** 3 - 512 * 1024 ** 2, 'insufficient-upgrade-memory')
+    return recovery.host_operation('verifyPublicUpgradeHost', metadata)
 
 
 def backup_target(config, filename):

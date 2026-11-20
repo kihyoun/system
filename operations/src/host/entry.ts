@@ -1,3 +1,5 @@
+import { PublicReleaseAssetsService } from './public-release-assets.service';
+import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
 import {
   RuntimeVerificationService,
   cube,
@@ -130,6 +132,17 @@ export async function compatibility(
     host.deadline = input.deadline;
     host.environment = input.environment ?? process.env;
     switch (input.operation) {
+      case 'publicReleaseAsset':
+        if (args.length !== 3 || !args.every((value) => typeof value === 'string'))
+          throw Error('invalid-public-release-location');
+        return (
+          await app
+            .get(PublicReleaseAssetsService)
+            .load(args[0] as string, args[1] as string, args[2] as string)
+        ).toString('base64');
+      case 'verifyPublicUpgradeHost':
+        if (args.length !== 1) throw Error('invalid-public-upgrade-host-request');
+        return app.get(PublicUpgradePreparationService).verifyHost(args[0]);
       case 'runtimeVerification': {
         const service = app.get(RuntimeVerificationService),
           method = String(args[0]),

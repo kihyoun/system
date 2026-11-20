@@ -5,8 +5,10 @@ const {HostModule,HOST_PROCESS_RUNNER}=require('../dist/host/host.module');
 const {HostInstallService}=require('../dist/host/install');
 const {RuntimeInspectionService}=require('../dist/host/runtime-inspection');
 test('standalone Host module injects shared native adapter without running operations',async()=>{
+ let response=new Response('accepted'),requests=[];
+ const publicReleaseRequest=async(url,options)=>{requests.push([String(url),options]);return response;};
  let calls=0;const runner={run(){calls++;return {stdout:'',stderr:'',status:0};}};
- const app=await NestFactory.createApplicationContext(HostModule.register({runner,environment:{CUSTOM:'test'}}),{logger:false});
+ const app=await NestFactory.createApplicationContext(HostModule.register({runner,publicReleaseRequest,environment:{CUSTOM:'test'}}),{logger:false});
  try {
   const {PromotionNativePortService}=require('../dist/host/promotion-native-port.service'),{PromotionAbortService}=require('../dist/host/promotion-abort.service'),{ColdMaintenanceService}=require('../dist/host/cold-maintenance.service');
   assert.equal(app.get(PromotionAbortService).port,app.get(PromotionNativePortService));assert.equal(app.get(ColdMaintenanceService).port,app.get(PromotionNativePortService));
@@ -16,6 +18,20 @@ test('standalone Host module injects shared native adapter without running opera
   assert.equal(promotionRecoveryArguments(['--checkpoint-dir','/retained/checkpoint','--persistence-env','/private/storage.env']).timeout,1200);
   assert.throws(()=>promotionRecoveryArguments(['--checkpoint-dir','/retained/checkpoint','--persistence-env','/private/storage.env','--timeout','NaN']),/bounded-promotion/);
   await assert.rejects(app.get(PromotionNativePortService).prepare({checkout:'/source',checkpoint:'/retained/checkpoint',persistenceEnv:'/private/storage.env',timeout:0}),/bounded-promotion/);
+  const {PublicReleaseAssetsService}=require('../dist/host/public-release-assets.service'),
+    {PublicUpgradePreparationService}=require('../dist/host/public-upgrade-preparation.service');
+  const assets=app.get(PublicReleaseAssetsService),preparation=app.get(PublicUpgradePreparationService);
+  assert.equal(preparation.assets,assets);
+  assert.equal((await assets.load('example/system','v2.0.0','system-release-v2.0.0.json')).toString(),'accepted');
+  assert.equal(requests[0][1].redirect,'manual');assert.equal(requests[0][1].headers,undefined);
+  response=new Response('',{status:302,headers:{location:'https://unapproved.invalid/asset'}});
+  await assert.rejects(assets.load('example/system','v2.0.0','release.json'),/unapproved-public-release-redirect/);
+  await assert.rejects(assets.load('example/..','v2.0.0','release.json'),/invalid-public-release-location/);
+  const metadata={platform:'linux/amd64',compatibility:{versions:['24.04'],minimumMemoryGiB:8}},
+    facts={release:{ID:'ubuntu',VERSION_ID:'24.04'},architecture:'x64',memoryBytes:7864320*1024};
+  preparation.verifyHost(metadata,facts);
+  assert.throws(()=>preparation.verifyHost(metadata,{...facts,memoryBytes:7800000*1024}),/insufficient-upgrade-memory/);
+  assert.throws(()=>preparation.verifyHost(metadata,{...facts,architecture:'arm64'}),/supported-Ubuntu/);
   const host=app.get(HostInstallService);assert.equal(app.get(HOST_PROCESS_RUNNER),runner);assert.equal(app.get(RuntimeInspectionService).host,host);assert.equal(calls,0);
   host.run('git',['--version']);assert.equal(calls,1);
   const native=app.get(PromotionNativePortService),original=native.lease.command;let received;

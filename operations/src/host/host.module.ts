@@ -1,3 +1,5 @@
+import { PublicReleaseAssetsService } from './public-release-assets.service';
+import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
 import { ControllerLeaseModule } from './controller-lease.module';
 import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
 import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
@@ -56,6 +58,7 @@ export const HOST_LIFECYCLE_EVIDENCE = Symbol('HOST_LIFECYCLE_EVIDENCE');
 export const HOST_ENVIRONMENT = Symbol('HOST_ENVIRONMENT');
 export interface HostModuleOptions {
   candidateRequest?: typeof fetch;
+  publicReleaseRequest?: typeof fetch;
   promotionGitLabProbe?: PromotionGitLabProbe;
   publicUpgradePlanPort?: PublicUpgradePlanPort;
   publicUpgradeApplyPort?: PublicUpgradeApplyPort;
@@ -93,6 +96,37 @@ export class HostModule {
       module: HostModule,
       imports: [GitlabPreflightModule, ControllerLeaseModule],
       providers: [
+        {
+          provide: PublicReleaseAssetsService,
+          useFactory: () => new PublicReleaseAssetsService(options.publicReleaseRequest),
+        },
+        {
+          provide: PublicUpgradePreparationService,
+          inject: [
+            HostInstallService,
+            RuntimeVerificationService,
+            RuntimeInspectionService,
+            HostSourceService,
+            HostReleaseAuthorityService,
+            PublicReleaseAssetsService,
+          ],
+          useFactory: (
+            host: HostInstallService,
+            runtime: RuntimeVerificationService,
+            inspection: RuntimeInspectionService,
+            source: HostSourceService,
+            authority: HostReleaseAuthorityService,
+            assets: PublicReleaseAssetsService,
+          ) =>
+            new PublicUpgradePreparationService(
+              host,
+              runtime,
+              inspection,
+              source,
+              authority,
+              assets,
+            ),
+        },
         {
           provide: CandidateGitLabService,
           useFactory: () => new CandidateGitLabService(options.candidateRequest),
@@ -367,6 +401,8 @@ export class HostModule {
         })),
       ],
       exports: [
+        PublicReleaseAssetsService,
+        PublicUpgradePreparationService,
         CandidateAuthorityService,
         CandidateGitLabService,
         PromotionRecoveryService,
