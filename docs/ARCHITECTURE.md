@@ -14,6 +14,19 @@ The platform combines GitLab Community Edition, its container registry, GitLab
 Runner managers, NGINX routing, an authenticated Sync API and a React configuration
 Wizard. Shell scripts and Docker Compose coordinate their lifecycle.
 
+## Internal Sync API
+
+Sync uses NestJS with the Express adapter. Feature modules separate authentication,
+configuration, project workflows, operations and diagnostics; a shared runtime
+module supplies operation status and the existing storage lease. Controllers handle
+HTTP requests and injected services coordinate the repository-owned tools.
+
+This structure keeps the public API on port `8071`, configuration and Seed formats,
+and operational workflows compatible. It adds no database or separate deployment
+service. Application starters remain Angular, React and general web projects;
+NestJS is used by the internal Sync service. The [test guide](../tests/README.md)
+provides the isolated verification commands.
+
 ## Operational guide map
 
 Application starters cover Angular, React and general web projects. The
@@ -186,7 +199,7 @@ The container definitions can be reproduced; GitLab repositories, database conte
 | `gitlab-runner/` | Runner configuration, registration, and lifecycle scripts. |
 | `nginx/` | Entry-point reverse-proxy configuration and lifecycle scripts. |
 | `nginx-proxy/` | Production, beta, and review proxy configuration. |
-| `sync/` | Synchronization-related configuration and scripts. |
+| `sync/` | Modular NestJS API for configuration, project workflows, operations and diagnostics. |
 | `wizard/` | Configuration wizard submodule. |
 | `.gitlab-ci.yml` | Short documentation lane; required runtime component, image and disposable platform checks; image publishing and optional GitHub mirror. |
 | [tests/](../tests/README.md) | Component inventory, isolated test commands and explicit live-integration boundaries. |

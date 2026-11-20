@@ -16,6 +16,8 @@ one accepted System source revision and tested controller/Wizard image attempt.
   without restarting GitLab or existing application containers.
 - Inspect host CPU/kernel compatibility for selected MongoDB images and configure
   bounded Docker logging for platform services, proxies, runners and new projects.
+- Structure the internal Sync API with NestJS modules, controllers and injectable
+  services while preserving existing HTTP, configuration and operational contracts.
 
 ### Security and verification
 
