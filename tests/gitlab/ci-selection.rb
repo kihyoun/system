@@ -152,7 +152,7 @@ raise 'Review must reuse the candidate; Stop must survive artifact expiry' unles
   jobs.fetch('stop:wizard-review').dig('environment', 'action') == 'stop'
 mirror_job = jobs.fetch('deploy:github')
 raise 'Wizard dependency publication evidence must remain available' unless mirror_job.dig('artifacts', 'paths') == ['test-results/github/'] &&
-  mirror_job.dig('artifacts', 'when') == 'always' && mirror_job['script'] == ['sh gitlab/github-backup-ci.sh']
+  mirror_job.dig('artifacts', 'when') == 'always' && mirror_job['script'] == ['node operations/dist/mirror/entry.js ci']
 browser_job = jobs.fetch('test:wizard-browser')
 raise 'Full native Wizard browser coverage must use an isolated required child' unless browser_job['script'] == ['sh tests/ci-wizard-browser.sh'] &&
   browser_job['after_script'] == ['sh tests/ci-wizard-browser.sh cleanup'] && browser_job['services'] == [] &&
@@ -177,6 +177,6 @@ raise 'Private registry base publication changed' unless build['script'] == [
 raise 'Pinned Docker job/service images required' unless config['image'].start_with?('docker:29.9.2-cli@sha256:') && config['services'].first.start_with?('docker:29.9.2-dind@sha256:')
 raise 'Every native CI parent must refresh public CA trust' unless config.dig('default','before_script') == ['sh bootstrapper/refresh-ca.sh'] && config.dig('variables','NODE_OPTIONS') == '--use-openssl-ca'
 raise 'Unexpected mirror dependencies' unless jobs.fetch('deploy:github')['dependencies'] == []
-raise 'Mirror context was weakened' unless jobs.fetch('deploy:github')['script'] == ['sh gitlab/github-backup-ci.sh'] &&
+raise 'Mirror context was weakened' unless jobs.fetch('deploy:github')['script'] == ['node operations/dist/mirror/entry.js ci'] &&
   jobs.fetch('deploy:github').fetch('rules').first.fetch('if') == '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
 puts 'PASS: native YAML event/path selection, artifact closure, required gates, private registry publication, protected public controller/Wizard release and GitHub mirror'

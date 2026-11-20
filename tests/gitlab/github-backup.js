@@ -5,8 +5,8 @@ const path = require('path');
 const { spawnSync, execFile } = require('child_process');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'system-github-backup-'));
-const helper = path.resolve(process.env.GITHUB_BACKUP_TEST_HELPER || path.resolve(__dirname, '../../gitlab/github-backup.sh')).replace(/\\/g, '/');
-const ciHelper = path.join(path.dirname(helper), 'github-backup-ci.sh').replace(/\\/g, '/');
+const helper = path.resolve(__dirname, '../../operations/dist/mirror/entry.js');
+const ciHelper = helper;
 const shell = process.env.GITHUB_BACKUP_TEST_SHELL || 'sh';
 const posix = value => value.replace(/\\/g, '/');
 const quote = value => `'${posix(value).replace(/'/g, `'"'"'`)}'`;
@@ -52,13 +52,13 @@ function fixture() {
     GITHUB_BACKUP_BRANCH: 'master', GITHUB_BACKUP_REMOTE: posix(backup),
     GITHUB_BACKUP_OFFLINE_FIXTURE: '1' };
   const tip = () => git(dir, '--git-dir', backup, 'rev-parse', 'refs/heads/master');
-  function run(extra = {}, cwd = work, selectedHelper = helper) {
-    const result = spawnSync(shell, [selectedHelper], { cwd, env: { ...env, PATH: shellPath, ...extra }, encoding: 'utf8' });
+  function run(extra = {}, cwd = work, mode = 'publish') {
+    const result = spawnSync(process.execPath, [helper, mode], { cwd, env: { ...env, PATH: shellPath, ...extra }, encoding: 'utf8' });
     if (result.error) throw result.error;
     assert(!`${result.stdout}${result.stderr}`.includes('FIXTURE_SECRET_DO_NOT_LOG'));
     return result;
   }
-  return { dir, source, backup, work, base, sha, env, tip, run, ci: extra => run(extra, work, ciHelper) };
+  return { dir, source, backup, work, base, sha, env, tip, run, ci: extra => run(extra, work, 'ci') };
 }
 function pass(result) { assert.equal(result.status, 0, result.stderr); }
 function fail(result, text) { assert.notEqual(result.status, 0); assert.match(result.stderr, text); }
@@ -268,7 +268,7 @@ async function main() {
   f = fixture();
   const second = path.join(f.dir, 'second');
   git(f.dir, 'clone', '-q', '-b', 'main', posix(f.source), second);
-  const runAsync = cwd => new Promise((resolve, reject) => execFile(shell, [helper],
+  const runAsync = cwd => new Promise((resolve, reject) => execFile(process.execPath, [helper, 'publish'],
     { cwd, env: { ...f.env, PATH: shellPath } },
     (error, stdout, stderr) => error ? reject(new Error(stderr)) : resolve(stdout)));
   await Promise.all([runAsync(f.work), runAsync(second)]);
@@ -290,7 +290,7 @@ async function main() {
   const savedDirectory = process.cwd();
   process.env = { ...f.env, ...extra };
   process.chdir(f.work);
-  const { startTransport } = require(path.join(path.dirname(helper), 'github-backup-transport.js'));
+  const { startTransport } = require(path.join(path.dirname(helper), 'transport.js'));
   const transport = startTransport(['fetch', 'origin'], 30);
   process.env = savedEnv;
   process.chdir(savedDirectory);
