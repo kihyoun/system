@@ -111,3 +111,28 @@ sich nicht als abgeschlossene Pipeline selbst autorisieren. Positive und negativ
 Verträge prüfen den Production-Verifier separat. Production-Launcher besitzen keinen
 Fixture-Schalter. Offline-Tests oder eine reine Vorprüfung belegen keinen abgeschlossenen
 nativen Lauf.
+
+## Grenze des Deployment-Dienstes
+
+Das kompilierte Operations-Modul `ProjectLifecycleModule` übernimmt
+Deployment-Übergänge, Routenerzeugung, Zustandsabgleich, Rollback, Stilllegung
+und die Bereinigung gestoppter Ressourcen. Sein typisierter Adapter stellt
+Compare-and-swap für Belege, Docker-Zugriff auf eigene Ressourcen, Gesundheitsprüfungen
+und Routen-I/O bereit. Der kompatible Umgebungshelfer liefert diesen Adapter
+und behält seine Sperre am kanonischen Controller und das begrenzte Abbruchbudget.
+Jeder Aufruf erstellt und schließt einen eigenständigen Nest-Kontext ohne
+HTTP-Listener. Operations muss vor der Verwendung des kompatiblen Helfers
+oder der State-Importe gebaut werden.
+
+Die Zustandsregeln erhalten Pipeline-Untergrenzen und Stop-Markierungen.
+Ein fehlgeschlagener Wechsel stellt die vorige Route wieder her, bevor eigene
+Kandidatenressourcen entfernt werden. Ein bestätigter Wechsel bewahrt ausstehende
+Stilllegungsarbeit für den Zustandsabgleich. Stop speichert seine Markierung vor
+dem Löschen von Ressourcen. Historische Rezeptbytes und das GitLab-Ruby-Prüfformat
+bleiben unverändert.
+
+Nach dem Build von Operations und Sync prüft `node tests/wizard/environment-helper.js`
+injizierte Fehler bei Gesundheit, Eigentum, CAS, Reload, veralteten Generationen
+und unterbrochenem Wechsel. `node tests/wizard/environment-canonical.js` prüft
+die erhaltene kanonische Sperre und den Belegadapter. Diese lokalen Prüfungen
+belegen keine Live-Kandidatenabnahme.
