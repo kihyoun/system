@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {RuntimeInspectionService,inspectServiceRows,failedStoppedController,type RuntimeConfig,type ContainerRow} from './runtime-inspection';
 import {HostSourceService} from './source';
 import {validateUpgradeGraph,upgradePath} from './upgrade-graph';
 import {RecoveryImageService} from './recovery-images';
@@ -10,6 +11,9 @@ import {HostInstallService,reference,sourceIdentity,checkedImage,acceptedMetadat
 export function compatibility(input: {operation: string; arguments: unknown[]; deadline?: number}) {
   const args=input.arguments,host=new HostInstallService(undefined,undefined,undefined,undefined,input.deadline);
   switch(input.operation) {
+    case 'inspectServiceRows':return inspectServiceRows(args[0] as RuntimeConfig,args[1],args[2]===null?undefined:args[2] as string);
+    case 'failedStoppedController':return failedStoppedController(args[0] as ContainerRow,args[1]);
+    case 'verifyMounts':return new RuntimeInspectionService(host).mounts(args[0] as RuntimeConfig,args[1] as Record<string,ContainerRow>);
     case 'verifySourceObjects':return new HostSourceService(host).verifyObjects(args[0],String(args[1]));
     case 'verifyCheckout':return new HostSourceService(host).verifyCheckout(args[0],String(args[1]));
     case 'verifyAncestry':return new HostSourceService(host).verifyAncestry(args[0],args[1],String(args[2]));

@@ -259,38 +259,9 @@ class RuntimeVerification(unittest.TestCase):
         self.services = {'system_wizard_1': {'NetworkSettings': {'Networks': {'system_default': {'IPAddress': '172.19.0.3'}}}}}
         self.baseline = {'startedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
 
-    def test_missing_GitLab_data_mount_is_not_masked_by_other_persistent_mounts(self):
-        mount = self.root / 'mounted'
-        root, seed = mount / 'platform', mount / 'seed'
-        for path in (root / 'gitlab/config', root / 'gitlab/logs', seed):
-            path.mkdir(parents=True, exist_ok=True)
-        config = dict(self.config, _root=root, PERSISTENT_MOUNT=str(mount), SEED_DIR=str(seed))
-        gitlab = {'Mounts': [
-            {'Type': 'bind', 'Source': str(root / 'gitlab/config'), 'Destination': '/etc/gitlab'},
-            {'Type': 'bind', 'Source': str(root / 'gitlab/logs'), 'Destination': '/var/log/gitlab'},
-            {'Type': 'bind', 'Source': str(seed), 'Destination': '/seed'}]}
-        with patch.object(runtime, 'run', return_value=b'8:1'):
-            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'essential-persistent-mount-missing'):
-                runtime.verify_mounts(config, {'system_gitlab_1': gitlab})
-
-    def test_named_volume_cannot_redirect_an_essential_mount_within_the_data_root(self):
-        mount = self.root / 'mounted'
-        root, seed = mount / 'platform', mount / 'seed'
-        for path in (root / 'gitlab/config', root / 'gitlab/logs', root / 'gitlab/data', seed):
-            path.mkdir(parents=True, exist_ok=True)
-        config = dict(self.config, _root=root, PERSISTENT_MOUNT=str(mount), SEED_DIR=str(seed))
-        gitlab = {'Mounts': [
-            {'Type': 'volume', 'Name': 'misdirected', 'Source': '/docker/volume', 'Destination': '/etc/gitlab'},
-            {'Type': 'bind', 'Source': str(root / 'gitlab/logs'), 'Destination': '/var/log/gitlab'},
-            {'Type': 'bind', 'Source': str(root / 'gitlab/data'), 'Destination': '/var/opt/gitlab'},
-            {'Type': 'bind', 'Source': str(seed), 'Destination': '/seed'}]}
-        def execute(args, **kwargs):
-            if 'volume' in args:
-                return json.dumps([{'Options': {'type': 'none', 'o': 'bind', 'device': str(root / 'gitlab/logs')}}]).encode()
-            return b'8:1'
-        with patch.object(runtime, 'run', side_effect=execute):
-            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'essential-persistent-mount-is-misdirected'):
-                runtime.verify_mounts(config, {'system_gitlab_1': gitlab})
+    def test_runtime_mount_failures_use_shared_typescript_service(self):
+        result = subprocess.run(['node', '--test', str(Path(__file__).resolve().parents[2] / 'operations/tests/host-runtime-inspection.test.cjs')], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_readiness_budget_caps_blocking_commands(self):
         runtime.recovery.OPERATION_DEADLINE = __import__('time').monotonic() + 0.02

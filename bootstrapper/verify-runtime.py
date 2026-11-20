@@ -241,38 +241,17 @@ def assert_baseline(config, baseline):
 
 
 def failed_stopped_controller(row, expected_id):
-    """Permit only a positively quiescent canonical container, never an absent one."""
-    state = row.get('State', {})
-    require(isinstance(expected_id, str) and bool(expected_id) and
-            row.get('Name') == '/system_bootstrapper_1' and row.get('Id') == expected_id,
-            'stopped-controller-identity-mismatch')
-    exited = state.get('Status') == 'exited' and type(state.get('ExitCode')) is int and 0 < state['ExitCode'] < 128
-    # Native stopped rollback uses Compose create, without ever starting old code.
-    created = state.get('Status') == 'created' and type(state.get('ExitCode')) is int and state['ExitCode'] == 0
-    require((exited or created) and type(state.get('Pid')) is int and state['Pid'] == 0 and
-            all(state.get(key) is False for key in ('Running', 'Paused', 'Restarting', 'Dead', 'OOMKilled')),
-            'controller-is-not-quiescent-stopped-failure')
-    require('ExecIDs' in row and row['ExecIDs'] in (None, []), 'stopped-controller-active-or-unknown-execs')
-    policy = row.get('HostConfig', {}).get('RestartPolicy', {})
-    require(policy.get('Name') == 'no' and policy.get('MaximumRetryCount', 0) == 0,
-            'stopped-controller-restart-policy-must-be-no')
+    return recovery.host_operation('failedStoppedController', row, expected_id)
 
 
 def inspect_services(config, stopped_controller_id=None):
+    # Native Docker transport remains mockable; all acceptance decisions are shared.
     names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1']
     if config['WIZARD_ENABLE'] == 'true':
         names.append('system_wizard_1')
     names += [f'runner_docker_{index}' for index in range(1, runner_count(config) + 1)]
     rows = json.loads(run([*DOCKER, 'inspect', *names]))
-    require({row['Name'].lstrip('/') for row in rows} == set(names), 'expected-services-missing')
-    for row in rows:
-        if stopped_controller_id is not None and row['Name'] == '/system_bootstrapper_1':
-            failed_stopped_controller(row, stopped_controller_id)
-            continue
-        require(row['State']['Running'] and not row['State'].get('OOMKilled'), 'service-not-running')
-        if row['State'].get('Health'):
-            require(row['State']['Health']['Status'] == 'healthy', 'service-not-healthy')
-    return {row['Name'].lstrip('/'): row for row in rows}
+    return recovery.host_operation('inspectServiceRows', {key: str(value) for key, value in config.items()}, rows, stopped_controller_id)
 
 
 def verify_images(config, manifest, services):
@@ -302,68 +281,7 @@ def verify_images(config, manifest, services):
 
 
 def verify_mounts(config, services):
-    root, mount = config['_root'], Path(config['PERSISTENT_MOUNT']).resolve(strict=True)
-    device = run(['findmnt', '-rn', '-T', str(mount), '-o', 'MAJ:MIN']).strip()
-    required = {
-        'system_bootstrapper_1': {
-            '/var/run/docker.sock': None, '/state': root / 'configuration', '/wizard-public': root / 'wizard-public',
-            '/host-letsencrypt': root / 'host/letsencrypt', str(root / 'runners'): root / 'runners',
-            '/templates': root / 'templates', '/synctemplates': root / 'synctemplates',
-            '/ssl': root / 'ssl', '/srv/gitlab/config': root / 'gitlab/config',
-            '/srv/gitlab/log': root / 'gitlab/logs', '/srv/gitlab/data': root / 'gitlab/data'},
-        'system_web_1': {'/etc/nginx/templates': root / 'templates', '/ssl': root / 'ssl'},
-        'system_gitlab_1': {'/etc/gitlab': root / 'gitlab/config', '/var/log/gitlab': root / 'gitlab/logs',
-                            '/var/opt/gitlab': root / 'gitlab/data'}}
-    if config['WIZARD_ENABLE'] == 'true':
-        required['system_wizard_1'] = {'/usr/share/nginx/wizard-public': root / 'wizard-public'}
-    for index in range(1, runner_count(config) + 1):
-        required[f'runner_docker_{index}'] = {
-            '/var/run/docker.sock': None, '/etc/gitlab-runner': root / f'runners/runner/{index}/config',
-            '/home/gitlab-runner': root / f'runners/runner/{index}/home'}
-    volumes, count = {}, 0
-    for name, row in services.items():
-        destinations = [entry['Destination'] for entry in row['Mounts']]
-        require(len(destinations) == len(set(destinations)), 'duplicate-service-mount-destination')
-        require(set(required.get(name, {})) <= set(destinations), 'essential-persistent-mount-missing')
-        for entry in row['Mounts']:
-            if entry['Destination'] == '/var/run/docker.sock':
-                require(entry['Type'] == 'bind' and Path(entry['Source']).resolve() == Path('/var/run/docker.sock').resolve() and
-                        entry.get('RW') is True, 'service-Docker-socket-mismatch')
-                continue
-            if entry['Type'] == 'tmpfs':
-                require(entry['Destination'] not in required.get(name, {}), 'essential-data-mounted-as-tmpfs')
-                continue
-            source = entry['Source']
-            if entry.get('Name'):
-                volume_name = entry['Name']
-                if volume_name not in volumes:
-                    volumes[volume_name] = json.loads(run([*DOCKER, 'volume', 'inspect', volume_name]))[0]
-                options = volumes[volume_name].get('Options') or {}
-                require(options.get('type') == 'none' and options.get('o') == 'bind', 'persistent-volume-not-bind')
-                source = options.get('device', '')
-            path = Path(source).resolve(strict=True)
-            expected = required.get(name, {}).get(entry['Destination'])
-            require(expected is None or path == expected.resolve(strict=True), 'essential-persistent-mount-is-misdirected')
-            if entry['Destination'] == '/seed':
-                # Older accepted controllers can still be restored/rolled back
-                # on their retained volume. New Compose never creates this bind.
-                require(config.get('PERSISTENCE_MODE', 'volume') == 'volume' and config.get('SEED_DIR'),
-                        'backup-medium-must-not-be-a-permanent-service-mount')
-                seed = Path(config['SEED_DIR']).resolve(strict=True)
-                require(path == seed and mount in seed.parents and root not in seed.parents and
-                        seed not in root.parents and seed != root,
-                        'legacy-seed-mount-is-misdirected')
-                require(run(['findmnt', '-rn', '-T', str(path), '-o', 'MAJ:MIN']).strip() == device,
-                        'legacy-seed-mount-is-on-another-filesystem')
-                count += 1
-                continue
-            require(path == root or root in path.parents,
-                    'persistent-mount-escapes-selected-data')
-            require(run(['findmnt', '-rn', '-T', str(path), '-o', 'MAJ:MIN']).strip() == device,
-                    'persistent-mount-is-on-another-filesystem')
-            count += 1
-    require(count > 0, 'persistent-mounts-missing')
-    return count
+    return recovery.host_operation('verifyMounts', {key: str(value) for key, value in config.items()}, services)
 
 
 def verify_sync(config):

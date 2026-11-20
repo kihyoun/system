@@ -62,3 +62,10 @@ steps. Unknown versions, reverse paths, duplicate edges, unsupported database
 migration claims and incomplete preservation promises are refused. The Python
 source/graph APIs forward to these implementations while their higher-level
 coordinators remain in use.
+
+`RuntimeInspectionService` checks canonical container identities and health, with
+an explicit failed-controller exception restricted to a quiescent owned container
+without execs or a restart policy. Persistent mount verification checks every
+essential destination, resolves named bind volumes, and rejects duplicate,
+misdirected, cross-filesystem or escaping mounts. The native process adapter owns
+Docker and `findmnt` access; imported validation functions have no side effects.
