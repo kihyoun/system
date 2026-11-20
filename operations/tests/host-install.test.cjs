@@ -10,7 +10,7 @@ function fixture(t,monorepo=false) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'host-install-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const checkout=path.join(dir,'checkout'),root=path.join(dir,'live'),selector=path.join(dir,'persistence.env');
  fs.mkdirSync(checkout);fs.mkdirSync(path.join(root,'configuration'),{recursive:true});
- fs.writeFileSync(selector,'PERSISTENCE_MODE=local\n',{mode:0o600});
+ fs.writeFileSync(selector,`PERSISTENCE_MODE=local\nPERSISTENT_DIR='${root}'\n`,{mode:0o600});
  const git=(...args)=>nativeProcess.run('git',['-C',checkout,...args]).stdout.trim();
  git('init','--quiet');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid');
  fs.writeFileSync(path.join(checkout,'source.txt'),'Reviewed source\n');fs.mkdirSync(path.join(checkout,'wizard'));
@@ -21,7 +21,6 @@ function fixture(t,monorepo=false) {
  const image=(selected)=>{const isWizard=selected===wizard;return {Id:id(isWizard?'e':'d'),Os:'linux',Architecture:'amd64',RepoDigests:[selected.replace('docker.io/','')],Config:{Labels:{'org.opencontainers.image.revision':isWizard&&!monorepo?identity.wizardSourceRevision:identity.sourceCommit,'org.system-bootstrapper.test-job':String(isWizard?job:20),'org.system-bootstrapper.source-revision':identity.sourceCommit}}};};
  const runner={run(binary,args,options={}){calls.push({binary,args,options});let stdout='';
   if(binary==='git')return nativeProcess.run(binary,args,options);
-  if(binary==='bash'&&args[0]==='-c')stdout=['local','/',root,'',''].join('\0');
   if(binary==='docker'&&args[1]==='image')stdout=JSON.stringify([image(args.at(-1))]);
   if(failStartup&&args[0]===path.resolve(__dirname,'../dist/cli.js')&&args[1]==='start')throw Error('failure');
   return {stdout,stderr:'',status:0};
@@ -45,7 +44,7 @@ for(const monorepo of [false,true])test('complete fresh '+(monorepo?'monorepo':'
  assert.equal(fs.statSync(path.join(f.root,'configuration/.release-images.env')).mode&0o777,0o600);
  const startup=f.calls.filter(c=>c.args[0]===path.resolve(__dirname,'../dist/cli.js')&&c.args[1]==='start');assert.equal(startup.length,1);assert.equal(startup[0].options.env.SYSTEM_BOOTSTRAPPER_SKIP_BUILD,'1');
  assert(!f.calls.some(c=>c.args.includes('build')));assert(!fs.existsSync(path.join(f.root,'configuration/.docker.env')));
- assert.equal(f.calls.find(c=>c.args.at(-1)===path.join(f.checkout,'bootstrapper/persistence.sh')).options.env.PERSISTENCE_CHECK_ONLY,'1');
+ assert.equal(f.calls.find(c=>c.args[0]===path.resolve(__dirname,'../dist/cli.js')&&c.args[1]==='persistence').options.env.PERSISTENCE_CHECK_ONLY,'1');
 });
 test('image identities reject wrong platform, digest, source, job and monorepo/legacy confusion',t=>{
  const f=fixture(t,true);
@@ -134,4 +133,13 @@ test('reviewed upgrade graph resolves explicit paths and rejects unsafe migratio
  const graph={format:'system-upgrade-paths-v1',versions:['1.0.0','1.1.0','2.0.0'],transitions:[edge('1.0.0','1.1.0'),edge('1.1.0','2.0.0')]};
  assert.equal(api.upgradePath(graph,'missing','2.0.0').status,'unknown');assert.equal(api.upgradePath(graph,'1.0.0','1.0.0').status,'unnecessary');assert.equal(api.upgradePath(graph,'2.0.0','1.0.0').status,'unsupported');assert.equal(api.upgradePath(graph,'1.0.0','2.0.0').transitions.length,2);
  for(const change of [g=>g.transitions[0].databaseMigration=true,g=>g.transitions[0].steps.pop(),g=>g.transitions.push(g.transitions[0]),g=>g.versions.reverse(),g=>g.transitions[0].minimumFreeGiB=7,g=>g.versions.push('02.0.0')]){const invalid=structuredClone(graph);change(invalid);assert.throws(()=>api.validateUpgradeGraph(invalid));}
+});
+test('storage selectors parse literal quotes without executing configuration',t=>{
+ const f=fixture(t);
+ const {environmentAssignments}=require('../dist/runtime/environment-assignments');
+ assert.deepEqual(environmentAssignments("# heading\nexport A='a b'\nB='a'\\''b'\nC=plain # note\nD=\"x\\$y\"\n"),{A:'a b',B:"a'b",C:'plain',D:'x$y'});
+ for(const value of ['A=$(id)','A=`id`','A=x;id','A="${HOME}"',"A='unclosed"])
+  assert.throws(()=>environmentAssignments(value));
+ const result=f.service.storage(f.selector,f.checkout);assert.equal(result.root,f.root);
+ assert.equal(f.calls.some(c=>c.binary==='bash'),false);
 });

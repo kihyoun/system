@@ -1,3 +1,5 @@
+import { environmentAssignments } from '../runtime/environment-assignments';
+import { storageEnvironment } from '../host-lifecycle/persistence.service';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -332,26 +334,20 @@ export class HostInstallService {
     const stat = fs.lstatSync(persistence, { throwIfNoEntry: false });
     requireValue(!stat?.isSymbolicLink(), 'storage-selector-must-not-be-symlink');
     if (stat) privateFile(persistence);
-    const script =
-      'set -eu; set -a; for file in "$@"; do source "$file"; done; ' +
-      keys.map((key) => 'printf "%s\\0" "${' + key + '-}";').join(' ');
-    const values = this.run('bash', [
-      '-c',
-      script,
-      'read-storage',
-      ...(stat ? [persistence] : []),
-      path.join(checkout, 'bootstrapper/storage-env.sh'),
-    ]).split('\0');
-    requireValue(
-      values.length === keys.length + 1 && values.at(-1) === '',
-      'invalid-storage-selectors',
-    );
-    const selected = Object.fromEntries(keys.map((key, index) => [key, values[index]]));
-    this.run('bash', [path.join(checkout, 'bootstrapper/persistence.sh')], {
+    const resolved = storageEnvironment({
       ...this.environment,
-      ...selected,
-      PERSISTENCE_CHECK_ONLY: '1',
+      ...(stat ? environmentAssignments(fs.readFileSync(persistence, 'utf8')) : {}),
     });
+    const selected = Object.fromEntries(keys.map((key) => [key, resolved[key] || '']));
+    this.run(
+      process.execPath,
+      [path.resolve(__dirname, '../cli.js'), 'persistence', '--checkout', checkout],
+      {
+        ...this.environment,
+        ...selected,
+        PERSISTENCE_CHECK_ONLY: '1',
+      },
+    );
     const root = selected.PERSISTENT_DIR;
     requireValue(
       path.isAbsolute(root) && root !== '/' && canonical(root) === root,
@@ -417,7 +413,17 @@ export class HostInstallService {
     try {
       fresh(root, checkout);
       if (args.installHost)
-        this.run('bash', [path.join(checkout, 'bootstrapper/install.sh')], undefined, 1800000);
+        this.run(
+          process.execPath,
+          [
+            path.resolve(__dirname, '../host-bootstrap/entry.js'),
+            'install-host',
+            '--checkout',
+            checkout,
+          ],
+          undefined,
+          1800000,
+        );
       this.noExistingServices();
       const pair = {
         controller: this.image(controller, identity),
@@ -450,7 +456,11 @@ export class HostInstallService {
         PERSISTENCE_ENV_FILE: args.persistenceEnv,
       };
       delete environment.PERSISTENCE_CHECK_ONLY;
-      this.run('bash', [path.join(checkout, 'bootstrapper/persistence.sh')], environment);
+      this.run(
+        process.execPath,
+        [path.resolve(__dirname, '../cli.js'), 'persistence', '--checkout', checkout],
+        environment,
+      );
       const profile = path.join(root, 'configuration/.release-images.env'),
         payload = Buffer.from(
           'BOOTSTRAPPER_IMAGE=' + controller + '\nWIZARD_IMAGE=' + wizard + '\n',
