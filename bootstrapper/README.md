@@ -750,3 +750,30 @@ primitive test is separate from the socket-free component suite:
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`.
 It uses one exactly labeled, limited, disposable local container and never a live
 GitLab installation.
+
+## Native TypeScript runtime preparation
+
+Fresh Quickstart installs nvm **0.41.0** from the pinned upstream commit and
+verifies its script checksum, then uses nvm to install Node **24.22.0**. It keeps
+this dedicated root-owned installation under `/opt/system-bootstrapper-runtime`;
+existing user nvm installations, default versions and shell profiles are preserved.
+The exact Node archive checksum is verified after nvm's download verification.
+Compiled operations and dependencies are copied from the accepted controller image
+using an owned container that is never started. No host-side npm install is needed.
+
+For the explicit installation path, first install the native host dependencies,
+check out the reviewed release, and verify its public metadata as described below.
+Then prepare the runtime before invoking the TypeScript-backed installer:
+
+```sh
+sudo python3 bootstrapper/prepare-host-runtime.py \
+  --checkout "$PWD" --release-metadata /absolute/path/release.json
+```
+
+The preparation refuses an existing runtime directory instead of overwriting it.
+Keep that directory and the checkout's `operations/dist` and
+`operations/node_modules` for offline recovery. Compatibility tools select the
+saved absolute Node executable directly; they do not source a shell profile,
+invoke nvm or contact npm during recovery. The file
+`/opt/system-bootstrapper-runtime/node-executable` records the executable path.
+

@@ -120,8 +120,8 @@ link auf die gespeicherte Konfiguration; die persistente Kopie hat Vorrang vor
 in einem Image eingebetteter Konfiguration:
 
 ```bash
-export GITLAB_IMAGE=gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c
-export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd
+export GITLAB_IMAGE=gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056
+export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.6.0@sha256:fb454a097fd26ea329b0234d6d82b53ae25f672bd625c278eaaee683a00f2507
 export GITLAB_SSH_BIND=127.0.0.1:2222
 export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 ```
@@ -306,3 +306,29 @@ GitLab, Registry, Runner-CI, Konfigurationsexport und TLS-Erneuerung gemeinsam z
 ```bash
 bash stop.sh
 ```
+
+## Native Host-Laufzeit vorbereiten
+
+Quickstart installiert nvm **0.41.0** aus dem festgelegten Commit mit geprüftem
+Skript-Hash und installiert darüber Node **24.22.0**. Die eigene Installation liegt
+unter `/opt/system-bootstrapper-runtime`; vorhandene nvm-Installationen,
+Standardversionen und Shell-Profile der Benutzer bleiben erhalten. Auch der Hash
+des von nvm geladenen Node-Archivs wird geprüft. Kompilierte Operations-Dateien
+und Abhängigkeiten stammen aus dem akzeptierten Controller-Image; der dafür
+angelegte Container wird nicht gestartet. Ein npm-Installationslauf auf dem Host
+ist nicht erforderlich.
+
+Beim manuellen Weg zuerst die nativen Host-Abhängigkeiten installieren, den
+geprüften Release-Checkout wählen und die öffentlichen Metadaten verifizieren.
+Danach vor dem Release-Installer ausführen:
+
+```sh
+sudo python3 bootstrapper/prepare-host-runtime.py \
+  --checkout "$PWD" --release-metadata /absolute/path/release.json
+```
+
+Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery
+müssen das Laufzeitverzeichnis sowie `operations/dist` und
+`operations/node_modules` erhalten bleiben. Die Werkzeuge nutzen den gespeicherten
+absoluten Node-Pfad ohne nvm, Shell-Profil oder npm-Zugriff. Die Datei
+`/opt/system-bootstrapper-runtime/node-executable` enthält diesen Pfad.

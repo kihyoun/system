@@ -13,6 +13,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 ENTRY = ROOT / 'operations/dist/host/entry.js'
+RETAINED_NODE = Path('/opt/system-bootstrapper-runtime/bin/node')
+NODE = str(RETAINED_NODE.resolve()) if RETAINED_NODE.is_file() else 'node'
+if RETAINED_NODE.is_file():
+    os.environ['PATH'] = str(RETAINED_NODE.parent) + os.pathsep + os.environ.get('PATH', '')
 DOCKER = ['docker', '--host=unix:///var/run/docker.sock']
 
 
@@ -21,7 +25,7 @@ class ReleaseError(RuntimeError):
 
 
 def invoke(operation, *arguments, deadline=None):
-    result = subprocess.run(['node', str(ENTRY), '--compatibility'],
+    result = subprocess.run([NODE, str(ENTRY), '--compatibility'],
                             input=json.dumps({'operation': operation, 'arguments': arguments, **({'deadline': deadline} if deadline is not None else {})}, default=str),
                             capture_output=True, text=True)
     try:
@@ -96,4 +100,4 @@ def install(args, checkout=ROOT):
 
 
 if __name__ == '__main__':
-    os.execvp('node', ['node', str(ENTRY), *sys.argv[1:]])
+    os.execvp(NODE, [NODE, str(ENTRY), *sys.argv[1:]])

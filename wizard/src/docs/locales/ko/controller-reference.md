@@ -21,7 +21,11 @@ Docker 데몬 호스트에서 [기본 호스트 호환성 검사 및 로그 정�
 
 ## 공개 이미지로 새로 설치하기
 
-`install-release.py`는 빈 설치를 위한 호스트 진입점입니다.
+`install-release.py`는 빈 설치를 위한 호환 호스트 진입점입니다.
+컴파일된 `operations/dist/host/entry.js` 구현을 실행합니다. 설치 또는 오프라인
+유지보수 전에 Node.js 24.22.0과 빌드된 operations 패키지를 준비하세요.
+이 진입점은 의존성을 다운로드하거나 코드를 컴파일하지 않습니다.
+동일한 플래그를 사용하는 직접 호출은 `node operations/dist/host/entry.js`입니다.
 `--controller IMAGE@sha256:...`와 `--wizard IMAGE@sha256:...`를 받고 선택적으로
 `--persistence-env FILE`을 받습니다. `--install-host`는 필요할 때 커밋된 호스트 설치
 프로그램으로 Docker/Compose를 설치합니다. [핸드북](../docs/HANDBOOK.md)은 이 플래그를
@@ -690,3 +694,28 @@ Docker 기본 동작 테스트는 소켓 없는 구성 요소 테스트와 별�
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`을 사용합니다.
 정확한 레이블이 있고 제한된 폐기 가능 로컬 컨테이너 하나만 사용하며 라이브 GitLab
 설치는 사용하지 않습니다.
+
+## 네이티브 호스트 런타임 준비
+
+Quickstart는 고정된 커밋과 스크립트 해시를 확인하여 nvm **0.41.0**을 설치한 뒤,
+nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
+`/opt/system-bootstrapper-runtime`이며 기존 사용자의 nvm 설치, 기본 버전과
+셸 프로필은 변경하지 않습니다. nvm이 내려받은 Node 압축 파일의 고정 해시도
+확인합니다. 컴파일된 Operations 파일과 의존성은 승인된 Controller 이미지에서
+복사하며, 추출용 컨테이너는 시작하지 않습니다. 호스트에서 npm 설치를 실행할
+필요가 없습니다.
+
+수동 설치에서는 먼저 네이티브 호스트 의존성을 설치하고, 검토된 릴리스의 소스를
+체크아웃한 다음 공개 메타데이터를 검증합니다. 릴리스 설치 도구를 실행하기 전에
+다음 명령으로 런타임을 준비하세요.
+
+```sh
+sudo python3 bootstrapper/prepare-host-runtime.py \
+  --checkout "$PWD" --release-metadata /absolute/path/release.json
+```
+
+기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
+런타임 디렉터리와 `operations/dist`, `operations/node_modules`를
+보존하세요. 도구는 저장된 Node 실행 파일의 절대 경로를 사용하므로 복구 중에는
+nvm, 셸 프로필이나 npm 네트워크 접근이 필요하지 않습니다. 실행 파일 경로는
+`/opt/system-bootstrapper-runtime/node-executable`에 기록됩니다.

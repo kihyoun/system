@@ -23,7 +23,12 @@ zur begrenzten Protokollierung, die erhaltene Konfiguration und die Grenzen grö
 
 ## Neuinstallation aus öffentlichen Images
 
-`install-release.py` ist der Host-Einstiegspunkt für eine leere Installation. Es erwartet
+`install-release.py` ist der kompatible Host-Einstiegspunkt für eine leere Installation.
+Es führt die kompilierte Implementierung `operations/dist/host/entry.js` aus. Bereiten
+Sie Node.js 24.22.0 und das gebaute Operations-Paket vor Installation oder Offline-
+Wartung vor; dieser Einstiegspunkt lädt keine Abhängigkeiten und kompiliert keinen Code.
+Der entsprechende direkte Aufruf ist `node operations/dist/host/entry.js` mit
+denselben Optionen. Es erwartet
 `--controller IMAGE@sha256:...` und `--wizard IMAGE@sha256:...` sowie optional
 `--persistence-env FILE`. `--install-host` installiert Docker/Compose bei Bedarf über das
 versionierte Host-Installationsprogramm. Das [Handbuch](../docs/HANDBOOK.md) beschreibt
@@ -759,3 +764,29 @@ Grundmechanismustest ist von der socketfreien Komponentensuite getrennt:
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`.
 Er verwendet einen einzigen exakt markierten, begrenzten, verwerfbaren lokalen Container und niemals eine laufende
 GitLab-Installation.
+
+## Native Host-Laufzeit vorbereiten
+
+Quickstart installiert nvm **0.41.0** aus dem festgelegten Commit mit geprüftem
+Skript-Hash und installiert darüber Node **24.22.0**. Die eigene Installation liegt
+unter `/opt/system-bootstrapper-runtime`; vorhandene nvm-Installationen,
+Standardversionen und Shell-Profile der Benutzer bleiben erhalten. Auch der Hash
+des von nvm geladenen Node-Archivs wird geprüft. Kompilierte Operations-Dateien
+und Abhängigkeiten stammen aus dem akzeptierten Controller-Image; der dafür
+angelegte Container wird nicht gestartet. Ein npm-Installationslauf auf dem Host
+ist nicht erforderlich.
+
+Beim manuellen Weg zuerst die nativen Host-Abhängigkeiten installieren, den
+geprüften Release-Checkout wählen und die öffentlichen Metadaten verifizieren.
+Danach vor dem Release-Installer ausführen:
+
+```sh
+sudo python3 bootstrapper/prepare-host-runtime.py \
+  --checkout "$PWD" --release-metadata /absolute/path/release.json
+```
+
+Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery
+müssen das Laufzeitverzeichnis sowie `operations/dist` und
+`operations/node_modules` erhalten bleiben. Die Werkzeuge nutzen den gespeicherten
+absoluten Node-Pfad ohne nvm, Shell-Profil oder npm-Zugriff. Die Datei
+`/opt/system-bootstrapper-runtime/node-executable` enthält diesen Pfad.

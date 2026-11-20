@@ -106,8 +106,8 @@ GitLab의 지원되는 업그레이드 경로를 따르지 않고 새 주 버전
 저장된 구성에 대한 호환성 링크입니다. 영구 저장된 사본이 이미지에 포함된 구성보다 우선합니다.
 
 ```bash
-export GITLAB_IMAGE=gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c
-export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd
+export GITLAB_IMAGE=gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056
+export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.6.0@sha256:fb454a097fd26ea329b0234d6d82b53ae25f672bd625c278eaaee683a00f2507
 export GITLAB_SSH_BIND=127.0.0.1:2222
 export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 ```
@@ -277,3 +277,28 @@ python3 tests/seed/recovery-contract.py
 ```bash
 bash stop.sh
 ```
+
+## 네이티브 호스트 런타임 준비
+
+Quickstart는 고정된 커밋과 스크립트 해시를 확인하여 nvm **0.41.0**을 설치한 뒤,
+nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
+`/opt/system-bootstrapper-runtime`이며 기존 사용자의 nvm 설치, 기본 버전과
+셸 프로필은 변경하지 않습니다. nvm이 내려받은 Node 압축 파일의 고정 해시도
+확인합니다. 컴파일된 Operations 파일과 의존성은 승인된 Controller 이미지에서
+복사하며, 추출용 컨테이너는 시작하지 않습니다. 호스트에서 npm 설치를 실행할
+필요가 없습니다.
+
+수동 설치에서는 먼저 네이티브 호스트 의존성을 설치하고, 검토된 릴리스의 소스를
+체크아웃한 다음 공개 메타데이터를 검증합니다. 릴리스 설치 도구를 실행하기 전에
+다음 명령으로 런타임을 준비하세요.
+
+```sh
+sudo python3 bootstrapper/prepare-host-runtime.py \
+  --checkout "$PWD" --release-metadata /absolute/path/release.json
+```
+
+기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
+런타임 디렉터리와 `operations/dist`, `operations/node_modules`를
+보존하세요. 도구는 저장된 Node 실행 파일의 절대 경로를 사용하므로 복구 중에는
+nvm, 셸 프로필이나 npm 네트워크 접근이 필요하지 않습니다. 실행 파일 경로는
+`/opt/system-bootstrapper-runtime/node-executable`에 기록됩니다.

@@ -166,6 +166,83 @@ class Quickstart(unittest.TestCase):
         self.assertIn('sync-auth.env', output.getvalue())
         self.assertNotIn('Password:', output.getvalue())
 
+    def test_monorepo_metadata_requires_exact_Wizard_tree_without_separate_repository(self):
+        source = self.selected['source']
+        source.pop('wizardRevision'); source.pop('wizardRepository')
+        source.update(sourceLayout='system-monorepo-v1', wizardSourceTree='c' * 40)
+        self.urls = []
+        with patch.object(quick, 'download', side_effect=self.network):
+            self.assertEqual(quick.metadata()['source']['wizardSourceTree'], 'c' * 40)
+            source['wizardRevision'] = 'c' * 40
+            with self.assertRaisesRegex(quick.QuickstartError, 'source identities'):
+                quick.metadata()
+
+    def test_monorepo_fresh_flow_prepares_runtime_before_installer_without_gitlink(self):
+        self.selected['source'].pop('wizardRevision'); self.selected['source'].pop('wizardRepository')
+        self.selected['source'].update(sourceLayout='system-monorepo-v1', wizardSourceTree='c' * 40)
+        checkout = self.directory / 'checkout'
+        self.urls, calls = [], []
+        def command(arguments, timeout=1800):
+            calls.append(arguments)
+            if 'clone' in arguments: checkout.mkdir()
+            if arguments[0] == 'python3': self.assertTrue(any(row == ['runtime-prepared'] for row in calls))
+        def identity(arguments, **kwargs):
+            return (self.selected['source']['tree'] if 'rev-parse' in arguments else '040000 tree ' + 'c' * 40 + '\twizard').encode()
+        with patch.object(quick, 'preflight'), patch.object(quick, 'CHECKOUT', checkout), \
+                patch.object(quick, 'download', side_effect=self.network), patch.object(quick, 'command', side_effect=command), \
+                patch.object(quick.subprocess, 'check_output', side_effect=identity), patch.object(quick, 'wait_for_wizard'), \
+                patch.object(quick, 'prepare_host_runtime', side_effect=lambda selected: calls.append(['runtime-prepared'])), \
+                contextlib.redirect_stdout(io.StringIO()):
+            quick.install()
+        self.assertFalse(any('submodule' in row for row in calls))
+        self.assertTrue(any(row[0] == 'python3' for row in calls))
+
+    def test_fresh_runtime_installs_pinned_nvm_Node_and_extracts_accepted_code_without_npm(self):
+        runtime, checkout = self.directory / 'runtime', self.directory / 'checkout'
+        (checkout / 'operations').mkdir(parents=True)
+        calls, script, archive = [], b'pinned nvm fixture', b'pinned Node archive fixture'
+        image = self.selected['images']['controller']['reference']
+        owned = 'f' * 64
+        def command(arguments, timeout=1800):
+            calls.append(arguments)
+            if 'clone' in arguments:
+                destination = Path(arguments[-1]); destination.mkdir()
+                (destination / 'nvm.sh').write_bytes(script)
+            if arguments[0] == 'env':
+                nvm = runtime / 'nvm'
+                cache = nvm / '.cache/bin' / quick.NODE_ARCHIVE
+                cache.mkdir(parents=True)
+                (cache / (quick.NODE_ARCHIVE + '.tar.xz')).write_bytes(archive)
+                node = nvm / 'versions/node/v24.22.0/bin/node'
+                node.parent.mkdir(parents=True); node.write_bytes(b'fixture-node')
+            if 'cp' in arguments:
+                destination = Path(arguments[-1]); destination.mkdir()
+                if destination.name == 'dist':
+                    (destination / 'host').mkdir(); (destination / 'host/entry.js').write_text('fixture')
+        def output(arguments, **kwargs):
+            if 'rev-parse' in arguments: return quick.NVM_COMMIT.encode()
+            if '--version' in arguments: return b'v24.22.0'
+            if 'inspect' in arguments:
+                return json.dumps([{'Os':'linux','Architecture':'amd64','RepoDigests':[image],
+                    'Config':{'Labels':{'org.opencontainers.image.revision':self.selected['source']['revision']}}}]).encode()
+            if 'create' in arguments: return owned.encode()
+            raise AssertionError(arguments)
+        original_path = os.environ.get('PATH', '')
+        with patch.object(quick, 'HOST_RUNTIME', runtime), patch.object(quick, 'CHECKOUT', checkout), \
+                patch.object(quick, 'NVM_SCRIPT_SHA256', hashlib.sha256(script).hexdigest()), \
+                patch.object(quick, 'NODE_SHA256', hashlib.sha256(archive).hexdigest()), \
+                patch.object(quick, 'command', side_effect=command), patch.object(quick.subprocess, 'check_output', side_effect=output), \
+                patch.dict(os.environ, {'PATH':original_path,'NVM_DIR':'/untouched-user-nvm'}):
+            quick.prepare_host_runtime(self.selected)
+            self.assertEqual(os.environ['NVM_DIR'], '/untouched-user-nvm')
+            self.assertTrue((runtime / 'bin/node').is_symlink())
+            self.assertEqual((runtime / 'node-executable').read_text().strip(), str(runtime / 'nvm/versions/node/v24.22.0/bin/node'))
+            with self.assertRaisesRegex(quick.QuickstartError, 'already exists'):
+                quick.prepare_host_runtime(self.selected)
+        self.assertTrue(any('nvm install --no-progress -b 24.22.0' in argument for row in calls for argument in row))
+        self.assertFalse(any('npm' == argument or argument in ('run', 'start') for row in calls for argument in row))
+        self.assertEqual(calls[-1][-2:], ['rm', owned])
+
     def test_checksum_failure_never_executes_native_installer(self):
         self.urls = []
         self.selected['quickstart']['hostInstallerSha256'] = '0' * 64

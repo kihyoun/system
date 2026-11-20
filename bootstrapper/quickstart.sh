@@ -27,6 +27,11 @@ import urllib.request
 REPOSITORY = 'kihyoun/system'  # Replaced for the accepted public mirror.
 ACCEPTED_RELEASE_TAG = None  # Replaced only in the accepted public release asset.
 CHECKOUT = Path('/opt/system-bootstrapper')
+HOST_RUNTIME = Path('/opt/system-bootstrapper-runtime')
+NVM_COMMIT = '4e8758a801eea9479b32a904f31093e410ddaba4'
+NVM_SCRIPT_SHA256 = 'e7ffd3d192735da61e5eb04e68f1aca4a293af4cd0000864568d6de7aa8f6fc4'
+NODE_ARCHIVE = 'node-v24.22.0-linux-x64'
+NODE_SHA256 = 'cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008'
 LIVE = Path('/var/lib/system-bootstrapper/platform')
 SELECTOR = Path('/etc/system-bootstrapper/persistence.env')
 ALLOWED_HOSTS = {'api.github.com', 'github.com', 'raw.githubusercontent.com',
@@ -87,7 +92,7 @@ def preflight():
             'Quickstart requires an 8 GiB-class host (at least 7.5 GiB reported RAM).')
     require(shutil.disk_usage('/var/lib').free >= 40 * 1024 ** 3, 'Quickstart requires 40 GiB free on the live-data filesystem.')
     require(shutil.disk_usage('/opt').free >= 1024 ** 3, 'Quickstart requires 1 GiB free for source checkout.')
-    for target in (CHECKOUT, LIVE, SELECTOR, Path('/etc/system-bootstrapper'),
+    for target in (CHECKOUT, HOST_RUNTIME, LIVE, SELECTOR, Path('/etc/system-bootstrapper'),
                    Path('/var/lib/system-bootstrapper'), Path('/system')):
         require(not target.exists() and not target.is_symlink(),
                 'Existing installation or retained state detected at ' + str(target) +
@@ -132,10 +137,15 @@ def metadata():
             and value.get('acceptance', {}).get('requiredChecksPassed') is True,
             'Accepted public source/image metadata required.')
     source = value.get('source', {})
+    shared = source.get('sourceLayout') == 'system-monorepo-v1'
     require(source.get('repository') == 'https://github.com/' + REPOSITORY + '.git'
-            and isinstance(source.get('wizardRepository'), str)
-            and re.fullmatch(r'https://github\.com/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\.git', source['wizardRepository'])
-            and all(re.fullmatch(r'[a-f0-9]{40}', source.get(key, '')) for key in ('revision', 'tree', 'wizardRevision')),
+            and all(re.fullmatch(r'[a-f0-9]{40}', source.get(key, '')) for key in ('revision', 'tree'))
+            and ((shared and re.fullmatch(r'[a-f0-9]{40}', source.get('wizardSourceTree', '')) and
+                  source.get('wizardRevision') is None and source.get('wizardRepository') is None) or
+                 (source.get('sourceLayout') is None and source.get('wizardSourceTree') is None and
+                  isinstance(source.get('wizardRepository'), str) and
+                  re.fullmatch(r'https://github\.com/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\.git', source['wizardRepository']) and
+                  re.fullmatch(r'[a-f0-9]{40}', source.get('wizardRevision', '')))),
             'Exact public source identities are required.')
     for role in ('controller', 'wizard'):
         require(re.fullmatch(r'(?:docker\.io/)?[a-z0-9_-]+/[a-z0-9._-]+@sha256:[a-f0-9]{64}',
@@ -144,6 +154,58 @@ def metadata():
     require(re.fullmatch(r'[a-f0-9]{64}', value.get('quickstart', {}).get('hostInstallerSha256', '')),
             'Accepted native host installer checksum required.')
     return value
+
+
+def prepare_host_runtime(selected):
+    """Prepare verified offline inputs without starting code from the image."""
+    require(not HOST_RUNTIME.exists() and not HOST_RUNTIME.is_symlink(), 'Host runtime already exists; preserve it.')
+    require(re.fullmatch(r'(?:docker\.io/)?[a-z0-9_-]+/[a-z0-9._-]+@sha256:[a-f0-9]{64}', selected.get('images', {}).get('controller', {}).get('reference', '')) and
+            re.fullmatch(r'[a-f0-9]{40}', selected.get('source', {}).get('revision', '')),
+            'Immutable accepted runtime image and source required.')
+    HOST_RUNTIME.mkdir(mode=0o755)
+    nvm = HOST_RUNTIME / 'nvm'
+    command(['git', '-c', 'core.hooksPath=/dev/null', 'clone', '--depth', '1', '--branch', 'v0.41.0',
+             '--', 'https://github.com/nvm-sh/nvm.git', str(nvm)])
+    commit = subprocess.check_output(['git', '-C', str(nvm), 'rev-parse', 'HEAD'], timeout=30).decode().strip()
+    require(commit == NVM_COMMIT and hashlib.sha256((nvm / 'nvm.sh').read_bytes()).hexdigest() == NVM_SCRIPT_SHA256,
+            'Pinned nvm source checksum mismatch.')
+    # A dedicated root-owned installation preserves each user's existing nvm,
+    # shell profile and default version. nvm is sourced only during preparation.
+    command(['env', '-u', 'NVM_AUTH_HEADER', '-u', 'NPM_CONFIG_PREFIX', '-u', 'npm_config_prefix', '-u', 'PREFIX',
+             'NVM_DIR=' + str(nvm), 'NVM_NODEJS_ORG_MIRROR=https://nodejs.org/dist', 'NVM_NO_COLORS=1',
+             'bash', '--noprofile', '--norc', '-c',
+             'set -e; cd "$1"; . "$1/nvm.sh" --no-use; test "$(nvm --version)" = 0.41.0; nvm install --no-progress -b 24.22.0',
+             'prepare-host-node', str(nvm)])
+    archive = nvm / '.cache/bin' / NODE_ARCHIVE / (NODE_ARCHIVE + '.tar.xz')
+    require(archive.is_file() and hashlib.sha256(archive.read_bytes()).hexdigest() == NODE_SHA256,
+            'Pinned host Node runtime checksum mismatch.')
+    node = nvm / 'versions/node/v24.22.0/bin/node'
+    require(node.is_file() and not node.is_symlink() and
+            subprocess.check_output([str(node), '--version'], timeout=30).strip() == b'v24.22.0',
+            'Pinned Node runtime version mismatch.')
+    (HOST_RUNTIME / 'bin').mkdir(mode=0o755)
+    (HOST_RUNTIME / 'bin/node').symlink_to(node)
+    (HOST_RUNTIME / 'node-executable').write_text(str(node) + '\n')
+    image = selected['images']['controller']['reference']
+    docker = ['docker', '--host=unix:///var/run/docker.sock']
+    command([*docker, 'pull', image])
+    rows = json.loads(subprocess.check_output([*docker, 'image', 'inspect', image], timeout=30))
+    require(len(rows) == 1 and rows[0].get('Os') == 'linux' and rows[0].get('Architecture') == 'amd64' and
+            image.removeprefix('docker.io/') in [value.removeprefix('docker.io/') for value in rows[0].get('RepoDigests', [])] and
+            rows[0].get('Config', {}).get('Labels', {}).get('org.opencontainers.image.revision') == selected['source']['revision'],
+            'Accepted runtime image identity mismatch.')
+    container = subprocess.check_output([*docker, 'create', '--network', 'none', '--entrypoint', '/bin/true', image], timeout=30).decode().strip()
+    require(re.fullmatch(r'[a-f0-9]{64}', container), 'Owned runtime extraction container required.')
+    try:
+        for name in ('dist', 'node_modules'):
+            destination = CHECKOUT / 'operations' / name
+            require(not destination.exists() and not destination.is_symlink(), 'Compiled runtime destination already exists.')
+            command([*docker, 'cp', container + ':/system/operations/' + name, str(destination)])
+        require((CHECKOUT / 'operations/dist/host/entry.js').is_file(), 'Accepted compiled host runtime is missing.')
+        command([str(node), str(CHECKOUT / 'operations/dist/host/entry.js'), '--help'], timeout=30)
+    finally:
+        command([*docker, 'rm', container], timeout=30)
+    os.environ['PATH'] = str(HOST_RUNTIME / 'bin') + os.pathsep + os.environ.get('PATH', '')
 
 
 def wait_for_wizard(timeout=180):
@@ -181,10 +243,14 @@ def install():
     command(['git', '-C', str(CHECKOUT), '-c', 'core.hooksPath=/dev/null', 'checkout', '--detach', source['revision']])
     tree = subprocess.check_output(['git', '-C', str(CHECKOUT), 'rev-parse', 'HEAD^{tree}']).decode().strip()
     gitlink = subprocess.check_output(['git', '-C', str(CHECKOUT), 'ls-tree', 'HEAD', 'wizard']).decode().strip()
-    require(tree == source['tree'] and gitlink == '160000 commit ' + source['wizardRevision'] + '\twizard', 'Accepted source tree/gitlink mismatch.')
-    mapping = subprocess.check_output(['git', '-C', str(CHECKOUT), 'config', '--file', '.gitmodules', '--get', 'submodule.wizard.url']).decode().strip()
-    require(mapping == source['wizardRepository'], 'Accepted Wizard repository mapping mismatch.')
-    command(['git', '-C', str(CHECKOUT), '-c', 'core.hooksPath=/dev/null', 'submodule', 'update', '--init', '--recursive'])
+    if source.get('sourceLayout') == 'system-monorepo-v1':
+        require(tree == source['tree'] and gitlink == '040000 tree ' + source['wizardSourceTree'] + '\twizard', 'Accepted monorepo source tree mismatch.')
+        prepare_host_runtime(selected)
+    else:
+        require(tree == source['tree'] and gitlink == '160000 commit ' + source['wizardRevision'] + '\twizard', 'Accepted source tree/gitlink mismatch.')
+        mapping = subprocess.check_output(['git', '-C', str(CHECKOUT), 'config', '--file', '.gitmodules', '--get', 'submodule.wizard.url']).decode().strip()
+        require(mapping == source['wizardRepository'], 'Accepted Wizard repository mapping mismatch.')
+        command(['git', '-C', str(CHECKOUT), '-c', 'core.hooksPath=/dev/null', 'submodule', 'update', '--init', '--recursive'])
     # The native installer enforces clean source, fresh live state, exclusive
     # initialization and exact pulled-image labels before any service startup.
     with tempfile.TemporaryDirectory(prefix='system-release-metadata-') as temporary:
