@@ -4,7 +4,8 @@ export interface CiFile {
   path: string;
   sha256: string;
 }
-interface PreviousEnvironment {
+export interface PreviousEnvironment {
+  version?: number;
   phase: string;
   operation: string;
   managementMode?: string;

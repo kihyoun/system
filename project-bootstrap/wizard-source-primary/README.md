@@ -195,3 +195,13 @@ Only then delete the duplicate project after confirming no live dependency remai
 Deleting it removes its registry endpoint; a historical rollback image from that
 project must remain in a deliberate local/offline archive. The exact recovery alias
 does not recreate a deleted registry or make old backups independent of it.
+
+## Runtime boundary
+
+The compatible `run.js`, `binding.js` and `source-installation.js` entrypoints
+load the compiled operations runtime. `AdoptionModule` owns planning, fresh
+evidence collection, confirmation and the locked configuration transaction.
+Source installation validation and source-primary pipeline policy are typed
+operations capabilities. Build the operations package before using these
+entrypoints; the accepted controller/helper packages its compiled runtime.
+Historical recipe generators remain format adapters, preserving reserved bytes.
