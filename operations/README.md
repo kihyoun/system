@@ -54,6 +54,21 @@ The public package contains compiled operation code and its required validation
 assets. It has no install-time scripts. Builds and publication run in GitLab;
 GitHub provides the public source and accepted release documentation.
 
+To abort an interrupted promotion, use the retained checkpoint and the same
+reviewed checkout and persistence configuration:
+
+```sh
+sudo system-bootstrapper promotion-abort --checkout /opt/system-bootstrapper \
+  --checkpoint-dir /path/to/retained/checkpoint \
+  --persistence-env /etc/system-bootstrapper/persistence.env
+```
+
+This invokes the shared recovery service without starting an API server. It
+checks recorded ownership and retained images before recovery. An uncertain
+operation keeps its leases and checkpoint for reconciliation; do not delete
+those files to force a retry. This command does not reverse a GitLab database
+migration.
+
 The [operation architecture and entry-point inventory](ARCHITECTURE.md) maps
 API/CLI compatibility paths, privileges, durable ownership, native boundaries,
 focused tests and failure/recovery responsibilities across the platform.

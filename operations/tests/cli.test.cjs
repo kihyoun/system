@@ -15,6 +15,7 @@ test('help and version work without host tools, configuration or services', () =
   const help = run(['--help']);
   assert.equal(help.status, 0, help.stderr);
   assert.match(help.stdout, /Usage: system-bootstrapper/);
+  assert.match(help.stdout, /promotion-abort/);
   const version = run(['--version']);
   assert.equal(version.status, 0, version.stderr);
   assert.equal(version.stdout, require('../package.json').version + '\n');
@@ -32,6 +33,10 @@ test('unknown arguments fail without invoking an external command', () => {
   assert.equal(result.status, 1);
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /unknown-command-use-help/);
+  const recovery = run(['promotion-abort', '--checkout', '/source']);
+  assert.equal(recovery.status, 1);
+  assert.equal(recovery.stdout, '');
+  assert.match(recovery.stderr, /promotion-checkpoint-and-persistence-required/);
 });
 
 test('host commands require explicit source and image before any native command', () => {

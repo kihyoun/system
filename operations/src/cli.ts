@@ -77,10 +77,19 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
         '  --help              Show this help\n\n' +
         '  start / stop        Start or stop the host platform\n' +
         '  persistence         Verify and prepare selected persistent storage\n\n' +
+        '  promotion-abort     Recover an interrupted promotion from its retained checkpoint\n\n' +
         'Host commands require --checkout /absolute/reviewed/source.\n' +
         'Storage: --image IMAGE --persistence-env FILE [--check-only] [--configuration-backup ZIP]\n' +
         'Install: --controller IMAGE@sha256:DIGEST --wizard IMAGE@sha256:DIGEST [--release-metadata FILE] [--install-host]\n',
     );
+    return;
+  }
+  if (args[0] === 'promotion-abort') {
+    const checkout = args.indexOf('--checkout');
+    if (checkout < 1 || !args[checkout + 1]?.startsWith('/'))
+      throw new Error('explicit-host-checkout-required');
+    const { main: recover } = await import('./host/promotion-recovery-entry.js');
+    await recover([...args.slice(1)]);
     return;
   }
   if (['start', 'stop', 'persistence'].includes(args[0])) {
