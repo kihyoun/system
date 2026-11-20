@@ -1,9 +1,14 @@
 'use strict';
 // Only committed, source-owned diagnostic codes may reach receipts. A regex
 // alone would also admit a credential shaped like a hyphenated error string.
+const publicUpgrade = require('../e2e/public-upgrade-diagnostics.json');
 const REASONS = new Set([
+  ...['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover'].flatMap(operation =>
+    [...Object.values(publicUpgrade.errors), ...Object.values(publicUpgrade.exceptionTypes), publicUpgrade.fallback]
+      .map(code => 'public-upgrade-native-' + operation + '-' + code)),
   'public-upgrade-data-inventory-invalid',
   'public-upgrade-data-inventory-limit',
+  'public-upgrade-service-oom',
   'public-upgrade-native-operation-invalid',
   'public-upgrade-native-initialize-failed',
   'public-upgrade-native-restore-original-failed',

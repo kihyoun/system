@@ -8,7 +8,7 @@ This synthetic future publication is never exported as release evidence.
 """
 import copy
 import base64
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 import hashlib
 import importlib.util
 import io
@@ -33,6 +33,29 @@ def load(name, filename):
 
 
 tool = load('candidate_public_upgrade_cli', 'bootstrapper/upgrade-release.py')
+DIAGNOSTICS = json.loads((SOURCE / 'tests/e2e/public-upgrade-diagnostics.json').read_bytes())
+
+
+def diagnostic_code(error):
+    if isinstance(error, (successor.recovery.RecoveryError, tool.updater.installer.ReleaseError)):
+        code = DIAGNOSTICS['errors'].get(str(error))
+        if code:
+            return code
+    return DIAGNOSTICS['exceptionTypes'].get(type(error).__name__, DIAGNOSTICS['fallback'])
+
+
+def entrypoint():
+    # Importing the production CLI bypasses its __main__ formatter. Carry only
+    # source-owned fixed diagnostics through the driver's existing line matcher.
+    output = io.StringIO()
+    try:
+        with redirect_stdout(output), redirect_stderr(io.StringIO()):
+            main()
+    except Exception as error:
+        print(DIAGNOSTICS['marker'] + diagnostic_code(error), file=sys.stderr)
+        return 1
+    print(output.getvalue(), end='')
+    return 0
 
 
 def previous_configuration(raw, fixture):
@@ -168,4 +191,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(entrypoint())

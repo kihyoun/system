@@ -8,6 +8,7 @@ const {execFileSync} = require('node:child_process');
 const graph = require('../../bootstrapper/upgrade-paths.json');
 const {manifest} = require('../../gitlab/publish-dockerhub');
 const recovery = require('./recovery');
+const diagnostics = require('./public-upgrade-diagnostics.json');
 const hash = raw => crypto.createHash('sha256').update(raw).digest('hex');
 const required = (value, code) => { if (!value) throw Error(code); };
 const root = path.resolve(__dirname, '../..');
@@ -130,6 +131,33 @@ async function replaceController(candidate, baseline, image, fixture) {
   await candidate.inner(['start', 'system_bootstrapper_1']);
 }
 
+function controllerFixture(baseline, fixture) {
+  // Keep only the disposable platform's adapters. The native Compose file
+  // must continue to select release images, storage and staged startup.
+  const inherited = Object.fromEntries(baseline.Config.Env.map(value => [value.slice(0, value.indexOf('=')), value.slice(value.indexOf('=') + 1)]));
+  const environment = Object.fromEntries(['GITLAB_OMNIBUS_CONFIG', 'GITLAB_RUNNER_HELPER_IMAGE',
+    'SYSTEM_WIZARD_ENVIRONMENT_IMAGE'].filter(key => Object.hasOwn(inherited, key)).map(key => [key, inherited[key]]));
+  environment.SYSTEM_PUBLIC_UPGRADE_FIXTURE = fixture;
+  const volumes = [fixture + ':' + fixture + ':ro',
+    fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker:ro',
+    fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker-compose:ro'];
+  return {services: {bootstrapper: {environment, volumes, network_mode: 'bridge',
+    extra_hosts: baseline.HostConfig.ExtraHosts || []}}};
+}
+
+async function waitForServices(candidate, milliseconds = 600000) {
+  const names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'];
+  await candidate.wait(async () => {
+    const rows = JSON.parse(await candidate.inner(['inspect', ...names]));
+    if (rows.some(row => row.State?.OOMKilled === true))
+      throw Object.assign(Error('public-upgrade-service-oom'), {noRetry: true});
+    return rows.length === names.length && new Set(rows.map(row => row.Name)).size === names.length &&
+      rows.every(row => names.includes(row.Name?.replace(/^\//, '')) && row.State?.Running === true &&
+        !['Paused', 'Restarting', 'Dead'].some(key => row.State[key]) &&
+        (!row.State.Health || row.State.Health.Status === 'healthy'));
+  }, milliseconds);
+}
+
 class NativeCLI {
   constructor(candidate) {
     this.candidate = candidate;
@@ -171,13 +199,7 @@ class NativeCLI {
         '\t' + candidate.spec.images[role === 'controller' ? 'candidate' : 'wizard'].id + '\ttarget');
     }
     await this.write(this.fixture + '/images.tsv', mappings.join('\n') + '\n');
-    const mounts = [this.fixture + ':' + this.fixture + ':ro',
-      this.fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker:ro',
-      this.fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker-compose:ro'];
-    const environment = Object.fromEntries(baseline.Config.Env.map(value => [value.slice(0, value.indexOf('=')), value.slice(value.indexOf('=') + 1)]));
-    environment.SYSTEM_PUBLIC_UPGRADE_FIXTURE = this.fixture;
-    await this.write(this.fixture + '/compose.yml', JSON.stringify({services: {bootstrapper: {
-      environment, volumes: mounts, network_mode: 'bridge', extra_hosts: baseline.HostConfig.ExtraHosts || []}}}));
+    await this.write(this.fixture + '/compose.yml', JSON.stringify(controllerFixture(baseline, this.fixture)));
     await this.write(this.storage, "export PERSISTENCE_MODE='local'\nexport PERSISTENT_MOUNT='/'\nexport PERSISTENT_DIR='" + this.live +
       "'\nexport PERSISTENT_UUID=''\nexport SEED_DIR='" + storage.SEED + "'\nexport SEED_MOUNT='" + storage.MOUNT + "'\nexport SEED_UUID=''\n");
     await candidate.call(['exec', candidate.daemon, 'cp', '/run/system-bootstrapper/guided-preview-ca.pem', this.fixture + '/ca.pem']);
@@ -210,12 +232,16 @@ class NativeCLI {
     const operation = args[0] === '--operation' ? args[1] : args[0];
     required(['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover'].includes(operation),
       'public-upgrade-native-operation-invalid');
+    const failureCodes = Object.fromEntries([...new Set([
+      ...Object.values(diagnostics.errors), ...Object.values(diagnostics.exceptionTypes), diagnostics.fallback
+    ])].map(code => [diagnostics.marker + code, 'public-upgrade-native-' + operation + '-' + code]));
     try {
       const raw = await candidate.inner([...command, candidate.spec.images.gitlab.id,
-        this.fixture + '/source/tests/e2e/public-upgrade-host.py', ...args], {timeout: 1200000});
+        this.fixture + '/source/tests/e2e/public-upgrade-host.py', ...args], {timeout: 1200000, failureCodes});
       return JSON.parse(raw.split('\n').at(-1));
     } catch (error) {
       if (['canceled-or-overall-timeout', 'readiness-timeout'].includes(error.message)) throw error;
+      if (Object.values(failureCodes).includes(error.message)) throw error;
       const failure = Error('public-upgrade-native-' + operation + '-failed');
       if (Number.isInteger(error.exitCode)) failure.exitCode = error.exitCode;
       if (['ETIMEDOUT', 'ENOBUFS', 'ENOENT', 'EACCES'].includes(error.systemCode)) failure.systemCode = error.systemCode;
@@ -261,6 +287,7 @@ async function run(candidate, expected, dependencies = {}) {
   let currentExpected = expected;
   let verificationAuth;
   const verify = dependencies.verify || (async () => {
+    await waitForServices(candidate);
     await candidate.wait(async () => { const value = await recovery.syncFetch(candidate); return !!value.main?.data; }, 600000);
     // This includes the exact existing registry tag/digest. Reuse the native
     // registry job immediately before this stage; do not create more commits
@@ -332,4 +359,4 @@ async function run(candidate, expected, dependencies = {}) {
       configurationPreserved: true, dataPreserved: true, runnerRegistryVerified: true, rollbackVerified: true};
   });
 }
-module.exports = {download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, NativeCLI, run};
+module.exports = {download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, controllerFixture, waitForServices, NativeCLI, run};

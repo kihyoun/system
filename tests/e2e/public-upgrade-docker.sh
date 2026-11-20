@@ -67,7 +67,13 @@ case " $* " in
         [ -z "$original" ] || exec "$fixture/docker.native" image inspect "$mapped" ;;
 esac
 if [ -n "$original" ] && [ "${1:-}" = --host=unix:///var/run/docker.sock ] && [ "${2:-}" = image ] && [ "${3:-}" = inspect ]; then
-    "$fixture/docker.native" "$@" | sed 's|"RepoDigests":[[:space:]]*\[\]|"RepoDigests": ["'"$original"'"]|g'
+    # The containerd store retains digests derived from local archive tags;
+    # classic storage may return an empty array. Both represent the same
+    # prepared bytes behind this exact fixture-only publication selector.
+    # Capture first so a failing native inspection cannot be hidden by sed.
+    inspected=$("$fixture/docker.native" "$@")
+    printf '%s\n' "$inspected" | sed -e ':collect' -e '$!{N;bcollect;}' \
+        -e 's|"RepoDigests":[[:space:]]*\[[^]]*\]|"RepoDigests": ["'"$original"'"]|g'
 else
     exec "$fixture/docker.native" "$@"
 fi

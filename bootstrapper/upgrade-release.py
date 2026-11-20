@@ -336,10 +336,17 @@ def apply_locked(args, config, target):
         state['phase'] = 'backup-starting'
         successor.atomic_json(target / 'operation.json', state)
         matching_backup(config, target, value, args.backup_timeout)
-        state['phase'] = 'paired-update-starting'
+        state['phase'] = 'backup-services-resuming'
         successor.atomic_json(target / 'operation.json', state)
         runtime.assert_baseline(config, baseline)
+        # Harvest restarts GitLab before releasing its leases, but Docker health
+        # and application readiness can still be catching up. Use the native
+        # verifier before Rails sampling or the updater's strict preflight.
+        receipt = updater.wait_ready(config, baseline, args.token_file, None, recovery.budget(args.timeout))
+        successor.atomic_json(target / 'post-backup-verification.json', receipt)
         require(data_sample() == value['dataSample'], 'service-data-sample-changed-during-backup')
+        state['phase'] = 'paired-update-starting'
+        successor.atomic_json(target / 'operation.json', state)
         invoke(config, authority, security, value['checkpoint'], target / 'target.json', args.token_file, args.timeout, False, baseline)
         require(data_sample() == value['dataSample'], 'service-data-sample-changed-after-update-inspect-before-acceptance')
         state.update(phase='completed', completedAt=runtime.now(), version=value['targetVersion'],

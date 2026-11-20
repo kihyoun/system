@@ -6,7 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
-const {download, prepare, archiveConfigDigest, prepareSource, run, preserved, NativeCLI} = require('../e2e/public-upgrade');
+const {download, prepare, archiveConfigDigest, prepareSource, run, preserved, controllerFixture, waitForServices, NativeCLI} = require('../e2e/public-upgrade');
 const {preparationFailure} = require('../e2e/prepare-images');
 const edge = require('../../bootstrapper/upgrade-paths.json').transitions[0];
 const id = char => 'sha256:' + char.repeat(64);
@@ -18,6 +18,58 @@ function fixture() {
       wizard: {reference: 'example/wizard@' + id('2'), imageId: id('4'), configDigest: id('4')}}};
   return metadata;
 }
+function controllerBaseline() {
+  return {Config: {Env: ['PATH=/inherited/bin', 'BOOTSTRAPPER_IMAGE=old-controller', 'WIZARD_IMAGE=old-wizard',
+    'SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER=', 'PERSISTENT_DIR=/old-live', 'SEED_DIR=/old-seed',
+    'GITLAB_IMAGE=old-gitlab', 'GITLAB_RUNNER_IMAGE=old-runner', 'NGINX_IMAGE=old-proxy',
+    "GITLAB_OMNIBUS_CONFIG=puma['worker_processes'] = 2", 'GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test',
+    'SYSTEM_WIZARD_ENVIRONMENT_IMAGE=' + id('5')]}, HostConfig: {ExtraHosts: ['gitlab.candidate.test:host-gateway']}};
+}
+test('controller override retains fixture adapters while native Compose owns images, storage and staged startup', () => {
+  const baseline = controllerBaseline(), before = JSON.stringify(baseline);
+  const selected = controllerFixture(baseline, '/recovered-data/platform/fixture').services.bootstrapper;
+  assert.deepEqual(Object.keys(selected.environment).sort(), ['GITLAB_OMNIBUS_CONFIG', 'GITLAB_RUNNER_HELPER_IMAGE',
+    'SYSTEM_PUBLIC_UPGRADE_FIXTURE', 'SYSTEM_WIZARD_ENVIRONMENT_IMAGE']);
+  const core = fs.readFileSync(path.resolve(__dirname, '../../system/docker-compose.yml'), 'utf8');
+  const environment = core.split('    environment:\n')[1].split('    volumes:\n')[0];
+  const nativeKeys = [...environment.matchAll(/^      ([A-Z_]+):/gm)].map(match => match[1]);
+  assert(nativeKeys.includes('SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER'));
+  assert(nativeKeys.includes('WIZARD_IMAGE'));
+  assert.deepEqual(nativeKeys.filter(key => Object.hasOwn(selected.environment, key)), ['SYSTEM_WIZARD_ENVIRONMENT_IMAGE']);
+  assert.equal(selected.environment.GITLAB_OMNIBUS_CONFIG, "puma['worker_processes'] = 2");
+  assert.deepEqual(selected.extra_hosts, baseline.HostConfig.ExtraHosts);
+  assert.equal(selected.network_mode, 'bridge');
+  assert(selected.volumes.every(value => value.startsWith('/recovered-data/platform/fixture')));
+  assert.equal(JSON.stringify(baseline), before);
+});
+test('native upgrade waits for Docker health after recreation and refuses OOM without retrying', async () => {
+  const {Candidate} = require('./disposable-candidate');
+  let time = 0, inspections = 0;
+  const names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'];
+  const healthy = names.map(name => ({Name: '/' + name, State: {Running: true, OOMKilled: false,
+    ...(name === 'system_gitlab_1' ? {Health: {Status: 'healthy'}} : {})}}));
+  let sample = () => {
+    if (inspections === 1) throw Error('missing-container-during-recreate');
+    if (inspections === 2) return healthy.map(row => row.Name === '/system_gitlab_1' ?
+      {...row, State: {...row.State, Health: {Status: 'starting'}}} : row);
+    return healthy;
+  };
+  const candidate = {deadline: 100000, now: () => time, sleep: async milliseconds => { time += milliseconds; },
+    wait: Candidate.prototype.wait, inner: async args => {
+      assert.deepEqual(args, ['inspect', ...names]); inspections++; return JSON.stringify(sample());
+    }};
+  await waitForServices(candidate, 3000);
+  assert.equal(inspections, 3);
+  for (const value of [[], healthy.map(row => ({...row, State: {...row.State, Health: {Status: 'starting'}}}))]) {
+    inspections = 0; sample = () => value;
+    await assert.rejects(waitForServices(candidate, 2000), /^Error: readiness-timeout$/);
+    assert.equal(inspections, 2);
+  }
+  inspections = 0; sample = () => healthy.map(row => ({...row, State: {...row.State, OOMKilled: true}}));
+  await assert.rejects(waitForServices(candidate, 3000), error => error.message === 'public-upgrade-service-oom' && error.noRetry);
+  assert.equal(inspections, 1);
+  assert.equal(require('./stage-diagnostics').failureReason('public-upgrade-service-oom'), 'public-upgrade-service-oom');
+});
 test('previous public fixture is selected explicitly and redirects stay anonymous on approved TLS origins', async () => {
   const metadata = fixture();
   assert.deepEqual(await download('example/system', edge.from, async () => Response.json(metadata)), metadata);
@@ -182,13 +234,25 @@ test('registry adapter preserves arguments and disables previous digest transpor
     fs.symlinkSync(script, docker); fs.symlinkSync(script, compose);
     const reference = 'example/system@' + id('1'), image = id('3');
     fs.writeFileSync(path.join(directory, 'images.tsv'), reference + '\t' + image + '\tprevious\n');
-    fs.writeFileSync(path.join(directory, 'docker.native'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$SYSTEM_PUBLIC_UPGRADE_FIXTURE/arguments"\nprintf \'[{"Id":"' + image + '","RepoDigests":[]}]\\n\'\n', {mode: 0o755});
+    fs.writeFileSync(path.join(directory, 'docker.native'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$SYSTEM_PUBLIC_UPGRADE_FIXTURE/arguments"\n' +
+      'if [ "${SYSTEM_TEST_NATIVE_FAILURE:-0}" != 0 ]; then printf \'[{"RepoDigests":[]}]\\n\'; exit "$SYSTEM_TEST_NATIVE_FAILURE"; fi\n' +
+      'if [ -n "${SYSTEM_TEST_NATIVE_INSPECT:-}" ]; then printf "%s\\n" "$SYSTEM_TEST_NATIVE_INSPECT"; ' +
+      'else printf \'[{"Id":"' + image + '","RepoDigests":[]}]\\n\'; fi\n', {mode: 0o755});
     fs.writeFileSync(path.join(directory, 'docker-compose.native'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$SYSTEM_PUBLIC_UPGRADE_FIXTURE/arguments"\nprintf "%s" "$BOOTSTRAPPER_IMAGE"\n', {mode: 0o755});
     const env = {...process.env, SYSTEM_PUBLIC_UPGRADE_FIXTURE: directory};
     const args = ['--host=unix:///var/run/docker.sock', 'image', 'inspect', reference];
     const inspected = JSON.parse(execFileSync(docker, args, {env, encoding: 'utf8'}));
     assert.equal(inspected[0].Id, image);
     assert.deepEqual(inspected[0].RepoDigests, [reference]);
+    for (const indent of [undefined, 4]) {
+      const native = [{Id: image, RepoDigests: ['system-candidate@' + id('7'), 'example/existing@' + id('8')],
+        RepoTags: ['candidate:under-test'], Config: {Labels: {fixture: 'preserved'}}, Size: 123}];
+      const result = JSON.parse(execFileSync(docker, args,
+        {env: {...env, SYSTEM_TEST_NATIVE_INSPECT: JSON.stringify(native, null, indent)}, encoding: 'utf8'}));
+      assert.deepEqual(result, [{...native[0], RepoDigests: [reference]}]);
+    }
+    assert.throws(() => execFileSync(docker, args, {env: {...env, SYSTEM_TEST_NATIVE_FAILURE: '17'}, stdio: 'pipe'}),
+      error => error.status === 17, 'failed native inspection must never become successful fabricated identity');
     execFileSync(docker, ['exec', 'fixture', 'printf', '%s', 'one two'], {env});
     assert.equal(fs.readFileSync(path.join(directory, 'arguments'), 'utf8').split('\n').at(-2), 'one two');
     const output = execFileSync(compose, ['-f', '/source/system/docker-compose.yml', 'up', '--no-build', '-d', 'bootstrapper'],
@@ -247,6 +311,40 @@ test('native helper diagnostics identify only the declared phase and preserve bo
   }
   candidate.inner=async()=>{throw Error('canceled-or-overall-timeout');};
   await assert.rejects(()=>native.invoke(['initialize']),/^Error: canceled-or-overall-timeout$/);
+});
+
+test('fixed Python diagnostic markers survive the real Docker sanitizer and native phase wrapper',async()=>{
+  const {Candidate}=require('./disposable-candidate');
+  const {failureReason}=require('./stage-diagnostics');
+  const diagnostics=require('../e2e/public-upgrade-diagnostics.json');
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'public-upgrade-diagnostics-'));
+  const previousPath=process.env.PATH,previousError=process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR;
+  try{
+    fs.writeFileSync(path.join(directory,'docker'),'#!/bin/sh\nprintf \'%s\\n\' "$SYSTEM_TEST_PUBLIC_UPGRADE_ERROR" >&2\nexit 7\n',{mode:0o755});
+    process.env.PATH=directory+path.delimiter+previousPath;
+    const images=Object.fromEntries(['candidate','wizard','gitlab','runner','nginx'].map(role=>[role,{id:id('7'),archive:'/unused/'+role+'.tar'}]));
+    const candidate=new Candidate({example:fs.readFileSync(path.resolve(__dirname,'../../system/.docker.env.example'),'utf8'),
+      daemonImage:'docker@'+id('8'),images,restore:{base:'/recovered-data/platform'}});
+    candidate.daemon='owned-disposable-daemon';
+    const native=new NativeCLI(candidate);
+    for(const operation of ['initialize','restore-original','plan','apply','status','recover']){
+      process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR='private-token\n'+diagnostics.marker+'docker-command-failed\nprivate-stderr';
+      await assert.rejects(()=>native.invoke(['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation]),error=>{
+        assert.equal(error.message,'public-upgrade-native-'+operation+'-docker-command-failed');
+        assert.equal(failureReason(error.message),error.message);
+        assert.equal(error.exitCode,7);assert(!JSON.stringify(error).includes('private'));return true;
+      });
+    }
+    for(const message of [diagnostics.marker+'private-token',diagnostics.marker+'docker-command-failed private-token','prefix '+diagnostics.marker+'docker-command-failed']){
+      process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR=message;
+      await assert.rejects(()=>native.invoke(['--operation','plan']),error=>error.message==='public-upgrade-native-plan-failed'&&error.exitCode===7);
+    }
+    assert.equal(failureReason('public-upgrade-native-plan-private-token'),'stage-error');
+  }finally{
+    process.env.PATH=previousPath;
+    if(previousError===undefined)delete process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR;else process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR=previousError;
+    fs.rmSync(directory,{recursive:true,force:true});
+  }
 });
 
 test('fixture credential revocation uses the authenticated API before any Rails fallback',async()=>{

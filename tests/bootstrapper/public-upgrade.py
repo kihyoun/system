@@ -79,6 +79,90 @@ def authority(metadata, proof, security):
 
 
 class NativeFixtureInitialization(unittest.TestCase):
+    def test_helper_formatter_emits_only_fixed_diagnostics_and_never_tracebacks(self):
+        adapter = load('native_public_fixture_diagnostics', ROOT / 'tests/e2e/public-upgrade-host.py')
+        cases = [
+            (successor.recovery.RecoveryError('successor-checkout-is-modified'), 'checkout-modified'),
+            (adapter.tool.updater.installer.ReleaseError('public-dockerhub-digest-required'), 'public-image-reference-invalid'),
+            (successor.recovery.RecoveryError('command-failed:docker'), 'docker-command-failed'),
+            (successor.recovery.RecoveryError('command-failed:/private/credential'), 'unclassified-error'),
+            (successor.recovery.RecoveryError('private-token\nSYSTEM_PUBLIC_UPGRADE_DIAGNOSTIC checkout-modified'), 'unclassified-error'),
+            (RuntimeError('private-token'), 'unclassified-error'),
+            (KeyError('private-token'), 'required-field-missing'),
+            (FileNotFoundError('/private/credential'), 'file-missing')]
+        # Exercise every fixed source-owned gate, including nested readiness
+        # failures. Text adjacent to an allowed label must never be forwarded.
+        for label, code in adapter.DIAGNOSTICS['errors'].items():
+            cases.extend([
+                (successor.recovery.RecoveryError(label), code),
+                (successor.recovery.RecoveryError(label + ':private-token'), 'unclassified-error'),
+                (successor.recovery.RecoveryError('private-token:' + label), 'unclassified-error'),
+                (RuntimeError(label), 'unclassified-error')])
+        for error, expected in cases:
+            def failed():
+                print('private-token')
+                print('private-stderr', file=sys.stderr)
+                raise error
+            with self.subTest(expected=expected), patch.object(adapter, 'main', side_effect=failed), patch('sys.stdout', new=io.StringIO()) as output, patch('sys.stderr', new=io.StringIO()) as diagnostic:
+                self.assertEqual(adapter.entrypoint(), 1)
+                self.assertEqual(output.getvalue(), '')
+                self.assertEqual(diagnostic.getvalue(), adapter.DIAGNOSTICS['marker'] + expected + '\n')
+        with patch.object(adapter, 'main', side_effect=lambda: print('{"fixture":"success"}')), patch('sys.stdout', new=io.StringIO()) as output:
+            self.assertEqual(adapter.entrypoint(), 0)
+            self.assertEqual(output.getvalue(), '{"fixture":"success"}\n')
+        with tempfile.TemporaryDirectory() as temporary:
+            result = subprocess.run([sys.executable, str(ROOT / 'tests/e2e/public-upgrade-host.py'), 'initialize'],
+                env=dict(os.environ, SYSTEM_PUBLIC_UPGRADE_FIXTURE=temporary), capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, adapter.DIAGNOSTICS['marker'] + 'file-missing\n')
+
+    def test_native_installer_checks_images_through_the_fixture_registry_transport(self):
+        installer = tool.updater.installer
+        identity = {'sourceCommit': 'a' * 40, 'wizardSourceRevision': 'b' * 40}
+        image_id = 'sha256:' + 'c' * 64
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            shim = directory / 'docker'
+            shim.symlink_to(ROOT / 'tests/e2e/public-upgrade-docker.sh')
+            native = directory / 'docker.native'
+            native.write_text('#!' + sys.executable + '\n' +
+                'import pathlib, sys\n' +
+                'root = pathlib.Path(__file__).parent\n' +
+                'expected = ["image", "inspect", "' + image_id + '"]\n' +
+                'if sys.argv[1:] not in (expected, ["--host=unix:///var/run/docker.sock", *expected]):\n' +
+                '    sys.exit(91)\n' +
+                'if sys.argv[1:] == expected:\n' +
+                '    sys.exit(0)\n' +
+                'if (root / "fail-inspection").exists():\n' +
+                '    sys.exit(42)\n' +
+                'sys.stdout.write((root / "inspection.json").read_text())\n')
+            native.chmod(0o700)
+            with patch.dict(os.environ, SYSTEM_PUBLIC_UPGRADE_FIXTURE=temporary), \
+                    patch.object(installer, 'DOCKER', [str(shim), '--host=unix:///var/run/docker.sock']):
+                for wizard in (False, True):
+                    selected = 'docker.io/example/' + ('wizard' if wizard else 'controller') + '@sha256:' + 'd' * 64
+                    (directory / 'images.tsv').write_text(selected.removeprefix('docker.io/') + '\t' + image_id + '\ttarget\n')
+                    labels = {'org.opencontainers.image.revision': identity['wizardSourceRevision' if wizard else 'sourceCommit'],
+                              'org.system-bootstrapper.source-revision': identity['sourceCommit'],
+                              'org.system-bootstrapper.test-job': '17'}
+                    row = {'Id': image_id, 'Os': 'linux', 'Architecture': 'amd64', 'Config': {'Labels': labels}}
+                    for retained in ([], ['system-candidate@' + image_id]):
+                        for indentation in (None, 2):
+                            with self.subTest(wizard=wizard, retained=bool(retained), multiline=bool(indentation)):
+                                row['RepoDigests'] = retained
+                                (directory / 'inspection.json').write_text(json.dumps([row], indent=indentation))
+                                checked = installer.checked_image(selected, identity, wizard=wizard)
+                                self.assertEqual(checked, {'reference': selected, 'imageId': image_id,
+                                    'candidateJobId': 17, 'platform': 'linux/amd64'})
+                    labels['org.opencontainers.image.revision'] = 'e' * 40
+                    (directory / 'inspection.json').write_text(json.dumps([row]))
+                    with self.assertRaisesRegex(installer.ReleaseError, '^release-image-source-mismatch$'):
+                        installer.checked_image(selected, identity, wizard=wizard)
+                (directory / 'fail-inspection').touch()
+                with self.assertRaisesRegex(installer.ReleaseError, '^command-failed:docker$'):
+                    installer.checked_image(selected, identity, wizard=True)
+
     def test_real_initializer_translates_only_the_prepared_candidate_and_restores_selection(self):
         adapter = load('native_public_fixture_initializer', ROOT / 'tests/e2e/public-upgrade-host.py')
         previous = fixture()[0]
@@ -487,7 +571,7 @@ class BackupAndApply(unittest.TestCase):
                 tool.backup_target(self.config, path)
         self.assertFalse(path.parent.exists())
 
-    def apply_fixture(self, fail_backup=False, fail_update=False):
+    def apply_fixture(self, fail_backup=False, fail_update=False, native_readiness=False):
         metadata, proof, security = fixture()
         accepted = authority(metadata, proof, security)
         target_raw, proof_raw = encoded(metadata), encoded(proof)
@@ -515,11 +599,17 @@ class BackupAndApply(unittest.TestCase):
             events.append('matching-backup')
             if fail_backup:
                 raise successor.recovery.RecoveryError('backup-failed')
+            successor.atomic_json(self.target / 'backup.json', {'operation': self.operation})
+        def ready(*values):
+            self.assertEqual(events[-1], 'matching-backup')
+            self.assertEqual(values, (self.config, {}, args.token_file, None, args.timeout))
+            events.append('post-backup-ready')
+            return {'runnerManagers': {'checked': True}, 'format': 'fixture-verification'}
         def invoke(*values):
             if values[-1] is True:
                 events.append('preflight')
             else:
-                self.assertEqual(events[-1], 'matching-backup')
+                self.assertEqual(events[-1], 'post-backup-ready')
                 self.assertEqual(values[-1], {})
                 events.append('native-update')
                 if fail_update:
@@ -534,16 +624,93 @@ class BackupAndApply(unittest.TestCase):
         stack.enter_context(patch.object(tool, 'invoke', side_effect=invoke))
         stack.enter_context(patch.object(tool.archives, 'save_archive', side_effect=image_archive))
         stack.enter_context(patch.object(tool, 'matching_backup', side_effect=backup))
+        if not native_readiness:
+            stack.enter_context(patch.object(tool.updater, 'wait_ready', side_effect=ready))
         self.addCleanup(stack.close)
         return args, events
 
     def test_approved_apply_retains_independent_payloads_before_cold_backup_then_native_update(self):
         args, events = self.apply_fixture()
         result = tool.apply(args, self.config)
-        self.assertEqual(events, ['preflight', 'archive', 'archive', 'matching-backup', 'native-update'])
+        self.assertEqual(events, ['preflight', 'archive', 'archive', 'matching-backup', 'post-backup-ready', 'native-update'])
         self.assertEqual(result['phase'], 'completed')
         self.assertTrue(result['dataSampleVerified'])
         self.assertEqual(result['sourceRevision'], 'a' * 40)
+        self.assertEqual(json.loads(successor.private_input(self.target / 'post-backup-verification.json'))['format'],
+                         'fixture-verification')
+
+    def readiness_transport(self, events, healthy_after):
+        self.config.update(WIZARD_ENABLE='true', GITLAB_RUNNER_SCALE='1')
+        clock, inspections = [0], []
+        def docker(arguments, **unused):
+            self.assertEqual(arguments, [*successor.runtime.DOCKER, 'inspect', 'system_bootstrapper_1',
+                'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'])
+            inspections.append(clock[0])
+            return json.dumps([{'Name': '/' + name, 'State': {'Running': True, 'OOMKilled': False,
+                'Health': {'Status': 'healthy' if len(inspections) >= healthy_after else 'starting'}}}
+                for name in arguments[3:]]).encode()
+        def verify(config, baseline, checkout, token_file, redirect_from, public=False):
+            self.assertEqual(events[-1], 'matching-backup')
+            self.assertEqual((config, baseline, checkout, token_file, redirect_from, public),
+                (self.config, {}, tool.ROOT, 'own-installation-token', None, True))
+            self.assertEqual(json.loads(successor.private_input(self.target / 'operation.json'))['phase'],
+                             'backup-services-resuming')
+            tool.runtime.assert_baseline(config, baseline)
+            # Exercise the production Docker health boundary rather than making
+            # the readiness loop's verifier return a synthetic health failure.
+            tool.runtime.inspect_services(config)
+            events.append('post-backup-ready')
+            return {'runnerManagers': {'checked': True}, 'checkedAt': clock[0]}
+        stack = ExitStack()
+        stack.enter_context(patch.object(tool.updater.time, 'monotonic', side_effect=lambda: clock[0]))
+        stack.enter_context(patch.object(tool.updater.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
+        stack.enter_context(patch.object(tool.runtime, 'run', side_effect=docker))
+        stack.enter_context(patch.object(tool.runtime, 'verify', side_effect=verify))
+        self.addCleanup(stack.close)
+        return clock, inspections
+
+    def test_apply_waits_for_real_Docker_health_after_backup_before_sampling_or_updating(self):
+        args, events = self.apply_fixture(native_readiness=True)
+        clock, inspections = self.readiness_transport(events, healthy_after=3)
+        sample = tool.data_sample
+        def sampled():
+            if 'matching-backup' in events:
+                self.assertIn('post-backup-ready', events)
+            return sample()
+        with patch.object(tool, 'data_sample', side_effect=sampled):
+            result = tool.apply(args, self.config)
+        self.assertEqual(inspections, [0, 3, 6])
+        self.assertEqual(clock[0], 6)
+        self.assertEqual(events[-2:], ['post-backup-ready', 'native-update'])
+        self.assertEqual(result['phase'], 'completed')
+        self.assertEqual(json.loads(successor.private_input(self.target / 'post-backup-verification.json'))['checkedAt'], 6)
+        self.assertIsNone(successor.recovery.OPERATION_DEADLINE)
+
+    def test_post_backup_health_timeout_retains_backup_without_starting_native_update(self):
+        args, events = self.apply_fixture(native_readiness=True)
+        args.timeout = 6
+        clock, inspections = self.readiness_transport(events, healthy_after=100)
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'controller-update-readiness-failed:service-not-healthy'):
+            tool.apply(args, self.config)
+        self.assertEqual((clock[0], inspections), (6, [0, 3, 6]))
+        self.assertNotIn('native-update', events)
+        self.assertEqual(tool.data_sample.call_count, 1)
+        self.assertEqual(json.loads(successor.private_input(self.target / 'operation.json'))['phase'], 'needs-inspection')
+        self.assertTrue((self.target / 'previous-images.json').is_file())
+        self.assertTrue((self.target / 'backup.json').is_file())
+        self.assertFalse((self.target / 'post-backup-verification.json').exists())
+        self.assertFalse((self.config['_root'] / 'recovery/controller-updates/example').exists())
+        self.assertIsNone(successor.recovery.OPERATION_DEADLINE)
+
+    def test_post_backup_readiness_honors_an_earlier_native_operation_deadline(self):
+        args, events = self.apply_fixture(native_readiness=True)
+        clock, inspections = self.readiness_transport(events, healthy_after=100)
+        with patch.object(successor.recovery, 'OPERATION_DEADLINE', 4):
+            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'controller-update-readiness-failed:service-not-healthy'):
+                tool.apply(args, self.config)
+            self.assertEqual(successor.recovery.OPERATION_DEADLINE, 4)
+        self.assertEqual((clock[0], inspections), (4, [0, 3, 4]))
+        self.assertNotIn('native-update', events)
 
     def test_backup_failure_never_starts_updater_and_retains_inspectable_operation(self):
         args, events = self.apply_fixture(fail_backup=True)
