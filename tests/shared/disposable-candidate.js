@@ -326,7 +326,7 @@ class Candidate {
         const before=await this.rails("require 'json'; u=User.find_by_username('root'); t=u.personal_access_tokens.create!(name: 'disposable-candidate-acceptance',scopes:['api'],expires_at:Date.tomorrow); puts JSON.generate(token:t.token,pools:Ci::Runner.instance_type.where(description:'System Bootstrapper Docker pool').count,active_setup:u.personal_access_tokens.where(name:'system-bootstrapper-runner-setup',revoked:false).count)");
         token=before.token;
         if(before.pools!==1||before.active_setup!==0) throw new Error('runner-setup-state-mismatch');
-        await this.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','bash','register.sh','main'],{timeout:180000});
+        await this.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','node','/system/operations/dist/lifecycle/entry.js','runner-register','/system','main'],{timeout:180000});
         const after=await this.rails("require 'json'; puts JSON.generate(pools:Ci::Runner.instance_type.where(description:'System Bootstrapper Docker pool').count,active_setup:User.find_by_username('root').personal_access_tokens.where(name:'system-bootstrapper-runner-setup',revoked:false).count)");
         if(after.pools!==1||after.active_setup!==0) throw new Error('runner-idempotency-failed');
         const script='('+function(base){
