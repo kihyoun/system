@@ -27,7 +27,7 @@ function leaseInput(value: unknown): ControllerLeaseInput {
     typeof row.root === 'string' && path.isAbsolute(row.root) && !row.root.includes('\0'),
     'invalid-controller-lease-input',
   );
-  if (row.seedDirectory !== undefined && row.seedDirectory !== null)
+  if (row.seedDirectory !== undefined && row.seedDirectory !== null && row.seedDirectory !== '')
     requireValue(
       typeof row.seedDirectory === 'string' &&
         path.isAbsolute(row.seedDirectory) &&
@@ -62,7 +62,10 @@ function leaseInput(value: unknown): ControllerLeaseInput {
   }
   return {
     root: row.root,
-    seedDirectory: row.seedDirectory == null ? undefined : (row.seedDirectory as string),
+    seedDirectory:
+      row.seedDirectory == null || row.seedDirectory === ''
+        ? undefined
+        : (row.seedDirectory as string),
     legacyController,
   };
 }

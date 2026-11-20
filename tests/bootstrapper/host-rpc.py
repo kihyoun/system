@@ -45,6 +45,14 @@ class HostRpc(unittest.TestCase):
                 self.assertIn('error', result)
                 self.assertNotIn('lease-not-acquired', result['error'])
 
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('configuration/.projects.env', 'host/letsencrypt'):
+                (root / name).mkdir(parents=True)
+            acquired = host_rpc.invoke('node', lease_entry, 'controllerLease', ['acquire', {'root': directory, 'seedDirectory': ''}])
+            self.assertIn('value', acquired)
+            released = host_rpc.invoke('node', lease_entry, 'controllerLease', ['release', acquired['value']['operation']])
+            self.assertIn('value', released)
         lease_worker = next(value for key, value in host_rpc._workers.items() if key[2] == str(lease_entry))
         host_rpc.close(lease_entry.name)
         self.assertIsNotNone(lease_worker.child.poll())
