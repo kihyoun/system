@@ -90,7 +90,7 @@ fixture's manually replaced controller and final reset using one bounded contain
 | `nginx/` | Default Wizard routing and owned Review/Beta route fragments |
 | `wizard/` | Source packaging/import, build recipes/cleanup, API workflows, upgrades, Review/Beta and deliberate Production promotion/rollback |
 | `shared/` | Runner/context contracts, cleanup/failure propagation, private-daemon lifecycle, payload-only recovery and local ACME fixtures |
-| `performance/resources/` | Offline resource-collector contracts and explicit measurement tools |
+| `performance/resources/` | Offline contracts for shared Nest resource collection, Windows/WSL sampling and explicitly leased native benchmarks |
 
 Cold-copy/restore fault cases are consolidated in `operations/tests/storage-copy.test.cjs`,
 run by the existing operations-runtime check. They use real rsync, native find/runit

@@ -2,24 +2,26 @@
 
 The collector observes an already running system. It does not start workloads,
 containers, WSL distributions, pipelines, bootstrap operations or deployments.
-Python 3.9+ and, for the Windows wrapper, PowerShell 7+ are required. No packages
-are installed.
+The prepared Node runtime and compiled operations are required. Windows also
+requires PowerShell 7 for fixed CIM queries and Node in the already running WSL
+distribution. No packages are installed. Nest services own sampling and cleanup.
 
-`benchmark-native.py` is a separate explicit workload driver. It requires an
+The native `benchmark` action is a separate explicit workload driver. It requires an
 operator-selected resource window, a shared deadline and `--execute`; passive
 collection and the automatic offline suite never invoke it.
 
 ## Run
 
-On Windows with Ubuntu already running and Docker accessible there:
+On Windows with Ubuntu already running, the same prepared checkout mounted in
+WSL, and Docker accessible there (use `--linux-node` for an absolute WSL Node path):
 
 ```powershell
-./tests/performance/resources/collect-windows.ps1 -Samples 3 -Interval 2 `
-  -WslBackingVolume E: -Output "$env:TEMP/system-resource-observation.json"
+node operations/dist/resources/entry.js collect-windows --samples 3 --interval 2 `
+  --wsl-backing-volume E: --output "$env:TEMP/system-resource-observation.json"
 ```
 
 Choose a new output filename; reports are never overwritten. The backing-volume
-argument is an operator assertion, not automatic discovery. The wrapper refuses
+argument is an operator assertion, not automatic discovery. The Windows service refuses
 to start a stopped distribution, uses WSL root for read-only metrics, and samples
 physical Windows C: and E: separately from the virtual Linux root filesystem.
 Windows CIM observations precede each Linux sample and have separate timestamps.
@@ -27,21 +29,21 @@ Windows CIM observations precede each Linux sample and have separate timestamps.
 On native Linux, or inside WSL when Windows metrics are not needed:
 
 ```sh
-python3 tests/performance/resources/collect.py --samples 3 --interval 2 --output /tmp/system-resources.json
+node operations/dist/resources/entry.js collect --samples 3 --interval 2 --output /tmp/system-resources.json
 ```
 
 The caller needs permission to read Docker metrics; do not change socket permissions
 to run this tool. Missing metrics are reported rather than replaced with zeros.
-Python subprocesses have a three-second timeout within a per-sample budget
+Native subprocesses have a three-second timeout within a per-sample budget
 (default twelve seconds). Inventory is capped at 32 containers, configurable to
 128. Sample count is bounded to 30. The interval is a delay **after** a sample,
 not a fixed sampling frequency. Windows CIM calls each have a three-second
-operation timeout; the wrapper's WSL subprocess also has an outer timeout.
+operation timeout; the service's WSL subprocess also has an outer timeout.
 At most two million stdout bytes are retained; exceeding two million combined
 stdout/stderr bytes triggers cleanup while reading. A timed-out or cancelled
 Linux transport is terminated as its own
-process group, with bounded TERM/KILL cleanup; native Windows offline fixtures
-use only the recorded child PID/tree. Cleanup can add up to about two seconds
+process group, with bounded TERM/KILL cleanup; Windows uses only the recorded
+child PID/tree. Cleanup can add up to about two seconds
 outside the sampling budget. No process-name matching or service shutdown is
 used.
 
@@ -70,7 +72,7 @@ CPU percent covers all logical cores. Disk counters are cumulative, overlap acro
 layers and must not be summed. A Linux virtual disk with hundreds of GiB free
 does not establish free space on its physical Windows backing volume.
 
-The runner probe uses a fixed read-only `docker exec`/`awk` command and parses
+The runner probe uses fixed read-only `docker exec`/`awk` argv without a shell and parses
 only numeric `concurrent`, `limit` and `request_concurrency` assignments. The last
 setting controls request polling, not execution concurrency. Missing assignments
 are empty arrays, not inferred defaults. GitLab's embedded services/registry share
@@ -87,14 +89,14 @@ Official metric references: [Docker stats](https://docs.docker.com/reference/cli
 ## Offline verification
 
 ```sh
-python3 -m unittest discover -s tests/performance/resources -p test_collect.py -v
+node --test tests/performance/resources/test_collect.js
 ```
 
 Fixtures cover memory units, invalid numeric values, sanitized output, bounded
 inventory, timestamps, timeout/error redaction, remote-PID refusal, runner
 settings, incomplete role coverage, bounded output, timeout descendants and
 cancellation. They invoke no Docker or WSL commands and spawn only short-lived
-synthetic Python processes, never infrastructure workloads. The Windows wrapper
+synthetic Node processes, never infrastructure workloads. The Windows service
 requires a real Windows/WSL smoke check to validate its platform integration.
 
 ## Capacity assessment
@@ -128,7 +130,7 @@ the host does not have. No automatic procurement is part of these tools.
 
 ## Reproduce bounded native template builds
 
-Use Linux amd64 with the local Docker socket, Buildx and Python available. Drain
+Use Linux amd64 with the local Docker socket, Buildx and the prepared Node runtime available. Drain
 competing heavy jobs and agree a resource window before execution. The driver
 rejects remote Docker overrides. It supports the committed React and Angular
 recipes only, verifies their pinned images and lockfile, rejects symlinks/private
@@ -142,8 +144,8 @@ working-copy files:
 export TASK_BENCHMARK_REVISION=$(git rev-parse HEAD)
 export TASK_BENCHMARK_INPUTS=$(mktemp -d /tmp/system-resource-inputs.XXXXXXXX)
 export TASK_BENCHMARK_OUTPUT=$(mktemp -d /tmp/system-resource-results.XXXXXXXX)
-git archive --format=tar "$TASK_BENCHMARK_REVISION" project-bootstrap/templates |   tar -xf - -C "$TASK_BENCHMARK_INPUTS"
-python3 tests/performance/resources/benchmark-native.py   --case react --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"   --source-revision "$TASK_BENCHMARK_REVISION"   --output "$TASK_BENCHMARK_OUTPUT/react"
+git archive --format=tar "$TASK_BENCHMARK_REVISION" project-bootstrap/templates wizard/.gitlab/runtime bootstrapper/ca |   tar -xf - -C "$TASK_BENCHMARK_INPUTS"
+node operations/dist/resources/entry.js benchmark   --case react --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"   --source-revision "$TASK_BENCHMARK_REVISION"   --output "$TASK_BENCHMARK_OUTPUT/react"
 ```
 
 After reviewing that plan and checking host reserve, the following pair uses one
@@ -151,12 +153,16 @@ absolute ten-minute window. Each invocation creates its own new output directory
 do not reuse a directory from an interrupted attempt:
 
 ```sh
-export TASK_BENCHMARK_DEADLINE=$(python3 -c 'import time; print(time.time() + 600)')
+export TASK_BENCHMARK_DEADLINE=$(node -p 'Date.now() / 1000 + 600')
 export SYSTEM_RESOURCE_BENCHMARK_APPROVED=1
-timeout --signal=TERM --kill-after=45s 555s bash -e -c '
-  python3 tests/performance/resources/benchmark-native.py     --case react --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"     --source-revision "$TASK_BENCHMARK_REVISION"     --output "$TASK_BENCHMARK_OUTPUT/react" --execute     --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"
-  python3 tests/performance/resources/benchmark-native.py     --case angular --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"     --source-revision "$TASK_BENCHMARK_REVISION"     --output "$TASK_BENCHMARK_OUTPUT/angular" --execute     --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"
-'
+node operations/dist/resources/entry.js benchmark --case react \
+  --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates" \
+  --source-revision "$TASK_BENCHMARK_REVISION" --output "$TASK_BENCHMARK_OUTPUT/react" \
+  --execute --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"
+node operations/dist/resources/entry.js benchmark --case angular \
+  --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates" \
+  --source-revision "$TASK_BENCHMARK_REVISION" --output "$TASK_BENCHMARK_OUTPUT/angular" \
+  --execute --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"
 ```
 
 Each builder is capped at 4 GiB/two CPUs, followed by a 128-MiB/half-CPU static

@@ -72,7 +72,7 @@
   {"component":"gitlab","file":"gitlab/renovate-config.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/check-documentation.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/documentation-child.js","timeoutSeconds":30},
-  {"component":"performance","file":"performance/resources/test_collect.py","timeoutSeconds":30},
+  {"component":"performance","file":"performance/resources/test_collect.js","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/in-place-upgrade.js","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/source-primary-adoption.js","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/source-installation.js","timeoutSeconds":15},
