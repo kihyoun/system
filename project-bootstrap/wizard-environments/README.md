@@ -125,3 +125,9 @@ for injected health, ownership, CAS, reload, stale-generation and interrupted
 cutover failures. `node tests/wizard/environment-canonical.js` checks the retained
 canonical lock and receipt adapter. These local checks do not establish live
 candidate acceptance.
+
+`CanonicalModule` owns reservation reads, token-owned locks and cancellation,
+exact-byte receipt CAS, DNS consistency and archived Beta binding replacement.
+The clean helper invokes its compiled stdin adapter in the original controller;
+source text is no longer evaluated as the canonical implementation. The adapter
+returns only the existing public envelope and fixed failure diagnostic.

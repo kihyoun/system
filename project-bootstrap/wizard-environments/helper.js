@@ -6,8 +6,7 @@ const {spawn} = require('child_process');
 const state = require('./state');
 const lifecycle = require('../../operations/dist/project-lifecycle/entry');
 const ROOT = '/templates/wizard-environments';
-const canonicalCode = fs.readFileSync(path.join(__dirname, 'canonical.js'), 'utf8')
-  .replace("if (require.main === module)", 'if (true)');
+const canonicalCode = "require('/system/operations/dist/project-lifecycle/canonical-entry').canonicalStdin();";
 const verifier = fs.readFileSync(path.join(__dirname, 'verify.rb'), 'utf8');
 function canonicalLogo() {
   const source = fs.readFileSync(path.join(__dirname, '../../sync/src/Helper.ts'), 'utf8');
