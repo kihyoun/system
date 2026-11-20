@@ -17,7 +17,22 @@ import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/pris
 import { copyableCode } from '../../docs/model';
 import { useI18n } from '../../i18n';
 
-for (const [name, grammar] of Object.entries({ bash, sh: bash, shell: bash, powershell, pwsh: powershell, json, yaml, yml: yaml, ini, dockerfile: docker, python, javascript, typescript, nginx })) {
+for (const [name, grammar] of Object.entries({
+  bash,
+  sh: bash,
+  shell: bash,
+  powershell,
+  pwsh: powershell,
+  json,
+  yaml,
+  yml: yaml,
+  ini,
+  dockerfile: docker,
+  python,
+  javascript,
+  typescript,
+  nginx,
+})) {
   SyntaxHighlighter.registerLanguage(name, grammar);
 }
 
@@ -35,16 +50,67 @@ export default function CodeBlock({ code, language }: { code: string; language: 
       setStatus('failed');
     }
   }
-  return <Box sx={{ my: 2.5, border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden', minWidth: 0 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: .6, bgcolor: 'action.hover', gap: 1 }}>
-      <Typography variant="caption" sx={{ fontFamily: 'monospace', textTransform: 'uppercase' }}>{language || t('Example output')}</Typography>
-      {copy !== undefined && <Button size="small" onClick={copyCode} startIcon={status === 'copied' ? <Check fontSize="small" /> : <ContentCopy fontSize="small" />} aria-label={status === 'copied' ? t('Copied') : t('code.copyExample', { language })}>
-        <span role="status">{t(status === 'copied' ? 'Copied' : 'Copy')}</span>
-      </Button>}
+  return (
+    <Box
+      sx={{
+        my: 2.5,
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 2,
+        overflow: 'hidden',
+        minWidth: 0,
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 2,
+          py: 0.6,
+          bgcolor: 'action.hover',
+          gap: 1,
+        }}
+      >
+        <Typography variant="caption" sx={{ fontFamily: 'monospace', textTransform: 'uppercase' }}>
+          {language || t('Example output')}
+        </Typography>
+        {copy !== undefined && (
+          <Button
+            size="small"
+            onClick={copyCode}
+            startIcon={
+              status === 'copied' ? <Check fontSize="small" /> : <ContentCopy fontSize="small" />
+            }
+            aria-label={status === 'copied' ? t('Copied') : t('code.copyExample', { language })}
+          >
+            <span role="status">{t(status === 'copied' ? 'Copied' : 'Copy')}</span>
+          </Button>
+        )}
+      </Box>
+      <SyntaxHighlighter
+        language={language || 'text'}
+        style={theme.palette.mode === 'dark' ? oneDark : oneLight}
+        customStyle={{
+          margin: 0,
+          padding: '1.1rem',
+          fontSize: '.85rem',
+          lineHeight: 1.7,
+          borderRadius: 0,
+        }}
+        codeTagProps={{
+          style: { fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' },
+        }}
+      >
+        {code.trimEnd()}
+      </SyntaxHighlighter>
+      {status === 'failed' && (
+        <Alert severity="warning">
+          {t(
+            'Could not copy. Select the example and copy it manually; clipboard access requires a secure browser context and permission.',
+          )}
+        </Alert>
+      )}
     </Box>
-    <SyntaxHighlighter language={language || 'text'} style={theme.palette.mode === 'dark' ? oneDark : oneLight} customStyle={{ margin: 0, padding: '1.1rem', fontSize: '.85rem', lineHeight: 1.7, borderRadius: 0 }} codeTagProps={{ style: { fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' } }}>
-      {code.trimEnd()}
-    </SyntaxHighlighter>
-    {status === 'failed' && <Alert severity="warning">{t('Could not copy. Select the example and copy it manually; clipboard access requires a secure browser context and permission.')}</Alert>}
-  </Box>;
+  );
 }

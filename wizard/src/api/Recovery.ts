@@ -1,33 +1,93 @@
-import {environment, shellValue} from './Environment';
+import { environment, shellValue } from './Environment';
 
 /** Descriptive backup evidence only. Never apply these fields to configuration. */
-export function recoveryMetadata(content: string, observation: any = null, now = new Date(), importedBackup: any = null, seedAssociation: any = null): any {
-  const values = Object.fromEntries(environment(content).map(([key, value]) => [key, shellValue(value)]));
-  const savedImages = Object.fromEntries(Object.entries({controller: 'BOOTSTRAPPER_IMAGE', wizard: 'WIZARD_IMAGE',
-    gitlab: 'GITLAB_IMAGE', runner: 'GITLAB_RUNNER_IMAGE', runnerHelper: 'GITLAB_RUNNER_HELPER_IMAGE', nginx: 'NGINX_IMAGE'}).map(([role, key]) =>
-    [role, {setting: key, reference: values[key] ?? null, status: values[key] ? 'saved' : values[key] === '' ? 'empty' : 'unspecified'}]));
-  return {format: 'system-configuration-recovery-v1', createdAt: now.toISOString(),
-    scope: 'configuration-only', savedImages,
+export function recoveryMetadata(
+  content: string,
+  observation: any = null,
+  now = new Date(),
+  importedBackup: any = null,
+  seedAssociation: any = null,
+): any {
+  const values = Object.fromEntries(
+    environment(content).map(([key, value]) => [key, shellValue(value)]),
+  );
+  const savedImages = Object.fromEntries(
+    Object.entries({
+      controller: 'BOOTSTRAPPER_IMAGE',
+      wizard: 'WIZARD_IMAGE',
+      gitlab: 'GITLAB_IMAGE',
+      runner: 'GITLAB_RUNNER_IMAGE',
+      runnerHelper: 'GITLAB_RUNNER_HELPER_IMAGE',
+      nginx: 'NGINX_IMAGE',
+    }).map(([role, key]) => [
+      role,
+      {
+        setting: key,
+        reference: values[key] ?? null,
+        status: values[key] ? 'saved' : values[key] === '' ? 'empty' : 'unspecified',
+      },
+    ]),
+  );
+  return {
+    format: 'system-configuration-recovery-v1',
+    createdAt: now.toISOString(),
+    scope: 'configuration-only',
+    savedImages,
     importedBackup,
-    recoveryTools: {minimumSystemProductVersion: '1.0.0', backupFormat: 'system-configuration-recovery-v1',
+    recoveryTools: {
+      minimumSystemProductVersion: '1.0.0',
+      backupFormat: 'system-configuration-recovery-v1',
       extendedConfigurationZipRequired: true,
-      note: 'Recovery-tool compatibility is separate from saved runtime image selection; older controllers may reject the metadata entries.'},
-    observedRuntime: observation?.format === 'system-runtime-observation-v1' ? observation : {
-      format: 'system-runtime-observation-v1', status: 'unavailable', observedAt: null,
-      reason: 'No authenticated runtime observation accompanies this configuration.',
-      system: null, wizard: null, images: {}},
-    seed: validSeedAssociation(seedAssociation) ? seedAssociation : {status: 'matching-completed-seed-required', generation: null, manifest: null,
-      verified: false, reason: 'This export neither contains nor verifies persistent service data or a Seed association.'}};
+      note: 'Recovery-tool compatibility is separate from saved runtime image selection; older controllers may reject the metadata entries.',
+    },
+    observedRuntime:
+      observation?.format === 'system-runtime-observation-v1'
+        ? observation
+        : {
+            format: 'system-runtime-observation-v1',
+            status: 'unavailable',
+            observedAt: null,
+            reason: 'No authenticated runtime observation accompanies this configuration.',
+            system: null,
+            wizard: null,
+            images: {},
+          },
+    seed: validSeedAssociation(seedAssociation)
+      ? seedAssociation
+      : {
+          status: 'matching-completed-seed-required',
+          generation: null,
+          manifest: null,
+          verified: false,
+          reason:
+            'This export neither contains nor verifies persistent service data or a Seed association.',
+        },
+  };
 }
 
 export function validSeedAssociation(value: any): boolean {
-  return value?.format === 'system-backup-pair-v1' && value.status === 'matched-completed-seed' && value.verified === true &&
-    /^[a-f0-9]{32}$/.test(value.operation) && /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(value.generation) &&
-    value.manifest === `snapshots/${value.generation}/manifest.json` && /^[a-f0-9]{64}$/.test(value.manifestSha256) &&
-    !Number.isNaN(Date.parse(value.completedAt)) && !Number.isNaN(Date.parse(value.capturedAt)) &&
-    Array.isArray(value.configurationFiles) && value.configurationFiles.length > 0 && value.configurationFiles.length <= 1000 &&
-    value.configurationFiles[0].filename === '.docker.env' && new Set(value.configurationFiles.map((file: any) => file.filename)).size === value.configurationFiles.length && value.configurationFiles.every((file: any) =>
-      /^(?:\.docker\.env|\.projects\.env\/\.[A-Za-z0-9_.-]+\.env)$/.test(file.filename) && /^[a-f0-9]{64}$/.test(file.sha256));
+  return (
+    value?.format === 'system-backup-pair-v1' &&
+    value.status === 'matched-completed-seed' &&
+    value.verified === true &&
+    /^[a-f0-9]{32}$/.test(value.operation) &&
+    /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(value.generation) &&
+    value.manifest === `snapshots/${value.generation}/manifest.json` &&
+    /^[a-f0-9]{64}$/.test(value.manifestSha256) &&
+    !Number.isNaN(Date.parse(value.completedAt)) &&
+    !Number.isNaN(Date.parse(value.capturedAt)) &&
+    Array.isArray(value.configurationFiles) &&
+    value.configurationFiles.length > 0 &&
+    value.configurationFiles.length <= 1000 &&
+    value.configurationFiles[0].filename === '.docker.env' &&
+    new Set(value.configurationFiles.map((file: any) => file.filename)).size ===
+      value.configurationFiles.length &&
+    value.configurationFiles.every(
+      (file: any) =>
+        /^(?:\.docker\.env|\.projects\.env\/\.[A-Za-z0-9_.-]+\.env)$/.test(file.filename) &&
+        /^[a-f0-9]{64}$/.test(file.sha256),
+    )
+  );
 }
 
 export function recoveryGuide(metadata: any): string {
@@ -36,8 +96,17 @@ export function recoveryGuide(metadata: any): string {
 
 /** Retain one historical record; never grow a nested chain or retain Seed claims. */
 export function importedRecovery(value: any): any {
-  if (value?.format !== 'system-configuration-recovery-v1' || JSON.stringify(value).length > 1024 * 1024) return null;
-  return {format: value.format, status: 'imported-unverified', createdAt: value.createdAt || null,
-    savedImages: value.savedImages || null, observedRuntime: value.observedRuntime || null,
-    recoveryTools: value.recoveryTools || null};
+  if (
+    value?.format !== 'system-configuration-recovery-v1' ||
+    JSON.stringify(value).length > 1024 * 1024
+  )
+    return null;
+  return {
+    format: value.format,
+    status: 'imported-unverified',
+    createdAt: value.createdAt || null,
+    savedImages: value.savedImages || null,
+    observedRuntime: value.observedRuntime || null,
+    recoveryTools: value.recoveryTools || null,
+  };
 }

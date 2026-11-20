@@ -1,5 +1,5 @@
-import {bootstrap} from './bootstrap';
-export {bootstrap, createSyncApplication} from './bootstrap';
+import { bootstrap } from './bootstrap';
+export { bootstrap, createSyncApplication } from './bootstrap';
 
 if (require.main === module) {
   void bootstrap().catch(() => {

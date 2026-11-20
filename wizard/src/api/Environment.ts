@@ -3,7 +3,8 @@ export function shellValue(input: string): string {
   let result = '';
   let quote = '';
   const source = input.trim();
-  if (source.includes('\0') || source.startsWith('~')) throw new Error('Use a literal configuration value without shell expansion');
+  if (source.includes('\0') || source.startsWith('~'))
+    throw new Error('Use a literal configuration value without shell expansion');
   for (let i = 0; i < source.length; i++) {
     const char = source[i];
     if (quote === "'") {
@@ -18,11 +19,15 @@ export function shellValue(input: string): string {
       quote = '';
     } else if (!quote && (char === "'" || char === '"')) {
       quote = char;
-    } else if ((char === '$' && /[A-Za-z0-9_({?*!@#$'"-]/.test(source[i + 1] || '')) || char === '`') {
+    } else if (
+      (char === '$' && /[A-Za-z0-9_({?*!@#$'"-]/.test(source[i + 1] || '')) ||
+      char === '`'
+    ) {
       throw new Error('Shell expansion is not supported in configuration; use literal values');
     } else if (!quote && /\s/.test(char)) {
       const remainder = source.slice(i).trim();
-      if (remainder && !remainder.startsWith('#')) throw new Error('Unexpected shell command in configuration');
+      if (remainder && !remainder.startsWith('#'))
+        throw new Error('Unexpected shell command in configuration');
       break;
     } else if (!quote && /[;&|<>()]/.test(char)) {
       throw new Error('Shell commands are not supported in configuration');
@@ -49,14 +54,21 @@ export function environment(data: string): Array<[string, string]> {
     record += (record ? '\n' : '') + line;
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
-      if (escaped) { escaped = false; continue; }
-      if (quote === "'") { if (char === "'") quote = ''; }
-      else if (char === '\\') escaped = true;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (quote === "'") {
+        if (char === "'") quote = '';
+      } else if (char === '\\') escaped = true;
       else if (char === quote) quote = '';
       else if (!quote && (char === "'" || char === '"')) quote = char;
       else if (!quote && char === '#' && (i === 0 || /\s/.test(line[i - 1]))) break;
     }
-    if (quote || escaped) { escaped = false; return; }
+    if (quote || escaped) {
+      escaped = false;
+      return;
+    }
     const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/.exec(record);
     if (!match) throw new Error(`Unsupported configuration assignment on line ${index + 1}`);
     // Validate everything before any model mutation. setProperty decodes once.
@@ -68,9 +80,12 @@ export function environment(data: string): Array<[string, string]> {
   return assignments;
 }
 
-export function extraEnvironment(values: {[key: string]: string}): string {
-  return Object.keys(values).sort().map(key => {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error('Invalid runtime option name');
-    return `export ${key}=${shellQuote(values[key])}\n`;
-  }).join('');
+export function extraEnvironment(values: { [key: string]: string }): string {
+  return Object.keys(values)
+    .sort()
+    .map((key) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error('Invalid runtime option name');
+      return `export ${key}=${shellQuote(values[key])}\n`;
+    })
+    .join('');
 }

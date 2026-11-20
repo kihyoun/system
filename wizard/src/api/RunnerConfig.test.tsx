@@ -13,9 +13,10 @@ test('an empty token requests automatic setup and survives JSON backup', () => {
 
 test('Fetch imports the generated runner token for subsequent backup and push', () => {
   const main = new Main();
-  main.importEnvData(Helper.textLogo + '\nGITLAB_RUNNER_TOKEN="glrt-example"\nexport GITLAB_RUNNER_SCALE="2"\n');
+  main.importEnvData(
+    Helper.textLogo + '\nGITLAB_RUNNER_TOKEN="glrt-example"\nexport GITLAB_RUNNER_SCALE="2"\n',
+  );
   expect(main.config!.gitlabRunnerToken).toBe('glrt-example');
   expect(main.config!.asJson.gitlabRunnerToken).toBe('glrt-example');
   expect(main.config!.content).toContain('glrt-example');
 });
-

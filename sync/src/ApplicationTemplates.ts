@@ -5,35 +5,49 @@ import Helper from './Helper';
 export const applicationTemplates = ['empty', 'angular', 'react', 'web', 'wizard'];
 
 export function prepareApplication(template: string, key: string, settings: any): any {
-  if (!applicationTemplates.includes(template)) { throw new Error('Select a supported application template.'); }
-  if (template === 'empty' || template === 'wizard') { return {}; }
+  if (!applicationTemplates.includes(template)) {
+    throw new Error('Select a supported application template.');
+  }
+  if (template === 'empty' || template === 'wizard') {
+    return {};
+  }
   const root = path.resolve(__dirname, '../../project-bootstrap/templates', template);
   const files: any[] = [];
   function visit(directory: string) {
     for (const name of fs.readdirSync(directory).sort()) {
       const file = path.join(directory, name);
-      if (fs.statSync(file).isDirectory()) { visit(file); continue; }
+      if (fs.statSync(file).isDirectory()) {
+        visit(file);
+        continue;
+      }
       const relative = path.relative(root, file).split(path.sep).join('/');
       let content = fs.readFileSync(file, 'utf8').split('__PROJECT_KEY__').join(key);
       if (relative === 'package.json' || relative === 'package-lock.json') {
         const json = JSON.parse(content);
         json.name = key;
-        if (json.packages && json.packages['']) { json.packages[''].name = key; }
+        if (json.packages && json.packages['']) {
+          json.packages[''].name = key;
+        }
         content = JSON.stringify(json, null, 2) + '\n';
       }
-      files.push({action: 'create', file_path: relative, content});
+      files.push({ action: 'create', file_path: relative, content });
     }
   }
   visit(root);
   for (const relative of ['refresh-ca.sh', 'ca/cacert-2026-10-20.crt']) {
-    files.push({action: 'create', file_path: '.system-bootstrapper/' + relative,
-      content: fs.readFileSync(path.resolve(__dirname, '../../bootstrapper', relative), 'utf8')});
+    files.push({
+      action: 'create',
+      file_path: '.system-bootstrapper/' + relative,
+      content: fs.readFileSync(path.resolve(__dirname, '../../bootstrapper', relative), 'utf8'),
+    });
   }
-  return {files, templateVersion: 1, ci: applicationCi(key, settings, template)};
+  return { files, templateVersion: 1, ci: applicationCi(key, settings, template) };
 }
 
 export function applicationCi(key: string, settings: any, template: string) {
-  let ci = Helper.textLogo + `# Managed ${template} starter v1; editable in GitLab.
+  let ci =
+    Helper.textLogo +
+    `# Managed ${template} starter v1; editable in GitLab.
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -75,12 +89,15 @@ test:http:
     - docker rm -f "smoke-$CI_PROJECT_ID-$CI_JOB_ID" || true
 `;
   for (const environment of ['PROD', 'BETA', 'REVIEW']) {
-    if (settings['USE_' + environment + '_HOST'] !== 'true') { continue; }
+    if (settings['USE_' + environment + '_HOST'] !== 'true') {
+      continue;
+    }
     const kind = environment.toLowerCase();
     const review = kind === 'review';
     const host = (review ? '$CI_COMMIT_REF_SLUG.' : '') + settings[environment + '_HOST'];
     const container = key + '-' + kind + (review ? '-$CI_COMMIT_REF_SLUG' : '');
-    const url = (Number(settings[environment + '_DOMAIN_MODE']) > 1 ? 'https://' : 'http://') + host;
+    const url =
+      (Number(settings[environment + '_DOMAIN_MODE']) > 1 ? 'https://' : 'http://') + host;
     const name = review ? 'review/$CI_COMMIT_REF_SLUG' : kind === 'prod' ? 'production' : 'beta';
     ci += `
 deploy:${kind}:

@@ -7,31 +7,57 @@ import Markdown from './Markdown';
 import { chapters } from '../../docs/model';
 
 beforeEach(() => {
-  localStorage.clear(); window.history.replaceState({}, '', '/docs#docs/getting-started');
-  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  localStorage.clear();
+  window.history.replaceState({}, '', '/docs#docs/getting-started');
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
 });
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Docs reader', () => {
   it('shows prerequisites, expected results, chapter navigation and history-selected content', () => {
-    render(<><DocsNavigation /><Docs /></>);
+    render(
+      <>
+        <DocsNavigation />
+        <Docs />
+      </>,
+    );
     expect(screen.getByRole('heading', { level: 1, name: '0. Getting Started' })).toHaveFocus();
     expect(screen.getByText('Before you begin')).toBeVisible();
     expect(screen.getByText('Expected result')).toBeVisible();
-    expect(within(screen.getByRole('navigation', { name: 'Chapter navigation' })).getByRole('link', { name: /Next: 1. Installation/ })).toHaveAttribute('href', '#docs/installation');
+    expect(
+      within(screen.getByRole('navigation', { name: 'Chapter navigation' })).getByRole('link', {
+        name: /Next: 1. Installation/,
+      }),
+    ).toHaveAttribute('href', '#docs/installation');
     act(() => {
       window.history.pushState({}, '', '#docs/configuration');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
-    expect(screen.getByRole('heading', { level: 1, name: '3. Configuration · main actions' })).toBeVisible();
-    expect(screen.getByRole('navigation', { name: 'Documentation chapters' }).querySelector('[aria-current="page"]')).toHaveAttribute('href', '#docs/configuration');
+    expect(
+      screen.getByRole('heading', { level: 1, name: '3. Configuration · main actions' }),
+    ).toBeVisible();
+    expect(
+      screen
+        .getByRole('navigation', { name: 'Documentation chapters' })
+        .querySelector('[aria-current="page"]'),
+    ).toHaveAttribute('href', '#docs/configuration');
   });
 
   it('searches all chapters and lets readers clear or open a result', () => {
     render(<Docs />);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Search all docs' }), { target: { value: 'checksummed completion manifest' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search all docs' }), {
+      target: { value: 'checksummed completion manifest' },
+    });
     const results = screen.getByRole('region', { name: 'Documentation search results' });
-    expect(within(results).getByRole('link', { name: '3. Configuration · main actions' })).toHaveAttribute('href', expect.stringMatching(/^#docs\/configuration/));
+    expect(
+      within(results).getByRole('link', { name: '3. Configuration · main actions' }),
+    ).toHaveAttribute('href', expect.stringMatching(/^#docs\/configuration/));
     expect(within(results).getByText(/… copying its data/)).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Clear documentation search' }));
     expect(screen.getByRole('heading', { name: '0. Getting Started', level: 1 })).toBeVisible();
@@ -54,9 +80,12 @@ describe('Docs reader', () => {
   });
 
   it('renders safe Markdown tables, inline code and local links', () => {
-    render(<Markdown chapter={chapters.find(chapter => chapter.id === 'foundations')!} />);
+    render(<Markdown chapter={chapters.find((chapter) => chapter.id === 'foundations')!} />);
     expect(screen.getByRole('table')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Working storage' })).toHaveAttribute('href', '#docs/storage');
+    expect(screen.getByRole('link', { name: 'Working storage' })).toHaveAttribute(
+      'href',
+      '#docs/storage',
+    );
     expect(screen.getByRole('alert')).toHaveTextContent('Backup files contain credentials');
   });
 });
@@ -72,11 +101,16 @@ describe('example clipboard', () => {
   });
 
   it('explains clipboard failure and permits a retry', async () => {
-    const writeText = vi.fn().mockRejectedValueOnce(new Error('Denied')).mockResolvedValueOnce(undefined);
+    const writeText = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Denied'))
+      .mockResolvedValueOnce(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     render(<CodeBlock code="git --version" language="bash" />);
     fireEvent.click(screen.getByRole('button', { name: 'Copy bash example' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Select the example and copy it manually');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Select the example and copy it manually',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Copy bash example' }));
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeVisible();
   });

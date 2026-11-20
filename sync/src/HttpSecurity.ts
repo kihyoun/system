@@ -1,15 +1,24 @@
 import fs from 'node:fs';
-import {Request} from 'express';
-import {mainConfigPath, wizardConfigPath} from './StatePaths';
-import {readSettings} from './DefaultWizard';
+import { Request } from 'express';
+import { mainConfigPath, wizardConfigPath } from './StatePaths';
+import { readSettings } from './DefaultWizard';
 
 function origin(value: string): string | undefined {
   try {
     const url = new URL(value);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
-        url.pathname !== '/' || url.search || url.hash) return undefined;
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.pathname !== '/' ||
+      url.search ||
+      url.hash
+    )
+      return undefined;
     return url.origin;
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 /** Exact operator origins; never trust forwarded headers supplied by a client. */
@@ -23,10 +32,14 @@ export function allowedBrowserOrigin(req: Request): boolean {
   const sameOrigin = origin(req.protocol + '://' + req.get('Host'));
   if (sameOrigin) allowed.add(sameOrigin);
   const settings = fs.existsSync(mainConfigPath())
-    ? readSettings(fs.readFileSync(mainConfigPath(), 'utf8')) : process.env;
+    ? readSettings(fs.readFileSync(mainConfigPath(), 'utf8'))
+    : process.env;
   for (const prefix of ['WIZARD', 'SYNC']) {
     if (settings[prefix + '_HOST']) {
-      const configured = origin((Number(settings[prefix + '_DOMAIN_MODE']) > 1 ? 'https://' : 'http://') + settings[prefix + '_HOST']);
+      const configured = origin(
+        (Number(settings[prefix + '_DOMAIN_MODE']) > 1 ? 'https://' : 'http://') +
+          settings[prefix + '_HOST'],
+      );
       if (configured) allowed.add(configured);
     }
   }
@@ -39,7 +52,10 @@ export function allowedBrowserOrigin(req: Request): boolean {
     const wizard = readSettings(fs.readFileSync(wizardConfigPath(), 'utf8'));
     for (const prefix of ['BETA', 'REVIEW']) {
       if (wizard['USE_' + prefix + '_HOST'] !== 'true') continue;
-      const configured = origin((Number(wizard[prefix + '_DOMAIN_MODE']) > 1 ? 'https://' : 'http://') + String(wizard[prefix + '_HOST'] || ''));
+      const configured = origin(
+        (Number(wizard[prefix + '_DOMAIN_MODE']) > 1 ? 'https://' : 'http://') +
+          String(wizard[prefix + '_HOST'] || ''),
+      );
       if (configured) allowed.add(configured);
     }
   }
