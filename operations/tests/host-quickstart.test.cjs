@@ -39,7 +39,7 @@ test('readiness rejects unauthenticated sync and respects cancellation',async()=
 });
 
 test('public bootstrap verifies accepted artifact before handing off to Nest',async()=>{
- const shell=fs.readFileSync(path.join(__dirname,'../../bootstrapper/quickstart.sh'),'utf8');
+ const shell=fs.readFileSync(path.join(__dirname,'../../tools/quickstart/quickstart.sh'),'utf8');
  const source=shell.split("<<'SYSTEM_QUICKSTART_JS'\n")[1].split('\nSYSTEM_QUICKSTART_JS')[0];
  const quick=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
  const original=global.fetch;

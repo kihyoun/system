@@ -24,7 +24,7 @@ Prepare the supported Node runtime and compiled operations package before offlin
 maintenance. Neither compatibility entry installs packages or compiles sources.
 Fresh Quickstart prepares pinned Node through its isolated nvm installation and
 copies the compiled package from the accepted controller image. Manual release
-hosts use `bootstrapper/quickstart.sh --runtime-only vMAJOR.MINOR.PATCH`; the retained absolute Node path
+hosts use `tools/quickstart/quickstart.sh --runtime-only vMAJOR.MINOR.PATCH`; the retained absolute Node path
 and copied package support recovery without npm or network access. Developers
 can build from `operations/` and run
 `node --test operations/tests/host-install.test.cjs` from the repository root.

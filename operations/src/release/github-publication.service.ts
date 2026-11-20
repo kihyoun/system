@@ -96,7 +96,7 @@ export class GithubPublicationService {
         ci.tag +
         '/docs/QUICKSTART.md) and the versioned metadata asset.\n',
     );
-    const template = bounded(path.join(root, 'bootstrapper/quickstart.sh')).toString();
+    const template = bounded(path.join(root, 'tools/quickstart/quickstart.sh')).toString();
     const marker =
       'const ACCEPTED_RELEASE_TAG = null; // Replaced only in the accepted public release asset.';
     requireValue(
@@ -171,7 +171,7 @@ export class GithubPublicationService {
         '--',
         'VERSION',
         'CHANGELOG.md',
-        'bootstrapper/quickstart.sh',
+        'tools/quickstart/quickstart.sh',
         'bootstrapper/upgrade-paths.json',
         'gitlab/public-upgrade-release.js',
       ],

@@ -171,7 +171,8 @@ for (const monorepo of [false, true]) test(monorepo ? 'publisher derives determi
   };
   git('init', '--quiet'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   fs.mkdirSync(path.join(root, 'bootstrapper'));
-  fs.copyFileSync(path.join(__dirname, '../../bootstrapper/quickstart.sh'), path.join(root, 'bootstrapper/quickstart.sh'));
+  fs.mkdirSync(path.join(root, 'tools/quickstart'), {recursive: true});
+  fs.copyFileSync(path.join(__dirname, '../../tools/quickstart/quickstart.sh'), path.join(root, 'tools/quickstart/quickstart.sh'));
   fs.writeFileSync(path.join(root, 'CHANGELOG.md'), '# Changelog\n\n## 1.0.0\n\nReviewed fixture release. See [Quickstart](docs/QUICKSTART.md).\n');
   fs.writeFileSync(path.join(root, 'VERSION'), '1.0.0\n');
   fs.writeFileSync(path.join(root, 'bootstrapper/upgrade-paths.json'), JSON.stringify({format: 'system-upgrade-paths-v1', versions: ['1.0.0'], transitions: []}));
