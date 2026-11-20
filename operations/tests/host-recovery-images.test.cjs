@@ -102,7 +102,7 @@ test('native host command timeout terminates its direct process without exposing
         undefined,
         100,
       ),
-    /^Error: command-failed:node$/,
+    /^HostPolicyError: command-failed:node$/,
   );
   assert(Date.now() - started < 5000);
 });

@@ -1,8 +1,18 @@
+import { GitlabDataSampleService } from '../gitlab-preflight/gitlab-data-sample.service';
+import { PublicUpgradeService } from './public-upgrade.service';
+import { PublicUpgradeBackupService } from './public-upgrade-backup.service';
+import { ReleaseSelectionService } from './release-selection.service';
+import { PairedRuntimeService } from './paired-runtime.service';
+import { PairedUpdateService } from './paired-update.service';
+import { PairedControllerService } from './paired-controller.service';
 import { RecoveryExportService } from './recovery-export.service';
 import { RecoveryArchiveService } from './recovery-archive.service';
 import { DockerArchiveProcess } from '../runtime/archive-process';
 import { PublicReleaseAssetsService } from './public-release-assets.service';
-import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
+import {
+  PublicUpgradePreparationService,
+  type PublicHostFacts,
+} from './public-upgrade-preparation.service';
 import { ControllerLeaseModule } from './controller-lease.module';
 import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
 import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
@@ -62,6 +72,7 @@ export const HOST_ENVIRONMENT = Symbol('HOST_ENVIRONMENT');
 export interface HostModuleOptions {
   candidateRequest?: typeof fetch;
   publicReleaseRequest?: typeof fetch;
+  publicHostFacts?: PublicHostFacts;
   promotionGitLabProbe?: PromotionGitLabProbe;
   publicUpgradePlanPort?: PublicUpgradePlanPort;
   publicUpgradeApplyPort?: PublicUpgradeApplyPort;
@@ -100,6 +111,143 @@ export class HostModule {
       imports: [GitlabPreflightModule, ControllerLeaseModule],
       providers: [
         {
+          provide: PublicUpgradeBackupService,
+          inject: [HostStorageService, RuntimeVerificationService],
+          useFactory: (storage: HostStorageService, runtime: RuntimeVerificationService) =>
+            new PublicUpgradeBackupService(storage, runtime),
+        },
+        {
+          provide: PublicUpgradeService,
+          inject: [
+            HostInstallService,
+            RuntimeVerificationService,
+            PublicUpgradePreparationService,
+            PublicUpgradeBackupService,
+            PublicUpgradePlanService,
+            PublicUpgradeApplyService,
+            PairedControllerService,
+            PairedUpdateService,
+            PairedRuntimeService,
+            UpgradePrerequisiteService,
+            UpgradeLifecycleService,
+            HostSourceService,
+            RecoveryArchiveService,
+            GitlabDataSampleService,
+            CandidateGitLabService,
+          ],
+          useFactory: (
+            host: HostInstallService,
+            runtime: RuntimeVerificationService,
+            preparation: PublicUpgradePreparationService,
+            backup: PublicUpgradeBackupService,
+            plans: PublicUpgradePlanService,
+            applies: PublicUpgradeApplyService,
+            controller: PairedControllerService,
+            paired: PairedUpdateService,
+            native: PairedRuntimeService,
+            prerequisite: UpgradePrerequisiteService,
+            lifecycle: UpgradeLifecycleService,
+            source: HostSourceService,
+            archives: RecoveryArchiveService,
+            data: GitlabDataSampleService,
+            gitlab: CandidateGitLabService,
+          ) =>
+            new PublicUpgradeService(
+              host,
+              runtime,
+              preparation,
+              backup,
+              plans,
+              applies,
+              controller,
+              paired,
+              native,
+              prerequisite,
+              lifecycle,
+              source,
+              archives,
+              data,
+              gitlab,
+            ),
+        },
+
+        { provide: ReleaseSelectionService, useFactory: () => new ReleaseSelectionService() },
+        {
+          provide: PairedRuntimeService,
+          inject: [
+            HostInstallService,
+            RuntimeVerificationService,
+            RuntimeInspectionService,
+            ControllerLeaseService,
+            GitlabPreflightService,
+            PublicUpgradePreparationService,
+          ],
+          useFactory: (
+            host: HostInstallService,
+            runtime: RuntimeVerificationService,
+            inspection: RuntimeInspectionService,
+            lease: ControllerLeaseService,
+            preflight: GitlabPreflightService,
+            preparation: PublicUpgradePreparationService,
+          ) => new PairedRuntimeService(host, runtime, inspection, lease, preflight, preparation),
+        },
+        {
+          provide: PairedUpdateService,
+          inject: [
+            HostInstallService,
+            HostSourceService,
+            RuntimeVerificationService,
+            PairedRuntimeService,
+            ReleaseSelectionService,
+            RecoveryImageService,
+            PublicUpgradePreparationService,
+            ControllerUpdateSequenceService,
+            ControllerRollbackSequenceService,
+          ],
+          useFactory: (
+            host: HostInstallService,
+            source: HostSourceService,
+            runtime: RuntimeVerificationService,
+            native: PairedRuntimeService,
+            selections: ReleaseSelectionService,
+            images: RecoveryImageService,
+            preparation: PublicUpgradePreparationService,
+            updates: ControllerUpdateSequenceService,
+            rollbacks: ControllerRollbackSequenceService,
+          ) =>
+            new PairedUpdateService(
+              host,
+              source,
+              runtime,
+              native,
+              selections,
+              images,
+              preparation,
+              updates,
+              rollbacks,
+            ),
+        },
+        {
+          provide: PairedControllerService,
+          inject: [
+            HostInstallService,
+            RuntimeVerificationService,
+            HostReleaseAuthorityService,
+            CandidateAuthorityService,
+            CandidateGitLabService,
+            PairedUpdateService,
+          ],
+          useFactory: (
+            host: HostInstallService,
+            runtime: RuntimeVerificationService,
+            releases: HostReleaseAuthorityService,
+            candidates: CandidateAuthorityService,
+            gitlab: CandidateGitLabService,
+            paired: PairedUpdateService,
+          ) => new PairedControllerService(host, runtime, releases, candidates, gitlab, paired),
+        },
+
+        {
           provide: PublicReleaseAssetsService,
           useFactory: () => new PublicReleaseAssetsService(options.publicReleaseRequest),
         },
@@ -128,6 +276,7 @@ export class HostModule {
               source,
               authority,
               assets,
+              options.publicHostFacts,
             ),
         },
         {
@@ -456,6 +605,12 @@ export class HostModule {
         })),
       ],
       exports: [
+        PublicUpgradeService,
+        PublicUpgradeBackupService,
+        ReleaseSelectionService,
+        PairedRuntimeService,
+        PairedUpdateService,
+        PairedControllerService,
         PublicReleaseAssetsService,
         PublicUpgradePreparationService,
         CandidateAuthorityService,

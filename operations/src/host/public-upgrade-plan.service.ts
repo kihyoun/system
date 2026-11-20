@@ -69,15 +69,18 @@ export class PublicUpgradePlanService {
       );
   }
 
-  async plan(input: PublicUpgradePlanInput): Promise<{ value: Row; sha256: string }> {
+  async plan(
+    input: PublicUpgradePlanInput,
+    port: PublicUpgradePlanPort = this.port,
+  ): Promise<{ value: Row; sha256: string }> {
     ensure(/^[a-f0-9]{32}$/.test(input.attemptId), 'public-upgrade-attempt-identity-required');
-    const authority = await this.port.publicInputs(input.repository, input.target);
+    const authority = await port.publicInputs(input.repository, input.target);
     ensure(
       input.target === fs.readFileSync(path.join(input.checkout, 'VERSION'), 'utf8').trim(),
       'run-the-selected-target-release-checkout',
     );
-    await this.port.verifyCheckout();
-    const previous = await this.port.installed(input.repository, input.target),
+    await port.verifyCheckout();
+    const previous = await port.installed(input.repository, input.target),
       route = upgradePath(authority.graph, String(previous.version), input.target);
     ensure(
       route.status === 'supported',
@@ -100,17 +103,17 @@ export class PublicUpgradePlanService {
         route.transitions.length === 1 && input.gitlabCheckpoint,
         'complete-native-gitlab-upgrade-first-and-select-retained-checkpoint',
       );
-      prerequisite = await this.port.prerequisite(input.gitlabCheckpoint);
+      prerequisite = await port.prerequisite(input.gitlabCheckpoint);
     }
-    await this.port.host();
-    await this.port.syncIdle();
+    await port.host();
+    await port.syncIdle();
     const required = Math.max(...route.transitions.map((edge) => edge.minimumFreeGiB)) * 1024 ** 3;
-    const free = await this.port.freeBytes();
+    const free = await port.freeBytes();
     ensure(
       free.length === 2 && free.every((bytes) => Number.isFinite(bytes) && bytes >= required),
       'insufficient-upgrade-checkpoint-or-image-storage',
     );
-    const backup = await this.port.backupTarget(input.backupFile);
+    const backup = await port.backupTarget(input.backupFile);
     const directory = input.directory,
       boundary = path.join(input.root, 'recovery/public-upgrades');
     let ancestor = directory;
@@ -163,7 +166,7 @@ export class PublicUpgradePlanService {
       phase: 'checking',
       attemptId: input.attemptId,
       targetVersion: input.target,
-      at: await this.port.now(),
+      at: await port.now(),
     };
     json('preflight.json', attempt);
     try {
@@ -172,13 +175,13 @@ export class PublicUpgradePlanService {
       save('target.json', raw);
       save('provenance.json', proof);
       json('previous-release.json', previous);
-      const selected = await this.port.selection();
+      const selected = await port.selection();
       save('previous-selection.json', Buffer.from(selected.json, 'base64'));
       save('previous-selection.env', Buffer.from(selected.environment, 'base64'));
-      json('baseline.json', await this.port.capture());
+      json('baseline.json', await port.capture());
       if (route.transitions.length === 1)
-        await this.port.invoke(checkpoint, path.join(directory, 'target.json'));
-      const current = await this.port.selection();
+        await port.invoke(checkpoint, path.join(directory, 'target.json'));
+      const current = await port.selection();
       const value: Row = {
         format: 'system-public-upgrade-plan-v1',
         installedVersion: previous.version,
@@ -191,7 +194,7 @@ export class PublicUpgradePlanService {
         provenanceSha256: sha(proof),
         selectionSha256: sha(Buffer.from(current.json, 'base64')),
         configurationSha256: current.configurationSha256,
-        dataSample: await this.port.dataSample(),
+        dataSample: await port.dataSample(),
         baselineSha256: sha(fs.readFileSync(path.join(directory, 'baseline.json'))),
         checkpoint,
         backupDestination: input.backupDestination,

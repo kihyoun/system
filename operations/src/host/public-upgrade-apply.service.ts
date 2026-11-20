@@ -30,9 +30,13 @@ export class PublicUpgradeApplyService {
     readonly lifecycle: UpgradeLifecycleService,
     readonly port: PublicUpgradeApplyPort,
   ) {}
-  async apply(directory: string, confirmation: unknown): Promise<Row> {
+  async apply(
+    directory: string,
+    confirmation: unknown,
+    port: PublicUpgradeApplyPort = this.port,
+  ): Promise<Row> {
     const plan = this.lifecycle.approvedPlan(directory, confirmation),
-      accepted = await this.port.publicInputs(String(plan.repository), String(plan.targetVersion));
+      accepted = await port.publicInputs(String(plan.repository), String(plan.targetVersion));
     ensure(
       accepted.targetSha256 === plan.targetSha256 &&
         accepted.provenanceSha256 === plan.provenanceSha256,
@@ -41,13 +45,13 @@ export class PublicUpgradeApplyService {
     if (plan.gitlabPrerequisite)
       ensure(
         isDeepStrictEqual(
-          await this.port.prerequisite(String(record(plan.gitlabPrerequisite).checkpoint)),
+          await port.prerequisite(String(record(plan.gitlabPrerequisite).checkpoint)),
           plan.gitlabPrerequisite,
         ),
         'gitlab-prerequisite-changed-after-plan',
       );
-    const previous = await this.port.installed(String(plan.repository), String(plan.targetVersion)),
-      fingerprints = await this.port.fingerprints();
+    const previous = await port.installed(String(plan.repository), String(plan.targetVersion)),
+      fingerprints = await port.fingerprints();
     const baselinePath = path.join(directory, 'baseline.json');
     privateFile(baselinePath);
     const bytes = fs.readFileSync(baselinePath);
@@ -59,14 +63,14 @@ export class PublicUpgradeApplyService {
       'installation-changed-after-plan',
     );
     const baseline = record(JSON.parse(bytes.toString()));
-    await this.port.assertBaseline(baseline);
+    await port.assertBaseline(baseline);
     ensure(
-      isDeepStrictEqual(await this.port.dataSample(), plan.dataSample),
+      isDeepStrictEqual(await port.dataSample(), plan.dataSample),
       'service-data-sample-changed-after-plan',
     );
-    await this.port.host();
-    await this.port.backupTarget(String(plan.configurationBackup));
-    await this.port.invoke(true, String(plan.checkpoint));
+    await port.host();
+    await port.backupTarget(String(plan.configurationBackup));
+    await port.invoke(true, String(plan.checkpoint));
     let state = this.lifecycle.transition(directory, 'retaining-previous-images');
     const journal = async (phase: string, details: unknown = {}) => {
       state = this.lifecycle.transition(directory, phase, details, state.phase);
@@ -85,25 +89,21 @@ export class PublicUpgradeApplyService {
       });
       const retained: Row = {};
       for (const role of ['controller', 'wizard'] as const)
-        retained[role] = await this.port.archive(
-          role,
-          record(record(previous.images)[role]),
-          identity,
-        );
+        retained[role] = await port.archive(role, record(record(previous.images)[role]), identity);
       save('previous-images.json', retained);
       await journal('backup-starting');
-      await this.port.matchingBackup(plan);
+      await port.matchingBackup(plan);
       await journal('backup-services-resuming');
-      await this.port.assertBaseline(baseline);
-      save('post-backup-verification.json', await this.port.waitReady(baseline));
+      await port.assertBaseline(baseline);
+      save('post-backup-verification.json', await port.waitReady(baseline));
       ensure(
-        isDeepStrictEqual(await this.port.dataSample(), plan.dataSample),
+        isDeepStrictEqual(await port.dataSample(), plan.dataSample),
         'service-data-sample-changed-during-backup',
       );
       await journal('paired-update-starting');
-      await this.port.invoke(false, String(plan.checkpoint), baseline);
+      await port.invoke(false, String(plan.checkpoint), baseline);
       ensure(
-        isDeepStrictEqual(await this.port.dataSample(), plan.dataSample),
+        isDeepStrictEqual(await port.dataSample(), plan.dataSample),
         'service-data-sample-changed-after-update-inspect-before-acceptance',
       );
       await journal('completed', {

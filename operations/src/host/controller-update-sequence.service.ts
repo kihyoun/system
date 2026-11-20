@@ -72,7 +72,10 @@ function unchangedServices(services: Row, baseline: Row, wizard: boolean): void 
 /** Paired update order, repair gates and completion claims, while native owner holds leases. */
 export class ControllerUpdateSequenceService {
   constructor(readonly port: ControllerUpdateSequencePort) {}
-  async run(input: ControllerUpdateSequenceInput): Promise<Row> {
+  async run(
+    input: ControllerUpdateSequenceInput,
+    port: ControllerUpdateSequencePort = this.port,
+  ): Promise<Row> {
     ensure(
       input.record.format === 'system-public-controller-update-v1' &&
         input.record.phase === 'inputs-verified' &&
@@ -86,40 +89,40 @@ export class ControllerUpdateSequenceService {
     };
     const journal = async (phase?: string) => {
       if (phase) state.phase = phase;
-      await this.port.journal(state);
+      await port.journal(state);
     };
     await journal();
-    await this.port.assertBaseline(input.baseline);
-    if (input.expectedBaseline) await this.port.assertBaseline(input.expectedBaseline);
-    if (input.selection) await this.port.verifySelection(false);
+    await port.assertBaseline(input.baseline);
+    if (input.expectedBaseline) await port.assertBaseline(input.expectedBaseline);
+    if (input.selection) await port.verifySelection(false);
     if (!input.stoppedId)
       ensure(
-        isDeepStrictEqual(await this.port.publicImages(), input.baseline.selectedImages),
+        isDeepStrictEqual(await port.publicImages(), input.baseline.selectedImages),
         'controller-update-images-changed-before-stop',
       );
-    await this.port.pipeline();
+    await port.pipeline();
     if (input.wizard)
       ensure(
-        isDeepStrictEqual(await this.port.publicPair(), input.publication),
+        isDeepStrictEqual(await port.publicPair(), input.publication),
         'paired-publication-changed-before-stop',
       );
     if (!input.stoppedId) {
-      await this.port.syncIdle();
-      await this.port.currentServices();
+      await port.syncIdle();
+      await port.currentServices();
     } else {
-      const current = await this.port.currentServices();
+      const current = await port.currentServices();
       ensure(
         isDeepStrictEqual(current.system_bootstrapper_1, input.original.system_bootstrapper_1),
         'stopped-controller-changed-before-repair',
       );
       runnerContainers(current, state.previousRunnerContainerIds);
-      await this.port.repairBaseline(current);
+      await port.repairBaseline(current);
     }
     if (input.selection) {
-      await this.port.verifySelection(false);
-      await this.port.verifySelection(true);
+      await port.verifySelection(false);
+      await port.verifySelection(true);
     }
-    await this.port.critical();
+    await port.critical();
     await journal('controller-stop-started');
     const controller = record(input.original.system_bootstrapper_1),
       labels = record(record(controller.Config).Labels),
@@ -129,21 +132,21 @@ export class ControllerUpdateSequenceService {
         labels['com.docker.compose.service'] === 'bootstrapper',
       'owned-core-container-required',
     );
-    await this.port.command(['update', '--restart=no', String(controller.Id)]);
+    await port.command(['update', '--restart=no', String(controller.Id)]);
     if (controllerState.Running) {
       ensure(!controllerState.Paused, 'controller-update-refuses-paused-controller');
-      await this.port.command(['stop', '--time', '30', String(controller.Id)]);
+      await port.command(['stop', '--time', '30', String(controller.Id)]);
     }
     ensure(
-      !record((await this.port.inspect(String(controller.Id))).State).Running,
+      !record((await port.inspect(String(controller.Id))).State).Running,
       'previous-controller-did-not-stop',
     );
-    await this.port.assertBaseline(input.baseline);
-    await this.port.writeConfiguration(input.updated, input.metadata);
-    if (input.selection) await this.port.writeSelection();
+    await port.assertBaseline(input.baseline);
+    await port.writeConfiguration(input.updated, input.metadata);
+    if (input.selection) await port.writeSelection();
     await journal('controller-start-started');
-    const restartedAt = await this.port.now();
-    await this.port.command(
+    const restartedAt = await port.now();
+    await port.command(
       [
         'compose',
         '--compatibility',
@@ -161,7 +164,7 @@ export class ControllerUpdateSequenceService {
       ],
       String(input.pulled.reference),
     );
-    await this.port.reload();
+    await port.reload();
     const after = structuredClone(input.baseline);
     record(after.configurationFiles)['configuration/.docker.env'] = state.configurationAfterSha256;
     const images = record(after.selectedImages);
@@ -179,16 +182,16 @@ export class ControllerUpdateSequenceService {
       sourceTree: input.release.sourceTree,
       startedAt: restartedAt,
     });
-    await this.port.saveBaseline(after);
-    const receipt = await this.port.waitReady(after),
-      services = await this.port.services();
+    await port.saveBaseline(after);
+    const receipt = await port.waitReady(after),
+      services = await port.services();
     unchangedServices(services, input.baseline, !!input.wizard);
     if (input.stoppedId) runnerContainers(services, state.previousRunnerContainerIds);
-    await this.port.saveVerification(receipt);
+    await port.saveVerification(receipt);
     state = {
       ...state,
       phase: 'completed',
-      completedAt: await this.port.now(),
+      completedAt: await port.now(),
       serviceImagesPreserved: !input.wizard,
       configurationChangedOnlyControllerImage: !input.wizard,
       databaseRewound: false,

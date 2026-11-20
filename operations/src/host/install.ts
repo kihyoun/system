@@ -7,8 +7,14 @@ import { spawnSync } from 'node:child_process';
 import { nativeProcess, type ProcessRunner } from '../runtime/process';
 import { imageId, revision, readSourceIdentity, record } from '../release/source-identity';
 
+export class HostPolicyError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = 'HostPolicyError';
+  }
+}
 export function requireValue(value: unknown, code: string): asserts value {
-  if (!value) throw Error(code);
+  if (!value) throw new HostPolicyError(code);
 }
 export type InstalledSource = {
   sourceCommit: string;
@@ -308,7 +314,7 @@ export class HostInstallService {
         maxBuffer: 4 * 1024 ** 2,
       }).stdout;
     } catch {
-      throw Error('command-failed:' + path.basename(binary));
+      throw new HostPolicyError('command-failed:' + path.basename(binary));
     }
   }
   source(checkout: string): InstalledSource {

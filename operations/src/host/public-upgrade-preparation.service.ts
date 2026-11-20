@@ -28,6 +28,7 @@ export class PublicUpgradePreparationService {
     readonly source: HostSourceService,
     readonly authority: HostReleaseAuthorityService,
     readonly assets: PublicReleaseAssetsService,
+    readonly hostFacts?: PublicHostFacts,
   ) {}
   graph(checkout: string) {
     return validateUpgradeGraph(
@@ -186,7 +187,7 @@ export class PublicUpgradePreparationService {
     }
     return metadata;
   }
-  verifyHost(metadataValue: unknown, facts?: PublicHostFacts): void {
+  verifyHost(metadataValue: unknown, facts: PublicHostFacts | undefined = this.hostFacts): void {
     const metadata = record(metadataValue),
       compatibility = record(metadata.compatibility);
     if (!facts) {

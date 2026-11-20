@@ -26,6 +26,13 @@ test('standalone Host module injects shared native adapter without running opera
   const {RecoveryExportService}=require('../dist/host/recovery-export.service');
   assert.equal(app.get(RecoveryExportService).archives,app.get(RecoveryArchiveService));
   assert.equal(preparation.assets,assets);
+  const {PairedControllerService}=require('../dist/host/paired-controller.service'),{PairedUpdateService}=require('../dist/host/paired-update.service'),{PublicUpgradeService}=require('../dist/host/public-upgrade.service'),{ControllerUpdateSequenceService}=require('../dist/host/controller-update-sequence.service'),{ControllerRollbackSequenceService}=require('../dist/host/controller-rollback-sequence.service');
+  const paired=app.get(PairedUpdateService),publicUpgrade=app.get(PublicUpgradeService);
+  assert.equal(app.get(PairedControllerService).paired,paired);
+  assert.equal(publicUpgrade.paired,paired);assert.equal(publicUpgrade.preparation,preparation);
+  assert.equal(paired.updates,app.get(ControllerUpdateSequenceService));
+  assert.equal(paired.rollbacks,app.get(ControllerRollbackSequenceService));
+
   assert.equal((await assets.load('example/system','v2.0.0','system-release-v2.0.0.json')).toString(),'accepted');
   assert.equal(requests[0][1].redirect,'manual');assert.equal(requests[0][1].headers,undefined);
   response=new Response('',{status:302,headers:{location:'https://unapproved.invalid/asset'}});
@@ -165,4 +172,42 @@ test('retained recovery publication advances both security images without losing
  assert.deepEqual(new Set(value.publicImages.map(row=>row.reference)),new Set([security.toImage,security.runner.toImage]));
  assert.equal(value.publicImages[1].imageId,'sha256:'+'4'.repeat(64));
  assert.throws(()=>refresh({...old,publicImages:old.publicImages.slice(0,1)}),/Runner-public-image-declaration/);
+});
+test('native paired runtime preserves immutable peers, lease ownership, readiness diagnostics and private command transport',async()=>{
+ const {PairedRuntimeService,repairPeers,verifyRunnerContainers,unchangedPairedServices}=require('../dist/host/paired-runtime.service');
+ const {HostPolicyError}=require('../dist/host/install');
+ let nativeCalls=[],leaseCalls=[],finished=[],probe={version:'19.6.1',edition:'CE',runningJobs:0,unfinishedBackgroundMigrations:0};
+ const host={environment:{DOCKER_CONTEXT:'foreign',DOCKER_TLS_VERIFY:'1',DOCKER_CERT_PATH:'/private'},runner:{run(binary,args,options){nativeCalls.push({binary,args,options});return {status:0,stdout:'native',stderr:''};}}};
+ const row=(service,id)=>({Id:id.repeat(64),Image:'sha256:'+id.repeat(64),Config:{Labels:{'com.docker.compose.project':service.startsWith('docker_')?'runner':'system','com.docker.compose.service':service}},State:{Running:true,Health:{Status:'healthy'}},ExecIDs:null});
+ const rows={system_bootstrapper_1:row('bootstrapper','a'),system_gitlab_1:row('gitlab','b'),runner_docker_1:row('docker_1','c'),runner_docker_2:row('docker_2','d')};
+ const runtime={services:()=>rows,publicImages(){},verify:async()=>{throw new HostPolicyError('runner-contact-missing');}};
+ const lease={acquire(){leaseCalls.push('acquire');},command:async(...args)=>{leaseCalls.push(args);return Buffer.from('guarded');},finish:value=>finished.push(value)};
+ const service=new PairedRuntimeService(host,runtime,{mounts(){}},lease,{probe:async(_id,port)=>{await port.command(['exec','b'.repeat(64),'psql'],30,'private-password');return probe;}},{});
+ const config={_root:'/live',_main:'/live/configuration/.docker.env'},input={checkout:'/source',persistenceEnv:'/selector',tokenFile:'/token',timeout:0},context=service.context(input,config);
+ assert.equal(await context.docker(['version'],5,'private'), 'native');
+ assert.equal(nativeCalls[0].options.env.DOCKER_HOST,'unix:///var/run/docker.sock');for(const key of ['DOCKER_CONTEXT','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH'])assert.equal(nativeCalls[0].options.env[key],undefined);
+ assert.equal(nativeCalls[0].options.input,'private');assert(!nativeCalls[0].args.includes('private'));
+ context.acquire();assert.equal(await context.docker(['version'],5,'private'),'guarded');assert.equal(leaseCalls[1][2].toString(),'private');
+ const evidence={evidence:{gitlabUpgrade:{toImageId:rows.system_gitlab_1.Image,runnerImageId:rows.runner_docker_1.Image}}};
+ rows.runner_docker_2.Image=rows.runner_docker_1.Image;
+ await context.current(evidence,{toVersion:'19.6.1'});probe={...probe,runningJobs:1};await assert.rejects(context.current(evidence,{toVersion:'19.6.1'}),/jobs-or-migrations/);probe.runningJobs=0;
+ rows.runner_docker_2.Image='wrong';await assert.rejects(context.current(evidence,{toVersion:'19.6.1'}),/current-runner-image/);rows.runner_docker_2.Image=rows.runner_docker_1.Image;
+ repairPeers(rows);rows.runner_docker_2.ExecIDs=['active'];assert.throws(()=>repairPeers(rows),/active-or-unknown-execs/);rows.runner_docker_2.ExecIDs=null;
+ verifyRunnerContainers(rows,{runner_docker_1:rows.runner_docker_1.Id,runner_docker_2:rows.runner_docker_2.Id});assert.throws(()=>verifyRunnerContainers(rows,{runner_docker_1:rows.runner_docker_1.Id}),/runner-containers-changed/);
+ const baseline={selectedImages:Object.fromEntries(Object.entries(rows).map(([name,value])=>[name,{imageId:value.Image}]))};unchangedPairedServices(rows,baseline);assert.throws(()=>unchangedPairedServices({...rows,foreign:rows.system_gitlab_1},baseline),/service-set-changed/);
+ await assert.rejects(context.waitReady({}),/readiness-failed:runner-contact-missing/);assert.equal(host.deadline,undefined);
+ runtime.verify=async()=>{throw Error('private-password');};await assert.rejects(context.waitReady({}),error=>error.message==='controller-update-readiness-failed:unexpected-readiness-error');assert.equal(host.deadline,undefined);
+ runtime.verify=async()=>({runnerManagers:{checked:true}});assert.deepEqual(await context.waitReady({}),{runnerManagers:{checked:true}});
+ context.finish(true);assert.deepEqual(finished,[true]);
+ const {parsePublicUpgradeInput}=require('../dist/host/public-upgrade-entry');const parsed=parsePublicUpgradeInput(['--operation','status','--checkout','/source','--persistence-env','/selector','--plan-dir','/retained']);assert.equal(parsed.directory,'/retained');assert.equal(parsed.timeout,1200);assert.throws(()=>parsePublicUpgradeInput(['--operation','bad']),/invalid-public-upgrade-operation/);
+});
+test('configuration backup native reader preserves store/deflate bytes and rejects ambiguous or corrupt exports',()=>{
+ const {ConfigurationBackupArchive}=require('../dist/host/configuration-backup-archive'),{crc32,deflateRawSync}=require('node:zlib');
+ function zip(entries){let offset=0;const bodies=[],directory=[];for(const [name,value,method=0] of entries){const filename=Buffer.from(name),raw=Buffer.from(value),data=method===8?deflateRawSync(raw):raw,local=Buffer.alloc(30),central=Buffer.alloc(46);local.writeUInt32LE(0x04034b50);local.writeUInt16LE(method,8);local.writeUInt32LE(crc32(raw),14);local.writeUInt32LE(data.length,18);local.writeUInt32LE(raw.length,22);local.writeUInt16LE(filename.length,26);central.writeUInt32LE(0x02014b50);central.writeUInt16LE(method,10);central.writeUInt32LE(crc32(raw),16);central.writeUInt32LE(data.length,20);central.writeUInt32LE(raw.length,24);central.writeUInt16LE(filename.length,28);central.writeUInt32LE(offset,42);bodies.push(local,filename,data);directory.push(central,filename);offset+=local.length+filename.length+data.length;}const dir=Buffer.concat(directory),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(entries.length,8);end.writeUInt16LE(entries.length,10);end.writeUInt32LE(dir.length,12);end.writeUInt32LE(offset,16);return Buffer.concat([...bodies,dir,end]);}
+ const content='private exact bytes\n$Cube\n',raw=zip([['.docker.env',content],['.projects.env/.a.env','UNICODE=한글\n',8]]),archive=new ConfigurationBackupArchive(raw);
+ assert.equal(archive.read('.docker.env').toString(),content);assert.equal(archive.read('.projects.env/.a.env').toString(),'UNICODE=한글\n');assert.throws(()=>archive.read('missing'),/entry-missing/);
+ assert.throws(()=>new ConfigurationBackupArchive(zip([['same','a'],['same','b']])),/duplicate/);
+ const corrupted=Buffer.from(raw);corrupted[30+'.docker.env'.length]^=1;assert.throws(()=>new ConfigurationBackupArchive(corrupted).read('.docker.env'),/checksum/);
+ const huge=Buffer.from(raw),central=huge.indexOf(Buffer.from([0x50,0x4b,0x01,0x02]));huge.writeUInt32LE(50*1024**2+1,central+24);assert.throws(()=>new ConfigurationBackupArchive(huge),/too-large/);
+ assert.throws(()=>new ConfigurationBackupArchive(Buffer.from('not a ZIP')),/invalid-configuration/);
 });
