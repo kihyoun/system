@@ -31,7 +31,7 @@ try {
     'operations/src/project-lifecycle/preview-settings.ts',
     'operations/src/project-lifecycle/source-transfer.service.ts',
     'project-bootstrap/preview-setup/provision.rb',
-    'project-bootstrap/preview-setup/producers.js',
+    'operations/src/project-lifecycle/preview-producers.ts',
     'project-bootstrap/wizard-source-primary/run.js',
     'project-bootstrap/wizard-source-primary/binding.js',
     'sync/src/WizardEnvironments.ts'

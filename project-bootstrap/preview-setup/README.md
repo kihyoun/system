@@ -53,3 +53,9 @@ keeps credentials out of source reads and command arguments. Historical refs use
 `ci.skip`; the default branch retains its ordinary native push pipeline. Only an
 exact completed import or exact default-only intermediate state can resume.
 Temporary credential helpers are removed on every exit.
+
+The native producer policy compares exact approved snapshot paths and hashes in
+TypeScript. `PreviewOperatorModule` delegates status, preflight and apply to the
+same compiled Sync functions as the authenticated Wizard. It accepts only a
+bounded private regular settings file and observes the shared job's terminal
+state; it creates no alternate project or pipeline workflow.
