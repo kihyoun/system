@@ -73,6 +73,32 @@ class Provisioning(unittest.TestCase):
         original = setup.API
         setup.API = lambda endpoint, token: type('Bot', (), {'call': lambda _, method, path: {'id': 9, 'is_admin': False}})()
         self.addCleanup(setattr, setup, 'API', original)
+    def test_single_monorepo_provisioning(self):
+        self.config['project_ids'] = [10]
+        setup.reconcile(self.api, self.config, self.state)
+        self.assertEqual(set(self.api.members), {10})
+        self.assertEqual(self.api.variables['RENOVATE_REPOSITORIES']['value'], '["example/system"]')
+        setup.reconcile(self.api, self.config, self.state, enabled=True)
+        self.assertEqual(len(self.api.tokens), 1)
+        self.assertTrue(self.api.schedules[0]['active'])
+
+    def test_invalid_project_selection_has_no_api_effects(self):
+        for ids in ([], [10, 10], [10, 11, 12], [True], [0], ['10'], '10', None):
+            with self.subTest(ids=ids):
+                self.config['project_ids'] = ids
+                with self.assertRaises(ValueError):
+                    setup.reconcile(self.api, self.config, self.state)
+                self.assertEqual(self.api.calls, [])
+
+    def test_monorepo_selection_cannot_silently_rebind_owned_bot(self):
+        setup.reconcile(self.api, self.config, self.state)
+        self.api.calls.clear()
+        self.config['project_ids'] = [10]
+        with self.assertRaises(ValueError):
+            setup.reconcile(self.api, self.config, self.state)
+        self.assertTrue(all(method == 'GET' for method, _, _ in self.api.calls))
+        self.assertEqual(set(self.api.members), {10, 11})
+
     def test_setup_repeat_rotation_pause_and_resume(self):
         first = setup.reconcile(self.api, self.config, self.state)
         self.assertFalse(first['active'])

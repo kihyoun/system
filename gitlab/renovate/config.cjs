@@ -1,9 +1,10 @@
 'use strict';
 // Secrets and the explicit repository allowlist come from protected CI variables.
 const repositories = JSON.parse(process.env.RENOVATE_REPOSITORIES || '[]');
-if (repositories.length !== 2 || new Set(repositories).size !== 2 ||
+if (!Array.isArray(repositories) || ![1, 2].includes(repositories.length) ||
+    new Set(repositories).size !== repositories.length ||
     !repositories.every(name => /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+$/.test(name))) {
-  throw new Error('RENOVATE_REPOSITORIES must select exactly the System and Wizard project paths');
+  throw new Error('RENOVATE_REPOSITORIES must select the System project path, optionally followed by the legacy Wizard project path');
 }
 if (!process.env.CI_API_V4_URL?.startsWith('https://') || !process.env.RENOVATE_TOKEN) {
   throw new Error('Protected GitLab endpoint and bot token are required');

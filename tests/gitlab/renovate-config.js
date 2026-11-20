@@ -8,7 +8,7 @@ assert.equal(policy.automerge, false);
 assert.equal(policy.ignoreUnstable, true);
 assert(policy.enabledManagers.includes('npm'));
 assert(policy.enabledManagers.includes('custom.regex'));
-assert(policy.ignorePaths.includes('wizard/**'));
+assert(!policy.ignorePaths.includes('wizard/**'), 'embedded Wizard dependencies must be discovered');
 assert(policy.ignorePaths.includes('**/security-release.json'));
 const custom = policy.customManagers[0];
 assert.equal(custom.managerFilePatterns[0], '/^system/Dockerfile$/');
@@ -17,7 +17,7 @@ const matches = [...pin.matchAll(new RegExp(custom.matchStrings[0], 'g'))];
 assert.equal(matches.length, 1, 'custom manager extracts only the supported ARG pin');
 assert.equal(matches[0].groups.depName, 'node');
 assert.match(matches[0].groups.currentDigest, /^sha256:[a-f0-9]{64}$/);
-for (const [index, files] of [[1, ['gitlab-runner/register.sh']], [2, ['project-bootstrap/wizard-build/modern/build.sh', 'project-bootstrap/wizard-build/modern/verify.sh']]]) {
+for (const [index, files] of [[1, ['operations/src/lifecycle/runner.service.ts']], [2, ['project-bootstrap/wizard-build/modern/build.sh', 'project-bootstrap/wizard-build/modern/verify.sh']]]) {
   const manager = policy.customManagers[index];
   for (const file of files) {
     assert(new RegExp(manager.managerFilePatterns[0].slice(1, -1)).test(file));
@@ -42,10 +42,13 @@ try {
   assert.equal(config.force.platformAutomerge, false);
   assert.equal(config.allowScripts, false);
   assert.deepEqual(config.allowedCommands, []);
-  for (const repos of ['[]', '["example/system"]', '["example/system","example/system"]', '["example/system","https://unexpected.example/repo"]']) {
+  delete require.cache[require.resolve(globalPath)];
+  process.env.RENOVATE_REPOSITORIES = '["example/system"]';
+  assert.deepEqual(require(globalPath).repositories, ['example/system']);
+  for (const repos of ['[]', '{}', 'null', '["example/system","example/wizard","example/other"]', '["example/system","example/system"]', '["example/system","https://unexpected.example/repo"]']) {
     delete require.cache[require.resolve(globalPath)];
     process.env.RENOVATE_REPOSITORIES = repos;
-    assert.throws(() => require(globalPath), /exactly/);
+    assert.throws(() => require(globalPath), /must select/);
   }
 } finally {
   for (const key of ['CI_API_V4_URL','RENOVATE_TOKEN','RENOVATE_REPOSITORIES']) {

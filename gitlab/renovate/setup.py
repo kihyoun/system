@@ -102,10 +102,14 @@ def protected_default_rules(api, project):
     return matching
 
 def reconcile(api, config, state, rotate=False, enabled=False, recover_user_id=None):
-    projects = [api.call('GET', '/projects/' + str(pid)) for pid in config['project_ids']]
-    if len(projects) != 2 or len({p['id'] for p in projects}) != 2:
-        raise ValueError('Select exactly System and Wizard')
-    system, wizard = projects
+    ids = config['project_ids']
+    if (not isinstance(ids, list) or len(ids) not in (1, 2) or
+        any(type(pid) is not int or pid <= 0 for pid in ids) or len(set(ids)) != len(ids)):
+        raise ValueError('Select System and optionally the legacy Wizard using distinct positive project IDs')
+    projects = [api.call('GET', '/projects/' + str(pid)) for pid in ids]
+    if [p['id'] for p in projects] != ids:
+        raise ValueError('GitLab project identities do not match the explicit selection')
+    system = projects[0]
     branch = system['default_branch']
     for project in projects:
         protected_default_rules(api, project)

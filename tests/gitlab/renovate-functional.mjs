@@ -37,14 +37,17 @@ const dependency = (name, type = 'minor') => ({depName: name, packageName: name,
   datasource: 'npm', currentValue: '1.0.0', currentVersion: '1.0.0',
   updates: [{updateType: type, newValue: type === 'major' ? '2.0.0' : '1.1.0',
     newVersion: type === 'major' ? '2.0.0' : '1.1.0', newMajor: type === 'major' ? 2 : 1}]});
-const packageFiles = {npm: [{packageFile: 'package.json', deps: [dependency('first'), dependency('second'), dependency('third', 'major')]}],
+const packageFiles = {npm: [{packageFile: 'package.json', deps: [dependency('first'), dependency('second'), dependency('third', 'major')]},
+  {packageFile: 'wizard/package.json', deps: [dependency('wizard-ui')]}],
   dockerfile: [{packageFile: 'Dockerfile', deps: ['node','nginx'].map(name => ({...dependency(name), datasource: 'docker', currentValue: '24.0.0', updates: [{updateType: 'patch', newValue: '24.0.1', newVersion: '24.0.1', newMajor: 24}]}))}]};
 const {branches} = await branchifyUpgrades(config, packageFiles);
 assert.equal(branches.length, 4, 'npm and runtime batches, separate major and lockfile refresh');
 const batch = branches.find(branch => branch.branchName === 'renovate/npm-compatible');
 assert.equal(branches.find(branch => branch.branchName === 'renovate/runtime-compatible').upgrades.length, 2);
 assert(branches.some(branch => branch.upgrades.some(update => update.isLockFileMaintenance)));
-assert(batch, 'two compatible dependencies become one reviewable branch');
+assert(batch, 'compatible dependencies become one reviewable branch');
+assert(batch.upgrades.some(update => update.packageFile === 'wizard/package.json' && update.depName === 'wizard-ui'),
+  'embedded Wizard dependencies share the reviewed npm batch');
 assert.equal(batch.branchName, 'renovate/npm-compatible');
 for (const branch of branches) {
   Object.assign(branch, await processBranch({...config, ...branch}));

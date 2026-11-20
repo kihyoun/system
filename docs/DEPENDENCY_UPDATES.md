@@ -4,14 +4,14 @@ Renovate OSS runs as the scheduled `renovate:discover` GitLab job on the existin
 Docker runner pool. Its reviewed stable `44.222.5-full` image is pinned by digest
 in `.gitlab-ci.yml`; update it through review like other dependencies. There is no
 permanent bot service. Its [repository configuration](../renovate.json) and
-[self-hosted configuration](../gitlab/renovate/config.cjs) select only the two
-operator-supplied System and Wizard source projects, never GitHub mirrors or
+[self-hosted configuration](../gitlab/renovate/config.cjs) select only the
+operator-supplied System source project, including its embedded Wizard, never GitHub mirrors or
 project autodiscovery.
 
 ## Operator setup
 
 Use a reviewed checkout after merging the configuration into the protected default
-branches of both projects. Python 3 with normal HTTPS CA trust is sufficient.
+branch of the System project. Python 3 with normal HTTPS CA trust is sufficient.
 Keep a GitLab administrator API token in a mode-0600 file outside the checkout.
 It is used only by the operator provisioning command; it never enters CI. Use a
 real operator-controlled email address for the dedicated account.
@@ -24,24 +24,29 @@ Create a mode-0600 JSON input outside the checkout, for example:
   "admin_token_file": "/secure/operator/gitlab-admin-token",
   "username": "dependency-bot",
   "email": "dependency-bot@example.com",
-  "project_ids": [10, 11],
+  "project_ids": [10],
   "state_file": "/secure/operator/renovate-state.json",
   "cron": "0 4 * * 1",
   "timezone": "UTC"
 }
 ```
 
-Replace all values: System is first and Wizard second. The namespace paths are
-resolved from those IDs. The tool refuses an account it does not recognize,
+Replace all values: select the System project ID. Its namespace path is resolved
+from that ID. Existing installations may retain a second, legacy Wizard project
+selection until they deliberately retire that separate repository. Keep the original
+private ownership journal and its project selection together: changing the selection
+does not silently rebind the bot or remove its memberships. A new monorepo-only bot
+can be provisioned with a distinct username and private state file; pause the old
+schedule first and review outstanding proposals before retiring its access. The tool refuses an account it does not recognize,
 administrator identity, unrelated memberships/tokens, or Developer push access to
-either protected default branch. A private ownership journal binds the bot's user
+any selected protected default branch. A private ownership journal binds the bot's user
 ID to the endpoint, username, private email and project selection. Before account
 creation it records a random nonce, also written to the administrator-only user
 note, so an interrupted creation can resume safely. Matching a public display name
 alone never authorizes adoption. Existing-user identity, restrictions, memberships
 and token checks all precede existing-user API writes. The bot receives a random
-unknown password with no password-reset email; it uses its PAT for operations. Keep both default branches protected against
-Developer pushes. The dedicated account has Developer membership in those two
+unknown password with no password-reset email; it uses its PAT for operations. Keep selected default branches protected against
+Developer pushes. The dedicated account has Developer membership in the selected
 projects only, no group membership, group creation or personal project allowance.
 It uses an `api` personal access token, needed for private repository branches,
 MRs and dashboard issues. Project membership limits that token's project access;
@@ -55,7 +60,7 @@ python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply
 The first invocation validates private file handling without API mutations. The
 second reconciles the account, Developer memberships, protected CI variables and
 one **paused** weekly schedule. `RENOVATE_TOKEN` is protected and masked;
-`RENOVATE_REPOSITORIES` is protected and contains only the two explicit paths.
+`RENOVATE_REPOSITORIES` is protected and contains only the explicitly selected paths.
 The schedule runs the protected System default branch with `RENOVATE_ENABLED=true`.
 The provisioning operator takes ownership of the schedule and must be authorized
 to run pipelines on that branch; a Developer bot does not receive protected-branch
@@ -69,7 +74,7 @@ python3 gitlab/renovate/verify.py --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json
 ```
 
-After reviewing both repository configs, activate it:
+After reviewing the selected repository configuration, activate it:
 
 ```sh
 python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply --enable
@@ -91,7 +96,7 @@ project. `dependencyDashboardApproval=true` is enforced globally, including
 security proposals and lockfile maintenance: **no update branch or MR is created
 before dashboard approval**. Confirm that the first run has only these dashboards
 and no new `renovate/` branch/MR. After the first successful owned schedule run,
-verify both dashboards, unchanged branch/MR inventories and that the scheduled
+verify the selected project dashboards, unchanged branch/MR inventories and that the scheduled
 pipeline contained only the successful bot job:
 
 ```sh
@@ -112,8 +117,9 @@ too. Native Dockerfile, Compose and GitLab CI managers cover image references;
 narrowly scoped regex managers cover the `ARG IMAGE=node:...@sha256:...` pin
 in `system/Dockerfile`, the Runner registration Docker CLI default and the
 current Wizard build/verify BuildKit driver pins. Grouping is per repository, not a cross-project transaction.
-Maintainers combine accepted Wizard changes with the System gitlink and other
-agreed work in a reviewed System candidate.
+The embedded Wizard npm manifests and lockfiles are discovered alongside Sync and
+the operations CLI. Maintainers combine approved updates and other agreed work in
+one reviewed System candidate; there is no separate Wizard gitlink to update.
 
 Updates remain stable-only; Node and Docker retain reviewed major lines. GitLab,
 Runner and Helper image updates are deliberately disabled in ordinary bot rules.
@@ -137,7 +143,7 @@ python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply
 It saves the new token privately, updates the protected variable, then revokes
 obsolete tokens owned by this tool. If interrupted, rerun it; no unrelated token
 is revoked. On failure it does not dump secret-bearing API bodies. Review the
-schedule's next-run time and confirm the next run refreshes both dashboards.
+schedule's next-run time and confirm the next run refreshes the selected project dashboards.
 
 A normal host replacement with retained GitLab data or a matching completed Seed
 restores GitLab's database-backed account, memberships, protected variables,
@@ -163,7 +169,7 @@ rejects mismatched identity, extra memberships/tokens or unrestricted account
 properties before API writes, establishes a new private ownership journal and
 rotates the token before revoking obsolete owned tokens. Re-record a first-run
 baseline and enable after review. It never adopts an account using its name alone. A fresh empty GitLab
-instance needs its two source projects, protected branches, dedicated identity,
+instance needs its selected source projects, protected branches, dedicated identity,
 memberships, token variables and schedule provisioned again; numeric IDs may change.
 An expired/revoked token remains unusable after restoring a database. Never reuse
 a current administrator token as the bot CI secret. Losing a schedule owner can
@@ -183,10 +189,12 @@ docker run --rm --network none --entrypoint node \
 
 It uses fabricated dependencies and an in-memory platform, never live credentials
 or repositories. It exercises the real engine's rule matching, grouping,
-unapproved branch gate and dashboard output. Also validate both configs with
-`renovate-config-validator --strict --no-global renovate.json wizard/renovate.json` from that image. Post-merge operators verify
-the first live discovery separately: only `renovate:discover` is selected, both
-dashboards exist, and branch/MR inventories are unchanged until explicit approval.
+unapproved branch gate and dashboard output. Also validate the active root policy with
+`renovate-config-validator --strict --no-global renovate.json` from that image.
+The nested Wizard configuration is retained for legacy standalone checkouts; the
+System monorepo uses its root policy. Post-merge operators verify
+the first live discovery separately: only `renovate:discover` is selected, the selected
+project dashboards exist, and branch/MR inventories are unchanged until explicit approval.
 
 Upstream references: [GitLab platform](https://docs.renovatebot.com/modules/platform/gitlab/),
 [dashboard approval](https://docs.renovatebot.com/configuration-options/#dependencydashboardapproval),
