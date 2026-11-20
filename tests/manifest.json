@@ -72,7 +72,7 @@
   {"component":"bootstrapper","file":"seed/restore-durability.js","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/github-backup.js","timeoutSeconds":60},
   {"component":"gitlab","file":"gitlab/prepare-wizard-source.js","timeoutSeconds":20},
-  {"component":"gitlab","file":"gitlab/ci-selection.rb","timeoutSeconds":15},
+  {"component":"gitlab","file":"gitlab/ci-selection.js","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/renovate-setup.py","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/renovate-config.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/check-documentation.js","timeoutSeconds":20},

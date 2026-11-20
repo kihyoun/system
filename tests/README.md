@@ -155,11 +155,12 @@ The documentation lane keeps its three-minute job budget and has no runtime
 artifacts, builds, platform tests or long-lived resources. Existing `docker` runner
 tags and resource bounds remain unchanged for full checks.
 
-Reproduce the selection and documentation regressions with existing Ruby/Psych,
+Reproduce the selection and documentation regressions with the pinned operations YAML parser,
 Node and Git, without Docker or additional lint packages:
 
 ```sh
-ruby tests/gitlab/ci-selection.rb
+npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+node tests/gitlab/ci-selection.js
 node tests/gitlab/check-documentation.js
 ```
 
