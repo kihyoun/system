@@ -23,7 +23,7 @@ function fixture(t,monorepo=false) {
   if(binary==='git')return nativeProcess.run(binary,args,options);
   if(binary==='bash'&&args[0]==='-c')stdout=['local','/',root,'',''].join('\0');
   if(binary==='docker'&&args[1]==='image')stdout=JSON.stringify([image(args.at(-1))]);
-  if(failStartup&&args.at(-1)===path.join(checkout,'start.sh'))throw Error('failure');
+  if(failStartup&&args[0]===path.resolve(__dirname,'../dist/cli.js')&&args[1]==='start')throw Error('failure');
   return {stdout,stderr:'',status:0};
  }};
  const guard=()=>api.initializationGuard(path.join(dir,'guard'));
@@ -43,7 +43,7 @@ for(const monorepo of [false,true])test('complete fresh '+(monorepo?'monorepo':'
  assert.deepEqual(result.sourceCommit,f.identity.sourceCommit);
  assert.equal(fs.readFileSync(path.join(f.root,'configuration/.release-images.env'),'utf8'),'BOOTSTRAPPER_IMAGE='+controller+'\nWIZARD_IMAGE='+wizard+'\n');
  assert.equal(fs.statSync(path.join(f.root,'configuration/.release-images.env')).mode&0o777,0o600);
- const startup=f.calls.filter(c=>c.args.at(-1)===path.join(f.checkout,'start.sh'));assert.equal(startup.length,1);assert.equal(startup[0].options.env.SYSTEM_BOOTSTRAPPER_SKIP_BUILD,'1');
+ const startup=f.calls.filter(c=>c.args[0]===path.resolve(__dirname,'../dist/cli.js')&&c.args[1]==='start');assert.equal(startup.length,1);assert.equal(startup[0].options.env.SYSTEM_BOOTSTRAPPER_SKIP_BUILD,'1');
  assert(!f.calls.some(c=>c.args.includes('build')));assert(!fs.existsSync(path.join(f.root,'configuration/.docker.env')));
  assert.equal(f.calls.find(c=>c.args.at(-1)===path.join(f.checkout,'bootstrapper/persistence.sh')).options.env.PERSISTENCE_CHECK_ONLY,'1');
 });
@@ -66,7 +66,7 @@ test('accepted metadata refuses altered source, mixed layouts, image pair, candi
 });
 test('different candidate attempts refuse selectors and startup',t=>{
  const f=fixture(t);f.setJob(21);assert.throws(()=>f.service.install(f.args,f.checkout),/one-accepted-candidate-job/);
- assert(!fs.existsSync(path.join(f.root,'configuration/.release-images.env')));assert(!f.calls.some(c=>c.args.at(-1)===path.join(f.checkout,'start.sh')));
+ assert(!fs.existsSync(path.join(f.root,'configuration/.release-images.env')));assert(!f.calls.some(c=>c.args[0]===path.resolve(__dirname,'../dist/cli.js')&&c.args[1]==='start'));
 });
 test('candidate differing from metadata refuses writes, containerd exact manifest identity is supported',t=>{
  const f=fixture(t),filename=path.join(f.dir,'release.json');f.args.releaseMetadata=filename;f.metadata.acceptance.candidateJobId=21;
@@ -95,7 +95,7 @@ test('private outputs refuse symlinks and broad permissions without replacing co
  assert.throws(()=>api.writePrivate(target,Buffer.from('new')));assert.equal(fs.readFileSync(target,'utf8'),'existing');
 });
 test('failed startup retains selected pair and failure receipt for review',t=>{
- const f=fixture(t);f.setFail();assert.throws(()=>f.service.install(f.args,f.checkout),/command-failed:bash/);
+ const f=fixture(t);f.setFail();assert.throws(()=>f.service.install(f.args,f.checkout),/command-failed:/);
  assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'configuration/.release-images.json'))).status,'startup-failed');
  const release=api.initializationGuard(path.join(f.dir,'guard'));release();
 });

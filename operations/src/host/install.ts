@@ -502,8 +502,8 @@ export class HostInstallService {
       }
       try {
         this.run(
-          'bash',
-          [path.join(checkout, 'start.sh')],
+          process.execPath,
+          [path.resolve(__dirname, '../cli.js'), 'start', '--checkout', checkout],
           { ...environment, SYSTEM_BOOTSTRAPPER_SKIP_BUILD: '1' },
           1800000,
         );

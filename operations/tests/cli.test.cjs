@@ -45,3 +45,14 @@ test('host commands require explicit source and image before any native command'
   });
   assert.throws(()=>parseHostArguments(['harvest','--image','one','--image','two']),/duplicate-option/);
 });
+
+test('host lifecycle CLI refuses implicit checkout and unexpected flags before host work', () => {
+  for (const action of ['start', 'stop', 'persistence']) {
+    for (const args of [[action], [action, '--checkout', 'relative'], [action, '--checkout', '/source', '--force']]) {
+      const result = run(args);
+      assert.equal(result.status, 1);
+      assert.equal(result.stdout, '');
+      assert.match(result.stderr, /explicit-host-checkout-required/);
+    }
+  }
+});

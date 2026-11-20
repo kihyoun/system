@@ -75,10 +75,19 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
         '  restore             Restore the configured completed Seed into fresh storage\n' +
         '  --version           Print the installed CLI version\n' +
         '  --help              Show this help\n\n' +
+        '  start / stop        Start or stop the host platform\n' +
+        '  persistence         Verify and prepare selected persistent storage\n\n' +
         'Host commands require --checkout /absolute/reviewed/source.\n' +
         'Storage: --image IMAGE --persistence-env FILE [--check-only] [--configuration-backup ZIP]\n' +
         'Install: --controller IMAGE@sha256:DIGEST --wizard IMAGE@sha256:DIGEST [--release-metadata FILE] [--install-host]\n',
     );
+    return;
+  }
+  if (['start', 'stop', 'persistence'].includes(args[0])) {
+    if (args.length !== 3 || args[1] !== '--checkout' || !args[2].startsWith('/'))
+      throw new Error('explicit-host-checkout-required');
+    const { hostLifecycle } = await import('./host-lifecycle/entry.js');
+    await hostLifecycle(args[0], args[2]);
     return;
   }
   if (['harvest', 'restore', 'install'].includes(args[0])) {
