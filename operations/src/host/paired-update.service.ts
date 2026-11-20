@@ -1,3 +1,4 @@
+import { cancellationPort } from './operation-cancellation';
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -274,50 +275,58 @@ export class PairedUpdateService {
           leaseOperation: context.operation(),
           checkout: input.checkout,
         },
-        {
-          journal: (value) => save(path.join(checkpoint, 'operation.json'), value),
-          assertBaseline: (value) =>
-            this.runtime.assertBaseline(context.config, value as unknown as RuntimeBaseline),
-          verifySelection: (checkpointed) => {
-            if (selected) {
-              if (checkpointed) this.selections.verifyCheckpoint(checkpoint, selected.selection);
-              else this.selections.verify(context.config._main, selected.selection);
-            }
+        cancellationPort(
+          {
+            journal: (value) => save(path.join(checkpoint, 'operation.json'), value),
+            assertBaseline: (value) =>
+              this.runtime.assertBaseline(context.config, value as unknown as RuntimeBaseline),
+            verifySelection: (checkpointed) => {
+              if (selected) {
+                if (checkpointed) this.selections.verifyCheckpoint(checkpoint, selected.selection);
+                else this.selections.verify(context.config._main, selected.selection);
+              }
+            },
+            publicImages: () => this.runtime.publicImages(context.config, context.services()),
+            pipeline: async () => {
+              await authority.pipeline();
+            },
+            publicPair: () => authority.pair(controller, wizard!),
+            syncIdle: () => this.preparation.syncIdle(context.config),
+            currentServices: () => context.current(evidence, security, stoppedId),
+            repairBaseline: (rows) =>
+              context.repairBaseline(
+                baseline as unknown as Row,
+                rows as Record<string, ContainerRow>,
+              ),
+            critical: () => context.critical(),
+            command: async (args, reference) => {
+              await context.docker(args, 300, '', reference);
+            },
+            inspect: context.inspect,
+            writeConfiguration: (bytes, meta) =>
+              replaceOwned(context.config._main, Buffer.from(bytes, 'base64'), {
+                mode: Number(meta.mode),
+                uid: Number(meta.uid),
+                gid: Number(meta.gid),
+              }),
+            writeSelection: () => {
+              if (selected)
+                this.selections.write(
+                  context.config._main,
+                  checkpoint,
+                  selected.selection,
+                  'after',
+                );
+            },
+            now: () => new Date().toISOString(),
+            reload: context.reload,
+            saveBaseline: (value) => save(path.join(checkpoint, 'baseline-after.json'), value),
+            waitReady: context.waitReady,
+            services: () => context.services(),
+            saveVerification: (value) => save(path.join(checkpoint, 'verification.json'), value),
           },
-          publicImages: () => this.runtime.publicImages(context.config, context.services()),
-          pipeline: async () => {
-            await authority.pipeline();
-          },
-          publicPair: () => authority.pair(controller, wizard!),
-          syncIdle: () => this.preparation.syncIdle(context.config),
-          currentServices: () => context.current(evidence, security, stoppedId),
-          repairBaseline: (rows) =>
-            context.repairBaseline(
-              baseline as unknown as Row,
-              rows as Record<string, ContainerRow>,
-            ),
-          critical: () => context.critical(),
-          command: async (args, reference) => {
-            await context.docker(args, 300, '', reference);
-          },
-          inspect: context.inspect,
-          writeConfiguration: (bytes, meta) =>
-            replaceOwned(context.config._main, Buffer.from(bytes, 'base64'), {
-              mode: Number(meta.mode),
-              uid: Number(meta.uid),
-              gid: Number(meta.gid),
-            }),
-          writeSelection: () => {
-            if (selected)
-              this.selections.write(context.config._main, checkpoint, selected.selection, 'after');
-          },
-          now: () => new Date().toISOString(),
-          reload: context.reload,
-          saveBaseline: (value) => save(path.join(checkpoint, 'baseline-after.json'), value),
-          waitReady: context.waitReady,
-          services: () => context.services(),
-          saveVerification: (value) => save(path.join(checkpoint, 'verification.json'), value),
-        },
+          input.signal,
+        ),
       );
       failed = false;
       return result;
@@ -435,46 +444,50 @@ export class PairedUpdateService {
           checkpoint,
           checkout: input.checkout,
         },
-        {
-          journal: (value) => save(path.join(checkpoint, 'operation.json'), value),
-          mainSha: () => bytesSha(fs.readFileSync(context.config._main)),
-          pairedBaseline: (value) => context.pairedBaseline(value, state),
-          verifySelection: (checkpointed) => {
-            if (selection) {
-              if (checkpointed) this.selections.verifyCheckpoint(checkpoint, selection);
-              else this.selections.verify(context.config._main, selection, true);
-            }
+        cancellationPort(
+          {
+            journal: (value) => save(path.join(checkpoint, 'operation.json'), value),
+            mainSha: () => bytesSha(fs.readFileSync(context.config._main)),
+            pairedBaseline: (value) => context.pairedBaseline(value, state),
+            verifySelection: (checkpointed) => {
+              if (selection) {
+                if (checkpointed) this.selections.verifyCheckpoint(checkpoint, selection);
+                else this.selections.verify(context.config._main, selection, true);
+              }
+            },
+            services: () => context.rollbackServices(baseline, state),
+            stoppedIdle: context.stoppedIdle,
+            repairPeers: (rows) => repairPeers(rows as Record<string, ContainerRow>),
+            critical: context.critical,
+            command: async (args, reference) => {
+              await context.docker(args, 300, '', reference);
+            },
+            inspect: context.inspect,
+            writeConfiguration: (bytes, meta) =>
+              replaceOwned(context.config._main, Buffer.from(bytes, 'base64'), {
+                mode: Number(meta.mode),
+                uid: Number(meta.uid),
+                gid: Number(meta.gid),
+              }),
+            recoveredReceipt: (value) =>
+              save(
+                path.join(path.dirname(context.config._main), '.release-images.recovered.json'),
+                value,
+              ),
+            writeSelection: () => {
+              if (selection)
+                this.selections.write(context.config._main, checkpoint, selection, 'before');
+            },
+            reload: context.reload,
+            restoreStopped: (value) => context.restoreStopped(value, state),
+            waitReady: context.waitReady,
+            inspectServices: () => context.services(),
+            now: () => new Date().toISOString(),
+            verification: (value) =>
+              save(path.join(checkpoint, 'rollback-verification.json'), value),
           },
-          services: () => context.rollbackServices(baseline, state),
-          stoppedIdle: context.stoppedIdle,
-          repairPeers: (rows) => repairPeers(rows as Record<string, ContainerRow>),
-          critical: context.critical,
-          command: async (args, reference) => {
-            await context.docker(args, 300, '', reference);
-          },
-          inspect: context.inspect,
-          writeConfiguration: (bytes, meta) =>
-            replaceOwned(context.config._main, Buffer.from(bytes, 'base64'), {
-              mode: Number(meta.mode),
-              uid: Number(meta.uid),
-              gid: Number(meta.gid),
-            }),
-          recoveredReceipt: (value) =>
-            save(
-              path.join(path.dirname(context.config._main), '.release-images.recovered.json'),
-              value,
-            ),
-          writeSelection: () => {
-            if (selection)
-              this.selections.write(context.config._main, checkpoint, selection, 'before');
-          },
-          reload: context.reload,
-          restoreStopped: (value) => context.restoreStopped(value, state),
-          waitReady: context.waitReady,
-          inspectServices: () => context.services(),
-          now: () => new Date().toISOString(),
-          verification: (value) => save(path.join(checkpoint, 'rollback-verification.json'), value),
-        },
+          input.signal,
+        ),
       );
       failed = false;
       return result;

@@ -1,3 +1,4 @@
+import { operationSignals } from './operation-cancellation';
 import 'reflect-metadata';
 import { parseArgs } from 'node:util';
 import { NestFactory } from '@nestjs/core';
@@ -52,10 +53,14 @@ export async function publicUpgradeMain(args = process.argv.slice(2)): Promise<v
     HostModule.register({ lifecycleEvidence: lifecyclePolicy() }),
     { logger: false },
   );
+  const cancellation = operationSignals();
   try {
-    const result = await app.get(PublicUpgradeService).execute(input);
+    const result = await app
+      .get(PublicUpgradeService)
+      .execute({ ...input, signal: cancellation.signal });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } finally {
+    cancellation.close();
     await app.close();
   }
 }

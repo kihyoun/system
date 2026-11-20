@@ -1,3 +1,4 @@
+import { assertOperationActive } from './operation-cancellation';
 import fs from 'node:fs';
 import path from 'node:path';
 import { record } from '../release/source-identity';
@@ -62,11 +63,18 @@ export class PublicUpgradeBackupService {
     ensure([200, 202].includes(response.status), 'public-upgrade-backup-request-failed');
     return record(JSON.parse(response.body.toString()));
   }
-  async matching(config: RuntimeConfig, target: string, plan: Row, timeout: number): Promise<void> {
+  async matching(
+    config: RuntimeConfig,
+    target: string,
+    plan: Row,
+    timeout: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
     ensure(
       Number.isInteger(timeout) && timeout >= 60 && timeout <= 7200,
       'bounded-backup-timeout-required',
     );
+    assertOperationActive(signal);
     let status = await this.request(config, '/command/backup', {});
     const operation = status.id;
     ensure(
@@ -80,8 +88,10 @@ export class PublicUpgradeBackupService {
     const until = performance.now() + timeout * 1000;
     while (status.state === 'working' && performance.now() < until) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
+      assertOperationActive(signal);
       status = await this.request(config, '/backup/' + operation);
     }
+    assertOperationActive(signal);
     ensure(status.state === 'ready', 'matching-backup-not-complete-inspect-backup-operation');
     const configuration = record(status.configuration),
       seed = record(status.seed);

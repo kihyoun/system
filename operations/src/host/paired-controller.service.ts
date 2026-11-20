@@ -15,6 +15,7 @@ import { record } from '../release/source-identity';
 import type { RuntimeConfig } from './runtime-inspection';
 type Row = Record<string, unknown>;
 export interface PairedControllerInput {
+  signal?: AbortSignal;
   operation: 'update' | 'status' | 'rollback';
   checkout: string;
   persistenceEnv: string;

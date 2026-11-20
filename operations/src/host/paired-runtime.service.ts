@@ -1,3 +1,4 @@
+import { assertOperationActive } from './operation-cancellation';
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -20,6 +21,7 @@ import { record } from '../release/source-identity';
 
 type Row = Record<string, unknown>;
 export interface PairedRuntimeInput {
+  signal?: AbortSignal;
   checkout: string;
   persistenceEnv: string;
   tokenFile: string;
@@ -146,16 +148,18 @@ export class PairedRuntimeService {
       stdin = '',
       reference?: string,
     ): Promise<string> => {
+      assertOperationActive(input.signal);
       const argv = ['--host=unix:///var/run/docker.sock', ...args];
-      if (held)
-        return (
-          await service.lease.command(
-            ['docker', ...argv],
-            timeout,
-            Buffer.from(stdin),
-            reference ? environment(reference) : undefined,
-          )
-        ).toString();
+      if (held) {
+        const output = await service.lease.command(
+          ['docker', ...argv],
+          timeout,
+          Buffer.from(stdin),
+          reference ? environment(reference) : undefined,
+        );
+        assertOperationActive(input.signal);
+        return output.toString();
+      }
       // Pre-lease probes are read-only; stdin is used for bounded private native DB connection files.
       const env: NodeJS.ProcessEnv = {
         ...service.host.environment,
@@ -229,6 +233,7 @@ export class PairedRuntimeService {
       let last: string | undefined;
       try {
         while (last === undefined || Date.now() < deadline) {
+          assertOperationActive(input.signal);
           try {
             const receipt = await service.runtime.verify(
               config,
@@ -247,8 +252,10 @@ export class PairedRuntimeService {
               record(receipt.runnerManagers).checked,
               'controller-update-runner-contact-proof-required',
             );
+            assertOperationActive(input.signal);
             return receipt;
           } catch (error) {
+            assertOperationActive(input.signal);
             const label =
                 error instanceof HostPolicyError ? error.code : 'unexpected-readiness-error',
               remaining = deadline - Date.now();
@@ -285,6 +292,7 @@ export class PairedRuntimeService {
       repairBaseline,
       waitReady,
       acquire(operation?: string) {
+        assertOperationActive(input.signal);
         ensure(!held, 'paired-operation-already-held');
         const value = { root: config._root, seedDirectory: config.SEED_DIR || undefined };
         if (operation) service.lease.adopt(value, operation);

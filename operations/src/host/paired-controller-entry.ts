@@ -1,3 +1,4 @@
+import { operationSignals } from './operation-cancellation';
 import 'reflect-metadata';
 import { parseArgs } from 'node:util';
 import { NestFactory } from '@nestjs/core';
@@ -38,8 +39,10 @@ export async function pairedControllerMain(args = process.argv.slice(2)): Promis
     HostModule.register({ lifecycleEvidence: lifecyclePolicy() }),
     { logger: false },
   );
+  const cancellation = operationSignals();
   try {
     const result = await app.get(PairedControllerService).execute({
+      signal: cancellation.signal,
       operation: values.operation as PairedControllerInput['operation'],
       checkout: values.checkout!,
       persistenceEnv: values['persistence-env']!,
@@ -58,6 +61,7 @@ export async function pairedControllerMain(args = process.argv.slice(2)): Promis
     });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } finally {
+    cancellation.close();
     await app.close();
   }
 }

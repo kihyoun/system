@@ -199,7 +199,24 @@ test('native paired runtime preserves immutable peers, lease ownership, readines
  runtime.verify=async()=>{throw Error('private-password');};await assert.rejects(context.waitReady({}),error=>error.message==='controller-update-readiness-failed:unexpected-readiness-error');assert.equal(host.deadline,undefined);
  runtime.verify=async()=>({runnerManagers:{checked:true}});assert.deepEqual(await context.waitReady({}),{runnerManagers:{checked:true}});
  context.finish(true);assert.deepEqual(finished,[true]);
+ const originalNow=Date.now,originalTimeout=global.setTimeout;
+ try {
+  for(const [failure,expected] of [['command-failed:docker','runner-contact-missing'],['service-not-healthy','service-not-healthy'],['operation-readiness-deadline-expired','runner-contact-missing']]){
+   let clock=100000,calls=0;Date.now=()=>clock;global.setTimeout=(callback,ms)=>{clock+=ms;queueMicrotask(callback);return {};};
+   runtime.verify=async()=>{if(++calls===1)throw new HostPolicyError('runner-contact-missing');clock=103100;throw new HostPolicyError(failure);};
+   const retry=service.context({...input,timeout:3.1},config);
+   await assert.rejects(retry.waitReady({}),error=>error.message==='controller-update-readiness-failed:'+expected);assert.equal(calls,2);assert.equal(host.deadline,undefined);
+  }
+  let clock=100000;Date.now=()=>clock;global.setTimeout=(callback,ms)=>{clock+=ms;queueMicrotask(callback);return {};};host.deadline=102500;runtime.verify=async()=>{throw new HostPolicyError('runner-contact-missing');};
+  await assert.rejects(service.context({...input,timeout:10},config).waitReady({}),/runner-contact-missing/);assert.equal(clock,102500);assert.equal(host.deadline,102500);host.deadline=undefined;
+ }finally{Date.now=originalNow;global.setTimeout=originalTimeout;}
+
  const {parsePublicUpgradeInput}=require('../dist/host/public-upgrade-entry');const parsed=parsePublicUpgradeInput(['--operation','status','--checkout','/source','--persistence-env','/selector','--plan-dir','/retained']);assert.equal(parsed.directory,'/retained');assert.equal(parsed.timeout,1200);assert.throws(()=>parsePublicUpgradeInput(['--operation','bad']),/invalid-public-upgrade-operation/);
+ const {spawn}=require('node:child_process');
+ const cancellationPath=path.resolve(__dirname,'../dist/host/operation-cancellation');
+ const child=spawn(process.execPath,['-e',`const {operationSignals}=require(${JSON.stringify(cancellationPath)});const before=process.listenerCount('SIGTERM');const owner=operationSignals();const timer=setInterval(()=>{},1000);owner.signal.addEventListener('abort',()=>{owner.close();clearInterval(timer);process.stdout.write('closed:'+String(process.listenerCount('SIGTERM')===before));});process.stdout.write('ready\\n');`],{stdio:['ignore','pipe','pipe']});
+ let output='';await new Promise((resolve,reject)=>{child.stdout.on('data',bytes=>{output+=bytes;if(output.includes('ready')&&!output.includes('closed:'))child.kill('SIGTERM');});child.once('error',reject);child.once('close',(code,signal)=>{try{assert.equal(code,0);assert.equal(signal,null);assert(output.endsWith('closed:true'));resolve();}catch(error){reject(error);}});});
+
 });
 test('configuration backup native reader preserves store/deflate bytes and rejects ambiguous or corrupt exports',()=>{
  const {ConfigurationBackupArchive}=require('../dist/host/configuration-backup-archive'),{crc32,deflateRawSync}=require('node:zlib');

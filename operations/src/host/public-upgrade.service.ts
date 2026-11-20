@@ -1,3 +1,4 @@
+import { cancellationPort } from './operation-cancellation';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -27,6 +28,7 @@ import { bytesSha } from './release-selection.service';
 import type { RuntimeConfig } from './runtime-inspection';
 type Row = Record<string, unknown>;
 export interface PublicUpgradeInput {
+  signal?: AbortSignal;
   operation: 'plan' | 'apply' | 'status' | 'recover';
   checkout: string;
   persistenceEnv: string;
@@ -100,6 +102,7 @@ export class PublicUpgradeService {
     if (input.operation === 'plan')
       ensure(input.target && input.backupFile, 'target-backup-file-and-own-API-token-required');
     const base = {
+        signal: input.signal,
         checkout: input.checkout,
         persistenceEnv: input.persistenceEnv,
         tokenFile: input.tokenFile,
@@ -176,51 +179,54 @@ export class PublicUpgradeService {
             checkout: input.checkout,
             backupDestination: config.SEED_DIR,
           },
-          {
-            publicInputs: async (repository, target) => {
-              const value = await publicInputs(repository, target);
-              return {
-                raw: value.raw.toString('base64'),
-                proof: value.proofBytes.toString('base64'),
-                release: value.release,
-                metadata: value.metadata,
-                evidence: value.evidence,
-                graph: value.graph,
-              };
+          cancellationPort(
+            {
+              publicInputs: async (repository, target) => {
+                const value = await publicInputs(repository, target);
+                return {
+                  raw: value.raw.toString('base64'),
+                  proof: value.proofBytes.toString('base64'),
+                  release: value.release,
+                  metadata: value.metadata,
+                  evidence: value.evidence,
+                  graph: value.graph,
+                };
+              },
+              verifyCheckout: () =>
+                this.source.verifyCheckout(requireAccepted().release, input.checkout),
+              installed: (repository, target) =>
+                this.preparation.installed(config, repository, input.checkout, target),
+              prerequisite,
+              host: () => this.preparation.verifyHost(requireAccepted().metadata),
+              syncIdle: () => this.preparation.syncIdle(config),
+              freeBytes: async () => {
+                const dockerRoot = (
+                  await context.docker(['info', '--format', '{{.DockerRootDir}}'])
+                ).trim();
+                ensure(path.isAbsolute(dockerRoot), 'docker-root-directory-required');
+                return [config._root, dockerRoot].map((filename) => {
+                  const stat = fs.statfsSync(filename);
+                  return stat.bavail * stat.bsize;
+                });
+              },
+              backupTarget: (filename) =>
+                this.backup.target(config, filename, input.checkout, input.persistenceEnv),
+              selection: () => ({
+                json: readPrivateInput(
+                  path.join(path.dirname(config._main), '.release-images.json'),
+                ).toString('base64'),
+                environment: readPrivateInput(
+                  path.join(path.dirname(config._main), '.release-images.env'),
+                ).toString('base64'),
+                configurationSha256: bytesSha(fs.readFileSync(config._main)),
+              }),
+              capture: () => this.runtime.capture(config, input.checkout, true),
+              invoke: (checkpoint, metadataFile) => invoke(true, checkpoint, metadataFile),
+              dataSample,
+              now: () => new Date().toISOString(),
             },
-            verifyCheckout: () =>
-              this.source.verifyCheckout(requireAccepted().release, input.checkout),
-            installed: (repository, target) =>
-              this.preparation.installed(config, repository, input.checkout, target),
-            prerequisite,
-            host: () => this.preparation.verifyHost(requireAccepted().metadata),
-            syncIdle: () => this.preparation.syncIdle(config),
-            freeBytes: async () => {
-              const dockerRoot = (
-                await context.docker(['info', '--format', '{{.DockerRootDir}}'])
-              ).trim();
-              ensure(path.isAbsolute(dockerRoot), 'docker-root-directory-required');
-              return [config._root, dockerRoot].map((filename) => {
-                const stat = fs.statfsSync(filename);
-                return stat.bavail * stat.bsize;
-              });
-            },
-            backupTarget: (filename) =>
-              this.backup.target(config, filename, input.checkout, input.persistenceEnv),
-            selection: () => ({
-              json: readPrivateInput(
-                path.join(path.dirname(config._main), '.release-images.json'),
-              ).toString('base64'),
-              environment: readPrivateInput(
-                path.join(path.dirname(config._main), '.release-images.env'),
-              ).toString('base64'),
-              configurationSha256: bytesSha(fs.readFileSync(config._main)),
-            }),
-            capture: () => this.runtime.capture(config, input.checkout, true),
-            invoke: (checkpoint, metadataFile) => invoke(true, checkpoint, metadataFile),
-            dataSample,
-            now: () => new Date().toISOString(),
-          },
+            input.signal,
+          ),
         );
         return { ...result.value, confirmPlanSha256: result.sha256 };
       } catch (error) {
@@ -233,39 +239,52 @@ export class PublicUpgradeService {
     const directory = retainedDirectory(config, input.directory),
       unlock = fileLock(path.join(directory, '.coordinator.lock'));
     try {
-      return await this.applies.apply(directory, input.confirmation, {
-        publicInputs: async (repository, target) => {
-          const value = await publicInputs(repository, target);
-          return {
-            targetSha256: bytesSha(value.raw),
-            provenanceSha256: bytesSha(value.proofBytes),
-            release: value.release,
-          };
-        },
-        prerequisite,
-        installed: (repository, target) =>
-          this.preparation.installed(config, repository, input.checkout, target),
-        fingerprints: () => ({
-          selectionSha256: bytesSha(
-            readPrivateInput(path.join(config._root, 'configuration/.release-images.json')),
-          ),
-          configurationSha256: bytesSha(fs.readFileSync(config._main)),
-        }),
-        assertBaseline: (baseline) =>
-          this.runtime.assertBaseline(config, baseline as unknown as RuntimeBaseline),
-        dataSample,
-        host: () => this.preparation.verifyHost(requireAccepted().metadata),
-        backupTarget: async (filename) => {
-          await this.backup.target(config, filename, input.checkout, input.persistenceEnv);
-        },
-        invoke: (checkOnly, checkpoint, baseline) =>
-          invoke(checkOnly, checkpoint, path.join(directory, 'target.json'), baseline),
-        archive: (_role, image, source) =>
-          this.archives.save(directory, String(image.reference), String(image.imageId), source),
-        matchingBackup: (plan) =>
-          this.backup.matching(config, directory, plan, input.backupTimeout),
-        waitReady: context.waitReady,
-      });
+      return await this.applies.apply(
+        directory,
+        input.confirmation,
+        cancellationPort(
+          {
+            publicInputs: async (repository, target) => {
+              const value = await publicInputs(repository, target);
+              return {
+                targetSha256: bytesSha(value.raw),
+                provenanceSha256: bytesSha(value.proofBytes),
+                release: value.release,
+              };
+            },
+            prerequisite,
+            installed: (repository, target) =>
+              this.preparation.installed(config, repository, input.checkout, target),
+            fingerprints: () => ({
+              selectionSha256: bytesSha(
+                readPrivateInput(path.join(config._root, 'configuration/.release-images.json')),
+              ),
+              configurationSha256: bytesSha(fs.readFileSync(config._main)),
+            }),
+            assertBaseline: (baseline) =>
+              this.runtime.assertBaseline(config, baseline as unknown as RuntimeBaseline),
+            dataSample,
+            host: () => this.preparation.verifyHost(requireAccepted().metadata),
+            backupTarget: async (filename) => {
+              await this.backup.target(config, filename, input.checkout, input.persistenceEnv);
+            },
+            invoke: (checkOnly, checkpoint, baseline) =>
+              invoke(checkOnly, checkpoint, path.join(directory, 'target.json'), baseline),
+            archive: (_role, image, source) =>
+              this.archives.save(
+                directory,
+                String(image.reference),
+                String(image.imageId),
+                source,
+                input.signal,
+              ),
+            matchingBackup: (plan) =>
+              this.backup.matching(config, directory, plan, input.backupTimeout, input.signal),
+            waitReady: context.waitReady,
+          },
+          input.signal,
+        ),
+      );
     } catch (error) {
       this.lifecycle.interrupt(directory);
       throw error;
@@ -301,6 +320,7 @@ export class PublicUpgradeService {
         state = fs.existsSync(operationFile) ? readJson(operationFile) : { phase: 'planned' };
         const retained = readJson(path.join(directory, 'previous-images.json'));
         await this.paired.rollback({
+          signal: input.signal,
           checkout: input.checkout,
           persistenceEnv: input.persistenceEnv,
           checkpoint,
