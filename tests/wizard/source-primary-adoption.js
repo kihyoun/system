@@ -466,6 +466,20 @@ async function bindingRefresh(f) {
     assert.equal(fs.readFileSync(f.config, 'utf8'), before); assert.equal(fs.readFileSync(f.mainConfig, 'utf8'), main);
     assert(!fs.existsSync(f.directory));
   }, 'node24-vite8-quickstart-v5');
+  const {GitlabNativeApiService}=require('../../operations/dist/gitlab-provision/native-api.service');
+  const nativeApiCalls=[], nativeApiContext={checkout:path.resolve(__dirname,'../..'),containerId:'e'.repeat(64)};
+  let nativeApiOutput='{"id":7}\nBOOTSTRAPPER_HTTP_STATUS:200';
+  const nativeApi=new GitlabNativeApiService({async run(binary,args,options){nativeApiCalls.push({binary,args,options});return nativeApiOutput;}});
+  const nativeApiProof=await nativeApi.request(nativeApiContext,'private-fixture-secret','POST','projects/7/variables',{value:'private-value'});
+  assert.equal(nativeApiProof.status,200);assert.equal(nativeApiProof.value.id,7);
+  assert(!JSON.stringify(nativeApiCalls[0].args).includes('private-fixture-secret'));assert(nativeApiCalls[0].options.input.includes('private-fixture-secret'));
+  assert(!nativeApiCalls[0].args.includes('--location'));assert(nativeApiCalls[0].args.includes('http://127.0.0.1/api/v4/projects/7/variables'));
+  for(const route of ['https://foreign.test','//foreign.test','../admin','projects/7%0aSECRET'])await assert.rejects(()=>nativeApi.request(nativeApiContext,'token','GET',route),/request-invalid/);
+  nativeApiOutput='{}\nBOOTSTRAPPER_HTTP_STATUS:302';await assert.rejects(()=>nativeApi.request(nativeApiContext,'token','POST','projects'),error=>error.uncertain===true&&!error.message.includes('token'));
+  nativeApiOutput='invalid\nBOOTSTRAPPER_HTTP_STATUS:200';await assert.rejects(()=>nativeApi.request(nativeApiContext,'token','GET','projects'),error=>error.uncertain===false);
+  nativeApiOutput=JSON.stringify({id:42,token:'private-fixture-bootstrap'});await nativeApi.bootstrap(nativeApiContext,'f'.repeat(48));
+  const bootstrapCall=nativeApiCalls.at(-1);assert(bootstrapCall.args.includes('gitlab-rails'));assert(bootstrapCall.options.input.includes('admin.personal_access_tokens.create!'));
+  assert(!bootstrapCall.args.includes('private-fixture-bootstrap'));
   // Shared typed activation: the same reservation survives uncertain writes.
   const {SourcePrimaryActivationService} = require('../../operations/dist/gitlab-provision/source-primary-activation.service');
   const activationService = new SourcePrimaryActivationService();
