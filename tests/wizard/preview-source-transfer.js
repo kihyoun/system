@@ -31,6 +31,17 @@ child.execFile = (command, args, options, callback) => {
     });
   }
   calls.push({args, options});
+  if (args.includes(destination)) {
+    assert.equal(options.env.GIT_CONFIG_COUNT, '3');
+    assert.equal(options.env.GIT_CONFIG_KEY_0, 'credential.helper');
+    assert.equal(options.env.GIT_CONFIG_VALUE_0, '');
+    assert.equal(options.env.GIT_CONFIG_KEY_1, 'http.' + destination + '.extraHeader');
+    assert.equal(options.env.GIT_CONFIG_VALUE_1, '');
+    assert.equal(options.env.GIT_CONFIG_KEY_2, 'http.' + destination + '.extraHeader');
+    assert.equal(options.env.GIT_CONFIG_VALUE_2, 'Authorization: Basic ' + Buffer.from('oauth2:' + input.token).toString('base64'));
+  } else assert(!options.env.GIT_CONFIG_COUNT, 'Source reads must never receive destination credentials');
+  assert(!options.env.GIT_ASKPASS);
+  assert(!options.env.PREVIEW_GIT_TOKEN);
   let output = '';
   const push = args.includes('push'), ordinal = pushes.length + 1;
   if (failure && args.includes(failure.command) && (!failure.ordinal || failure.ordinal === ordinal) && !failure.after) {
@@ -55,10 +66,7 @@ child.execFile = (command, args, options, callback) => {
     assert(args.includes('--atomic')); assert(args.includes('--no-follow-tags')); assert(!args.includes('--force'));
     for (const name of selected) assert(args.includes('--force-with-lease=' + name + ':'));
     assert.equal(args.filter(value => value.startsWith('--force-with-lease=')).length, selected.length);
-    assert.equal(options.env.PREVIEW_GIT_TOKEN, input.token);
     assert(!args.join(' ').includes(input.token));
-    assert(fs.existsSync(options.env.GIT_ASKPASS));
-    assert.equal(fs.statSync(options.env.GIT_ASKPASS).mode & 0o777, 0o700);
     assert(calls.some(row => row.args.includes('show')), 'Producer verification must precede either push');
     for (const name of selected) {
       assert(!actual.has(name), 'An import must never overwrite a ref');
@@ -71,14 +79,24 @@ child.execFile = (command, args, options, callback) => {
 };
 const {transfer} = require('../../project-bootstrap/preview-setup/source');
 const cleaned = () => {
-  for (const row of calls.filter(row => row.options.env.GIT_ASKPASS))
-    assert(!fs.existsSync(row.options.env.GIT_ASKPASS), 'Temporary credential helper survived transfer');
+  for (const row of calls.filter(row => row.args.includes('clone')))
+    assert(!fs.existsSync(path.dirname(row.args.at(-1))), 'Temporary clone survived transfer');
 };
 function fixtureGit(cwd, ...args) {
   return child.execFileSync('git', ['-C', cwd, ...args], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}).trim();
 }
 (async () => {
+  for (const invalid of [{username: 'bad:name'}, {username: 'bad\nname'}, {token: 'bad\ntoken'}])
+    await assert.rejects(transfer({...input, ...invalid}), /scoped temporary repository credential/);
   assert.equal((await transfer(input)).imported, true);
+  const authenticated = calls.find(row => row.args.includes(destination)).options.env;
+  const header = child.execFileSync('git', ['config', '--get-urlmatch', 'http.extraHeader', destination + '/info/refs'], {env: authenticated, encoding: 'utf8'});
+  assert(header.includes('Authorization: Basic '));
+  for (const other of [origin, 'https://gitlab.example.test/team/other.git', destination + '-other']) {
+    const result = child.spawnSync('git', ['config', '--get-urlmatch', 'http.extraHeader', other], {env: authenticated, encoding: 'utf8'});
+    assert.equal(result.status, 1, 'Repository authorization must not match another URL');
+    assert.equal(result.stdout, '');
+  }
   assert.equal(pushes.length, 2);
   assert.deepEqual(pushes[0].selected, [master], 'Historical ref ordering must not displace default-branch CI');
   assert(!pushes[0].args.some(value => /ci\.skip|push-option/.test(value)), 'Candidate CI must use an ordinary source push');

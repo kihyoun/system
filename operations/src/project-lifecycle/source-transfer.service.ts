@@ -129,7 +129,17 @@ export async function transfer(
 ) {
   const verified = await originPreflight(origin, port);
   const url = new URL(destination);
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !token)
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    !token ||
+    !username ||
+    /[:\r\n\0]/.test(username) ||
+    /[\r\n\0]/.test(token)
+  )
     throw Error(
       'Use the configured TLS GitLab destination and a scoped temporary repository credential.',
     );
@@ -166,17 +176,19 @@ export async function transfer(
           'Source CI producers differ from the accepted controller. No refs were pushed; use the explicit reviewed source-primary path.',
         );
     }
-    const askpass = path.join(directory, 'askpass');
-    fs.writeFileSync(
-      askpass,
-      '#!/bin/sh\ncase "$1" in *Username*) printf "%s" "$PREVIEW_GIT_USERNAME";; *) printf "%s" "$PREVIEW_GIT_TOKEN";; esac\n',
-      { mode: 0o700 },
-    );
+    // Git consumes credentials only for this HTTPS destination, without a helper
+    // program, secret-bearing argv or a credential file in the temporary clone.
+    const authorization =
+      'Authorization: Basic ' + Buffer.from(username + ':' + token).toString('base64');
     const env = {
       ...sourceEnv,
-      GIT_ASKPASS: askpass,
-      PREVIEW_GIT_USERNAME: username,
-      PREVIEW_GIT_TOKEN: token,
+      GIT_CONFIG_COUNT: '3',
+      GIT_CONFIG_KEY_0: 'credential.helper',
+      GIT_CONFIG_VALUE_0: '',
+      GIT_CONFIG_KEY_1: 'http.' + destination + '.extraHeader',
+      GIT_CONFIG_VALUE_1: '',
+      GIT_CONFIG_KEY_2: 'http.' + destination + '.extraHeader',
+      GIT_CONFIG_VALUE_2: authorization,
     };
     const cwd = path.join(directory, 'source.git');
     const refs = (
