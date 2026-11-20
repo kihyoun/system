@@ -17,12 +17,18 @@ export class CandidateGitLabService {
         !parsed.hash,
       'GitLab-HTTPS-origin-required',
     );
-    const stat = fs.lstatSync(tokenFile);
-    ensure(
-      stat.isFile() && !stat.isSymbolicLink() && !(stat.mode & 0o077) && stat.size <= 8 * 1024 ** 2,
-      'private-GitLab-token-required',
-    );
-    const credential = fs.readFileSync(tokenFile, 'utf8').trim();
+    const descriptor = fs.openSync(tokenFile, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    let credential: string;
+    try {
+      const stat = fs.fstatSync(descriptor);
+      ensure(
+        stat.isFile() && !(stat.mode & 0o077) && stat.size <= 8 * 1024 ** 2,
+        'private-GitLab-token-required',
+      );
+      credential = fs.readFileSync(descriptor, 'utf8').trim();
+    } finally {
+      fs.closeSync(descriptor);
+    }
     ensure(credential.length > 0 && !/[\r\n]/.test(credential), 'invalid-GitLab-token-file');
     const raw = async (endpoint: string) => {
       ensure(
