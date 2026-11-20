@@ -29,7 +29,8 @@ try {
   wizardGit('add','.'); wizardGit('commit','-m','Committed Wizard fixture');
   const wizardRevision=wizardGit('rev-parse','HEAD');
   write('tests/Dockerfile','FROM scratch\n');
-  for (const name of ['Dockerfile', 'scan.sh', 'check-sarif.js']) write('tests/codeql/' + name, 'public scanner fixture\n');
+  write('operations/src/ci/codeql.service.ts', 'public scanner service fixture\n');
+  for (const name of ['Dockerfile', 'check-sarif.js']) write('tests/codeql/' + name, 'public scanner fixture\n');
   write('.gitlab-ci.yml','stages: [test]\n');
   write('VERSION','1.1.0\n');
   write('system/Dockerfile','FROM scratch\n');

@@ -1,3 +1,10 @@
+FROM node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5 AS tooling
+WORKDIR /runtime
+COPY source/operations/package*.json ./operations/
+RUN npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+COPY source/operations ./operations
+RUN cd operations && npx --no-install tsc
+
 FROM node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl zstd \
  && rm -rf /var/lib/apt/lists/*
@@ -9,8 +16,9 @@ RUN curl --fail --location --retry 3 --max-time 600 \
  && chmod -R a+rX /opt/codeql \
  && rm /tmp/codeql.tar.zst \
  && mkdir /reports && chown node:node /reports
+COPY --from=tooling /runtime/operations /runtime/operations
 COPY source /source
 ENV HOME=/reports/home
 USER node
 WORKDIR /source
-ENTRYPOINT ["sh", "/source/tests/codeql/scan.sh"]
+ENTRYPOINT ["node", "/runtime/operations/dist/ci/entry.js", "codeql", "/source", "/reports"]

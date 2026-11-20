@@ -30,7 +30,7 @@ function prepare(root) {
   }).filter(entry => entry.name !== 'wizard' && !entry.name.startsWith('wizard/') && included(entry.name));
   if (entries.some(entry => entry.type !== 'blob' || !['100644', '100755'].includes(entry.mode)))
     throw Error('Static scan context refuses source links and nested submodules.');
-  for (const required of ['tests/codeql/Dockerfile', 'tests/codeql/scan.sh', 'tests/codeql/check-sarif.js'])
+  for (const required of ['tests/codeql/Dockerfile', 'operations/src/ci/codeql.service.ts', 'tests/codeql/check-sarif.js'])
     if (!entries.some(entry => entry.name === required)) throw Error('Committed CodeQL tooling is incomplete.');
   const output = path.join(root, '.codeql-context');
   if (fs.existsSync(output) && (fs.lstatSync(output).isSymbolicLink() || !fs.lstatSync(output).isDirectory()))

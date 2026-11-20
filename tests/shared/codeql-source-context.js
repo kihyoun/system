@@ -13,7 +13,8 @@ const write = (name, value) => { const file = path.join(root, name); fs.mkdirSyn
 try {
   for (const key of Object.keys(selectors)) delete process.env[key];
   git('init'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
-  for (const name of ['Dockerfile', 'scan.sh', 'check-sarif.js']) write('tests/codeql/' + name, 'scanner fixture\n');
+  write('operations/src/ci/codeql.service.ts', 'public scanner service fixture\n');
+  for (const name of ['Dockerfile', 'check-sarif.js']) write('tests/codeql/' + name, 'scanner fixture\n');
   write('sync/src/index.ts', 'export const role = "sync";\n');
   write('wizard/package.json', '{}\n');
   write('wizard/.gitlab-ci.yml', 'stages: [test]\n');
