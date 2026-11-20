@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
@@ -465,5 +466,53 @@ async function bindingRefresh(f) {
     assert.equal(fs.readFileSync(f.config, 'utf8'), before); assert.equal(fs.readFileSync(f.mainConfig, 'utf8'), main);
     assert(!fs.existsSync(f.directory));
   }, 'node24-vite8-quickstart-v5');
+  // Shared typed activation: the same reservation survives uncertain writes.
+  const {SourcePrimaryActivationService} = require('../../operations/dist/gitlab-provision/source-primary-activation.service');
+  const activationService = new SourcePrimaryActivationService();
+  const activationFiles = ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map(path => ({path, sha256: crypto.createHash('sha256').update('owned').digest('hex')}));
+  const activationProject = {id: 7, path_with_namespace: 'team/wizard', default_branch: 'main', namespace: {id: 9}, ci_config_path: '.gitlab/primary.yml', visibility: 'private', only_allow_merge_if_pipeline_succeeds: true, only_allow_merge_if_all_discussions_are_resolved: true};
+  const activationEnvironment = {version: 1, managementMode: 'source-primary', operation: 'a'.repeat(48), helperImage: 'sha256:'+'b'.repeat(64), controller: 'system_bootstrapper_1', activationCommit: 'c'.repeat(40), ciFiles: activationFiles, settings: {review: {enabled: true, host: 'review.example.test'}, beta: {enabled: false, host: ''}}, initialVariablesMissing: true, deployments: {review: {lastPipelineId: 43, stoppedThroughPipelineId: 43}}};
+  const activationInput = {action: 'wizard-environments-primary', controller: 'system_bootstrapper_1', repository: {id: 7, path: 'team/wizard', defaultBranch: 'main', namespaceId: 9, managementMode: 'source-primary'}, sourcePrimary: {version: 1, bootstrap: true, adoptionCommit: 'c'.repeat(40), ciFiles: activationFiles}, environments: activationEnvironment};
+  const activationVariables = new Map(), activationWrites = [];let activationLocked = false, loseActivationResponse = true;
+  const activationSession = {
+    async withAdvisoryLock(key, execute) {
+      assert.equal(key, BigInt('0x'+crypto.createHash('sha256').update('system-wizard-environments:7').digest('hex').slice(0,15)).toString());
+      assert(!activationLocked);activationLocked=true;try{return await execute();}finally{activationLocked=false;}
+    },
+    async request(method, route, body) {
+      if (route.includes('/repository/branches/')) return {status:200,value:{commit:{id:'d'.repeat(40)}}};
+      if (route.includes('/repository/files/')) return {status:200,value:{content:Buffer.from('owned').toString('base64')}};
+      assert(activationLocked, 'All variable reads and writes require the same advisory lock');
+      const name = route.split('/variables/')[1]?.split('?')[0];
+      if(method==='GET') return {status:activationVariables.has(name)?200:404,value:activationVariables.get(name)};
+      activationWrites.push(body.key);activationVariables.set(body.key,{...body});
+      if(loseActivationResponse){loseActivationResponse=false;throw Error('applied write with lost response');}
+      return {status:201,value:body};
+    }
+  };
+  const activate = () => activationService.activate(activationInput, activationProject, activationSession);
+  assert.equal((await activate()).environments.phase,'pending');assert.equal(activationWrites.length,1);assert(!activationLocked);
+  activationInput.action='wizard-environments-primary-status';assert.equal((await activate()).environments.phase,'pending');assert.equal(activationWrites.length,1);
+  activationInput.action='wizard-environments-primary';assert.equal((await activate()).environments.phase,'ready');assert.equal(activationWrites.length,4);
+  activationInput.action='wizard-environments-primary-status';assert.equal((await activate()).environments.phase,'ready');assert.equal(activationWrites.length,4);
+  assert.equal(activationEnvironment.deployments.review.lastPipelineId,43);
+  activationVariables.get('WIZARD_REVIEW_HOST').value='foreign.example.test';assert.equal((await activate()).environments.phase,'requires-reconciliation');assert.equal(activationWrites.length,4);
+  activationVariables.delete('WIZARD_REVIEW_HOST');activationInput.sourcePrimary.bootstrap=false;assert.equal((await activate()).environments.phase,'requires-reconciliation');assert.equal(activationWrites.length,4);
+  activationVariables.set('WIZARD_REVIEW_HOST',{key:'WIZARD_REVIEW_HOST',value:'review.example.test',environment_scope:'*',variable_type:'env_var',protected:false,masked:false,raw:true});
+  const readyReads = new Map();
+  const raceSession = {...activationSession, async request(method, route, body) {
+    if (method==='GET' && route.includes('/variables/')) {
+      const name=route.split('/variables/')[1].split('?')[0], count=(readyReads.get(name)||0)+1;readyReads.set(name,count);
+      if(name==='WIZARD_REVIEW_HOST'&&count===2)activationVariables.get(name).value='foreign.example.test';
+    }
+    return activationSession.request(method,route,body);
+  }};
+  await assert.rejects(()=>activationService.activate(activationInput,activationProject,raceSession),/changed after synchronization/);
+  assert.equal(activationWrites.length,4,'A ready status check must never repair a concurrent variable change');
+  activationVariables.get('WIZARD_REVIEW_HOST').value='review.example.test';activationVariables.get('WIZARD_REVIEW_HOST').hidden=true;
+  await assert.rejects(activate,/variable ownership changed/);delete activationVariables.get('WIZARD_REVIEW_HOST').hidden;
+  await assert.rejects(()=>activationService.activate(activationInput,activationProject,{...activationSession,async withAdvisoryLock(){throw Error('busy');}}),/busy/);
+  assert.equal(activationWrites.length,4);
+  activationProject.visibility='public';await assert.rejects(activate,/ownership changed/);assert(!activationLocked);
   console.log('Source-primary adoption: exact ownership/native evidence, versioned rebind/refusals, metadata-only refresh with unchanged Production/native CI/recovery aliases, preserved private history/floors, CAS, shared mutex, idempotency and initial private-image guard passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;});
