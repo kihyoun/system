@@ -33,7 +33,11 @@ function generate(logo, profile = 'legacy') {
       return {...file, content, sha256: hash(content)};
     });
     for (const relative of ['refresh-ca.sh', 'ca/cacert-2026-10-20.crt']) {
-      const content = fs.readFileSync(path.join(__dirname, '../../bootstrapper', relative), 'utf8');
+      // Reserved recipes retain their original bytes, independently of current host tools.
+      const source = relative === 'refresh-ca.sh'
+        ? path.join(__dirname, 'historical/refresh-ca-v4.txt')
+        : path.join(__dirname, '../../bootstrapper', relative);
+      const content = fs.readFileSync(source, 'utf8');
       files.push({path: prefix + relative, content, sha256: hash(content)});
     }
     const ci = baseline.ci.replace('docker:29-cli@sha256:6fae2214c3121a28d5aa639d09032f61310b7c9c75ffbad1025f261a1b621800', 'docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb').replace('  tags: [docker]', '  tags: [docker]\n  before_script:\n    - sh ' + prefix + 'refresh-ca.sh');
