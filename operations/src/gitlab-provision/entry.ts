@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import 'reflect-metadata';
+import { ProjectProvisionService } from './project-provision.service';
 import { SourcePrimaryOperationService } from './source-primary-operation.service';
 import { GitlabProjectCredentialService } from './project-credential.service';
 import { readPrivateInput } from '../host/private-input';
@@ -26,7 +27,11 @@ export async function main(args: string[]): Promise<void> {
   }
   const command = args[0],
     values: Record<string, string> = {};
-  if (!['initialize', 'renew', 'reconcile-initial', 'activate', 'renew-project'].includes(command))
+  if (
+    !['initialize', 'renew', 'reconcile-initial', 'activate', 'project', 'renew-project'].includes(
+      command,
+    )
+  )
     throw Error('Unsupported GitLab credential action.');
   for (let index = 1; index < args.length; index += 2) {
     const key = args[index],
@@ -53,9 +58,9 @@ export async function main(args: string[]): Promise<void> {
     !path.isAbsolute(values['--checkout']) ||
     Boolean(values['--username']) !== Boolean(values['--email']) ||
     (values['--username'] && command !== 'initialize') ||
-    (['initialize', 'activate', 'renew-project'].includes(command) &&
+    (['initialize', 'activate', 'project', 'renew-project'].includes(command) &&
       values['--administrator-token-file']) ||
-    (command === 'activate' && values['--config-directory']) ||
+    (['activate', 'project'].includes(command) && values['--config-directory']) ||
     (command === 'reconcile-initial' && !values['--administrator-token-file']) ||
     (command === 'renew-project' &&
       (!/^[1-9][0-9]*$/.test(values['--project-id'] ?? '') || !values['--project-path'])) ||
@@ -72,15 +77,21 @@ export async function main(args: string[]): Promise<void> {
   let app: INestApplicationContext | undefined;
   try {
     app = await NestFactory.createApplicationContext(GitlabProvisionModule, { logger: false });
-    if (command === 'activate') {
+    if (command === 'activate' || command === 'project') {
       let input = Buffer.alloc(0);
       for await (const chunk of process.stdin) {
         input = Buffer.concat([input, Buffer.from(chunk)]);
         if (input.length > 2 * 1024 * 1024) throw Error('Activation input is too large.');
       }
-      const result = await app
-        .get(SourcePrimaryOperationService)
-        .execute(values['--checkout'], JSON.parse(input.toString('utf8')), abort.signal);
+      const service =
+        command === 'project'
+          ? app.get(ProjectProvisionService)
+          : app.get(SourcePrimaryOperationService);
+      const result = await service.execute(
+        values['--checkout'],
+        JSON.parse(input.toString('utf8')),
+        abort.signal,
+      );
       console.log(JSON.stringify(result));
       return;
     }

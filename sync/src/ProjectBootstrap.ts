@@ -133,6 +133,8 @@ export async function rails(input: any): Promise<any> {
       ['wizard-environments-primary', 'wizard-environments-primary-status'].includes(input.action)
     )
       return await runNativeActivation(input);
+    if (['namespaces', 'availability', 'create', 'pipeline'].includes(input.action))
+      return await runNativeProject(input);
     return await runRails(input);
   } finally {
     railsWorkers--;
@@ -141,6 +143,53 @@ export async function rails(input: any): Promise<any> {
       next();
     }
   }
+}
+function runNativeProject(input: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let launched = false;
+    const failure = () =>
+      Object.assign(
+        new Error('GitLab operation completion was not confirmed; inspect the recorded operation.'),
+        {
+          uncertain: launched && ['create', 'pipeline'].includes(input.action),
+          action: input.action,
+        },
+      );
+    const child = execFile(
+      process.execPath,
+      [
+        path.resolve(__dirname, '../../operations/dist/gitlab-provision/entry.js'),
+        'project',
+        '--checkout',
+        path.resolve(__dirname, '../..'),
+      ],
+      { timeout: 240000, maxBuffer: 2 * 1024 * 1024 },
+      (error, stdout) => {
+        if (error) {
+          reject(failure());
+          return;
+        }
+        try {
+          const result = JSON.parse(stdout);
+          if (
+            !result ||
+            typeof result !== 'object' ||
+            Array.isArray(result) ||
+            !Object.keys(result).length
+          )
+            throw Error('terminal');
+          resolve(result);
+        } catch {
+          reject(failure());
+        }
+      },
+    );
+    child.once('spawn', () => {
+      launched = true;
+    });
+    child.stdin.on('error', () => undefined);
+    child.stdin.end(JSON.stringify(input));
+  });
 }
 function runNativeActivation(input: any): Promise<any> {
   return new Promise((resolve, reject) => {

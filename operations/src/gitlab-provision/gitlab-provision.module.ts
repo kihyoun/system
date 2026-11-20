@@ -1,4 +1,5 @@
 import { GitlabRunnerCredentialService } from './runner-credential.service';
+import { ProjectProvisionService } from './project-provision.service';
 import { GitlabRunnerRequestService } from './runner-request.service';
 import { SourcePrimaryOperationService } from './source-primary-operation.service';
 import { GitlabProjectCredentialService } from './project-credential.service';
@@ -22,6 +23,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
 @Module({
   imports: [GitlabPreflightModule],
   providers: [
+    ProjectProvisionService,
     RecoveryRegistryCredentialService,
     GitlabRunnerCredentialService,
     GitlabRunnerRequestService,
@@ -40,6 +42,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     { provide: GITLAB_PROVISION_PROCESS, useClass: ManagedChildProcess },
   ],
   exports: [
+    ProjectProvisionService,
     RecoveryRegistryCredentialService,
     GitlabRunnerCredentialService,
     GitlabRunnerRequestService,

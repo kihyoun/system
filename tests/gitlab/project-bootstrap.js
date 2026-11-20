@@ -1,5 +1,5 @@
 // Isolated contract tests: real Sync operations, disposable files and a Docker
-// transport double. The separate live test exercises the real Rails/API bridge.
+// entry double. The separate live test exercises the real native API bridge.
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -8,17 +8,24 @@ const http = require('http');
 const vm = require('vm');
 const {spawn} = require('child_process');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'project-bootstrap-'));
-const sync = path.resolve(__dirname, '../../sync/dist');
+const builtSync = path.resolve(__dirname, '../../sync/dist');
+const sync = path.join(root, 'sync/dist');
 fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'bin'));
-fs.mkdirSync(path.join(root, 'project-bootstrap'));
+fs.cpSync(builtSync,sync,{recursive:true});
+fs.symlinkSync(path.resolve(__dirname,'../../sync/node_modules'),path.join(root,'sync/node_modules'),'dir');
+for(const name of ['project-bootstrap','nginx','wizard','bootstrapper','gitlab'])fs.symlinkSync(path.resolve(__dirname,'../..',name),path.join(root,name),'dir');
+fs.mkdirSync(path.join(root,'operations/dist/gitlab-provision'),{recursive:true});
+fs.mkdirSync(path.join(root,'system'));
+for(const file of fs.readdirSync(path.resolve(__dirname,'../../system')).filter(file=>file.endsWith('.js')))fs.symlinkSync(path.resolve(__dirname,'../../system',file),path.join(root,'system',file));
 fs.mkdirSync(path.join(root,'operations/dist/projects-routing'),{recursive:true});
 fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), 'process.exit(0)\n');
 const mock = `#!${process.execPath}
 let text = ''; process.stdin.on('data', chunk => text += chunk);
 process.stdin.on('end', () => {
- const input = JSON.parse(Buffer.from(/BOOTSTRAPPER_INPUT = '([^']+)'/.exec(text)[1], 'base64'));
- require('fs').appendFileSync(${JSON.stringify(path.join(root, 'docker-requests.jsonl'))}, JSON.stringify(input) + '\\n');
+ const input = JSON.parse(text);
+ require('fs').appendFileSync(${JSON.stringify(path.join(root, 'native-requests.jsonl'))}, JSON.stringify(input) + '\\n');
+ if(input.projectKey==='uncertain')return process.exit(1);
  const result = input.action === 'pipeline' ? {pipeline: {id: 123, webUrl: 'http://gitlab.localhost/pipeline', status: 'pending'}} :
  input.action === 'namespaces' ? {namespaces: [{id: 1, path: 'root'}]} :
  input.action === 'availability' ? {availability: input.projectKey === 'occupied' ? 'occupied' : 'available'} :
@@ -27,7 +34,7 @@ process.stdin.on('end', () => {
  setTimeout(() => console.log(JSON.stringify(result)), 100);
 });
 `;
-fs.writeFileSync(path.join(root, 'bin/docker'), mock, {mode: 0o755});
+fs.writeFileSync(path.join(root, 'operations/dist/gitlab-provision/entry.js'), mock, {mode: 0o755});
 process.env.PATH = path.join(root, 'bin') + ':' + process.env.PATH;
 process.chdir(path.join(root, 'sync'));
 const bootstrap = require(path.join(sync, 'ProjectBootstrap'));
@@ -86,8 +93,69 @@ function request(route, token, body) {
     req.on('error', reject); req.end(body ? JSON.stringify(body) : undefined);
   });
 }
+async function nativeProvisionContracts() {
+  const {ProjectProvisionService}=require('../../operations/dist/gitlab-provision/project-provision.service');
+  const payload={action:'create',projectKey:'application',namespaceId:'7',operation:'owned-operation',template:'angular',templateVersion:1,ci:'original generated CI',files:[{action:'create',file_path:'starter.ts',content:'initial starter'}]};
+  const binding={id:42,namespaceId:7,path:'team/application',webUrl:'https://gitlab.example.test/team/application',defaultBranch:'main',pipelineUrl:'https://gitlab.example.test/team/application/-/pipelines',ciPath:'.system-bootstrapper/ci.yml',template:'angular',templateVersion:1,generatedCi:payload.ci,deploymentState:'awaiting-pipeline'};
+  function fixture(){
+    const state={exists:true,project:{id:42,path_with_namespace:'team/application',namespace:{id:7},visibility:'private',description:'System Bootstrapper operation owned-operation',default_branch:'main',ci_config_path:'.system-bootstrapper/ci.yml',web_url:binding.webUrl},files:{'.system-bootstrapper/ci.yml':'user-edited CI with product checks','src/app.ts':'user application source'},requests:[],pipelines:[],lose:null,createStatus:201};
+    const credentials={async ensure(){return {context:{checkout:'/checkout',containerId:'a'.repeat(64)},credential:{token:'private-api-token'}};}};
+    const api={async request(context,token,method,route,body){
+      assert.equal(token,'private-api-token');assert.equal(context.checkout,'/checkout');
+      state.requests.push({method,route,body});
+      let status=200,value={};
+      if(route.startsWith('namespaces?')){const page=Number(new URL('http://local/'+route).searchParams.get('page'));value=page===1?Array.from({length:100},(_,i)=>({id:i+1,full_path:'group'+i})):[{id:101,full_path:'last'}];}
+      else if(route==='namespaces/7')value={id:7,full_path:'team'};
+      else if(route==='projects/team%2Fapplication'){status=state.exists?200:404;value=state.project;}
+      else if(method==='POST'&&route==='projects'){status=state.createStatus;if(status===201){state.exists=true;value=state.project;}}
+      else if(method==='PUT'&&route==='projects/42'){state.project.ci_config_path=body.ci_config_path;value=state.project;}
+      else if(method==='POST'&&route==='projects/42/repository/commits'){
+        for(const action of body.actions){assert.equal(action.action,'create');assert(!Object.hasOwn(state.files,action.file_path),'never overwrite user files');state.files[action.file_path]=action.content;}
+        status=201;
+      }else if(method==='GET'&&route.startsWith('projects/42/repository/files/')){
+        const url=new URL('http://local/'+route),name=decodeURIComponent(url.pathname.split('/files/')[1]);assert.equal(url.searchParams.get('ref'),'main');
+        status=Object.hasOwn(state.files,name)?200:404;value={content:Buffer.from(state.files[name]||'').toString('base64'),last_commit_id:'b'.repeat(40)};
+      }else if(method==='GET'&&route.startsWith('projects/42/pipelines?'))value=state.pipelines;
+      else if(method==='POST'&&route==='projects/42/pipeline'){value={id:91,source:'api',web_url:'https://gitlab.example.test/pipelines/91',status:'pending'};state.pipelines.push(value);status=201;}
+      else throw Error('unexpected native request');
+      if(state.lose===route){state.lose=null;throw Error('private lost response');}
+      return {status,value};
+    }};
+    return {state,service:new ProjectProvisionService(credentials,api),invoke(input=payload){return this.service.execute('/checkout',input);}};
+  }
+  let f=fixture(),before=structuredClone(f.state.files);
+  assert.deepEqual((await f.invoke({...payload,resumeRepository:binding})).repository,binding);
+  assert(f.state.requests.every(row=>row.method==='GET'));assert.deepEqual(f.state.files,before);
+  const mutations=[s=>s.exists=false,s=>s.project.id=43,s=>s.project.path_with_namespace='other/application',s=>s.project.namespace.id=8,s=>s.project.visibility='public',s=>s.project.description='foreign',s=>s.project.default_branch='other',s=>s.project.ci_config_path='.gitlab-ci.yml',s=>delete s.files['.system-bootstrapper/ci.yml']];
+  for(const mutate of [...mutations.map(change=>(s,b)=>change(s)),...['id','namespaceId','defaultBranch','ciPath','path'].flatMap(key=>(key==='id'||key==='namespaceId'?[0,42.5]:['','other']).map(value=>(s,b)=>b[key]=value))]){
+    f=fixture();const bound=structuredClone(binding);mutate(f.state,bound);before=structuredClone(f.state.files);
+    assert.equal((await f.invoke({...payload,resumeRepository:bound})).state,'failed');assert(f.state.requests.every(row=>row.method==='GET'));assert.deepEqual(f.state.files,before);
+  }
+  f=fixture();assert.match((await f.invoke()).message,/Managed CI changed/);assert(f.state.requests.every(row=>row.method==='GET'));
+  f=fixture();f.state.project.description='foreign';assert.equal((await f.invoke()).conflict,true);assert(f.state.requests.every(row=>row.method==='GET'));
+  f=fixture();f.state.exists=false;delete f.state.files['.system-bootstrapper/ci.yml'];assert.equal((await f.invoke()).repository.id,42);
+  assert.deepEqual(f.state.requests.filter(row=>row.method!=='GET').map(row=>row.method),['POST','POST','PUT']);assert.equal(f.state.files['starter.ts'],'initial starter');
+  for(const route of ['projects','projects/42/repository/commits','projects/42']){
+    f=fixture();f.state.exists=false;delete f.state.files['.system-bootstrapper/ci.yml'];f.state.lose=route;
+    await assert.rejects(()=>f.invoke(),error=>error.uncertain===true&&!error.message.includes('private'));
+    assert.equal((await f.invoke()).repository.id,42);assert.equal(f.state.requests.filter(row=>row.method==='POST'&&row.route==='projects/42/repository/commits').length,1);
+  }
+  f=fixture();f.state.lose='projects/42/pipeline';await assert.rejects(()=>f.invoke({...payload,action:'pipeline'}),error=>error.uncertain===true);
+  assert.equal((await f.invoke({...payload,action:'pipeline'})).pipeline.id,91);assert.equal(f.state.requests.filter(row=>row.method==='POST').length,1);
+  f=fixture();assert.equal((await f.invoke({action:'namespaces'})).namespaces.length,101);assert.equal(f.state.requests.length,2);
+  for(const exists of [false,true]){f=fixture();f.state.exists=exists;assert.equal((await f.invoke({...payload,action:'availability'})).availability,exists?'occupied':'available');assert(f.state.requests.every(row=>row.method==='GET'));}
+  for(const status of [400,409,403]){f=fixture();f.state.exists=false;f.state.createStatus=status;const result=await f.invoke();assert.equal(result.state,'failed');assert.equal(result.conflict,status!==403);assert.equal(f.state.requests.filter(row=>row.method!=='GET').length,1);}
+  f=fixture();assert.equal((await f.invoke({...payload,projectKey:'application\n'})).state,'failed');assert.equal(f.state.requests.length,0);
+  const {NestFactory}=require('../../operations/node_modules/@nestjs/core');
+  const {GitlabProvisionModule}=require('../../operations/dist/gitlab-provision/gitlab-provision.module');
+  const app=await NestFactory.createApplicationContext(GitlabProvisionModule,{logger:false,abortOnError:false});
+  try{assert(app.get(ProjectProvisionService) instanceof ProjectProvisionService);}finally{await app.close();}
+  console.log('Native project provisioning: paginated read-only discovery, exact resume identity, unchanged edited source, creation races, interrupted writes and pipeline retry reconciliation passed.');
+}
+
 let child;
 (async () => {
+  await nativeProvisionContracts();
   for (const key of ['', 'A', 'a-b', 'ä', 'a b', '../x', null]) {
     assert(!bootstrap.validProjectKey(key));
     assert.throws(() => bootstrap.createProject(input(key)));
@@ -145,7 +213,7 @@ fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), '
   const hostileRetry = {...saved, data: saved.data.replace(/^# BOOTSTRAPPER_PROJECT=.*$/m, '# BOOTSTRAPPER_PROJECT=' + forged), resumeRepository: {id: 999}};
   assert.equal(restarted.createProject(hostileRetry).id, pending.operation, 'client metadata cannot replace the authoritative receipt');
   assert.equal(restarted.readReceipt(fs.readFileSync(resumeFile, 'utf8')).repository.id, 42);
-  const requests = fs.readFileSync(path.join(root, 'docker-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  const requests = fs.readFileSync(path.join(root, 'native-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
   const resumedCreates = requests.filter(request => request.action === 'create' && request.projectKey === 'resume');
   assert.equal(resumedCreates.length, 2); assert.equal(resumedCreates[1].operation, pending.operation);
   assert.deepEqual(resumedCreates[1].resumeRepository, pending.repository, 'only the retained server repository binds resumed provisioning');
@@ -159,7 +227,7 @@ fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), '
   const forgedData = fs.readFileSync(forgedFile, 'utf8');
   assert.equal(restarted.readReceipt(forgedData).repository.id, 42);
   assert.equal(forgedData.split('\n').filter(line => line.startsWith('# BOOTSTRAPPER_PROJECT=')).length, 1);
-  const newCreate = fs.readFileSync(path.join(root, 'docker-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+  const newCreate = fs.readFileSync(path.join(root, 'native-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
     .find(request => request.action === 'create' && request.projectKey === 'forged');
   assert(!Object.hasOwn(newCreate, 'resumeRepository'), 'new provisioning never accepts a client repository binding');
   const rewritten = path.join(root, 'receipt-rewrite.env');
@@ -168,6 +236,9 @@ fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), '
   assert.equal(rewrittenData.split('\n').filter(line => line.startsWith('# BOOTSTRAPPER_PROJECT=')).length, 1);
   assert.deepEqual(restarted.readReceipt(rewrittenData), completed);
   assert.equal(rewrittenData.slice(0, 1184), original.data.slice(0, 1184));
+  const nativeInterrupted = await wait(bootstrap.createProject(input('uncertain')));
+  assert.equal(nativeInterrupted.uncertain, true);assert.equal(nativeInterrupted.uncertainAction, 'create');
+  assert(fs.existsSync(path.join(root,'system/.projects.env/.uncertain.env')),'unconfirmed native writes retain the operation receipt');
   const application = await wait(bootstrap.createProject({...input('reactapp'), template: 'react'}));
   assert.equal(application.state, 'complete');
   assert.equal(application.repository.initialPipeline.id, 123);
@@ -196,4 +267,4 @@ fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), '
   assert.equal(project.data.substr(807, 1), '$');
   assert.equal(require('crypto').createHash('md5').update(project.data.substr(0, 1184)).digest('hex'), 'bd4a8426355824593a5e21ad759830c1');
   console.log('Project bootstrap validation, idempotency, namespace conflict, race, authentication, polling and Fetch tests passed.');
-})().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => { if (child) child.kill(); fs.rmdirSync(root, {recursive: true}); });
+})().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => { if (child) child.kill(); fs.rmSync(root, {recursive: true, force: true}); });

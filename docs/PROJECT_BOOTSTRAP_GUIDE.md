@@ -256,7 +256,9 @@ Build Sync with `cd sync && npm run build`. The isolated API regression
 `node tests/gitlab/project-bootstrap.js` uses port 8071 and must run in a
 disposable container/network namespace. It covers validation, authentication,
 namespace conflicts, competing Save, recovery, polling, configuration-write
-exclusion and Fetch round trips. Template generation is covered by
+exclusion and Fetch round trips. The same fixture exercises native namespace
+pagination, owned repository creation, read-only receipt recovery after user edits,
+interrupted API writes and idempotent initial pipeline creation. Template generation is covered by
 `node tests/gitlab/application-templates.js`.
 
 For Wizard checks, use the Node/npm versions declared in `wizard/package.json`,
