@@ -1,3 +1,4 @@
+import { attachRunnerStartup, runnerStartupRecovery } from './runner-startup';
 import 'reflect-metadata';
 import { fileLock } from '../runtime/file-lock';
 import path from 'node:path';
@@ -31,12 +32,30 @@ export async function main(args = process.argv.slice(2), environment = process.e
   let operation: string | undefined,
     settled: number | null = 1;
   try {
-    if (/^runner-(start|stop|register|unregister)$/.test(action))
+    if (/^runner-(start|stop|register|unregister|rotate|reconcile)$/.test(action))
       unlock = fileLock('/tmp/system-bootstrapper-runner-registration.lock');
+    let recoveryId: number | undefined;
+    if (action === 'runner-reconcile') {
+      if (
+        args.length !== 4 ||
+        !/^startup-[a-f0-9]{32}$/.test(scope ?? '') ||
+        !(pool === 'provision' || /^[a-f0-9]{48}$/.test(pool ?? ''))
+      )
+        throw Error('Runner reconciliation requires the exact startup and runner operation.');
+      runnerStartupRecovery(state, scope, root, pool);
+      const recovered = await app
+        .get(RunnerLifecycleService)
+        .reconciliation({ root, state, environment, signal: controller.signal }, scope, pool);
+      if (pool !== 'provision' && !recovered.id)
+        throw Error('Runner recovery identity is missing.');
+      recoveryId = recovered.id;
+      runnerStartupRecovery(state, scope, root, pool, true);
+      operation = scope;
+    }
     const upgrade =
       (action.startsWith('runner-') || action === 'gitlab-start') &&
       inheritedUpgrade(state, environment.SYSTEM_GITLAB_UPGRADE_OPERATION);
-    if (action !== 'start') {
+    if (action !== 'start' && action !== 'runner-reconcile') {
       // Reuse only a matching inherited owner; a stale environment token grants no lease.
       const inherited = environment.SYSTEM_STARTUP_OPERATION;
       const owner = path.join(state, '.storage-operation-lock/startup-owner.json');
@@ -55,6 +74,11 @@ export async function main(args = process.argv.slice(2), environment = process.e
         reused = startupAllowed(state, true)?.operation === inherited.slice(7);
       if (!reused) operation = startupBegin(state, process.pid);
     }
+    if (
+      operation?.startsWith('startup-') &&
+      ['runner-start', 'runner-provision', 'runner-rotate'].includes(action)
+    )
+      attachRunnerStartup(state, operation, root, action === 'runner-rotate' ? pool : 'provision');
     const context = {
       root,
       state,
@@ -74,7 +98,25 @@ export async function main(args = process.argv.slice(2), environment = process.e
       await app.get(LifecycleService).wizard(context, action === 'wizard-start');
     else if (action === 'sync-start' || action === 'sync-stop')
       await app.get(LifecycleService).sync(context, action === 'sync-start');
-    else if (action === 'runner-provision')
+    else if (action === 'runner-reconcile')
+      await app
+        .get(RunnerLifecycleService)
+        .provisionToken(
+          context,
+          pool === 'provision' ? undefined : { id: recoveryId!, operation: pool },
+          true,
+        );
+    else if (action === 'runner-rotate') {
+      if (
+        !/^[1-9][0-9]*$/.test(scope ?? '') ||
+        !/^[a-f0-9]{48}$/.test(pool ?? '') ||
+        args.length !== 4
+      )
+        throw Error('Runner rotation requires exact runner ID and stable 48-hex operation.');
+      await app
+        .get(RunnerLifecycleService)
+        .provisionToken(context, { id: Number(scope), operation: pool });
+    } else if (action === 'runner-provision')
       await app.get(RunnerLifecycleService).provisionToken(context);
     else if (action === 'runner-refresh')
       await app.get(RunnerLifecycleService).refreshEndpoint(context, scope);
@@ -92,7 +134,9 @@ export async function main(args = process.argv.slice(2), environment = process.e
   } catch (error) {
     if (
       signal ||
+      (action === 'runner-reconcile' && operation) ||
       (error instanceof ProcessFailure && error.uncertain) ||
+      (error instanceof Error && 'uncertain' in error && error.uncertain === true) ||
       error instanceof AggregateError
     )
       settled = null;

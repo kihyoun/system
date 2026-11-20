@@ -1,3 +1,4 @@
+import { GitlabRunnerCredentialService } from '../gitlab-provision/runner-credential.service';
 import { Injectable, Inject } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,6 +29,7 @@ export class RunnerLifecycleService {
   constructor(
     @Inject(LIFECYCLE_CHILD) private readonly children: LifecycleProcess,
     @Inject(LIFECYCLE_CONFIGURATION) private readonly configuration: ConfigurationPort,
+    private readonly credentials: GitlabRunnerCredentialService,
   ) {}
   private run(context: LifecycleContext, binary: string, args: string[], input?: string) {
     return this.children.run(binary, args, {
@@ -59,30 +61,23 @@ export class RunnerLifecycleService {
       }
     }
   }
-  async provisionToken(context: LifecycleContext) {
+  async provisionToken(
+    context: LifecycleContext,
+    rotation?: { id: number; operation: string },
+    reconcile = false,
+  ) {
     const file = path.join(context.state, '.docker.env'),
       content = fs.readFileSync(file, 'utf8'),
       token = context.environment.GITLAB_RUNNER_TOKEN;
-    if (token && token !== 'secret-token' && token !== 'secret') return;
-    const output = await this.run(
-      context,
-      'docker',
-      ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'],
-      fs.readFileSync(path.join(context.root, 'gitlab-runner/provision.rb'), 'utf8'),
-    );
-    let response: unknown;
-    try {
-      response = JSON.parse(output.trim().split('\n').at(-1) || '');
-    } catch {
-      throw Error('Invalid runner provisioning response.');
-    }
-    if (
-      !response ||
-      typeof response !== 'object' ||
-      !('token' in response) ||
-      typeof response.token !== 'string'
-    )
-      throw Error('Invalid runner provisioning response.');
+    if (!rotation && !reconcile && token && token !== 'secret-token' && token !== 'secret') return;
+    const response = await this.credentials.current({
+      checkout: context.root,
+      persistentDirectory: context.environment.PERSISTENT_DIR || '',
+      signal: context.signal,
+      rotateRunnerId: rotation?.id,
+      rotation: rotation?.operation,
+      startupOperation: context.environment.SYSTEM_STARTUP_OPERATION,
+    });
     const updated = withRunnerToken(content, response.token);
     if (fs.readFileSync(file, 'utf8') !== content)
       throw Error('Configuration changed during runner setup; retry after Fetch.');
@@ -93,6 +88,13 @@ export class RunnerLifecycleService {
     } finally {
       fs.rmSync(temporary, { force: true });
     }
+  }
+  reconciliation(context: LifecycleContext, startupOperation: string, operation: string) {
+    return this.credentials.reconciliation(
+      { checkout: context.root, signal: context.signal },
+      startupOperation,
+      operation,
+    );
   }
   private async register(context: LifecycleContext, container: string, name: string) {
     const token = context.environment.GITLAB_RUNNER_TOKEN;

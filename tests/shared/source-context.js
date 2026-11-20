@@ -43,7 +43,7 @@ try {
   write('tests/binary.png',binary);
   write('system/.docker.env.example','public example\n');
   const runtimeInputs=['tools/quickstart/quickstart.sh','tools/gitlab/bootstrap-token.rb','bootstrapper/persistence.js','bootstrapper/seed-operation.js',
-    'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','gitlab-runner/provision.rb','system/.seed.env',
+    'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','system/.seed.env',
     'system/persistence-init.js','system/wizard-public.js','system/docker-compose.yml',
     'nginx/wizard-aliases.js',
     'system/seed-manifest.js','system/seed-operation.js','system/coordinated-backup.js',

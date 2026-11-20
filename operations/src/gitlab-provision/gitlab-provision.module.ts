@@ -1,3 +1,4 @@
+import { GitlabRunnerCredentialService } from './runner-credential.service';
 import { GitlabRunnerRequestService } from './runner-request.service';
 import { SourcePrimaryOperationService } from './source-primary-operation.service';
 import { GitlabProjectCredentialService } from './project-credential.service';
@@ -22,6 +23,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
   imports: [GitlabPreflightModule],
   providers: [
     RecoveryRegistryCredentialService,
+    GitlabRunnerCredentialService,
     GitlabRunnerRequestService,
     SourcePrimaryOperationService,
     GitlabProjectCredentialService,
@@ -39,6 +41,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
   ],
   exports: [
     RecoveryRegistryCredentialService,
+    GitlabRunnerCredentialService,
     GitlabRunnerRequestService,
     SourcePrimaryOperationService,
     GitlabProjectCredentialService,

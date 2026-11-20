@@ -1,4 +1,5 @@
 import { WizardRecoveryModule } from '../wizard-recovery/wizard-recovery.module';
+import { GitlabProvisionModule } from '../gitlab-provision/gitlab-provision.module';
 import { Module } from '@nestjs/common';
 import { ManagedChildProcess } from '../runtime/managed-child';
 import { LiteralConfiguration } from '../projects-routing/ports';
@@ -7,7 +8,7 @@ import { LifecycleService, LIFECYCLE_PATHS, lifecyclePaths } from './lifecycle.s
 import { RunnerLifecycleService } from './runner.service';
 import { LIFECYCLE_CHILD, LIFECYCLE_CONFIGURATION } from './types';
 @Module({
-  imports: [ProjectsRoutingModule, WizardRecoveryModule],
+  imports: [ProjectsRoutingModule, WizardRecoveryModule, GitlabProvisionModule],
   providers: [
     { provide: LIFECYCLE_PATHS, useValue: lifecyclePaths },
     { provide: LIFECYCLE_CHILD, useClass: ManagedChildProcess },

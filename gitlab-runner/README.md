@@ -55,3 +55,54 @@ This uses the runtime's actual temporary filesystem, without Docker access or li
 Build the operations package before running the compatibility commands. Runner
 setup shares the persistent controller lease; an inherited upgrade must supply
 its exact operation identity and remain the live ancestor of the runner command.
+
+Native provisioning uses the shared GitLab controller credential and REST API.
+It preserves an existing instance runner only after verifying its policy and an
+exactly owned manager configuration/token, or a private saved credential receipt.
+The receipt is under `/srv/gitlab/config/system-bootstrapper-auth/runner.json`,
+inside the GitLab configuration volume included by Harvest/Seed. It must stay
+private; do not copy it into a configuration ZIP. Existing configured runner
+tokens remain supported. Normal startup never resets an unavailable token.
+
+If the old token cannot be recovered, explicitly rotate the exact runner ID in
+the prepared controller mount namespace:
+
+```sh
+node operations/dist/lifecycle/entry.js runner-rotate "$PWD" RUNNER_ID ROTATION_OPERATION
+```
+
+Replace `RUNNER_ID` with the existing instance runner's numeric ID and
+`ROTATION_OPERATION` with a new 48-character lowercase hexadecimal operation ID.
+Retain that ID until recovery finishes and use the **same** value for every retry.
+The controller must have its normal `PERSISTENT_DIR`, GitLab configuration and
+`SYSTEM_CONFIG_DIR` mounts. This command shares the persistent startup barrier
+and runner-registration lock. It stops exactly owned existing main-pool manager
+containers, resets the token once, updates the private receipt, manager tokens and
+main configuration, and leaves managers stopped. Schedule this operation when
+jobs may be interrupted. It preserves the runner record, configuration fields and
+manager system IDs; it does not unregister managers. Restart through
+`node operations/dist/lifecycle/entry.js runner-start "$PWD" main` after success.
+
+An interrupted request retains its exact Docker exec ID and private response
+files. For a normally returned failure without a retained startup barrier, repeat the
+same operation. If the startup barrier was retained after interruption, use:
+
+```sh
+node operations/dist/lifecycle/entry.js runner-reconcile "$PWD" STARTUP_OPERATION ROTATION_OPERATION
+```
+
+`STARTUP_OPERATION` is `startup-` followed by the operation from the private
+`SYSTEM_CONFIG_DIR/.storage-operation-lock/startup-owner.json` receipt. This file
+contains ownership metadata, not credentials. For interrupted initial runner
+provisioning, use the literal `provision` as the final argument instead of a
+rotation operation. Reconciliation verifies the matching runner journal and exact
+Docker exec, and requires the previous owner to be dead using boot, PID start and
+PID namespace identity. It reuses the existing barrier; it never deletes a foreign
+storage/upgrade lock. Old receipts without process proof and same-boot namespace
+changes remain refused. It recovers the saved response rather than issuing
+another reset. A different operation is refused while one is pending. If curl
+finishes without a complete response, or the recorded exec disappears before its
+result is recovered, the command fails closed and retains the receipt. Restore a
+matching Harvest/Seed snapshot before retrying; deleting the pending journal or
+blindly issuing another reset is not recovery. Conflicting or unreadable manager
+configuration is also refused rather than adopted or overwritten.
