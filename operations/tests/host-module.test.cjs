@@ -21,6 +21,8 @@ test('standalone Host module injects shared native adapter without running opera
   const {PublicReleaseAssetsService}=require('../dist/host/public-release-assets.service'),
     {PublicUpgradePreparationService}=require('../dist/host/public-upgrade-preparation.service');
   const assets=app.get(PublicReleaseAssetsService),preparation=app.get(PublicUpgradePreparationService);
+  const {RecoveryArchiveService}=require('../dist/host/recovery-archive.service');
+  assert(app.get(RecoveryArchiveService) instanceof RecoveryArchiveService);
   assert.equal(preparation.assets,assets);
   assert.equal((await assets.load('example/system','v2.0.0','system-release-v2.0.0.json')).toString(),'accepted');
   assert.equal(requests[0][1].redirect,'manual');assert.equal(requests[0][1].headers,undefined);

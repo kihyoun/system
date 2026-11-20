@@ -59,6 +59,15 @@ reader streams `load --input` directly, avoiding an intermediate uncompressed
 file or a separate gzip child. Its 900-second load bound never exceeds a supplied
 remaining operation deadline. A failed load cannot proceed to tagging. Existing
 Python recovery callers forward to these services.
+`RecoveryArchiveService.save` streams the selected immutable controller image ID
+through gzip into an exclusive private file. It publishes the archive only after
+the export process succeeds and the file has been synced, then returns its size,
+checksum and source identity. Cancellation or export failure terminates and reaps
+the Docker client before removing its temporary file. Existing archives are never
+overwritten. The caller holds the same maintenance lease through archive export
+and manifest publication; the export itself does not stop services or publish a
+recovery manifest. Its focused failure and cancellation coverage shares
+`operations/tests/host-recovery-images.test.cjs` with image restoration.
 `ControllerRollbackSequenceService` owns the lease-held paired rollback sequence,
 including selector restoration, stopped-controller recovery and final receipt.
 

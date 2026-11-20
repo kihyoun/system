@@ -32,3 +32,33 @@ test('native host command timeout terminates its direct process without exposing
  assert.throws(()=>host.run(process.execPath,['-e','console.error("private-fixture-output"); setTimeout(()=>{},30000)'],undefined,100),/^Error: command-failed:node$/);
  assert(Date.now()-started<5000);
 });
+
+test('native recovery archive publishes complete private bytes and cleans failed exports',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
+ const {spawn}=require('node:child_process'),{gunzipSync}=require('node:zlib');
+ const {RecoveryArchiveService}=require('../dist/host/recovery-archive.service');
+ const {DockerArchiveProcess}=require('../dist/runtime/archive-process');
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'recovery-native-archive-'));fs.mkdirSync(path.join(directory,'images'));
+ const source=['a'.repeat(40),'b'.repeat(40),'c'.repeat(40)], image=id('1');
+ const child=script=>spawn(process.execPath,['-e',script],{stdio:['ignore','pipe','ignore']});
+ try {
+  const service=new RecoveryArchiveService(new DockerArchiveProcess(reference=>{assert.equal(reference,image);return child('process.stdout.write("fixture image bytes")');}));
+  const result=await service.save(directory,'controller:accepted',image,source);
+  const filename=path.join(directory,result.file),bytes=fs.readFileSync(filename);
+  assert.equal(gunzipSync(bytes).toString(),'fixture image bytes');assert.equal(result.bytes,bytes.length);
+  assert.equal(result.sha256,crypto.createHash('sha256').update(bytes).digest('hex'));assert.equal(fs.statSync(filename).mode&0o777,0o600);
+  const before=fs.readdirSync(path.join(directory,'images'));
+  for(const script of ['process.stdout.write("partial");process.exitCode=7','process.stdout.end();process.exitCode=1']){
+   const failing=new RecoveryArchiveService(new DockerArchiveProcess(()=>child(script)));
+   await assert.rejects(failing.save(directory,'controller:accepted',image,source),/archive-failed/);
+   assert.deepEqual(fs.readdirSync(path.join(directory,'images')),before);
+  }
+  const cancel=new AbortController();let launched;
+  const waiting=new RecoveryArchiveService(new DockerArchiveProcess(()=>{launched=child('setInterval(()=>process.stdout.write("chunk"),10)');setTimeout(()=>cancel.abort(),60);return launched;}));
+  await assert.rejects(waiting.save(directory,'controller:accepted',image,source,cancel.signal),/archive-failed/);
+  assert.equal(launched.signalCode,'SIGKILL');assert.deepEqual(fs.readdirSync(path.join(directory,'images')),before);
+  const absent=new RecoveryArchiveService(new DockerArchiveProcess(()=>spawn('/nonexistent-bootstrapper-test-binary',[],{stdio:['ignore','pipe','ignore']})));
+  await assert.rejects(absent.save(directory,'controller:accepted',image,source),/archive-failed/);
+  assert.deepEqual(fs.readdirSync(path.join(directory,'images')),before);
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});

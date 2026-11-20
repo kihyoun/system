@@ -1,3 +1,5 @@
+import { RecoveryArchiveService } from './recovery-archive.service';
+import { DockerArchiveProcess } from '../runtime/archive-process';
 import { PublicReleaseAssetsService } from './public-release-assets.service';
 import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
 import { ControllerLeaseModule } from './controller-lease.module';
@@ -354,6 +356,10 @@ export class HostModule {
           useFactory: (port: ColdMaintenancePort) => new ColdMaintenanceService(port),
         },
         { provide: RecoveryPublicationService, useFactory: () => new RecoveryPublicationService() },
+        {
+          provide: RecoveryArchiveService,
+          useFactory: () => new RecoveryArchiveService(new DockerArchiveProcess()),
+        },
         { provide: UpgradeLifecycleService, useFactory: () => new UpgradeLifecycleService() },
         {
           provide: HOST_ATTACHED_PROCESS,
@@ -417,6 +423,7 @@ export class HostModule {
         PromotionSequenceService,
         ColdMaintenanceService,
         RecoveryPublicationService,
+        RecoveryArchiveService,
         UpgradeLifecycleService,
         HostStorageService,
         HostReleaseAuthorityService,
