@@ -1,3 +1,5 @@
+import { GitlabNativeContextService } from './native-context.service';
+import { GitlabCredentialService } from './credential.service';
 import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
 import { RecoveryRegistryCredentialService } from './recovery-registry-credential.service';
 import { GitlabActivationSessionService } from './activation-session.service';
@@ -17,6 +19,8 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
   imports: [GitlabPreflightModule],
   providers: [
     RecoveryRegistryCredentialService,
+    GitlabNativeContextService,
+    GitlabCredentialService,
     GitlabActivationSessionService,
     GitlabLockExecService,
     { provide: GITLAB_LOCK_EXEC_HTTP, useClass: GitlabLockExecHttpTransport },
@@ -29,6 +33,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
   ],
   exports: [
     RecoveryRegistryCredentialService,
+    GitlabCredentialService,
     GitlabActivationSessionService,
     SourcePrimaryActivationService,
     GitlabNativeApiService,

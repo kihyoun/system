@@ -91,3 +91,51 @@ gone and that its Docker execution has stopped (or has been garbage-collected).
 Interrupted release is reconciled on the next same-operation attempt. A pending
 write whose expected value cannot be verified remains blocked; deleting the
 journal or cancelling an unrelated database session is not a recovery procedure.
+
+## Controller credential commands
+
+Run these commands inside the running controller, with its prepared Node runtime
+and accepted checkout. The controller must see the same GitLab configuration
+volume at `/srv/gitlab/config` that the owned GitLab container mounts read-write
+at `/etc/gitlab`. The service verifies the container's exact ID, Compose ownership
+and matching filesystem device/inode before opening any credential journal.
+`--config-directory /absolute/path` selects a different local mount of that same
+volume; it cannot select an unrelated private directory.
+
+```sh
+node operations/dist/gitlab-provision/entry.js initialize --checkout "$PWD"
+node operations/dist/gitlab-provision/entry.js renew --checkout "$PWD"
+```
+
+Initialization reserves `system-bootstrapper-controller` with the non-delivery
+address `system-bootstrapper-controller@system-bootstrapper.invalid`. The account
+is an administrator with a random password, skipped email confirmation and a
+private profile. An existing account with that name is never adopted by name
+alone. To select an organization-specific identity, supply both `--username`
+and `--email` on the first initialization; later calls retain that binding.
+The commands print account ID/name, token ID and expiry, never the token itself.
+They share the credential service used by operation callers.
+
+For an expired or revoked recurring credential, create an independently authorized
+administrator token using your GitLab administrator account and place it in a
+private, operator-owned regular file with mode `0600`. Supply its absolute path:
+
+```sh
+node operations/dist/gitlab-provision/entry.js renew --checkout "$PWD" \
+  --administrator-token-file /absolute/private/recovery-token
+```
+
+After a lost initial token response, use `reconcile-initial` with the same private
+file option. The command reconciles the recorded initial operation before completing
+the handoff; it does not delete or replace the journal to bypass ownership checks.
+Remove the recovery file and revoke the operator-supplied token after successful
+recovery. It is not persisted as the controller credential. A lost recurring-token
+creation with no matching token yet visible still refuses another issuance;
+retain the journal and retry the same command after GitLab has completed the
+original request. Do not mint repeated replacements to bypass uncertain completion.
+
+Restore the GitLab database and configuration volume from the same completed Seed.
+The restored credential must still be verified against the restored account and
+its ownership nonce; an unrelated configuration ZIP cannot reconstruct this
+private authority. If a restored token is expired, use the explicit renewal
+recovery above. No root-token rebootstrap is performed for routine renewal.

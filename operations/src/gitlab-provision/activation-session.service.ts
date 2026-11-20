@@ -105,7 +105,13 @@ export class GitlabActivationSessionService {
   ): GitlabActivationSession {
     if (!Number.isSafeInteger(projectId) || projectId < 1 || !/^[a-f0-9]{64}$/.test(operation))
       throw Error('gitlab-activation-context-invalid');
-    let active: { state: LockState; journal: GitlabPrivateJournalSession<LockState> } | undefined;
+    let active:
+      | {
+          state: LockState;
+          journal: GitlabPrivateJournalSession<LockState>;
+          session: GitlabDatabaseSession;
+        }
+      | undefined;
     return {
       request: async (method, route, body) => {
         if (!route.startsWith(`projects/${projectId}/`))
@@ -113,10 +119,12 @@ export class GitlabActivationSessionService {
         if (method === 'GET') return this.api.request(context, token, method, route);
         if (!active || active.state.phase !== 'held' || active.state.pending || !body)
           throw Error('gitlab-activation-held-lock-required');
+        await this.assertBackend(active.session, active.state);
         active.state.pending = { method, route, body };
         active.journal.save(active.state);
         const response = await this.api.request(context, token, method, route, body);
         if (response.status === 200 || response.status === 201) {
+          await this.assertBackend(active.session, active.state);
           delete active.state.pending;
           active.journal.save(active.state);
         }
@@ -255,7 +263,7 @@ export class GitlabActivationSessionService {
                 delete state.pending;
                 journal.save(state);
               }
-              active = { state, journal };
+              active = { state, journal, session };
               try {
                 if (context.signal?.aborted) throw Error('gitlab-activation-cancelled');
                 return await callback();
@@ -269,6 +277,11 @@ export class GitlabActivationSessionService {
           },
         ),
     };
+  }
+  private async assertBackend(session: GitlabDatabaseSession, state: LockState): Promise<void> {
+    const backend = await this.backend(session, state);
+    if (!backend || !state.backend || !isDeepStrictEqual(backend, state.backend))
+      throw Error('gitlab-activation-backend-ownership-lost');
   }
   private async backend(
     session: GitlabDatabaseSession,

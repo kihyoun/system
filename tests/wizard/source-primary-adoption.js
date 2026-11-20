@@ -574,10 +574,38 @@ async function bindingRefresh(f) {
     await journals.withJournal(controllerAuthDirectory,async journal=>{assert(!journal.read().retiring);assert(!journal.read().renewal);});
   } finally {fs.rmSync(controllerAuthDirectory,{recursive:true,force:true});}
   const {GitlabActivationSessionService}=require('../../operations/dist/gitlab-provision/activation-session.service');
+  const nativeHttp=require('http'), originalRequest=nativeHttp.request, {EventEmitter}=require('events');
+  try {
+    nativeHttp.request=(options,receive)=>{assert.equal(options.socketPath,'/var/run/docker.sock');assert.equal(options.path,'/v1.44/exec/'+'a'.repeat(64)+'/json');assert.equal(options.method,'GET');const request=new EventEmitter();request.destroy=()=>{};request.end=()=>{const response=new EventEmitter();response.statusCode=200;receive(response);response.emit('data',Buffer.from('{}'));response.emit('end');};return request;};
+    const {GitlabLockExecHttpTransport}=require('../../operations/dist/gitlab-provision/lock-exec.service');
+    assert.equal((await new GitlabLockExecHttpTransport().request('GET','/exec/'+'a'.repeat(64)+'/json')).status,200);
+  } finally {nativeHttp.request=originalRequest;}
+  const {GitlabNativeContextService}=require('../../operations/dist/gitlab-provision/native-context.service');
+  const {GitlabCredentialService}=require('../../operations/dist/gitlab-provision/credential.service');
+  const {NestFactory}=require('../../operations/node_modules/@nestjs/core'), {GitlabProvisionModule}=require('../../operations/dist/gitlab-provision/gitlab-provision.module');
+  const provisioningModule=await NestFactory.createApplicationContext(GitlabProvisionModule,{logger:false});try {assert(provisioningModule.get(GitlabCredentialService));} finally {await provisioningModule.close();}
+
+  const contextDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-native-context-'));
+  try {
+    const local=fs.statSync(contextDirectory,{bigint:true}), contextCalls=[];
+    let foreign=false, readOnly=false;
+    const contexts=new GitlabNativeContextService({async run(binary,args){contextCalls.push(args);assert.equal(binary,'docker');assert.equal(args[0],'--host=unix:///var/run/docker.sock');
+      if(args[1]==='inspect')return JSON.stringify({Id:nativeApiContext.containerId,Name:'/system_gitlab_1',State:{Running:true},Config:{Labels:{'com.docker.compose.project':'system','com.docker.compose.service':'gitlab'}},Mounts:[{Destination:'/etc/gitlab',Type:'volume',RW:!readOnly}]});
+      assert.equal(args[2],nativeApiContext.containerId);return foreign?'1:2':`${local.dev}:${local.ino}`;
+    }});
+    const context=await contexts.resolve(nativeApiContext.checkout,contextDirectory);assert.equal(context.containerId,nativeApiContext.containerId);
+    foreign=true;await assert.rejects(()=>contexts.resolve(nativeApiContext.checkout,contextDirectory),/config-volume-mismatch/);foreign=false;readOnly=true;await assert.rejects(()=>contexts.resolve(nativeApiContext.checkout,contextDirectory),/config-volume-required/);readOnly=false;
+    let phase='bootstrap-received';const steps=[], replacement={id:4,userId:9,token:'private',expiresAt:'2027-02-01'}, account={userId:9,username:'system-bootstrapper-controller',email:'system-bootstrapper-controller@system-bootstrapper.invalid'};
+    const credentials=new GitlabCredentialService(contexts,{async initial(){steps.push('initial');return {phase,replacement,...(phase==='ready'?{account}:{})};},async complete(){steps.push('complete');phase='ready';},async reconcileInitial(){steps.push('reconcile');phase='bootstrap-received';}}, {async prepare(c,d,identity){assert.deepEqual(identity,{username:account.username,email:account.email});steps.push('prepare');return replacement;},async current(){steps.push('current');return replacement;}}, {async withJournal(d,operation){return operation({read(){return {account};}});}});
+    const result=await credentials.ensure({checkout:nativeApiContext.checkout,configDirectory:contextDirectory});assert.deepEqual(steps,['initial','prepare','complete','current']);assert.equal(result.credential.token,'private');
+    steps.length=0;await credentials.ensure({checkout:nativeApiContext.checkout,configDirectory:contextDirectory});assert.deepEqual(steps,['initial','current']);
+    await assert.rejects(()=>credentials.ensure({checkout:nativeApiContext.checkout,configDirectory:contextDirectory,identity:{username:'other',email:'other@example.test'}}),/identity-binding-mismatch/);
+    phase='replacement-verified';steps.length=0;await credentials.ensure({checkout:nativeApiContext.checkout,configDirectory:contextDirectory});assert.deepEqual(steps,['initial','complete','current']);
+  } finally {fs.rmSync(contextDirectory,{recursive:true,force:true});}
   const {GitlabLockExecService}=require('../../operations/dist/gitlab-provision/lock-exec.service');
   const lockDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-activation-lock-'));
   try {
-    const journals=new GitlabAuthJournalService(), commands=[], executions=new Map();let nextExec=0, launches=0, cancels=0, lostStart=true, lostWrite=true, lostCancel=false, variable, backend;
+    const journals=new GitlabAuthJournalService(), commands=[], executions=new Map();let nextExec=0, launches=0, cancels=0, lostStart=true, lostWrite=true, lostCancel=false, loseProofAfterWrite=false, writes=0, variable, backend;
     const transport={async request(method,route,body){
       if(route.endsWith('/exec')){const id=(++nextExec).toString(16).padStart(64,'0');executions.set(id,{command:body,running:false,exitCode:null});commands.push(body.Cmd);return {status:201,value:{Id:id}};}
       const id=route.split('/')[2], execution=executions.get(id);if(!execution)return {status:404,value:{message:'No such exec'}};
@@ -591,7 +619,7 @@ async function bindingRefresh(f) {
     const database={async open(){return {main:0,ci:1,databases:[0,1],command(index,options){assert.equal(index,0);return ['exec','--user','998:998',nativeApiContext.containerId,'env','-i','PATH=/usr/bin:/bin','HOME=/tmp/owned','/opt/gitlab/embedded/bin/psql','--dbname','service=database0 application_name='+options.applicationName];},async query(index,sql){assert.equal(index,0);if(sql.includes('pg_cancel_backend')){cancels++;assert(sql.includes("EXTRACT(EPOCH FROM backend_start)::text='1763668800.123456'"));backend=undefined;for(const execution of executions.values())if(execution.running){execution.running=false;execution.exitCode=3;}if(lostCancel){lostCancel=false;throw Error('lost cancellation response');}return 't';}assert(sql.includes("l.locktype='advisory'"));assert(sql.includes('l.classid=0::oid AND l.objid=42::oid AND l.objsubid=1'));return JSON.stringify(backend?[backend]:[]);},async close(){}};}};
     const api={async request(context,token,method,route,body){assert.equal(token,'project-private-token');if(method==='GET')return {status:variable?200:404,value:variable||{message:'not found'}};
       const journal=JSON.parse(fs.readFileSync(path.join(lockDirectory,'system-bootstrapper-auth/project-7.json')));assert.equal(journal.phase,'held');assert.equal(journal.backend.pid,1234);assert(journal.pending);
-      variable={...body};if(lostWrite){lostWrite=false;throw Object.assign(Error('lost variable response'),{uncertain:true});}return {status:200,value:variable};}};
+      writes++;variable={...body};if(loseProofAfterWrite){loseProofAfterWrite=false;backend=undefined;}if(lostWrite){lostWrite=false;throw Object.assign(Error('lost variable response'),{uncertain:true});}return {status:200,value:variable};}};
     const service=()=>new GitlabActivationSessionService(journals,database,api,new GitlabLockExecService(transport),{async run(){throw Error('unexpected process');}});
     const session=()=>service().create(nativeApiContext,lockDirectory,7,'a'.repeat(64),'project-private-token');
     let current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/lost detached start response/);assert.equal(launches,1);assert.equal(nextExec,1);
@@ -606,6 +634,10 @@ async function bindingRefresh(f) {
     current=session();lostCancel=true;await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/lost cancellation response/);
     executions.clear(); // Docker may garbage-collect completed execs before the controller retries.
     current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/release-reconciled-retry/);assert.equal(launches,2);assert.equal(cancels,2);
+    current=session();await current.withAdvisoryLock('42',async()=>{const original=backend, before=writes;backend=undefined;await assert.rejects(()=>current.request('PUT','projects/7/variables/WIZARD_REVIEW_HOST',body),/backend-ownership-lost/);assert.equal(writes,before);backend=original;});
+    current=session();loseProofAfterWrite=true;await assert.rejects(()=>current.withAdvisoryLock('42',()=>current.request('PUT','projects/7/variables/WIZARD_REVIEW_HOST',body)),/backend-ownership-lost/);
+    assert(JSON.parse(fs.readFileSync(path.join(lockDirectory,'system-bootstrapper-auth/project-7.json'))).pending,'successful response without lock proof must retain pending write');
+
   } finally {fs.rmSync(lockDirectory,{recursive:true,force:true});}
   // Shared typed activation: the same reservation survives uncertain writes.
   const {SourcePrimaryActivationService} = require('../../operations/dist/gitlab-provision/source-primary-activation.service');

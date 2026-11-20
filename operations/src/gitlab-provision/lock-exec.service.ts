@@ -45,7 +45,7 @@ export class GitlabLockExecHttpTransport implements GitlabLockExecHttp {
       const request = http.request(
         {
           socketPath: '/var/run/docker.sock',
-          path: '/v1.43' + route,
+          path: '/v1.44' + route,
           method,
           headers: bytes
             ? { 'Content-Type': 'application/json', 'Content-Length': bytes.length }
