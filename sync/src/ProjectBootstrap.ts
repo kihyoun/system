@@ -135,6 +135,7 @@ export async function rails(input: any): Promise<any> {
       return await runNativeActivation(input);
     if (['namespaces', 'availability', 'create', 'pipeline'].includes(input.action))
       return await runNativeProject(input);
+    if (input.action === 'token-expiry-status') return await runNativeTokenMetadata(input);
     return await runRails(input);
   } finally {
     railsWorkers--;
@@ -240,12 +241,40 @@ function runNativeActivation(input: any): Promise<any> {
     child.stdin.end(JSON.stringify(input));
   });
 }
+function runNativeTokenMetadata(input: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      process.execPath,
+      [
+        path.resolve(__dirname, '../../operations/dist/gitlab-provision/entry.js'),
+        'token-metadata',
+        '--checkout',
+        path.resolve(__dirname, '../..'),
+      ],
+      { timeout: 240000, maxBuffer: 2 * 1024 * 1024 },
+      (error, stdout) => {
+        if (error) {
+          reject(new Error('GitLab token metadata is unavailable.'));
+          return;
+        }
+        try {
+          const value = JSON.parse(stdout);
+          if (!value || !Array.isArray(value.credentials)) throw Error();
+          resolve(value);
+        } catch {
+          reject(new Error('GitLab token metadata is unavailable.'));
+        }
+      },
+    );
+    child.stdin.on('error', () => undefined);
+    child.stdin.end(JSON.stringify(input));
+  });
+}
 function runRails(input: any): Promise<any> {
   return new Promise((resolve, reject) => {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
     const modules: { [key: string]: string } = {
       'wizard-source': 'wizard-source/import.rb',
-      'token-expiry-status': 'token-expiry/status.rb',
       ...Object.fromEntries(
         [
           'preflight',

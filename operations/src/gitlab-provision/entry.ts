@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { GitlabTokenMetadataService } from './token-metadata.service';
 import 'reflect-metadata';
 import { ProjectProvisionService } from './project-provision.service';
 import { SourcePrimaryOperationService } from './source-primary-operation.service';
@@ -28,9 +29,7 @@ export async function main(args: string[]): Promise<void> {
   const command = args[0],
     values: Record<string, string> = {};
   if (
-    !['initialize', 'renew', 'reconcile-initial', 'activate', 'project', 'renew-project'].includes(
-      command,
-    )
+    !['initialize', 'renew', 'reconcile-initial', 'activate', 'project', 'renew-project', 'token-metadata'].includes(command)
   )
     throw Error('Unsupported GitLab credential action.');
   for (let index = 1; index < args.length; index += 2) {
@@ -58,7 +57,7 @@ export async function main(args: string[]): Promise<void> {
     !path.isAbsolute(values['--checkout']) ||
     Boolean(values['--username']) !== Boolean(values['--email']) ||
     (values['--username'] && command !== 'initialize') ||
-    (['initialize', 'activate', 'project', 'renew-project'].includes(command) &&
+    (['initialize', 'activate', 'project', 'renew-project', 'token-metadata'].includes(command) &&
       values['--administrator-token-file']) ||
     (['activate', 'project'].includes(command) && values['--config-directory']) ||
     (command === 'reconcile-initial' && !values['--administrator-token-file']) ||
@@ -77,11 +76,23 @@ export async function main(args: string[]): Promise<void> {
   let app: INestApplicationContext | undefined;
   try {
     app = await NestFactory.createApplicationContext(GitlabProvisionModule, { logger: false });
-    if (command === 'activate' || command === 'project') {
+    if (['activate', 'project', 'token-metadata'].includes(command)) {
       let input = Buffer.alloc(0);
       for await (const chunk of process.stdin) {
         input = Buffer.concat([input, Buffer.from(chunk)]);
         if (input.length > 2 * 1024 * 1024) throw Error('Activation input is too large.');
+      }
+      if (command === 'token-metadata') {
+        const result = await app
+          .get(GitlabTokenMetadataService)
+          .status(
+            values['--checkout'],
+            JSON.parse(input.toString('utf8')),
+            abort.signal,
+            values['--config-directory'],
+          );
+        console.log(JSON.stringify(result));
+        return;
       }
       const service =
         command === 'project'

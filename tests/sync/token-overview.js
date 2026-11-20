@@ -53,3 +53,30 @@ assert.throws(() => tokenMonitorSettings({SYSTEM_CREDENTIAL_PROJECT_PATHS: '["a/
 assert.throws(() => tokenMonitorSettings({SYSTEM_CREDENTIAL_PROJECT_PATHS: '["a/b"]',
   SYSTEM_CREDENTIAL_EXPIRY_METADATA: '[{"projectPath":"a/b","key":"DOCKERHUB_TOKEN","expiresAt":"2027-01-01","token":"secret"}]'}));
 console.log('PASS credential date boundaries, explicit scope, unsupported metadata and response redaction.');
+
+async function nativeMetadata() {
+  const {GitlabTokenMetadataService}=require('../../operations/dist/gitlab-provision/token-metadata.service');
+  const queries=[],calls=[];let closed=0;
+  const session={main:0,ci:1,async query(database,sql){queries.push({database,sql});
+    if(sql.includes('public.routes'))return sql.includes('missing/project')?'[]':'[42]';
+    if(sql.includes('ci_variables')){assert.equal(database,1);assert.ok(!sql.includes('encrypted_value'));return '["RENOVATE_TOKEN","SYSTEM_RELEASE_GITLAB_TOKEN","GITHUB_RELEASE_TOKEN","DOCKERHUB_TOKEN"]';}
+    assert.equal(database,0);assert.ok(sql.includes('personal_access_tokens'));assert.ok(!sql.includes('private-token-value'));return '[{"id":7,"expiresAt":"2027-01-01","revoked":true}]';
+  },async close(){closed++;}};
+  const service=new GitlabTokenMetadataService({resolve:async()=>({checkout:'/checkout',containerId:'a'.repeat(64)})},
+    {open:async()=>session},{withJournal:async(_directory,fn)=>fn({read:()=>({phase:'ready',replacement:{token:'controller-existing'}})})},
+    {async request(_context,token,method,route){assert.equal(token,'controller-existing');assert.equal(method,'GET');calls.push(route);assert.ok(!route.includes('GITHUB')&&!route.includes('DOCKERHUB'));const key=route.includes('RENOVATE')?'RENOVATE_TOKEN':'SYSTEM_RELEASE_GITLAB_TOKEN';return {status:200,value:{key,environment_scope:'*',value:'private-token-value'}};}},{});
+  const result=await service.status('/checkout',{projects:['example/system','missing/project','example/system']});
+  assert.equal(result.credentials.length,8);
+  assert.equal(result.credentials[0].expiresAt,'2027-01-01');assert.equal(result.credentials[0].revoked,true);
+  assert.equal(result.credentials[2].expirySource,'unavailable');assert.equal(result.credentials[2].configured,true);
+  assert.equal(result.credentials[7].configured,false);
+  assert.ok(!JSON.stringify(result).includes('private-token-value'));
+  assert.equal(calls.length,2);assert.equal(closed,1);
+  await assert.rejects(service.status('/checkout',{projects:['example/../foreign']}),/Invalid credential project/);
+  assert.equal(closed,1);
+  service.journals={withJournal:async(_directory,fn)=>fn({read:()=>undefined})};
+  const unavailable=await service.status('/checkout',{projects:['example/system']});
+  assert.equal(unavailable.credentials[0].error,'metadata-unavailable');assert.equal(unavailable.credentials[0].configured,true);
+  assert.equal(calls.length,2,'status must not initialize credentials to obtain missing metadata');
+}
+nativeMetadata().then(()=>console.log('PASS native read-only token metadata, revoked PAT lookup, external value isolation and missing credentials.')).catch(error=>{console.error(error);process.exitCode=1;});

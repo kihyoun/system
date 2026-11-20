@@ -101,7 +101,6 @@
   {"component":"gitlab","file":"gitlab/ca-trust.js","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/security-runners.js","timeoutSeconds":25},
   {"component":"sync","file":"sync/token-overview.js","timeoutSeconds":20},
-  {"component":"gitlab","file":"gitlab/token-expiry.rb","timeoutSeconds":20},
   {"component":"sync","file":"sync/system-diagnostics.js","timeoutSeconds":20},
   {"component":"sync","file":"sync/backup-workflow.js","timeoutSeconds":20},
   {"component":"bootstrapper","file":"seed/coordinated-backup.js","timeoutSeconds":30},

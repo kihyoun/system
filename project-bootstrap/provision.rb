@@ -10,11 +10,8 @@ input = JSON.parse(Base64.strict_decode64(BOOTSTRAPPER_INPUT))
 credential = nil
 result = nil
 begin
-  if input['action'] == 'token-expiry-status'
-    puts JSON.generate(BootstrapperTokenExpiry.status(input))
-    exit
-  end
   raise BootstrapError, 'Use native project provisioning' if ['namespaces', 'availability', 'create', 'pipeline'].include?(input['action'])
+  raise BootstrapError, 'Token metadata requires the native credential entrypoint' if input['action'] == 'token-expiry-status'
   admin = User.find_by_username('root')
   raise BootstrapError, 'No active administrator' unless admin&.admin? && admin.active?
   # Only clean expired credentials: concurrent lookups must not revoke one another.

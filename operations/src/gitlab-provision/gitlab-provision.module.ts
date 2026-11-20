@@ -1,3 +1,4 @@
+import { GitlabTokenMetadataService } from './token-metadata.service';
 import { GitlabRunnerCredentialService } from './runner-credential.service';
 import { ProjectProvisionService } from './project-provision.service';
 import { GitlabRunnerRequestService } from './runner-request.service';
@@ -25,6 +26,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
   providers: [
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
+    GitlabTokenMetadataService,
     GitlabRunnerCredentialService,
     GitlabRunnerRequestService,
     SourcePrimaryOperationService,
@@ -44,6 +46,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
   exports: [
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
+    GitlabTokenMetadataService,
     GitlabRunnerCredentialService,
     GitlabRunnerRequestService,
     SourcePrimaryOperationService,

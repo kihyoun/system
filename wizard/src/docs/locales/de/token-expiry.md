@@ -4,7 +4,7 @@
 Betreiber ausgewählten Automatisierungsprojekte zu prüfen. Die Übersicht liest
 nur: Sie erneuert keine Zugangsdaten, erstellt keinen Administrator-Token, ändert
 keine CI-Variable und testet kein Geheimnis gegen einen externen Dienst. Geheime
-Werte und private Token-Abfragen bleiben in GitLab Rails; der Browser erhält nur
+Werte und private Token-Abfragen bleiben im Controller und seiner lokalen GitLab-Verbindung; der Browser erhält nur
 gefilterte Angaben zu Zweck, Anbieter, Projekt, Ablauf und Status.
 
 ## Projekte auswählen und Überwachung speichern
@@ -45,10 +45,16 @@ Wert könnte so aussehen:
 
 Der Server liest nur vier feste CI-Variablenschlüssel in den ausgewählten
 Projekten: `RENOVATE_TOKEN`, `SYSTEM_RELEASE_GITLAB_TOKEN`, `GITHUB_RELEASE_TOKEN`
-und `DOCKERHUB_TOKEN`. Ihre Werte werden nicht ausgegeben. Bei den ersten beiden
-Schlüsseln ermittelt GitLab Rails vorhandene lokale Metadaten persönlicher
-GitLab-Zugriffstokens, ohne einen neuen Administrator-Token zu erstellen oder
-aufzubewahren. Vorhandene GitLab-Metadaten können Ablaufdatum und Widerruf melden.
+und `DOCKERHUB_TOKEN`. Ihre Werte werden nicht ausgegeben. Der gemeinsame native Dienst prüft das Vorhandensein der Schlüssel in der
+CI-Datenbank, ohne verschlüsselte Variablenwerte zu lesen. Nur für die ersten
+beiden Schlüssel liest ein bereits gespeicherter Controller-Zugang den gewählten
+Variablenwert über die lokale GitLab-API. Der Dienst ordnet dessen SHA-256-Hash
+lokalen Metadaten persönlicher Zugriffstokens zu, einschließlich abgelaufener oder
+widerrufener Tokens. Die Statusabfrage initialisiert oder erneuert den
+Controller-Zugang niemals. Fehlt er oder ist er unbrauchbar, bleiben die
+GitLab-Ablaufdaten bis zur Initialisierung oder Erneuerung unbekannt; das
+Vorhandensein der konfigurierten Schlüssel bleibt sichtbar. Werte externer
+Anbieter werden niemals gelesen oder entschlüsselt.
 
 Bei GitHub und Docker Hub bleibt der Ablauf **unbekannt**, solange der Betreiber
 kein Datum einträgt. Ein solches Datum ist als **vom Betreiber erfasst** markiert;
