@@ -4,7 +4,7 @@
   "description": "Shared System Bootstrapper operations runtime",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/package-assets.cjs",
     "check": "tsc --noEmit",
     "test": "node --test tests/*.test.cjs",
     "format": "prettier --config ../.prettierrc --ignore-path ../.prettierignore --write \"src/**/*.{ts,tsx,js,jsx}\"",
@@ -33,6 +33,7 @@
   "private": false,
   "files": [
     "dist",
+    "assets",
     "README.md",
     "LICENSE"
   ],

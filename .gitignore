@@ -22,3 +22,6 @@ __pycache__/
 .candidate-images/
 
 .codeql-context/
+
+/operations/assets/
+/operations/LICENSE
