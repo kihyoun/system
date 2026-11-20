@@ -267,11 +267,12 @@ An incomplete Seed restore still requires a different fresh target as above.
 
 ### Pulling a restored private Wizard image
 
-After GitLab starts, `system/ensure-wizard-image.sh` recovers an absent immutable
+After GitLab starts, the shared Wizard recovery service recovers an absent immutable
 Wizard image from the platform's own registry. It validates the saved managed
 Wizard receipt and registry/project identity, renders a GitLab/registry-only proxy,
-and waits for GitLab's internal readiness endpoint. GitLab creates a project deploy
-token with only `read_registry`; Docker receives the password on standard input
+and waits for GitLab's internal readiness endpoint. The verified local controller
+credential requests a project deploy token through GitLab's documented API. The
+token has only `read_registry`; Docker receives the password on standard input
 and writes its login to a new private temporary directory. The helper pulls and
 verifies the exact saved digest, revokes the token on success or failure, and
 removes the temporary login. Old host Docker credentials are not recovery inputs.

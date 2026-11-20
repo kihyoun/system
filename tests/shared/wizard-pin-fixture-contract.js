@@ -61,7 +61,7 @@ function nativeFixture() {
   return {candidate,calls,rows,jobs,merge,receipt,image,owned,imageRef};
 }
 (async()=>{
-  const helpers=['system/ensure-wizard-image.sh','system/wizard-image-recovery.js','system/wizard-registry-token.rb'];
+  const helpers=['system/wizard-image-recovery.js','operations/src/wizard-recovery/wizard-recovery.service.ts','operations/src/wizard-recovery/registry.service.ts'];
   assert.equal(privateWizardAcceptance([],()=>true),false);
   assert.equal(privateWizardAcceptance(helpers,()=>true),true);
   assert.throws(()=>privateWizardAcceptance(helpers.slice(0,2),()=>true),/complete private-registry recovery/);

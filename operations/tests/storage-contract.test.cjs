@@ -193,7 +193,7 @@ test('controller restart refuses running, uncertain, or unowned storage operatio
   const {LifecycleService}=require('../dist/lifecycle/lifecycle.service');
   const controller=new AbortController(), writes=[];
   const children={async run(...args){writes.push(args);throw Error('unexpected writer');}};
-  const service=new LifecycleService(children,{}, {}, {}, {gitlabData:f.root+'/data/platform/gitlab/data'});
+  const service=new LifecycleService(children,{}, {}, {}, {}, {gitlabData:f.root+'/data/platform/gitlab/data'});
   const paused=service.run('start',{root:f.root,state,environment:{},signal:controller.signal});
   queueMicrotask(()=>controller.abort());
   await assert.rejects(paused,{name:'AbortError'});

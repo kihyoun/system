@@ -11,6 +11,7 @@ import * as application from './application-aliases';
 import { impact } from './impact';
 import { Settings } from './types';
 export interface RoutingCommand {
+  environment?: NodeJS.ProcessEnv;
   action:
     'start' | 'stop' | 'reload' | 'recovery' | 'proxies' | 'stop-proxies' | 'apply' | 'impact';
   root: string;
@@ -227,6 +228,7 @@ export class ProjectsRoutingService {
     }
   }
   private render(command: RoutingCommand): void {
+    const environment = command.environment ?? process.env;
     const root = command.root,
       recovery = command.action === 'recovery',
       mainFile = path.join(root, 'system/.docker.env'),
@@ -252,7 +254,7 @@ export class ProjectsRoutingService {
     const main = this.configuration.read(
       [path.join(root, '.docker.env'), path.join(root, 'gitlab/.docker.env'), mainFile],
       mainKeys,
-      Object.fromEntries(mainKeys.map((key) => [key, process.env[key] || ''])),
+      Object.fromEntries(mainKeys.map((key) => [key, environment[key] || ''])),
     );
     const render = (
       mode: string,
@@ -364,7 +366,7 @@ export class ProjectsRoutingService {
             '-d',
             'web',
           ],
-          { cwd: path.join(root, 'nginx'), env: { ...process.env, ...main }, timeout: 180000 },
+          { cwd: path.join(root, 'nginx'), env: { ...environment, ...main }, timeout: 180000 },
         );
     });
   }

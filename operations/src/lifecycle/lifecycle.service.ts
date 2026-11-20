@@ -8,6 +8,7 @@ import { ProcessFailure } from '../runtime/process';
 import type { LifecycleProcess } from '../runtime/managed-child';
 import type { ConfigurationPort } from '../projects-routing/ports';
 import { ProjectsRoutingService } from '../projects-routing/projects-routing.service';
+import { WizardRecoveryService } from '../wizard-recovery/wizard-recovery.service';
 import { RunnerLifecycleService } from './runner.service';
 import { LIFECYCLE_CHILD, LIFECYCLE_CONFIGURATION, settings, type LifecycleContext } from './types';
 export const LIFECYCLE_PATHS = Symbol('LIFECYCLE_PATHS');
@@ -30,6 +31,7 @@ export class LifecycleService {
     @Inject(LIFECYCLE_CONFIGURATION) private readonly configuration: ConfigurationPort,
     private readonly routing: ProjectsRoutingService,
     private readonly runners: RunnerLifecycleService,
+    private readonly recovery: WizardRecoveryService,
     @Inject(LIFECYCLE_PATHS) private readonly paths: LifecyclePaths = lifecyclePaths,
   ) {}
   private command(
@@ -185,10 +187,15 @@ export class LifecycleService {
   async intermediate(context: LifecycleContext, start: boolean): Promise<void> {
     if (start) {
       await this.gitlab(context, true);
-      if (this.configured(context))
-        await this.command(this.load(context, ['system/.docker.env']), process.execPath, [
-          path.join(context.root, 'system/wizard-image-recovery.js'),
-        ]);
+      if (this.configured(context)) {
+        const selected = this.load(context, ['system/.docker.env']);
+        await this.recovery.recover({
+          checkout: context.root,
+          settings: { ...selected.environment, SYSTEM_CONFIG_DIR: context.state },
+          configDirectory: this.paths.gitlabConfig,
+          signal: context.signal,
+        });
+      }
       this.routing.run({ action: 'proxies', root: context.root });
       try {
         await this.runners.runPools(context, 'start');

@@ -44,7 +44,9 @@ test('start/reload retain one Wizard route, optional fragments, HTTP01 bytes and
   if(action==='start'){assert.equal(f.calls.at(-1).options.env.NGINX_IMAGE,'selected-nginx');assert.equal(f.calls.at(-1).options.env.PERSISTENT_DIR,'/selected/data');assert.equal(f.calls.at(-1).options.env.SYSTEM_LOG_MAX_SIZE,'7m');}
   assert(!JSON.stringify(f.calls).includes('system_wizard_1'));assert(!JSON.stringify(f.calls).includes('system_gitlab_1'));
  }
- f.service.run({...f.command,action:'recovery'});const recovered=fs.readFileSync(path.join(f.root,'templates/default.conf.template'),'utf8');
+ f.service.run({...f.command,action:'recovery',environment:{PATH:'/prepared/bin'}});
+ assert.equal(f.calls.at(-1).options.env.PATH,'/prepared/bin');assert.equal(f.calls.at(-1).options.env.HOME,undefined);
+ const recovered=fs.readFileSync(path.join(f.root,'templates/default.conf.template'),'utf8');
  assert(!recovered.includes('8071'));assert(!recovered.includes('wizard-environments'));assert(!recovered.includes('server_name wizard.example.test;'));assert(!recovered.includes('server_name sync.example.test;'));
  assert(recovered.includes('server_name gitlab.example.test;'));assert(recovered.includes('server_name registry.example.test;'));assert(recovered.includes('5050'));
 });

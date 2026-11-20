@@ -13,7 +13,6 @@
   {"component":"gitlab","file":"gitlab/project-bootstrap-resume.rb","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/source-import.rb","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/wizard-build.rb","timeoutSeconds":20},
-  {"component":"gitlab","file":"gitlab/wizard-registry-token.rb","timeoutSeconds":20},
   {"component":"sync","file":"sync/config-suggestions.js","timeoutSeconds":15},
   {"component":"sync","file":"sync/config-suggestions-api.js","timeoutSeconds":30,"port":8071},
   {"component":"sync","file":"sync/push-restart-api.js","timeoutSeconds":30,"port":8071},

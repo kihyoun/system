@@ -4,13 +4,21 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {test}=require('node:test');
-const {localRegistry,projectForImage,recoverImage}=require('../../system/wizard-image-recovery');
+const {localRegistry,projectForImage}=require('../../system/wizard-image-recovery');
+const {WizardRecoveryService}=require('../../operations/dist/wizard-recovery/wizard-recovery.service');
+const {syncDirectory}=require('../../operations/dist/wizard-recovery/identity');
+const recoverImage=(settings,f)=>new WizardRecoveryService({run:async(command,args,details)=>f.execute(command,args,details)},
+  {run:command=>{assert.equal(command.action,'recovery');assert.equal(command.environment.DOCKER_HOST,undefined);}},f.registry,{wait:f.waitReady},
+  {syncDirectory:directory=>f.syncState?f.syncState():syncDirectory(directory)})
+  .recover({checkout:path.resolve(__dirname,'../..'),settings,signal:f.signal});
 const logo=require('../../sync/dist/Helper').default.textLogo;
 const token='synthetic-registry-secret';
-test('the isolated component context contains the exact public recovery implementation',()=>{
+test('the isolated component context and native module contain the exact shared recovery implementation',async()=>{
   const {included}=require('../prepare-context');
-  for(const name of ['system/ensure-wizard-image.sh','system/wizard-image-recovery.js','system/wizard-registry-token.rb'])assert(included(name),name);
+  for(const name of ['system/wizard-image-recovery.js','operations/src/wizard-recovery/wizard-recovery.service.ts','operations/src/wizard-recovery/registry.service.ts'])assert(included(name),name);
   assert(!included('system/.docker.env'));assert(!included('system/credentials.json'));
+  const {NestFactory}=require('../../operations/node_modules/@nestjs/core'),{LifecycleModule}=require('../../operations/dist/lifecycle/lifecycle.module');
+  const app=await NestFactory.createApplicationContext(LifecycleModule,{logger:false,abortOnError:false});assert(app.get(WizardRecoveryService));await app.close();
 });
 function fixture(t,options={}){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'wizard-pull-test-'));
@@ -21,7 +29,7 @@ function fixture(t,options={}){
   fs.mkdirSync(path.join(root,'.projects.env'));
   fs.writeFileSync(path.join(root,'.projects.env/.wizard.env'),content);
   const settings={WIZARD_ENABLE:'true',WIZARD_IMAGE:image,GITLAB_REGISTRY_URL:'http://registry.localhost',GITLAB_REGISTRY_DOMAIN_MODE:'0',SYSTEM_CONFIG_DIR:root,DOCKER_CONFIG:'/untrusted/old-config',DOCKER_HOST:'tcp://unrelated:2375'};
-  const calls=[],actions=[];let privateConfig;
+  const calls=[],actions=[];let privateConfig,initializations=0;
   const execute=(command,args,details={})=>{
     calls.push({command,args,details});
     if(command===process.execPath && args.includes('routing')){assert.equal(args[2],'recovery');return '';}
@@ -31,16 +39,6 @@ function fixture(t,options={}){
       if(args[3]==='--format')return JSON.stringify(options.badDigest?[]:[image]);
       if(options.available)return '{}';
       throw Error('image is absent');
-    }
-    if(args[1]==='exec'){
-      const encoded=/WIZARD_RECOVERY_INPUT='([^']+)'/.exec(details.input)[1];
-      const input=JSON.parse(Buffer.from(encoded,'base64'));
-      actions.push(input.action);
-      if(options.revokeFailure&&input.action==='revoke')throw Error('synthetic revoke failed');
-      if(input.action==='create')return options.badResponse?'not json':JSON.stringify({id:21,username:'gitlab+deploy-token-21',token});
-      assert.equal(input.projectId,12);assert.equal(input.projectPath,'root/wizard');
-      if(input.action==='revoke')assert.equal(input.tokenId,21);
-      return '{"revoked":true}';
     }
     assert.equal(args[1],'--config');privateConfig=args[2];
     assert.notEqual(privateConfig,settings.DOCKER_CONFIG);
@@ -53,7 +51,23 @@ function fixture(t,options={}){
     return '';
   };
   const waitReady=async()=>{if(options.readinessFailure)throw Error('synthetic readiness failed');};
-  return {root,image,receipt,content,settings,calls,actions,execute,waitReady,privateConfig:()=>privateConfig,pending:path.join(root,'.wizard-image-recovery.pending')};
+  const registry={async open(){
+    initializations++;
+    assert(fs.existsSync(path.join(root,'.wizard-image-recovery.pending')),'pending marker must precede credential initialization');
+    return {async execute(input,signal){
+      actions.push(input.action);
+      if(options.revokeFailure&&input.action==='revoke')throw Error('synthetic revoke failed');
+      assert.equal(input.projectId,12);assert.equal(input.projectPath,'root/wizard');
+      if(input.action==='create'){
+        if(options.badResponse)throw Error('lost credential response');
+        return {id:21,username:'gitlab+deploy-token-21',token};
+      }
+      assert(signal&&!signal.aborted,'cleanup has an independent bounded cancellation context');
+      if(input.action==='revoke')assert.equal(input.tokenId,21);
+      return {revoked:true};
+    }};
+  }};
+  return {root,image,receipt,content,settings,calls,actions,execute,waitReady,registry,initializations:()=>initializations,privateConfig:()=>privateConfig,pending:path.join(root,'.wizard-image-recovery.pending')};
 }
 test('local registry identity matches the effective HTTP registry port',()=>{
   assert.equal(localRegistry('http://registry.localhost','0').host,'registry.localhost:5050');
@@ -90,12 +104,15 @@ test('exact private digest is pulled with isolated stdin credentials and then re
   assert(!JSON.stringify(f.calls.map(call=>call.args)).includes(token));
   assert(!fs.existsSync(path.join(f.root,'.wizard-image-recovery.lock')));
 });
-for(const cause of ['pullFailure','badDigest','badResponse'])test(cause+' still revokes credentials and removes login state',async t=>{
+test('failed, uncertain and cancelled pulls still revoke credentials and remove login state',async t=>{
+ for(const cause of ['pullFailure','badDigest','badResponse','cancelledPull']){
   const f=fixture(t,{[cause]:true});
+  if(cause==='cancelledPull'){const abort=new AbortController();f.signal=abort.signal;const run=f.execute;f.execute=(command,args,details)=>{if(args.includes('pull')){abort.abort();throw Error('cancelled');}return run(command,args,details);};}
   await assert.rejects(recoverImage(f.settings,f));
   assert.deepEqual(f.actions,['create',cause==='badResponse'?'cleanup':'revoke']);
   if(f.privateConfig())assert(!fs.existsSync(f.privateConfig()));
   assert(!fs.existsSync(f.pending));
+ }
 });
 test('revocation failure preserves a retry obligation without preserving Docker login',async t=>{
   const f=fixture(t,{revokeFailure:true});
@@ -105,7 +122,7 @@ test('revocation failure preserves a retry obligation without preserving Docker 
 test('cached images still revoke interrupted credentials before clearing the pending marker',async t=>{
   const f=fixture(t,{available:true});fs.writeFileSync(f.pending,'previous interruption');
   await recoverImage(f.settings,f);
-  assert.deepEqual(f.actions,['cleanup','cleanup']);assert(!fs.existsSync(f.pending));
+  assert.deepEqual(f.actions,['cleanup']);assert(!fs.existsSync(f.pending));
 });
 test('unavailable GitLab retains the previous pending cleanup obligation',async t=>{
   const f=fixture(t,{readinessFailure:true});fs.writeFileSync(f.pending,'previous interruption');
@@ -118,13 +135,13 @@ test('an existing recovery lease fails closed before minting credentials',async 
 });
 test('the pending obligation and lease are durable before minting and their removal is durable afterwards',async t=>{
   const f=fixture(t),observations=[];
-  await recoverImage(f.settings,{...f,syncState(){observations.push({pending:fs.existsSync(f.pending),locked:fs.existsSync(path.join(f.root,'.wizard-image-recovery.lock')),actions:[...f.actions]});}});
-  assert.deepEqual(observations,[{pending:true,locked:true,actions:[]},{pending:false,locked:false,actions:['create','revoke']}]);
+  await recoverImage(f.settings,{...f,syncState(){observations.push({pending:fs.existsSync(f.pending),locked:fs.existsSync(path.join(f.root,'.wizard-image-recovery.lock')),actions:[...f.actions],initializations:f.initializations()});}});
+  assert.deepEqual(observations,[{pending:true,locked:true,actions:[],initializations:0},{pending:false,locked:false,actions:['create','revoke'],initializations:1}]);
 });
 test('a failed pending-directory durability barrier mints no token and preserves the cleanup obligation',async t=>{
   const f=fixture(t);let count=0;
   await assert.rejects(recoverImage(f.settings,{...f,syncState(){if(++count===1)throw Error('synthetic-directory-fsync-failure');}}),/directory-fsync-failure/);
-  assert.deepEqual(f.actions,[]);assert(fs.existsSync(f.pending));assert.equal(count,2);
+  assert.deepEqual(f.actions,[]);assert.equal(f.initializations(),0);assert(fs.existsSync(f.pending));assert.equal(count,2);
 });
 
 test('native registry credentials bind the exact project, expire next UTC day and remove only owned deploy tokens',async()=>{
@@ -159,4 +176,18 @@ test('native registry credentials bind the exact project, expire next UTC day an
   await service.execute(context,'fixture-administrator',{...input,action:'cleanup'});assert(!tokens.has(21));assert(tokens.has(1));
   const before=calls.length;await assert.rejects(service.execute(context,'fixture-administrator',{...input,projectPath:'wrong/wizard'}),/mismatch/);
   assert(!calls.slice(before).some(call=>call.method!=='GET'));
+  const {WizardRecoveryRegistryService}=require('../../operations/dist/wizard-recovery/registry.service');
+  const bound=[],abort=new AbortController();
+  const bridge=new WizardRecoveryRegistryService({async ensure(options){return {context:{checkout:options.checkout,containerId:options.checkout},credential:{token:options.checkout+'-token'}};}},
+    {async execute(actual,administrator,input){bound.push({actual,administrator,input});return {revoked:true};}});
+  const first=await bridge.open({checkout:'/first',settings:{},signal:abort.signal});
+  const second=await bridge.open({checkout:'/second',settings:{}});
+  await first.execute({action:'create',projectId:12,projectPath:'root/wizard'});
+  await second.execute({action:'cleanup',projectId:13,projectPath:'root/other'});
+  abort.abort();const cleanupSignal=AbortSignal.timeout(1000);
+  await first.execute({action:'revoke',projectId:12,projectPath:'root/wizard',tokenId:21},cleanupSignal);
+  assert.deepEqual(bound.map(row=>row.actual.checkout),['/first','/second','/first']);
+  assert.deepEqual(bound.map(row=>row.administrator),['/first-token','/second-token','/first-token']);
+  assert.equal(bound[0].actual.signal,abort.signal);assert.equal(bound[2].actual.signal,cleanupSignal);assert(!bound[2].actual.signal.aborted);
+
 });

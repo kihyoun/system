@@ -15,14 +15,15 @@ function fixture(t){
  const calls=[],children={async run(binary,args,options){calls.push({binary,args,options});return args[0]==='inspect'?'127.0.0.2\n':'';}};
  const configuration=new LiteralConfiguration(),routing={run(value){calls.push({route:value.action});}},runners={async runPools(context,action){calls.push({runner:action});}};
  const context={root,state:path.join(root,'state'),environment:{...process.env,SYSTEM_CONFIG_DIR:path.join(root,'state')}};
+ const recovery={async recover(options){calls.push({recovery:options});return {state:'available'};}};
  const paths=Object.fromEntries(['gitlabConfig','gitlabData','syncTemplates'].map(name=>[name,path.join(root,name)]));
- return {root,calls,children,configuration,routing,runners,context,service:new LifecycleService(children,configuration,routing,runners,paths)};
+ return {root,calls,children,configuration,routing,runners,recovery,context,service:new LifecycleService(children,configuration,routing,runners,recovery,paths)};
 }
 test('runner failure leaves Wizard startup available, while registry recovery failure prevents downstream writers',async t=>{
  const f=fixture(t);f.runners.runPools=async()=>{f.calls.push({runner:'failed'});throw Error('registration failed');};
  await f.service.intermediate(f.context,true);
- assert(f.calls.find(call=>call.route==='proxies'));assert(f.calls.find(call=>call.args?.at(-1)==='wizard'));assert(f.calls.find(call=>call.args?.[0]?.endsWith('wizard-image-recovery.js')));
- const original=f.children.run;f.calls.length=0;f.children.run=async(binary,args,options)=>{if(args[0]?.endsWith('wizard-image-recovery.js'))throw Error('recovery failed');return original(binary,args,options);};
+ assert(f.calls.find(call=>call.route==='proxies'));assert(f.calls.find(call=>call.args?.at(-1)==='wizard'));assert(f.calls.find(call=>call.recovery?.checkout===f.root));
+ f.calls.length=0;f.recovery.recover=async()=>{throw Error('recovery failed');};
  await assert.rejects(f.service.intermediate(f.context,true),/recovery failed/);assert(!f.calls.some(call=>call.route==='proxies'||call.args?.at(-1)==='wizard'));
  const snapshot=path.join(f.root,'state/image.env'),compose=path.join(f.root,'system/docker-compose.yml');
  fs.writeFileSync(snapshot,'WIZARD_IMAGE=mutable\n');f.calls.length=0;
