@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import fs from 'node:fs';
+import { NativePortChannel } from './native-port-channel';
 import { NestFactory } from '@nestjs/core';
 import { record } from '../release/source-identity';
 import { HostModule } from './host.module';
@@ -9,31 +9,6 @@ import {
   type ColdMaintenancePort,
   type ColdMaintenanceInput,
 } from './cold-maintenance.service';
-class NativePortChannel {
-  private pending = '';
-  read(): unknown {
-    while (!this.pending.includes('\n')) {
-      const buffer = Buffer.alloc(65536),
-        count = fs.readSync(0, buffer, 0, buffer.length, null);
-      if (!count) throw Error('host-native-port-disconnected');
-      this.pending += buffer.subarray(0, count).toString();
-      if (this.pending.length > 16 * 1024 ** 2) throw Error('host-native-port-frame-too-large');
-    }
-    const end = this.pending.indexOf('\n'),
-      line = this.pending.slice(0, end);
-    this.pending = this.pending.slice(end + 1);
-    return JSON.parse(line);
-  }
-  write(value: unknown) {
-    fs.writeSync(1, JSON.stringify(value) + '\n');
-  }
-  call(method: string, args: unknown[] = []): unknown {
-    this.write({ method, args });
-    const response = record(this.read());
-    if (typeof response.error === 'string') throw Error(response.error);
-    return response.value;
-  }
-}
 /** Fixed native compatibility ports, not a Python coordinator invocation. */
 export async function coldMaintenanceMain(): Promise<void> {
   const channel = new NativePortChannel();

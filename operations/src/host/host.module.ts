@@ -1,3 +1,4 @@
+import { PromotionSequenceService, type PromotionSequencePort } from './promotion-sequence.service';
 import { ColdMaintenanceService, type ColdMaintenancePort } from './cold-maintenance.service';
 import { RecoveryPublicationService } from './recovery-publication.service';
 import { UpgradeLifecycleService } from './upgrade-lifecycle.service';
@@ -13,6 +14,7 @@ import { HostSourceService } from './source';
 import { RecoveryImageService } from './recovery-images';
 import { RecoveryManifestService } from './recovery-manifest';
 import { RuntimeInspectionService } from './runtime-inspection';
+export const HOST_PROMOTION_SEQUENCE_PORT = Symbol('HOST_PROMOTION_SEQUENCE_PORT');
 export const HOST_COLD_MAINTENANCE_PORT = Symbol('HOST_COLD_MAINTENANCE_PORT');
 export const HOST_ATTACHED_PROCESS = Symbol('HOST_ATTACHED_PROCESS');
 export const HOST_PROCESS_RUNNER = Symbol('HOST_PROCESS_RUNNER');
@@ -20,6 +22,7 @@ export const HOST_LIFECYCLE_EVIDENCE = Symbol('HOST_LIFECYCLE_EVIDENCE');
 export const HOST_ENVIRONMENT = Symbol('HOST_ENVIRONMENT');
 export interface HostModuleOptions {
   lifecycleEvidence?: LifecycleEvidencePort;
+  promotionSequencePort?: PromotionSequencePort;
   coldMaintenancePort?: ColdMaintenancePort;
   runner?: ProcessRunner;
   attachedProcess?: HostAttachedProcess;
@@ -47,6 +50,37 @@ export class HostModule {
     return {
       module: HostModule,
       providers: [
+        {
+          provide: HOST_PROMOTION_SEQUENCE_PORT,
+          useValue:
+            options.promotionSequencePort ??
+            Object.fromEntries(
+              [
+                'main',
+                'sha',
+                'inspect',
+                'assertBaseline',
+                'pipeline',
+                'critical',
+                'journal',
+                'readJournal',
+                'runners',
+                'cold',
+                'syncIdle',
+                'command',
+                'writeConfiguration',
+                'reload',
+                'waitStaged',
+                'gitlabPreflight',
+                'now',
+              ].map((key) => [key, nativePortRequired]),
+            ),
+        },
+        {
+          provide: PromotionSequenceService,
+          inject: [HOST_PROMOTION_SEQUENCE_PORT],
+          useFactory: (port: PromotionSequencePort) => new PromotionSequenceService(port),
+        },
         {
           provide: HOST_COLD_MAINTENANCE_PORT,
           useValue: options.coldMaintenancePort ?? {
@@ -114,6 +148,7 @@ export class HostModule {
         })),
       ],
       exports: [
+        PromotionSequenceService,
         ColdMaintenanceService,
         RecoveryPublicationService,
         UpgradeLifecycleService,

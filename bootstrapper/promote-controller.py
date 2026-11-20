@@ -5,6 +5,7 @@ Legacy Sync APIs require a real cold maintenance bridge. This command never
 changes GITLAB_IMAGE, applies a Seed or automatically rolls an old image back.
 """
 import argparse
+import base64
 import copy
 import hashlib
 import json
@@ -12,7 +13,7 @@ import os
 from pathlib import Path
 import shutil
 import stat
-import subprocess
+import host_service
 import sys
 import tempfile
 import time
@@ -282,54 +283,22 @@ class ColdMaintenance:
     def _execute(self, operation):
         # Framed native ports keep existing command/guardian adapters; TypeScript
         # owns all sequencing, observations, deadlines and resume decisions.
-        retained = Path('/opt/system-bootstrapper-runtime/bin/node')
-        node = str(retained.resolve()) if retained.is_file() else 'node'
         context = {'controller': self.controller, 'gitlab': self.gitlab, 'web': self.web,
                    'runners': self.runners, 'deadline': self.deadline, 'mainHash': self.main_hash}
-        child = subprocess.Popen([node, str(successor.HERE.parent / 'operations/dist/host/cold-maintenance-entry.js')],
-                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-        try:
-            child.stdin.write(json.dumps({'operation': operation, 'input': context}) + '\n')
-            child.stdin.flush()
-            while True:
-                raw = child.stdout.readline(16 * 1024 ** 2 + 1)
-                require(raw.endswith('\n') and len(raw) <= 16 * 1024 ** 2, 'cold-maintenance-native-port-disconnected')
-                message = json.loads(raw)
-                if message.get('complete'):
-                    child.wait(timeout=10)
-                    if message.get('error'):
-                        raise (ActiveJobs if message.get('activeJobs') else recovery.RecoveryError)(message['error'])
-                    require(child.returncode == 0, 'cold-maintenance-runtime-failed')
-                    return message.get('value')
-                args, method = message.get('args', []), message.get('method')
-                try:
-                    if method == 'command':
-                        run([*DOCKER, *args[0]], **({'timeout': args[1]} if args[1] is not None else {}))
-                        value = None
-                    elif method == 'inspect': value = inspect(args[0])
-                    elif method == 'phase':
-                        self.phase(*args)
-                        value = None
-                    elif method == 'probe': value = gitlab_probe(self.security, self.gitlab)
-                    elif method == 'checkpoint': value = checkpoint_copy(self.config, self.checkpoint, self.image)
-                    elif method == 'now': value = time.monotonic()
-                    elif method == 'sleep':
-                        time.sleep(args[0])
-                        value = None
-                    elif method == 'uptime': value = float(Path('/proc/uptime').read_text().split()[0])
-                    elif method == 'mainHash': value = recovery.sha(self.config['_main']) if self.main_hash else None
-                    else: raise recovery.RecoveryError('unknown-cold-maintenance-native-port')
-                    response = {'value': value}
-                except Exception as error:
-                    response = {'error': str(error) if isinstance(error, recovery.RecoveryError) else 'cold-maintenance-native-port-failed'}
-                child.stdin.write(json.dumps(response) + '\n')
-                child.stdin.flush()
-        finally:
-            child.stdin.close()
-            child.stdout.close()
-            if child.poll() is None:
-                child.kill()
-                child.wait()
+        def dispatch(method, args):
+            if method == 'command':
+                run([*DOCKER, *args[0]], **({'timeout': args[1]} if args[1] is not None else {}))
+            elif method == 'inspect': return inspect(args[0])
+            elif method == 'phase': self.phase(*args)
+            elif method == 'probe': return gitlab_probe(self.security, self.gitlab)
+            elif method == 'checkpoint': return checkpoint_copy(self.config, self.checkpoint, self.image)
+            elif method == 'now': return time.monotonic()
+            elif method == 'sleep': time.sleep(args[0])
+            elif method == 'uptime': return float(Path('/proc/uptime').read_text().split()[0])
+            elif method == 'mainHash': return recovery.sha(self.config['_main']) if self.main_hash else None
+            else: raise recovery.RecoveryError('unknown-cold-maintenance-native-port')
+        return host_service.invoke('cold-maintenance-entry.js', {'operation': operation, 'input': context},
+                                   dispatch, recovery.RecoveryError, ActiveJobs)
 
     def drain(self):
         return self._execute('drain')
@@ -430,68 +399,45 @@ def promote(config, release, evidence, api, release_bytes, evidence_bytes, secur
         record['previousStagedPromotion'] = staged_receipt
     successor.atomic_json(checkpoint / 'operation.json', record)
     with successor.Lease(config, legacy_controller=controller) as lease:
-        record['leaseOperation'] = lease.operation
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        require(config['_main'].read_bytes() == raw, 'configuration-changed-before-controller-promotion')
-        if staged_receipt:
-            require(recovery.sha(config['_root'] / 'recovery/images.json') == staged_receipt['manifestSha256'],
-                    'staged-controller-recovery-manifest-changed')
-            require(recovery.sha(Path(staged) / 'operation.json') == staged_receipt['operationSha256'],
-                    'staged-controller-operation-changed')
-            require(inspect('system_bootstrapper_1')['Id'] == controller['Id'] and
-                    inspect('system_gitlab_1')['Image'] == gitlab['Image'], 'staged-controller-services-changed')
-            runtime.assert_baseline(config, baseline)
-        # Recheck external acceptance immediately before entering maintenance.
-        successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
-        if cold:
-            runners = main_runner_rows(config)
-            lease.critical = True
-            record['phase'] = 'cold-maintenance-started'
-            successor.atomic_json(checkpoint / 'operation.json', record)
-            def journal(phase, deadline):
-                record['coldPhase'] = phase
-                if deadline is not None:
-                    record['remoteCommandDeadlineUptime'] = deadline
-                    record['remoteCommandBootId'] = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-                successor.atomic_json(checkpoint / 'operation.json', record)
-            try:
-                record['coldCheckpointSha256'] = ColdMaintenance(config, controller, gitlab, web, runners,
-                    checkpoint, release['imageId'], security=security, journal=journal).run()
-            except ActiveJobs:
-                record['phase'] = 'deferred-active-jobs-old-generation-resumed'
-                successor.atomic_json(checkpoint / 'operation.json', record)
-                lease.critical = False
-                raise
-        else:
-            successor.sync_idle(config)
-            lease.critical = True
-            record['phase'] = 'controller-stop-started'
-            successor.atomic_json(checkpoint / 'operation.json', record)
-            run([*DOCKER, 'update', '--restart=no', controller['Id']])
-            run([*DOCKER, 'stop', '--time', '30', controller['Id']])
-            require(not inspect(controller['Id'])['State']['Running'], 'old-controller-did-not-stop')
-        record['phase'] = 'pre-promotion-checkpoint-complete'
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        require(config['_main'].read_bytes() == raw, 'configuration-changed-during-controller-stop')
-        info = config['_main'].stat()
-        successor.atomic_bytes(config['_main'], updated, stat.S_IMODE(info.st_mode))
-        os.chown(config['_main'], info.st_uid, info.st_gid)
-        record['phase'] = 'controller-start-started'
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        run([*DOCKER, 'compose', '--compatibility', '-p', 'system', '-f',
-             str(successor.HERE.parent / 'system/docker-compose.yml'), 'up', '--no-build', '--no-deps',
-             '--pull', 'never', '-d', 'bootstrapper'], env=promotion_environment)
-        config = runtime.settings(config['_persistence_env'])
-        baseline['configurationFiles']['configuration/.docker.env'] = hashlib.sha256(updated).hexdigest()
-        baseline['hostToolsRevision'] = release['sourceRevision']
-        wait_for_staged(config, original, baseline, release, gitlab['Image'], timeout)
-        gitlab_preflight(security, inspect('system_gitlab_1'))
-        record.update(phase='controller-promoted-old-GitLab-preserved', completedAt=runtime.now(),
-                      newControllerId=inspect('system_bootstrapper_1')['Id'], oldGitLabImagePreserved=True,
-                      configurationChangedOnlyControllerImage=True, managerIdentitiesPreserved=True,
-                      GitLabMigrationStarted=False)
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        return record
+        def dispatch(method, args):
+            nonlocal config
+            if method == 'main': return base64.b64encode(config['_main'].read_bytes()).decode()
+            if method == 'sha': return recovery.sha(config['_root'] / 'recovery/images.json' if args[0] == 'manifest' else Path(staged) / 'operation.json')
+            if method == 'inspect': return inspect(args[0])
+            if method == 'assertBaseline': runtime.assert_baseline(config, args[0])
+            elif method == 'pipeline': successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
+            elif method == 'critical': lease.critical = args[0]
+            elif method == 'journal': successor.atomic_json(checkpoint / 'operation.json', args[0])
+            elif method == 'readJournal': return json.loads(successor.private_input(checkpoint / 'operation.json'))
+            elif method == 'runners': return main_runner_rows(config)
+            elif method == 'cold':
+                cold_record, runners = args
+                def journal(phase, deadline):
+                    cold_record['coldPhase'] = phase
+                    if deadline is not None:
+                        cold_record['remoteCommandDeadlineUptime'] = deadline
+                        cold_record['remoteCommandBootId'] = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+                    successor.atomic_json(checkpoint / 'operation.json', cold_record)
+                return ColdMaintenance(config, controller, gitlab, web, runners, checkpoint,
+                                       release['imageId'], security=security, journal=journal).run()
+            elif method == 'syncIdle': successor.sync_idle(config)
+            elif method == 'command': run([*DOCKER, *args[0]], **({'env': promotion_environment} if args[1] else {}))
+            elif method == 'writeConfiguration':
+                info = config['_main'].stat()
+                successor.atomic_bytes(config['_main'], base64.b64decode(args[0], validate=True), stat.S_IMODE(info.st_mode))
+                os.chown(config['_main'], info.st_uid, info.st_gid)
+            elif method == 'reload': config = runtime.settings(config['_persistence_env'])
+            elif method == 'waitStaged': wait_for_staged(config, original, args[0], release, gitlab['Image'], timeout)
+            elif method == 'gitlabPreflight': gitlab_preflight(security, inspect('system_gitlab_1'))
+            elif method == 'now': return runtime.now()
+            else: raise recovery.RecoveryError('unknown-promotion-native-port')
+        context = {'record': record, 'controller': controller, 'gitlab': gitlab, 'baseline': baseline,
+                   'release': release, 'rawMain': base64.b64encode(raw).decode(),
+                   'updatedMain': base64.b64encode(updated).decode(), 'cold': cold,
+                   'stagedReceipt': staged_receipt, 'checkout': str(successor.HERE.parent),
+                   'timeout': timeout, 'leaseOperation': lease.operation}
+        return host_service.invoke('promotion-sequence-entry.js', {'input': context}, dispatch,
+                                   recovery.RecoveryError, ActiveJobs)
 
 
 def controller_status(config, checkpoint):

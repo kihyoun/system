@@ -16,3 +16,5 @@ export * from './upgrade-lifecycle.service';
 export * from './recovery-publication.service';
 export * from './cold-maintenance.service';
 export * from './cold-maintenance-entry';
+export * from './promotion-sequence.service';
+export * from './promotion-sequence-entry';
