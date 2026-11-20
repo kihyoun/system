@@ -25,10 +25,15 @@ test('interrupted plan is retryable but passed preflight is preserved', () => {
     const originalStat=fs.fstatSync;
     fs.fstatSync=function(descriptor,...args){const stat=originalStat.call(fs,descriptor,...args);fs.renameSync(replacement,privatePath);return stat;};
     try{assert.equal(readPrivateInput(privatePath).toString(),'original');}finally{fs.fstatSync=originalStat;}
-    fs.chmodSync(privatePath,0o644);assert.throws(()=>readPrivateInput(privatePath),/mode-0600/);
+    fs.chmodSync(privatePath,0o644);assert.throws(()=>readPrivateInput(privatePath),/permissions/);
     fs.chmodSync(privatePath,0o600);assert.throws(()=>readPrivateInput(privatePath,2),/too-large/);
     fs.symlinkSync(privatePath,replacement);assert.throws(()=>readPrivateInput(replacement));fs.unlinkSync(replacement);
     fs.linkSync(privatePath,replacement);assert.throws(()=>readPrivateInput(privatePath),/regular/);fs.unlinkSync(replacement);
+    if (process.getuid() === 0) {
+      fs.chownSync(privatePath, 12345, 12345);
+      assert.equal(readPrivateInput(privatePath).toString(), 'replacement');
+      assert.throws(() => readPrivateInput(privatePath, 1024, {owner: 0, mode: 0o600}), /owner/);
+    }
     save('checking');
     service.interrupt(directory, 'b'.repeat(32));
     assert.equal(JSON.parse(fs.readFileSync(filename)).phase, 'checking');
