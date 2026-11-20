@@ -93,6 +93,44 @@ print(json.dumps({'complete':True,'error':response['error']}), flush=True)
             self.invoke(script, cancel)
         self.assertEqual(signal.getsignal(signal.SIGTERM), before)
 
+    def test_worker_reuses_peer_but_not_callback_or_exception(self):
+        script = """import sys,json
+for line in sys.stdin:
+ request=json.loads(line)
+ print(json.dumps({'method':'check','args':[request['value']]}),flush=True)
+ response=json.loads(sys.stdin.readline())
+ if 'error' in response:
+  print(json.dumps({'complete':True,'error':response['error']}),flush=True)
+  sys.exit(1)
+ print(json.dumps({'complete':True,'value':response['value']}),flush=True)
+"""
+        real_popen = subprocess.Popen
+        children = []
+        def launch(args, **kwargs):
+            self.assertEqual(args[-1], '--worker')
+            child = real_popen([sys.executable, '-u', '-c', script], **kwargs)
+            children.append(child)
+            return child
+        try:
+            with patch.object(host_service.subprocess, 'Popen', launch):
+                for number in (1, 2):
+                    result = host_service.invoke('controller-update-sequence-entry.js',
+                        {'value': number}, lambda method, args: args[0] * number, PortError)
+                    self.assertEqual(result, number * number)
+                self.assertEqual(len(children), 1)
+                error = PortError('fresh failure')
+                def fail(*_): raise error
+                with self.assertRaises(PortError) as caught:
+                    host_service.invoke('controller-update-sequence-entry.js', {'value': 3}, fail, PortError)
+                self.assertIs(caught.exception, error)
+                self.assertIsNotNone(children[0].poll())
+                self.assertEqual(host_service.invoke('controller-update-sequence-entry.js',
+                    {'value': 4}, lambda *_: 'fresh peer', PortError), 'fresh peer')
+                self.assertEqual(len(children), 2)
+        finally:
+            host_service.close()
+        self.assertTrue(all(child.poll() is not None for child in children))
+
     def test_complete_message_does_not_allow_stuck_exit(self):
         script = 'import sys,time; sys.stdin.readline(); print("{\\"complete\\":true}",flush=True); time.sleep(30)'
         with self.assertRaisesRegex(PortError, 'host-native-port-timeout'):
