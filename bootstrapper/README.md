@@ -23,13 +23,19 @@ logging contract, preserved configuration and limits of size-based retention.
 
 ## Fresh installation from public images
 
-`install-release.py` is the host entry point for an empty installation. It takes
+`install-release.py` is the compatibility host entry point for an empty installation.
+It executes the compiled `operations/dist/host/entry.js` implementation. Prepare
+Node.js 24.22.0 and the built operations package before installation or offline
+maintenance; this entry point never downloads dependencies or compiles code.
+The equivalent direct invocation is `node operations/dist/host/entry.js` with
+the same flags. It takes
 `--controller IMAGE@sha256:...` and `--wizard IMAGE@sha256:...`, plus an optional
 `--persistence-env FILE`. `--install-host` installs Docker/Compose through the
 committed host installer when needed. The [handbook](../docs/HANDBOOK.md) gives
 complete local HTTP and public domain/Certbot procedures using these flags.
 
-The installer verifies the clean System checkout, pinned Wizard revision and
+The installer verifies the clean System checkout, its tracked Wizard tree (or
+the separate Wizard commit in historical releases), and
 pulled image identities. It writes only the image selectors to the private
 `configuration/.release-images.env` and invokes native startup without a source
 build. Normal startup loads this release profile before any saved main
