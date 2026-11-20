@@ -1,3 +1,4 @@
+import { savedSyncEnvironment } from './helper';
 import 'reflect-metadata';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,6 +11,7 @@ import { directory, writeStatus } from './coordinated-backup';
 
 export async function main(args = process.argv.slice(2), environment = process.env): Promise<void> {
   const [action, operation, ...flags] = args;
+  if (action === 'sync-status') environment = savedSyncEnvironment(environment);
   const application = await NestFactory.createApplicationContext(
     StorageModule.register({ normalizePreview }),
     { logger: false },

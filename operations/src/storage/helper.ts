@@ -1,3 +1,4 @@
+import { environmentAssignments } from '../runtime/environment-assignments';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -177,9 +178,9 @@ export function controllerIdle(spec: StorageSpec, run: DockerRun = dockerRun()) 
     [
       'exec',
       spec.SYSTEM_WIZARD_CANONICAL_CONTROLLER || 'system_bootstrapper_1',
-      'bash',
-      '-ec',
-      'set -a; source "${SYSTEM_CONFIG_DIR:-/state}/sync-auth.env"; if [[ -f "${SYSTEM_CONFIG_DIR:-/state}/.docker.env" ]]; then source "${SYSTEM_CONFIG_DIR:-/state}/.docker.env"; fi; exec node /system/operations/dist/storage/entry.js sync-status',
+      'node',
+      '/system/operations/dist/storage/entry.js',
+      'sync-status',
     ],
     { timeout: 15000 },
   );
@@ -190,6 +191,17 @@ export function controllerIdle(spec: StorageSpec, run: DockerRun = dockerRun()) 
     throw Error('controller-status-unavailable');
   }
   requireValue(status.idle === true, 'controller-operation-busy');
+}
+export function savedSyncEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const config = environment.SYSTEM_CONFIG_DIR || '/state';
+  const result = {
+    ...environment,
+    ...environmentAssignments(fs.readFileSync(path.join(config, 'sync-auth.env'), 'utf8')),
+  };
+  const saved = path.join(config, '.docker.env');
+  if (fs.existsSync(saved))
+    Object.assign(result, environmentAssignments(fs.readFileSync(saved, 'utf8')));
+  return result;
 }
 export async function syncStatus(environment: NodeJS.ProcessEnv = process.env) {
   const request = (route: string, method: string, body?: string, token?: string) =>

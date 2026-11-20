@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { NativeProcessRunner, ProcessRunner } from '../runtime/process';
-import { ShellConfiguration } from './ports';
+import { NativeProcessRunner } from '../runtime/process';
+import { LiteralConfiguration } from './ports';
 import {
   ProjectsRoutingService,
   ROUTING_PROCESS,
@@ -11,8 +11,7 @@ import {
     { provide: ROUTING_PROCESS, useClass: NativeProcessRunner },
     {
       provide: ROUTING_CONFIGURATION,
-      useFactory: (process: ProcessRunner) => new ShellConfiguration(process),
-      inject: [ROUTING_PROCESS],
+      useClass: LiteralConfiguration,
     },
     ProjectsRoutingService,
   ],

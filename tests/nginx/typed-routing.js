@@ -2,7 +2,7 @@
 require('../../operations/node_modules/reflect-metadata');
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {ProjectsRoutingService}=require('../../operations/dist/projects-routing/projects-routing.service');
-const {ShellConfiguration}=require('../../operations/dist/projects-routing/ports');
+const {LiteralConfiguration}=require('../../operations/dist/projects-routing/ports');
 const {NativeProcessRunner,ProcessFailure}=require('../../operations/dist/runtime/process');
 function fixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'typed-project-routing-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -16,16 +16,16 @@ function fixture(t){
  fs.writeFileSync(path.join(root,'templates/wizard-environments/beta.conf'),'owned candidate fragment');
  const native=new NativeProcessRunner(),calls=[];
  const process={run(binary,args,options){if(binary==='bash')return native.run(binary,args,options);calls.push({binary,args,options});return {stdout:'172.20.0.2\n',stderr:'',status:0};}};
- return {root,calls,process,service:new ProjectsRoutingService(process,new ShellConfiguration(process)),command:{action:'reload',root,templates:path.join(root,'templates')}};
+ return {root,calls,process,service:new ProjectsRoutingService(process,new LiteralConfiguration()),command:{action:'reload',root,templates:path.join(root,'templates')}};
 }
 test('Nest routing module resolves the typed service and bounded configuration port',async()=>{
  const {NestFactory}=require('../../operations/node_modules/@nestjs/core'),{ProjectsRoutingModule}=require('../../operations/dist/projects-routing/projects-routing.module');
  const app=await NestFactory.createApplicationContext(ProjectsRoutingModule,{logger:false});
  try{assert(app.get(ProjectsRoutingService) instanceof ProjectsRoutingService);}finally{await app.close();}
 });
-test('native configuration adapter keeps source evaluation bounded and clears omitted per-project flags',t=>{
+test('literal configuration adapter reads settings without executing them and clears omitted per-project flags',t=>{
  const f=fixture(t),file=path.join(f.root,'project.env');fs.writeFileSync(file,'PROJECT_NAME=sample\n');
- const port=new ShellConfiguration(f.process);assert.deepEqual(port.read([file],['PROJECT_NAME','USE_BETA_HOST'],{USE_BETA_HOST:'false'}),{PROJECT_NAME:'sample',USE_BETA_HOST:'false'});
+ const port=new LiteralConfiguration();assert.deepEqual(port.read([file],['PROJECT_NAME','USE_BETA_HOST'],{USE_BETA_HOST:'false'}),{PROJECT_NAME:'sample',USE_BETA_HOST:'false'});
  assert.throws(()=>port.read([file+'.missing'],['PROJECT_NAME']),/missing/);
 });
 test('typed render preserves candidate fragments and carries exact Compose selectors and logging',t=>{

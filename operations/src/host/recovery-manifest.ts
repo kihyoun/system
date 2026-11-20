@@ -1,3 +1,4 @@
+import { environmentAssignments } from '../runtime/environment-assignments';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -254,13 +255,8 @@ export class RecoveryManifestService {
       'WIZARD_ENABLE',
       'WIZARD_IMAGE',
     ];
-    const script =
-      'set -e; source "$1"; ' + keys.map((key) => 'printf "%s\\0" "${' + key + '-}";').join(' ');
-    const values = this.host
-      .run('bash', ['-c', script, 'read-image-selectors', configuration])
-      .split('\0');
-    requireValue(values.length === keys.length + 1, 'image-selector-format');
-    const selected = Object.fromEntries(keys.map((key, index) => [key, values[index]]));
+    const values = environmentAssignments(fs.readFileSync(configuration, 'utf8'));
+    const selected = Object.fromEntries(keys.map((key) => [key, values[key] || '']));
     for (const [key, fallback] of [
       ['BOOTSTRAPPER_IMAGE', 'system_bootstrapper'],
       ['NGINX_IMAGE', 'nginx'],

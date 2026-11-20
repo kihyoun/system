@@ -4,7 +4,7 @@ const {LifecycleService}=require('../../operations/dist/lifecycle/lifecycle.serv
 const {RunnerLifecycleService}=require('../../operations/dist/lifecycle/runner.service');
 const {ManagedChildProcess}=require('../../operations/dist/runtime/managed-child');
 const {NativeProcessRunner,ProcessFailure}=require('../../operations/dist/runtime/process');
-const {ShellConfiguration}=require('../../operations/dist/projects-routing/ports');
+const {LiteralConfiguration}=require('../../operations/dist/projects-routing/ports');
 function fixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'typed-lifecycle-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const folder of ['system/.projects.env','state','gitlab','wizard','sync','gitlab-runner','gitlabConfig','gitlabData','syncTemplates'])fs.mkdirSync(path.join(root,folder),{recursive:true});
@@ -13,7 +13,7 @@ function fixture(t){
  fs.writeFileSync(path.join(root,'gitlab/.docker.env'),'GITLAB_IP=127.0.0.2\n');fs.writeFileSync(path.join(root,'.docker.env'),'BOOTSTRAPPER_IP=127.0.0.1\n');fs.writeFileSync(path.join(root,'wizard/.docker.env'),'WIZARD_IP=127.0.0.3\n');fs.writeFileSync(path.join(root,'gitlab/gitlab.rb'),'external_url "${GITLAB_EXTERNAL_URL}"\n');
  fs.writeFileSync(path.join(root,'gitlab/security-release.json'),JSON.stringify({runner:{helperImage:'helper@sha256:'+'a'.repeat(64)}}));
  const calls=[],children={async run(binary,args,options){calls.push({binary,args,options});return args[0]==='inspect'?'127.0.0.2\n':'';}};
- const configuration=new ShellConfiguration(new NativeProcessRunner()),routing={run(value){calls.push({route:value.action});}},runners={async runPools(context,action){calls.push({runner:action});}};
+ const configuration=new LiteralConfiguration(),routing={run(value){calls.push({route:value.action});}},runners={async runPools(context,action){calls.push({runner:action});}};
  const context={root,state:path.join(root,'state'),environment:{...process.env,SYSTEM_CONFIG_DIR:path.join(root,'state')}};
  const paths=Object.fromEntries(['gitlabConfig','gitlabData','syncTemplates'].map(name=>[name,path.join(root,name)]));
  return {root,calls,children,configuration,routing,runners,context,service:new LifecycleService(children,configuration,routing,runners,paths)};

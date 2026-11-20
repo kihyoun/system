@@ -239,12 +239,14 @@ test('controller status uses saved authentication over first-setup generated def
   const f=fixture(t),state=f.root+'/data/platform/configuration',bin=f.root+'/bin';fs.mkdirSync(bin);
   fs.writeFileSync(state+'/sync-auth.env','export SYNC_USER=first_setup\nexport SYNC_PASS=first_setup_fixture\n');
   fs.writeFileSync(state+'/.docker.env','export SYNC_USER=saved_user\nexport SYNC_PASS=saved_fixture\n');
-  fs.writeFileSync(bin+'/node',`#!/bin/sh
-[ "$SYNC_USER" = saved_user ] && [ "$SYNC_PASS" = saved_fixture ] || exit 1
-printf '{"idle":true}'
-`,{mode:0o700});
-  operation.controllerIdle({},args=>execFileSync('bash',['-ec',args[4]],
-    {env:{...process.env,SYSTEM_CONFIG_DIR:state,PATH:bin+':'+process.env.PATH},encoding:'utf8'}));
+  const {savedSyncEnvironment}=require('../dist/storage/helper');
+  const env=savedSyncEnvironment({...process.env,SYSTEM_CONFIG_DIR:state});
+  assert.equal(env.SYNC_USER,'saved_user');assert.equal(env.SYNC_PASS,'saved_fixture');
+  operation.controllerIdle({},args=>{
+    assert.deepEqual(args.slice(-3),['node','/system/operations/dist/storage/entry.js','sync-status']);
+    assert(!args.join(' ').includes('saved_fixture'));
+    return '{"idle":true}';
+  });
 });
 test('a stopped or running GitLab must actually own every selected data source',()=>{
   const calls=[], image='sha256:'+'a'.repeat(64),spec={operation:'harvest',PERSISTENT_DIR:'/data/platform'};
