@@ -100,11 +100,12 @@ export function initializationGuard(directory: string): ()=>void {
 }
 export class HostInstallService {
   constructor(readonly runner: ProcessRunner=nativeProcess, readonly environment: NodeJS.ProcessEnv=process.env,
-    readonly guard: ()=>()=>void=()=>initializationGuard('/run/system-bootstrapper'),readonly rootUser=()=>process.geteuid?.()===0) {}
+    readonly guard: ()=>()=>void=()=>initializationGuard('/run/system-bootstrapper'),readonly rootUser=()=>process.geteuid?.()===0, readonly deadline?: number) {}
   run(binary: string,args: string[],environment?: NodeJS.ProcessEnv,timeout=300000): string {
     const env: NodeJS.ProcessEnv={...(environment||this.environment),DOCKER_HOST:'unix:///var/run/docker.sock'};
     for(const key of ['DOCKER_CONTEXT','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH'])delete env[key];
-    try{return this.runner.run(binary,args,{env,timeout,maxBuffer:4*1024**2}).stdout;}catch{throw Error('command-failed:'+path.basename(binary));}
+    if(this.deadline!==undefined){requireValue(Number.isFinite(this.deadline)&&this.deadline>Date.now(),'operation-readiness-deadline-expired');timeout=Math.min(timeout,this.deadline-Date.now());}
+    try{return this.runner.run(binary,args,{env,timeout:Math.max(1,Math.floor(timeout)),maxBuffer:4*1024**2}).stdout;}catch{throw Error('command-failed:'+path.basename(binary));}
   }
   source(checkout: string): InstalledSource {
     const git=(...args: string[])=>this.run('git',['-C',checkout,...args]).trim();

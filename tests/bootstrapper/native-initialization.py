@@ -173,50 +173,18 @@ class RecoveryManifest(unittest.TestCase):
         self.assertIn(b'legacy-checksums-cannot-load', result.stderr)
 
     def test_every_declared_local_alias_is_reconstructed(self):
-        self.manifest['publicImages'][0]['reference'] = 'nginx:retained@sha256:' + 'c' * 64
-        calls = []
-        class Unpack:
-            stdout = __import__('io').BytesIO(b'archive')
-            def wait(self, timeout=None):
-                return 0
-            def poll(self):
-                return 0
-        def execute(args, **kwargs):
-            calls.append(args)
-            return b''
-        def inspected(value):
-            if value.startswith('nginx'):
-                return {'Id': 'sha256:' + 'c' * 64, 'RepoDigests': [recovery.canonical_digest(self.manifest['publicImages'][0]['reference'])]}
-            return {'Id': self.image}
-        with patch.object(recovery.subprocess, 'Popen', side_effect=[Unpack(), Unpack()]), \
-             patch.object(recovery, 'run', side_effect=execute), patch.object(recovery, 'inspect_image', side_effect=inspected):
-            recovery.restore_images(self.directory, self.manifest)
-        tags = [args[-1] for args in calls if 'tag' in args]
-        self.assertEqual(set(tags), {'system_bootstrapper', 'controller:retained', 'nginx:retained'})
+        # The restore orchestration moved to TS; run its injected process-port contract.
+        result = subprocess.run(['node', '--test', '--test-name-pattern', 'archive restore reconstructs',
+                                 str(ROOT / 'operations/tests/host-recovery-images.test.cjs')],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_timed_out_archive_load_kills_and_reaps_both_children(self):
-        children = []
-        class Process:
-            def __init__(self, hanging):
-                self.stdout = __import__('io').BytesIO(b'archive')
-                self.hanging, self.killed, self.waited = hanging, False, False
-            def wait(self, timeout=None):
-                if self.hanging and not self.killed:
-                    raise subprocess.TimeoutExpired('docker', timeout)
-                self.waited = True
-                return -9 if self.killed else 0
-            def poll(self):
-                return -9 if self.killed else None
-            def kill(self):
-                self.killed = True
-        def child(*args, **kwargs):
-            value = Process(hanging=len(children) == 1)
-            children.append(value)
-            return value
-        with patch.object(recovery.subprocess, 'Popen', side_effect=child):
-            with self.assertRaisesRegex(recovery.RecoveryError, 'archive-load-timeout'):
-                recovery.restore_images(self.directory, self.manifest)
-        self.assertTrue(all(value.killed and value.waited for value in children))
+    def test_timed_out_archive_load_stops_before_alias_publication(self):
+        # The restore orchestration moved to TS; run its injected process-port contract.
+        result = subprocess.run(['node', '--test', '--test-name-pattern', 'failed bounded archive',
+                                 str(ROOT / 'operations/tests/host-recovery-images.test.cjs')],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_configuration_cannot_select_an_unrecorded_image(self):
         config = self.root / 'settings.env'

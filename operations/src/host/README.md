@@ -39,3 +39,17 @@ or failed guardian leaves its journal for the existing adoption checks.
 `bootstrapper/host-child.py` only execs this precompiled guardian, preserving the
 inherited lock descriptor. Existing real process-interruption tests run with
 `python3 tests/bootstrapper/successor-host-tools.py HostChildInterruption`.
+
+`RecoveryManifestService` verifies retained archive checksums, unique aliases,
+recorded Git objects and saved selectors. A newer host-tools checkout does not
+reinterpret the recorded deployment: historical gitlinks remain commit identities
+and monorepo manifests require the exact Wizard tree in both source and controller
+archive records. Checksums-only legacy manifests cannot start services.
+
+`RecoveryImageService.restore` reconstructs declared image aliases and verifies
+public digests from the accepted manifest. Docker's native compressed-archive
+reader streams `load --input` directly, avoiding an intermediate uncompressed
+file or a separate gzip child. Its 900-second load bound never exceeds a supplied
+remaining operation deadline. A failed load cannot proceed to tagging. Existing
+Python recovery callers forward to these services; retained paired-checkpoint
+rollback orchestration remains with its existing coordinator.

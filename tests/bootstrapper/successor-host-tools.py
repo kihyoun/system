@@ -955,34 +955,12 @@ class ExportContracts(unittest.TestCase):
         self.assertFalse(any('@' in row['tag'] for row in value['localImages']))
         self.assertEqual(value['controllerHistory'][0], self.old['currentController'])
     def test_archive_restore_can_start_new_controller_without_own_registry(self):
-        value, calls = self.refreshed(), []
-        aliases = {row['tag']: row['imageId'] for row in value['localImages']}
-        public = value['publicImages'][0]
-        class Process:
-            def __init__(self):
-                self.stdout = io.BytesIO(b'archive')
-            def wait(self, timeout=None):
-                return 0
-            def poll(self):
-                return 0
-        def image(reference):
-            if reference in aliases:
-                return {'Id': aliases[reference]}
-            if reference == public['reference']:
-                return {'Id': public['imageId'], 'RepoDigests': [successor.recovery.canonical_digest(reference)]}
-            return {'Id': reference}
-        with patch.object(successor.recovery.subprocess, 'Popen', side_effect=lambda *args, **kwargs: Process()), \
-             patch.object(successor.recovery, 'inspect_image', side_effect=image), \
-             patch.object(successor.recovery, 'run', side_effect=lambda args, **kwargs: calls.append(args) or b''):
-            successor.recovery.restore_images(self.root, value)
-        self.assertFalse(any('pull' in call and any('registry.example.invalid' in word for word in call) for call in calls))
-        self.assertTrue(any(call[-1] == self.alias and 'tag' in call for call in calls))
-        aliases[self.alias] = 'sha256:' + '0' * 64
-        with patch.object(successor.recovery.subprocess, 'Popen', side_effect=lambda *args, **kwargs: Process()), \
-             patch.object(successor.recovery, 'inspect_image', side_effect=image), \
-             patch.object(successor.recovery, 'run', return_value=b''):
-            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'local-image-alias-mismatch'):
-                successor.recovery.restore_images(self.root, value)
+        # The restore orchestration moved to TS; run its injected process-port contract.
+        result = subprocess.run(['node', '--test', '--test-name-pattern', 'archive restore reconstructs',
+                                 str(ROOT / 'operations/tests/host-recovery-images.test.cjs')],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_invalid_candidate_manifest_does_not_change_active_bytes_or_checksum(self):
         original = b'{  "original":true }\n\n'
         (self.root / 'images.json').write_bytes(original)

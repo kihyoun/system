@@ -109,3 +109,15 @@ test('explicit storage preflight failure cannot create fallback directories',t=>
  f.service.runner.run=(binary,args,options)=>{if(args[0]==='-c')return {stdout:'volume\0/missing\0/missing/platform\0\0',stderr:'',status:0};checked=options.env.PERSISTENCE_CHECK_ONLY==='1';throw Error('missing-volume');};
  assert.throws(()=>f.service.storage(f.selector,f.checkout));assert(checked);assert(!fs.existsSync(path.join(f.root,'.system-bootstrapper-volume')));
 });
+test('retained monorepo archives bind the original System commit and Wizard tree independently of current host tools',t=>{
+ const f=fixture(t,true),directory=path.join(f.dir,'recovery');fs.mkdirSync(path.join(directory,'images'),{recursive:true});
+ const archive=path.join(directory,'images/controller.tar.gz');fs.writeFileSync(archive,'retained payload');
+ const source={sourceCommit:f.identity.sourceCommit,sourceTree:f.identity.sourceTree,sourceLayout:'system-monorepo-v1',wizardSourceTree:f.identity.wizardSourceTree};
+ const manifest={...source,archives:[{...source,file:'images/controller.tar.gz',sha256:api.fileSha(archive),imageId:id('d')}],publicImages:[],localImages:[{tag:'controller:retained',imageId:id('d')}],currentController:{reference:'controller:retained',imageId:id('d'),sourceCommit:source.sourceCommit,sourceTree:source.sourceTree}};
+ const filename=path.join(directory,'images.json');fs.writeFileSync(filename,JSON.stringify(manifest));
+ fs.writeFileSync(path.join(f.checkout,'source.txt'),'new host tools');f.git('add','.');f.git('commit','--quiet','-m','Newer tools');
+ const service=new api.RecoveryManifestService();assert.deepEqual(service.load(directory,f.checkout),manifest);
+ for(const change of [m=>m.wizardSourceTree='0'.repeat(40),m=>m.wizardSourceRevision='c'.repeat(40),m=>m.archives[0].wizardSourceTree='c'.repeat(40),m=>m.archives[0].sourceLayout=undefined]) {
+  const invalid=structuredClone(manifest);change(invalid);fs.writeFileSync(filename,JSON.stringify(invalid));assert.throws(()=>service.load(directory,f.checkout));
+ }
+});

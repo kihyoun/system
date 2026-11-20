@@ -1,11 +1,16 @@
 import fs from 'node:fs';
+import {RecoveryImageService} from './recovery-images';
+import {RecoveryManifestService,type RecoveryManifest} from './recovery-manifest';
 import path from 'node:path';
 import {HostInstallService,reference,sourceIdentity,checkedImage,acceptedMetadata,fresh,writePrivate,privateFile,type InstallOptions} from './install';
 
 /** Fixed compatibility RPC for remaining Python consumers; never evaluates code. */
-export function compatibility(input: {operation: string; arguments: unknown[]}) {
-  const args=input.arguments;
+export function compatibility(input: {operation: string; arguments: unknown[]; deadline?: number}) {
+  const args=input.arguments,host=new HostInstallService(undefined,undefined,undefined,undefined,input.deadline);
   switch(input.operation) {
+    case 'restoreImages':return new RecoveryImageService(host).restore(String(args[0]),args[1] as RecoveryManifest);
+    case 'loadManifest':return new RecoveryManifestService(host).load(String(args[0]),String(args[1]),args[2]?String(args[2]):undefined,args[3]===true,args[4]===null||args[4]===undefined?undefined:String(args[4]));
+    case 'validateSelected':return new RecoveryManifestService(host).validateSelected(args[0] as RecoveryManifest,String(args[1]));
     case 'reference':return reference(args[0]);
     case 'sourceIdentity':return sourceIdentity(String(args[0]),String(args[1]),String(args[2]));
     case 'checkedImage':return checkedImage(String(args[0]),args[1] as Parameters<typeof checkedImage>[1],args[2],args[3]===true);
@@ -13,10 +18,10 @@ export function compatibility(input: {operation: string; arguments: unknown[]}) 
     case 'fresh':return fresh(String(args[0]),String(args[1]));
     case 'privateFile':return privateFile(String(args[0]));
     case 'writePrivate':return writePrivate(String(args[0]),Buffer.from(String(args[1]),'base64'));
-    case 'source':return new HostInstallService().source(String(args[0]));
-    case 'storage':return new HostInstallService().storage(String(args[0]),String(args[1]));
-    case 'noExistingServices':return new HostInstallService().noExistingServices();
-    case 'install':return new HostInstallService().install(args[0] as InstallOptions,String(args[1]));
+    case 'source':return host.source(String(args[0]));
+    case 'storage':return host.storage(String(args[0]),String(args[1]));
+    case 'noExistingServices':return host.noExistingServices();
+    case 'install':return host.install(args[0] as InstallOptions,String(args[1]));
     default:throw Error('unknown-host-operation');
   }
 }
@@ -43,7 +48,7 @@ if(require.main===module) {
       process.stdout.write('Public release startup requested. Complete first setup in the Wizard; service readiness is separate.\n');
     }
   }catch(error) {
-    const code=error instanceof Error&&/^[a-z][a-z0-9:-]+$/.test(error.message)?error.message:'invalid-private-input-or-filesystem';
+    const code=error instanceof Error&&/^[a-z][a-zA-Z0-9:-]+$/.test(error.message)?error.message:'invalid-private-input-or-filesystem';
     if(process.argv[2]==='--compatibility')process.stdout.write(JSON.stringify({error:code})+'\n');
     else process.stderr.write('Public release installation: '+code+'\n');
     process.exitCode=1;

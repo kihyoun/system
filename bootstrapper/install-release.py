@@ -20,9 +20,9 @@ class ReleaseError(RuntimeError):
     pass
 
 
-def invoke(operation, *arguments):
+def invoke(operation, *arguments, deadline=None):
     result = subprocess.run(['node', str(ENTRY), '--compatibility'],
-                            input=json.dumps({'operation': operation, 'arguments': arguments}, default=str),
+                            input=json.dumps({'operation': operation, 'arguments': arguments, **({'deadline': deadline} if deadline is not None else {})}, default=str),
                             capture_output=True, text=True)
     try:
         value = json.loads(result.stdout)

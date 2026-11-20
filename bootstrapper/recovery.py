@@ -90,104 +90,24 @@ def declared_image(manifest, selected):
     return declared.get(canonical_selector(selected))
 
 
+def host_operation(operation, *arguments):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('host_operations_compatibility', Path(__file__).with_name('install-release.py'))
+    host = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(host)
+    try:
+        return host.invoke(operation, *arguments, deadline=(time.time() + budget(float('inf'))) * 1000 if OPERATION_DEADLINE is not None else None)
+    except host.ReleaseError as error:
+        raise RecoveryError(str(error)) from None
+
+
 def load_manifest(directory, checkout, expected_sha=None, checksums_only=False, manifest_bytes=None):
-    directory = Path(directory)
-    require(directory.is_dir() and not directory.is_symlink(), 'recovery-directory-must-not-be-symlink')
-    require((directory / 'images').is_dir() and not (directory / 'images').is_symlink(),
-            'images-directory-must-not-be-symlink')
-    directory = directory.resolve(strict=True)
-    path = directory / 'images.json'
-    require(path.is_file() and not path.is_symlink(), 'manifest-must-be-regular-file')
-    if expected_sha:
-        require(re.fullmatch(r'[0-9a-f]{64}', expected_sha) and sha(path) == expected_sha,
-                'manifest-checksum-mismatch')
-    manifest = json.loads(path.read_bytes() if manifest_bytes is None else manifest_bytes)
-    require(isinstance(manifest, dict), 'invalid-manifest')
-    for key in ('archives', 'publicImages'):
-        require(isinstance(manifest.get(key), list), 'invalid-manifest-' + key)
-    require(bool(manifest['archives']), 'manifest-has-no-archives')
-    files, ids, tags = set(), set(), {}
-    for archive in manifest['archives']:
-        require(isinstance(archive, dict), 'invalid-archive')
-        name = archive.get('file')
-        require(isinstance(name, str) and re.fullmatch(r'images/[A-Za-z0-9][A-Za-z0-9._-]*\.tar\.gz', name),
-                'unexpected-archive-path')
-        filename = directory / name
-        require(filename.resolve().parent == (directory / 'images').resolve() and not filename.is_symlink(),
-                'archive-escapes-images-directory')
-        require(name not in files and filename.is_file(), 'duplicate-or-missing-archive')
-        files.add(name)
-        require(re.fullmatch(r'[0-9a-f]{64}', archive.get('sha256', '')) is not None,
-                'invalid-archive-checksum')
-        require(sha(filename) == archive['sha256'], 'archive-checksum-mismatch')
-        if not checksums_only:
-            require(image_id(archive.get('imageId')), 'archive-image-id-required')
-            ids.add(archive['imageId'])
-    for image in manifest['publicImages']:
-        require(isinstance(image, dict) and reference(image.get('reference')) and
-                re.search(r'@sha256:[0-9a-f]{64}$', image['reference']) and local_alias(image.get('tag')),
-                'public-image-must-be-digest-pinned')
-        if image.get('imageId') is not None:
-            require(image_id(image['imageId']), 'invalid-public-image-id')
-        alias = canonical_selector(image['tag'])
-        require(alias not in tags, 'duplicate-image-alias')
-        tags[alias] = image.get('imageId', image['reference'])
-    if checksums_only:
-        return manifest
-    require(isinstance(manifest.get('localImages'), list) and bool(manifest['localImages']),
-            'local-image-aliases-required')
-    for image in manifest['localImages']:
-        require(isinstance(image, dict) and local_alias(image.get('tag')) and image_id(image.get('imageId')),
-                'invalid-local-image')
-        require(image['imageId'] in ids, 'local-alias-has-no-declared-archive')
-        alias = canonical_selector(image['tag'])
-        require(alias not in tags, 'duplicate-image-alias')
-        tags[alias] = image['imageId']
-    commit, tree, wizard = (manifest.get(key) for key in ('sourceCommit', 'sourceTree', 'wizardSourceRevision'))
-    require(all(git_id(value) for value in (commit, tree, wizard)), 'recorded-source-identities-required')
-    checkout = str(Path(checkout).resolve(strict=True))
-    actual_tree = run(['git', '-C', checkout, 'rev-parse', commit + '^{tree}']).decode().strip()
-    require(actual_tree == tree, 'recorded-source-tree-mismatch')
-    if manifest.get('deployedCodeTree') is not None:
-        require(manifest['deployedCodeTree'] == tree, 'deployed-source-tree-mismatch')
-    gitlink = run(['git', '-C', checkout, 'ls-tree', commit, 'wizard']).decode().strip()
-    require(gitlink == '160000 commit ' + wizard + '\twizard', 'recorded-wizard-gitlink-mismatch')
-    controller = manifest.get('currentController', {})
-    require(isinstance(controller, dict) and controller.get('imageId') in ids and
-            controller.get('reference') in {image['tag'] for image in manifest['localImages']} and
-            tags.get(canonical_selector(controller['reference'])) == controller.get('imageId'), 'declared-controller-required')
-    require(controller.get('sourceCommit') == commit and controller.get('sourceTree') == tree,
-            'controller-source-mismatch')
-    matches = [row for row in manifest['archives'] if row['imageId'] == controller['imageId']]
-    require(len(matches) == 1 and matches[0].get('sourceCommit') == commit and
-            matches[0].get('sourceTree') == tree and matches[0].get('wizardSourceRevision') == wizard,
-            'controller-archive-source-mismatch')
-    return manifest
+    return host_operation('loadManifest', directory, checkout, expected_sha, checksums_only,
+                          manifest_bytes.decode() if manifest_bytes is not None else None)
 
 
 def validate_selected_images(manifest, configuration):
-    keys = ['BOOTSTRAPPER_IMAGE', 'NGINX_IMAGE', 'GITLAB_IMAGE', 'GITLAB_RUNNER_IMAGE',
-            'WIZARD_ENABLE', 'WIZARD_IMAGE']
-    script = 'set -e; source "$1"; ' + ''.join(
-        'printf "%s\\0" "${' + key + '-}"; ' for key in keys)
-    values = run(['bash', '-c', script, 'read-image-selectors', str(configuration)]).split(b'\0')
-    require(len(values) == len(keys) + 1, 'image-selector-format')
-    selected = dict(zip(keys, (value.decode() for value in values[:-1])))
-    for key, fallback in [('BOOTSTRAPPER_IMAGE', 'system_bootstrapper'), ('NGINX_IMAGE', 'nginx'),
-                          ('GITLAB_IMAGE', ''), ('GITLAB_RUNNER_IMAGE', '')]:
-        value = selected[key] or fallback
-        declared = declared_image(manifest, value)
-        require(declared is not None, 'saved-image-is-not-declared-in-manifest')
-        if key == 'BOOTSTRAPPER_IMAGE':
-            require(declared.get('imageId') == manifest['currentController']['imageId'],
-                    'saved-controller-is-not-declared-current-controller')
-    if selected['WIZARD_ENABLE'] == 'true':
-        value = selected['WIZARD_IMAGE']
-        candidates = [row.get('imageRef') for row in manifest['archives']]
-        candidates += [row['reference'] for row in manifest['publicImages']]
-        candidates += [manifest['currentController'].get('productionWizardReference')]
-        require(declared_image(manifest, value) is not None or value in candidates,
-                'saved-wizard-image-is-not-declared')
+    return host_operation('validateSelected', manifest, configuration)
 
 
 def inspect_image(value):
@@ -254,38 +174,7 @@ def restore_retained_images(directory, descriptors, expected):
 
 
 def restore_images(directory, manifest):
-    for archive in manifest['archives']:
-        # Stream decompression; never materialize another full archive on root disk.
-        unpack = subprocess.Popen(['gzip', '-dc', str(Path(directory) / archive['file'])], stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL)
-        loaded = None
-        try:
-            loaded = subprocess.Popen(['docker', '--host=unix:///var/run/docker.sock', 'load'], stdin=unpack.stdout,
-                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            unpack.stdout.close()
-            require(loaded.wait(timeout=budget(900)) == 0 and unpack.wait(timeout=budget(30)) == 0,
-                    'archive-load-failed')
-        except subprocess.TimeoutExpired:
-            raise RecoveryError('archive-load-timeout') from None
-        finally:
-            for process in (loaded, unpack):
-                if process is not None and process.poll() is None:
-                    process.kill()
-                    process.wait(timeout=10)
-        require(inspect_image(archive['imageId'])['Id'] == archive['imageId'], 'loaded-image-id-mismatch')
-    for image in manifest['localImages']:
-        run(['docker', '--host=unix:///var/run/docker.sock', 'tag', image['imageId'], image['tag']])
-        require(inspect_image(image['tag'])['Id'] == image['imageId'], 'local-image-alias-mismatch')
-    for image in manifest['publicImages']:
-        try:
-            loaded = inspect_image(image['reference'])
-        except RecoveryError:
-            run(['docker', '--host=unix:///var/run/docker.sock', 'pull', image['reference']])
-            loaded = inspect_image(image['reference'])
-        require(canonical_digest(image['reference']) in loaded.get('RepoDigests', []), 'public-image-digest-mismatch')
-        if image.get('imageId'):
-            require(loaded['Id'] == image['imageId'], 'public-image-id-mismatch')
-        run(['docker', '--host=unix:///var/run/docker.sock', 'tag', image['reference'], image['tag']])
+    return host_operation('restoreImages', directory, manifest)
 
 
 def main():
