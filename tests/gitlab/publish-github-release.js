@@ -199,13 +199,31 @@ for (const monorepo of [false, true]) test('complete publisher derives determini
     results: [...guided.stages, 'recovery-original-host-removed', 'cleanup'].map(name => ({name, status: 'passed'})),
     evidence: {guidedPreview: guided.proof(restored.images.wizard), gitlabUpgrade: restored.evidence.gitlabUpgrade,
       recovery: {runId: restored.runId, backupOnly: true, originalHostRemoved: true, guidedBindingRestored: true}}};
+  const layout = monorepo ? {sourceLayout: 'system-monorepo-v1', sourceTree, wizardSourceTree: git('rev-parse', 'HEAD:wizard')} : {};
+  for (const receipt of [original, restored]) Object.assign(receipt, layout);
+  if (monorepo) {
+    const beta = require('../shared/system-beta-evidence-fixture');
+    const proof = beta.proof();
+    proof.productionImageId = restored.images.wizard;
+    proof.productionRetained.runningImage = restored.images.wizard;
+    Object.assign(proof.candidate, {sourceCommit: commit, sourceTree, wizardSourceTree: layout.wizardSourceTree,
+      helperImage: restored.images.candidate, wizardImageId: restored.images.wizard,
+      fixturePipelineId: ciIdentity.pipelineId, fixtureCandidateJobId: ciIdentity.candidateJobId});
+    proof.setup.sourceCommit = commit;
+    proof.beta.stoppedThroughPipelineId = ciIdentity.pipelineId;
+    for (const deployment of [proof.beta.deployment, proof.beta.stopped])
+      Object.assign(deployment, {sourceCommit: commit, pipelineId: ciIdentity.pipelineId,
+        generation: 'p' + ciIdentity.pipelineId + '-j' + proof.beta.fixtureDeployJobId});
+    original.evidence.guidedPreview = proof;
+    original.results = [...beta.results, {name: 'recovery-original-host-removed', status: 'passed'}, {name: 'cleanup', status: 'passed'}];
+  }
   const candidateDirectory = path.join(root, 'test-results/e2e');
   for (const receipt of [original, restored]) {
     const directory = path.join(candidateDirectory, receipt.runId);
     fs.mkdirSync(directory, {recursive: true});
     fs.writeFileSync(path.join(directory, 'results.json'), JSON.stringify(receipt));
   }
-  const candidateCi = {sourceRevision: commit, ...ciIdentity};
+  const candidateCi = {sourceRevision: commit, ...ciIdentity, ...layout};
   const [{proof, bytes: proofBytes}] = candidates(candidateDirectory, candidateCi);
   assert.equal(proof.guidedPreviewReceipt.runId, original.runId);
   assert.equal(proof.evidence.guidedPreview, undefined);
@@ -213,7 +231,8 @@ for (const monorepo of [false, true]) test('complete publisher derives determini
   for (const change of [value => delete value.guidedPreviewReceipt,
     value => { value.guidedPreviewReceipt.ciIdentity.candidateJobId++; },
     value => { value.guidedPreviewReceipt.evidence.recovery.runId = original.runId; },
-    value => { value.guidedPreviewReceipt.evidence.guidedPreview.merge.normalGate = false; }]) {
+    value => { if (monorepo) value.guidedPreviewReceipt.evidence.guidedPreview.verifier.negativeGatesPassed = false;
+      else value.guidedPreviewReceipt.evidence.guidedPreview.merge.normalGate = false; }]) {
     const invalid = structuredClone(proof); change(invalid);
     assert.throws(() => validateEvidence(invalid, candidateCi));
   }
