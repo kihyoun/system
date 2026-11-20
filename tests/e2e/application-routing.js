@@ -1,0 +1,158 @@
+'use strict';
+// An ordinary application created through Sync inside the owned candidate only.
+const APP_HOST='app.candidate.test', APP_ALIAS='oldapp.candidate.test', BETA_HOST='betaapp.candidate.test';
+const certificateHosts=[APP_HOST,APP_ALIAS];
+const PROJECT='routingproof';
+const challenge='/.well-known/acme-challenge/application-alias-check';
+const route='/nested%20application/path?one=1&two=a%2Fb&one=2';
+async function controller(candidate,action,input){
+  const script="let text='';process.stdin.on('data',part=>text+=part);process.stdin.on('end',async()=>{try{const result=await ("+action.toString()+")(JSON.parse(text));if(result!==undefined)process.stdout.write(JSON.stringify(result));}catch{process.exitCode=1;}});";
+  const result=await candidate.inner(['exec','-i','system_bootstrapper_1','node','-e',script],{input:JSON.stringify(input),timeout:180000});
+  return result?JSON.parse(result):undefined;
+}
+const fail=code=>{throw Object.assign(Error(code),{noRetry:true});};
+async function projectRequest(candidate,request,path,data){
+  let result=await request(path,data);
+  if(!result||!Object.hasOwn(result,'state'))return result;
+  const failed=path==='/projects/namespaces'?'application-routing-namespace-job-failed':'application-routing-project-failed';
+  if(result.state==='failed')fail(failed);
+  const id=result.id;
+  if(!/^[a-f0-9]{48}(?:[a-f0-9]{16})?$/.test(id||''))fail('application-routing-job-identity-invalid');
+  await candidate.wait(async()=>{
+    if(result.state==='running')result=await request('/projects/jobs/'+id);
+    if(result?.id!==id)fail('application-routing-job-identity-invalid');
+    if(result.state==='failed')fail(failed);
+    if(!['running','complete'].includes(result.state))fail('application-routing-job-state-invalid');
+    return result.state==='complete';
+  },180000);
+  return result;
+}
+async function session(candidate,connection,dependencies={}){
+  const probe=dependencies.tlsProbe||require('./recovery').tlsProbe;
+  const login=await probe(candidate,'sync.candidate.test','/login',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})},connection);
+  if(login.status!==200)throw Error('application-routing-login-failed');
+  let token;try{token=JSON.parse(login.body).accessToken;}catch{fail('application-routing-login-failed');}
+  if(typeof token!=='string'||!token)fail('application-routing-login-failed');
+  const request=async(path,data)=>{
+    const response=await probe(candidate,'sync.candidate.test',path,{headers:{Authorization:'Bearer '+token,...(data?{'Content-Type':'application/json'}:{})},
+      ...(data?{method:'POST',body:JSON.stringify(data)}:{})},connection);
+    if(![200,202].includes(response.status))throw Error('application-routing-api-failed');
+    try{return JSON.parse(response.body);}catch{fail('application-routing-api-invalid-response');}
+  };
+  return {token,request:(path,data)=>projectRequest(candidate,request,path,data)};
+}
+async function upload(candidate,token,path,archive,fingerprint){
+  const result=await controller(candidate,async function(input){
+    const fs=require('fs'),http=require('http'),boundary='application-routing-fixture';
+    const body=Buffer.concat([Buffer.from('--'+boundary+'\r\nContent-Disposition: form-data; name="bootstrapper.zip"; filename="bootstrapper.zip"\r\nContent-Type: application/zip\r\n\r\n'),
+      fs.readFileSync(input.archive),Buffer.from('\r\n'+(input.fingerprint?'--'+boundary+'\r\nContent-Disposition: form-data; name="impact"\r\n\r\n'+input.fingerprint+'\r\n':'')+'--'+boundary+'--\r\n')]);
+    let request,child,pending=true,readinessChecks=0,readinessFailed=false;
+    const applying=new Promise((resolve,reject)=>{
+      request=http.request({host:'127.0.0.1',port:8071,path:input.path,method:'POST',timeout:150000,headers:{Authorization:'Bearer '+input.token,
+        'Content-Type':'multipart/form-data; boundary='+boundary,'Content-Length':body.length}},res=>{
+        let raw='';res.on('data',part=>raw+=part);res.on('error',reject);
+        res.on('end',()=>{try{resolve({status:res.statusCode,data:JSON.parse(raw)});}catch{reject(Error());}});
+      });request.on('error',reject);request.on('timeout',()=>request.destroy(Error()));request.end(body);
+    }).finally(()=>{pending=false;});
+    // The outer Docker transport is synchronous. Observe readiness here in
+    // the controller's event loop while the actual HTTP Push is still pending.
+    const observing=input.observeReadiness?(async()=>{
+      while(pending){
+        try{
+          await new Promise((resolve,reject)=>{
+            child=require('child_process').execFile('docker',['exec','system_gitlab_1','curl','-fsS','--max-time','3',
+              '--output','/dev/null','http://127.0.0.1/-/readiness'],{timeout:5000,killSignal:'SIGKILL',maxBuffer:4096},error=>{
+              child=undefined;if(error)reject(Error());else resolve();
+            });
+          });
+        }catch{readinessFailed=true;request.destroy(Error());throw Error();}
+        if(pending)readinessChecks++;
+        if(pending)await new Promise(resolve=>setTimeout(resolve,100));
+      }
+    })():Promise.resolve();
+    let applied;
+    try{[applied]=await Promise.all([applying,observing]);}
+    catch(error){if(!readinessFailed)throw error;}
+    finally{
+      pending=false;request.destroy();if(child)child.kill('SIGKILL');
+      await Promise.allSettled([applying,observing]);
+    }
+    return readinessFailed?{readinessFailed:true,readinessChecks}:{...applied,readinessChecks};
+  },{token,path,archive,fingerprint,observeReadiness:path==='/config/zip'});
+  if(result.readinessFailed)throw Error('application-routing-gitlab-readiness-failed');
+  if(path==='/config/zip'&&!result.readinessChecks)throw Error('application-routing-no-concurrent-readiness-check');
+  return result;
+}
+async function snapshot(candidate){
+  const names=(await candidate.inner(['ps','--format','{{.Names}}'])).split('\n').filter(Boolean).sort();
+  const rows=JSON.parse(await candidate.inner(['inspect',...names]));
+  return Object.fromEntries(rows.map(row=>[row.Name,{id:row.Id,image:row.Image,started:row.State.StartedAt,restarts:row.RestartCount}]));
+}
+async function verify(candidate,connection={},dependencies={}){
+  const recovery=require('./recovery');
+  const tlsProbe=dependencies.tlsProbe||recovery.tlsProbe,httpProbe=dependencies.httpProbe||recovery.httpProbe,readyResponse=recovery.readyResponse;
+  const execute=dependencies.controller||controller,authenticate=dependencies.session||session;
+  await execute(candidate,function(input){const fs=require('fs'),path=require('path'),file='/ssl/acme-http01'+input.challenge;fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'application-http01-proof');},{challenge});
+  try{
+    for(const probe of [httpProbe,tlsProbe]){
+      const response=await readyResponse(candidate,()=>probe(candidate,APP_ALIAS,route,{},connection));
+      if(response.status!==308||response.headers?.location!=='https://'+APP_HOST+route||connection.serial&&probe===tlsProbe&&response.serial!==connection.serial)
+        throw Error('application-alias-redirect-failed');
+      const responseChallenge=await probe(candidate,APP_ALIAS,challenge,{},connection);
+      if(responseChallenge.status!==200||responseChallenge.body!=='application-http01-proof'||responseChallenge.headers?.location!==undefined)
+        throw Error('application-alias-http01-failed');
+    }
+    const sync=await authenticate(candidate,connection),files=await sync.request('/config/projects');
+    const application=files.find(file=>file.filename==='.'+PROJECT+'.env');
+    if(!application||!application.data.includes('PROD_ALIASES="'+APP_ALIAS+'"')||!application.repository?.id||application.data[807]!=='$')throw Error('application-alias-fetch-roundtrip-failed');
+    candidate.applicationAliasesVerified=true;
+  }finally{await execute(candidate,function(input){require('fs').rmSync('/ssl/acme-http01'+input.challenge,{force:true});},{challenge});}
+}
+function assertPreserved(before,after){
+  for(const [name,identity]of Object.entries(before))if(JSON.stringify(after[name])!==JSON.stringify(identity))throw Error('application-routing-existing-container-changed');
+}
+async function setup(candidate,connection={}){
+  await candidate.stage('application-routing-native-project-and-selective-push',async()=>{
+    const sync=await session(candidate,connection),namespaces=await sync.request('/projects/namespaces');
+    const namespace=Array.isArray(namespaces?.namespaces)?namespaces.namespaces.find(row=>row.path==='root'):undefined;
+    if(!Number.isSafeInteger(namespace?.id)||namespace.id<1)throw Error('application-routing-namespace-required');
+    const data=await controller(candidate,function(input){
+      const fs=require('fs'),cube=fs.readFileSync('/state/.docker.env','utf8').slice(0,1184);
+      const values={PROJECT_NAME:input.project,PROJECT_TEMPLATE:'empty',USE_PROD_HOST:'true',PROD_HOST:input.host,PROD_DOMAIN_MODE:'2',PROD_DEPLOY_MODE:'0',
+        PROD_SSL:'/ssl/live/recovery-fixture/fullchain.pem',PROD_SSL_KEY:'/ssl/live/recovery-fixture/privkey.pem',
+        USE_BETA_HOST:'true',BETA_HOST:input.beta,BETA_DOMAIN_MODE:'0',BETA_DEPLOY_MODE:'0',USE_REVIEW_HOST:'false',REVIEW_DEPLOY_MODE:'0',GITLAB_RUNNER_SCALE:'0',GITLAB_RUNNER_TOKEN:''};
+      return cube+'\n'+Object.entries(values).map(([key,value])=>key+'='+JSON.stringify(value)).join('\n')+'\n';
+    },{project:PROJECT,host:APP_HOST,beta:BETA_HOST});
+    await sync.request('/projects',{projectKey:PROJECT,namespaceId:namespace.id,template:'empty',data,ci:'workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n'});
+    // Exercise stable Production/Beta application images while only Review
+    // routing and the Production alias change through the native Wizard export.
+    for(const [environment,host]of [['prod',APP_HOST],['beta',BETA_HOST]])
+      await candidate.inner(['run','--pull','never','-d','--name','application-routing-'+environment,'--network',PROJECT+'_'+environment,'--env','VIRTUAL_HOST='+host,'nginx:latest']);
+    const {tlsProbe,httpProbe}=require('./recovery');
+    await candidate.wait(async()=>{const prod=await tlsProbe(candidate,APP_HOST,'/',{},connection),beta=await httpProbe(candidate,BETA_HOST,'/',{},connection);return prod.status===200&&beta.status===200;},30000);
+    const before=await snapshot(candidate);
+    for(const environment of ['prod','beta'])if(before['/application-routing-'+environment]?.image!==candidate.spec.images.nginx.id)throw Error('application-routing-preloaded-image-mismatch');
+    const fetched=await require('./recovery').syncFetch(candidate,connection);
+    const application=fetched.projects.find(file=>file.filename==='.'+PROJECT+'.env');
+    if(!application)throw Error('application-routing-fetch-required');
+    application.data=application.data.replace('USE_REVIEW_HOST="false"','USE_REVIEW_HOST="true"')+'\nREVIEW_HOST="reviewapp.candidate.test"\nREVIEW_DOMAIN_MODE="1"\nPROD_ALIASES="'+APP_ALIAS+'"\n';
+    await controller(candidate,function(input){require('fs').writeFileSync('/tmp/application-routing-fetch.json',JSON.stringify(input),{mode:0o600});},fetched);
+    await candidate.inner(['exec','system_bootstrapper_1','node','/opt/system-bootstrapper/export-configuration.cjs','/tmp/application-routing-fetch.json','/tmp/application-routing.zip']);
+    const plan=await upload(candidate,sync.token,'/config/impact','/tmp/application-routing.zip');
+    if(plan.status!==200||plan.data.mode!=='routing'||JSON.stringify(plan.data.projects)!==JSON.stringify([PROJECT]))throw Error('application-routing-impact-mismatch');
+    const applied=await upload(candidate,sync.token,'/config/zip','/tmp/application-routing.zip',plan.data.fingerprint);
+    const readinessChecks=applied.readinessChecks;
+    if(!readinessChecks||applied.status!==200||applied.data.applyMode!=='routing'||applied.data.status.needRestart)throw Error('application-routing-push-restarted-platform');
+    const after=await snapshot(candidate);
+    assertPreserved(before,after);
+    for(const [probe,host]of [[tlsProbe,APP_HOST],[httpProbe,BETA_HOST]])if((await probe(candidate,host,'/',{},connection)).status!==200)throw Error('application-routing-existing-route-changed');
+    await verify(candidate,connection);
+    await candidate.inner(['restart','system_web_1']);await verify(candidate,connection);
+    const unchangedDuringProxyRestart=Object.fromEntries(Object.entries(after).filter(([name])=>name!=='/system_web_1'));
+    assertPreserved(unchangedDuringProxyRestart,await snapshot(candidate));
+    candidate.evidence.applicationRouting={selectivePush:true,gitlabIdentityPreserved:true,existingContainersPreserved:true,readinessChecks,aliasHttp01Verified:true,proxyRestartVerified:true};
+    await controller(candidate,function(){const fs=require('fs');for(const file of ['/tmp/application-routing-fetch.json','/tmp/application-routing.zip'])fs.rmSync(file,{force:true});},{});
+  });
+}
+module.exports={certificateHosts,APP_HOST,APP_ALIAS,BETA_HOST,PROJECT,verify,setup,snapshot,upload,assertPreserved,session};

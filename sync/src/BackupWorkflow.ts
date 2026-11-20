@@ -5,6 +5,14 @@ import {execFile} from 'node:child_process';
 import {configDirectory} from './StatePaths';
 const native = require('../../system/coordinated-backup');
 const active = new Set<string>();
+function operationDirectory(id: string): string {
+  if (typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id)) throw Error('invalid-backup-operation');
+  const parent = path.resolve(configDirectory(), '.coordinated-backups');
+  const root = path.resolve(parent, path.basename(id));
+  if (path.dirname(root) !== parent || fs.lstatSync(parent).isSymbolicLink() || fs.lstatSync(root).isSymbolicLink())
+    throw Error('unsafe-backup-directory');
+  return root;
+}
 
 /** Call only after authentication and ordinary operation-busy guards. */
 export function startBackupWorkflow(onFinished: () => void = () => undefined): any {
@@ -31,7 +39,7 @@ export function startBackupWorkflow(onFinished: () => void = () => undefined): a
 }
 
 export function backupWorkflowStatus(id: string): any {
-  const root = native.directory(configDirectory(), id);
+  const root = operationDirectory(id);
   const status = JSON.parse(fs.readFileSync(path.join(root, 'status.json'), 'utf8'));
   if (status.state === 'ready' && !status.helperCompletedAt) return {...status, state: active.has(id) ? 'working' : 'interrupted', phase: active.has(id) ? 'releasing-leases' : 'needs-inspection'};
   if (status.state === 'working' && !active.has(id)) return {...status, state: 'interrupted', phase: 'needs-inspection'};
@@ -39,12 +47,17 @@ export function backupWorkflowStatus(id: string): any {
 }
 
 /** A response finish confirms transfer only; the browser must confirm saving. */
-export function backupWorkflowDownload(id: string): {filename: string; sha256: string} {
+export function backupWorkflowDownload(id: string): {filename: string; sha256: string; bytes: Buffer} {
   const status = backupWorkflowStatus(id);
   if (status.state !== 'ready' || status.configuration.status !== 'ready') throw Error('configuration-backup-unavailable');
-  const filename = path.join(native.directory(configDirectory(), id), 'bootstrapper.zip');
-  const stat = fs.lstatSync(filename);
-  if (!stat.isFile() || stat.isSymbolicLink() || crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex') !== status.configuration.sha256)
-    throw Error('configuration-backup-checksum-mismatch');
-  return {filename, sha256: status.configuration.sha256};
+  const filename = path.join(operationDirectory(id), 'bootstrapper.zip');
+  const descriptor = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile() || stat.size > 50 * 1024 * 1024) throw Error('configuration-backup-checksum-mismatch');
+    const bytes = fs.readFileSync(descriptor);
+    if (crypto.createHash('sha256').update(bytes).digest('hex') !== status.configuration.sha256)
+      throw Error('configuration-backup-checksum-mismatch');
+    return {filename, sha256: status.configuration.sha256, bytes};
+  } finally { fs.closeSync(descriptor); }
 }

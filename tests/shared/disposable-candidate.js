@@ -116,7 +116,7 @@ class Candidate {
       if (!/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-image-input');
     }
     for(const [role,image] of Object.entries(spec.supportImages || {})) {
-      if(!['helper','previousGitlab','previousRunner','previousHelper'].includes(role) || !/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-support-image');
+      if(!['helper','previousGitlab','previousRunner','previousHelper','previousController','previousWizard','proxy'].includes(role) || !/^sha256:[a-f0-9]{64}$/.test(image.id || '') || !path.isAbsolute(image.archive || '')) throw new Error('invalid-support-image');
     }
     this.spec=spec; this.exec=options.docker || docker;
     this.request=options.request || ((url,requestOptions)=>{
@@ -135,8 +135,9 @@ class Candidate {
     this.now=options.now || Date.now;
     this.id=crypto.randomBytes(12).toString('hex'); this.name='system-candidate-'+this.id;
     this.resources=[]; this.canceled=false; this.startedAt=this.now();
+    const guidedBudget=spec.publicUpgrade?5400000:4500000;
     const budget=spec.gitlabUpgradeAcceptance===true?
-      (spec.guidedPreviewAcceptance===true?4500000:3600000):spec.acmeRenewalAcceptance===true?1500000:1200000;
+      (spec.guidedPreviewAcceptance===true?guidedBudget:3600000):spec.acmeRenewalAcceptance===true?1500000:1200000;
     this.deadline=this.startedAt+budget;
     this.checkpoint=options.checkpoint || (()=>{});
     this.secrets={user:'test'+crypto.randomBytes(8).toString('hex'),
@@ -197,7 +198,7 @@ class Candidate {
       if(this.spec.restore&&this.spec.guidedPreviewAcceptance===true)this.gitlabUrl='https://gitlab.candidate.test';
     });
     await this.stage('candidate-images',async()=>{
-      const tags={candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous',previousRunner:'candidate-runner:previous',previousHelper:'candidate-helper:previous'};
+      const tags={proxy:'candidate-proxy:under-test',candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous',previousRunner:'candidate-runner:previous',previousHelper:'candidate-helper:previous',previousController:'candidate-controller:previous-public',previousWizard:'candidate-wizard:previous-public'};
       for (const [role,image] of Object.entries({...this.spec.images,...this.spec.supportImages})) {
         // Stream the explicit archive from an open descriptor. No buffering a
         // multi-gigabyte image in Node and no outer-host bind path assumptions.
@@ -449,8 +450,12 @@ delivery-must-not-run:
           const {url,options}=JSON.parse(input);
           const request=http.request(url,{method:options.method||'GET',headers:options.headers,
             signal:AbortSignal.timeout(10000)},response=>{
+            const trace=(options.method||'GET')==='GET'&&/^\/api\/v4\/projects\/[1-9][0-9]*\/jobs\/[1-9][0-9]*\/trace$/.test(new URL(url).pathname);
             const chunks=[];let size=0;
-            response.on('data',chunk=>{size+=chunk.length;if(size>524288)request.destroy();else chunks.push(chunk);});
+            response.on('data',chunk=>{
+              if(trace){chunks.splice(0,chunks.length,Buffer.from(Buffer.concat([...chunks,chunk]).subarray(-65536)));return;}
+              size+=chunk.length;if(size>524288)request.destroy();else chunks.push(chunk);
+            });
             response.on('error',()=>{process.exitCode=1;});
             response.on('end',()=>{if(size<=524288)process.stdout.write(JSON.stringify({status:response.statusCode,body:Buffer.concat(chunks).toString('utf8')}));else process.exitCode=1;});
           });

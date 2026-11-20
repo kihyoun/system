@@ -153,8 +153,9 @@ environment with these values, using your actual lineage name:
 
 Save the environment edit and apply the configuration through **Push**. Use the
 paths visible inside the platform's `/ssl` mount, not host
-`/etc/letsencrypt` paths. This follows the ordinary service restart workflow;
-plan for its interruption and reconnect/Fetch afterward. It does not issue a
+`/etc/letsencrypt` paths. Review the service impact shown before Push. A routing-only
+edit to an existing application keeps GitLab running; wider changes restart the
+platform. Reconnect/Fetch afterward. It does not issue a
 certificate, rename the repository or rewrite committed environment URLs in
 CI. Review those URLs in the application repository if its protocol changed.
 
@@ -278,3 +279,59 @@ behavior; `tests/wizard/live/default-wizard.js` is its authenticated live check.
 Local HTTP fixtures do not demonstrate real DNS, certificate issuance/renewal,
 GitLab job execution or a successful Production rollout. Exercise those gates
 separately on an explicitly owned test platform.
+
+
+## Application aliases and routing changes
+
+Each ordinary application environment has an optional `PROD_ALIASES`,
+`BETA_ALIASES` or `REVIEW_ALIASES` field. Enter additional exact DNS hosts separated
+by spaces. The environment's existing host is the canonical destination; use
+exact-host domain mode 0 or 2. For example, with canonical host
+`www.example.com`, add `example.com` to Production aliases. Disabled environments
+retain their alias settings without publishing a route.
+
+Both HTTP and HTTPS aliases return a permanent 308 redirect to the canonical
+host using its configured protocol, preserving the original path and query.
+The environment's certificate and matching private key must be available under
+`/ssl`, currently valid, and cover the canonical host and every alias in their
+subject alternative names. This also applies to an HTTP canonical destination,
+because its aliases accept HTTPS. Prepare DNS and certificates before enabling
+aliases. ACME HTTP-01 challenge files remain directly reachable under
+`/.well-known/acme-challenge/`; neither redirects nor renewal require stopping
+the proxy. Wildcards, self-redirects, duplicate aliases, and conflicts with
+platform hosts, Wizard aliases or enabled application routes are rejected.
+
+Fetch before editing. Keep a private configuration Backup, then save the project
+and open Push. The server compares the saved and proposed configuration and
+shows its impact before confirmation. Host, protocol, enablement, certificate,
+alias and deployment-mode edits to existing ordinary applications use the native
+routing apply path. Only the affected projects' required proxies/networks are
+prepared, and the entry proxy is validated and gracefully reloaded. GitLab and
+existing application containers/images stay running. Changes to main settings,
+project membership, ownership, runners or unrecognized settings use the platform
+restart path. A changed configuration invalidates the reviewed Push plan; review
+it again. Unchanged effective settings need no service restart.
+
+Routing apply preserves server-owned receipts and the System Cube. Failed proxy
+validation or reload restores the previous generated and active proxy
+configuration; a failed apply restores the previous saved configuration. Inspect
+the reported failure and Fetch before retrying. Do not edit generated proxy files
+or reset project receipts. Changing deployment-mode fields does not rewrite CI
+already committed to the application; review the repository's environment jobs
+separately.
+
+Aliases and their environment ownership survive Fetch/Push and JSON or ZIP
+Backup/Open. For recovery, retain the matching configuration backup and completed
+Seed containing certificates and service data. A fresh configuration import can
+precede the Seed restore; startup validates certificate coverage before serving
+an alias. Follow the normal recovery procedure and verify canonical and alias
+URLs, including a path/query and an HTTP-01 challenge, after recovery.
+
+The isolated routing, multipart Push, rollback and Wizard configuration checks
+are part of the committed component manifest. The existing disposable platform
+candidate creates an ordinary application through Sync, applies Review and alias
+changes through the Wizard's Fetch/ZIP/Push path, and verifies uninterrupted
+GitLab readiness and container identity, existing Production/Beta images and
+routes, HTTP/HTTPS redirects, HTTP-01, proxy restart, Seed recovery and renewed
+certificate use. Run that required candidate gate for the complete reviewed
+change; it is not an operator upgrade step.

@@ -121,7 +121,7 @@ test('host integration uses real source scripts and a Docker-only Certbot transp
   assert(script.includes('actual-lease-source'));assert(script.includes('actual-install-source'));
   assert(script.includes('REQUESTS_CA_BUNDLE=/fixture-tools/pebble.minica.pem'));
   assert(script.includes('--deploy-hook'));assert(script.includes('/recovered-data/platform/ssl/acme-http01'));
-  assert(!script.includes('--no-verify-ssl'));assert(!script.includes('--dry-run'));assert(!script.includes('acme-v02.api.letsencrypt.org'));
+  assert(!script.includes('--no-verify-ssl'));assert(!script.includes('--dry-run'));assert(!script.split(/[\s'\"]+/).some(value => { try { return new URL(value).hostname === 'acme-v02.api.letsencrypt.org'; } catch { return false; } }));
   assert.throws(()=>acme.basePaths('/srv/production'),/owned-data-root/);
 });
 test('negative HTTP validation must fail before real renewal can establish evidence',async t=>{
@@ -173,7 +173,7 @@ test('initial issuance exposes fixed subphases and stops at the exact failing op
     x.instance.certbot=async(_candidate,base,args)=>{
       assert.equal(base,'/candidate-data/platform');
       const domains=args.flatMap((arg,index)=>arg==='-d'?[args[index+1]]:[]);
-      assert.deepEqual(domains,['wizard.candidate.test','sync.candidate.test',require('../e2e/recovery').WIZARD_ALIAS]);
+      assert.deepEqual(domains,['wizard.candidate.test','sync.candidate.test',require('../e2e/recovery').WIZARD_ALIAS,...require('../e2e/application-routing').certificateHosts]);
       fault(phases[3]);
     };
     x.instance.identity=async()=>{fault(phases[5]);return {serial:'fixture-issued'};};

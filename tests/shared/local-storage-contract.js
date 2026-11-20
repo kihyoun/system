@@ -2,6 +2,8 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
+const vm=require('node:vm');
+const {EventEmitter}=require('node:events');
 const {test}=require('node:test');
 const storage=require('../e2e/local-storage');
 const {Candidate,LABEL}=require('./disposable-candidate');
@@ -70,6 +72,13 @@ test('backup target detaches before absence verification and cleanup will not re
   assert.equal(removed,false);
 });
 
+test('public upgrade reuses the owned device while its configured backup target is detached',async()=>{
+  const calls=[],candidate={daemon:'owned',call:async args=>{calls.push(args);return calls.length===1?'':'absent';}};
+  await storage.detach(candidate,{retainDevice:true});
+  assert.equal(calls[0].at(-1),'umount /external-seed; rmdir /external-seed');
+  assert(calls[1].at(-1).includes('test ! -e /external-seed/seed'));
+});
+
 test('a failed payload refusal cannot publish acceptance or leave the corruption injected by its fixture',async()=>{
   const calls=[],candidate={daemon:'owned',stage:async(_name,action)=>action(),call:async args=>{calls.push(args);return args.includes('readlink')?'snapshots/completed':'';},inner:async args=>{
     if(args.at(-1)==='seed.sh'&&calls.some(call=>call.at(-1).includes('printf corrupt')))throw Error('docker-exec-failed');
@@ -100,18 +109,24 @@ test('fresh restore checks the same live lease even before a GitLab container ex
   assert.equal(calls.filter(args=>args.includes('rmdir')).length,1);
 });
 
-function restartedControlFixture(responses={},readinessMilliseconds=5000,deadline=20000) {
+function restartedControlFixture(responses={},readinessMilliseconds=5000,deadline=20000,control={}) {
   let time=0,restarted=false;
-  const requests=[],results=[],config=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+  const requests=[],results=[],commands=[],scripts=[],config=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+  let pushed=false;
   const candidate={daemon:'owned',spec:{readinessMilliseconds},secrets:{user:'fixture-user',password:'private-fixture-password'},
     now:()=>time,deadline,sleep:async milliseconds=>{time+=milliseconds;},checkpoint:()=>{},results,
     stage:Candidate.prototype.stage,wait:Candidate.prototype.wait,call:async()=>'absent',
     inner:async(args,options)=>{
-      if(args[0]==='inspect')return args.includes('{{.RestartCount}}')?(restarted?'1':'0'):JSON.stringify({bridge:{Gateway:'172.17.0.1'}});
+      commands.push(args);
+      if(args[0]==='inspect')return args.includes('{{json .NetworkSettings.Networks}}')?JSON.stringify({bridge:{Gateway:'172.17.0.1'}}):
+        JSON.stringify({id:restarted&&control.replaced?'other-controller':'owned-controller',image:'controller-image',
+          started:restarted&&!control.noRestart||pushed&&control.pushRestart?'later':'earlier',running:true});
+      if(args[0]==='restart'){restarted=true;return 'system_bootstrapper_1';}
       const input=JSON.parse(options.input);
       if(Object.hasOwn(input,'user')){
         assert.equal(input.user,candidate.secrets.user);assert.equal(input.password,candidate.secrets.password);
-        restarted=true;return 'accepted';
+        scripts.push({source:args.at(-1),input:options.input});
+        pushed=true;return 'accepted';
       }
       requests.push({host:input.host,route:input.route});
       assert.equal(input.certificate,'/ssl/live/recovery-fixture/fullchain.pem');
@@ -124,17 +139,70 @@ function restartedControlFixture(responses={},readinessMilliseconds=5000,deadlin
       return JSON.stringify({status:200,body:JSON.stringify(input.route==='/login'?{accessToken:'private-fixture-token'}:
         input.route==='/config/main'?{data:config}:[{filename:'.wizard.env'}])});
     }};
-  return {candidate,requests,results,time:()=>time,run:()=>candidate.stage('storage-detached-backup-normal-operation',()=>storage.verifyControlWithoutBackup(candidate))};
+  return {candidate,requests,results,commands,scripts,time:()=>time,run:()=>candidate.stage('storage-detached-backup-normal-operation',()=>storage.verifyControlWithoutBackup(candidate))};
 }
 
-test('detached backup Push waits for Sync after Wizard becomes ready and retries each configuration endpoint',async()=>{
+test('detached backup no-op Push preserves the controller, then explicit restart waits for Sync and retries configuration endpoints',async()=>{
   const f=restartedControlFixture({'/login':[502,new Error('private-transport-details')],'/config/main':[503],'/config/projects':[504]});
   await f.run();
   assert.equal(f.candidate.backupDetached,true);assert.equal(f.time(),4000);
   assert.deepEqual(f.requests.map(({route})=>route),['/','/login','/login','/login','/config/main','/config/main','/config/projects','/config/projects']);
   assert.equal(f.requests[0].host,'wizard.candidate.test');
   assert(f.requests.slice(1).every(request=>request.host==='sync.candidate.test'));
+  assert.deepEqual(f.commands.filter(args=>args[0]==='restart'),[['restart','--time','30','system_bootstrapper_1']]);
+  assert(!f.commands.some(args=>args.includes('{{.RestartCount}}')),'manual restart is verified through start time, not automatic restart count');
   assert.equal(f.results.at(-1).status,'passed');assert(!JSON.stringify(f.results).includes('private-'));
+});
+
+test('detached backup proof rejects a restarted no-op Push or a replaced controller and never marks either accepted',async()=>{
+  for(const [control,reason]of [[{pushRestart:true},'storage-unchanged-push-restarted-controller'],
+    [{replaced:true},'storage-restart-controller-identity-changed']]){
+    const f=restartedControlFixture({},5000,20000,control);
+    await assert.rejects(f.run,{message:reason});
+    assert.equal(f.time(),0);assert.notEqual(f.candidate.backupDetached,true);
+    assert.equal(f.commands.filter(args=>args[0]==='restart').length,control.pushRestart?0:1);
+  }
+});
+
+test('detached backup startup proof requires an actual changed start time within the shared deadline',async()=>{
+  const f=restartedControlFixture({},5000,2500,{noRestart:true});
+  await assert.rejects(f.run,{message:'canceled-or-overall-timeout'});
+  assert.notEqual(f.candidate.backupDetached,true);
+});
+
+test('actual detached Push transport accepts only an authenticated no-op response without a requested restart',async()=>{
+  const f=restartedControlFixture();await f.run();
+  for(const [response,accepted]of [
+    [{applyMode:'none',status:{needRestart:false}},true],
+    [{applyMode:'none',status:{needRestart:true}},false],
+    [{applyMode:'routing',status:{needRestart:false}},false],
+    [{applyMode:'restart',status:{needRestart:true}},false],
+    [{},false]]){
+    const input=JSON.parse(f.scripts[0].input),calls=[],stdin=new EventEmitter();
+    let output='',exitCode;
+    const done=new Promise(resolve=>{
+      const process={stdin,stdout:{write:value=>{output+=value;resolve();}},set exitCode(value){exitCode=value;resolve();}};
+      vm.runInNewContext(f.scripts[0].source,{Buffer,process,require:name=>{
+        if(name==='fs')return {readFileSync:filename=>Buffer.from(filename.endsWith('.zip')?'archive':'certificate')};
+        if(name==='crypto')return require('node:crypto');
+        assert.equal(name,'https');
+        return {request:(options,callback)=>{
+          calls.push(options);const request=new EventEmitter();
+          request.end=body=>queueMicrotask(()=>{
+            if(options.path==='/login')assert.deepEqual(JSON.parse(body),{username:input.user,password:input.password});
+            else {assert.equal(options.path,'/config/zip');assert.equal(options.headers.Authorization,'Bearer fixture-token');}
+            const reply=new EventEmitter();reply.statusCode=200;callback(reply);
+            reply.emit('data',Buffer.from(JSON.stringify(options.path==='/login'?{accessToken:'fixture-token'}:response)));reply.emit('end');
+          });return request;
+        }};
+      }});
+      stdin.emit('data',f.scripts[0].input);stdin.emit('end');
+    });
+    await done;
+    assert.deepEqual(calls.map(call=>call.path),['/login','/config/zip']);
+    assert(calls.every(call=>call.rejectUnauthorized===true&&call.timeout===10000));
+    assert.equal(output,accepted?'accepted':'');assert.equal(exitCode,accepted?undefined:1);
+  }
 });
 
 test('post-restart Sync rejects bad credentials and forbidden configuration immediately without exposing response data',async()=>{

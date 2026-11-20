@@ -43,7 +43,7 @@ function platform(){
 }
 test('fixture TLS uses one existing authority and extends its exact owned SANs',async()=>{
   const f=platform(),result=await fixture.prepare(f.candidate,f.authority,f.dependencies);
-  assert.deepEqual(result.domains,['wizard.candidate.test','sync.candidate.test','alias.candidate.test','gitlab.candidate.test','review.candidate.test','beta.candidate.test']);
+  assert.deepEqual(result.domains,['wizard.candidate.test','sync.candidate.test','alias.candidate.test','app.candidate.test','oldapp.candidate.test','gitlab.candidate.test','review.candidate.test','beta.candidate.test']);
   assert.equal(f.calls.filter(call=>call.issue).length,1);
   assert.equal(f.candidate.guidedAcmeIdentity.serial,'AA');
   assert.equal(f.calls.filter(call=>call.probe).length,3);

@@ -8,11 +8,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-build-api-'));
 fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
 process.chdir(path.join(root, 'sync'));
-const syncRequire = name => require(require.resolve(name, {paths: [path.join(source, 'sync')]}));
-const express = syncRequire('express');
-const originalListen = express.application.listen;
-let server;
-express.application.listen = function (_, callback) { server = originalListen.call(this, 0, '127.0.0.1', callback); return server; };
+let server, application;
 const child = require('child_process');
 child.execSync = child.execFile = child.spawn = () => { throw Error('Build API fixture forbids shell/container calls'); };
 process.env.SYNC_USER = 'fixture'; process.env.SYNC_PASS = 'fixture-password';
@@ -31,9 +27,11 @@ bootstrap.writeReceipt(file, wizardConfiguration({WIZARD_HOST: 'localhost'}), {
 let calls = 0, finish, input;
 bootstrap.rails = value => { calls++; input = value; return new Promise(resolve => { finish = resolve; }); };
 const log = console.log; console.log = () => {};
-require(path.join(source, 'sync/dist/index'));
+const {bootstrap: startSync} = require(path.join(source, 'sync/dist/bootstrap'));
 const wait = async job => { while (job.state === 'running') await new Promise(resolve => setTimeout(resolve, 5)); };
 (async () => {
+  application = await startSync({port: 0, host: '127.0.0.1'});
+  server = application.getHttpServer();
   while (!server.listening) await new Promise(resolve => setTimeout(resolve, 5));
   const base = 'http://127.0.0.1:' + server.address().port;
   const request = (route, options) => fetch(base + route, options);
@@ -86,6 +84,6 @@ const wait = async job => { while (job.state === 'running') await new Promise(re
   assert.equal(saved[807], '$');
   assert.equal(crypto.createHash('md5').update(saved.slice(0, 1184)).digest('hex'), 'bd4a8426355824593a5e21ad759830c1');
   log('Wizard build API: authentication, read-only preview, explicit recipe confirmation, own-job deduplication, global mutation lock and honest failure status passed.');
-})().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {
-  console.log = log; server.close(); process.chdir(source); fs.rmSync(root, {recursive: true, force: true});
+})().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
+  console.log = log; if (application) await application.close(); process.chdir(source); fs.rmSync(root, {recursive: true, force: true});
 });

@@ -16,11 +16,15 @@ const receiptLine = '# BOOTSTRAPPER_PROJECT=';
 // Fetch carries this server-owned state back through the Wizard form.
 const withoutReceipt = (data: string) => data.split('\n').filter(line => !line.startsWith(receiptLine)).join('\n');
 const wizardAliases = require('../../nginx/wizard-aliases');
+const applicationAliases = require('../../nginx/application-aliases');
 
 export function validateAliasProject(data: string, projectKey: string) {
   if (!fs.existsSync(mainConfigPath())) { return; }
   const projects = wizardAliases.projectFiles(directory).filter((file: {name: string}) => file.name !== '.' + projectKey + '.env');
-  wizardAliases.validate(fs.readFileSync(mainConfigPath(), 'utf8'), [...projects.map((file: {content: string}) => file.content), data]);
+  const main = fs.readFileSync(mainConfigPath(), 'utf8');
+  const contents = [...projects.map((file: {content: string}) => file.content), data];
+  wizardAliases.validate(main, contents);
+  applicationAliases.validate(main, contents, true);
 }
 
 export function validateProject(input: any) {
@@ -36,8 +40,8 @@ export function validateProject(input: any) {
   const values: any = {};
   for (const line of input.data.substr(1184).split('\n')) {
     if (!line.trim() || line.startsWith('#')) { continue; }
-    const match = /^(?:export )?([A-Z_]+)="([A-Za-z0-9_./:@+*-]*)"\s*$/.exec(line);
-    if (!match || !/^(PROJECT_NAME|PROJECT_TEMPLATE|USE_(PROD|BETA|REVIEW)_HOST|(PROD|BETA|REVIEW)_(HOST|DOMAIN_MODE|DEPLOY_MODE|SSL|SSL_KEY)|GITLAB_RUNNER_(TOKEN|SCALE))$/.test(match[1])) {
+    const match = /^(?:export )?([A-Z_]+)="([A-Za-z0-9_./:@+* -]*)"\s*$/.exec(line);
+    if (!match || !/^(PROJECT_NAME|PROJECT_TEMPLATE|USE_(PROD|BETA|REVIEW)_HOST|(PROD|BETA|REVIEW)_(HOST|DOMAIN_MODE|DEPLOY_MODE|SSL|SSL_KEY|ALIASES)|GITLAB_RUNNER_(TOKEN|SCALE))$/.test(match[1])) {
       throw new Error('Invalid project configuration assignment.');
     }
     if (values[match[1]] !== undefined) { throw new Error('Duplicate configuration assignment.'); }
@@ -87,7 +91,7 @@ function runRails(input: any): Promise<any> {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
     const modules: {[key: string]: string} = {'wizard-source': 'wizard-source/import.rb',
       'token-expiry-status': 'token-expiry/status.rb',
-      ...Object.fromEntries(['preflight', 'project', 'revoke', 'read', 'read-many', 'source-context', 'system'].map(action => ['preview-setup-' + action, 'preview-setup/provision.rb'])),
+      ...Object.fromEntries(['preflight', 'project', 'revoke', 'read', 'read-many', 'source-context', 'source-evidence', 'adoption-evidence', 'system'].map(action => ['preview-setup-' + action, 'preview-setup/provision.rb'])),
       'wizard-build': 'wizard-build/activate.rb', 'wizard-build-status': 'wizard-build/activate.rb',
       'wizard-environments': 'wizard-environments/activate.rb', 'wizard-environments-status': 'wizard-environments/activate.rb',
       'wizard-source-primary-status': 'wizard-source-primary/status.rb',
@@ -99,7 +103,8 @@ function runRails(input: any): Promise<any> {
     let output = '', launched = false;
     const readOnly = ['namespaces', 'availability', 'wizard-build-status', 'wizard-environments-status',
       'wizard-source-primary-status', 'wizard-environments-primary-status', 'token-expiry-status',
-      'preview-setup-preflight', 'preview-setup-read', 'preview-setup-read-many', 'preview-setup-source-context'].includes(input.action);
+      'preview-setup-preflight', 'preview-setup-read', 'preview-setup-read-many', 'preview-setup-source-context',
+      'preview-setup-source-evidence', 'preview-setup-adoption-evidence'].includes(input.action);
     const failure = (message: string) => Object.assign(new Error(message), {uncertain: launched && !readOnly, action: input.action});
     child.once('spawn', () => { launched = true; });
     const timer = setTimeout(() => {

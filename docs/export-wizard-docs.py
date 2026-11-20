@@ -13,6 +13,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "wizard/src/docs/content.json"
+UPGRADE_GRAPH = ROOT / "bootstrapper/upgrade-paths.json"
+UPGRADE_OUTPUT = ROOT / "wizard/src/docs/upgrade-paths.json"
 
 
 def slug(text):
@@ -138,6 +140,7 @@ A source import installs source. A build produces a candidate. Review and Beta a
     guides = [
         ("docs/DEVELOPMENT_PREVIEWS.md", "development-previews", "8.13 Set up development previews", "Evolution"),
         ("docs/COORDINATED_BACKUP.md", "coordinated-backup", "7.3 Coordinated backup", "Recovery"),
+        ("docs/HOST_OPERATIONS.md", "host-operations", "6.4 Host workload compatibility and logs", "Operations"),
         ("docs/TOKEN_EXPIRY.md", "token-expiry", "6.2 Credential expiry", "Operations"),
         ("docs/SYSTEM_DIAGNOSTICS.md", "system-diagnostics", "6.3 System diagnostics", "Operations"),
         ("docs/DEPENDENCY_SECURITY.md", "dependency-security", "8.12 Dependency security", "Evolution"),
@@ -169,6 +172,7 @@ A source import installs source. A build produces a candidate. Review and Beta a
     contexts = {
         "development-previews": ("Healthy GitLab, registry and runners; selected source projects, exact preview DNS names and certificates.", "Explicit setup creates verified preview bindings while the accepted Production image remains selected."),
         "coordinated-backup": ("A configured platform and the selected mounted external backup medium with sufficient free space.", "A native Harvest and matching configuration ZIP form two independently retained recovery inputs."),
+        "host-operations": ("Access to the Linux x86_64 Docker daemon host and the selected immutable workload images.", "You distinguish CPU, upstream-kernel and image failures and verify bounded logs with preserved settings."),
         "token-expiry": ("An authenticated Sync connection and explicit automation project paths in saved configuration.", "Known expiry dates and honest unknown states guide renewal without exposing or rotating credentials."),
         "system-diagnostics": ("An authenticated Sync connection and configured registry, helper image and managed runner pool.", "Bounded server checks and an optional explicit Docker pull distinguish connectivity from authentication and image availability."),
         "guided-preview-acceptance": ("A retained installation identity, matching native controller/source, TLS hosts and runner prerequisites are available.", "Native acceptance verifies import, MR and merged-default checks plus Review/Beta lifecycles while Production stays unchanged."),
@@ -209,13 +213,17 @@ def main():
     parser.add_argument("--check", action="store_true", help="fail when the committed Wizard content differs")
     args = parser.parse_args()
     content = json.dumps(build(), ensure_ascii=False, indent=2) + "\n"
+    upgrade_graph = UPGRADE_GRAPH.read_bytes()
     if args.check:
         if not OUTPUT.is_file() or OUTPUT.read_text() != content:
             parser.exit(1, "Wizard docs are stale. Run python3 docs/export-wizard-docs.py and commit the generated content.\n")
+        if not UPGRADE_OUTPUT.is_file() or UPGRADE_OUTPUT.read_bytes() != upgrade_graph:
+            parser.exit(1, "Wizard migration metadata is stale. Regenerate the bundled documentation.\n")
         print("Wizard documentation matches repository sources.")
     else:
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)
         OUTPUT.write_text(content)
+        UPGRADE_OUTPUT.write_bytes(upgrade_graph)
         print(f"Exported {len(json.loads(content)['chapters'])} chapters to {OUTPUT.relative_to(ROOT)}")
 
 

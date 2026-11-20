@@ -40,12 +40,22 @@ function multipart(field, count) {
       catch { await new Promise(resolve => setTimeout(resolve, 100)); }
     }
     assert(ready, 'candidate Sync did not start');
-    assert.equal((await request('/status', 'GET')).status, 401);
-    assert.equal((await request('/login', 'POST', JSON.stringify({username: 'migration-test', password: 'wrong'}))).status, 401);
+    const unauthorized = await request('/status', 'GET');
+    assert.equal(unauthorized.status, 401); assert.equal(unauthorized.text, 'Unauthorized');
+    const denied = await request('/login', 'POST', JSON.stringify({username: 'migration-test', password: 'wrong'}));
+    assert.equal(denied.status, 401); assert.equal(denied.text, 'Username or Password incorrect');
     const login = await request('/login', 'POST', JSON.stringify({username: 'migration-test', password: 'test-only'}));
     assert.equal(login.status, 200);
     const {accessToken, refreshToken} = JSON.parse(login.text);
     assert(accessToken && refreshToken);
+    const payload = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString());
+    assert.equal(payload.username, 'migration-test');
+    assert.equal(payload.exp - payload.iat, 20 * 60, 'existing clients rely on the 20 minute access-token lifetime');
+    const forbidden = await request('/status', 'GET', undefined, 'invalid');
+    assert.equal(forbidden.status, 403); assert.equal(forbidden.text, 'Forbidden');
+    const missingRefresh = await request('/token', 'POST', '{}');
+    assert.equal(missingRefresh.status, 401); assert.equal(missingRefresh.text, 'Unauthorized');
+
     assert.equal((await request('/status', 'GET', undefined, accessToken)).status, 200);
     const refreshed = await request('/token', 'POST', JSON.stringify({token: refreshToken}));
     assert.equal(refreshed.status, 200);
@@ -53,6 +63,9 @@ function multipart(field, count) {
     assert.equal((await request('/token', 'POST', JSON.stringify({token: 'invalid'}))).status, 403);
     const type = 'multipart/form-data; boundary=sync-migration';
     assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 2), accessToken, type)).status, 400);
+    assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 3), accessToken, type)).status, 400);
+    const mixed = multipart('.docker.env', 1).replace('--sync-migration--\r\n', '') + multipart('unexpected.txt', 1);
+    assert.equal((await request('/config/main', 'POST', mixed, accessToken, type)).status, 400);
     assert.equal((await request('/config/zip', 'POST', multipart('bootstrapper.zip', 2), accessToken, type)).status, 400);
     assert(!fs.existsSync(path.join(root, 'state/.docker.env')));
     assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 1), accessToken, type)).status, 200);
@@ -65,7 +78,8 @@ function multipart(field, count) {
     assert.equal((await request('/config/main', 'GET', undefined, accessToken)).status, 404);
     assert.equal((await request('/config/main', 'POST', multipart('.docker.env', 1), accessToken, type)).status, 200);
     assert.equal(JSON.parse((await request('/config/main', 'GET', undefined, accessToken)).text).data, configuration(0));
-    assert.equal((await request('/logout', 'POST', '{}', accessToken)).status, 200);
+    const logout = await request('/logout', 'POST', '{}', accessToken);
+    assert.equal(logout.status, 200); assert.equal(logout.text, 'Logout successful');
     await new Promise(resolve=>setImmediate(resolve));
     assert(logs.includes('Sync authentication is configured.'),'Startup must confirm configured authentication without values.');
     for(const secret of ['migration-test','test-only',accessToken,refreshToken]) {

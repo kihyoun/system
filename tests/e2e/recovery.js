@@ -222,7 +222,7 @@ async function capture(original,dependencies={}) {
       const guided=original.spec.guidedPreviewAcceptance===true;
       if(guided&&(!dependencies.acme||!original.guidedAcmeIdentity))throw Error('guided-preview-issued-certificate-required');
       if(!guided)await original.inner(['exec','system_gitlab_1','/opt/gitlab/embedded/bin/openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','2',
-        '-subj','/CN=wizard.candidate.test','-addext','subjectAltName=DNS:wizard.candidate.test,DNS:sync.candidate.test,DNS:'+WIZARD_ALIAS,
+        '-subj','/CN=wizard.candidate.test','-addext','subjectAltName=DNS:wizard.candidate.test,DNS:sync.candidate.test,DNS:'+WIZARD_ALIAS+','+require('./application-routing').certificateHosts.map(host=>'DNS:'+host).join(','),
         '-keyout','/tmp/.recovery-fixture-key','-out','/tmp/.recovery-fixture-cert']);
       const certificate=await original.inner(['exec',guided?'system_bootstrapper_1':'system_gitlab_1','cat',guided?LEAF:'/tmp/.recovery-fixture-cert']);
       const privateKey=await original.inner(['exec',guided?'system_bootstrapper_1':'system_gitlab_1','cat',guided?KEY:'/tmp/.recovery-fixture-key']);
@@ -230,7 +230,7 @@ async function capture(original,dependencies={}) {
       const settings={GITLAB_IMAGE:'candidate-gitlab:under-test',GITLAB_RUNNER_IMAGE:'candidate-runner:under-test',
         BOOTSTRAPPER_IMAGE:'system-candidate:under-test',WIZARD_IMAGE:'systembootstrapper/wizard',NGINX_IMAGE:'nginx:latest',
         GITLAB_SSH_BIND:'2222',GITLAB_REGISTRY_BIND:'5050',SYNC_DOMAIN_MODE:'2',WIZARD_DOMAIN_MODE:'2',
-        WIZARD_ALIASES:WIZARD_ALIAS,
+        WIZARD_ALIASES:WIZARD_ALIAS,NGINX_PROXY_IMAGE:'candidate-proxy:under-test',
         SYNC_SSL:LEAF,SYNC_SSL_KEY:KEY,WIZARD_SSL:LEAF,WIZARD_SSL_KEY:KEY,RECOVERY_RUNTIME_PROOF:'literal=one=two $HOME'};
       await node(original,function(input){
         const fs=require('fs'),path=require('path');
@@ -263,6 +263,8 @@ async function capture(original,dependencies={}) {
       else await original.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
       const connection=dependencies.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{};
       await verifyAliasLifecycle(original,connection,'original');
+      await require('./application-routing').setup(original,connection);
+      inputs.expected.applicationAliases=true;
       inputs.expected.certificateHash=await node(original,function(){process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync('/ssl/live/recovery-fixture/fullchain.pem')).digest('hex'));},{});
       if(!dependencies.acme)inputs.expected.accountIdentity=original.id;
       const fetched=await syncFetch(original,connection);
@@ -380,7 +382,7 @@ async function bootstrapRestore(candidate,dependencies={}) {
     ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','bash','seed.sh'],
     {timeout:180000,failureCodes:SEED_RESTORE_FAILURE_CODES}));
   if(candidate.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(candidate);
-  await storageAdapter.detach(candidate);
+  await storageAdapter.detach(candidate,{retainDevice:!!candidate.spec.publicUpgrade});
   candidate.externalSeedRestored=true;
   // Execute the actual fresh-source host rewriter, using the already declared
   // GitLab image's embedded Python; never install/download an undeclared tool.
@@ -409,7 +411,11 @@ async function routingProbe(candidate,host,route,options={},connection={}) {
         ...(input.tls?{servername:input.host,ca:fs.readFileSync(input.certificate),rejectUnauthorized:true}:{}),
         method:input.options.method||'GET',headers:input.options.headers||{},timeout:input.timeoutMilliseconds},response=>{
         const serial=input.tls?response.socket.getPeerCertificate().serialNumber:undefined;
-        const chunks=[];let size=0;response.on('data',chunk=>{size+=chunk.length;if(size>524288){request.destroy();reject(Error());}else chunks.push(chunk);});
+        const trace=(input.options.method||'GET')==='GET'&&/^\/api\/v4\/projects\/[1-9][0-9]*\/jobs\/[1-9][0-9]*\/trace$/.test(input.route);
+        const chunks=[];let size=0;response.on('data',chunk=>{
+          if(trace){chunks.splice(0,chunks.length,Buffer.from(Buffer.concat([...chunks,chunk]).subarray(-65536)));return;}
+          size+=chunk.length;if(size>524288){request.destroy();reject(Error());}else chunks.push(chunk);
+        });
         response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,body:Buffer.concat(chunks).toString('utf8'),serial}));
       });
       request.on('error',reject);request.on('timeout',()=>request.destroy(Error()));
@@ -525,6 +531,7 @@ async function verifyConfiguration(candidate,input,dependencies={}) {
 async function verifyRestore(candidate,input) {
   await candidate.stage(input.expected.acme?'recovery-acme-tls-and-config':'recovery-synthetic-tls-and-config',()=>verifyConfiguration(candidate,input));
   if(input.expected.wizardAliases!==undefined)await verifyAliasLifecycle(candidate,input.expected.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{},'restored');
+  if(input.expected.applicationAliases)await require('./application-routing').verify(candidate,input.expected.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{});
   if(input.expected.privateWizard)await verifyPrivateWizard(candidate,input.expected.privateWizard);
   if(candidate.spec.guidedPreviewAcceptance===true)await candidate.stage('recovery-guided-source-binding',async()=>{
     const restored=await require('./guided-preview-platform').bindingProof(candidate);
@@ -536,9 +543,10 @@ async function verifyRestore(candidate,input) {
     await verifyServiceIdentity(candidate,input.expected);
   });
 }
-async function verifyServiceIdentity(candidate,expected){
+async function verifyServiceIdentity(candidate,expected,authentication){
   candidate.mergeRequestRecoveryVerified=false;
-  const auth=await rootToken(candidate);
+  const auth=authentication||await rootToken(candidate);
+  if(typeof auth.token!=='string'||!auth.token||!Number.isInteger(auth.root_id))throw Error('recovery-test-credential-failed');
   try {
     const project=await candidate.api('/projects/'+expected.projectId,auth.token);
     const branch=await candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),auth.token);
@@ -558,7 +566,7 @@ async function verifyServiceIdentity(candidate,expected){
       if(JSON.stringify(reviewIdentity(review))!==JSON.stringify(expectedReview.review)||
         JSON.stringify(discussionIdentity(discussion))!==JSON.stringify(expectedReview.discussion)||source.commit.id!==expectedReview.review.sha)throw Error('restored-review-identity-mismatch');
     });
-  } finally {await revoke(candidate,auth.token);}
+  } finally {if(!authentication)await revoke(candidate,auth.token);}
   candidate.mergeRequestRecoveryVerified=true;
 }
 async function verifyPrivateWizard(candidate,expected){
@@ -615,6 +623,7 @@ async function run(original,reportDirectory,dependencies={}) {
       await storage.refuseMissingTarget(second);
       await storage.verifyControlWithoutBackup(second);
       if(input.expected.wizardAliases!==undefined)await verifyAliasRouting(second,input.expected.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{});
+      if(input.expected.applicationAliases)await require('./application-routing').verify(second,input.expected.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{});
     });
     await second.platform();
     await (dependencies.verifyRegistryBlob || verifyRegistryBlob)(second,input);
@@ -626,7 +635,7 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!dependencies.Candidate)second.evidence.storage={localLiveVerified:second.localLiveVerified===true,externalSeedRestored:second.externalSeedRestored===true,
       backupDetached:second.backupDetached===true,missingBackupGuardVerified:second.missingBackupGuardVerified===true,
       globalLeaseVerified:second.globalLeaseVerified===true,invalidRestoreGuardVerified:second.invalidRestoreGuardVerified===true};
-    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true,mergeRequestRecoveryVerified:second.mergeRequestRecoveryVerified===true,localLiveVerified:second.localLiveVerified===true,externalSeedRestored:second.externalSeedRestored===true,backupDetached:second.backupDetached===true,guidedBindingRestored:second.guidedBindingRestored===true};
+    original.evidence.recovery={runId:second.id,backupOnly:true,originalHostRemoved:true,syntheticTlsVerified:!acme,acmeRenewalVerified:second.acmeRenewalVerified===true,privateWizardPinVerified:second.privateWizardPinVerified===true,mergeRequestRecoveryVerified:second.mergeRequestRecoveryVerified===true,localLiveVerified:second.localLiveVerified===true,externalSeedRestored:second.externalSeedRestored===true,backupDetached:second.backupDetached===true,guidedBindingRestored:second.guidedBindingRestored===true,applicationAliasesVerified:second.applicationAliasesVerified===true};
   } finally {
     let clean=true;
     if(second){clean=second.cleanup();second.report(reportDirectory(second));}

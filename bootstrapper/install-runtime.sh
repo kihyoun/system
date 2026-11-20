@@ -5,7 +5,7 @@ test "$(node --version)" = v24.22.0
 test "$(npm --version)" = 11.19.1
 apk add --no-cache \
   docker-cli=29.9.3-r1 \
-  docker-cli-compose=5.6.1-r0 \
+  docker-cli-compose=5.7.2-r0 \
   docker-cli-buildx=0.38.1-r0 \
   rsync=3.5.2-r1 \
   bash=5.3.9-r1 \

@@ -9,10 +9,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-alias-api-'));
 fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
 process.chdir(path.join(root, 'sync'));
-const express = require(require.resolve('express', {paths: [path.join(source, 'sync')]}));
-const listen = express.application.listen;
-let server;
-express.application.listen = function (_, callback) { server = listen.call(this, 0, '127.0.0.1', callback); return server; };
+let server, application;
 let transports = 0;
 const child = require('node:child_process');
 child.execSync = child.execFile = child.spawn = () => { transports++; throw Error('Alias rejection must not start service work.'); };
@@ -26,8 +23,10 @@ const main = cube + '\nWIZARD_ENABLE="true"\nWIZARD_HOST="wizard.example.test"\n
 const project = cube + '\nPROJECT_NAME="aliasowner"\nPROJECT_TEMPLATE="empty"\n' +
   'USE_PROD_HOST="true"\nPROD_HOST="example.test"\nPROD_DOMAIN_MODE="2"\nPROD_DEPLOY_MODE="0"\n' +
   'USE_BETA_HOST="false"\nUSE_REVIEW_HOST="false"\n';
-require(path.join(source, 'sync/dist/index'));
+const {bootstrap: startSync} = require(path.join(source, 'sync/dist/bootstrap'));
 (async () => {
+  application = await startSync({port: 0, host: '127.0.0.1'});
+  server = application.getHttpServer();
   try {
     while (!server.listening) await new Promise(resolve => setTimeout(resolve, 5));
     const base = 'http://127.0.0.1:' + server.address().port;
@@ -52,6 +51,14 @@ require(path.join(source, 'sync/dist/index'));
       assert.deepEqual(fs.readdirSync(path.join(root, 'system/.projects.env')), []);
       assert.equal(fs.readFileSync(mainFile, 'utf8'), main);
     }
+    for (const alias of ['gitlab.example.test', 'www.app.example.test', '*.example.test', 'oldapp.example.test OLDAPP.EXAMPLE.TEST']) {
+      const data = project.replace('PROD_HOST="example.test"', 'PROD_HOST="www.app.example.test"') + 'PROD_ALIASES="' + alias + '"\n';
+      const response = await fetch(base + '/config/project', {method: 'POST', headers: jsonHeaders,
+        body: JSON.stringify({projectKey: 'aliasowner', data})});
+      assert.equal(response.status, 400, 'application alias ' + alias);
+      assert.equal(transports, 0, 'application alias rejection must precede service work');
+      assert.deepEqual(fs.readdirSync(path.join(root, 'system/.projects.env')), []);
+    }
     const upload = new FormData();
     upload.append('.docker.env', new Blob([main.replace('WIZARD_ALIASES="example.test"', 'WIZARD_ALIASES="gitlab.example.test"')]), '.docker.env');
     const response = await fetch(base + '/config/main', {method: 'POST', headers: authorization, body: upload});
@@ -64,7 +71,7 @@ require(path.join(source, 'sync/dist/index'));
     log('PASS: authenticated project creation, legacy project update and main Push reject alias conflicts before service calls or saved-state changes.');
   } finally {
     console.log = log;
-    await new Promise(resolve => server.close(resolve));
+    if (application) await application.close();
     fs.rmSync(root, {recursive: true, force: true});
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

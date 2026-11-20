@@ -1,8 +1,14 @@
 version: '3'
+x-bounded-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: '${SYSTEM_LOG_MAX_SIZE:-10m}'
+    max-file: '${SYSTEM_LOG_MAX_FILES:-3}'
 services:
 
   review:
-    image: 'jwilder/nginx-proxy'
+    logging: *bounded-logging
+    image: '${NGINX_PROXY_IMAGE:-jwilder/nginx-proxy@sha256:9f45a8096a1c78c8842500029e819984d3bdd77f60b6e459091bd80561301746}'
     restart: always
     networks:
       - review
@@ -10,7 +16,8 @@ services:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
   prod:
-    image: 'jwilder/nginx-proxy'
+    logging: *bounded-logging
+    image: '${NGINX_PROXY_IMAGE:-jwilder/nginx-proxy@sha256:9f45a8096a1c78c8842500029e819984d3bdd77f60b6e459091bd80561301746}'
     restart: always
     networks:
       - prod
@@ -18,7 +25,8 @@ services:
       - /var/run/docker.sock:/tmp/docker.sock:ro
 
   beta:
-    image: 'jwilder/nginx-proxy'
+    logging: *bounded-logging
+    image: '${NGINX_PROXY_IMAGE:-jwilder/nginx-proxy@sha256:9f45a8096a1c78c8842500029e819984d3bdd77f60b6e459091bd80561301746}'
     restart: always
     networks:
       - beta

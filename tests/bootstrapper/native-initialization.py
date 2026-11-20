@@ -355,14 +355,118 @@ class RuntimeVerification(unittest.TestCase):
             self.assertEqual(headers['PRIVATE-TOKEN'], 'synthetic-private-token')
             result = [{'id': 3}] if '/runners/all?' in url else [contact]
             return 200, json.dumps(result).encode(), {}
-        with patch.object(runtime, 'http', side_effect=api):
+        with patch.object(runtime, 'http', side_effect=api), patch.object(runtime, 'run', return_value=b'') as probe:
             with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'contact-not-fresh'):
                 runtime.runner_contacts(self.config, self.baseline, token)
+            probe.assert_called_once_with([*runtime.DOCKER, 'exec', 'runner_docker_1', 'gitlab-runner',
+                                           'verify', '--config', '/etc/gitlab-runner/config.toml'], timeout=15)
+            probe.reset_mock()
             contact['contacted_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            self.assertEqual(runtime.runner_contacts(self.config, self.baseline, token)['online'], 1)
+            result = runtime.runner_contacts(self.config, self.baseline, token)
+            self.assertEqual(result['online'], 1)
+            self.assertEqual(result['authenticationProbeCount'], 0)
+            self.assertFalse(result['jobExecutionChecked'])
+            probe.assert_not_called()
         token.chmod(0o644)
         with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'must-be-private'):
             runtime.runner_contacts(self.config, self.baseline, token)
+
+    def test_cached_manager_contact_needs_successful_probe_and_fresh_matching_api_evidence(self):
+        identity = self.root / 'runners/runner/1/config/.runner_system_id'
+        identity.parent.mkdir(parents=True)
+        identity.write_text('synthetic-manager\n')
+        token = self.root / 'api-token'
+        token.write_text('synthetic-private-token')
+        token.chmod(0o600)
+        stale = {'status': 'online', 'system_id': 'synthetic-manager', 'contacted_at': '2000-01-01T00:00:00Z'}
+        fresh = dict(stale, contacted_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
+        for changed, expected_error in [
+                (fresh, None),
+                (stale, 'contact-not-fresh'),
+                (dict(fresh, status='offline'), 'contact-not-fresh'),
+                (dict(fresh, system_id='another-manager'), 'identity-changed-during-probe'),
+                (dict(fresh, contacted_at=None), 'contact-not-fresh')]:
+            with self.subTest(expected_error=expected_error, manager=changed):
+                responses = [(200, json.dumps(rows).encode(), {}) for rows in
+                             ([{'id': 3}], [stale], [changed])]
+                with patch.object(runtime, 'http', side_effect=responses) as api, \
+                        patch.object(runtime, 'run', return_value=b'private command output') as probe:
+                    if expected_error:
+                        with self.assertRaisesRegex(runtime.recovery.RecoveryError, expected_error):
+                            runtime.runner_contacts(self.config, self.baseline, token)
+                    else:
+                        result = runtime.runner_contacts(self.config, self.baseline, token)
+                        self.assertEqual(result, {'checked': True, 'online': 1, 'contactsAfterStart': True,
+                                                 'authenticationProbeCount': 1, 'jobExecutionChecked': False})
+                        self.assertNotIn('private', json.dumps(result))
+                    self.assertEqual(api.call_count, 3)
+                    probe.assert_called_once()
+
+    def test_runner_authentication_probe_failure_is_bounded_and_drops_command_output(self):
+        identity = self.root / 'runners/runner/1/config/.runner_system_id'
+        identity.parent.mkdir(parents=True)
+        identity.write_text('synthetic-manager\n')
+        token = self.root / 'api-token'
+        token.write_text('synthetic-private-token')
+        token.chmod(0o600)
+        responses = [(200, json.dumps(rows).encode(), {}) for rows in ([{'id': 3}],
+                     [{'status': 'online', 'system_id': 'synthetic-manager', 'contacted_at': '2000-01-01T00:00:00Z'}])]
+        with patch.object(runtime, 'http', side_effect=responses), \
+                patch.object(runtime.recovery, 'OPERATION_DEADLINE', __import__('time').monotonic() + 2), \
+                patch.object(runtime.subprocess, 'run', side_effect=subprocess.CalledProcessError(
+                    1, 'docker', output=b'private-token', stderr=b'private-server')) as command:
+            with self.assertRaisesRegex(runtime.recovery.RecoveryError, '^runner-manager-authentication-probe-failed$'):
+                runtime.runner_contacts(self.config, self.baseline, token)
+            self.assertGreater(command.call_args.kwargs['timeout'], 0)
+            self.assertLessEqual(command.call_args.kwargs['timeout'], 2)
+            self.assertTrue(command.call_args.kwargs['capture_output'])
+        with patch.object(runtime, 'http', side_effect=responses), \
+                patch.object(runtime.recovery, 'OPERATION_DEADLINE', 0), \
+                patch.object(runtime.subprocess, 'run') as command:
+            with self.assertRaisesRegex(runtime.recovery.RecoveryError, '^operation-readiness-deadline-expired$'):
+                runtime.runner_contacts(self.config, self.baseline, token)
+            command.assert_not_called()
+
+    def test_each_retained_manager_needs_its_own_fresh_contact(self):
+        config = dict(self.config, GITLAB_RUNNER_SCALE='2')
+        for index in (1, 2):
+            identity = self.root / f'runners/runner/{index}/config/.runner_system_id'
+            identity.parent.mkdir(parents=True)
+            identity.write_text(f'manager-{index}\n')
+        token = self.root / 'api-token'
+        token.write_text('synthetic-private-token')
+        token.chmod(0o600)
+        contacts = [{'system_id': f'manager-{index}', 'status': 'online',
+                     'contacted_at': '2000-01-01T00:00:00Z'} for index in (1, 2)]
+        def api(url, **kwargs):
+            return 200, json.dumps([{'id': 3}] if '/runners/all?' in url else contacts).encode(), {}
+        def probe(args, **kwargs):
+            index = int(args[3].removeprefix('runner_docker_'))
+            contacts[index - 1]['contacted_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            return b''
+        with patch.object(runtime, 'http', side_effect=api), patch.object(runtime, 'run', side_effect=probe) as command:
+            result = runtime.runner_contacts(config, self.baseline, token)
+            self.assertEqual(result['online'], 2)
+            self.assertEqual(result['authenticationProbeCount'], 2)
+            self.assertEqual([call.args[0][3] for call in command.call_args_list],
+                             ['runner_docker_1', 'runner_docker_2'])
+
+    def test_offline_missing_or_unrelated_manager_does_not_trigger_authentication_probe(self):
+        identity = self.root / 'runners/runner/1/config/.runner_system_id'
+        identity.parent.mkdir(parents=True)
+        identity.write_text('synthetic-manager\n')
+        token = self.root / 'api-token'
+        token.write_text('synthetic-private-token')
+        token.chmod(0o600)
+        known = {'status': 'online', 'system_id': 'synthetic-manager', 'contacted_at': '2000-01-01T00:00:00Z'}
+        for managers in ([], [dict(known, status='offline')], [dict(known, contacted_at=None)],
+                         [dict(known, system_id='unrelated-manager')]):
+            with self.subTest(managers=managers):
+                responses = [(200, json.dumps(rows).encode(), {}) for rows in ([{'id': 3}], managers)]
+                with patch.object(runtime, 'http', side_effect=responses), patch.object(runtime, 'run') as command:
+                    with self.assertRaises(runtime.recovery.RecoveryError):
+                        runtime.runner_contacts(self.config, self.baseline, token)
+                    command.assert_not_called()
 
     def test_container_health_is_insufficient_when_gitlab_http_is_not_ready(self):
         with patch.object(runtime, 'http', return_value=(502, b'', {})):

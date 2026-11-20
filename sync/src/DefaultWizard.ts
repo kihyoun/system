@@ -1,6 +1,5 @@
 import {mainConfigPath, wizardConfigPath} from './StatePaths';
 import fs from 'fs';
-import path from 'path';
 import Helper from './Helper';
 import {createProject, queryGitlab, readReceipt, writeReceipt} from './ProjectBootstrap';
 

@@ -71,10 +71,12 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   try {
     await fixture.deploy(fixture.slot(), digest);
     const first = fixture.slot().active;
+    const create = fixture.events.find(event => event.startsWith('run:'));
+    assert(create.includes('--log-driver json-file --log-opt max-size=10m --log-opt max-file=3'));
     const firstRoute = fixture.readFragment('review');
     assert(firstRoute.includes('server_name review.example.test;'));
     assert(firstRoute.includes('location ^~ /.well-known/acme-challenge/'));
-    assert(!firstRoute.includes('system-bootstrapper.com'));
+    assert.deepStrictEqual(firstRoute.split('\n').map(line => line.trim()).filter(line => line.startsWith('server_name ')), ['server_name review.example.test;', 'server_name review.example.test;']);
     assert.strictEqual(state.hash(firstRoute), first.routeHash);
     assert(fixture.containers.has(first.containerName));
     fixture.request = request(11, 21);

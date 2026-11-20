@@ -10,12 +10,28 @@ if [[ ! -f ../bootstrapper.zip ]]; then
 fi
 
 umask 077
+# Use the same mutex as native project setup; classify and persist under the
+# lease, then let the nested apply reuse it through the inherited descriptor.
+exec 9>/tmp/system-bootstrapper-project-routing.lock
+flock 9
 staging=$(mktemp -d /tmp/bootstrapper-push.XXXXXXXX)
 snapshot=$staging/.system-wizard-receipt
 next=
+rollback=false
 cleanup() {
   result=$?
   trap - EXIT
+  if [[ $result != 0 && $rollback == true ]]; then
+    # The old active proxy config is retained by the reload transaction. Restore
+    # saved inputs as well, so a subsequent startup cannot apply the failed route.
+    if [[ -d $staging/previous/.projects.env ]]; then
+      rsync -a --delete --exclude=/.wizard.env.environments.lock/ "$staging/previous/.projects.env/" "$config_dir/.projects.env/" || result=1
+    fi
+    if [[ -f $staging/previous/.docker.env ]]; then
+      cp -p -- "$staging/previous/.docker.env" "$config_dir/.docker.env" || result=1
+    fi
+    echo 'Routing apply failed; previous configuration restored. Inspect the proxy status before retrying.' >&2
+  fi
   # A failed import must still retain the server-owned Wizard receipt.
   if [[ -f $snapshot ]]; then
     node "$script_dir/../project-bootstrap/preserve-system-project.js" restore \
@@ -27,6 +43,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+node "$script_dir/../project-bootstrap/configuration-archive.js" ../bootstrapper.zip
 unzip -q ../bootstrapper.zip -d "$staging/archive"
 source_dir=$staging/archive
 configs=()
@@ -45,6 +62,19 @@ if [[ -n $(find "$source_dir" -type l -print -quit) ]]; then
   exit 1
 fi
 node "$script_dir/../nginx/wizard-aliases.js" validate-import "$source_dir" "$config_dir"
+node "$script_dir/../nginx/application-aliases.js" validate-import "$source_dir" "$config_dir"
+impact=$(node "$script_dir/../project-bootstrap/routing-impact.js" "$source_dir" "$config_dir")
+apply_mode=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).mode)' "$impact")
+if [[ -n ${SYSTEM_PUSH_IMPACT:-} ]]; then
+  actual=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).fingerprint)' "$impact")
+  [[ $actual == "$SYSTEM_PUSH_IMPACT" ]] || { echo 'Configuration changed since impact review.' >&2; exit 1; }
+fi
+if [[ $apply_mode == routing ]]; then
+  mkdir -p "$staging/previous/.projects.env"
+  cp -p -- "$config_dir/.docker.env" "$staging/previous/.docker.env"
+  rsync -a --exclude=/.wizard.env.environments.lock/ "$config_dir/.projects.env/" "$staging/previous/.projects.env/"
+  rollback=true
+fi
 mkdir -p -- "$config_dir/.projects.env"
 if [[ -d $source_dir/.projects.env ]]; then
   node "$script_dir/../project-bootstrap/preserve-system-project.js" snapshot \
@@ -64,4 +94,10 @@ for source in "${configs[@]}"; do
   mv -f -- "$next" "$config_dir/$(basename -- "$source")"
   next=
 done
+if [[ $apply_mode == routing ]]; then
+  mapfile -t project_keys < <(node -e 'for (const key of JSON.parse(process.argv[1]).projects) console.log(key)' "$impact")
+  (cd "$script_dir/../project-bootstrap"; SYSTEM_ROUTING_LOCK_HELD=true bash apply.sh "${project_keys[@]}")
+  rollback=false
+fi
+printf 'APPLY_MODE=%s\n' "$apply_mode"
 echo 'Ready.'

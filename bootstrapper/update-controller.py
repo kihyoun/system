@@ -40,7 +40,7 @@ promoter = module('existing_controller_promoter', 'promote-controller.py')
 
 def assignment(raw, reference, selected_key='BOOTSTRAPPER_IMAGE'):
     require(selected_key in ('BOOTSTRAPPER_IMAGE', 'WIZARD_IMAGE'), 'unsupported-update-image-assignment')
-    reference = installer.reference(reference)
+    reference = reference if recovery.recovery_alias(reference) else installer.reference(reference)
     runtime.cube(raw)
     # Parse complete literal assignment records, including multiline unrelated
     # values. A BOOTSTRAPPER_IMAGE-looking line inside a quoted secret is data.
@@ -84,7 +84,8 @@ def assignment(raw, reference, selected_key='BOOTSTRAPPER_IMAGE'):
         if key == selected_key:
             require(recovery.reference(value), 'invalid-existing-image-assignment')
             if selected_key == 'BOOTSTRAPPER_IMAGE':
-                installer.reference(value)
+                if not recovery.recovery_alias(value):
+                    installer.reference(value)
             matches.append((start, end))
         record = b''
     require(not record, 'incomplete-controller-update-configuration')
@@ -257,18 +258,33 @@ def repair_baseline(config, baseline, services, lease=None):
 def wait_ready(config, baseline, token_file, redirect_from, timeout):
     deadline = time.monotonic() + timeout
     previous_deadline = recovery.OPERATION_DEADLINE
-    recovery.OPERATION_DEADLINE = min(previous_deadline, deadline) if previous_deadline else deadline
+    if previous_deadline is not None:
+        deadline = min(previous_deadline, deadline)
+    recovery.OPERATION_DEADLINE = deadline
+    last_failure = None
     try:
-        while True:
+        # Keep the first readiness attempt, including timeout=0, but never start
+        # another after either deadline. A budget expiry within a retry must not
+        # replace the service failure that made the retry necessary.
+        while last_failure is None or time.monotonic() < deadline:
             try:
                 receipt = runtime.verify(config, baseline, ROOT, token_file, redirect_from, public=True)
                 require(receipt['runnerManagers']['checked'], 'controller-update-runner-contact-proof-required')
                 return receipt
             except Exception as error:
-                if time.monotonic() >= deadline:
-                    raise recovery.RecoveryError('controller-update-readiness-failed:' +
-                        (str(error) if isinstance(error, recovery.RecoveryError) else type(error).__name__)) from None
-                time.sleep(min(3, max(0, deadline - time.monotonic())))
+                label = str(error) if isinstance(error, recovery.RecoveryError) else type(error).__name__
+                remaining = deadline - time.monotonic()
+                # These wrappers normalize transport timeouts into fixed errors.
+                # Only at expiry can they obscure the previous service failure.
+                deadline_transport = remaining <= 0 and label in (
+                    'application-endpoint-not-ready', 'command-failed:git',
+                    'command-failed:docker', 'command-failed:findmnt',
+                    'command-failed:bash', 'command-failed:systemctl')
+                if last_failure is None or (label != 'operation-readiness-deadline-expired' and not deadline_transport):
+                    last_failure = label
+                if remaining > 0:
+                    time.sleep(min(3, remaining))
+        raise recovery.RecoveryError('controller-update-readiness-failed:' + last_failure) from None
     finally:
         recovery.OPERATION_DEADLINE = previous_deadline
 
@@ -364,7 +380,7 @@ def verify_release_selection_checkpoint(checkpoint, selection):
 
 def update(config, release, evidence, api, release_bytes, evidence_bytes, security,
            controller, checkpoint, token_file, redirect_from=None, timeout=1200, check_only=False, wizard=None,
-           release_metadata=None, repair_stopped_controller=False):
+           release_metadata=None, repair_stopped_controller=False, expected_baseline=None):
     runtime.public_manifest_absent(config)
     require(api.base == runtime.origin(config, 'GITLAB'), 'GitLab-origin-does-not-match-saved-config')
     successor.verify_checkout(release, ROOT)
@@ -381,6 +397,8 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
     if repair_stopped_controller:
         stopped_id = promoter.inspect('system_bootstrapper_1')['Id']
         stopped_operations_idle(config)
+    if expected_baseline is not None:
+        runtime.assert_baseline(config, expected_baseline)
     original = current_services(config, release, evidence, security, stopped_id)
     if wizard is not None:
         promoter.owned(original['system_wizard_1'], 'wizard')
@@ -409,7 +427,9 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
                     'wizardSourceRevision': release['wizardRevision']}
         accepted = installer.accepted_metadata(release_metadata, identity, controller, wizard)
         require(accepted['version'] == (ROOT / 'VERSION').read_text().strip() and
-                accepted['acceptance'].get('evidenceSha256') == release['candidateEvidenceSha256'] and
+                accepted['acceptance'].get('evidenceSha256') == (
+                    api.metadata['acceptance']['evidenceSha256'] if isinstance(api, __import__('public_release').PublicReleaseAuthority)
+                    else release['candidateEvidenceSha256']) and
                 all(accepted['images'][role]['imageId'] == release[key] for role, key in
                     (('controller', 'imageId'), ('wizard', 'wizardImageId'))),
                 'public-release-metadata-differs-from-accepted-candidate')
@@ -467,6 +487,8 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
         record.update(leaseOperation=lease.operation, phase='lease-acquired')
         successor.atomic_json(checkpoint / 'operation.json', record)
         runtime.assert_baseline(config, baseline)
+        if expected_baseline is not None:
+            runtime.assert_baseline(config, expected_baseline)
         if selection:
             verify_release_selection(config, selection)
         if stopped_id is None:
@@ -569,16 +591,27 @@ def restore_stopped_controller(config, baseline, record, lease):
             'runnerContactFreshnessChecked': False}
 
 
-def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
+def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200, retained_images=None):
     checkpoint, record = load_operation(config, checkpoint)
+    if retained_images is not None:
+        require(record.get('wizard'), 'retained-images-require-paired-rollback')
+        expected = {'controller': record['previousController'], 'wizard': record['previousWizard']}
+        restored = recovery.restore_retained_images(*retained_images, expected)
+        require(not record.get('recoveredImages') or record['recoveredImages'] == restored,
+                'retained-image-selection-changed')
+        record['recoveredImages'] = restored
     require(record.get('phase') not in ('rolled-back', 'rolled-back-stopped') and record.get('leaseOperation'),
             'controller-update-not-rollbackable')
     successor.verify_checkout(record['release'], ROOT)
-    before = successor.private_input(checkpoint / 'main-before.env')
+    original = before = successor.private_input(checkpoint / 'main-before.env')
     baseline = json.loads(successor.private_input(checkpoint / 'baseline-before.json'))
-    require(hashlib.sha256(before).hexdigest() == record['configurationBeforeSha256'] and
+    if record.get('recoveredImages'):
+        for role, key in [('controller', 'BOOTSTRAPPER_IMAGE'), ('wizard', 'WIZARD_IMAGE')]:
+            before = assignment(before, record['recoveredImages'][role]['reference'], key)
+        record['recoveredConfigurationSha256'] = hashlib.sha256(before).hexdigest()
+    require(hashlib.sha256(original).hexdigest() == record['configurationBeforeSha256'] and
             hashlib.sha256(config['_main'].read_bytes()).hexdigest() in
-            (record['configurationBeforeSha256'], record['configurationAfterSha256']),
+            (record['configurationBeforeSha256'], record['configurationAfterSha256'], record.get('recoveredConfigurationSha256')),
             'controller-rollback-configuration-changed')
     runtime.cube(before)
     selection = record.get('releaseSelection')
@@ -586,6 +619,12 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
         verify_release_selection(config, selection, rollback=True)
         verify_release_selection_checkpoint(checkpoint, selection)
     previous = record['previousController']
+    if record.get('recoveredImages'):
+        for role, key, name in [('controller', 'previousController', 'system_bootstrapper_1'),
+                                ('wizard', 'previousWizard', 'system_wizard_1')]:
+            selected = record['recoveredImages'][role]
+            record[key].update(reference=selected['reference'], originalReference=selected['originalReference'])
+            baseline['selectedImages'][name].update(reference=selected['reference'])
     require(recovery.inspect_image(previous['reference'])['Id'] == previous['imageId'],
             'previous-controller-image-unavailable-or-retargeted')
     if record.get('wizard'):
@@ -600,7 +639,7 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
         record['leaseOperation'] = lease.operation
         successor.atomic_json(checkpoint / 'operation.json', record)
         require(hashlib.sha256(config['_main'].read_bytes()).hexdigest() in
-                (record['configurationBeforeSha256'], record['configurationAfterSha256']),
+                (record['configurationBeforeSha256'], record['configurationAfterSha256'], record.get('recoveredConfigurationSha256')),
                 'controller-rollback-configuration-changed')
         paired_rollback_baseline(config, baseline, record)
         if selection:
@@ -625,6 +664,11 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200):
             repair_peer_services(stopped)
             verify_runner_containers(stopped, record['previousRunnerContainerIds'])
         write_configuration(config, before, record['configurationMetadata'])
+        if record.get('recoveredImages'):
+            successor.atomic_json(config['_main'].parent / '.release-images.recovered.json', {
+                'format': 'system-public-recovered-images-v1', 'checkpoint': str(checkpoint),
+                'configurationSha256': record['recoveredConfigurationSha256'], 'images': record['recoveredImages']})
+            baseline['configurationFiles']['configuration/.docker.env'] = record['recoveredConfigurationSha256']
         if selection:
             write_release_selection(config, checkpoint, selection, 'before')
         config = runtime.settings(config['_persistence_env'])

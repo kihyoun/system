@@ -14,6 +14,13 @@ image has been published to a registry. Both images have useful roles in CI;
 only a tested complete controller and matching Wizard form the public startup
 release.
 
+## Host workload compatibility and logging
+
+Run the [native host compatibility check and log-policy inspector](../docs/HOST_OPERATIONS.md)
+on the Docker daemon host when choosing MongoDB images, planning kernel
+maintenance or verifying a deliberate deployment. The guide defines the bounded
+logging contract, preserved configuration and limits of size-based retention.
+
 ## Fresh installation from public images
 
 `install-release.py` is the host entry point for an empty installation. It takes
@@ -47,7 +54,7 @@ The complete System image also runs `bootstrapper/install-runtime.sh` from its
 repository build context. It starts from the same official digest-pinned Node
 24.22.0 / Alpine 3.24 image instead of requiring a separately published System
 base. The shared installer checks Node 24.22.0 and npm 11.19.1 before installing
-the pinned Docker CLI 29.9.3-r1, Compose 5.6.1, Buildx 0.38.1, Git 2.54.1-r0
+the pinned Docker CLI 29.9.3-r1, Compose 5.7.2, Buildx 0.38.1, Git 2.54.1-r0
 and the existing shell utilities.
 Both `docker-compose` and `docker compose` remain available. Custom `IMAGE`
 overrides must satisfy the same runtime checks.
@@ -167,7 +174,7 @@ Optional flags are:
 | --- | --- |
 | `--swap-gib 8` | Explicitly allocate 8 GiB at `/swapfile` on the root disk if no swap is active. An existing file or insufficient room fails; the data volume is never used for swap. Default: no swap change. |
 | `--timeout 1200` | Retry application acceptance for up to the selected readiness window, maximum 3600 seconds. Individual network/command timeouts also bound each probe. |
-| `--gitlab-token-file /root/gitlab-read-api-token` | An optional operator-supplied administrative API token in a regular mode-0600 file. Its permissions must allow reading `/runners/all` and runner managers. Verifies each expected manager is online and contacted GitLab after this operation began. The value is read from the file and never put in a command argument or receipt. |
+| `--gitlab-token-file /root/gitlab-read-api-token` | An optional operator-supplied administrative API token in a regular mode-0600 file. Its permissions must allow reading `/runners/all` and runner managers. Checks retained manager identities and authenticated contact after this operation began; see the probe scope below. The value is read from the file and never put in a command argument or receipt. |
 | `--redirect-from https://example.com` | Additionally verify a permanent redirect, preserving path/query, from this origin to the configured public Wizard origin. No canonical domain is assumed. |
 | `--renewal-dry-run` | Run Certbot's staging renewal through the installed lease wrapper, without randomized delay; reject a failed deploy hook and repeat acceptance afterward. Requires real configured certificate lineages, working DNS and reachable ACME endpoints. |
 | `RECOVERY_MANIFEST_SHA256` | Optional independently retained SHA-256 for `recovery/images.json`, checked before trusting its archive/source declarations. |
@@ -179,6 +186,18 @@ configured service images, every core service's retained data mount and named-vo
 bind device, Certbot state/timer for HTTPS, and private image recovery cleanup.
 Without an API token, runner containers and retained identity files are checked;
 the result explicitly marks GitLab-side fresh-contact verification as **not checked**.
+
+GitLab can retain an older contact timestamp while serving idle polls. For a matching
+online manager with an older timestamp, the verifier runs the official
+`gitlab-runner verify --config /etc/gitlab-runner/config.toml` inside its existing
+container, limited to 15 seconds within the readiness deadline. It then rechecks
+the same manager identity, online status and contact time against the baseline.
+This authenticates the retained configuration without registering a runner,
+changing configuration or creating a job. The receipt records
+`authenticationProbeCount` and `jobExecutionChecked=false`; this check does not prove
+running poller activity or job execution. Real CI execution is covered by the
+isolated platform candidate.
+
 The verifier covers core services and the configured main runner pool; custom
 application-specific acceptance remains that application's responsibility.
 
@@ -266,6 +285,13 @@ That compatibility audit cannot load images or start services; complete the sour
 and alias declarations through the normal reviewed operator workflow first.
 
 ## Updating a public controller with already-current services
+
+For a supported unmodified official release, use `upgrade-release.py` with the
+[public upgrade guide](../docs/RELEASES.md#upgrade-and-rollback). It downloads public
+provenance, validates the exact transition, coordinates a matching backup and
+requires the reviewed plan SHA-256 before invoking the paired updater below.
+Only the operator’s own installation API token is required. Status and recovery
+reuse the same retained plan directory; publishing a release starts no upgrade.
 
 Use `update-controller.py` when an existing public-release installation already
 runs the GitLab and Runner images accepted by the current security profile and

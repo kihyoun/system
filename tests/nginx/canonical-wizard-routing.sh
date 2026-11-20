@@ -6,7 +6,7 @@ fixture=$(mktemp -d)
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture"/{system/.projects.env,gitlab,nginx,nginx-proxy/.projects,wizard,project-bootstrap,bin} /templates
 cp -a "$root/nginx/.templates" "$fixture/nginx/"
-cp "$root/nginx/"{start.sh,wizard-aliases.js} "$fixture/nginx/"
+cp "$root/nginx/"{start.sh,wizard-aliases.js,application-aliases.js} "$fixture/nginx/"
 cp "$root/project-bootstrap/preserve-system-project.js" "$fixture/project-bootstrap/"
 printf 'BOOTSTRAPPER_IP=127.0.0.1\n' > "$fixture/.docker.env"
 printf 'GITLAB_IP=127.0.0.1\n' > "$fixture/gitlab/.docker.env"

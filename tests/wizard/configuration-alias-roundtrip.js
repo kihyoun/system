@@ -26,7 +26,7 @@ const model = moduleFromSource('src/api/MainConfig.tsx', {
 }).default;
 const input = cube + '\nWIZARD_ENABLE="true"\nWIZARD_HOST="wizard.example.test"\nWIZARD_DOMAIN_MODE="2"\n' +
   'WIZARD_SSL="/ssl/example/cert.pem"\nWIZARD_SSL_KEY="/ssl/example/key.pem"\n' +
-  'WIZARD_ALIASES="example.test old.example.test"\nWIZARD_ALIAS_SSL="/ssl/aliases/cert.pem"\nWIZARD_ALIAS_SSL_KEY="/ssl/aliases/key.pem"\n';
+  'export SYSTEM_LOG_MAX_SIZE="20m"\nexport SYSTEM_LOG_MAX_FILES="4"\nWIZARD_ALIASES="example.test old.example.test"\nWIZARD_ALIAS_SSL="/ssl/aliases/cert.pem"\nWIZARD_ALIAS_SSL_KEY="/ssl/aliases/key.pem"\n';
 const loaded = new model();
 for (const [key, value] of environment.environment(input)) loaded.setProperty(key, value);
 const backup = JSON.parse(JSON.stringify({main: loaded.asJson, proxies: []}));
@@ -40,4 +40,9 @@ assert.equal(JSON.stringify(aliases.validate(reopened.content)), JSON.stringify(
 reopened.runtimeOptions.WIZARD_ALIASES = '';
 assert.equal(aliases.validate(reopened.content).aliases.length, 0, 'an explicitly cleared alias stays cleared');
 assert.equal(generated.slice(0, 1184), cube);
+for (const [key, value] of [['SYSTEM_LOG_MAX_SIZE', '20m'], ['SYSTEM_LOG_MAX_FILES', '4']]) {
+  assert.equal(backup.main.runtimeOptions[key], value);
+  assert.equal(reopened.runtimeOptions[key], value);
+  assert.equal(new Map(environment.environment(reopened.content).map(([name, text]) => [name, environment.shellValue(text)])).get(key), value);
+}
 console.log('PASS: pinned Wizard Fetch/Open, JSON Backup/Open, generated ZIP/Push environment and unrelated form edits preserve alias configuration.');

@@ -32,6 +32,18 @@ lockfile and runs `npm run build`, whose prebuild checks ESLint without autofix.
 Runtime and shared-library versions are printed during construction. This Ruby
 fixture runtime is separate from GitLab's embedded Rails runtime.
 
+Candidate image preparation also runs
+`tests/wizard/configuration-routing-export.js` with the built Wizard's actual
+configuration exporter before starting the full platform. It verifies the first
+Save/Fetch/Backup round trip, exact server receipt preservation and selective
+routing when Fetch fills the derived repository annotation. To run it separately,
+build the Wizard exporter with `npm run build:config-export` in the initialized
+`wizard` checkout, then run:
+
+```sh
+node tests/wizard/configuration-routing-export.js --exporter wizard/build-tools/export-configuration.cjs
+```
+
 The image sets `SYSTEM_TEST_ISOLATED=1` and invokes `node tests/run.js`. Select
 `all` or one of `gitlab`, `sync`, `gitlab-runner`, `bootstrapper`, `nginx`, `wizard`,
 `shared` and `performance`. Checks execute sequentially with enforced per-entry
@@ -54,6 +66,16 @@ mkdir -p test-results
 docker run --rm --network none \
   -v "$PWD/test-results:/candidate/test-results" system-component-tests all
 ```
+
+The host compatibility/logging fixtures run in the `bootstrapper` component.
+Candidate image preparation also runs a small real Docker rotation probe with two
+owned disposable container generations. It verifies actual file sizes/count and
+log readback; the native recovery probe checks custom logging settings through
+the real configuration exporter and Seed restore. See
+[host operations](../docs/HOST_OPERATIONS.md) for scope and commands.
+The opt-in `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`
+probe also verifies that native Compose discovers and recreates the public-upgrade
+fixture's manually replaced controller and final reset using one bounded container.
 
 ## Test organization
 
@@ -219,6 +241,32 @@ an attestation uploaded before its subject as `blob unknown to registry`. See
 Registry digest, pull/run and artifact checks remain required; those paths do
 not claim attestation verification. Other candidate-image metadata behavior is
 unchanged.
+
+## Static security scanning
+
+Runtime merge requests and default-branch builds run the required `test:codeql`
+job alongside the component checks. It scans the committed System source and
+exact Wizard gitlink using CodeQL 2.27.4 and its official default JavaScript/
+TypeScript code-scanning suite. No rules, paths or old findings are suppressed.
+The pinned public CLI bundle is checksum-verified before use. The scan child has
+no network, Docker socket or credentials and cannot run application builds.
+
+The CodeQL CLI has its own [license terms](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md).
+Free automated use requires an open-source codebase hosted and maintained on
+GitHub; an external GitLab runner is supported. A private or GitLab-only fork
+must establish its own licensing eligibility before running this job. The
+project's MIT license does not grant a CodeQL license, and this job purchases no
+subscription. Runner compute and storage remain the operator's responsibility.
+
+`node tests/prepare-codeql.js` packages committed inputs after the ordinary Wizard
+source preparation. `sh tests/ci-codeql.sh` runs that verified context on the
+selected trusted Docker runner with its ordinary CI identity variables. The
+child is bounded to 6 GiB RAM and two CPUs; image preparation and scanning each
+have a 15-minute ceiling. This static job does not start a disposable platform.
+SARIF results, extraction coverage, source identities and cleanup evidence are
+retained under `test-results/codeql/`. Missing coverage or any finding fails the
+job. Broader quality suites can be run separately for triage; their additional
+heuristics are not equivalent to this default security gate.
 
 ## Explicit live adapters
 

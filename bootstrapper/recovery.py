@@ -196,6 +196,63 @@ def inspect_image(value):
     return rows[0]
 
 
+def recovery_alias(value):
+    return isinstance(value, str) and re.fullmatch(r'system-bootstrapper-recovery:[a-f0-9]{64}', value) is not None
+
+
+def recovered_image(config, reference, image):
+    """Persistent proof for deliberately selected, previously verified aliases."""
+    path = config['_root'] / 'configuration/.release-images.recovered.json'
+    require(path.is_file() and not path.is_symlink() and path.stat().st_uid == 0 and
+            not path.stat().st_mode & 0o077 and path.stat().st_size <= 16384,
+            'private-recovered-image-receipt-required')
+    value = json.loads(path.read_bytes())
+    require(value.get('format') == 'system-public-recovered-images-v1' and
+            value.get('configurationSha256') == sha(config['_main']), 'recovered-image-configuration-changed')
+    return any(row.get('reference') == reference and row.get('imageId') == image
+               for row in value.get('images', {}).values())
+
+
+def restore_retained_images(directory, descriptors, expected):
+    """Load independently retained payloads bound to the paired checkpoint.
+
+    Docker save/load does not retain RepoDigests. Never manufacture one: bind
+    each original selector to an owned alias only after verifying the archived
+    bytes and the checkpoint's immutable image ID. The paired rollback records
+    deliberate selector substitutions so old startup code can use them too.
+    """
+    directory = Path(directory)
+    selections = {}
+    require(set(descriptors) == set(expected), 'retained-image-role-set-mismatch')
+    for role, selected in expected.items():
+        row = descriptors[role]
+        relative = row.get('file', '')
+        path = directory / relative
+        require(re.fullmatch(r'images/controller-[a-f0-9-]+\.tar\.gz', relative) and
+                path.is_file() and not path.is_symlink() and not path.parent.is_symlink() and
+                path.resolve() == path and not path.stat().st_mode & 0o077 and
+                re.fullmatch(r'[a-f0-9]{64}', row.get('sha256', '')) and
+                row.get('imageId') == selected['imageId'] and image_id(row['imageId']) and
+                sha(path) == row['sha256'], 'previous-image-archive-changed')
+        run(['docker', '--host=unix:///var/run/docker.sock', 'image', 'load', '--input', str(path)], timeout=600)
+        require(inspect_image(row['imageId'])['Id'] == selected['imageId'], 'loaded-image-id-mismatch')
+        reference = selected.get('originalReference', selected['reference'])
+        require('@sha256:' in reference and canonical_digest(reference), 'retained-public-digest-required')
+        identity = hashlib.sha256((reference + row['imageId'] + row['sha256']).encode()).hexdigest()
+        alias = 'system-bootstrapper-recovery:' + identity
+        # The immutable checkpoint/image/archive tuple owns this exact alias.
+        try:
+            existing = inspect_image(alias)
+        except RecoveryError:
+            existing = None
+        require(existing is None or existing['Id'] == selected['imageId'], 'retained-image-alias-retargeted')
+        run(['docker', '--host=unix:///var/run/docker.sock', 'image', 'tag', row['imageId'], alias])
+        require(inspect_image(alias)['Id'] == selected['imageId'], 'retained-image-alias-mismatch')
+        selections[role] = {'reference': alias, 'originalReference': reference, 'imageId': selected['imageId'],
+                            'archiveSha256': row['sha256'], 'file': relative}
+    return selections
+
+
 def restore_images(directory, manifest):
     for archive in manifest['archives']:
         # Stream decompression; never materialize another full archive on root disk.

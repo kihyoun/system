@@ -149,8 +149,8 @@ test('failed setup still revokes temporary token and checks the distinct configu
   try {
     await assert.rejects(()=>adapter.run(candidate),/guided-preview-sync-request-failed/);
     assert.ok(apiCalls.some(call=>call.route==='/personal_access_tokens/self'&&call.method==='DELETE'));
-    assert.ok(requests.includes('https://gitlab.example.test/api/v4/user'));
-    assert.ok(!requests.includes('https://sync.example.test/api/v4/user'));
+    assert.ok(requests.some(url=>url==='https://gitlab.example.test/api/v4/user'));
+    assert.ok(!requests.some(url=>url==='https://sync.example.test/api/v4/user'));
   } finally {proof.restore();}
 });
 test('retained public receipt cannot substitute for the actual running public image identity',async()=>{
@@ -184,14 +184,20 @@ function nativeLifecycle(options={}) {
       status:'manual',allow_failure:true,commit:{id:pipeline.sha},pipeline:{id:pipeline.id},runner:{id:9}}))]]));
   for(const [index,context] of ['source','review','merge'].entries()) {
     const pipeline=pipelines[index];
-    if(options.failedContext===context){pipeline.status='failed';jobs.get(pipeline.id)[0].status='failed';}
+    if(options.failedContext===context){
+      pipeline.status='failed';
+      for(const job of jobs.get(pipeline.id).filter(job=>options.failedJobs==='all'?guidedEvidence.requiredJobs.includes(job.name):job.name===(options.failedJobs||'build:source')))
+        Object.assign(job,{status:'failed',failure_reason:'script_failure'});
+    }
     if(options.missingContext===context)jobs.get(pipeline.id).shift();
   }
   const environment={phase:'ready',operation:'f'.repeat(48),deployments:{}},calls=[],stages=[],railCalls=[];let applies=0,merged=false,revoked=false;
   const candidate={id:'a'.repeat(24),spec:{operatorAcceptance:true,guidedPreviewAcceptance:true,guidedPreviewSettings:{...desired,
     beta:options.betaDisabled?desired.beta:{enabled:true,host:'beta.example.test',ssl:'/ssl/beta/fullchain.pem',sslKey:'/ssl/beta/privkey.pem'}}},
     url:'https://sync.example.test',gitlabUrl:'https://gitlab.example.test',secrets:{user:'fixture-user',password:'fixture-only'},evidence:{},
-    stage:async(name,action)=>{const stage={name,status:'running'};stages.push(stage);try{const result=await action();stage.status='passed';return result;}catch(error){stage.status='failed';throw error;}},
+    stage:async(name,action)=>{const stage={name,status:'running'};stages.push(stage);try{const result=await action();stage.status='passed';return result;}catch(error){
+      stage.status='failed';stage.reason=require('./stage-diagnostics').failureReason(error.message);stage.captured=JSON.stringify(candidate.evidence);throw error;
+    }},
     wait:async action=>{assert.equal(await action(),true,'fixture wait must complete from actual mocked native evidence');},
     rails:async script=>{
       railCalls.push(script);
@@ -222,8 +228,9 @@ function nativeLifecycle(options={}) {
       let result;
       if(url.endsWith('/login'))result={accessToken:'memory-only'};
       else if(url.endsWith('/preflight'))result={productionChanged:false,runnerReady:true,previewHash:'fixture'};
-      else if(url.endsWith('/apply')){applies++;result={id:'fixture',state:'completed'};}
-      else result=applies?{phase:applies>=2?'ready':'waiting-build',projects:{wizard:{id:2}}}:{phase:'not-started'};
+      else if(url.endsWith('/apply')){applies++;result={id:'fixture',state:options.setupFailure?'failed':'completed',
+        message:options.setupMessage||options.secret,uncertain:options.uncertain,uncertainAction:options.uncertainAction};}
+      else result=applies?{phase:options.setupFailure?'needs-attention':applies>=2?'ready':'waiting-build',projects:{wizard:{id:2}},message:options.secret}:{phase:'not-started'};
       return {status:200,body:JSON.stringify(result)};
     },
     api:async(route,token,method='GET',payload)=>{
@@ -251,6 +258,10 @@ function nativeLifecycle(options={}) {
       const jobRoute=route.match(/^\/projects\/2\/jobs\/(\d+)(.*)$/);
       if(jobRoute) {
         const id=Number(jobRoute[1]),pipelineId=Math.floor(id/10),job=jobs.get(pipelineId).find(row=>row.id===id),pipeline=pipelines.find(row=>row.id===pipelineId);
+        if(jobRoute[2]==='/trace'){
+          if(options.traceUnavailable)throw Error(options.secret||'private trace request failure');
+          return options.trace||'AssertionError: private assertion body\nERROR: Job failed: exit code 1\n';
+        }
         if(jobRoute[2].startsWith('/artifacts/'))return {version:1,pipelineId,sourceCommit:pipeline.sha,imageRef,testRunner:'vitest',unitTests:true,lint:true,typecheck:true,productionBuild:true,
           http:true,renderedUI:true,projects:true,spa:true,configurationBackup:true,cubeSignature:true,...(options.artifactFailure===pipelineId?{renderedUI:false}:{})};
         if(jobRoute[2]==='/play') {
@@ -315,6 +326,115 @@ test('failed or missing required checks in each native context prevent merge or 
     assert.equal(fixture.revoked,true);assert.equal(fixture.stages.find(stage=>stage.name==='guided-preview-production-retained').status,'passed');
     assert.equal(fixture.calls.some(call=>call.route==='/projects/2/jobs/334/play'),false);
     if(context!=='merge')assert.equal(fixture.calls.some(call=>call.route.endsWith('/merge')),false);
+  }
+});
+test('each required job failure is classified before the stage checkpoint and survives independent cleanup',async()=>{
+  const marker='private-fixture-token-and-assertion';
+  for(const context of ['source','review','merge'])for(const name of guidedEvidence.requiredJobs){
+    const current=nativeLifecycle({failedContext:context,failedJobs:name,secret:marker,
+      trace:'AssertionError: '+marker+'\nERROR: Job failed: exit code 1\n'});
+    await assert.rejects(()=>adapter.run(current.candidate),/^Error: guided-preview-native-check-failed$/);
+    const row=current.candidate.evidence.guidedPreview[context],job=row.jobs.find(job=>job.name===name);
+    assert.equal(row.pipelineStatus,'failed');assert.equal(job.status,'failed');
+    assert.equal(job.pipelineId,row.pipelineId);assert.equal(job.sourceCommit,row.sourceCommit);
+    assert.equal(job.failureReason,'script_failure');
+    assert.deepEqual(job.diagnostics,{commands:[],codes:['javascript-test-failed'],exitCode:1});
+    const failed=current.stages.find(stage=>stage.status==='failed');
+    assert.equal(failed.reason,'guided-preview-native-check-failed');assert(!failed.captured.includes(marker));
+    assert.deepEqual(JSON.parse(failed.captured).guidedPreview[context],row);
+    const traceIndex=current.calls.findIndex(call=>call.route.endsWith('/trace'));
+    assert(traceIndex>=0&&traceIndex<current.calls.findIndex(call=>call.route==='/personal_access_tokens/self'));
+    const recovered=require('./disposable-candidate').recover({runId:current.candidate.id,resources:[],
+      results:current.stages,evidence:current.candidate.evidence});
+    assert.deepEqual(recovered.evidence.guidedPreview[context],row);
+    assert(!JSON.stringify(recovered.evidence).includes(marker));assert.equal(current.revoked,true);
+    assert.throws(()=>guidedEvidence.validate(recovered.evidence.guidedPreview,current.stages));
+  }
+});
+test('failed setup retains its fixed phase and any exact native pipeline without retaining source error messages',async()=>{
+  const marker='private-setup-error-body';
+  const current=nativeLifecycle({setupFailure:true,failedContext:'source',failedJobs:'all',secret:marker});
+  await assert.rejects(()=>adapter.run(current.candidate),/^Error: guided-preview-setup-job-failed$/);
+  const evidence=current.candidate.evidence.guidedPreview;
+  assert.deepEqual(evidence.setup,{phase:'needs-attention',state:'failed',failureCode:'setup-failure-unclassified',projectId:2});
+  assert.equal(evidence.source.jobs.filter(job=>job.diagnostics?.codes.includes('javascript-test-failed')).length,4);
+  assert.equal(current.calls.filter(call=>call.route.endsWith('/trace')).length,4);
+  assert.equal(current.stages.find(stage=>stage.status==='failed').reason,'guided-preview-setup-job-failed');
+  assert(!current.stages.find(stage=>stage.status==='failed').captured.includes(marker));assert.equal(current.revoked,true);
+});
+test('source-transfer refusal keeps fixed failure and uncertainty codes without admitting arbitrary setup diagnostics',async()=>{
+  const current=nativeLifecycle({setupFailure:true,
+    setupMessage:'Source transfer failed. Inspect project ownership and remote refs before explicitly resuming.',
+    uncertain:true,uncertainAction:'preview-source-push'});
+  await assert.rejects(()=>adapter.run(current.candidate),/^Error: guided-preview-source-transfer-failed$/);
+  const setup=current.candidate.evidence.guidedPreview.setup;
+  assert.deepEqual(setup,{phase:'needs-attention',state:'failed',uncertain:true,uncertainAction:'preview-source-push',
+    failureCode:'source-transfer-failed',projectId:2});
+  assert.equal(current.stages.find(stage=>stage.status==='failed').reason,'guided-preview-source-transfer-failed');
+  assert.equal(current.revoked,true);
+  const clean=guidedEvidence.sanitize({setup:{...setup,phase:'secret-fixture',uncertainAction:'private-action',
+    failureCode:'private-error-code',message:'private-message'}}).setup;
+  assert.deepEqual(clean,{state:'failed',uncertain:true,projectId:2});
+});
+test('unknown or unreadable failed traces retain fixed diagnostics and still fail the strict native gate',async()=>{
+  for(const options of [{trace:'unrecognized private error\nERROR: Job failed: exit code 2\n'}, {traceUnavailable:true}]){
+    const current=nativeLifecycle({failedContext:'source',...options});
+    await assert.rejects(()=>adapter.run(current.candidate),/guided-preview-native-check-failed/);
+    assert.deepEqual(current.candidate.evidence.guidedPreview.source.jobs[0].diagnostics.codes,
+      [options.traceUnavailable?'trace-unavailable':'unclassified-job-failure']);
+    assert.equal(current.revoked,true);
+  }
+});
+test('new native failure classifications remain fixed and do not copy test or package error text',()=>{
+  const diagnostics=require('./job-diagnostics'),marker='private-fixture-token';
+  for(const [trace,code] of [
+    ['ERROR: unable to select packages: docker-cli-compose breaks: world[docker-cli-compose=5.6.1-r0]','package-version-unavailable'],
+    ['npm error code EUSAGE','npm-command-failed'],['Tests 2 failed | 19 passed','javascript-test-failed'],
+    ['src/App.tsx: error TS2322: invalid','typecheck-failed'],["browserType.launch: Executable doesn't exist at /private/path",'browser-check-failed']]){
+    const classified=diagnostics.classify(trace+' '+marker);assert(classified.codes.includes(code));
+    assert(!JSON.stringify(classified).includes(marker));
+  }
+});
+test('actual trace transports stream a bounded suffix from long jobs while other response limits stay enforced',async()=>{
+  const {EventEmitter}=require('node:events'),vm=require('node:vm');
+  const {Candidate}=require('./disposable-candidate'),recovery=require('../e2e/recovery');
+  const {requestScript}=require('../e2e/guided-preview-live');
+  const marker='private-fixture-trace-text',ending='\nAssertionError: '+marker+'\nERROR: Job failed: exit code 1\n';
+  const body='x'.repeat(600000)+ending,retained=[];
+  let responseBody=body;
+  const execute=(script,input)=>new Promise((resolve,reject)=>{
+    const stdin=new EventEmitter();let failed=false;
+    const runtime={stdin,stdout:{write:value=>resolve(value)}};
+    Object.defineProperty(runtime,'exitCode',{set:value=>{if(value)reject(Error('private-transport-failed'));}});
+    const transport={request:(...args)=>{
+      const callback=args.at(-1),request=new EventEmitter();
+      request.destroy=()=>{failed=true;request.emit('error',Error(marker));};
+      request.end=()=>{
+        const response=new EventEmitter();response.statusCode=200;response.headers={};response.socket={getPeerCertificate:()=>({serialNumber:'AA'})};
+        callback(response);
+        for(let offset=0;offset<responseBody.length&&!failed;offset+=16384)response.emit('data',Buffer.from(responseBody.slice(offset,offset+16384)));
+        if(!failed)response.emit('end');
+      };
+      return request;
+    }};
+    vm.runInNewContext(script,{process:runtime,URL,AbortSignal,Buffer:{concat:Buffer.concat,from:value=>{
+      const buffer=Buffer.from(value);retained.push(buffer.length);assert(buffer.length<=65536);return buffer;
+    }},require:name=>['http','https','node:https'].includes(name)?transport:name==='fs'?{readFileSync:()=>Buffer.from('fixture-ca')}:require(name)});
+    stdin.emit('data',typeof input==='string'?input:JSON.stringify(input));stdin.emit('end');
+  });
+  const candidate={inner:async(args,options)=>args[0]==='inspect'?JSON.stringify({bridge:{Gateway:'172.17.0.1'}}):execute(args.at(-1),options.input)};
+  const route='/api/v4/projects/2/jobs/310/trace';
+  for(const read of [
+    path=>Candidate.prototype.httpFromCandidate.call(candidate,'http://gitlab.candidate.test'+path,{method:'GET'}),
+    path=>recovery.tlsProbe(candidate,'gitlab.candidate.test',path,{method:'GET'}),
+    async path=>JSON.parse(await execute(requestScript,{url:'https://gitlab.example.test'+path,options:{method:'GET'},timeoutMilliseconds:10000}))]){
+    retained.length=0;responseBody=body;
+    const response=await read(route);assert.equal(Buffer.byteLength(response.body),65536);assert(response.body.endsWith(ending));
+    assert(retained.length>1&&Math.max(...retained)<=65536);
+    assert.deepEqual(require('./job-diagnostics').classify(response.body),{commands:[],codes:['javascript-test-failed'],exitCode:1});
+    responseBody='x'.repeat(8000001);
+    await assert.rejects(()=>read('/api/v4/projects/2/jobs/310'),/transport-failed/);
+    await assert.rejects(()=>read('/api/v4/projects/2/jobs/not-numeric/trace'),/transport-failed/);
   }
 });
 test('changed normal merge gates and mismatched artifacts fail without override or subsequent deployment',async()=>{

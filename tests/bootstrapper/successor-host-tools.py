@@ -64,7 +64,7 @@ class API:
                         'only_allow_merge_if_pipeline_succeeds': True}
         self.branch = {'commit': {'id': release['sourceRevision']}, 'protected': True}
         self.pipeline = {'sha': release['sourceRevision'], 'ref': 'main', 'status': 'success', 'source': 'push'}
-        names = list(successor.REQUIRED_JOBS) + ['test:isolated: [' + name + ']' for name in successor.COMPONENTS]
+        names = list(successor.REQUIRED_JOBS) + ['test:codeql'] + ['test:isolated: [' + name + ']' for name in successor.COMPONENTS]
         self.jobs = [{'id': (release['candidateJobId'] if name == 'test:platform-candidate' else index + 100),
                       'name': name, 'status': 'success', 'allow_failure': False,
                       'pipeline': {'id': release['pipelineId']}} for index, name in enumerate(names)]
@@ -195,7 +195,7 @@ class ReleaseContracts(unittest.TestCase):
         return successor.verify_pipeline(self.api, self.release, self.release_bytes, self.evidence_bytes)
     def test_accepted_source_pipeline_artifacts_and_all_internal_jobs_are_bound(self):
         successor.release_inputs(self.release_bytes, self.evidence_bytes, self.security)
-        self.assertEqual(self.verify()['requiredJobsPassed'], 13)
+        self.assertEqual(self.verify()['requiredJobsPassed'], 14)
     def test_each_storage_acceptance_proof_is_required_before_promotion(self):
         for key in successor.STORAGE_PROOFS:
             with self.subTest(key=key):
@@ -206,6 +206,19 @@ class ReleaseContracts(unittest.TestCase):
                 release['candidateEvidenceSha256'] = hashlib.sha256(raw).hexdigest()
                 with self.assertRaisesRegex(successor.recovery.RecoveryError, 'storage-acceptance-required'):
                     successor.release_inputs(json.dumps(release).encode(), raw, self.security)
+    def test_codeql_is_required_for_new_promotion_but_old_receipts_remain_recoverable(self):
+        job = next(row for row in self.api.jobs if row['name'] == 'test:codeql')
+        self.api.jobs.remove(job)
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'required-job-not-successful'):
+            self.verify()
+        historical = successor._verify_pipeline(self.api, self.release, self.release_bytes, self.evidence_bytes, current=False)
+        self.assertEqual(historical['requiredJobsPassed'], 13)
+        self.api.jobs.append(job)
+        historical = successor._verify_pipeline(self.api, self.release, self.release_bytes, self.evidence_bytes, current=False)
+        self.assertEqual(historical['requiredJobsPassed'], 14)
+        job['status'] = 'skipped'
+        with self.assertRaisesRegex(successor.recovery.RecoveryError, 'required-job-not-successful'):
+            successor._verify_pipeline(self.api, self.release, self.release_bytes, self.evidence_bytes, current=False)
     def test_pipeline_running_or_changed_default_branch_is_rejected(self):
         self.api.pipeline['status'] = 'running'
         with self.assertRaisesRegex(successor.recovery.RecoveryError, 'not-complete'):

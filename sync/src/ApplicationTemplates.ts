@@ -48,6 +48,8 @@ default:
     - sh .system-bootstrapper/refresh-ca.sh
 variables:
   IMAGE_TAG: '$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA'
+  APP_LOG_MAX_SIZE: '10m'
+  APP_LOG_MAX_FILES: '3'
 stages: [build, test, deploy]
 build:
   stage: build
@@ -63,8 +65,10 @@ test:http:
     - sh .system-bootstrapper/refresh-ca.sh
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
+    - echo "$APP_LOG_MAX_SIZE" | grep -Eq '^[1-9][0-9]*[kKmMgG]$'
+    - echo "$APP_LOG_MAX_FILES" | grep -Eq '^([1-9][0-9]?|100)$'
     - docker pull "$IMAGE_TAG"
-    - docker run -d --name "smoke-$CI_PROJECT_ID-$CI_JOB_ID" "$IMAGE_TAG"
+    - docker run -d --log-driver json-file --log-opt "max-size=$APP_LOG_MAX_SIZE" --log-opt "max-file=$APP_LOG_MAX_FILES" --name "smoke-$CI_PROJECT_ID-$CI_JOB_ID" "$IMAGE_TAG"
     - for attempt in $(seq 1 30); do docker exec "smoke-$CI_PROJECT_ID-$CI_JOB_ID" wget -q -O /tmp/page http://127.0.0.1/ && break; sleep 1; done
     - docker exec "smoke-$CI_PROJECT_ID-$CI_JOB_ID" grep -q '${key}' /tmp/page
   after_script:
@@ -91,9 +95,11 @@ ${settings[environment + '_DEPLOY_MODE'] === '0' ? '  when: manual\n' : ''}  bef
     - sh .system-bootstrapper/refresh-ca.sh
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
+    - echo "$APP_LOG_MAX_SIZE" | grep -Eq '^[1-9][0-9]*[kKmMgG]$'
+    - echo "$APP_LOG_MAX_FILES" | grep -Eq '^([1-9][0-9]?|100)$'
     - docker pull "$IMAGE_TAG"
     - docker rm -f "${container}" || true
-    - docker run -d --restart unless-stopped --network ${key}_${kind} --name "${container}" -e VIRTUAL_HOST="${host}" "$IMAGE_TAG"
+    - docker run -d --restart unless-stopped --log-driver json-file --log-opt "max-size=$APP_LOG_MAX_SIZE" --log-opt "max-file=$APP_LOG_MAX_FILES" --network ${key}_${kind} --name "${container}" -e VIRTUAL_HOST="${host}" "$IMAGE_TAG"
 `;
     if (review) {
       ci += `

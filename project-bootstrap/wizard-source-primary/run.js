@@ -17,6 +17,7 @@ class Adoption {
     this.directory = options.directory || '/state/wizard-source-primary';
     this.lock = this.config + '.environments.lock';
     this.request = options.request || this.api(options.credentialFile);
+    this.collectEvidence = options.collectEvidence;
     this.environments = options.environments || require('../wizard-environments/source-primary').sourcePrimaryEnvironment;
   }
   api(file) {
@@ -126,10 +127,14 @@ class Adoption {
       ...(bootstrap ? {bootstrap: true} : {}), archive: operation + '.json', inputHash: b.hash(JSON.stringify(input))};
     b.validate(next);
     let verifiedFiles;
+    // A native transport can collect dependent reads in one bounded process.
+    // Invoke it afresh here: apply() calls plan() again under the ownership lock.
+    const request = this.collectEvidence ? await this.collectEvidence({previousProjectId: old.repository.id,
+      receipt: next, pipelineId: input.pipelineId, sourceCommit: input.sourceCommit, imageRef: input.imageRef}) : this.request;
     const [project, branch, proof] = await Promise.all([
-      this.request('projects/' + old.repository.id),
-      this.request('projects/' + input.projectId + '/repository/branches/' + encodeURIComponent(input.defaultBranch)),
-      b.evidence(this.request, next, input.pipelineId, input.sourceCommit, input.imageRef, files => { verifiedFiles = files; })
+      request('projects/' + old.repository.id),
+      request('projects/' + input.projectId + '/repository/branches/' + encodeURIComponent(input.defaultBranch)),
+      b.evidence(request, next, input.pipelineId, input.sourceCommit, input.imageRef, files => { verifiedFiles = files; })
     ]);
     if (project.id !== old.repository.id || project.path_with_namespace !== old.repository.path || project.namespace?.id !== old.namespaceId ||
         project.visibility !== 'private' || project.ci_config_path !== old.repository.ciPath ||

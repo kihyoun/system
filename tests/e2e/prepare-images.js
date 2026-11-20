@@ -15,6 +15,7 @@ const defaults={
   runner:securityRelease.runner.toImage,
   previousRunner:securityRelease.runner.fromImage,
   previousHelper:securityRelease.runner.fromHelperImage,
+  proxy:'jwilder/nginx-proxy@sha256:9f45a8096a1c78c8842500029e819984d3bdd77f60b6e459091bd80561301746',
   nginx:'nginx@sha256:332d0beea97cff8c0d5d27976c0778a4b00345b9d74c2feaaf8efde548314948',
   helper:securityRelease.runner.helperImage
 };
@@ -61,7 +62,7 @@ function verifyPreparedTrust(tags,execute=execFileSync){
     if(trust.check(trust.certificates(bundle))<50)throw Error('Incomplete prepared '+role+' CA trust.');
   }
 }
-function prepare(){
+async function prepare(){
   if(process.arch!=='x64'||process.platform!=='linux')throw Error('Current pinned candidate images require Linux amd64.');
   const tags=identifiers();
   const identity=ciIdentity();
@@ -84,6 +85,7 @@ function prepare(){
   const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',timeout:600000,...options});
   let fd=fs.openSync(archive,'r');
   try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.source-tree='+sourceTree,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','system/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
+  require('../bootstrapper/log-rotation-docker').run({helperImage:tags.candidate});
   run(['pull',defaults.nginx]);
   require('../persistence/http01-nginx-probe').run({helperImage:tags.candidate,nginxImage:defaults.nginx});
   const snapshot=validate(JSON.parse(fs.readFileSync(path.join(root,'project-bootstrap/wizard-source/snapshot.json'),'utf8')));
@@ -105,6 +107,7 @@ function prepare(){
     const filename=path.join(output,'export-configuration.cjs');const descriptor=fs.openSync(filename,'wx',0o600);
     try{run(['run','--rm','--network','none','--entrypoint','cat',tags.wizard,'/opt/system-bootstrapper/test-tools/export-configuration.cjs'],{stdio:['ignore',descriptor,'inherit']});}finally{fs.closeSync(descriptor);}
     configurationExporter={archive:filename,sha256:crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex'),sourceRevision:snapshot.sourceRevision};
+    require('../wizard/configuration-routing-export').run(filename);
     require('../persistence/native-restore-docker').run({helperImage:tags.candidate,configurationExporter});
   }
   for(const image of Object.values(defaults))run(['pull',image]);
@@ -114,15 +117,26 @@ function prepare(){
     const id=execFileSync('docker',['image','inspect','--format','{{.Id}}',reference],{encoding:'utf8'}).trim();
     if(!/^sha256:[a-f0-9]{64}$/.test(id))throw Error('Invalid inspected image identity.');
     const filename=path.join(output,role+'.tar');run(['image','save','--output',filename,reference]);images[role]={id,archive:filename};
+    if(['candidate','wizard'].includes(role))images[role].configDigest=require('./public-upgrade').archiveConfigDigest(filename);
   }
+  const publicUpgrade=await require('./public-upgrade').prepare(output);
+  publicUpgrade.source=require('./public-upgrade').prepareSource(output,publicUpgrade.metadata);
   const acmeImages=acmeRenewalAcceptance?require('./prepare-acme-images').prepare(output):undefined;
   if(acmeRenewalAcceptance)require('./local-acme').validate({acmeImages});
   const spec={sourceRevision:process.env.CI_COMMIT_SHA,sourceTree,wizardSourceRevision:snapshot.sourceRevision,
     ciIdentity:identity,
-    guidedPreviewAcceptance:true,guidedPreviewSettings,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab','previousRunner','previousHelper'].includes(role))),
-    supportImages:{helper:images.helper,previousGitlab:images.previousGitlab,previousRunner:images.previousRunner,previousHelper:images.previousHelper},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
+    guidedPreviewAcceptance:true,guidedPreviewSettings,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab','previousRunner','previousHelper','proxy'].includes(role))),
+    publicUpgrade, supportImages:{...publicUpgrade.images,proxy:images.proxy,helper:images.helper,previousGitlab:images.previousGitlab,previousRunner:images.previousRunner,previousHelper:images.previousHelper},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});
   console.log('Prepared pinned full-platform candidate images for '+process.env.CI_COMMIT_SHA);
 }
-module.exports={defaults,identifiers,ciIdentity,guidedSettings,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust};
-if(require.main===module){try{prepare();}catch{console.error('Candidate image preparation failed; see public build log.');process.exitCode=1;}}
+function preparationFailure(error){
+  const known=new Set(['one-explicit-previous-public-upgrade-fixture-required','public-upgrade-repository-invalid',
+    'public-upgrade-download-redirect','public-upgrade-download-redirect-limit','previous-public-release-unavailable',
+    'previous-public-metadata-too-large','previous-public-release-identity-invalid','previous-public-image-reference-invalid',
+    'previous-public-manifest-verification-failed','previous-public-manifest-identity-mismatch','previous-public-image-identity-mismatch',
+    'public-upgrade-candidate-archive-config-invalid','public-upgrade-exact-source-required','previous-public-source-identity-mismatch']);
+  return 'Candidate image preparation failed: '+(known.has(error?.message)?error.message:'candidate-preparation-failed')+'; see public build log.';
+}
+module.exports={defaults,identifiers,ciIdentity,guidedSettings,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust,preparationFailure};
+if(require.main===module)prepare().catch(error=>{console.error(preparationFailure(error));process.exitCode=1;});

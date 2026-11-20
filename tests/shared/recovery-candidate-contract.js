@@ -70,12 +70,13 @@ test('failed original-host removal prevents a second daemon',async t=>{
   assert(!first.events.includes('new-host-created'));
 });
 
-for(const [budget,guided]of [[3600000,false],[4500000,true]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
+for(const [budget,guided,publicUpgrade]of [[3600000,false],[4500000,true],[5400000,true,{}]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
   const {Candidate}=require('./disposable-candidate');
   const input=fixture(t),first=original(),deps=dependencies(first,input),calls=[];
   first.startedAt=1000;first.deadline=first.startedAt+budget;
   first.spec.gitlabUpgradeAcceptance=true;
   first.spec.guidedPreviewAcceptance=guided;
+  first.spec.publicUpgrade=publicUpgrade;
   let now=first.deadline-25*60000;
   deps.Candidate.prototype.start=async function(){
     assert(first.removed);
@@ -210,7 +211,7 @@ test('actual TLS probe validates its CA, SNI and host using Node 24 DNS lookup s
   }
   const server=https.createServer({cert:fs.readFileSync(cert),key:fs.readFileSync(key)},(req,res)=>{
     const host=req.headers.host.split(':')[0];assert.equal(req.socket.servername,host);
-    if(host===recovery.WIZARD_ALIAS){res.writeHead(308,{Location:'https://wizard.candidate.test'+req.url});res.end();}
+    if(host===recovery.WIZARD_ALIAS){assert.equal(req.url,recovery.ALIAS_ROUTE);res.writeHead(308,{Location:'https://wizard.candidate.test'+recovery.ALIAS_ROUTE});res.end();}
     else {assert.equal(host,'wizard.candidate.test');res.end('verified synthetic TLS');}
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -238,7 +239,7 @@ test('HTTP routing probe preserves the raw path/query and response Location with
   const {spawn}=require('node:child_process'),http=require('node:http');
   const server=http.createServer((req,res)=>{
     assert.equal(req.headers.host.split(':')[0],recovery.WIZARD_ALIAS);assert.equal(req.url,recovery.ALIAS_ROUTE);
-    res.writeHead(308,{Location:'https://wizard.candidate.test'+req.url});res.end();
+    res.writeHead(308,{Location:'https://wizard.candidate.test'+recovery.ALIAS_ROUTE});res.end();
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
   const candidate={inner:async(args,options)=>{
@@ -548,6 +549,22 @@ test('restored service identity includes review branch, MR metadata and both att
   assert(f.stages.some(item=>item.name==='recovery-restored-merge-request'&&item.status==='passed'));
   assert.equal(f.requests.at(-1).route,'/personal_access_tokens/self');
   assert(!JSON.stringify(f.stages).includes(expected.nonce));
+});
+test('a caller-owned identity credential preserves all checks without minting or revoking it',async()=>{
+  const f=identityFixture(),expected=await recovery.recordIdentity(f.candidate);
+  f.requests.length=0;f.stages.length=0;
+  f.candidate.rails=async()=>{throw Error('unexpected Rails startup');};
+  const auth={token:'private-fixture-token',root_id:expected.rootId};
+  await recovery.verifyServiceIdentity(f.candidate,expected,auth);
+  assert.equal(f.candidate.mergeRequestRecoveryVerified,true);
+  assert(f.requests.some(item=>item.route==='/projects/12/variables/RECOVERY_ENCRYPTED_PROOF'));
+  assert(f.requests.some(item=>item.route==='/projects/12/registry/repositories/14/tags/'+f.sha));
+  assert(f.stages.some(item=>item.name==='recovery-restored-merge-request'&&item.status==='passed'));
+  assert(!f.requests.some(item=>item.route==='/personal_access_tokens/self'));
+  f.state.discussion.notes[0].body='changed';
+  await assert.rejects(()=>recovery.verifyServiceIdentity(f.candidate,expected,auth),/recovery-restored-merge-request-failed/);
+  assert.equal(f.candidate.mergeRequestRecoveryVerified,false);
+  assert(!f.requests.some(item=>item.route==='/personal_access_tokens/self'));
 });
 test('missing or changed MR state, source commit, author, timestamp and discussion fail recovery and revoke the credential',async()=>{
   const {failureReason}=require('./stage-diagnostics');

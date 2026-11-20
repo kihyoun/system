@@ -353,8 +353,10 @@ publication without retrieving the authenticated Sync configuration.
    configuration, or **Backup → bootstrapper.zip** for JSON plus generated
    environment files. Both contain credentials; keep them private.
 2. Select **Synchronize → Push** and confirm the transfer. This sends the Wizard
-   settings to the instance and automatically restarts services after a successful
-   import. The interface is temporarily unavailable while services start.
+   settings to the instance. Review the displayed service impact: existing
+   application routing edits reload the proxy while GitLab stays available; wider
+   changes restart services. The interface is temporarily unavailable during a
+   platform restart.
 3. Wait for the interface to return, then reconnect and Fetch to verify the settings.
 
 **Push transfers and applies settings. No separate Restart click is required.**
@@ -1211,6 +1213,13 @@ message in an existing chat. Check each run's time, exit result and log: an old
 `latest.md` is not evidence of a new successful run. See the official
 [Codex non-interactive documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
 
+### Host compatibility and container logs
+
+Use [container compatibility and bounded logs](HOST_OPERATIONS.md) before choosing
+MongoDB images or planning kernel maintenance, and when configuring or verifying
+Docker log retention. It covers Ubuntu upstream-kernel evidence, CPU/image failure
+diagnoses, size/count rotation, preserved configuration and deliberate recreation.
+
 ## Replace a host while retaining its data volume
 
 This section is the explicit volume-backed reuse path. For fresh local working
@@ -1372,7 +1381,7 @@ bypass guards or restore a stale Seed to make a host replacement continue.
 | Open | Loads a configuration file from your computer into the Wizard |
 | Backup | Downloads configuration as JSON or a ZIP containing JSON, generated environment files, `recovery.json` and `RECOVERY.md` |
 | Fetch | Retrieves saved instance settings; without a configuration, the current version loads marked suggestions |
-| Push | Transfers the Wizard configuration and automatically restarts the instance |
+| Push | Reviews and applies configuration; existing application routing reloads the proxy, while wider changes restart the instance |
 | Restart | Restarts services using the transferred configuration |
 | Register / Unregister | Checks/registers or unregisters configured runner managers |
 | Harvest | Publishes a cold snapshot of GitLab data, certificates and certificate-renewal state in the seed directory |
@@ -1709,12 +1718,20 @@ to the shared instance pool.
 | Startup reports missing persistent storage | Check the selected mode and directory; mount an explicitly selected live volume instead of changing modes to bypass its guard |
 | A pipeline waits for its runner after a GitLab restart | Register checks the pool and updates managed internal IP endpoints to the stable Docker service name |
 | A pipeline cannot resolve `registry.localhost` | Run `sudo bash bootstrapper/prepare-local.sh` again in Ubuntu; WSL may reset local hosts entries at startup |
+| MongoDB fails before database initialization | Run `bootstrapper/container-preflight.py` on the daemon host; distinguish CPU, Ubuntu upstream kernel and image execution using the [host operations guide](HOST_OPERATIONS.md) |
+| Container logs have no verified rotation | Inspect the exact containers with `bootstrapper/log-policy.py`; apply and verify the bounded policy through a deliberate deployment, with no assumed maximum age |
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
 
 See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
 
 
 ## 5. Evolving a running system
+
+For an unmodified official release, start with the [public upgrade guide](RELEASES.md#upgrade-and-rollback)
+and its version-selectable Wizard Docs checklist. The committed public release
+command plans and explicitly applies only declared tested transitions; Quickstart
+is the fresh-install path. Source builds and forks use the accepted-successor
+workflow below. Publication never upgrades a running installation.
 
 See [architecture, origins and vision](ARCHITECTURE.md) for the generation model,
 repository map, historical diagram and the boundary between today’s tools and
@@ -1806,15 +1823,19 @@ reviewed promotion/migration procedure instead.
 
 For combined guided previews and GitLab migration, `guidedPreviewAcceptance === true`
 and `gitlabUpgradeAcceptance === true` select one fixed 75-minute execution budget.
+Adding a prepared `publicUpgrade` fixture selects one fixed 90-minute budget for
+the additional real public CLI plan/apply, fresh matching cold Seed/configuration
+backup, interrupted offline image recovery and separate controller restart with
+durable recovery selectors. Without that fixture the combined scenario retains 75 minutes.
 An upgrade without guided previews retains 60 minutes; ACME without an upgrade
 retains 25 minutes; ordinary smoke retains 20 minutes. The original candidate,
 restored candidate, ACME authority and all side owners share the original absolute
 deadline. Starting a phase or replacing a host never resets it; a timeout fails
 acceptance without an automatic extension.
 
-The full platform CI job allows an 80-minute runner script, a separate two-minute
-`after_script` and an 85-minute job limit for preparation, execution, publication
-and artifact collection. The 75-minute ceiling includes three actual native Wizard
+The full platform CI job allows a 95-minute runner script, a separate two-minute
+`after_script` and a 100-minute job limit for preparation, execution, publication
+and artifact collection. Both combined-scenario ceilings include three actual native Wizard
 pipelines (imported default branch, merge request and merged default branch), each
 with four required jobs, plus manual Review/Beta Deploy and Stop. This ceiling is
 an upper bound, not a runtime guarantee. The candidate remains limited to 12 GiB

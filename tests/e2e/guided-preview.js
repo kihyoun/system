@@ -4,6 +4,8 @@
 const binding=require('../../project-bootstrap/wizard-source-primary/binding');
 const environmentState=require('../../project-bootstrap/wizard-environments/state');
 const settingsContract=require('../../project-bootstrap/preview-setup/settings');
+const jobDiagnostics=require('../shared/job-diagnostics');
+const evidenceContract=require('../../gitlab/guided-preview-evidence');
 const required=['build:source','test:browser','build:wizard','test:wizard'];
 const terminal=new Set(['success','failed','canceled','skipped']);
 function requireValue(value,code){if(!value)throw Object.assign(Error(code),{noRetry:true});}
@@ -35,9 +37,26 @@ function unchanged(before,after) {
   requireValue(before.mainSha256===after.mainSha256&&before.runningImage===after.runningImage,'guided-preview-production-changed');
 }
 function nativeJobs(pipeline,jobs) {
-  binding.pipelineChecks(pipeline,jobs);
+  try{binding.pipelineChecks(pipeline,jobs);}
+  catch{requireValue(false,'guided-preview-native-check-failed');}
   requireValue(required.every(name=>jobs.find(job=>job.name===name)?.runner?.id),'guided-preview-real-runner-jobs-required');
   return jobs.filter(job=>required.includes(job.name)).map(job=>({id:job.id,name:job.name,status:job.status,runnerId:job.runner.id}));
+}
+async function pipelineEvidence(candidate,projectId,token,pipeline,jobs,extra={}) {
+  const rows=(Array.isArray(jobs)?jobs:[]).filter(job=>required.includes(job?.name)).slice(0,8).map(job=>({
+    id:job.id,name:job.name,status:job.status,runnerId:job.runner?.id,sourceCommit:job.commit?.id,pipelineId:job.pipeline?.id,
+    ...(jobDiagnostics.failureReason(job.failure_reason)?{failureReason:jobDiagnostics.failureReason(job.failure_reason)}:{})}));
+  const read=new Set();
+  for(const job of rows.filter(row=>row.status==='failed')) {
+    if(read.has(job.name)||!Number.isSafeInteger(job.id)||job.id<1)continue;
+    read.add(job.name);
+    try{
+      job.diagnostics=jobDiagnostics.classify(await candidate.api('/projects/'+projectId+'/jobs/'+job.id+'/trace',token));
+      if(!job.diagnostics.codes.length)job.diagnostics.codes=['unclassified-job-failure'];
+    }catch{job.diagnostics={codes:['trace-unavailable']};}
+  }
+  return evidenceContract.sanitize({source:{projectId,pipelineId:pipeline.id,sourceCommit:pipeline.sha,
+    source:pipeline.source,pipelineStatus:pipeline.status,jobs:rows,...extra}}).source;
 }
 function syncSession(candidate) {
   let accessToken,issuedAt=0;
@@ -65,22 +84,36 @@ function syncSession(candidate) {
 }
 async function run(candidate) {
   const desired=settings(candidate),before=await production(candidate,true);
-  let token,mintAttempted=false,mintConfirmed=false;
+  let token,mintAttempted=false,mintConfirmed=false,lastSetup;
   const evidence={productionMainSha256:before.mainSha256,productionImageId:before.runningImage,initialRegistrationId:before.projectId,betaEnabled:desired.beta.enabled};
   candidate.evidence.guidedPreview=evidence;
   // This adapter requires real HTTPS/DNS/trust/public-source and native CI
   // dependencies prepared by the existing platform harness. It creates no CA,
   // accepted-release receipt, alternate CI producer, or privileged test bypass.
   const sync=syncSession(candidate);
+  const setupStatus=async job=>{
+    const fixed={state:job?.state,uncertain:job?.uncertain,uncertainAction:job?.uncertainAction,
+      ...(job?.state==='failed'?{failureCode:jobDiagnostics.setupFailure(job)}:{})};
+    evidence.setup=evidenceContract.sanitize({setup:fixed})?.setup;
+    lastSetup=await sync('/projects/wizard/preview-setup');
+    evidence.setup=evidenceContract.sanitize({setup:{...fixed,phase:lastSetup.phase,uncertain:fixed.uncertain??lastSetup.uncertain,
+      projectId:lastSetup.projects?.wizard?.id,pipelineId:lastSetup.pipeline?.id,pipelineStatus:lastSetup.pipeline?.status}}).setup;
+    return lastSetup;
+  };
   const apply=async()=>{
     const preview=await sync('/projects/wizard/preview-setup/preflight',{settings:desired});
     requireValue(preview.productionChanged===false&&preview.runnerReady===true,'guided-preview-preflight-proof-failed');
     let job=await sync('/projects/wizard/preview-setup/apply',{settings:desired,previewHash:preview.previewHash});
     await candidate.wait(async()=>{
       if(job.state==='running')job=await sync('/projects/jobs/'+job.id);
-      requireValue(job.state!=='failed','guided-preview-setup-job-failed');return job.state!=='running';
+      if(job.state==='failed')try{await setupStatus(job);}catch{}
+      if(job.state==='failed'){
+        const code=jobDiagnostics.setupFailure(job);
+        requireValue(false,code==='setup-failure-unclassified'?'guided-preview-setup-job-failed':'guided-preview-'+code);
+      }
+      return job.state!=='running';
     },1800000);
-    return sync('/projects/wizard/preview-setup');
+    return setupStatus(job);
   };
   try {
     await candidate.stage('guided-preview-fresh-public-registration',async()=>{
@@ -98,6 +131,7 @@ async function run(candidate) {
     });
     let setup,project,pipeline,reviewPipeline,mergedPipeline,reviewJobs,mergedJobs,mr,reviewCommit,environmentOperation;
     await candidate.stage('guided-preview-native-source-push-and-build',async()=>{
+      try{
       setup=await apply();requireValue(['waiting-build','ready'].includes(setup.phase),'guided-preview-source-import-failed');
       requireValue(Number.isSafeInteger(setup.projects?.wizard?.id)&&!evidence.previousProjectIds.includes(setup.projects.wizard.id)&&setup.projects.wizard.id!==before.projectId,'guided-preview-fresh-wizard-id-required');
       if(desired.system)requireValue(Number.isSafeInteger(setup.projects.system?.id)&&setup.projects.system.id!==setup.projects.wizard.id&&!evidence.previousProjectIds.includes(setup.projects.system.id),'guided-preview-fresh-system-id-required');
@@ -110,8 +144,27 @@ async function run(candidate) {
         pipeline=runs.find(row=>row.sha===branch.commit.id&&row.source==='push');return !!pipeline&&terminal.has(pipeline.status);
       },900000);
       const jobs=await candidate.api('/projects/'+project.id+'/pipelines/'+pipeline.id+'/jobs?per_page=100&include_retried=false',token);
-      evidence.source={projectId:project.id,systemProjectId:setup.projects.system?.id,sourceCommit:pipeline.sha,pipelineId:pipeline.id,source:pipeline.source,jobs:nativeJobs(pipeline,jobs)};
+      evidence.source=await pipelineEvidence(candidate,project.id,token,pipeline,jobs,{systemProjectId:setup.projects.system?.id});
+      nativeJobs(pipeline,jobs);
       unchanged(before,await production(candidate));
+      }catch(error){
+        // Setup can itself observe a finished failed pipeline. Capture its
+        // exact freshly imported source before token revocation and cleanup.
+        const id=lastSetup?.projects?.wizard?.id;
+        if(!evidence.source&&Number.isSafeInteger(id)&&id>0&&!evidence.previousProjectIds.includes(id)&&id!==before.projectId)try{
+          const imported=await candidate.api('/projects/'+id,token);
+          if(imported.visibility==='private'&&imported.path_with_namespace===desired.namespace+'/'+desired.wizard.project&&imported.ci_config_path==='.gitlab/primary.yml'){
+            const branch=await candidate.api('/projects/'+id+'/repository/branches/'+encodeURIComponent(imported.default_branch),token);
+            const runs=await candidate.api('/projects/'+id+'/pipelines?ref='+encodeURIComponent(imported.default_branch)+'&sha='+branch.commit.id+'&source=push',token);
+            const selected=runs.find(row=>row.sha===branch.commit.id&&row.source==='push');
+            if(selected){
+              const jobs=await candidate.api('/projects/'+id+'/pipelines/'+selected.id+'/jobs?per_page=100&include_retried=false',token);
+              evidence.source=await pipelineEvidence(candidate,id,token,selected,jobs);
+            }
+          }
+        }catch{}
+        throw error;
+      }
     });
     await candidate.stage('guided-preview-native-evidence-adoption',async()=>{
       setup=await apply();requireValue(setup.phase==='ready','guided-preview-adoption-not-ready');
@@ -136,15 +189,19 @@ async function run(candidate) {
         ['http','renderedUI','projects','spa','configurationBackup','cubeSignature'].every(key=>smoke[key]===true),'guided-preview-native-artifact-proof-failed');
       return {artifactsVerified:true,imageDigest:build.imageRef.split('@').at(-1)};
     };
-    const awaitChecks=async(select)=>{
+    const awaitChecks=async(select,context,extra={})=>{
       let selected,jobs;
       await candidate.wait(async()=>{
         selected=await select();if(!selected)return false;
         selected=await candidate.api('/projects/'+project.id+'/pipelines/'+selected.id,token);
         jobs=await candidate.api('/projects/'+project.id+'/pipelines/'+selected.id+'/jobs?per_page=100&include_retried=false',token);
-        if(['failed','canceled','skipped'].includes(selected.status)||jobs.some(job=>required.includes(job.name)&&['failed','canceled','skipped'].includes(job.status)))throw Object.assign(Error('guided-preview-native-check-failed'),{noRetry:true});
+        if(['failed','canceled','skipped'].includes(selected.status)||jobs.some(job=>required.includes(job.name)&&['failed','canceled','skipped'].includes(job.status))){
+          evidence[context]=await pipelineEvidence(candidate,project.id,token,selected,jobs,extra);
+          requireValue(false,'guided-preview-native-check-failed');
+        }
         return selected.status==='success';
       },900000);
+      evidence[context]=await pipelineEvidence(candidate,project.id,token,selected,jobs,extra);
       return {pipeline:selected,jobs,proof:nativeJobs(selected,jobs)};
     };
     const lifecycle=async(kind,pipeline,row)=>{
@@ -203,7 +260,7 @@ async function run(candidate) {
       const checked=await awaitChecks(async()=>{
         const rows=await candidate.api('/projects/'+project.id+'/merge_requests/'+mr.iid+'/pipelines',token);
         return rows.find(row=>row.sha===reviewCommit.id&&row.source==='merge_request_event');
-      });
+      },'review',{mergeRequestIid:mr.iid});
       reviewPipeline=checked.pipeline;reviewJobs=checked.jobs;
       requireValue(reviewPipeline.sha===reviewCommit.id&&reviewPipeline.source==='merge_request_event','guided-preview-review-pipeline-mismatch');
       evidence.review={projectId:project.id,mergeRequestIid:mr.iid,pipelineId:reviewPipeline.id,sourceCommit:reviewCommit.id,source:reviewPipeline.source,jobs:checked.proof,
@@ -227,7 +284,7 @@ async function run(candidate) {
       const checked=await awaitChecks(async()=>{
         const rows=await candidate.api('/projects/'+project.id+'/pipelines?ref='+encodeURIComponent(project.default_branch)+'&sha='+branch.commit.id+'&source=push',token);
         return rows.find(row=>row.sha===branch.commit.id&&row.source==='push');
-      });
+      },'merge');
       mergedPipeline=checked.pipeline;mergedJobs=checked.jobs;
       requireValue(mergedPipeline.sha===branch.commit.id&&mergedPipeline.ref===project.default_branch&&mergedPipeline.source==='push','guided-preview-merged-push-required');
       evidence.merge={projectId:project.id,mergeRequestIid:mr.iid,merged:true,normalGate:true,mergeCommit:merged.merge_commit_sha,

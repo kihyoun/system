@@ -68,7 +68,7 @@ async function run(action, payload) {
       // An uncertain-acquisition unlock may already have released this
       // directory. Never remove a subsequently acquired replacement mutex.
       if (sameDirectory()) {
-        let own = true;
+        let own;
         try { own = JSON.parse(fs.readFileSync(lock + '/owner', 'utf8')).token === payload.token; }
         catch (ownerError) { own = ownerError.code === 'ENOENT'; }
         if (own && sameDirectory()) {

@@ -8,7 +8,7 @@ test('real migration adapter preserves old-data oracle, runs registry CI and res
 test('failed migration never advertises successful successor or proceeds to registry CI',async()=>{const {candidate,dependencies}=fixture();dependencies.invoke=async()=>{throw Error('migration-failed');};await assert.rejects(()=>run(candidate,dependencies),/migration-failed/);assert.equal(candidate.evidence.gitlabUpgrade,undefined);assert(!candidate.events.includes('registry-ci'));});
 test('failed rollback fails acceptance and leaves rollback flag false',async()=>{const {candidate,dependencies}=fixture();const real=dependencies.invoke;dependencies.invoke=(c,a,s)=>a==='rollback'?Promise.reject(Error('restore-failed')):real(c,a,s);await assert.rejects(()=>run(candidate,dependencies),/restore-failed/);assert.equal(candidate.evidence.gitlabUpgrade.rollbackVerified,false);});
 test('requires distinct declared baseline/target IDs and restored owned data',()=>{const {candidate}=fixture();assert.equal(prepared(candidate).options.persistentDir,'/recovered-data/platform');candidate.spec.supportImages.previousGitlab=candidate.spec.images.gitlab;assert.throws(()=>prepared(candidate),/distinct/);candidate.spec.restore=undefined;assert.throws(()=>prepared(candidate),/restored/);});
-test('recovered reports retain only bounded source-owned migration evidence',()=>{const {candidate}=fixture();assert.equal(sanitizeEvidence({}),undefined);const proof={fromImage:release.fromImage,toImage:release.toImage,fromImageId:'sha256:'+'a'.repeat(64),toImageId:'sha256:'+'b'.repeat(64),checkpointVerified:true,migrationVerified:true,registryVerified:true,rollbackVerified:true,securityTrustVerified:true,private:'never-publish'};assert(!JSON.stringify(sanitizeEvidence(proof)).includes('never-publish'));});
+test('recovered reports retain only bounded source-owned migration evidence',()=>{assert.equal(sanitizeEvidence({}),undefined);const proof={fromImage:release.fromImage,toImage:release.toImage,fromImageId:'sha256:'+'a'.repeat(64),toImageId:'sha256:'+'b'.repeat(64),checkpointVerified:true,migrationVerified:true,registryVerified:true,rollbackVerified:true,securityTrustVerified:true,private:'never-publish'};assert(!JSON.stringify(sanitizeEvidence(proof)).includes('never-publish'));});
 
 test('runner transition reads actual binary/helper/image/manager identities and rejects mismatches',async()=>{
  const {candidate}=fixture();let badVersion=false,badHelper=false,badIdentity=false;
@@ -63,15 +63,15 @@ test('platform job retains preparation, independent cleanup and artifact reserve
   const {Candidate}=require('./disposable-candidate');
   const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
   const id='sha256:'+'a'.repeat(64),archive=path.resolve('fixture.tar');
-  const candidate=new Candidate({example,gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,
+  const candidate=new Candidate({example,gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:{},
     daemonImage:'docker:29-dind@'+id,
     images:Object.fromEntries(['candidate','wizard','gitlab','runner','nginx'].map(role=>[role,{id,archive}]))},
     {now:()=>0});
   const script=duration('RUNNER_SCRIPT_TIMEOUT'),cleanup=duration('RUNNER_AFTER_SCRIPT_TIMEOUT'),total=duration('timeout');
-  assert.equal(candidate.deadline,75*60000);
-  assert.equal(script,80*60000);assert.equal(cleanup,2*60000);assert.equal(total,85*60000);
-  assert.equal((ci.match(/RUNNER_SCRIPT_TIMEOUT: 80m/g)||[]).length,1,'the larger script reserve belongs only to the full platform gate');
-  assert.equal((ci.match(/timeout: 85m/g)||[]).length,1,'other CI jobs keep their own deadlines');
+  assert.equal(candidate.deadline,90*60000);
+  assert.equal(script,95*60000);assert.equal(cleanup,2*60000);assert.equal(total,100*60000);
+  assert.equal((ci.match(/RUNNER_SCRIPT_TIMEOUT: 95m/g)||[]).length,1,'the larger script reserve belongs only to the full platform gate');
+  assert.equal((ci.match(/timeout: 100m/g)||[]).length,1,'other CI jobs keep their own deadlines');
   assert(script>=candidate.deadline+5*60000,'preparation/publication must fit outside the shared lifecycle');
   assert(total>=script+cleanup+3*60000,'independent cleanup and artifact collection need job time');
   assert.match(job,/after_script:\n\s+- sh tests\/ci-platform\.sh cleanup/);

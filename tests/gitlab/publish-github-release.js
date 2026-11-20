@@ -136,7 +136,7 @@ test('gates bind required successful jobs and byte-identical artifacts before Gi
     'test-results/dockerhub/release.json', 'test-results/github/wizard-source.json'];
   for (const file of files) { fs.mkdirSync(path.dirname(path.join(root, file)), {recursive: true}); fs.writeFileSync(path.join(root, file), file); }
   const names = ['check:documentation', 'prepare:wizard-source', 'test:candidate-image', 'test:platform-candidate', 'build',
-    'test:wizard-browser', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
+    'test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
   const jobs = names.map((name, index) => ({name, id: index + 1, status: 'success', allow_failure: false,
     pipeline: {id: 10}, commit: {id: sha}}));
   const gitlab = async (route, options) => {
@@ -170,6 +170,7 @@ test('complete publisher derives deterministic public assets from one accepted r
   for (const name of ['quickstart.sh', 'install.sh']) fs.copyFileSync(path.join(__dirname, '../../bootstrapper', name), path.join(root, 'bootstrapper', name));
   fs.writeFileSync(path.join(root, 'CHANGELOG.md'), '# Changelog\n\n## 1.0.0\n\nReviewed fixture release. See [Quickstart](docs/QUICKSTART.md).\n');
   fs.writeFileSync(path.join(root, 'VERSION'), '1.0.0\n');
+  fs.writeFileSync(path.join(root, 'bootstrapper/upgrade-paths.json'), JSON.stringify({format: 'system-upgrade-paths-v1', versions: ['1.0.0'], transitions: []}));
   fs.writeFileSync(path.join(root, '.gitmodules'), '[submodule "wizard"]\npath = wizard\nurl = https://github.com/kihyoun/system-wizard.git\n');
   git('add', '.'); git('update-index', '--add', '--cacheinfo', '160000,' + wizard + ',wizard'); git('commit', '--quiet', '-m', 'Accepted fixture');
   const commit = git('rev-parse', 'HEAD'), sourceTree = git('rev-parse', 'HEAD^{tree}');
@@ -220,17 +221,17 @@ test('complete publisher derives deterministic public assets from one accepted r
     candidateEvidencePath: 'test-results/successor/candidate-results.json',
     registryReference: env.CI_REGISTRY_IMAGE + '/successor@' + digests.controller,
     wizardRegistryReference: env.CI_REGISTRY_IMAGE + '/successor-wizard@' + digests.wizard};
-  const publicPair = {...publication, sourceRevision: commit, sourceTree, publicationJobId: 7,
+  const publicPair = {...publication, sourceRevision: commit, sourceTree, publicationJobId: 8,
     upstreamRelease: {...publication.upstreamRelease, candidateEvidenceSha256: hash(proofBytes)},
     controller: {...publication.controller, sourceRevision: commit, reference: 'example/system@' + digests.controller},
     wizard: {...publication.wizard, reference: 'example/wizard@' + digests.wizard}};
-  const publicSource = {...source, systemRevision: commit, publicationJobId: 8};
+  const publicSource = {...source, systemRevision: commit, publicationJobId: 9};
   const inputs = {'test-results/successor/release.json': Buffer.from(JSON.stringify(accepted)),
     'test-results/successor/candidate-results.json': proofBytes, 'test-results/dockerhub/release.json': Buffer.from(JSON.stringify(publicPair)),
     'test-results/github/wizard-source.json': Buffer.from(JSON.stringify(publicSource))};
   for (const [file, bytes] of Object.entries(inputs)) { fs.mkdirSync(path.dirname(path.join(root, file)), {recursive: true}); fs.writeFileSync(path.join(root, file), bytes); }
   const names = ['check:documentation', 'prepare:wizard-source', 'test:candidate-image', 'test:platform-candidate', 'build',
-    'test:wizard-browser', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
+    'test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
   const jobs = names.map((name, index) => ({name, id: name === 'test:platform-candidate' ? 20 : index + 1,
     status: 'success', allow_failure: false, pipeline: {id: 10}, commit: {id: commit}}));
   const fixture = githubFixture();
@@ -270,7 +271,7 @@ test('complete publisher derives deterministic public assets from one accepted r
   assert.equal(published.quickstart.sha256, hash(fs.readFileSync(path.join(root, 'test-results/public-release/quickstart.sh'))));
   assert.match(fs.readFileSync(path.join(root, 'test-results/public-release/quickstart.sh'), 'utf8'), /ACCEPTED_RELEASE_TAG = 'v1.0.0'/);
   assert(!JSON.stringify(published).includes('registry.example.test'));
-  assert.equal(fixture.getRelease().assets.length, 4);
+  assert.equal(fixture.getRelease().assets.length, 5);
   fixture.calls.length = 0;
   await publish(env, root, request);
   assert(!fixture.calls.some(row => row.options.method), 'full native publication retry reuses the identical evidence/assets');

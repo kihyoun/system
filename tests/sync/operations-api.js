@@ -46,7 +46,7 @@ const code = `
   const nativeBackupStatus = backup.backupWorkflowStatus;
   backup.backupWorkflowStatus = id => id === '${backupId}' ? {id,state:'failed',phase:'harvest',error:'native-harvest-failed',configuration:{status:'unavailable'}} : nativeBackupStatus(id);
   // Download authorization, completion and checksum checks stay real.
-  require(process.env.SYNC_ENTRY);
+  require(require('node:path').join(directory, 'bootstrap')).bootstrap().catch(error => { console.error(error); process.exitCode = 1; });
 `;
 const child = spawn(process.execPath, ['-e', code], {
   cwd: root, stdio: ['ignore', 'ignore', 'pipe'],
@@ -149,4 +149,4 @@ function request(route, method = 'GET', token, body) {
   } finally {
     child.kill(); await closed; fs.rmSync(root,{recursive:true,force:true});
   }
-})().catch(error => { console.error(error, serverErrors); process.exitCode = 1; });
+})().catch(error => { console.error('%s\n%s', String(error), serverErrors); process.exitCode = 1; });

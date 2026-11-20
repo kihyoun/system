@@ -15,6 +15,8 @@ try {
   assert.deepStrictEqual(Object.keys(multi.services), ['docker_1', 'docker_2']);
   assert.equal(multi.services.docker_1.container_name, 'runner_docker_1');
   assert.equal(multi.services.docker_2.container_name, 'runner_docker_2');
+  assert.deepStrictEqual(multi.services.docker_1.logging, {driver: 'json-file', options: {
+    'max-size': '${SYSTEM_LOG_MAX_SIZE:-10m}', 'max-file': '${SYSTEM_LOG_MAX_FILES:-3}'}});
   const mounts = Object.values(multi.services).flatMap(service => service.volumes.slice(1));
   assert.equal(new Set(mounts.map(mount => mount.source)).size, 4);
   for (const mount of mounts) {

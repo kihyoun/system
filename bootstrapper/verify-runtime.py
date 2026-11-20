@@ -84,7 +84,22 @@ def settings(persistence):
     require(main.is_file() and not main.is_symlink(), 'saved-configuration-required')
     auth = root / 'configuration/sync-auth.env'
     require(not auth.is_symlink(), 'sync-auth-must-not-be-symlink')
-    result = read_values(([auth] if auth.is_file() else []) + [main])
+    profile = root / 'configuration/.release-images.env'
+    profiles = []
+    if profile.exists() or profile.is_symlink():
+        require(profile.is_file() and not profile.is_symlink() and profile.stat().st_uid == 0 and
+                profile.stat().st_mode & 0o777 == 0o600 and profile.stat().st_size <= 1024,
+                'private-release-profile-required')
+        lines = profile.read_bytes().decode('ascii').split('\n')
+        if lines[-1] == '':
+            lines.pop()
+        records = [re.fullmatch(r'(BOOTSTRAPPER_IMAGE|WIZARD_IMAGE)=(docker\.io/[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64})', line) for line in lines]
+        require(len(records) == 2 and all(records) and
+                {record[1] for record in records} == {'BOOTSTRAPPER_IMAGE', 'WIZARD_IMAGE'},
+                'invalid-release-profile-assignments')
+        profiles = [profile]
+    # Match native startup: public defaults first, saved configuration wins.
+    result = read_values(profiles + ([auth] if auth.is_file() else []) + [main])
     result.update(storage)  # Host-selected storage always wins over saved settings.
     result['_root'] = root
     result['_main'] = main
@@ -116,7 +131,7 @@ def public_manifest_absent(config):
 def public_images(config, services):
     """Resolve saved selections against actual images; never invent an archive manifest."""
     require(re.fullmatch(r'(?:docker\.io/)?[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64}',
-                         config['BOOTSTRAPPER_IMAGE'] or '') is not None,
+                         config['BOOTSTRAPPER_IMAGE'] or '') is not None or recovery.recovery_alias(config['BOOTSTRAPPER_IMAGE']),
             'public-controller-digest-required')
     selected = [('system_bootstrapper_1', 'BOOTSTRAPPER_IMAGE', ''),
                 ('system_web_1', 'NGINX_IMAGE', 'nginx'), ('system_gitlab_1', 'GITLAB_IMAGE', '')]
@@ -131,6 +146,8 @@ def public_images(config, services):
         image = recovery.inspect_image(reference)
         require(recovery.image_id(image.get('Id')) and services[name]['Image'] == image['Id'],
                 'service-image-selection-mismatch')
+        if recovery.recovery_alias(reference):
+            require(recovery.recovered_image(config, reference, image['Id']), 'recovered-image-alias-mismatch')
         if '@sha256:' in reference:
             # Docker omits its default Docker Hub hostname in some inspections.
             # Keep explicit private registry hosts/ports as part of identity.
@@ -420,12 +437,13 @@ def runner_contacts(config, baseline, token_file):
                 return result
         raise recovery.RecoveryError('GitLab-runner-API-pagination-limit')
     runners = pages('/runners/all')
-    expected = set()
+    expected = {}
     for index in range(1, runner_count(config) + 1):
         raw = (config['_root'] / f'runners/runner/{index}/config/.runner_system_id').read_bytes()
-        expected.add(hashlib.sha256(raw.strip()).hexdigest())
+        expected[hashlib.sha256(raw.strip()).hexdigest()] = f'runner_docker_{index}'
     require(len(expected) == runner_count(config), 'runner-manager-identities-not-unique')
     matched = {}
+    probes = 0
     started = datetime.datetime.fromisoformat(baseline['startedAt'])
     for runner in runners:
         require(isinstance(runner.get('id'), int), 'invalid-GitLab-runner-id')
@@ -433,12 +451,31 @@ def runner_contacts(config, baseline, token_file):
             identity = hashlib.sha256(manager.get('system_id', '').encode()).hexdigest()
             if identity in expected:
                 contact = manager.get('contacted_at')
+                # Workhorse can serve idle job polls without updating the Rails
+                # contact timestamp. Probe the retained configuration explicitly;
+                # this proves authentication, not job execution or poller activity.
+                if contact is not None and manager.get('status') == 'online' and \
+                        datetime.datetime.fromisoformat(contact.replace('Z', '+00:00')) < started:
+                    try:
+                        run([*DOCKER, 'exec', expected[identity], 'gitlab-runner', 'verify',
+                             '--config', '/etc/gitlab-runner/config.toml'], timeout=15)
+                    except recovery.RecoveryError:
+                        if recovery.OPERATION_DEADLINE is not None and time.monotonic() >= recovery.OPERATION_DEADLINE:
+                            raise recovery.RecoveryError('operation-readiness-deadline-expired') from None
+                        raise recovery.RecoveryError('runner-manager-authentication-probe-failed') from None
+                    probes += 1
+                    refreshed = [row for row in pages('/runners/' + str(runner['id']) + '/managers')
+                                 if hashlib.sha256(row.get('system_id', '').encode()).hexdigest() == identity]
+                    require(len(refreshed) == 1, 'runner-manager-identity-changed-during-probe')
+                    manager = refreshed[0]
+                    contact = manager.get('contacted_at')
                 require(contact is not None and manager.get('status') == 'online' and
                         datetime.datetime.fromisoformat(contact.replace('Z', '+00:00')) >= started,
                         'runner-manager-contact-not-fresh')
                 matched[identity] = {'identitySha256': identity, 'runnerId': runner['id'], 'contactedAt': contact}
-    require(set(matched) == expected, 'expected-runner-managers-not-online')
-    return {'checked': True, 'online': len(matched), 'contactsAfterStart': True}
+    require(set(matched) == set(expected), 'expected-runner-managers-not-online')
+    return {'checked': True, 'online': len(matched), 'contactsAfterStart': True,
+            'authenticationProbeCount': probes, 'jobExecutionChecked': False}
 
 
 def verify(config, baseline, checkout, token_file=None, redirect_from=None, public=False):

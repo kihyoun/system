@@ -9,6 +9,10 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-docs-source-'));
 try {
   fs.mkdirSync(path.join(root, 'wizard/src/docs'), {recursive: true});
   fs.mkdirSync(path.join(root, 'docs'));
+  fs.mkdirSync(path.join(root, 'bootstrapper'));
+  const graph = '{"format":"system-upgrade-paths-v1","versions":[],"transitions":[]}\n';
+  fs.writeFileSync(path.join(root, 'bootstrapper/upgrade-paths.json'), graph);
+  fs.writeFileSync(path.join(root, 'wizard/src/docs/upgrade-paths.json'), graph);
   const text = '# Install\n\n```sh\necho hello\n```\n\n## Configure\nMore details.\n';
   fs.writeFileSync(path.join(root, 'docs/guide.md'), text);
   const split = text.indexOf('## Configure');
@@ -18,6 +22,9 @@ try {
   const output = path.join(root, 'wizard/src/docs/content.json');
   const save = data => fs.writeFileSync(output, JSON.stringify(data));
   save(content); assert.equal(check(root), 2);
+  fs.writeFileSync(path.join(root, 'wizard/src/docs/upgrade-paths.json'), '{}');
+  assert.throws(() => check(root), /migration metadata is stale/);
+  fs.writeFileSync(path.join(root, 'wizard/src/docs/upgrade-paths.json'), graph);
   fs.appendFileSync(path.join(root, 'docs/guide.md'), 'Changed\n');
   assert.throws(() => check(root), /stale/);
   fs.writeFileSync(path.join(root, 'docs/guide.md'), text);

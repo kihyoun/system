@@ -16,6 +16,9 @@ async function scenario(validArchive) {
   fs.mkdirSync(path.join(root, 'project-bootstrap'));
   fs.copyFileSync(path.resolve(__dirname, '../../nginx/wizard-aliases.js'), path.join(root, 'nginx/wizard-aliases.js'));
   fs.copyFileSync(path.resolve(__dirname, '../../project-bootstrap/preserve-system-project.js'), path.join(root, 'project-bootstrap/preserve-system-project.js'));
+  fs.copyFileSync(path.resolve(__dirname, '../../nginx/application-aliases.js'), path.join(root, 'nginx/application-aliases.js'));
+  fs.copyFileSync(path.resolve(__dirname, '../../project-bootstrap/routing-impact.js'), path.join(root, 'project-bootstrap/routing-impact.js'));
+  fs.copyFileSync(path.resolve(__dirname, '../../project-bootstrap/configuration-archive.js'), path.join(root, 'project-bootstrap/configuration-archive.js'));
   fs.copyFileSync(pushScript, path.join(root, 'system/push.sh'));
   fs.writeFileSync(path.join(root, 'system/stop-intermediate.sh'), 'touch ../stopped\n');
   const saved = path.join(root, 'state/.docker.env');

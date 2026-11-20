@@ -104,7 +104,7 @@ async function main() {
   try {
     wrongWizard = true;
     await assert.rejects(publish(env, root, execute, inspectManifest), /identity/);
-    assert(!calls.some(call => call.includes('docker.io')), 'Hub login waits until both runtime identities pass');
+    assert(!calls.some(call => call.some(argument => argument === 'docker.io')), 'Hub login waits until both runtime identities pass');
     assert(!fs.existsSync(privateAuth));
     wrongWizard = false; wrongPlatform = true;
     await assert.rejects(publish(env, root, execute, inspectManifest), /platform/);

@@ -332,7 +332,7 @@ class Runtime {
         // CI preloads using its ordinary job-scoped registry credential. No
         // credential crosses into the helper or canonical controller.
         await this.command(['image', 'inspect', '--format', '{{.Id}}', imageRef]);
-        const args = ['run', '-d', '--restart', 'unless-stopped', '--memory', '512m', '--cpus', '1', '--pids-limit', '128',
+        const args = ['run', '-d', '--restart', 'unless-stopped', '--log-driver', 'json-file', '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3', '--memory', '512m', '--cpus', '1', '--pids-limit', '128',
           '--network', value.networkName, '--name', value.containerName];
         for (const [key, val] of Object.entries(state.labels(value))) args.push('--label', key + '=' + val);
         args.push(imageRef); await this.command(args);

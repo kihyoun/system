@@ -49,7 +49,7 @@ function issuanceDomains(extra=[]){
   if(!Array.isArray(extra)||extra.length>12||extra.some(host=>typeof host!=='string'||host.length>253||
     !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(host)||!host.endsWith('.candidate.test')))
     throw Error('acme-owned-certificate-domains-required');
-  return [...new Set(['wizard.candidate.test','sync.candidate.test',require('./recovery').WIZARD_ALIAS,...extra])];
+  return [...new Set(['wizard.candidate.test','sync.candidate.test',require('./recovery').WIZARD_ALIAS,...require('./application-routing').certificateHosts,...extra])];
 }
 async function controller(candidate,action,input){
   const script="let t='';process.stdin.on('data',x=>t+=x);process.stdin.on('end',async()=>{try{const input=JSON.parse(t);const result=await ("+action.toString()+")(input);if(result!==undefined)process.stdout.write(JSON.stringify(result));}catch{process.exitCode=1;}});";
@@ -107,7 +107,10 @@ class LocalAcme {
     });
     [this.authority,this.dns,this.initializer]=this.owners;
     this.reportDirectory=reportDirectory;
-    this.verifyAliases=dependencies.verifyAliases||((...args)=>require('./recovery').verifyAliasRouting(...args));
+    this.verifyAliases=dependencies.verifyAliases||(async(...args)=>{
+      await require('./recovery').verifyAliasRouting(...args);
+      await require('./application-routing').verify(...args);
+    });
     this.scripts=dependencies.scripts||{
       lease:fs.readFileSync(path.join(__dirname,'../../bootstrapper/certbot-with-volume-lock.sh'),'utf8'),
       install:fs.readFileSync(path.join(__dirname,'../../bootstrapper/install-volume-certificate.sh'),'utf8')
