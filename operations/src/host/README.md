@@ -84,3 +84,12 @@ private persistence selector. It pins the inspected image ID and invokes the
 accepted image with a read-only `/host` mount. Calling the in-container host
 configuration reader directly on the native host does not provide this mount or
 its trusted image selector and is unsupported.
+
+`HostReleaseAuthorityService` validates retained successor receipts and public
+upgrade provenance. Explicit monorepo receipts require the full shared System
+Beta policy, bound to source trees, image IDs and the actual candidate attempt.
+Historical public receipts retain their original validation contract. Inject the
+lifecycle policy through `HostModule.register({lifecycleEvidence})`; omitting it
+fails closed for monorepo acceptance. Public provenance still requires native
+successful publication, browser, candidate and component jobs. Fixture lifecycle
+identifiers never replace those outer publication identities.

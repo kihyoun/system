@@ -8,3 +8,4 @@ export * from './source';
 export * from './runtime-inspection';
 export * from './host.module';
 export * from './host-storage.service';
+export * from './release-authority.service';

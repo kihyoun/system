@@ -43,60 +43,13 @@ def fetch(repository, tag, filename):
 class PublicReleaseAuthority:
     def __init__(self, metadata, proof_bytes, base, security):
         self.metadata, self.base = metadata, base
-        descriptor = metadata.get('publicUpgrade', {})
-        require(metadata.get('format') == 'system-accepted-release-v1' and
-                descriptor.get('format') == 'system-public-upgrade-provenance-v1' and
-                descriptor.get('file') == 'system-upgrade-v' + metadata.get('version', '') + '.json' and
-                descriptor.get('sha256') == hashlib.sha256(proof_bytes).hexdigest(),
-                'public-upgrade-provenance-hash-mismatch')
-        value = json.loads(proof_bytes)
-        require(value.get('format') == descriptor['format'] and value.get('version') == metadata['version'] and
-                value.get('source') == metadata.get('source') and value.get('images') == metadata.get('images') and
-                value.get('originalEvidenceSha256') == metadata.get('acceptance', {}).get('evidenceSha256') and
-                metadata['acceptance'].get('requiredChecksPassed') is True and
-                metadata['acceptance'].get('controllerWizardSameAttempt') is True,
-                'public-upgrade-publisher-identity-mismatch')
-        self.graph = validate(value['graph'])
-        self.proof = value
-        self.release_bytes, self.evidence_bytes = encoded(value['release']), encoded(value['evidence'])
-        self.release, self.evidence = successor.release_inputs(self.release_bytes, self.evidence_bytes, security)
-        r = self.release
-        require(all(r[key] == metadata['source'][field] for key, field in
-                    [('sourceRevision', 'revision'), ('sourceTree', 'tree'), ('wizardRevision', 'wizardRevision')]) and
-                # The publisher separately verifies the public manifest's
-                # config digest. Its accepted local image ID is store-specific.
-                all(r[key] == metadata['images'][role]['imageId'] and
-                    successor.recovery.image_id(metadata['images'][role].get('configDigest')) for role, key in
-                    [('controller', 'imageId'), ('wizard', 'wizardImageId')]) and
-                r['registryReference'] == metadata['images']['controller']['reference'] and
-                r['wizardRegistryReference'] == metadata['images']['wizard']['reference'] and
-                r['candidateJobId'] == metadata['acceptance']['candidateJobId'],
-                'public-upgrade-candidate-identity-mismatch')
-        publication = value.get('publication', {})
-        require(all(publication.get(key) is True for key in
-                    ('protectedDefaultBranch', 'requiredMergeGate', 'nativePush')), 'public-upgrade-required-gates-missing')
-        jobs = publication.get('jobs', [])
-        names = [job.get('name') for job in jobs]
-        required = set(successor.REQUIRED_JOBS) | {'test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github'}
-        required |= {'test:isolated: [' + component + ']' for component in successor.COMPONENTS}
-        require(len(names) == len(set(names)) and required <= set(names), 'public-upgrade-required-jobs-missing')
-        for job in jobs:
-            require(type(job.get('id')) is int and job['id'] > 0 and job.get('status') == 'success' and
-                    job.get('allow_failure') is False and job.get('pipelineId') == r['pipelineId'] and
-                    job.get('sourceRevision') == r['sourceRevision'], 'public-upgrade-job-identity-mismatch')
-        require(next(j for j in jobs if j['name'] == 'test:platform-candidate')['id'] == r['candidateJobId'],
-                'public-upgrade-candidate-job-mismatch')
-        for edge in self.graph['transitions']:
-            if edge['to'] != metadata['version']:
-                continue
-            stages = [stage for stage in self.evidence['results'] if stage['name'] == edge['requiredStage']]
-            tested = self.evidence['evidence'].get('publicUpgrade', {})
-            require(len(stages) == 1 and stages[0]['status'] == 'passed' and tested.get('fromVersion') == edge['from'] and
-                    tested.get('toVersion') == edge['to'] and successor.recovery.git_id(tested.get('fromSourceRevision')) and
-                    all(successor.recovery.image_id(tested.get(key)) for key in ('fromControllerImageId', 'fromWizardImageId')) and
-                    all(tested.get(key) is True for key in
-                    ('dataPreserved', 'configurationPreserved', 'runnerRegistryVerified', 'rollbackVerified')),
-                    'public-upgrade-transition-not-tested')
+        import base64
+        value = successor.recovery.host_operation('publicReleaseInputs', metadata,
+            base64.b64encode(proof_bytes).decode(), security)
+        self.graph, self.proof = value['graph'], value['proof']
+        self.release, self.evidence = value['release'], value['evidence']
+        self.release_bytes = base64.b64decode(value['releaseBytes'])
+        self.evidence_bytes = base64.b64decode(value['evidenceBytes'])
 
     def verify_pipeline(self, release, release_bytes, evidence_bytes):
         require(release == self.release and release_bytes == self.release_bytes and evidence_bytes == self.evidence_bytes,

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { HostReleaseAuthorityService } from './release-authority.service';
 import {
   runtimeImageSelectors,
   verifyImageInspections,
@@ -34,6 +35,18 @@ export function compatibility(input: {
   const args = input.arguments,
     host = new HostInstallService(undefined, undefined, undefined, undefined, input.deadline);
   switch (input.operation) {
+    case 'publicReleaseInputs':
+      return new HostReleaseAuthorityService(
+        require('../../../gitlab/guided-preview-evidence'),
+      ).publicInputs(args[0], Buffer.from(String(args[1]), 'base64'), args[2]);
+    case 'releaseInputs':
+      return new HostReleaseAuthorityService(
+        require('../../../gitlab/guided-preview-evidence'),
+      ).inputs(
+        Buffer.from(String(args[0]), 'base64'),
+        Buffer.from(String(args[1]), 'base64'),
+        args[2],
+      );
     case 'runtimeImageSelectors':
       return runtimeImageSelectors(args[0] as RuntimeConfig);
     case 'verifyImageInspections':

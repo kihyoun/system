@@ -182,59 +182,10 @@ class GitLab:
 
 
 def release_inputs(release_bytes, evidence_bytes, security_release):
-    release, evidence = json.loads(release_bytes), json.loads(evidence_bytes)
-    require(isinstance(release, dict) and release.get('format') == 'system-successor-release-v1',
-            'invalid-successor-release-format')
-    for key in ('sourceRevision', 'sourceTree', 'wizardRevision'):
-        require(recovery.git_id(release.get(key)), 'invalid-successor-source-identity')
-    for key in ('projectId', 'pipelineId', 'candidateJobId'):
-        require(type(release.get(key)) is int and release[key] > 0, 'invalid-successor-CI-identity')
-    require(recovery.image_id(release.get('imageId')) and
-            recovery.reference(release.get('registryReference')) and
-            recovery.canonical_digest(release['registryReference']) == release['registryReference'] and
-            release['registryReference'].split('@')[0] == release.get('registryRepository'),
-            'invalid-immutable-successor-image')
-    require(release.get('candidateEvidencePath') == EVIDENCE_PATH and
-            release.get('candidateEvidenceSha256') == hashlib.sha256(evidence_bytes).hexdigest(),
-            'successor-evidence-hash-or-path-mismatch')
-    require(isinstance(evidence, dict) and evidence.get('sourceRevision') == release['sourceRevision'] and
-            evidence.get('fullAcceptance') is True and
-            re.fullmatch(r'[a-f0-9]{24}', evidence.get('runId', '')) is not None,
-            'successor-full-acceptance-required')
-    rows = evidence.get('results')
-    require(isinstance(rows, list) and bool(rows) and all(row.get('status') == 'passed' for row in rows),
-            'successor-stage-did-not-pass')
-    require(STAGES <= {row.get('name') for row in rows}, 'successor-required-migration-stage-missing')
-    storage = evidence.get('evidence', {}).get('storage', {})
-    require(isinstance(storage, dict) and all(storage.get(key) is True for key in STORAGE_PROOFS),
-            'successor-storage-acceptance-required')
-    images, upgrade = evidence.get('images', {}), evidence.get('evidence', {}).get('gitlabUpgrade', {})
-    if security_release.get('runner'):
-        runner = security_release['runner']
-        require(upgrade.get('runnerImage') == runner.get('toImage') and
-                upgrade.get('runnerImageId') == images.get('runner') and
-                recovery.image_id(upgrade.get('runnerImageId')) and
-                upgrade.get('runnerVersion') == runner.get('toVersion') and
-                upgrade.get('helperImage') == runner.get('helperImage') and
-                upgrade.get('jobCaBundleSha256') == security_release.get('jobCaBundleSha256') and
-                upgrade.get('securityTrustVerified') is True and
-                upgrade.get('runnerUpgradeVerified') is True and
-                upgrade.get('runnerManagerIdentityPreserved') is True and
-                recovery.image_id(upgrade.get('fromRunnerImageId')) and
-                recovery.image_id(upgrade.get('helperImageId')) and
-                recovery.image_id(upgrade.get('fromHelperImageId')) and
-                upgrade.get('fromRunnerImageId') != upgrade.get('runnerImageId') and
-                upgrade.get('fromHelperImageId') != upgrade.get('helperImageId') and
-                'gitlab-upgrade-security-trust' in {row.get('name') for row in rows},
-                'successor-runner-security-evidence-mismatch')
-    require(images.get('candidate') == release['imageId'] and
-            upgrade.get('fromImage') == security_release.get('fromImage') and
-            upgrade.get('toImage') == security_release.get('toImage') and
-            all(upgrade.get(key) is True for key in ('migrationVerified', 'rollbackVerified',
-                                                    'registryVerified', 'checkpointVerified')) and
-            recovery.image_id(upgrade.get('fromImageId')) and recovery.image_id(upgrade.get('toImageId')) and
-            images.get('gitlab') == upgrade['toImageId'], 'successor-migration-evidence-mismatch')
-    return release, evidence
+    import base64
+    value = recovery.host_operation('releaseInputs', base64.b64encode(release_bytes).decode(),
+                                    base64.b64encode(evidence_bytes).decode(), security_release)
+    return value['release'], value['evidence']
 
 
 def verify_source_objects(release, checkout):
@@ -301,7 +252,7 @@ def verify_public_pair(api, release, evidence, controller, wizard):
     public = json.loads(public_bytes)
     require(isinstance(public, dict) and public.get('format') == 'system-public-release-v1' and
             all(public.get(key) == release[key] for key in
-                ('projectId', 'pipelineId', 'sourceRevision', 'sourceTree', 'wizardRevision')) and
+                (('projectId', 'pipelineId', 'sourceRevision', 'sourceTree', 'sourceLayout', 'wizardSourceTree') if release.get('sourceLayout') == 'system-monorepo-v1' else ('projectId', 'pipelineId', 'sourceRevision', 'sourceTree', 'wizardRevision'))) and
             public.get('publicationJobId') == job['id'] and public.get('versionTag') is None and
             public.get('platform') == 'linux/amd64' and
             public.get('upstreamRelease') == {key: release[key] for key in
@@ -309,7 +260,7 @@ def verify_public_pair(api, release, evidence, controller, wizard):
             'paired-publication-source-mismatch')
     for role, selected, image, source, internal in (
             ('controller', controller, release['imageId'], release['sourceRevision'], release['registryReference']),
-            ('wizard', wizard, release['wizardImageId'], release['wizardRevision'], release['wizardRegistryReference'])):
+            ('wizard', wizard, release['wizardImageId'], release['sourceRevision'] if release.get('sourceLayout') == 'system-monorepo-v1' else release['wizardRevision'], release['wizardRegistryReference'])):
         row = public.get(role, {})
         require(isinstance(row, dict) and isinstance(row.get('reference'), str) and
                 row['reference'].removeprefix('docker.io/') == selected.removeprefix('docker.io/') and
@@ -325,6 +276,15 @@ def verify_public_pair(api, release, evidence, controller, wizard):
             type(mirrors[0].get('id')) is int and mirrors[0]['id'] > 0,
             'paired-source-publication-job-not-successful')
     mirror = mirrors[0]
+    if release.get('sourceLayout') == 'system-monorepo-v1':
+        require(public.get('wizardRevision') is None,
+                'paired-publication-source-mismatch')
+        # The successful native System mirror job publishes the common source.
+        # A monorepo has no independent Wizard repository or source receipt.
+        return {'jobId': job['id'], 'artifactSha256': hashlib.sha256(public_bytes).hexdigest(),
+                'sourceJobId': mirror['id'], 'sourceLayout': release['sourceLayout'],
+                'sourceRevision': release['sourceRevision'], 'sourceTree': release['sourceTree'],
+                'wizardSourceTree': release['wizardSourceTree']}
     source_bytes = api.raw(prefix + '/jobs/' + str(mirror['id']) +
                            '/artifacts/test-results/github/wizard-source.json')[0]
     source = json.loads(source_bytes)
