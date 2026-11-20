@@ -27,3 +27,23 @@ test('host authority binds actual candidate CI and source to full System Beta pr
  assert.throws(()=>verify(value,{wizardRevision:wizardTree}),/invalid-successor-source/);
  assert.throws(()=>verify(value,{candidateEvidenceSha256:'f'.repeat(64)}),/evidence-hash/);
 });
+
+test('candidate GitLab transport keeps credentials on fixed origin and bounds pagination',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const {CandidateGitLabService}=require('../dist/host/candidate-gitlab.service');
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-api-')),token=path.join(directory,'token');
+ fs.writeFileSync(token,'private-test-token',{mode:0o600});
+ try {
+  const calls=[];
+  const api=new CandidateGitLabService(async(url,options)=>{calls.push({url,options});return new Response(JSON.stringify([calls.length]),{status:200,headers:calls.length===1?{'x-next-page':'2'}:{}});}).connect('https://gitlab.example.test',token);
+  assert.deepEqual(await api.pages('/projects/4/jobs'),[1,2]);
+  assert.equal(calls[0].url,'https://gitlab.example.test/api/v4/projects/4/jobs?per_page=100&page=1');
+  assert.equal(calls[1].options.headers['PRIVATE-TOKEN'],'private-test-token');
+  assert.equal(calls[0].options.redirect,'manual');
+  await assert.rejects(api.get('//attacker.test'),/invalid-GitLab-endpoint/);
+  const redirect=new CandidateGitLabService(async()=>new Response(null,{status:302,headers:{location:'https://attacker.test'}})).connect('https://gitlab.example.test',token);
+  await assert.rejects(redirect.get('/user'),/GitLab-API-request-failed/);
+  fs.chmodSync(token,0o644);
+  assert.throws(()=>new CandidateGitLabService().connect('https://gitlab.example.test',token),/private-GitLab-token/);
+ } finally {fs.rmSync(directory,{recursive:true,force:true});}
+});

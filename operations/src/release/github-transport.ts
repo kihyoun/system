@@ -48,7 +48,7 @@ export interface PublicationRequest {
   raw?: boolean;
 }
 export type PublicationApi = (route: string, options?: PublicationRequest) => Promise<unknown>;
-async function boundedResponse(response: Response): Promise<Buffer> {
+export async function boundedResponse(response: Response): Promise<Buffer> {
   if (!response.body) return Buffer.alloc(0);
   const reader = response.body.getReader(),
     chunks: Uint8Array[] = [];

@@ -65,6 +65,7 @@ class PeerChannel:
 
 
 _WORKER_ENTRIES = frozenset({
+    'candidate-authority-entry.js',
     'cold-maintenance-entry.js', 'promotion-sequence-entry.js',
     'controller-update-sequence-entry.js', 'controller-rollback-sequence-entry.js',
     'public-upgrade-plan-entry.js', 'public-upgrade-apply-entry.js',

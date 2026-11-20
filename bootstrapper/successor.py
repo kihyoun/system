@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Shared, repository-owned successor release and operation boundaries."""
-import configparser
 import datetime
+import base64
+import host_service
 import fcntl
 import hashlib
 import importlib.util
@@ -200,9 +201,15 @@ def verify_ancestry(earlier, later, checkout):
     return recovery.host_operation('verifyAncestry', earlier, later, checkout)
 
 
-def normalized_job(name):
-    match = re.fullmatch(r'test:isolated:\s*\[([a-z-]+)\]', name)
-    return ('component', match[1]) if match else ('job', name)
+def _candidate_operation(api, operation, *arguments):
+    def dispatch(method, args):
+        if method == 'raw': return base64.b64encode(api.raw(args[0])[0]).decode()
+        if method in ('get', 'pages'): return getattr(api, method)(args[0])
+        raise recovery.RecoveryError('candidate-authority-port-invalid')
+    outcome = host_service.invoke('candidate-authority-entry.js', {'operation': operation, 'arguments': arguments},
+                               dispatch, recovery.RecoveryError)
+    if 'rejected' in outcome: raise recovery.RecoveryError(outcome['rejected'])
+    return outcome['result']
 
 
 def verify_pipeline(api, release, release_bytes, evidence_bytes):
@@ -213,169 +220,24 @@ def verify_pipeline(api, release, release_bytes, evidence_bytes):
 
 
 def wizard_release(release, evidence):
-    """Require the Wizard published by the same accepted System candidate."""
-    reference = release.get('wizardRegistryReference')
-    require(recovery.image_id(release.get('wizardImageId')) and
-            evidence.get('images', {}).get('wizard') == release['wizardImageId'] and
-            recovery.reference(reference) and '@' in reference and
-            recovery.canonical_digest(reference) == reference and
-            reference.split('@')[0] == release['registryRepository'] + '-wizard',
-            'successor-Wizard-release-evidence-mismatch')
+    return _candidate_operation(None, 'wizard', release, evidence)
 
 
 def verify_public_pair(api, release, evidence, controller, wizard):
-    """Bind a deliberate paired update to the exact successful public CI copy."""
     from public_release import PublicReleaseAuthority
     if isinstance(api, PublicReleaseAuthority):
         return api.verify_pair(release, evidence, controller, wizard)
-    wizard_release(release, evidence)
-    prefix = '/projects/' + str(release['projectId'])
-    pipeline = api.get(prefix + '/pipelines/' + str(release['pipelineId']))
-    require(pipeline.get('source') == 'push', 'paired-release-requires-native-default-branch-push')
-    jobs = api.pages(prefix + '/pipelines/' + str(release['pipelineId']) + '/jobs?include_retried=false')
-    browser = [job for job in jobs if job.get('name') == 'test:wizard-browser']
-    require(len(browser) == 1 and browser[0].get('status') == 'success' and
-            browser[0].get('allow_failure') is False and
-            browser[0].get('pipeline', {}).get('id') == release['pipelineId'] and
-            browser[0].get('commit', {}).get('id') == release['sourceRevision'],
-            'paired-Wizard-browser-job-not-successful')
-    matches = [job for job in jobs if job.get('name') == 'deploy:dockerhub']
-    require(len(matches) == 1 and matches[0].get('status') == 'success' and
-            matches[0].get('allow_failure') is False and
-            matches[0].get('pipeline', {}).get('id') == release['pipelineId'] and
-            matches[0].get('commit', {}).get('id') == release['sourceRevision'] and
-            type(matches[0].get('id')) is int and matches[0]['id'] > 0,
-            'paired-publication-job-not-successful')
-    job = matches[0]
-    artifact = prefix + '/jobs/' + str(job['id']) + '/artifacts/test-results/dockerhub/release.json'
-    public_bytes = api.raw(artifact)[0]
-    public = json.loads(public_bytes)
-    require(isinstance(public, dict) and public.get('format') == 'system-public-release-v1' and
-            all(public.get(key) == release[key] for key in
-                (('projectId', 'pipelineId', 'sourceRevision', 'sourceTree', 'sourceLayout', 'wizardSourceTree') if release.get('sourceLayout') == 'system-monorepo-v1' else ('projectId', 'pipelineId', 'sourceRevision', 'sourceTree', 'wizardRevision'))) and
-            public.get('publicationJobId') == job['id'] and public.get('versionTag') is None and
-            public.get('platform') == 'linux/amd64' and
-            public.get('upstreamRelease') == {key: release[key] for key in
-                ('projectId', 'pipelineId', 'candidateJobId', 'registryReference', 'candidateEvidenceSha256')},
-            'paired-publication-source-mismatch')
-    for role, selected, image, source, internal in (
-            ('controller', controller, release['imageId'], release['sourceRevision'], release['registryReference']),
-            ('wizard', wizard, release['wizardImageId'], release['sourceRevision'] if release.get('sourceLayout') == 'system-monorepo-v1' else release['wizardRevision'], release['wizardRegistryReference'])):
-        row = public.get(role, {})
-        require(isinstance(row, dict) and isinstance(row.get('reference'), str) and
-                row['reference'].removeprefix('docker.io/') == selected.removeprefix('docker.io/') and
-                row.get('imageId') == image and row.get('sourceRevision') == source and
-                recovery.image_id(row.get('configDigest')) and
-                selected.split('@')[-1] == internal.split('@')[-1],
-                'paired-publication-image-mismatch')
-    mirrors = [row for row in jobs if row.get('name') == 'deploy:github']
-    require(len(mirrors) == 1 and mirrors[0].get('status') == 'success' and
-            mirrors[0].get('allow_failure') is False and
-            mirrors[0].get('pipeline', {}).get('id') == release['pipelineId'] and
-            mirrors[0].get('commit', {}).get('id') == release['sourceRevision'] and
-            type(mirrors[0].get('id')) is int and mirrors[0]['id'] > 0,
-            'paired-source-publication-job-not-successful')
-    mirror = mirrors[0]
-    if release.get('sourceLayout') == 'system-monorepo-v1':
-        require(public.get('wizardRevision') is None,
-                'paired-publication-source-mismatch')
-        # The successful native System mirror job publishes the common source.
-        # A monorepo has no independent Wizard repository or source receipt.
-        return {'jobId': job['id'], 'artifactSha256': hashlib.sha256(public_bytes).hexdigest(),
-                'sourceJobId': mirror['id'], 'sourceLayout': release['sourceLayout'],
-                'sourceRevision': release['sourceRevision'], 'sourceTree': release['sourceTree'],
-                'wizardSourceTree': release['wizardSourceTree']}
-    source_bytes = api.raw(prefix + '/jobs/' + str(mirror['id']) +
-                           '/artifacts/test-results/github/wizard-source.json')[0]
-    source = json.loads(source_bytes)
-    mapping = configparser.RawConfigParser(strict=True)
-    mapping.read_string(api.raw(prefix + '/repository/files/.gitmodules/raw?ref=' + release['sourceRevision'])[0].decode())
-    section = 'submodule "wizard"'
-    require(mapping.has_section(section) and mapping.get(section, 'path', fallback=None) == 'wizard',
-            'paired-source-submodule-mapping-required')
-    repository = mapping.get(section, 'url', fallback='')
-    require(re.fullmatch(r'https://github\.com/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\.git', repository) is not None and
-            source == {'format': 'system-wizard-source-publication-v1', 'projectId': release['projectId'],
-                       'pipelineId': release['pipelineId'], 'publicationJobId': mirror['id'],
-                       'systemRevision': release['sourceRevision'], 'wizardRevision': release['wizardRevision'],
-                       'repository': repository, 'ref': 'refs/heads/system-release/' + release['wizardRevision']},
-            'paired-source-publication-mismatch')
-    return {'jobId': job['id'], 'artifactSha256': hashlib.sha256(public_bytes).hexdigest(),
-            'sourceJobId': mirror['id'], 'sourceArtifactSha256': hashlib.sha256(source_bytes).hexdigest()}
+    return _candidate_operation(api, 'pair', release, evidence, controller, wizard)
 
 
 def verify_completed_promotion(api, record, security):
-    require(record.get('format') == 'system-controller-promotion-v1' and
-            record.get('phase') == 'controller-promoted-old-GitLab-preserved' and
-            record.get('GitLabMigrationStarted') is False and
-            type(record.get('coldMaintenance')) is bool and
-            all(record.get(key) is True for key in ('oldGitLabImagePreserved',
-                'configurationChangedOnlyControllerImage', 'managerIdentitiesPreserved')),
-            'completed-staged-controller-promotion-required')
-    retained = record.get('release', {})
-    require(isinstance(retained, dict) and
-            all(type(retained.get(key)) is int and retained[key] > 0 for key in ('projectId', 'candidateJobId')),
-            'invalid-staged-controller-release')
-    artifact = '/projects/' + str(retained['projectId']) + '/jobs/' + str(retained['candidateJobId']) + '/artifacts/'
-    release_bytes = api.raw(artifact + RELEASE_PATH)[0]
-    evidence_bytes = api.raw(artifact + EVIDENCE_PATH)[0]
-    release, evidence = release_inputs(release_bytes, evidence_bytes, security)
-    require(release == retained, 'staged-controller-release-does-not-match-CI')
-    pipeline = _verify_pipeline(api, release, release_bytes, evidence_bytes, current=False)
-    require(pipeline == record.get('pipeline'), 'staged-controller-pipeline-receipt-mismatch')
-    return release, evidence
+    value = _candidate_operation(api, 'completed', record, security)
+    return value['release'], value['evidence']
 
 
 def _verify_pipeline(api, release, release_bytes, evidence_bytes, current):
-    project = api.get('/projects/' + str(release['projectId']))
-    branch = project.get('default_branch')
-    require(isinstance(branch, str) and bool(branch), 'GitLab-default-branch-required')
-    require(project.get('only_allow_merge_if_pipeline_succeeds') is True, 'GitLab-required-merge-gate-disabled')
-    require(release['registryRepository'] == project.get('container_registry_image_prefix', '') + '/successor',
-            'successor-registry-project-mismatch')
-    prefix = '/projects/' + str(release['projectId'])
-    pipeline = api.get(prefix + '/pipelines/' + str(release['pipelineId']))
-    require(pipeline.get('sha') == release['sourceRevision'] and pipeline.get('ref') == branch and
-            pipeline.get('source') in ('push', 'web', 'schedule'),
-            'successor-default-branch-pipeline-required')
-    branch_state = api.get(prefix + '/repository/branches/' + urllib.parse.quote(branch, safe=''))
-    require(branch_state.get('protected') is True, 'GitLab-default-branch-is-not-protected')
-    if current:
-        require(branch_state.get('commit', {}).get('id') == release['sourceRevision'], 'successor-default-branch-advanced')
-    jobs = api.pages(prefix + '/pipelines/' + str(release['pipelineId']) + '/jobs?include_retried=false')
-    selected = {}
-    for row in jobs:
-        key = normalized_job(row.get('name', ''))
-        require(key not in selected, 'successor-duplicate-job-identity')
-        selected[key] = row
-    required = [('job', name) for name in REQUIRED_JOBS] + [('component', name) for name in COMPONENTS]
-    # New promotions require static analysis. Retained historical receipts from
-    # before this gate remain recoverable; a recorded CodeQL job must still pass.
-    if current or ('job', 'test:codeql') in selected:
-        required.append(('job', 'test:codeql'))
-    for key in required:
-        row = selected.get(key, {})
-        require(row.get('status') == 'success' and row.get('allow_failure') is False,
-                'successor-required-job-not-successful')
-        require(row.get('pipeline', {}).get('id', release['pipelineId']) == release['pipelineId'],
-                'successor-job-pipeline-mismatch')
-    require(selected[('job', 'test:platform-candidate')].get('id') == release['candidateJobId'],
-            'successor-candidate-job-mismatch')
-    failed = [row for row in jobs if row.get('status') in ('failed', 'canceled')]
-    require(all(row.get('name') == 'deploy:github' and row.get('status') == 'failed' for row in failed),
-            'successor-internal-pipeline-failed')
-    require(pipeline.get('status') == 'success' or
-            (pipeline.get('status') == 'failed' and len(failed) == 1 and failed[0].get('name') == 'deploy:github'),
-            'successor-pipeline-not-complete')
-    artifact = prefix + '/jobs/' + str(release['candidateJobId']) + '/artifacts/'
-    remote_release = api.raw(artifact + RELEASE_PATH)[0]
-    remote_evidence = api.raw(artifact + EVIDENCE_PATH)[0]
-    require(hashlib.sha256(remote_release).digest() == hashlib.sha256(release_bytes).digest() and
-            hashlib.sha256(remote_evidence).digest() == hashlib.sha256(evidence_bytes).digest(),
-            'successor-inputs-do-not-match-CI-artifacts')
-    return {'projectId': release['projectId'], 'pipelineId': release['pipelineId'],
-            'candidateJobId': release['candidateJobId'], 'sourceRevision': release['sourceRevision'],
-            'requiredJobsPassed': len(required), 'GitHubMirrorFailed': bool(failed)}
+    return _candidate_operation(api, 'pipeline', release, base64.b64encode(release_bytes).decode(),
+                                base64.b64encode(evidence_bytes).decode(), current)
 
 
 def controller_alias(release):

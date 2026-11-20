@@ -1,3 +1,5 @@
+import { CandidateAuthorityService } from './candidate-authority.service';
+import { CandidateGitLabService } from './candidate-gitlab.service';
 import { PromotionRecoveryService } from './promotion-recovery.service';
 import {
   PromotionNativePortService,
@@ -50,6 +52,7 @@ export const HOST_PROCESS_RUNNER = Symbol('HOST_PROCESS_RUNNER');
 export const HOST_LIFECYCLE_EVIDENCE = Symbol('HOST_LIFECYCLE_EVIDENCE');
 export const HOST_ENVIRONMENT = Symbol('HOST_ENVIRONMENT');
 export interface HostModuleOptions {
+  candidateRequest?: typeof fetch;
   promotionGitLabProbe?: PromotionGitLabProbe;
   publicUpgradePlanPort?: PublicUpgradePlanPort;
   publicUpgradeApplyPort?: PublicUpgradeApplyPort;
@@ -86,6 +89,16 @@ export class HostModule {
     return {
       module: HostModule,
       providers: [
+        {
+          provide: CandidateGitLabService,
+          useFactory: () => new CandidateGitLabService(options.candidateRequest),
+        },
+        {
+          provide: CandidateAuthorityService,
+          inject: [HostInstallService, HostReleaseAuthorityService],
+          useFactory: (host: HostInstallService, releases: HostReleaseAuthorityService) =>
+            new CandidateAuthorityService(host, releases),
+        },
         {
           provide: PromotionNativePortService,
           inject: [
@@ -348,6 +361,8 @@ export class HostModule {
         })),
       ],
       exports: [
+        CandidateAuthorityService,
+        CandidateGitLabService,
         PromotionRecoveryService,
         PromotionNativePortService,
         ControllerCheckpointService,
