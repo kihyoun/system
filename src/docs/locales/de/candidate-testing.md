@@ -125,7 +125,7 @@ ACME ohne GitLab-Upgrade teilt ein fünfundzwanzigminütiges Budget unter allen
 Eigentümern. Ein GitLab-Upgrade ohne geführte Vorschauen hat sechzig Minuten.
 `guidedPreviewAcceptance === true` und `gitlabUpgradeAcceptance === true`
 wählen zusammen fünfundsiebzig Minuten; eine zusätzlich vorbereitete `publicUpgrade`-
-Testumgebung wählt neunzig Minuten für die zusätzlichen nativen öffentlichen CLI-,
+Testumgebung wählt 110 Minuten für die zusätzlichen nativen öffentlichen CLI-,
 Sicherungs- und Wiederherstellungsprüfungen. Jedes Szenario verwendet eine absolute
 Frist, die zwischen begrenzten Docker-/HTTP-Vorgängen geprüft wird. Jeder gestreamte Archivimport ist auf
 zehn Minuten begrenzt;
@@ -230,10 +230,10 @@ aus dem validierten festgelegten Snapshot und lädt die festgelegten Dienst-Imag
 Der Job wird mit einer GitLab-Ressourcengruppe serialisiert. Die Image-Vorbereitung
 hat ein separates begrenztes Budget. Die kombinierte Ausführung geführter Vorschauen
 und des GitLab-Upgrades mit öffentlicher Release-Upgrade-Testumgebung hat ein festes
-gemeinsames Limit von neunzig Minuten für ursprünglichen Host, wiederhergestellten Host,
+gemeinsames Limit von 110 Minuten für ursprünglichen Host, wiederhergestellten Host,
 ACME-Stelle und weitere Ressourceneigentümer. Ohne diese zusätzliche Testumgebung
 behält das kombinierte Szenario fünfundsiebzig Minuten. Das Runner-Skript erlaubt
-fünfundneunzig Minuten, die separate Bereinigung zwei Minuten und der gesamte Job einhundert Minuten.
+115 Minuten, die separate Bereinigung zwei Minuten und der gesamte Job 120 Minuten.
 Der Runner-Host benötigt zwölf GiB Kandidaten-RAM zusätzlich zu seiner bestehenden Plattform-/Job-
 Reserve und genügend freien Speicher für Image-Archive, Entpackung und GitLab-Zustand.
 
@@ -379,7 +379,7 @@ Lebenszyklusbudget von 1.500 Sekunden einschließlich beider Plattformhosts und
 dieser Testeigentümer. GitLab-Upgrades verwenden das sechzigminütige Budget oder
 fünfundsiebzig Minuten, wenn geführte Vorschauen ebenfalls aktiviert sind.
 Die zusätzliche öffentliche Release-Upgrade-Testumgebung wählt für dieses kombinierte
-Szenario neunzig Minuten.
+Szenario 110 Minuten.
 Normale Smoke-Tests behalten 1.200 Sekunden. Weder eine neue Phase noch ein
 Hostwechsel setzt die Frist zurück oder verlängert sie automatisch.
 Äußere Skript- und CI-Job-Limits müssen darüber hinaus Reserve für Vorbereitung, Veröffentlichung
@@ -450,7 +450,7 @@ phasen gehören zum Beleg des wiederhergestellten Kandidaten. Weder rohe private
 noch Konfiguration, Zugangsdaten oder Datenbankprotokolle werden jemals öffentliche CI-Artefakte.
 
 Das Nachfolgerszenario verwendet nur dann ein festes Gesamt-Kandidatenbudget von
-90 Minuten, wenn sowohl `guidedPreviewAcceptance === true` als auch
+110 Minuten, wenn sowohl `guidedPreviewAcceptance === true` als auch
 `gitlabUpgradeAcceptance === true` gelten und eine vorbereitete `publicUpgrade`-
 Testumgebung vorhanden ist. Das kombinierte Szenario ohne diese Testumgebung behält
 75 Minuten. Beide umfassen drei echte native Wizard-Push-/MR-/Push-Pipelines mit
@@ -470,12 +470,17 @@ eines Aufruflimits von 1.200 Sekunden und derselben absoluten Kandidatenfrist. B
 verlangt weiterhin abgeschlossene Hintergrundmigrationen; ein erfolgreicher Migrationsbatch allein
 erfüllt diese Bedingung nicht. Das Szenario verwendet die bestehende serialisierte Ressourcen-
 gruppe und Grenze des privaten Daemons von 12 GiB und vier CPUs; prüfen Sie vor
-dem Start die tatsächliche Host-Reserve. Der Plattformjob erlaubt ein 95-minütiges
-Skript und eine separate zweiminütige Bereinigung innerhalb eines 100-minütigen
+dem Start die tatsächliche Host-Reserve. Der Plattformjob erlaubt ein 115-minütiges
+Skript und eine separate zweiminütige Bereinigung innerhalb eines 120-minütigen
 Job-Limits und lässt Zeit für Vorbereitung, Veröffentlichung und Artefakt-
 sammlung. Normale Smoke- und reine ACME-Lebenszyklusbudgets bleiben unverändert. Ein
 erfolgreicher nachgebildeter Adaptervertrag ist keine erfolgreiche echte Migration; verwenden Sie die
-vollständige Plattform-CI-Schranke für diesen Nachweis.
+vollständige Plattform-CI-Schranke für diesen Nachweis. Abgeschlossene Unterprozesse mit Fehlerstatus sowie bestätigte
+endgültige Container- oder Identitätsfehler führen zum sofortigen Abbruch. Vorübergehende
+Startzustände dürfen innerhalb der bestehenden Vorgangsfristen abgefragt werden. Berichte
+unterscheiden Prozessfehler, Zeitüberschreitungen einzelner Vorgänge und eine erschöpfte
+Gesamtfrist für Kandidat oder Bereinigung. Ein Client, der nach einer Zeitüberschreitung
+mit Status null endet, beweist keinen erfolgreichen Abschluss seines entfernten Vorgangs.
 
 ## Abnahme des öffentlichen Release-Upgrades über die CLI
 
