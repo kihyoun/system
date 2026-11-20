@@ -2,7 +2,7 @@ import { I18nProvider, useI18n } from './i18n';
 import { deDE, enUS, koKR } from '@mui/material/locale';
 import ListItemButton from '@mui/material/ListItemButton';
 import { makeStyles } from 'tss-react/mui';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import Paper from '@mui/material/Paper';
 import Grid from '@mui/material/Grid';
@@ -172,7 +172,7 @@ const AppContent = observer(() => {
         restoreDrawerFocus.current = true;
         setOpen(false);
     };
-    const theme = createTheme({
+    const theme = useMemo(() => createTheme({
         typography: { fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR", sans-serif' },
         palette: {
             primary: dark ? grey : blue,
@@ -187,7 +187,7 @@ const AppContent = observer(() => {
                 : { default: grey[50], paper: '#fff' },
             mode: dark ? 'dark' : 'light'
         }
-    }, locale === 'ko' ? koKR : locale === 'de' ? deDE : enUS);
+    }, locale === 'ko' ? koKR : locale === 'de' ? deDE : enUS), [dark, locale]);
     const compact = useMediaQuery(theme.breakpoints.down('md'));
     const [open, setOpen] = React.useState(() => !compact);
     useEffect(() => {
