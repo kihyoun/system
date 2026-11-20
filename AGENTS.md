@@ -145,6 +145,70 @@ validators and routing also refer to `sync/src/index.ts`, `wizard/src/api/Main.t
   and explicit leases. Check the selected host's capacity; limits are ceilings,
   not reservations or disk quotas. Do not assume a maintainer-owned test host exists.
 
+## NestJS and TypeScript conventions
+
+Follow the official NestJS [modules](https://docs.nestjs.com/modules),
+[providers](https://docs.nestjs.com/providers) and
+[standalone applications](https://docs.nestjs.com/standalone-applications)
+patterns. The rules below are this repository's conventions; they do not imply
+that Nest requires a particular domain architecture.
+
+- Organize by capability (configuration, storage, backup/restore, lifecycle,
+  projects, release), with an explicit feature module and narrowly exported
+  providers. Avoid global service collections, circular dependencies and
+  routine `forwardRef` workarounds. Do not introduce microservices or CQRS merely
+  to organize code in this single platform.
+- Use kebab-case filenames and conventional suffixes such as `.module.ts`,
+  `.service.ts`, `.controller.ts`, `.dto.ts` and `.spec.ts` for new Nest code.
+  Use PascalCase for classes/types and camelCase for functions/properties.
+  Preserve compatibility entry points and historical artifacts when migrating.
+- Keep controllers and CLI handlers thin: validate and map input, invoke a use
+  case, and map its result. Put orchestration in injectable services, pure
+  decisions in framework-independent functions, and external I/O behind typed
+  injectable adapters. Do not move large scripts unchanged into a service class.
+- Share the same operation services between HTTP, CLI and workers. CLI commands
+  use a standalone Nest application context, without starting an HTTP listener,
+  and close it reliably. Importing a module must not start jobs or mutate state.
+- Prefer constructor injection and explicit provider tokens for external ports.
+  Compose providers in modules; avoid service locators and manual construction
+  of service dependency graphs inside controllers. Pure functions need no
+  artificial injectable wrapper.
+- Enable strict TypeScript. Treat untrusted input as `unknown` until runtime
+  validation; TypeScript types alone do not validate HTTP, CLI, environment or
+  persisted data. Keep DTOs separate from domain/persistence types where their
+  contracts differ. Preserve existing public API validation and error behavior.
+- Read and validate configuration at the appropriate application boundary;
+  inject typed configuration rather than scattering `process.env` reads across
+  services. Never log credentials or complete secret-bearing configuration.
+- Use typed operation errors and explicit exit/status handling. Only HTTP
+  adapters translate errors to HTTP responses; core services must remain usable
+  offline. Manage cancellation, subprocess termination and resource cleanup
+  explicitly. Nest singleton scope does not replace durable cross-process leases.
+- Centralize external command execution in a typed process adapter with argument
+  arrays, bounded output and explicit failure handling. Replace our own legacy
+  orchestration rather than wrapping old script chains. Keep necessary native
+  tools and external format adapters, and prepare recovery dependencies before
+  maintenance so recovery does not depend on a running API or npm access.
+- Test domain behavior and failure paths with injected adapters, module wiring
+  with Nest's testing facilities where useful, and compatibility at public
+  boundaries. Retain existing meaningful integration tests and include new
+  acceptance checks in repository-owned CI; do not duplicate full platform runs
+  merely for each module. Keep established test locations during migration when
+  moving them would only create churn.
+- Use the repository's stable, pinned dependency versions and existing formatter,
+  lint and build checks. Keep feature documentation aligned with the implemented
+  module boundaries and public commands, including supported Wizard translations.
+- Use a shared, committed Prettier configuration for maintained TypeScript and
+  JavaScript packages, explicitly including the Wizard React/TSX frontend, Sync
+  and the operations CLI, with an exact local development-dependency version.
+  Provide `format` (write) and `format:check` (read-only) package scripts and run
+  the latter in the existing fast CI checks. ESLint owns code-quality rules;
+  disable conflicting formatting rules with `eslint-config-prettier` where
+  necessary rather than running Prettier as an ESLint rule. Keep formatting scope
+  explicit: exclude generated output, dependencies, reserved historical recipes
+  and byte-sensitive fixtures/signatures. Do not blanket-format unrelated legacy
+  files or mutate the Cube. These rules also apply to editor format-on-save.
+
 ## Long-term design intent
 
 The Cube's opening symbolizes communication with the outside world. Future
