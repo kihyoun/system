@@ -135,9 +135,14 @@ persists phase transitions and interruption state. These services resolve throug
 The existing `promote.py`, `update-controller.py` and `upgrade-release.py` command
 interfaces remain compatible. Their private framed transport invokes only fixed
 native port methods; it does not accept arbitrary source code. Python retains
-host advisory-lock acquisition/adoption, pre-mutation authority setup, public
-installed-release inspection, OS/backup-mount preflight, coordinated backup
-polling and archive streaming, plus the public status/recover command wrapper.
+pre-mutation authority setup, public installed-release inspection, backup-mount
+preflight, coordinated backup polling and the public status/recover command wrapper.
+The shared native lease service owns lock acquisition/adoption; the native archive
+service owns streaming. `RecoveryExportService.execute` validates candidate authority,
+acquires the shared lease, checks running image and saved selection identities,
+exports the immutable controller image and publishes the validated manifest with
+its exact previous bytes retained. The standalone `recovery-export-entry.js` maps
+CLI flags to that same service.
 These retained checks remain part of the safety boundary. Critical interruptions
 retain checkpoints and owned leases for inspection or adoption; recovery never
 silently rewinds GitLab data. Native adapters retain their existing budgets.

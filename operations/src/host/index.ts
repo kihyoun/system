@@ -29,3 +29,5 @@ export * from './public-upgrade-plan.service';
 export * from './public-upgrade-plan-entry';
 
 export * from './recovery-archive.service';
+
+export * from './recovery-export.service';

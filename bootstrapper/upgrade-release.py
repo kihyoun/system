@@ -34,7 +34,6 @@ updater = importlib.util.spec_from_file_location('public_paired_updater', ROOT /
 _module = importlib.util.module_from_spec(updater)
 updater.loader.exec_module(_module)
 updater = _module
-archives = updater.module('public_upgrade_image_archives', 'record-recovery-images.py')
 
 
 def digest(value):
@@ -291,7 +290,7 @@ def apply_locked(args, config, target):
         elif method == 'host': host(authority.metadata)
         elif method == 'backupTarget': backup_target(config, arguments[0])
         elif method == 'invoke': invoke(config, authority, security, arguments[1], target / 'target.json', args.token_file, args.timeout, arguments[0], *([arguments[2]] if arguments[2] is not None else []))
-        elif method == 'archive': return archives.save_archive(target, arguments[1]['reference'], arguments[1]['imageId'], arguments[2])
+        elif method == 'archive': return recovery.host_operation('saveRecoveryArchive', target, arguments[1]['reference'], arguments[1]['imageId'], arguments[2])
         elif method == 'matchingBackup': matching_backup(config, target, arguments[0], args.backup_timeout)
         elif method == 'waitReady': return updater.wait_ready(config, arguments[0], args.token_file, None, recovery.budget(args.timeout))
         else: raise recovery.RecoveryError('unknown-public-upgrade-native-port')

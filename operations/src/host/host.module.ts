@@ -1,3 +1,4 @@
+import { RecoveryExportService } from './recovery-export.service';
 import { RecoveryArchiveService } from './recovery-archive.service';
 import { DockerArchiveProcess } from '../runtime/archive-process';
 import { PublicReleaseAssetsService } from './public-release-assets.service';
@@ -357,6 +358,54 @@ export class HostModule {
         },
         { provide: RecoveryPublicationService, useFactory: () => new RecoveryPublicationService() },
         {
+          provide: RecoveryExportService,
+          inject: [
+            HostInstallService,
+            HostSourceService,
+            RecoveryManifestService,
+            RecoveryImageService,
+            RecoveryArchiveService,
+            RecoveryPublicationService,
+            RuntimeInspectionService,
+            ControllerLeaseService,
+            PublicUpgradePreparationService,
+            RuntimeVerificationService,
+            HostReleaseAuthorityService,
+            CandidateAuthorityService,
+            CandidateGitLabService,
+          ],
+          useFactory: (
+            host: HostInstallService,
+            source: HostSourceService,
+            manifests: RecoveryManifestService,
+            images: RecoveryImageService,
+            archives: RecoveryArchiveService,
+            publication: RecoveryPublicationService,
+            inspection: RuntimeInspectionService,
+            lease: ControllerLeaseService,
+            preparation: PublicUpgradePreparationService,
+            runtime: RuntimeVerificationService,
+            authority: HostReleaseAuthorityService,
+            candidate: CandidateAuthorityService,
+            gitlab: CandidateGitLabService,
+          ) =>
+            new RecoveryExportService(
+              host,
+              source,
+              manifests,
+              images,
+              archives,
+              publication,
+              inspection,
+              lease,
+              preparation,
+              runtime,
+              authority,
+              candidate,
+              gitlab,
+            ),
+        },
+        {
           provide: RecoveryArchiveService,
           useFactory: () => new RecoveryArchiveService(new DockerArchiveProcess()),
         },
@@ -424,6 +473,7 @@ export class HostModule {
         ColdMaintenanceService,
         RecoveryPublicationService,
         RecoveryArchiveService,
+        RecoveryExportService,
         UpgradeLifecycleService,
         HostStorageService,
         HostReleaseAuthorityService,

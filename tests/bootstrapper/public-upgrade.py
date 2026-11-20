@@ -769,7 +769,12 @@ class BackupAndApply(unittest.TestCase):
         stack.enter_context(patch.object(tool, 'data_sample', return_value=value['dataSample']))
         stack.enter_context(patch.object(tool, 'backup_target'))
         stack.enter_context(patch.object(tool, 'invoke', side_effect=invoke))
-        stack.enter_context(patch.object(tool.archives, 'save_archive', side_effect=image_archive))
+        native_operation = tool.recovery.host_operation
+        def operation(name, *arguments):
+            if name == 'saveRecoveryArchive':
+                return image_archive(*arguments)
+            return native_operation(name, *arguments)
+        stack.enter_context(patch.object(tool.recovery, 'host_operation', side_effect=operation))
         stack.enter_context(patch.object(tool, 'matching_backup', side_effect=backup))
         if not native_readiness:
             stack.enter_context(patch.object(tool.updater, 'wait_ready', side_effect=ready))

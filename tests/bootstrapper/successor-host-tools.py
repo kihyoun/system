@@ -39,7 +39,6 @@ def module(name, file):
 
 
 promoter = module('controller_promoter', 'promote-controller.py')
-exporter = module('recovery_exporter', 'record-recovery-images.py')
 
 
 def fixture():
@@ -943,9 +942,9 @@ class ExportContracts(unittest.TestCase):
     def refreshed(self):
         source = tuple(self.release[key] for key in ('sourceRevision', 'sourceTree', 'wizardRevision'))
         archive = {'file': 'images/new.tar.gz', 'imageId': self.release['imageId']}
-        return exporter.refreshed_manifest(self.old, archive, source, self.alias, self.release['imageId'],
+        return successor.recovery.host_operation('refreshRecoveryManifest', self.old, archive, source, self.alias, self.release['imageId'],
                                             self.evidence['evidence']['gitlabUpgrade']['toImage'],
-                                            self.evidence['images']['gitlab'], self.wizard_ref)
+                                            self.evidence['images']['gitlab'], self.wizard_ref, None, None)
     def test_new_manifest_preserves_Wizard_and_old_accepted_archives_and_versioned_alias(self):
         value = self.refreshed()
         self.assertEqual(value['archives'][1], self.old['archives'][1])
@@ -956,72 +955,6 @@ class ExportContracts(unittest.TestCase):
         self.assertEqual(aliases[self.alias], self.release['imageId'])
         self.assertFalse(any('@' in row['tag'] for row in value['localImages']))
         self.assertEqual(value['controllerHistory'][0], self.old['currentController'])
-    def test_archive_restore_can_start_new_controller_without_own_registry(self):
-        # The restore orchestration moved to TS; run its injected process-port contract.
-        result = subprocess.run(['node', '--test', '--test-name-pattern', 'archive restore reconstructs',
-                                 str(ROOT / 'operations/tests/host-recovery-images.test.cjs')],
-                                capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_invalid_candidate_manifest_does_not_change_active_bytes_or_checksum(self):
-        original = b'{  "original":true }\n\n'
-        (self.root / 'images.json').write_bytes(original)
-        with patch.object(successor.recovery, 'load_manifest', side_effect=successor.recovery.RecoveryError('invalid-candidate')):
-            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'invalid-candidate'):
-                exporter.publish_manifest(self.root, {}, self.root, self.root / 'settings.env', original)
-        self.assertEqual((self.root / 'images.json').read_bytes(), original)
-        self.assertEqual(hashlib.sha256((self.root / 'images.json').read_bytes()).digest(), hashlib.sha256(original).digest())
-        self.assertFalse((self.root / 'manifest-history').exists())
-
-    def test_candidate_validation_precedes_atomic_publication_and_history_is_exact(self):
-        original = b'{  "original":true }\n\n'
-        (self.root / 'images.json').write_bytes(original)
-        def validate(*args, **kwargs):
-            self.assertEqual((self.root / 'images.json').read_bytes(), original)
-            self.assertEqual(json.loads(kwargs['manifest_bytes']), {'accepted': True})
-        with patch.object(successor.recovery, 'load_manifest', side_effect=validate), \
-             patch.object(successor.recovery, 'validate_selected_images'):
-            exporter.publish_manifest(self.root, {'accepted': True}, self.root, self.root / 'settings.env', original)
-        history = self.root / 'manifest-history' / ('images-' + hashlib.sha256(original).hexdigest() + '.json')
-        self.assertEqual(history.read_bytes(), original)
-        self.assertEqual(json.loads((self.root / 'images.json').read_bytes()), {'accepted': True})
-
-    def test_interrupted_archive_publication_does_not_prevent_a_new_attempt(self):
-        (self.root / 'images').mkdir()
-        class Process:
-            def __init__(self):
-                self.stdout = io.BytesIO(b'fixture image bytes')
-            def wait(self, timeout=None):
-                return 0
-            def poll(self):
-                return 0
-        source = (self.release['sourceRevision'], self.release['sourceTree'], self.release['wizardRevision'])
-        real_popen = subprocess.Popen
-        with patch.object(exporter.subprocess, 'Popen', side_effect=lambda *args, **kwargs:
-                Process() if args[0][0] == 'docker' else real_popen(*args, **kwargs)):
-            first = exporter.save_archive(self.root, self.alias, self.release['imageId'], source)
-            second = exporter.save_archive(self.root, self.alias, self.release['imageId'], source)
-        self.assertNotEqual(first['file'], second['file'])
-        self.assertTrue((self.root / first['file']).is_file())
-        self.assertTrue((self.root / second['file']).is_file())
-    def test_hanging_image_save_is_killed_and_reaped_before_leases_can_be_released(self):
-        (self.root / 'images').mkdir()
-        real_popen, real_timer = subprocess.Popen, threading.Timer
-        processes = []
-        def process(*args, **kwargs):
-            if args[0][0] != 'docker':
-                return real_popen(*args, **kwargs)
-            value = real_popen(['python3', '-c', 'import sys,time;sys.stdout.write("x");sys.stdout.flush();time.sleep(30)'],
-                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            processes.append(value)
-            return value
-        source = (self.release['sourceRevision'], self.release['sourceTree'], self.release['wizardRevision'])
-        with patch.object(exporter.subprocess, 'Popen', side_effect=process), \
-             patch.object(exporter.threading, 'Timer', side_effect=lambda seconds, callback: real_timer(0.05, callback)):
-            with self.assertRaisesRegex(successor.recovery.RecoveryError, 'archive-failed-or-timed-out'):
-                exporter.save_archive(self.root, self.alias, self.release['imageId'], source)
-        self.assertIsNotNone(processes[0].poll())
-        self.assertFalse(list((self.root / 'images').iterdir()))
 
 
 if __name__ == '__main__':

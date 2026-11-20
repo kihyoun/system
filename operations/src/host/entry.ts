@@ -1,3 +1,4 @@
+import { RecoveryArchiveService } from './recovery-archive.service';
 import { PublicReleaseAssetsService } from './public-release-assets.service';
 import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
 import {
@@ -220,6 +221,10 @@ export async function compatibility(
             throw Error('unsupported-runtime-verification-operation');
         }
       }
+      case 'saveRecoveryArchive':
+        return app
+          .get(RecoveryArchiveService)
+          .save(String(args[0]), String(args[1]), String(args[2]), args[3]);
       case 'refreshRecoveryManifest':
         return app
           .get(RecoveryPublicationService)

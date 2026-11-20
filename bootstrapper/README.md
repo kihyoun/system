@@ -731,7 +731,7 @@ After successful GitLab migration, refresh retained recovery inputs before delet
 the VM or relying on a later host replacement:
 
 ```sh
-sudo python3 bootstrapper/record-recovery-images.py \
+sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
