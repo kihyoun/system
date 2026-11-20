@@ -1,0 +1,14 @@
+'use strict';
+const assert=require('node:assert/strict');
+const crypto=require('node:crypto');
+const {validate}=require('../../gitlab/publish-npm');
+const bytes=Buffer.from('accepted package fixture');
+const revision='a'.repeat(40),tree='b'.repeat(40);
+const env={GITLAB_CI:'true',NPM_PUBLISH_ENABLED:'true',CI_COMMIT_REF_PROTECTED:'true',CI_PIPELINE_SOURCE:'push',CI_COMMIT_BRANCH:'master',CI_DEFAULT_BRANCH:'master',CI_COMMIT_SHA:revision,CI_PIPELINE_ID:'42'};
+const receipt={format:'system-cli-source-v1',name:'@systembootstrapper/cli',version:'2.0.0',sourceRevision:revision,sourceTree:tree,pipelineId:42,packageJobId:17,filename:'systembootstrapper-cli-2.0.0.tgz',sha256:crypto.createHash('sha256').update(bytes).digest('hex'),integrity:'sha512-'+crypto.createHash('sha512').update(bytes).digest('base64')};
+const metadata={format:'system-accepted-release-v1',version:'2.0.0',source:{revision,tree}};
+validate(receipt,metadata,env,bytes);
+for(const changed of [{CI_PIPELINE_SOURCE:'merge_request_event'},{CI_COMMIT_REF_PROTECTED:'false'},{CI_COMMIT_TAG:'v2.0.0'},{CI_COMMIT_BRANCH:'feature'},{CI_COMMIT_SHA:'c'.repeat(40)}])assert.throws(()=>validate(receipt,metadata,{...env,...changed},bytes));
+for(const changed of [{pipelineId:41},{sourceTree:'c'.repeat(40)},{name:'other'},{version:'1.2.0'},{filename:'../outside.tgz'},{packageJobId:0},{sha256:'0'.repeat(64)},{integrity:'sha512-invalid'}])assert.throws(()=>validate({...receipt,...changed},metadata,env,bytes));
+assert.throws(()=>validate(receipt,metadata,env,Buffer.from('changed')));
+console.log('PASS: npm release binds protected source, accepted version, exact pipeline and immutable package bytes.');
