@@ -27,8 +27,8 @@ The native `gitlab/upgrade-child.js` watchdog remains a separate process so it
 can finish or terminate an owned process group even if the invoking controller
 helper dies. Process arguments, environment and output are never included in
 public errors. The shared `GitlabPreflightService` reads package identity and generated database topology, then uses native embedded `psql` read-only transactions for every configured primary database and CI jobs;
-shell configuration loading and in-container service commands retain their
-external format boundaries.
+configuration uses the shared literal parser, and in-container service control
+uses native argument arrays rather than generated shell programs.
 
 GitLab and runner startup use the shared lifecycle service through thin adapters
 under the watchdog. The child verifies the inherited operation against all
@@ -81,3 +81,14 @@ unclaimed and completed jobs are excluded. Migration status follows GitLab's
 [documented unfinished migration query](https://docs.gitlab.com/update/background_migrations/).
 Upgrade and promotion callers supply their existing guarded command port, so
 preflight does not create a competing lease or process-ownership protocol.
+
+The shared `GitlabDatabaseService` prepares private libpq service/password files
+for the configured primary databases and runs embedded `psql` as GitLab's configured
+service account. It preserves database TLS settings and clears inherited libpq
+configuration. Callers close the session after all its database processes settle;
+a long-lived ownership session must retain its private files until that point.
+`GitlabDataSampleService` reuses this connection policy for bounded identity
+samples and obtains repository heads through authenticated read-only GitLab API
+requests. Its result contains only a digest, scope and project count, not sampled
+record contents. The caller supplies its existing authenticated transport; sampling
+never creates or rotates credentials.

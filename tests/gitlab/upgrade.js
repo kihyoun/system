@@ -150,6 +150,34 @@ function nativeProof(args, proof={}) {
   assert.throws(() => session.command(99), /session-invalid/);
   await session.close(); await session.close();
   assert.throws(() => session.command(0), /session-invalid/);
+  const sampler = new (require('../../operations/dist/gitlab-preflight/gitlab-data-sample.service').GitlabDataSampleService)(database);
+  const sampled = {projects: [[1, 'team/full', 'a'.repeat(40)], [2, 'team/empty', null]], users: [[1, 'root']], issues: [[2, 1, 1]], mergeRequests: [[3, 1, 1]], registries: [[4, 1, '']]};
+  let sampleClosed = false, sampleQueries = 0, sampleGets = [];
+  const samplePort = {
+    command(args) {
+      if (args.includes('rm')) sampleClosed = true;
+      if (args.includes('/opt/gitlab/embedded/bin/psql')) {
+        sampleQueries++; const sql = args.at(-1);
+        assert(sql.startsWith('BEGIN READ ONLY;')); assert(sql.includes('ORDER BY id LIMIT 10'));
+        for (const [table, key] of [['projects','projects'],['users','users'],['issues','issues'],['merge_requests','mergeRequests'],['container_repositories','registries']])
+          if (sql.includes('FROM public.' + table + ' ')) return JSON.stringify(key === 'projects' ? [[1],[2]] : sampled[key]);
+        assert.fail('Unexpected sample query');
+      }
+      return nativeProof(args, {topology});
+    },
+    async get(route) {
+      sampleGets.push(route);
+      if (route === 'projects/1') return {id: 1, path_with_namespace: 'team/full', empty_repo: false};
+      if (route === 'projects/2') return {id: 2, path_with_namespace: 'team/empty', empty_repo: true};
+      assert.equal(route, 'projects/1/repository/commits/HEAD'); return {id: 'a'.repeat(40)};
+    }
+  };
+  const dataProof = await sampler.sample(running.Id, samplePort);
+  assert.equal(dataProof.sha256, require('crypto').createHash('sha256').update(JSON.stringify(sampled)).digest('hex'));
+  assert.equal(dataProof.sampledProjects, 2); assert.equal(sampleQueries, 5); assert.equal(sampleGets.length, 3); assert(sampleClosed);
+  sampleClosed = false;
+  await assert.rejects(() => sampler.sample(running.Id, {...samplePort, get: async () => ({id: 999})}), /data-sample-unavailable/);
+  assert(sampleClosed, 'Failed API evidence must close private DB session');
   const privateInputs=[], privateCommands=[];
   await probe.probe(running.Id,{command(args,timeout,input){privateCommands.push(args);if(input!==undefined)privateInputs.push(input);return nativeProof(args,{topology:tlsTopology});}});
   assert(privateInputs.some(value=>value.includes('sslmode=verify-full')&&value.includes('user=remote_user')&&value.includes('sslrootcert=/private/root.crt')&&value.includes('sslkey=/private/client.key')));
