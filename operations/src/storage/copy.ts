@@ -15,7 +15,7 @@ export const nativeCopyRuntime: CopyRuntime = {
   process: nativeProcess,
   monotonicSeconds: () => Math.floor(Number(fs.readFileSync('/proc/uptime','utf8').split(' ')[0])),
   wait: milliseconds => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,milliseconds),
-  log: message => console.log(message),
+  log: message => console.error(message),
 };
 export function copyPaths(environment: NodeJS.ProcessEnv = process.env): CopyPaths {
   return {seed:environment.SEED_ROOT || '/seed',srv:environment.SERVICE_DATA_DIR || '/srv',
@@ -89,12 +89,13 @@ export function harvest(paths: CopyPaths=copyPaths(),runtime: CopyRuntime=native
       const response=run(['exec','--env','SVWAIT=90',gitlab,'/bin/sh','-ec',quiesceServices,'sh',String(quiesceDeadline)],budget*1000);
       const witness=/^harvest-quiesce-exit:(0|[1-9][0-9]{0,2})$/.exec(response);
       requireValue(witness && Number(witness[1])<=255,'gitlab-quiesce-unconfirmed');
-      quiesced=true;requireValue(witness[1]==='0','gitlab-quiesce-failed');
+      quiesced=true;if(witness[1]!=='0')throw Object.assign(new StorageError('gitlab-quiesce-failed'),{exitCode:Number(witness[1])});
       phase='gitlab-services-down';stop(['exec',gitlab,'/bin/sh','-ec',servicesDown]);
       phase='gitlab-stop';const remaining=deadline-runtime.monotonicSeconds()-3;
       requireValue(remaining>0,'gitlab-stop-deadline');stop(['stop','--time',String(remaining),gitlab]);
     }
     phase='gitlab-stopped-check';const terminal=state(stop(['inspect','--format','{{.State.Running}} {{.State.ExitCode}} {{.State.OOMKilled}}',gitlab]));
+    runtime.log(`Harvest GitLab state: running=${terminal.running} exitCode=${terminal.exitCode} oomKilled=${terminal.oomKilled}.`);
     requireValue(!terminal.running,'gitlab-still-running');phase='gitlab-clean-exit';
     requireValue(terminal.exitCode===0&&!terminal.oomKilled,'gitlab-unclean-exit');
     phase='stage-create';stage=fs.mkdtempSync(path.join(seed,'.harvest-'));
@@ -104,7 +105,7 @@ export function harvest(paths: CopyPaths=copyPaths(),runtime: CopyRuntime=native
     phase='certbot-copy';copy(runtime,certbot,path.join(stage,'letsencrypt'),'.system-bootstrapper-certificate-lock');
     phase='manifest-create';manifest.create(stage);
     phase='snapshot-publish';manifest.publish(seed,stage);stage='';
-  } catch(error) {failure=error;uncertain=error instanceof ProcessFailure && error.uncertain;runtime.log('Harvest phase failed: '+phase+'.');}
+  } catch(error) {failure=error;if(phase==='gitlab-stopped-check')runtime.log('Harvest GitLab state: unavailable.');uncertain=error instanceof ProcessFailure && error.uncertain;runtime.log('Harvest phase failed: '+phase+'.');}
   finally {
     // A stopped Docker client is not a witness that its remote command completed.
     if(touched&&!quiesced)while(runtime.monotonicSeconds()<=quiesceDeadline+2)runtime.wait(1000);
@@ -113,7 +114,7 @@ export function harvest(paths: CopyPaths=copyPaths(),runtime: CopyRuntime=native
         const running=run(['inspect','--format','{{.State.Running}}',gitlab],4000);
         if(running==='false')run(['start',gitlab],14000);
         else {requireValue(running==='true','gitlab-state-unavailable');if(touched)run(['exec',gitlab,'timeout','-k','1','10','/bin/sh','-ec',servicesUp],14000);}
-      } catch(error) {uncertain ||= error instanceof ProcessFailure && error.uncertain;failure=new StorageError('gitlab-restart-failed',uncertain);}
+      } catch(error) {uncertain ||= error instanceof ProcessFailure && error.uncertain;runtime.log('GitLab restart failed after Harvest.');const primary=failure;failure=Object.assign(new StorageError('gitlab-restart-failed',uncertain),{exitCode:primary instanceof ProcessFailure?primary.status:primary instanceof Error&&'exitCode' in primary?primary.exitCode:1});}
     }
     // In-flight rsync may still own files on a killed worker. Do not erase its stage or barriers.
     if(!uncertain) {

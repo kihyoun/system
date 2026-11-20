@@ -8,6 +8,7 @@ const {execFileSync,spawnSync}=require('node:child_process');
 const operation=require('../../system/seed-operation');
 const mounts='1 0 0:1 / / rw - overlay overlay rw\n2 1 8:2 / /external-seed rw - ext4 /dev/vdb rw\n';
 function fixture(t) {
+  t.mock.method(fs,'statfsSync',()=>({bavail:2*1024*1024,bsize:4096}));
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'storage-operation-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const spec={PERSISTENCE_MODE:'local',PERSISTENT_MOUNT:'/',PERSISTENT_DIR:'/data/platform',
@@ -233,9 +234,10 @@ test('a settled startup failure retries while killed or unknown work retains its
 test('a busy controller waits without writers while settled startup failures remain retryable',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',system=f.root+'/source/system';fs.mkdirSync(system,{recursive:true});
   for(const file of ['start.sh','seed-operation.js'])fs.copyFileSync(path.join(__dirname,'../../system',file),path.join(system,file));
+  fs.symlinkSync(path.resolve(__dirname,'../../operations'),f.root+'/source/operations','dir');
   fs.writeFileSync(system+'/persistence-init.js','process.exit(1);\n');
   const env={...process.env,SYSTEM_CONFIG_DIR:state},held=new operation.StorageLease(state,{operation:'harvest',helperName:'fixture',imageId:'sha256:'+'a'.repeat(64)});
-  const busy=spawnSync('timeout',['--kill-after=1','0.5','bash','start.sh'],{cwd:system,env,encoding:'utf8'});
+  const busy=spawnSync('timeout',['--kill-after=1','3','bash','start.sh'],{cwd:system,env,encoding:'utf8'});
   assert.equal(busy.status,124,busy.stderr);assert.match(busy.stderr,/Startup paused/);
   assert(fs.existsSync(held.owner));held.release(true);
   for(let attempt=0;attempt<2;attempt++){

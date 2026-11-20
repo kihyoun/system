@@ -92,11 +92,20 @@ if os.environ.get('FAIL_COPY') and os.environ['FAIL_COPY'] in sys.argv[-1]: sys.
 os.execv(os.environ['REAL_RSYNC'], ['rsync']+sys.argv[1:])
 '''
 
-NODE = '''#!/usr/bin/env python3
-import os,sys
-if len(sys.argv)>2 and sys.argv[1].endswith('seed-manifest.js') and sys.argv[2]==os.environ.get('FAIL_MANIFEST'):
- print('private injected manifest failure',file=sys.stderr);sys.exit(19)
-os.execv(os.environ['REAL_NODE'], ['node']+sys.argv[1:])
+NODE = r'''#!/usr/bin/env python3
+import os,sys,json
+if len(sys.argv)>1 and sys.argv[1].endswith('copy-entry.js'):
+ entry=sys.argv[1]
+ program="""const path=require('node:path'),fs=require('node:fs');
+ const root=path.dirname(process.argv[1]),copy=require(root+'/copy'),manifest=require(root+'/manifest');
+ if(process.env.FAIL_MANIFEST)manifest[process.env.FAIL_MANIFEST]=()=>{throw Object.assign(Error('fixture-manifest-failed'),{exitCode:19});};
+ if(process.env.TEST_MONOTONIC_FILE){
+  copy.nativeCopyRuntime.monotonicSeconds=()=>Math.floor(Number(fs.readFileSync(process.env.TEST_MONOTONIC_FILE,'utf8').split(' ')[0]));
+  copy.quiesceServices=copy.quiesceServices.replace('/proc/uptime',process.env.TEST_MONOTONIC_FILE);
+ }
+ require(process.argv[1]);"""
+ os.execv(os.environ['REAL_NODE'],['node','-e',program,entry]+sys.argv[2:])
+os.execv(os.environ['REAL_NODE'],['node']+sys.argv[1:])
 '''
 
 class RecoveryContract(unittest.TestCase):
@@ -267,7 +276,7 @@ class RecoveryContract(unittest.TestCase):
         # Rebind only the kernel clock input. Execute the actual script with its
         # full production deadline arithmetic, response validation and cleanup.
         program=self.root/'harvest-clock-fixture.sh'
-        program.write_text((REPOSITORY/'system/harvest.sh').read_text().replace('/proc/uptime',str(clock)))
+        program=REPOSITORY/'system/harvest.sh'
         advanced=self.root/'clock-advanced'
         stop=threading.Event()
         def advance():

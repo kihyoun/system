@@ -21,7 +21,7 @@ export async function main(args=process.argv.slice(2),environment=process.env): 
     else if(action==='sync-status')console.log(JSON.stringify(result));
   } finally {await application.close();}
 }
-if(require.main===module)main().catch((error: unknown)=>{
+export function reportFailure(error: unknown) {
   const message=error instanceof Error?error.message:'';
   const code=/^[a-z][a-z0-9-]+$/.test(message)?message:'seed-operation-failed';
   try {
@@ -36,4 +36,5 @@ if(require.main===module)main().catch((error: unknown)=>{
   } catch { /* Preserve controlled diagnostics when the status artifact is unavailable. */ }
   console.error('Seed operation failed: '+code+'.');
   process.exitCode=process.argv[2]==='startup-begin'&&code==='storage-operation-busy'?75:1;
-});
+}
+if(require.main===module)main().catch(reportFailure);

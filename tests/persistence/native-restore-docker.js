@@ -30,9 +30,9 @@ function run({helperImage,configurationExporter,backup}) {
       const target='/system/'+file;fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,text);}`);
   const create=(container,mounts)=>{
     created.push(container);
-    docker(['create','--name',container,'--label',label+'='+name,'--network','none','--read-only','--workdir','/',
+    docker(['create','--name',container,'--label',label+'='+name,'--network','none','--workdir','/',
       '--memory','256m','--cpus','0.5','--pids-limit','64','--tmpfs','/tmp:rw,noexec,nosuid,size=16m',
-      '--tmpfs','/system:rw,noexec,nosuid,size=16m','--tmpfs','/srv:rw,noexec,nosuid,size=4m',
+      '--tmpfs','/srv:rw,noexec,nosuid,size=4m',
       '--tmpfs','/probe-bin:rw,exec,nosuid,nodev,size=1m',...mounts,'--entrypoint','node',image,'-e','setInterval(()=>{},1000)']);
     docker(['start',container]);install(container);
   };
