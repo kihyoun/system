@@ -25,6 +25,7 @@ RUN cd operations && npm ci --ignore-scripts --no-audit --no-fund
 COPY operations/src ./operations/src
 COPY operations/tests ./operations/tests
 COPY operations/tsconfig.json ./operations/tsconfig.json
+COPY operations/README.md ./operations/README.md
 COPY operations/scripts ./operations/scripts
 COPY LICENSE .prettierrc .prettierignore ./
 COPY project-bootstrap ./project-bootstrap
