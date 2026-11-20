@@ -54,6 +54,15 @@ The public package contains compiled operation code and its required validation
 assets. It has no install-time scripts. Builds and publication run in GitLab;
 GitHub provides the public source and accepted release documentation.
 
+`system-bootstrapper upgrade` invokes the shared official-release upgrade
+coordinator. Its `--operation plan|apply|status|recover` options use the same
+reviewed plan, matching backup and retained checkpoint as the repository entry.
+`system-bootstrapper controller-update` exposes the shared controller/Wizard
+update and rollback operation for explicit candidate evidence. Neither command
+starts an HTTP server or grants permission to deploy. Keep the version-specific
+prerequisites and accepted artifacts described in the release and controller
+guides; a controller rollback does not reverse a GitLab database migration.
+
 To abort an interrupted promotion, use the retained checkpoint and the same
 reviewed checkout and persistence configuration:
 
