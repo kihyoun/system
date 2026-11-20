@@ -111,6 +111,54 @@ export class GitlabLockExecService {
       !command.includes('/opt/gitlab/embedded/bin/psql')
     )
       throw Error('gitlab-lock-native-command-invalid');
+    return this.createExecution(containerId, user, command);
+  }
+  /** Fixed runner credential requests only; never exposes a general command executor. */
+  async createRunnerRequest(
+    containerId: string,
+    user: string,
+    nonce: string,
+    route: string,
+  ): Promise<{ id: string; digest: string }> {
+    identity(containerId);
+    if (
+      !/^(?:0|[1-9][0-9]*):(?:0|[1-9][0-9]*)$/.test(user) ||
+      !/^[a-f0-9]{48}$/.test(nonce) ||
+      !/^(?:user\/runners|runners\/[1-9][0-9]*\/reset_authentication_token)$/.test(route)
+    )
+      throw Error('gitlab-runner-request-invalid');
+    const directory = '/etc/gitlab/system-bootstrapper-auth/runner-request-' + nonce;
+    return this.createExecution(containerId, user, [
+      'env',
+      '-i',
+      'PATH=/opt/gitlab/embedded/bin:/usr/bin:/bin',
+      'curl',
+      '-q',
+      '--proxy',
+      '',
+      '--silent',
+      '--max-time',
+      '60',
+      '--max-filesize',
+      '65536',
+      '--proto',
+      '=http',
+      '--request',
+      'POST',
+      '--config',
+      directory + '/request',
+      '--output',
+      directory + '/response',
+      '--dump-header',
+      directory + '/headers',
+      'http://127.0.0.1/api/v4/' + route,
+    ]);
+  }
+  private async createExecution(
+    containerId: string,
+    user: string,
+    command: string[],
+  ): Promise<{ id: string; digest: string }> {
     const response = await this.transport.request('POST', `/containers/${containerId}/exec`, {
       AttachStdin: false,
       AttachStdout: false,
