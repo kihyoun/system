@@ -1,3 +1,4 @@
+import { UpgradeLifecycleService } from './upgrade-lifecycle.service';
 import fs from 'node:fs';
 import { UpgradePrerequisiteService } from './upgrade-prerequisite.service';
 import { HostReleaseAuthorityService } from './release-authority.service';
@@ -36,6 +37,15 @@ export function compatibility(input: {
   const args = input.arguments,
     host = new HostInstallService(undefined, undefined, undefined, undefined, input.deadline);
   switch (input.operation) {
+    case 'approvedUpgradePlan':
+      return new UpgradeLifecycleService().approvedPlan(String(args[0]), args[1]);
+    case 'upgradePhase':
+      return new UpgradeLifecycleService().transition(
+        String(args[0]),
+        args[1],
+        args[2],
+        args[3] ?? undefined,
+      );
     case 'gitlabUpgradePrerequisite':
       return new UpgradePrerequisiteService(host).verify(
         String(args[0]),

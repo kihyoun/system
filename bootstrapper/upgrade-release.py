@@ -309,12 +309,7 @@ def apply(args, config):
 
 
 def apply_locked(args, config, target):
-    raw_plan = successor.private_input(target / 'plan.json')
-    require(args.confirm_plan == digest(raw_plan), 'explicit-matching-plan-SHA256-confirmation-required')
-    value = json.loads(raw_plan)
-    require(value.get('format') == 'system-public-upgrade-plan-v1', 'invalid-public-upgrade-plan')
-    require(len(value['transitions']) == 1, 'apply-required-intermediate-release-first-see-plan')
-    require(not (target / 'operation.json').exists(), 'upgrade-already-started-use-status-or-recover')
+    value = recovery.host_operation('approvedUpgradePlan', target, args.confirm_plan)
     raw, proof, authority, security = public_inputs(value['repository'], value['targetVersion'], config)
     require(digest(raw) == value['targetSha256'] and digest(proof) == value['provenanceSha256'], 'public-release-changed-after-plan')
     if value.get('gitlabPrerequisite'):
@@ -332,8 +327,7 @@ def apply_locked(args, config, target):
     host(authority.metadata)
     backup_target(config, value['configurationBackup'])
     invoke(config, authority, security, value['checkpoint'], target / 'target.json', args.token_file, args.timeout, True)
-    state = {'format': 'system-public-upgrade-operation-v1', 'phase': 'retaining-previous-images', 'startedAt': runtime.now()}
-    successor.atomic_json(target / 'operation.json', state)
+    state = recovery.host_operation('upgradePhase', target, 'retaining-previous-images', {})
     try:
         # Independent recovery payloads are durable before the cold matching
         # backup takes GitLab offline. Reuse the native recovery exporter.
@@ -344,11 +338,9 @@ def apply_locked(args, config, target):
             image = previous['images'][role]
             retained[role] = archives.save_archive(target, image['reference'], image['imageId'], source)
         successor.atomic_json(target / 'previous-images.json', retained)
-        state['phase'] = 'backup-starting'
-        successor.atomic_json(target / 'operation.json', state)
+        state = recovery.host_operation('upgradePhase', target, 'backup-starting', {}, state['phase'])
         matching_backup(config, target, value, args.backup_timeout)
-        state['phase'] = 'backup-services-resuming'
-        successor.atomic_json(target / 'operation.json', state)
+        state = recovery.host_operation('upgradePhase', target, 'backup-services-resuming', {}, state['phase'])
         runtime.assert_baseline(config, baseline)
         # Harvest restarts GitLab before releasing its leases, but Docker health
         # and application readiness can still be catching up. Use the native
@@ -356,17 +348,15 @@ def apply_locked(args, config, target):
         receipt = updater.wait_ready(config, baseline, args.token_file, None, recovery.budget(args.timeout))
         successor.atomic_json(target / 'post-backup-verification.json', receipt)
         require(data_sample() == value['dataSample'], 'service-data-sample-changed-during-backup')
-        state['phase'] = 'paired-update-starting'
-        successor.atomic_json(target / 'operation.json', state)
+        state = recovery.host_operation('upgradePhase', target, 'paired-update-starting', {}, state['phase'])
         invoke(config, authority, security, value['checkpoint'], target / 'target.json', args.token_file, args.timeout, False, baseline)
         require(data_sample() == value['dataSample'], 'service-data-sample-changed-after-update-inspect-before-acceptance')
-        state.update(phase='completed', completedAt=runtime.now(), version=value['targetVersion'],
-            sourceRevision=authority.release['sourceRevision'], databaseMigration=False,
-            dataSampleVerified=True, configurationPreserved=True, runnerRegistryOperationalChecks=True)
-        successor.atomic_json(target / 'operation.json', state)
+        state = recovery.host_operation('upgradePhase', target, 'completed', {
+            'version': value['targetVersion'], 'sourceRevision': authority.release['sourceRevision'],
+            'dataSampleVerified': True, 'configurationPreserved': True,
+            'runnerRegistryOperationalChecks': True}, state['phase'])
     except BaseException:
-        state['phase'] = 'needs-inspection'
-        successor.atomic_json(target / 'operation.json', state)
+        state = recovery.host_operation('upgradePhase', target, 'needs-inspection', {}, state['phase'])
         raise
     return state
 
@@ -414,9 +404,10 @@ def main():
                 retained = json.loads(successor.private_input(target / 'previous-images.json'))
                 updater.rollback(config, checkpoint, args.token_file, timeout=args.timeout,
                                  retained_images=(target, retained))
-                state.update(phase='rolled-back', databaseRewound=False, recoveryImageSelectors=True,
-                    restoredVersion=value['installedVersion'], originalConfiguration=str(checkpoint / 'main-before.env'), completedAt=runtime.now())
-                successor.atomic_json(state_file, state)
+                state = recovery.host_operation('upgradePhase', target, 'rolled-back', {
+                    'databaseRewound': False, 'recoveryImageSelectors': True,
+                    'restoredVersion': value['installedVersion'],
+                    'originalConfiguration': str(checkpoint / 'main-before.env')}, state['phase'])
         backup_operation = json.loads(successor.private_input(target / 'backup-operation.json')) if (target / 'backup-operation.json').exists() else None
         if backup_operation:
             backup_operation['status'] = json.loads(successor.private_input(config['_main'].parent / '.coordinated-backups' / backup_operation['id'] / 'status.json'))

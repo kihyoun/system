@@ -1,3 +1,4 @@
+import { UpgradeLifecycleService } from './upgrade-lifecycle.service';
 import { NativeHostAttachedProcess, type HostAttachedProcess } from './attached-process';
 import type { LifecycleEvidencePort } from '../release/types';
 import { HostReleaseAuthorityService } from './release-authority.service';
@@ -39,6 +40,7 @@ export class HostModule {
     return {
       module: HostModule,
       providers: [
+        { provide: UpgradeLifecycleService, useFactory: () => new UpgradeLifecycleService() },
         {
           provide: HOST_ATTACHED_PROCESS,
           useValue: options.attachedProcess ?? new NativeHostAttachedProcess(),
@@ -85,6 +87,7 @@ export class HostModule {
         })),
       ],
       exports: [
+        UpgradeLifecycleService,
         HostStorageService,
         HostReleaseAuthorityService,
         HostInstallService,
