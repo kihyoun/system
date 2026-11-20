@@ -14,10 +14,13 @@ function prepareWizardBrowser(root) {
   root = path.resolve(root);
   const git = (...args) => execFileSync('git', ['-c', 'safe.directory='+root, '-C', root, ...args], {maxBuffer:32*1024*1024});
   const revision = git('rev-parse', 'HEAD').toString().trim();
-  const pin = /^160000 commit ([a-f0-9]{40})\twizard$/.exec(git('ls-tree', 'HEAD', 'wizard').toString().trim());
+  const entry = git('ls-tree', 'HEAD', 'wizard').toString().trim();
+  const pin = /^160000 commit ([a-f0-9]{40})\twizard$/.exec(entry);
+  const tree = /^040000 tree ([a-f0-9]{40})\twizard$/.exec(entry);
   const snapshot = validate(JSON.parse(fs.readFileSync(path.join(root, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8')));
-  if (!pin || pin[1] !== snapshot.sourceRevision) throw Error('Browser snapshot must match the committed Wizard gitlink.');
+  if (snapshot.version === 2 ? !tree || tree[1] !== snapshot.wizardSourceTree || revision !== snapshot.sourceRevision : !pin || pin[1] !== snapshot.sourceRevision) throw Error('Browser snapshot must match the committed Wizard source layout.');
   verifyCommitted(root, snapshot);
+  const provenance = snapshot.version === 2 ? {sourceLayout: snapshot.sourceLayout, sourceRevision: snapshot.sourceRevision, wizardSourceTree: snapshot.wizardSourceTree} : {wizardRevision: snapshot.sourceRevision};
   const committed = systemInputs.map(name => {
     const entry = git('ls-tree', 'HEAD', name).toString().trim();
     if (!/^100(?:644|755) blob [a-f0-9]{40}\t/.test(entry)) throw Error('Browser build input must be a committed regular file: '+name);
@@ -47,9 +50,9 @@ function prepareWizardBrowser(root) {
     const checksum = crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
     fs.writeFileSync(path.join(temporary, 'revision'), revision+'\n');
     fs.writeFileSync(path.join(temporary, 'sha256'), checksum+'\n');
-    fs.writeFileSync(path.join(temporary, 'manifest.json'), JSON.stringify({revision, wizardRevision:snapshot.sourceRevision, snapshotManifest:snapshot.manifestHash, checksum, files}, null, 2)+'\n');
+    fs.writeFileSync(path.join(temporary, 'manifest.json'), JSON.stringify({revision, ...provenance, snapshotManifest:snapshot.manifestHash, checksum, files}, null, 2)+'\n');
     for (const name of ['context.tar', 'revision', 'sha256', 'manifest.json']) fs.renameSync(path.join(temporary, name), path.join(output, name));
-    return {revision, wizardRevision:snapshot.sourceRevision, checksum, files};
+    return {revision, ...provenance, checksum, files};
   } finally { fs.rmSync(temporary, {recursive:true, force:true}); }
 }
 module.exports = {prepareWizardBrowser};

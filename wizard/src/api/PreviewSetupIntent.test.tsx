@@ -23,3 +23,14 @@ test('legacy backups remain usable and untrusted credentials or live receipts ca
   for (const patch of [{token: 'secret'}, {projectId: 42}, {pipeline: {id: 100}}, {version: 99}]) expect(previewSetupIntent({...desired(), ...patch})).toBeNull();
   expect(previewSetupIntent({...desired(), wizard: {...desired().wizard, origin: 'https://user:secret@example.test/fork.git'}})).toBeNull();
 });
+
+test('historical Review intent remains inert and never becomes a Beta host', () => {
+  const legacy = {...desired(), version: 1 as const,
+    review: {enabled: true, host: 'legacy-review.example.test', ssl: '/ssl/review/cert', sslKey: '/ssl/review/key'},
+    beta: {enabled: false, host: '', ssl: '', sslKey: ''}};
+  const restored = previewSetupIntent(legacy);
+  expect(restored).toEqual(legacy);
+  expect(restored?.beta.host).toBe('');
+  expect(newPreviewSetupIntent().version).toBe(2);
+  expect(newPreviewSetupIntent().review.enabled).toBe(false);
+});

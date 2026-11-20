@@ -177,7 +177,7 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   const began = Date.now();
   await rejects(() => cancelled.health(state.record(request(), setting.host, digest)), /cancelled/);
   assert(Date.now() - began < 500, 'health swallowed cancellation and slept');
-  const uncertain = new Runtime(request()); let acquired = false, released = false;
+  const uncertain = new Runtime(request(10, 20, 1, 'stop')); let acquired = false, released = false;
   uncertain.canonical = async action => {
     if (action === 'lock') { acquired = true; throw new Error('lost lock response'); }
     if (action === 'unlock') { acquired = false; released = true; return {ok: true}; }
@@ -218,7 +218,8 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
     assert.strictEqual(fixture.events.length, 0, 'stale Stop mutated newer pending resources');
     fixture.request = request(13, 31, 1, 'deploy');
     fixture.readiness = async () => undefined;
-    await rejects(() => fixture.run(), /another job/);
+    assert.throws(() => state.recoveryAllowed(fixture.environment.deployments.review, fixture.request), /another job/);
+    await rejects(() => fixture.run(), /retired/);
     assert.strictEqual(fixture.events.length, 0, 'other-MR deploy mutated pending resources');
   } finally { fixture.destroy(); }
   const proof = new Runtime(request());

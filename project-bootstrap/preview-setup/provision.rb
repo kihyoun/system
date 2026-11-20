@@ -179,18 +179,27 @@ class BootstrapperPreviewSetup
     when 'preview-setup-preflight'
       selected = namespace
       available_runners = runners('runners/all?per_page=100&status=online')
-      raise BootstrapError, 'An online Docker runner with wizard-source-primary access is required.' unless available_runners.any? { |row| ['docker', 'wizard-source-primary'].all? { |tag| row.fetch('tag_list', []).include?(tag) } }
+      tags = @input['sourceLayout'] == 'system-monorepo-v1' ? ['docker'] : ['docker', 'wizard-source-primary']
+      raise BootstrapError, 'An online Docker runner with source access is required.' unless available_runners.any? { |row| tags.all? { |tag| row.fetch('tag_list', []).include?(tag) } }
+      projects = []
       @input.fetch('sources').each do |source|
         project = get('projects/' + URI.encode_www_form_component(selected.fetch('full_path') + '/' + source.fetch('project')), true)
         if source.fetch('mode') == 'import'
           raise BootstrapError, 'The selected import project is occupied. Choose a new project or explicitly select an existing source.' if project && project['description'] != marker
         else
-          raise BootstrapError, 'Select an existing private source with its native CI and merge gates enabled.' unless project && project['visibility'] == 'private' && project['ci_config_path'] == source.fetch('ciPath') && project['only_allow_merge_if_pipeline_succeeds'] == true && project['only_allow_merge_if_all_discussions_are_resolved'] == true
+          raise BootstrapError, 'Select an existing private source with its native CI and merge gates enabled.' unless project && project['visibility'] == 'private' && (project['ci_config_path'] == source.fetch('ciPath') || source.fetch('ciPath') == '.gitlab-ci.yml' && project['ci_config_path'].nil?) && project['only_allow_merge_if_pipeline_succeeds'] == true && project['only_allow_merge_if_all_discussions_are_resolved'] == true
+          if @input['sourceLayout'] == 'system-monorepo-v1'
+            branch = get("projects/#{project.fetch('id')}/repository/branches/" + URI.encode_www_form_component(project.fetch('default_branch')))
+            raise BootstrapError, 'Protect the shared System default branch.' unless branch['protected'] == true && branch.dig('commit', 'id').to_s.match?(/\A[a-f0-9]{40}\z/)
+            tree = get("projects/#{project.fetch('id')}/repository/tree?ref=#{branch.dig('commit', 'id')}&per_page=100")
+            raise BootstrapError, 'The selected System source must contain the regular Wizard tree.' unless tree.any? { |entry| entry['path'] == 'wizard' && entry['type'] == 'tree' && entry['mode'] == '040000' }
+          end
+          projects << {id: project.fetch('id'), path: project.fetch('path_with_namespace'), namespaceId: project.fetch('namespace').fetch('id'), defaultBranch: project.fetch('default_branch'), sourceRevision: branch&.dig('commit', 'id')}
           available = runners("projects/#{project.fetch('id')}/runners?per_page=100")
           raise BootstrapError, 'The selected source project has no online permitted Docker runner.' unless available.any? { |row| row['status'] == 'online' && row['paused'] == false && row.fetch('tag_list', []).include?('docker') }
         end
       end
-      {namespaceId: selected.fetch('id'), runnerReady: true}
+      {namespaceId: selected.fetch('id'), runnerReady: true}.merge(@input['sourceLayout'] == 'system-monorepo-v1' ? {projects: projects} : {})
     when 'preview-setup-project'
       selected = namespace
       source = @input.fetch('source')
@@ -203,7 +212,7 @@ class BootstrapperPreviewSetup
         # New operator forks never inherit an upstream publication opt-in.
         ['GITHUB_BACKUP_ENABLED', 'DOCKERHUB_PUBLISH_ENABLED', 'GITHUB_RELEASE_PUBLISH_ENABLED', 'WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED'].each { |key| variable(project, key, 'false') }
       else
-        raise BootstrapError, 'Existing source identity or native merge gates changed.' unless project && project['visibility'] == 'private' && project['ci_config_path'] == source.fetch('ciPath') && project['only_allow_merge_if_pipeline_succeeds'] == true && project['only_allow_merge_if_all_discussions_are_resolved'] == true
+        raise BootstrapError, 'Existing source identity or native merge gates changed.' unless project && project['visibility'] == 'private' && (project['ci_config_path'] == source.fetch('ciPath') || source.fetch('ciPath') == '.gitlab-ci.yml' && project['ci_config_path'].nil?) && project['only_allow_merge_if_pipeline_succeeds'] == true && project['only_allow_merge_if_all_discussions_are_resolved'] == true
       end
       available = runners("projects/#{project.fetch('id')}/runners?per_page=100")
       required = source.fetch('ciPath') == '.gitlab/primary.yml' ? ['docker', 'wizard-source-primary'] : ['docker']
@@ -239,11 +248,7 @@ class BootstrapperPreviewSetup
       end
       {values: values}
     when 'preview-setup-system'
-      project = get('projects/' + Integer(@input.fetch('projectId')).to_s)
-      raise BootstrapError, 'Selected System source identity changed.' unless project['path_with_namespace'] == @input.fetch('projectPath') && project.dig('namespace', 'id') == Integer(@input.fetch('namespaceId')) && project['only_allow_merge_if_pipeline_succeeds'] == true && project['only_allow_merge_if_all_discussions_are_resolved'] == true
-      variable(project, 'SYSTEM_REVIEW_ENABLED', 'true')
-      variable(project, 'WIZARD_REVIEW_HOST', @input.fetch('reviewHost'))
-      {ready: true}
+      raise BootstrapError, 'System Review setup is retired. Configure optional System Beta.'
     else
       raise BootstrapError, 'Unsupported native preview setup action.'
     end

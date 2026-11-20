@@ -1,164 +1,77 @@
-# Managed Wizard Review and Beta
+# Optional Wizard Beta from the System candidate
 
-The environment workflow extends the managed source/build receipts. Production promotion and rollback remain
-outside this recipe. The existing public source CI and publishing destinations
-are retained.
+System and Wizard share one repository. The optional Wizard Beta uses a fixed
+HTTPS address and the exact Wizard image of an accepted System candidate. It
+starts no extra build or complete platform pipeline. Production promotion is a
+separate, deliberate operation. Ordinary application projects retain Review,
+Beta and Production; an isolated platform test is a disposable verification
+installation, not a permanent Beta platform.
 
-Review uses one exact HTTPS host and a single active merge-request lease.
-The resource identity includes the project and MR IID. A different MR must wait
-until the current Review is stopped; a newer verified pipeline of the same MR
-may replace it. Beta uses a separate exact host and the current default-branch
-head. Deploy and Stop are manual native GitLab jobs for both environments.
-There are no Production jobs or arbitrary image deployment endpoints.
+## Configure and bind
 
-## Configuration and installation
+Import or fork the complete System repository into your private GitLab namespace
+using GitLab's normal repository workflow. Keep the default branch protected,
+required pipeline and discussion gates enabled, and the root CI configuration.
+Configure a permitted Docker runner. In the Wizard choose Configure System Beta,
+select that existing shared source project and an optional exact HTTPS Beta host
+with certificate and key paths under /ssl. No Review host is required. Preflight
+checks the source tree, DNS and certificate; confirmation reserves settings only.
+It does not create projects, start pipelines or modify Production.
 
-The authenticated Wizard environment dialog previews optional settings. Each
-enabled row requires an explicit exact host, domain mode 2 and certificate/key
-paths under /ssl. Wildcard domain modes are unsupported in this recipe. Disabled
-rows may be blank. Settings are not inferred and enabled automatically.
-
-The server validates DNS against the current Production host addresses, exact
-certificate coverage, validity and matching private key. Reserve the hosts
-separately from platform and other project routes. Provision their certificates
-before confirming installation. Existing Production settings and the immutable
-System Cube, including its fixed HTTPS www URL and port 8071, remain unchanged.
-
-A confirmed preview installs versioned managed files and the selected CI through
-one guarded skip-CI commit. It does not start a pipeline or deploy a container.
-Unexpected edits, occupied paths, changed previews and ownership mismatches
-fail closed. Refresh inspects the same operation without creating another
-commit or pipeline. An uncertain commit outcome requires reconciliation before
-retrying. A verified installed operation is ready for the manual CI jobs.
-
-To change settings, stop active environments and reconcile pending work first.
-Preview again and explicitly confirm the change. The update checks the prior
-recipe and exact file identities before replacing managed content. Preserve the
-server-owned receipt across Fetch/Push and controller startup. Earlier build
-evidence remains historical; use environment status for the installed recipe.
-
-## Immutable helper provisioning
-
-The operator must build a clean System image from the tested committed source
-and its matching validated Wizard snapshot. Do not include private configuration,
-credentials, Git metadata or host runtime output. Provision that image on the
-existing runner Docker daemon, retain it while the recipe is installed, and
-configure SYSTEM_WIZARD_ENVIRONMENT_IMAGE with its exact sha256 image ID.
-SYSTEM_WIZARD_CANONICAL_CONTROLLER must identify system_bootstrapper_1.
-The UI cannot choose a helper image or canonical controller.
-
-From the matching System checkout with initialized submodules, prepare the pinned
-source package before building the complete helper image:
+After the System candidate has passed all required checks, use the repository
+operator tool with a private JSON input file. The input supplies operation,
+projectId, projectPath, namespaceId, defaultBranch, pipelineId, candidateJobId,
+sourceCommit, wizardSourceTree, helperImage, wizardImageId and wizardImageRef.
+Use exact values from the accepted candidate release metadata and the configured
+reservation. The source commit identifies the shared repository; the Wizard tree
+identifies its committed subdirectory. Retain the helper image for Stop.
 
 ```sh
-bash project-bootstrap/wizard-source/prepare.sh
-docker build -f system/Dockerfile -t system-wizard-helper:local .
-docker image inspect --format '{{.Id}}' system-wizard-helper:local
+node project-bootstrap/system-beta/bind.js plan /state/beta-input.json
+node project-bootstrap/system-beta/bind.js apply /state/beta-input.json PLAN_HASH
 ```
 
-Record that returned image ID in the private controller configuration and make
-that exact image available on the runner's Docker daemon. The standalone runtime
-base is not the complete helper. See [source packaging](../../docs/WIZARD_SOURCE.md)
-for the pinned snapshot contract.
+Inspect the plan before applying its exact hash. Set the native project variables
+SYSTEM_BETA_OPERATION and WIZARD_BETA_HOST to the reservation's operation and
+exact host. Deploy and Stop are explicit manual System pipeline jobs. They reuse
+the existing release artifact and immutable images; verification checks project,
+job, candidate pipeline, shared source tree, image identities, storage/upgrade
+acceptance and browser cleanup before routing. No arbitrary image endpoint is
+provided. Stop remains available when build artifacts expire.
 
-CI uses ordinary job-scoped registry credentials to preload its candidate
-digest. No Sync/admin credential enters the helper. The helper uses the existing
-trusted Docker runner model and the original controller/GitLab containers for
-canonical receipt and job checks. This is not isolation for hostile repository
-code. The helper is bounded and uses network none, a read-only root filesystem,
-the existing Docker socket, templates volume and read-only SSL volume; it does
-not receive a new configuration volume.
+## Existing installations and recovery
 
-The exact running job, pipeline, source head, MR identity, selected CI and
-successful required build/browser artifacts are checked server-side before
-deployment. Temporary verification access remains inside GitLab and is revoked.
-The helper image must be reprovisioned explicitly when upgrading this recipe;
-do not delete it with unrelated image cleanup.
+Old configuration JSON/ZIP files remain readable and inert. Opening or fetching
+a backup never creates projects or deployments. Old desired preview settings
+remain version 1 until the user explicitly selects Configure System Beta. Review
+values are not repurposed as Beta hosts. Existing repository identities, managed
+source receipts, user edits and import history remain retained.
 
-## Ownership and recovery
+New System Review deployment and binding are retired. Stop an old active Review
+with its retained original job/binding using the historical launcher in stop
+mode, then use the owned stopped-route cleanup. Inspect pending and retired
+resources before migration. Cleanup validates exact operation, project,
+generation and labels; it cannot remove Production or another project's resources.
+Do not delete bindings, receipts, generation floors or tombstones to bypass a
+conflict. Beta setup refuses active, pending, retired or uncleared stopped routes.
 
-Deploy/Stop serialize through a shared canonical-controller lock and guarded
-receipt updates. Candidate containers, networks and route fragments have exact
-operation/project/MR/generation ownership. A candidate becomes healthy before
-its HTTPS route changes. Failed nginx validation, reload or receipt writes
-restore the previous route. Stop retains an owned HTTP 410 / HTTPS handshake-rejection tombstone so the
-stopped host cannot fall through to a platform service, even without a usable
-candidate certificate. Cleanup removes only the owned generation; stale
-jobs cannot replace or stop a newer deployment.
+```sh
+node project-bootstrap/system-review/run.js stop
+node project-bootstrap/wizard-environments/cleanup-stopped.js OPERATION
+```
 
-A held lock after abrupt host/process loss requires operator inspection of its
-owner and exact helper container before targeted recovery. Do not delete a lock,
-receipt or route merely because a retry failed. Pending cutovers and retired
-resources remain recorded for reconciliation. Never use global Docker prune or
-restart the primary platform as cleanup.
+The Stop launcher requires the original job identity and retained helper image.
+Run it from the original authorized job; do not fabricate CI evidence. If its job
+cannot run, recover with the retained historical release tools and owned receipt.
+Bindings and histories belong to persistent controller state and must accompany
+the matching Harvest/Seed recovery. Configuration backup remains separate from
+service-data backup. Historical releases without a source layout field keep their
+separate Wizard gitlink identity; never reinterpret that commit as a shared tree.
 
-Configuration stays separate from Harvest/Seed. Environment installation does
-not select the primary development platform or promote the running Production
-Wizard. Production uses the separate [operator promotion workflow](../wizard-production/README.md).
+## Verification and capacity
 
-## Certificates without proxy downtime
-
-Use an operator-provisioned ACME webroot shared at /ssl/acme-http01. The supplied
-HTTP templates allow only /.well-known/acme-challenge/ before normal HTTPS
-redirects. A default HTTP challenge server handles new candidate hosts before
-their optional HTTPS route is installed. Do not stop the shared proxy for renewal.
-
-For each certificate lineage, configure Certbot webroot authentication and a
-deploy hook that atomically copies the full chain and private key into the
-configured /ssl/live/<lineage>/ paths, validates nginx and gracefully reloads it.
-Keep private keys private. Remove obsolete standalone stop/start renewal hooks
-only after backing them up and validating the webroot renewal with a dry run.
-Issuance and renewal remain operator tasks, not CI deployment privileges.
-
-The isolated manifest covers environment API/workflow, deterministic recipes,
-guarded GitLab upgrades, helper ownership/recovery and proxy preservation.
-Also verify real GitLab manual-job execution, HTTPS/browser behavior and
-preservation of Production on a disposable platform. Fixture success alone
-does not prove those integration gates.
-
-## One source-primary repository
-
-An explicitly adopted source-primary Wizard project keeps its application source,
-ordinary reviews and native build/environment jobs in one repository. It selects
-`.gitlab/primary.yml`; it does not require a second application repository or
-instance-specific committed marker files. The server-owned adoption receipt
-binds the exact project ID, namespace, default branch and SHA-256 manifest of the
-approved generic CI and build scripts. Jobs independently verify those files at
-their actual pipeline commit. Editing the CI producers requires another reviewed
-adoption; application changes follow the normal merge-request workflow.
-
-The generic job launcher is `source-primary.sh`, installed in the application as
-`.gitlab/delivery/environment.sh`. It accepts `deploy review`, `stop review`,
-`deploy beta` or `stop beta`. Configure the following project CI variables with
-the ordinary environment scope `*`, raw values, and no masking or protection:
-
-| Variable | Operator-supplied value |
-| --- | --- |
-| `SYSTEM_WIZARD_ENVIRONMENT_IMAGE` | Exact preprovisioned clean System helper image ID, `sha256:…` |
-| `SYSTEM_WIZARD_ENVIRONMENT_OPERATION` | New server-owned 48-character hexadecimal reservation identity |
-| `WIZARD_REVIEW_HOST` | Exact configured Review HTTPS host, or empty when disabled |
-| `WIZARD_BETA_HOST` | Exact configured Beta HTTPS host, or empty when disabled |
-
-`WIZARD_DELIVERY_ENABLED=true` opts this instance into its native image build and
-environment jobs. These configuration values are not credentials. They must be
-available to same-project merge-request jobs; the canonical helper still rejects
-jobs from other projects, forks, superseded reservations or unverified pipelines.
-Production remains a separate deliberate promotion.
-
-Before adopting an existing managed project, stop both optional environments and
-use the existing owned stopped-route cleanup. Inspect its plan and confirm that
-both old route fragments and their owned resources are absent. Adoption refuses
-active, pending or retired generations. Keep the complete old deployment snapshot
-in immutable history, and carry its generation floors into the new reservation.
-Do not reset floors or rewrite old project tombstones as new project records.
-An unexpected remaining route is rejected by the new helper.
-
-The authenticated environment dialog continues to validate DNS and certificates
-and update settings through an explicit preview. For a source-primary project it
-updates only the four owned CI variables, without a source commit, new pipeline
-or Production restart. Exact prior values and variable metadata are checked under
-the existing lock. Interrupted partial updates retain the same operation; status
-inspects them without writes, and explicit confirmation reconciles only known old
-or target values. Unexpected variable changes require operator reconciliation.
-The existing single Review lease, generation guards, bounded helper cleanup,
-rollback and stopped-host behavior apply unchanged.
+Component and candidate gates remain required. Beta binding, launcher and verifier
+fixtures cover foreign ownership, stale jobs, image/source mismatches, credential
+cleanup and expiring-artifact Stop. Compare durations and resource use from
+comparable accepted candidate runs. Removing optional Review jobs does not by
+itself shorten the isolated full platform test; no measured saving is implied.

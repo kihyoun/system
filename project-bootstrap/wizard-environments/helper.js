@@ -34,7 +34,7 @@ function parse(args) {
   }
   const system = values.delivery === 'system';
   if (values.controller !== 'system_bootstrapper_1' || Object.keys(values).length !== (system ? 10 : 9) ||
-      (values.delivery !== undefined && !system) || (system && values.kind !== 'review'))
+      (values.delivery !== undefined && !system) || (system && values.kind !== 'beta' && !(values.kind === 'review' && values.action === 'stop')))
     throw new Error('Original controller is required.');
   return state.validRequest({action: values.action, kind: values.kind, projectId: Number(values.project),
     pipelineId: Number(values.pipeline), jobId: Number(values.job), sourceCommit: values.sha,
@@ -266,7 +266,7 @@ class Runtime {
     const registry = new URL(this.context.publicSettings.GITLAB_REGISTRY_URL);
     if (Number(this.context.publicSettings.GITLAB_REGISTRY_DOMAIN_MODE || 0) < 2) registry.port = '5050';
     if (this.request.delivery === 'system') {
-      const binding = require('../system-review/binding').validate(this.context.systemReviewBinding, this.context, this.request);
+      const binding = require(this.request.kind === 'beta' ? '../system-beta/binding' : '../system-review/binding').validate(this.request.kind === 'beta' ? this.context.systemBetaBinding : this.context.systemReviewBinding, this.context, this.request);
       const result = await this.verifyInput({binding, request: this.request, repository: this.context.receipt.repository,
         environments: this.environment, registryHost: registry.host,
         securityRelease: require('../../gitlab/security-release.json')});
@@ -276,7 +276,7 @@ class Runtime {
         const labels = item => item?.Config?.Labels || {};
         if (helper?.Id !== binding.helperImage || wizard?.Id !== binding.wizardImageId ||
             labels(helper)['org.opencontainers.image.revision'] !== binding.sourceCommit ||
-            labels(wizard)['org.opencontainers.image.revision'] !== binding.wizardRevision ||
+            labels(wizard)['org.opencontainers.image.revision'] !== (this.request.kind === 'beta' ? binding.sourceCommit : binding.wizardRevision) ||
             labels(wizard)['org.system-bootstrapper.source-revision'] !== binding.sourceCommit ||
             images.some(item => labels(item)['org.system-bootstrapper.test-job'] !== String(binding.candidateJobId)))
           throw new Error('System review images do not match the accepted candidate/source/job.');
@@ -309,8 +309,8 @@ class Runtime {
   }
   async verifyInput(input) {
     const system = this.request.delivery === 'system';
-    const code = system ? fs.readFileSync(path.join(__dirname, '../system-review/verify.rb'), 'utf8') : verifier;
-    const script = (system ? 'BOOTSTRAPPER_SYSTEM_REVIEW_INPUT' : 'BOOTSTRAPPER_ENVIRONMENT_INPUT') + " = '" + Buffer.from(JSON.stringify(input)).toString('base64') + "'\n" + code;
+    const code = system ? fs.readFileSync(path.join(__dirname, this.request.kind === 'beta' ? '../system-beta/verify.rb' : '../system-review/verify.rb'), 'utf8') : verifier;
+    const script = (system ? (this.request.kind === 'beta' ? 'BOOTSTRAPPER_SYSTEM_BETA_INPUT' : 'BOOTSTRAPPER_SYSTEM_REVIEW_INPUT') : 'BOOTSTRAPPER_ENVIRONMENT_INPUT') + " = '" + Buffer.from(JSON.stringify(input)).toString('base64') + "'\n" + code;
     const result = await this.json(['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'], script, {timeout: 180000});
     if (!result.ok) throw new Error('Canonical GitLab job, source, or candidate checks failed.');
     return result;
@@ -386,6 +386,7 @@ class Runtime {
     return {state: 'stopped', host: plan.active.host};
   }
   async run() {
+    if (this.request.action === 'deploy' && (this.request.kind === 'review' || this.request.delivery !== 'system')) throw Error('System Wizard Review is retired. Use optional Beta from an accepted System candidate.');
     let locked = false, lockAttempted = false;
     try {
       lockAttempted = true;
@@ -393,7 +394,7 @@ class Runtime {
       this.context = await this.canonical('read');
       this.environment = this.context.receipt.wizardWorkflow?.environments;
       const system = this.request.delivery === 'system';
-      const binding = system ? require('../system-review/binding').validate(this.context.systemReviewBinding, this.context, this.request) : null;
+      const binding = system ? require(this.request.kind === 'beta' ? '../system-beta/binding' : '../system-review/binding').validate(this.request.kind === 'beta' ? this.context.systemBetaBinding : this.context.systemReviewBinding, this.context, this.request) : null;
       if (!this.environment || this.environment.operation !== this.request.operation || this.environment.phase !== 'ready' ||
           !this.environment.activationCommit || (!system && this.context.receipt.repository.id !== this.request.projectId))
         throw new Error('Managed environment reservation is not ready.');

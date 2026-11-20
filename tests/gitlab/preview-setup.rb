@@ -290,3 +290,32 @@ ordinary = WizardSourcePrimaryEnvironments.new(api, initial.merge('sourcePrimary
 raise 'ordinary binding recreated missing variables' unless ordinary.send(:synchronize).dig(:environments, 'phase') == 'requires-reconciliation'
 puts 'Preview setup native adapter: read-only preflight, detailed runner access, owned private import, merge/publication guards, scoped credentials and initial-only resumable environment variables passed.'
 load File.expand_path('preview-evidence.rb', __dir__)
+
+# Shared System setup is read-only and accepts a protected regular Wizard tree,
+# without a separate Wizard runner tag, project import or push pipeline.
+shared_input = {'action' => 'preview-setup-preflight', 'sourceLayout' => 'system-monorepo-v1', 'namespace' => 'team',
+  'sources' => [{'mode' => 'existing', 'project' => 'system', 'ciPath' => '.gitlab-ci.yml'}]}
+shared_rows = {
+  'namespaces?per_page=100' => [{'id' => 9, 'full_path' => 'team'}],
+  'runners/all?per_page=100&status=online' => [{'id' => 2, 'paused' => false, 'status' => 'online'}],
+  'projects/7/runners?per_page=100' => [{'id' => 2, 'paused' => false, 'status' => 'online'}],
+  'runners/2' => {'id' => 2, 'paused' => false, 'status' => 'online', 'tag_list' => ['docker']},
+  'projects/team%2Fsystem' => {'id' => 7, 'path_with_namespace' => 'team/system', 'namespace' => {'id' => 9},
+    'default_branch' => 'main', 'ci_config_path' => nil, 'visibility' => 'private',
+    'only_allow_merge_if_pipeline_succeeds' => true, 'only_allow_merge_if_all_discussions_are_resolved' => true},
+  'projects/7/repository/branches/main' => {'protected' => true, 'commit' => {'id' => 'a' * 40}},
+  "projects/7/repository/tree?ref=#{'a' * 40}&per_page=100" => [{'path' => 'wizard', 'type' => 'tree', 'mode' => '040000'}]
+}
+shared_api = lambda do |method, route, _body = nil|
+  raise 'shared setup mutated GitLab' unless method == Net::HTTP::Get
+  [200, shared_rows.fetch(route)]
+end
+result = BootstrapperPreviewSetup.new(shared_api, shared_input).call
+raise 'wrong shared identity' unless result[:projects][0] == {id: 7, path: 'team/system', namespaceId: 9, defaultBranch: 'main', sourceRevision: 'a' * 40}
+shared_rows["projects/7/repository/tree?ref=#{'a' * 40}&per_page=100"][0]['type'] = 'commit'
+begin
+  BootstrapperPreviewSetup.new(shared_api, shared_input).call
+  raise 'legacy gitlink accepted as shared tree'
+rescue BootstrapError
+end
+puts 'Shared System preflight: protected regular source tree, Docker runner, read-only identity and historical gitlink refusal passed.'

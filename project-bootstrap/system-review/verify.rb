@@ -77,7 +77,7 @@ class SystemReviewProof
   def self.verify!(get, input, raw: get)
     binding, request = input.fetch('binding'), input.fetch('request')
     environment, repository = input.fetch('environments'), input.fetch('repository')
-    require!(binding['version'] == 1 && request['kind'] == 'review' && %w[deploy stop].include?(request['action']) &&
+    require!(binding['version'] == 1 && request['kind'] == 'review' && request['action'] == 'stop' &&
       %w[projectId namespaceId mrIid pipelineId candidateJobId wizardProjectId].all? { |key| id?(binding[key]) } &&
       sha?(binding['sourceCommit']) && sha?(binding['wizardRevision']) && image?(binding['helperImage']) && image?(binding['wizardImageId']) &&
       binding.fetch('operation').match?(/\A[a-f0-9]{48}\z/) &&

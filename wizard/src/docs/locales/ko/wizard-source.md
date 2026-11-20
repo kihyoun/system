@@ -1,5 +1,19 @@
 # 고정된 소스에서 Wizard 저장소 초기화
 
+System은 이제 `wizard/` 아래에 일반 Wizard 소스를 포함합니다. 새 체크아웃은
+서브모듈 다운로드가 필요 없습니다. Wizard와 Sync는 별도 의존성, 테스트 및
+Docker 이미지를 유지합니다. 두 구성 요소를 하나의 System 커밋과 병합 요청에서
+변경하세요. 가져오기 커밋은 원래 Wizard 저장소를 병합 부모로 유지하므로 기존
+커밋, 작성자와 과거 gitlink를 추적할 수 있습니다. 과거 릴리스 복구를 위해
+기존 소스 저장소와 공개 태그도 보관하세요.
+
+새 소스 스냅샷은 버전 2와 `sourceLayout=system-monorepo-v1`을 사용합니다.
+`sourceRevision`은 System 커밋을, `wizardSourceTree`는 Wizard 트리를 식별합니다.
+과거 버전 1 스냅샷은 원래 별도 Wizard 커밋과 정확한 매니페스트 해시 규칙을
+유지합니다. 패키지는 커밋된 Git 객체만 읽으며 수정되거나 추적되지 않은 파일은
+읽지 않습니다. 기존 소스 가져오기는 명시적 작업으로 유지됩니다. 새로운 선택적
+Beta는 별도 빌드 대신 공유 System 후보를 사용합니다.
+
 이 절차는 레거시 관리형 소스 절차입니다. 명시적으로 채택한
 [소스 우선 저장소](../project-bootstrap/wizard-source-primary/README.md)는 자체 병합 요청으로
 직접 개발하며 소스를 가져오지 않습니다. 이러한 저장소에 커밋된 일반
@@ -38,10 +52,11 @@
 
 ## 불변 소스 패키지 빌드
 
-System 이미지를 빌드하기 전에 고정된 Wizard 서브모듈을 초기화하세요.
+System 이미지를 빌드하기 전에 커밋된 소스 레이아웃을 확인하세요. 선택한
+커밋에 필요한 경우에만 과거 gitlink를 초기화합니다.
 
 ```sh
-git submodule update --init wizard
+node gitlab/prepare-wizard-source.js
 bash project-bootstrap/wizard-source/prepare.sh
 ```
 

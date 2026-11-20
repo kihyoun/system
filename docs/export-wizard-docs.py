@@ -2,7 +2,7 @@
 """Bundle repository guides for the offline Wizard reader. Run with --check in CI.
 
 The Markdown stays byte-for-byte intact in source order. Edit the original guides,
-then run python3 docs/export-wizard-docs.py and commit both repositories' changes.
+then run python3 docs/export-wizard-docs.py and commit the shared repository changes.
 """
 import argparse
 import base64
@@ -148,7 +148,7 @@ A source import installs source. A build produces a candidate. Review and Beta a
         ("docs/QUICKSTART.md", "quickstart", "1.5 Quick Install", "Installation"),
         ("docs/RELEASES.md", "releases", "1.6 Public releases and changelog", "Installation"),
         ("docs/ARCHITECTURE.md", "architecture", "8.9 Architecture, origins and vision", "Evolution"),
-        ("docs/SYSTEM_CANDIDATE_REVIEW.md", "system-review", "8.10 Bundled System candidate Review", "Evolution"),
+        ("docs/SYSTEM_CANDIDATE_REVIEW.md", "system-review", "8.10 Optional System candidate Beta", "Evolution"),
         ("Prepare-Host.md", "host-preparation", "1.4 Host preparation and releases", "Installation"),
         ("docs/WIZARD_ALIASES.md", "aliases", "3.1 Canonical Wizard aliases", "Configuration"),
         ("docs/PROJECT_BOOTSTRAP_GUIDE.md", "project-guide", "5.1 Create an application · detailed guide", "Projects and runners"),
@@ -181,7 +181,7 @@ A source import installs source. A build produces a candidate. Review and Beta a
         "quickstart": ("A fresh Ubuntu 24.04 / 26.04 LTS x86_64 host with sudo, curl, internet, 8 GiB RAM and 40 GiB free disk.", "One maintained command starts the initial Wizard; you continue platform setup in the browser."),
         "releases": ("Public release access and the source/image identities of the version you want to install.", "You can inspect versioned public metadata, release notes and the accepted publication boundary."),
         "architecture": ("Read Getting Started for the platform’s practical installation and configuration workflow.", "You understand the 2019 origin, source-as-DNA principle, generation model and future vision."),
-        "system-review": ("An accepted candidate, an explicitly reserved Review HTTPS host and the required System checks.", "You can inspect and stop the exact bundled Wizard candidate before deliberate Production promotion."),
+        "system-review": ("An accepted candidate, an explicitly reserved Beta HTTPS host and the required System checks.", "You can inspect and stop the exact bundled Wizard candidate before deliberate Production promotion."),
         "host-preparation": ("Ubuntu with sudo, Docker access, selected working storage and trusted release source/image identities.", "The selected release starts with the intended images, storage mode and host integration."),
         "aliases": ("A configured canonical Wizard hostname, DNS for every alias and certificates covering HTTPS aliases.", "Alias requests redirect to the canonical Wizard while preserving paths, queries and certificate challenges."),
         "project-guide": ("Connect and Fetch; select a GitLab namespace, unique lowercase/digit Project Key, template and environment domains.", "The private repository and managed pipeline are created; successful jobs deploy each automatic environment."),

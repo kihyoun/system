@@ -25,7 +25,7 @@ class WizardSourceImport
     snapshot = @input.fetch('snapshot')
     manifest_path = '.system-bootstrapper/wizard-source.json'
     manifest_content = JSON.generate({version: 1, operation: @input.fetch('operation'),
-      sourceRevision: snapshot.fetch('sourceRevision'), manifestHash: snapshot.fetch('manifestHash')})
+      sourceRevision: snapshot.fetch('sourceRevision'), manifestHash: snapshot.fetch('manifestHash')}.merge(snapshot['sourceLayout'] ? {sourceLayout: snapshot.fetch('sourceLayout'), wizardSourceTree: snapshot.fetch('wizardSourceTree')} : {}))
     installed = get_file.call(manifest_path)
     if installed
       raise BootstrapError, 'Wizard source marker changed; refusing overwrite' unless Base64.decode64(installed.fetch('content')) == manifest_content

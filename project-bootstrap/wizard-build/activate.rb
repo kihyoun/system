@@ -53,7 +53,7 @@ class WizardBuildActivation
       @build['recipeHash'] == @recipe['recipeHash'] && @build.fetch('operation').match?(/\A[a-f0-9]{48}\z/) &&
       @workflow.fetch('importCommit').match?(/\A[a-f0-9]{40}\z/)
     marker = file('.system-bootstrapper/wizard-source.json')
-    expected = {version: 1, operation: @input.fetch('operation'), sourceRevision: @workflow.fetch('sourceRevision'), manifestHash: @workflow.fetch('manifestHash')}
+    expected = {version: 1, operation: @input.fetch('operation'), sourceRevision: @workflow.fetch('sourceRevision'), manifestHash: @workflow.fetch('manifestHash')}.merge(@workflow['sourceLayout'] ? {sourceLayout: @workflow.fetch('sourceLayout'), wizardSourceTree: @workflow.fetch('wizardSourceTree')} : {})
     raise BootstrapError, 'Wizard source reservation changed' unless marker && decoded(marker) == JSON.generate(expected)
   end
 

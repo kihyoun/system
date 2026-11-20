@@ -83,4 +83,16 @@ try {
   assert.equal(prepare(selectedEnv, offline), advanced, 'deinitialized module cache is also reconciled before checkout');
   assert.equal(git(path.join(system, 'wizard'), 'remote', 'get-url', 'origin'), primary);
 } finally { process.chdir(previous); fs.rmSync(directory, {recursive: true, force: true}); }
+const monorepoCalls = [];
+assert.equal(prepare({...env, WIZARD_PRIMARY_REPOSITORY_URL: 'invalid obsolete selector'}, (command, args) => {
+  monorepoCalls.push(args);
+  if (args.includes('ls-tree')) return '040000 tree ' + 'b'.repeat(40) + '\twizard\n';
+  if (args.includes('rev-parse')) return sha;
+  return '';
+}), sha);
+assert(!monorepoCalls.some(args => args.includes('submodule')), 'regular source never fetches a former submodule');
+assert.throws(() => prepare({}, (command, args) => {
+  if (args.includes('ls-tree')) return '040000 tree ' + 'b'.repeat(40) + '\twizard';
+  throw Error('dirty source');
+}), /dirty source/);
 console.log('PASS: public fallback, internal authenticated selector, exact gitlink, reused/deinitialized caches and unchanged superproject origin');

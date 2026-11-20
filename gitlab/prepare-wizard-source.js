@@ -16,10 +16,15 @@ function selection(environment) {
   return {url: target.href, origin: server.origin, token: environment.CI_JOB_TOKEN};
 }
 function prepare(environment = process.env, run = execFileSync) {
-  const selected = selection(environment);
   const git = (args, env = environment) => run('git', ['-c', 'core.hooksPath=/dev/null', ...args],
     {env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}).trim();
-  const row = /^160000 commit ([a-f0-9]{40})\twizard$/.exec(git(['ls-tree', 'HEAD', '--', 'wizard']));
+  const entry = git(['ls-tree', 'HEAD', '--', 'wizard']);
+  if (/^040000 tree [a-f0-9]{40}\twizard$/.test(entry)) {
+    git(['diff', '--exit-code', 'HEAD', '--', 'wizard']);
+    return git(['rev-parse', 'HEAD']);
+  }
+  const selected = selection(environment);
+  const row = /^160000 commit ([a-f0-9]{40})\twizard$/.exec(entry);
   if (!row) throw Error('The checkout must pin exactly one Wizard gitlink.');
   if (git(['config', '--file', '.gitmodules', '--get', 'submodule.wizard.path']) !== 'wizard')
     throw Error('Wizard submodule path changed.');
@@ -50,6 +55,6 @@ function prepare(environment = process.env, run = execFileSync) {
 }
 module.exports = {selection, prepare};
 if (require.main === module) {
-  try { prepare(); console.log('Wizard source checkout verified at the exact gitlink.'); }
+  try { prepare(); console.log('Wizard source checkout verified at the committed source layout.'); }
   catch (_) { console.error('Wizard source checkout failed; inspect the configured primary, access and gitlink availability.'); process.exitCode = 1; }
 }

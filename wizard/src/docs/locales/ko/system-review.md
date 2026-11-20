@@ -1,104 +1,75 @@
-# System 승격 전에 번들 Wizard 검토
+# System 후보의 선택적 Wizard Beta
 
-System 변경이 새 Wizard gitlink를 고정하면 System 파이프라인은 기존 관리형 Review HTTPS 호스트에서
-정확히 그 Wizard를 제공할 수 있습니다. 운영 환경 승격 전에 UI를 인수 검사하는 단계입니다.
-운영 환경을 마이그레이션하지 않으며, 페이지가 정상 표시된다는 사실만으로 플랫폼 전체의 안전성을 증명하지 않습니다.
+System과 Wizard는 하나의 저장소를 공유합니다. 선택적 Wizard Beta는 고정
+HTTPS 주소와 승인된 System 후보의 정확한 Wizard 이미지를 사용합니다. 추가
+빌드나 전체 플랫폼 파이프라인을 시작하지 않습니다. Production 승격은 별도로
+명시적으로 승인합니다. 일반 애플리케이션 프로젝트는 Review, Beta, Production을
+유지합니다. 격리된 플랫폼 테스트는 임시 검증 설치이며 상시 Beta 플랫폼이 아닙니다.
 
-선택 사항인 `deploy:wizard-review`와 `stop:wizard-review` 작업은
-`test:platform-candidate`가 이미 빌드하여 게시한 두 개의 변경 불가능한 이미지를 재사용합니다.
-두 번째 Wizard 파이프라인이나 추가 빌드는 필요하지 않습니다. 모든 필수 System 검사는 계속 필수입니다.
-Review 작업은 제안된 System 체크아웃에서 실행하므로 운영 컨트롤러를 먼저 업그레이드할 필요가 없습니다.
+## 설정과 연결
 
-## 준비 사항
+GitLab의 일반 저장소 절차로 전체 System 저장소를 개인 네임스페이스에 가져오거나
+포크하세요. 기본 브랜치를 보호하고 필수 파이프라인 및 토론 승인 조건과 루트
+CI 설정을 유지하세요. 허용된 Docker Runner를 설정하세요. Wizard에서 Configure
+System Beta를 선택하고 기존 공유 소스 프로젝트와 선택적인 정확한 HTTPS Beta
+호스트, /ssl 아래 인증서 및 키 경로를 지정하세요. Review 호스트는 필요하지
+않습니다. 사전 검사는 소스 트리, DNS, 인증서를 확인합니다. 확인은 설정만
+예약하며 프로젝트나 파이프라인을 생성하거나 Production을 변경하지 않습니다.
 
-정상적인 파이프라인 성공 및 토론 해결 병합 조건을 활성화하고,
-보호된 기본 브랜치를 대상으로 하는 신뢰할 수 있는 동일 프로젝트 MR을 사용하세요.
-관리형 배포 전에 전체 후보, 브라우저 및 구성 요소 검사가 성공해야 합니다.
-정확한 호스트, DNS, 인증서, 템플릿 및 SSL 볼륨을 포함하여 기존
-[Wizard Review 환경](../project-bootstrap/wizard-environments/README.md)을 준비하세요.
-공유 호스트를 할당하기 전에 기존 Review 임대를 중지하고 정리하세요.
-Beta와 기준 네이티브 Wizard 배포 예약은 변경되지 않습니다.
-
-동일 프로젝트 MR 작업에서 읽을 수 있도록 다음 비밀이 아닌 프로젝트 변수를
-환경 범위 `*`의 원시 값, 보호되지 않은 변수로 설정하세요.
-
-| 변수 | 값 |
-| --- | --- |
-| `SYSTEM_REVIEW_ENABLED` | `true` |
-| `SYSTEM_REVIEW_OPERATION` | 서버가 소유한 기존 환경 예약의 48자리 16진수 |
-| `WIZARD_REVIEW_HOST` | 해당 예약에서 활성화된 정확한 Review HTTPS 호스트 |
-
-포크 파이프라인, 일반 브랜치 푸시 및 문서만 변경한 경우에는 이 작업들이 생성되지 않습니다.
-변수는 작업을 선택하고 URL을 표시할 뿐 임의의 프로젝트나 이미지에 권한을 부여하지 않습니다.
-
-## 후보 하나를 명시적으로 연결
-
-후보 작업이 성공하면 해당 작업의 `test-results/successor/release.json`을 읽으세요.
-관리 호스트에 비공개 입력 파일을 준비하고 모든 예시를 실제 프로젝트, MR 및 릴리스 아티팩트의 값으로 바꾸세요.
-
-```json
-{
-  "operation": "REPLACE_WITH_EXISTING_48_HEX_RESERVATION",
-  "projectId": 42,
-  "projectPath": "example/system",
-  "namespaceId": 7,
-  "defaultBranch": "master",
-  "mrIid": 12,
-  "pipelineId": 100,
-  "sourceCommit": "REPLACE_WITH_40_HEX_SYSTEM_REVISION",
-  "candidateJobId": 300,
-  "helperImage": "sha256:REPLACE_WITH_64_HEX_RELEASE_IMAGE_ID",
-  "wizardImageId": "sha256:REPLACE_WITH_64_HEX_WIZARD_IMAGE_ID",
-  "wizardImageRef": "registry.example.test/example/system/successor-wizard@sha256:REPLACE_WITH_64_HEX_DIGEST",
-  "wizardRevision": "REPLACE_WITH_40_HEX_WIZARD_GITLINK"
-}
-```
-
-`helperImage = release.imageId`와 일치하는 Wizard 필드를 사용하세요.
-별도로 관리하는 운영자 접근 권한으로 릴리스의 컨트롤러 레지스트리 참조를 다운로드하고
-로컬 이미지 ID를 검증하세요. 아티팩트가 만료된 뒤 중지할 경우까지 포함하여
-환경이 존재하는 동안 이 이미지를 보관하세요.
-인증 정보는 체크아웃 밖에 두고 도우미에 전달하지 마세요.
-
-운영자가 지정한 절대 경로에 입력 파일을 권한 `0600`으로 저장한 뒤 실행하세요.
+System 후보가 모든 필수 검사를 통과한 후 비공개 JSON 입력 파일과 저장소의
+운영자 도구를 사용하세요. 입력에는 operation, projectId, projectPath,
+namespaceId, defaultBranch, pipelineId, candidateJobId, sourceCommit,
+wizardSourceTree, helperImage, wizardImageId, wizardImageRef가 필요합니다.
+승인된 후보 릴리스 메타데이터와 예약의 정확한 값을 사용하세요. 소스 커밋은 공유
+저장소를, Wizard 트리는 커밋된 하위 디렉터리를 식별합니다. Stop을 위해 도우미
+이미지를 보관하세요.
 
 ```sh
-docker run --rm --network none --read-only --memory 256m --cpus 1 --pids-limit 128 \
-  --tmpfs /tmp:rw,nosuid,noexec,size=16m \
-  --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
-  --mount type=bind,source=/PRIVATE/ABSOLUTE/candidate.json,target=/input.json,readonly \
-  --entrypoint node sha256:EXACT_RELEASE_IMAGE_ID \
-  /system/project-bootstrap/system-review/bind.js plan /input.json
+node project-bootstrap/system-beta/bind.js plan /state/beta-input.json
+node project-bootstrap/system-beta/bind.js apply /state/beta-input.json PLAN_HASH
 ```
 
-프로젝트/MR/파이프라인/소스, 두 이미지 및 기존 예약을 포함하여 반환된 계획을 검토하세요.
-명령을 `apply /input.json PLAN_HASH`로 반복하여 정확한 선택을 기준 컨트롤러의 설정 디렉터리에 저장하세요.
-도구는 기존 환경 뮤텍스를 사용하며 변경된 계획, 점유된 임대 및 설정 경합을 거부합니다.
-이전 연결 기록은 비공개로 보존합니다. 라우팅, 소스 기준 CI 매니페스트,
-운영 이미지 선택자 또는 서비스 데이터는 변경하지 않습니다.
+정확한 해시를 적용하기 전에 계획을 검토하세요. 네이티브 프로젝트 변수
+SYSTEM_BETA_OPERATION과 WIZARD_BETA_HOST를 예약의 작업과 정확한 호스트로
+설정하세요. Deploy와 Stop은 명시적인 수동 System 파이프라인 작업입니다.
+기존 릴리스 아티팩트와 변경 불가능한 이미지를 재사용합니다. 라우팅 전에 프로젝트,
+작업, 후보 파이프라인, 공유 소스 트리, 이미지 식별자, 저장소 및 업그레이드 승인과
+브라우저 정리를 확인합니다. 임의 이미지 배포 엔드포인트는 없습니다. 빌드
+아티팩트가 만료되어도 Stop은 가능합니다.
 
-## 배포, 확인 및 중지
+## 기존 설치와 복구
 
-같은 MR 파이프라인에서 수동 `deploy:wizard-review` 작업을 실행하고 GitLab 환경 URL을 여세요.
-도우미는 실제 실행 작업, 현재 MR HEAD와 최신 MR 파이프라인, 성공한 필수 작업,
-고정된 후보 증거, System gitlink 및 정확한 로컬 소스/작업/이미지 라벨을
-기준 GitLab을 통해 독립적으로 검증합니다.
-작업 범위의 레지스트리 인증 정보는 두 이미지를 미리 다운로드하는 데만 사용하며,
-도우미, 설정 실행 기록 또는 후보 컨테이너로 전달하지 않습니다.
+기존 JSON/ZIP 설정은 계속 읽을 수 있고 비활성 데이터로 취급됩니다. 백업을
+열거나 가져와도 프로젝트나 배포가 생성되지 않습니다. 기존 미리보기 희망 설정은
+사용자가 명시적으로 Configure System Beta를 선택할 때까지 버전 1로 유지됩니다.
+Review 값을 Beta 호스트로 재해석하지 않습니다. 기존 저장소 식별자, 관리 소스
+기록, 사용자 변경과 가져오기 이력도 유지됩니다.
 
-기존 관리형 환경 수명 주기가 상태, DNS 및 인증서 검사, 내부 네트워크,
-공유 Review 임대, 라우팅 전환, 롤백, 세대 하한, 소유권 및 중지된 호스트의 삭제 표식을 처리합니다.
-후보에는 설정 또는 서비스 데이터 마운트가 없습니다. 운영 환경은 계속 실행됩니다.
+새로운 System Review 배포와 연결은 폐지되었습니다. 기존 실행 중인 Review는
+보관된 원래 작업과 연결을 사용하여 과거 실행기의 Stop 모드로 중지하세요.
+그런 다음 소유권이 확인된 중지 라우트를 정리하세요. 전환 전에 대기 중이거나
+퇴역한 리소스를 검사하세요. 정리는 정확한 작업, 프로젝트, 세대 및 라벨을 확인하며
+Production이나 다른 프로젝트의 리소스를 삭제하지 않습니다. 충돌을 우회하려고
+연결, 기록, 세대 하한선 또는 묘비를 삭제하지 마세요. Beta 설정은 활성, 대기,
+퇴역 리소스나 아직 정리하지 않은 중지 라우트가 있으면 거부합니다.
 
-같은 원본 파이프라인의 `stop:wizard-review`로 중지하세요.
-중지는 실행 중인 작업과 정확히 보존된 연결을 검증하지만 현재 MR HEAD,
-다운로드 가능한 후보 아티팩트 또는 레지스트리 접근은 요구하지 않습니다.
-따라서 닫히거나 병합된 MR도 정리할 수 있습니다.
-중지와 소유 자원 정리가 끝날 때까지 도우미 이미지를 보관하세요.
-다른 프로젝트, MR 또는 파이프라인은 선택한 임대를 교체하거나 중지할 수 없습니다.
-같은 호스트에 관리형 배포를 하기 전에 별도로 준비한 임시 미리보기 경로와
-정확히 소유권이 확인된 자원을 제거하세요.
+```sh
+node project-bootstrap/system-review/run.js stop
+node project-bootstrap/wizard-environments/cleanup-stopped.js OPERATION
+```
 
-직접 UI를 인수 검사한 후 모든 필수 System 검사와 검토를 완료하고,
-정상적으로 병합한 뒤 병합 파이프라인을 검증하여 기존의 명시적 운영 환경 승격 절차를 사용하세요.
-Review 배포는 운영 환경 승인을 부여하지 않습니다.
+Stop 실행기에는 원래 작업 식별자와 보관된 도우미 이미지가 필요합니다. 원래
+승인된 작업에서 실행하고 CI 증거를 꾸며내지 마세요. 해당 작업을 실행할 수
+없다면 보관된 과거 릴리스 도구와 소유권 기록으로 복구하세요. 연결과 이력은
+영구 컨트롤러 상태에 속하므로 일치하는 Harvest/Seed 복구에 함께 보관해야
+합니다. 설정 백업은 서비스 데이터 백업과 별개입니다. 소스 레이아웃 필드가
+없는 과거 릴리스는 별도 Wizard gitlink 식별자를 유지합니다. 그 커밋을 공유
+트리로 재해석하지 마세요.
+
+## 검증과 용량
+
+구성 요소와 후보 검증은 계속 필수입니다. Beta 연결, 실행기 및 검증기 테스트는
+다른 소유권, 오래된 작업, 이미지와 소스 불일치, 자격 증명 정리 및 아티팩트
+만료 후 Stop을 검사합니다. 비교 가능한 승인 후보 실행의 시간과 리소스 사용량을
+비교하세요. 선택적 Review 작업 제거만으로 격리된 전체 플랫폼 테스트가 단축되는
+것은 아닙니다. 이 변경 자체가 측정된 절감 효과를 의미하지는 않습니다.

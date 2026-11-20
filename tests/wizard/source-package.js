@@ -48,5 +48,19 @@ try {
   git(wizard, 'update-index', '--add', '--cacheinfo', '120000,' + git(wizard, 'hash-object', 'script.sh') + ',link');
   git(wizard, 'commit', '-m', 'Unsafe link'); git(root, 'add', 'wizard'); git(root, 'commit', '-m', 'Pin unsafe link');
   assert.throws(() => pack(root), /links and nested submodules/);
+  git(wizard, 'rm', 'link'); git(wizard, 'commit', '-m', 'Remove unsafe fixture');
+  git(root, 'rm', '--cached', 'wizard');
+  fs.rmSync(path.join(wizard, '.git'), {recursive: true});
+  fs.rmSync(path.join(wizard, 'untracked-token.txt'));
+  git(root, 'add', 'wizard'); git(root, 'commit', '-m', 'Import regular Wizard sources');
+  const regular = pack(root);
+  assert.equal(regular.version, 2);
+  assert.equal(regular.sourceLayout, 'system-monorepo-v1');
+  assert.equal(regular.sourceRevision, git(root, 'rev-parse', 'HEAD'));
+  assert.equal(regular.wizardSourceTree, git(root, 'rev-parse', 'HEAD:wizard'));
+  fs.writeFileSync(path.join(wizard, 'binary.png'), 'another dirty source');
+  assert.equal(pack(root).manifestHash, regular.manifestHash);
+  assert.throws(() => validate({...regular, wizardSourceTree: 'f'.repeat(40)}), /hash mismatch/);
+  assert.throws(() => validate({...snapshot, sourceLayout: 'system-monorepo-v1'}), /layout/);
   console.log('Wizard snapshot: pinned objects, binary bytes/modes, private exclusions, dirty checkout, hash/path/link guards passed.');
 } finally { fs.rmSync(root, {recursive: true, force: true}); }

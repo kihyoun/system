@@ -11,6 +11,21 @@ The Wizard uses React 19, TypeScript 6, Vite 8, MobX and Material UI.
 Use the Node/npm versions pinned in `package.json` and `.nvmrc` with the committed
 lockfile. Application starters have their own generated build definitions.
 
+## Shared source and development
+
+This directory is regular source in the System repository. Clone System once;
+no Wizard submodule initialization is needed. Run dependency installation,
+component tests and the development server from this directory. Wizard and Sync
+retain separate dependencies and images. Submit related frontend/backend changes
+in one System commit and merge request; use the root candidate pipeline for
+integration and release evidence. Optional Wizard Beta reuses that candidate's
+accepted image without a second build. Project Review/Beta/Production remain
+separate from this System preview.
+
+The import merge retains the original Wizard commit and its ancestry unchanged.
+Keep historical source repositories and published tags available to reconstruct
+old releases; do not rewrite them during migration.
+
 ## Use the Wizard with a Bootstrapper
 
 Start with the [handbook](https://github.com/kihyoun/system/blob/master/docs/HANDBOOK.md)

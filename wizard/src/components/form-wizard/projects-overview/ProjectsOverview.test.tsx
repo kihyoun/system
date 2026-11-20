@@ -36,8 +36,8 @@ test('the managed Wizard appears first with its actual URL and cannot be edited 
     expect((row.querySelector('[aria-label="edit"]') as HTMLButtonElement).disabled).toBe(true);
     expect((row.querySelector('[aria-label="delete"]') as HTMLButtonElement).disabled).toBe(true);
     act(() => { row.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-    expect(root.textContent).toContain('Existing Wizard interface');
-    expect(root.textContent).toContain('Configure Beta and Review separately');
+    expect(root.textContent).toContain('System and Wizard use one shared source');
+    expect(root.textContent).toContain('Optional Beta uses an accepted System candidate');
     const copy = new Main();
     copy.importProjectEnvData(project.content);
     expect(copy.projects.get('wizard')!.repository.systemProject).toBe(true);
@@ -94,20 +94,20 @@ test('the managed row offers environment setup only while connected and opens a 
         await act(async () => { row.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
         const find = (label: string) => Array.from(document.body.querySelectorAll('button'))
             .find(element => element.textContent === label) as HTMLButtonElement;
-        expect(find('Configure Review and Beta').disabled).toBe(true);
-        expect(find('Initialize Wizard source')).toBeTruthy();
-        expect(find('Build and verify Wizard')).toBeTruthy();
+        expect(find('Configure System Beta').disabled).toBe(true);
+        expect(find('Initialize Wizard source')).toBeUndefined();
+        expect(find('Build and verify Wizard')).toBeUndefined();
         expect(request).not.toHaveBeenCalled();
         act(() => { runInAction(() => { main.sync.connected = true; }); });
-        expect(find('Configure Review and Beta').disabled).toBe(false);
+        expect(find('Configure System Beta').disabled).toBe(false);
         await act(async () => {
-            find('Configure Review and Beta').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            find('Configure System Beta').dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });
-        expect(request.mock.calls).toEqual([['/projects/wizard/environments']]);
-        expect(document.body.textContent).toContain('Verify the imported candidate first.');
-        expect(find('Enable environments').disabled).toBe(true);
+        expect(request.mock.calls).toEqual([['/projects/wizard/preview-setup'], ['/projects/namespaces']]);
+        expect(document.body.textContent).toContain('Shared System source project');
+        expect(find('Confirm setup / resume').disabled).toBe(true);
         await act(async () => { find('Close').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-        expect(request).toHaveBeenCalledTimes(1);
+        expect(request).toHaveBeenCalledTimes(2);
         expect((row.querySelector('[aria-label="edit"]') as HTMLButtonElement).disabled).toBe(true);
         expect((row.querySelector('[aria-label="delete"]') as HTMLButtonElement).disabled).toBe(true);
     }
@@ -131,9 +131,9 @@ test('the canonical source-primary row offers source and native status instead o
         act(() => { renderInto(<ProjectsOverview main={main}/>, root); });
         const row = root.querySelector('tbody tr')!;
         act(() => { row.dispatchEvent(new MouseEvent('click', {bubbles: true})); });
-        expect(root.textContent).toContain('Canonical Wizard repository');
-        expect(root.textContent).toContain('Wizard source');
-        expect(root.textContent).toContain('Native build status');
+        expect(root.textContent).toContain('System and Wizard use one shared source');
+        expect(root.textContent).toContain('Configure System Beta');
+        expect(root.textContent).not.toContain('Native build status');
         expect(root.textContent).not.toContain('Initialize Wizard source');
         expect(root.textContent).not.toContain('Build and verify Wizard');
         const restored = new Main();

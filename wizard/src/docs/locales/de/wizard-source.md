@@ -1,5 +1,19 @@
 # Das Wizard-Repository aus festgelegtem Quellcode initialisieren
 
+System enthält jetzt reguläre Wizard-Quellen unter `wizard/`. Ein frischer Checkout
+benötigt kein Submodul. Wizard und Sync behalten getrennte Abhängigkeiten, Tests
+und Docker-Images. Ändere beide Komponenten in einem System-Commit und Merge Request.
+Der Importcommit enthält das ursprüngliche Wizard-Repository als Merge-Elternteil;
+Commits, Autoren und historische Gitlinks bleiben erreichbar. Bewahre das historische
+Quellrepository und veröffentlichte Tags für alte Releases auf.
+
+Neue Quellpakete verwenden Version 2 und `sourceLayout=system-monorepo-v1`.
+`sourceRevision` bezeichnet den System-Commit, `wizardSourceTree` den Wizard-Baum.
+Historische Version-1-Pakete behalten ihren separaten Wizard-Commit und die exakte
+Manifest-Hashbildung. Pakete lesen nur versionierte Git-Objekte, keine geänderten
+oder unversionierten Dateien. Alte Quellimporte bleiben ausdrücklich; neue
+optionale Beta verwendet den gemeinsamen System-Kandidaten ohne separaten Build.
+
 Dies ist der bisherige Ablauf für verwalteten Quellcode. Ein ausdrücklich
 übernommenes [quellcodeführendes Repository](../project-bootstrap/wizard-source-primary/README.md)
 entwickelt direkt über eigene Merge Requests und importiert keinen Quellcode.
@@ -48,10 +62,11 @@ separate ausdrückliche Vorgänge. Ein Quellcodeimport gibt kein Image frei.
 
 ## Das unveränderliche Quellcodepaket bauen
 
-Initialisiere vor dem Bau des System-Images das festgelegte Wizard-Submodul:
+Prüfe vor dem Bau des System-Images das versionierte Quelllayout. Historische
+Gitlinks werden nur initialisiert, wenn der gewählte Commit sie benötigt:
 
 ```sh
-git submodule update --init wizard
+node gitlab/prepare-wizard-source.js
 bash project-bootstrap/wizard-source/prepare.sh
 ```
 

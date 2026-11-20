@@ -15,7 +15,11 @@ git_directory() {
   realpath "$directory"
 }
 export SYSTEM_SOURCE_GIT_DIR=$(git_directory "$PWD")
-export WIZARD_SOURCE_GIT_DIR=$(git_directory "$PWD/wizard")
+if [ -e "$PWD/wizard/.git" ]; then
+  export WIZARD_SOURCE_GIT_DIR=$(git_directory "$PWD/wizard")
+else
+  export WIZARD_SOURCE_GIT_DIR="$SYSTEM_SOURCE_GIT_DIR"
+fi
 if command -v node >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   node project-bootstrap/wizard-source/package.js
 else

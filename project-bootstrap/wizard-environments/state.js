@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const hash = text => crypto.createHash('sha256').update(text).digest('hex');
 function validRequest(request) {
+  if (request.delivery === 'system' && request.kind === 'review' && request.action !== 'stop') throw new Error('System Review deployment is retired; only owned legacy stop is supported.');
   if (!['deploy', 'stop'].includes(request.action) || !['review', 'beta'].includes(request.kind) ||
       !['projectId', 'pipelineId', 'jobId'].every(key => Number.isSafeInteger(request[key]) && request[key] > 0) ||
       !/^[a-f0-9]{40}$/.test(request.sourceCommit || '') || !/^[a-f0-9]{48}$/.test(request.operation || '') ||

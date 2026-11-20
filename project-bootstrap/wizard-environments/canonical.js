@@ -10,6 +10,7 @@ const file = path.join(configDirectory, '.projects.env/.wizard.env');
 const lock = file + '.environments.lock';
 const prefix = '# BOOTSTRAPPER_PROJECT=';
 const reviewBinding = file + '.system-review.json';
+const betaBinding = file + '.system-beta.json';
 const sha = text => crypto.createHash('sha256').update(text).digest('hex');
 function read() {
   const text = fs.readFileSync(file, 'utf8');
@@ -85,7 +86,10 @@ async function run(action, payload) {
     let systemReviewBinding, bindingText = '';
     try { bindingText = fs.readFileSync(reviewBinding, 'utf8'); systemReviewBinding = JSON.parse(bindingText); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
-    return {receipt: {operation: receipt.operation, namespaceId: receipt.namespaceId,
+    let systemBetaBinding, betaText = '';
+    try { betaText = fs.readFileSync(betaBinding, 'utf8'); systemBetaBinding = JSON.parse(betaText); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    return {systemBetaBinding, systemBetaBindingHash: sha(betaText), receipt: {operation: receipt.operation, namespaceId: receipt.namespaceId,
       repository: {id: receipt.repository.id, path: receipt.repository.path, defaultBranch: receipt.repository.defaultBranch,
         ciPath: receipt.repository.ciPath, systemProject: receipt.repository.systemProject,
         managementMode: receipt.repository.managementMode, namespaceId: receipt.repository.namespaceId},
@@ -94,11 +98,13 @@ async function run(action, payload) {
   }
   const environment = current.receipt.wizardWorkflow?.environments;
   if (!environment || environment.operation !== payload.operation || environment.controller !== 'system_bootstrapper_1') throw new Error('reservation');
-  if (action === 'bind-system-review') {
+  if (action === 'bind-system-review') throw new Error('System Review bindings are retired; retain existing files for owned cleanup.');
+  if (action === 'bind-system-beta') {
+    const reviewBinding = betaBinding;
     const owner = JSON.parse(fs.readFileSync(lock + '/owner', 'utf8'));
     if (owner.token !== payload.token || current.contentHash !== payload.expectedHash ||
         !payload.binding || JSON.stringify(payload.binding).length > 10000) throw new Error('binding-raced');
-    const slot = environment.deployments?.review || {};
+    const slot = environment.deployments?.beta || {};
     if (slot.active || slot.pending || slot.retired?.length) throw new Error('review-must-be-stopped');
     let previous = '';
     try { previous = fs.readFileSync(reviewBinding, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }

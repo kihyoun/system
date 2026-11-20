@@ -7,10 +7,10 @@ import PreviewSetupDialog from './PreviewSetupDialog';
 
 const route = '/projects/wizard/preview-setup';
 const desired: PreviewSetupIntent = {
-  version: 1, namespace: 'operator-team',
+  version: 2, namespace: 'operator-team',
   wizard: {mode: 'existing', project: 'wizard-source', origin: ''},
-  review: {enabled: true, host: 'review.example.com', ssl: '/ssl/live/review.example.com/fullchain.pem', sslKey: '/ssl/live/review.example.com/privkey.pem'},
-  beta: {enabled: false, host: '', ssl: '', sslKey: ''}
+  beta: {enabled: true, host: 'review.example.com', ssl: '/ssl/live/review.example.com/fullchain.pem', sslKey: '/ssl/live/review.example.com/privkey.pem'},
+  review: {enabled: false, host: '', ssl: '', sslKey: ''}
 };
 // Actual public API response examples. The System native-locale-messages
 // regression independently checks the catalogue against the native producers.
@@ -49,9 +49,9 @@ test('Korean setup renders native preflight, waiting-build and ready messages wi
   fireEvent.click(screen.getByRole('button', {name: '설정 확인 / 계속'}));
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('정식 Review/Beta 설정이 준비되었습니다.'));
   expect(screen.getByRole('status')).not.toHaveTextContent(ready);
-  expect(screen.getByDisplayValue(desired.review.ssl)).toBeInTheDocument();
+  expect(screen.getByDisplayValue(desired.beta.ssl)).toBeInTheDocument();
   expect(screen.getByDisplayValue(desired.wizard.project)).toBeInTheDocument();
-  expect(screen.getByRole('link', {name: '예약된 Review URL'})).toHaveAttribute('href', 'https://review.example.com');
+  expect(screen.getByRole('link', {name: '예약된 Beta URL'})).toHaveAttribute('href', 'https://review.example.com');
   expect(projectRequest).toHaveBeenLastCalledWith(route + '/apply', {settings: desired, previewHash: 'exact-preflight'});
 });
 

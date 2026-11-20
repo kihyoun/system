@@ -27,6 +27,7 @@ try {
   const messages = new Set();
   for (const filename of [
     'sync/src/PreviewSetup.ts',
+    'sync/src/SystemBetaSetup.ts',
     'project-bootstrap/preview-setup/settings.js',
     'project-bootstrap/preview-setup/source.js',
     'project-bootstrap/preview-setup/provision.rb',
