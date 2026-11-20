@@ -95,7 +95,7 @@ export class LifecycleService {
       );
     if (start) await this.address(selected, 'wizard', 'wizard/.docker.env', 'WIZARD_IP');
   }
-  private async gitlab(context: LifecycleContext, start: boolean) {
+  async gitlab(context: LifecycleContext, start: boolean) {
     if (!this.configured(context)) return;
     const selected = this.load(context, ['system/.docker.env']);
     if (!start) {

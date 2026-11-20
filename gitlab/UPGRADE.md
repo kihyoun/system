@@ -13,6 +13,16 @@ pre-upgrade registry blob on the new version. Finally, the candidate restores it
 verified cold checkpoint and the previous image; reverting an image alone is
 not a database rollback. These are disposable tests, not a live-data migration.
 
+## Operation runtime
+
+The existing `node gitlab/upgrade.js` commands use the controller-side
+[GitLabUpgradeModule](../operations/src/gitlab-upgrade/README.md). Prepare the
+committed operations runtime before entering maintenance. The module shares its
+validated session service with programmatic callers and retains the existing
+private owner, checkpoint and guardian journal formats. The native watchdog and
+Ruby database adapter remain separate; neither a package download nor a runtime
+build is part of recovery.
+
 ## Supported transition
 
 The profile selects **GitLab CE 19.5.3 → 19.6.1** and **Runner/Helper

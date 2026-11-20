@@ -30,7 +30,7 @@ export async function main(args = process.argv.slice(2), environment = process.e
     settled: number | null = 1;
   try {
     const upgrade =
-      action.startsWith('runner-') &&
+      (action.startsWith('runner-') || action === 'gitlab-start') &&
       inheritedUpgrade(state, environment.SYSTEM_GITLAB_UPGRADE_OPERATION);
     if (action !== 'start') {
       // Reuse only a matching inherited owner; a stale environment token grants no lease.
@@ -61,7 +61,8 @@ export async function main(args = process.argv.slice(2), environment = process.e
       signal: controller.signal,
       supervisedGroup: upgrade,
     };
-    if (action === 'runner-provision')
+    if (action === 'gitlab-start') await app.get(LifecycleService).gitlab(context, true);
+    else if (action === 'runner-provision')
       await app.get(RunnerLifecycleService).provisionToken(context);
     else if (action === 'runner-refresh')
       await app.get(RunnerLifecycleService).refreshEndpoint(context, scope);

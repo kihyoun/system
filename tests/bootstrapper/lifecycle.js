@@ -92,8 +92,11 @@ test('native runner entry reuses only the verified parent upgrade lease and leav
  for(const file of ['compose.js','docker-compose.yml'])fs.copyFileSync(path.resolve(__dirname,'../../gitlab-runner',file),path.join(f.root,'gitlab-runner',file));
  fs.mkdirSync(path.join(f.root,'bin'));const marker=path.join(f.root,'called');fs.writeFileSync(path.join(f.root,'bin/docker-compose'),'#!/bin/sh\nprintf called > "$MARKER"\n',{mode:0o755});
  const env={...f.context.environment,PATH:path.join(f.root,'bin')+':'+process.env.PATH,MARKER:marker,SYSTEM_GITLAB_UPGRADE_OPERATION:operation,GITLAB_RUNNER_SCALE:'0',PERSISTENT_DIR:path.join(f.root,'data')};
- const invoke=extra=>require('node:child_process').spawnSync(process.execPath,[path.resolve(__dirname,'../../operations/dist/lifecycle/entry.js'),'runner-pool',f.root,'down','runner'],{env:{...env,...extra},encoding:'utf8',timeout:5000});
+ const invoke=(extra,action='runner-pool')=>require('node:child_process').spawnSync(process.execPath,[path.resolve(__dirname,'../../operations/dist/lifecycle/entry.js'),action,f.root,'down','runner'],{env:{...env,...extra},encoding:'utf8',timeout:5000});
  const good=invoke({});assert.equal(good.status,0,good.stderr);assert(fs.existsSync(marker));for(const file of files)assert.deepEqual(JSON.parse(fs.readFileSync(file)),owner);
+ const main=path.join(f.root,'system/.docker.env');if(fs.existsSync(main))fs.unlinkSync(main);
+ const gitlab=invoke({},'gitlab-start');assert.equal(gitlab.status,0,gitlab.stderr);
+ const foreignGitlab=invoke({SYSTEM_GITLAB_UPGRADE_OPERATION:'e'.repeat(32)},'gitlab-start');assert.notEqual(foreignGitlab.status,0);for(const file of files)assert.deepEqual(JSON.parse(fs.readFileSync(file)),owner);
  fs.unlinkSync(marker);const bad=invoke({SYSTEM_GITLAB_UPGRADE_OPERATION:'e'.repeat(32)});assert.notEqual(bad.status,0);assert(!fs.existsSync(marker));for(const file of files)assert.deepEqual(JSON.parse(fs.readFileSync(file)),owner);
 });
 
