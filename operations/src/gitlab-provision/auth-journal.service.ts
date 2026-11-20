@@ -8,6 +8,8 @@ export interface GitlabAuthJournal {
   version: 1;
   operation: string;
   phase: 'bootstrap-requested' | 'bootstrap-received' | 'replacement-verified' | 'ready';
+  account?: { username: string; email: string; nonce: string; userId?: number };
+  pendingToken?: { name: string; expiresAt: string };
   bootstrap?: { id: number; userId: number; token: string; name: string; expiresAt: string };
   replacement?: { id: number; userId: number; token: string; expiresAt: string };
 }
@@ -46,6 +48,31 @@ export function validateAuthJournal(value: unknown): GitlabAuthJournal {
     )
   )
     throw Error('gitlab-auth-journal-invalid');
+  if (state.account !== undefined) {
+    const account = record(state.account);
+    if (
+      typeof account.username !== 'string' ||
+      !/^[a-z][a-z0-9_.-]{2,63}$/.test(account.username) ||
+      typeof account.email !== 'string' ||
+      !/^[^\s@]+@[^\s@]+$/.test(account.email) ||
+      typeof account.nonce !== 'string' ||
+      !/^[a-f0-9]{48}$/.test(account.nonce) ||
+      (account.userId !== undefined &&
+        (!Number.isSafeInteger(account.userId) || Number(account.userId) <= 0))
+    )
+      throw Error('gitlab-auth-journal-invalid');
+  }
+  if (state.pendingToken !== undefined) {
+    const pending = record(state.pendingToken);
+    if (
+      !state.account ||
+      typeof pending.name !== 'string' ||
+      !/^system-bootstrapper-controller-[a-f0-9]{48}$/.test(pending.name) ||
+      typeof pending.expiresAt !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(pending.expiresAt)
+    )
+      throw Error('gitlab-auth-journal-invalid');
+  }
   if (
     state.bootstrap !== undefined &&
     credential(state.bootstrap).name !== 'system-bootstrapper-initial-' + state.operation

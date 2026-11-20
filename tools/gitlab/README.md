@@ -45,3 +45,19 @@ revocation response resumes through readback, not another bootstrap operation.
 
 This boundary does not authorize operational Ruby scripts or arbitrary Rails
 commands. See GitLab's [personal access token guidance](https://docs.gitlab.com/user/profile/personal_access_tokens/).
+
+`GitlabControllerCredentialService.prepare()` binds an administrator automation
+account to an explicit username/email and a private ownership nonce in its GitLab
+administration note. It refuses an unrelated existing username or changed
+ownership attributes. This account is separate from the non-administrator
+Renovate account. Its initial recurring token has only the `api` scope and a
+90-day expiry; the account's administrator role still grants instance-wide
+administrative authority. Project-specific credentials must be used where that
+broader authority is unnecessary.
+
+The service records each recurring-token creation intent before its REST call.
+A lost response cannot recover the secret from GitLab. It therefore revokes and
+verifies an exactly observed token before creating a replacement. If the
+pending token is absent from the API, it retains the intent and refuses another
+creation: absence alone does not establish that the original request cannot
+still commit. Do not delete the private journal to bypass this barrier.
