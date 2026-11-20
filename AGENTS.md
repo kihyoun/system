@@ -24,7 +24,7 @@ technical documentation remain appropriate.
 1. Read the README and relevant component documentation for the code's contracts
    and reproducible workflows. Obtain task status and requirements from the
    conversation or external tracker, not a repository handoff snapshot.
-2. Inspect the current branch, worktree, remotes and Wizard submodule before
+2. Inspect the current branch, worktree, remotes and integrated Wizard sources before
    changing anything. Confirm operator-provided infrastructure before deployment
    or destructive work; repository examples are not live-instance coordinates.
 3. Update stale technical guidance rather than accumulating plans or status files.
@@ -83,9 +83,11 @@ Change only intended assignments after the signature. Verify the signature and
 an authenticated Fetch response when modifying configuration. Keep the strict
 validator; the MD5 format check is not cryptographic authentication.
 
-Relevant copies are in `sync/src/Helper.ts` and `wizard/src/api/Helper.tsx`;
-validators and routing also refer to `sync/src/index.ts`, `wizard/src/api/Main.tsx`,
-`nginx/start.sh` and `system/start.sh`.
+Relevant copies are in `sync/src/Helper.ts` and `wizard/src/api/Helper.tsx`.
+Configuration validation and routing also live in
+`operations/src/projects-routing/wizard-aliases.ts` and
+`operations/src/projects-routing/projects-routing.service.ts`; lifecycle
+readiness uses `operations/src/lifecycle/lifecycle.service.ts`.
 
 ## Persistence and recovery
 
