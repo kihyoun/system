@@ -21,6 +21,48 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
   const images=new Upgrade(base,{run:()=>JSON.stringify([{Id:ids.next,RepoDigests:[release.toImage]}])});assert.equal(images.image(release.toImage),ids.next);
   const wrong=new Upgrade(base,{run:()=>JSON.stringify([{Id:ids.next,RepoDigests:[]}])});assert.throws(()=>wrong.image(release.toImage),/pin-mismatch/);
   const candidate=new Upgrade(base,{run:()=>JSON.stringify([{Id:ids.next}]),imageIds:{[release.toImage]:ids.next}});assert.equal(candidate.image(release.toImage),ids.next,'Only the isolated adapter supplies archive-verified image IDs.');
+  const running={Image:ids.next,State:{Status:'running',Running:true,ExitCode:0}};
+  for(const reason of ['upgrade-persistent-mount-mismatch','upgrade-owned-gitlab-required']){
+    const ready=new Upgrade(base,{sleep:async()=>{assert.fail('Identity failures must not retry.');}});
+    ready.inspect=()=>running;ready.docker=()=>'';ready.preflight=async()=>{throw Error(reason);};
+    await assert.rejects(()=>ready.ready(release.toVersion,ids.next),error=>error.message===reason);
+  }
+  for(const patch of [{version:release.fromVersion},{edition:'EE'}]){
+    const ready=new Upgrade(base);ready.inspect=()=>running;ready.verifyMounts=()=>{};
+    ready.docker=()=>JSON.stringify({version:release.toVersion,edition:'CE',runningJobs:0,unfinishedBackgroundMigrations:0,...patch});
+    await assert.rejects(()=>ready.preflight(release.toVersion),error=>error.message==='upgrade-preflight-identity-mismatch'&&error.noRetry===true);
+  }
+  for(const [container,reason]of [
+    [{...running,Image:ids.old},'upgrade-current-image-mismatch'],
+    [{...running,State:{Status:'dead',Dead:true,ExitCode:137}},'upgrade-service-dead'],
+    [{...running,State:{Status:'running',Running:true,OOMKilled:true,ExitCode:137}},'upgrade-service-oom'],
+    [{...running,State:{Status:'exited',ExitCode:23},HostConfig:{RestartPolicy:{Name:'no'}}},'upgrade-service-exited'],
+    [{...running,State:{Status:'exited',ExitCode:0},HostConfig:{RestartPolicy:{Name:'on-failure'}}},'upgrade-service-exited'],
+    [{...running,State:{Status:'exited',ExitCode:23},RestartCount:3,HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:3}}},'upgrade-service-exited']
+  ]){
+    let sleeps=0,commands=0;
+    const ready=new Upgrade(base,{sleep:async()=>{sleeps++;},run:()=>{commands++;throw Error('must-not-execute');}});
+    ready.inspect=()=>container;
+    await assert.rejects(()=>ready.ready(release.toVersion,ids.next),error=>error.message===reason&&error.noRetry===true&&
+      (container.State.ExitCode===undefined||reason==='upgrade-current-image-mismatch'||error.exitCode===container.State.ExitCode));
+    assert.equal(sleeps,0,'Terminal state must fail without waiting for the readiness deadline.');assert.equal(commands,0);
+  }
+  for(const container of [
+    {...running,State:{Status:'created',Running:false}},
+    {...running,State:{Status:'restarting',Running:false,Restarting:true}},
+    ...['always','unless-stopped'].map(Name=>({...running,State:{Status:'exited',ExitCode:23},HostConfig:{RestartPolicy:{Name}}})),
+    {...running,State:{Status:'exited',ExitCode:23},RestartCount:3,HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:0}}},
+    {...running,State:{Status:'exited',ExitCode:23},RestartCount:2,HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:3}}},
+    {...running,State:{Status:'exited',ExitCode:23}}
+  ]){
+    let time=0,inspections=0,sleeps=0,current;
+    const ready=new Upgrade(base,{now:()=>time,sleep:async ms=>{sleeps++;time+=ms;},run:(_binary,args)=>{
+      if(!current.State.Running)throw Error('service-not-ready');
+      return args.includes('db:migrate:status')?'up 123 fixture':'';
+    }});
+    ready.inspect=()=>{inspections++;current=inspections===1?container:running;return current;};ready.preflight=async()=>{};
+    await ready.ready(release.toVersion,ids.next);assert.equal(inspections,2);assert.equal(sleeps,1);
+  }
   const planEngine=new Upgrade(base);let entered=false,unlocked=false;
   planEngine.lock=()=>{};planEngine.unlock=()=>{unlocked=true;};planEngine.syncIdle=()=>{};planEngine.plan=async()=>({planSha256:'d'.repeat(64)});planEngine.migrate=async()=>{entered=true;};
   await assert.rejects(()=>planEngine.promote('e'.repeat(64)),/reviewed-plan/);assert(!entered);assert(unlocked);

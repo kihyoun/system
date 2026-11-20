@@ -99,6 +99,37 @@ test('native upgrade waits for Docker health after recreation and refuses OOM wi
   assert.equal(inspections, 1);
   assert.equal(require('./stage-diagnostics').failureReason('public-upgrade-service-oom'), 'public-upgrade-service-oom');
 });
+test('native readiness reports terminal service exits but permits scheduled restarts',async()=>{
+  const {Candidate}=require('./disposable-candidate');
+  const names=['system_bootstrapper_1','system_web_1','system_gitlab_1','system_wizard_1','runner_docker_1'];
+  const healthy=names.map(name=>({Name:'/'+name,State:{Status:'running',Running:true}}));
+  let time=0,inspections=0,sample;
+  const candidate={deadline:100000,now:()=>time,sleep:async ms=>{time+=ms;},wait:Candidate.prototype.wait,
+    inner:async()=>{inspections++;return JSON.stringify(sample());}};
+  const changed=container=>healthy.map((row,index)=>index===0?{...row,...container}:row);
+  for(const container of [
+    {State:{Status:'dead',Dead:true,ExitCode:137,Error:'private-docker-error'}},
+    {State:{Status:'exited',ExitCode:23},HostConfig:{RestartPolicy:{Name:'no'}}},
+    {State:{Status:'exited',ExitCode:0},HostConfig:{RestartPolicy:{Name:'on-failure'}}},
+    {State:{Status:'exited',ExitCode:23},RestartCount:2,HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:2}}}
+  ]){
+    inspections=0;sample=()=>changed(container);
+    const reason='public-upgrade-service-'+(container.State.Dead?'dead':'exited');
+    await assert.rejects(waitForServices(candidate,3000),error=>error.message===reason&&error.noRetry===true&&error.exitCode===container.State.ExitCode);
+    assert.equal(inspections,1);assert.equal(require('./stage-diagnostics').failureReason(reason),reason);
+  }
+  for(const container of [
+    {State:{Status:'created',Running:false}},
+    {State:{Status:'restarting',Restarting:true}},
+    ...['always','unless-stopped'].map(Name=>({State:{Status:'exited',ExitCode:23},HostConfig:{RestartPolicy:{Name}}})),
+    {State:{Status:'exited',ExitCode:23},HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:0}}},
+    {State:{Status:'exited',ExitCode:23},RestartCount:1,HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:2}}},
+    {State:{Status:'exited',ExitCode:23}}
+  ]){
+    inspections=0;sample=()=>inspections===1?changed(container):healthy;
+    await waitForServices(candidate,3000);assert.equal(inspections,2);
+  }
+});
 test('previous public fixture is selected explicitly and redirects stay anonymous on approved TLS origins', async () => {
   const metadata = fixture();
   assert.deepEqual(await download('example/system', edge.from, async () => Response.json(metadata)), metadata);
