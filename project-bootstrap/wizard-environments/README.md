@@ -131,3 +131,11 @@ exact-byte receipt CAS, DNS consistency and archived Beta binding replacement.
 The clean helper invokes its compiled stdin adapter in the original controller;
 source text is no longer evaluated as the canonical implementation. The adapter
 returns only the existing public envelope and fixed failure diagnostic.
+
+`EnvironmentModule` owns the helper invocation, canonical reservation checks,
+image/source/job identity, TLS readiness, native Ruby verifier selection and
+stopped-route maintenance. The bounded process adapter tracks child processes and
+retains a separate cleanup budget; cancellation never authorizes foreign cleanup.
+The source-primary reservation policy preserves exact CI identities, prior
+receipt history, stopped tombstones and generation floors. Compatibility exports
+remain available for existing offline tests and disposable verifier fixtures.
