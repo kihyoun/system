@@ -265,6 +265,14 @@ for (const monorepo of [false, true]) test('complete publisher derives determini
   if (monorepo) names.push('test:npm-package');
   const jobs = names.map((name, index) => ({name, id: name === 'test:platform-candidate' ? 20 : index + 1,
     status: 'success', allow_failure: false, pipeline: {id: 10}, commit: {id: commit}}));
+  if (monorepo) {
+    const bytes = Buffer.from('fixture exact tested bundled CLI tarball');
+    const filename = 'systembootstrapper-cli-1.0.0.tgz';
+    const receipt = {format:'system-cli-source-v1',name:'@systembootstrapper/cli',version:'1.0.0',sourceRevision:commit,sourceTree,pipelineId:10,packageJobId:jobs.find(job=>job.name==='test:npm-package').id,filename,sha256:hash(bytes),integrity:'sha512-'+require('node:crypto').createHash('sha512').update(bytes).digest('base64')};
+    inputs['test-results/npm-package/'+filename]=bytes;
+    inputs['test-results/npm-package/receipt.json']=Buffer.from(JSON.stringify(receipt));
+    for (const [file, content] of Object.entries(inputs)) { fs.mkdirSync(path.dirname(path.join(root,file)),{recursive:true}); fs.writeFileSync(path.join(root,file),content); }
+  }
   const fixture = githubFixture();
   const request = async (url, options = {}) => {
     const parsed = new URL(url);
@@ -312,7 +320,7 @@ for (const monorepo of [false, true]) test('complete publisher derives determini
   assert.equal(published.quickstart.sha256, hash(fs.readFileSync(path.join(root, 'test-results/public-release/quickstart.sh'))));
   assert.match(fs.readFileSync(path.join(root, 'test-results/public-release/quickstart.sh'), 'utf8'), /ACCEPTED_RELEASE_TAG = 'v1.0.0'/);
   assert(!JSON.stringify(published).includes('registry.example.test'));
-  assert.equal(fixture.getRelease().assets.length, 5);
+  assert.equal(fixture.getRelease().assets.length, monorepo ? 6 : 5);
   fixture.calls.length = 0;
   await publish(env, root, request);
   assert(!fixture.calls.some(row => row.options.method), 'full native publication retry reuses the identical evidence/assets');

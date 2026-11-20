@@ -13,8 +13,8 @@ test('public tarball carries compiled CLI and offline validation assets without 
     const files=record.files.map(file=>file.path);
     assert(!files.includes('assets/project-bootstrap/preview-setup/settings.js'));
     for(const required of ['dist/cli.js','dist/index.js','dist/storage/entry.js','dist/project-lifecycle/preview-settings.js','README.md','LICENSE'])assert(files.includes(required),required);
-    assert(files.every(file=>/^(?:dist\/|assets\/|README.md$|LICENSE$|package.json$)/.test(file)));
-    assert(!files.some(file=>/(?:^|\/)(?:node_modules|\.env|\.npmrc|private|tests)(?:\/|$)/.test(file)));
+    assert(files.every(file=>/^(?:dist\/|assets\/|node_modules\/|README.md$|LICENSE$|package.json$)/.test(file)));
+    assert(!files.some(file=>/(?:^|\/)(?:\.env|\.npmrc|private)(?:\/|$)/.test(file)));
     execFileSync('tar',['-xzf',path.join(temporary,record.filename),'-C',temporary]);
     const unpacked=path.join(temporary,'package');
     const metadata=JSON.parse(fs.readFileSync(path.join(unpacked,'package.json')));
@@ -23,7 +23,7 @@ test('public tarball carries compiled CLI and offline validation assets without 
     const version=execFileSync(process.execPath,[path.join(unpacked,'dist/cli.js'),'--version'],{encoding:'utf8',env:{PATH:'/missing',HOME:temporary}}).trim();
     assert.equal(version,metadata.version);
     const installed=path.join(temporary,'installed'); fs.mkdirSync(installed);
-    execFileSync('npm',['install','--offline','--ignore-scripts','--no-audit','--no-fund','--prefix',installed,path.join(temporary,record.filename)],{cwd:temporary,stdio:'pipe'});
+    execFileSync('npm',['install','--offline','--ignore-scripts','--no-audit','--no-fund','--prefix',installed,path.join(temporary,record.filename)],{cwd:temporary,stdio:'pipe',env:{...process.env,npm_config_cache:path.join(temporary,'empty-cache'),npm_config_userconfig:path.join(temporary,'user.npmrc'),npm_config_globalconfig:path.join(temporary,'global.npmrc')}});
     const installedCli=path.join(installed,'node_modules/.bin/system-bootstrapper');
     assert.equal(execFileSync(process.execPath,[installedCli,'--version'],{encoding:'utf8'}).trim(),metadata.version);
     const api=require(path.join(installed,'node_modules/@systembootstrapper/cli'));

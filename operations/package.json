@@ -39,5 +39,11 @@
   ],
   "bin": {
     "system-bootstrapper": "dist/cli.js"
-  }
+  },
+  "bundleDependencies": [
+    "@nestjs/common",
+    "@nestjs/core",
+    "reflect-metadata",
+    "rxjs"
+  ]
 }

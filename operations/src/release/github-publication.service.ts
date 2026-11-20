@@ -1,3 +1,4 @@
+import { acceptedCliArtifact } from './github-cli-artifact';
 import { publicUpgradeAssets, type PublicUpgradePolicy } from './public-upgrade-assets';
 import { Inject, Injectable } from '@nestjs/common';
 import * as fs from 'node:fs';
@@ -131,8 +132,39 @@ export class GithubPublicationService {
           "REPOSITORY = '" + ci.repository + "'  # Accepted public mirror.",
         ),
     );
-    ci.hostInstallerSha256 = hash(bounded(path.join(root, 'bootstrapper/install.sh')));
+    if (released.sourceLayout !== 'system-monorepo-v1')
+      ci.hostInstallerSha256 = hash(bounded(path.join(root, 'bootstrapper/install.sh')));
     const metadata = publicMetadata(ci, released, publication, source, notes, quickstart);
+    const cliAssets: Record<string, Buffer> = {};
+    if (released.sourceLayout === 'system-monorepo-v1') {
+      const job = jobs.find((row) => row.name === 'test:npm-package')!;
+      const receiptPath = 'test-results/npm-package/receipt.json';
+      const receiptBytes = bounded(path.join(root, receiptPath));
+      const filename = `systembootstrapper-cli-${ci.version}.tgz`,
+        artifactPath = 'test-results/npm-package/' + filename;
+      const bytes = bounded(path.join(root, artifactPath));
+      metadata.quickstart.cli = acceptedCliArtifact(JSON.parse(receiptBytes.toString()), bytes, {
+        version: ci.version,
+        sourceRevision: released.sourceRevision,
+        sourceTree: released.sourceTree,
+        pipelineId: ci.pipelineId,
+        packageJobId: job.id,
+      });
+      for (const [file, local] of [
+        [receiptPath, receiptBytes],
+        [artifactPath, bytes],
+      ] as const) {
+        const remote = await gitlab(
+          '/projects/' + ci.projectId + '/jobs/' + job.id + '/artifacts/' + file,
+          { raw: true },
+        );
+        requireValue(
+          Buffer.isBuffer(remote) && remote.equals(local),
+          'CLI input differs from successful same-attempt package artifact.',
+        );
+      }
+      cliAssets[filename] = bytes;
+    }
     const upgradeAssets = publicUpgradeAssets(
       metadata,
       released,
@@ -188,6 +220,7 @@ export class GithubPublicationService {
       'quickstart.sh': quickstart,
       'release-notes.md': notes,
       ...upgradeAssets,
+      ...cliAssets,
     };
     const credential = token(env, 'GITHUB_RELEASE_TOKEN');
     const base = api('https://api.github.com', 'Bearer ' + credential, 'Authorization', request);

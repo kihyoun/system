@@ -1,3 +1,4 @@
+import type { NpmReceipt } from './npm-identity';
 import { publicSource, publicWizardRevision, type PublicSource } from './github-source';
 import type { SuccessorRelease } from './types';
 import type { GithubContext } from './github-acceptance';
@@ -29,7 +30,7 @@ export interface AcceptedPublicMetadata {
     minimumMemoryGiB: number;
     minimumFreeDiskGiB: number;
   };
-  quickstart: { file: string; sha256: string; hostInstallerSha256?: string };
+  quickstart: { file: string; sha256: string; hostInstallerSha256?: string; cli?: NpmReceipt };
   releaseNotesSha256: string;
   documentation: Record<string, string>;
   publicUpgrade?: { file: string; sha256: string; format: string };
