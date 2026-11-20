@@ -10,7 +10,7 @@ test('GitLab startup recreates changed configuration and exports explicit Omnibu
  const config=path.join(root,'system/.docker.env');fs.writeFileSync(config,'GITLAB_REGISTRY_DOMAIN_MODE=0\nGITLAB_REGISTRY_URL=http://registry.localhost:5050\nGITLAB_REGISTRY_HOST=registry.localhost\nGITLAB_EXTERNAL_URL=http://gitlab.localhost\n');
  const calls=[],child={async run(binary,args,options){calls.push({binary,args,options});return binary==='docker'?'172.19.0.3':'';}};
  const service=new LifecycleService(child,new ShellConfiguration(new NativeProcessRunner()),{}, {},{gitlabConfig:path.join(root,'config'),gitlabData:path.join(root,'data'),syncTemplates:path.join(root,'templates')});
- const run=async environment=>{calls.length=0;await service.gitlab({root,state:path.join(root,'system'),environment:{...process.env,...environment}},true);return calls.find(c=>c.binary==='docker-compose');};
+ const run=async environment=>{calls.length=0;await service.gitlab({root,state:path.join(root,'system'),environment:{...process.env,...environment}},true);return calls.find(c=>c.binary==='docker'&&c.args.includes('compose'));};
  assert((await run({})).args.includes('--force-recreate'));
  assert(!(await run({})).args.includes('--force-recreate'));
  fs.appendFileSync(config,'GITLAB_EXTERNAL_URL=http://changed.localhost\n');assert((await run({})).args.includes('--force-recreate'));

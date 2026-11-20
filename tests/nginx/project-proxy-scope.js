@@ -15,8 +15,7 @@ test('targeted proxy setup prepares only the selected application without recrea
     'PROJECT_NAME=' + key + '\nUSE_PROD_HOST=true\nUSE_BETA_HOST=false\nUSE_REVIEW_HOST=true\n');
   fs.writeFileSync(path.join(root, 'nginx-proxy/.projects/.unrelated.env'), 'unchanged sibling');
   const bin = path.join(root, 'bin'), trace = path.join(root, 'trace');
-  fs.writeFileSync(path.join(bin, 'docker-compose'), '#!/bin/sh\nprintf "%s %s\\n" "$NGINX_PROXY_IMAGE" "$*" >> "$TRACE"\n', {mode: 0o755});
-  fs.writeFileSync(path.join(bin, 'docker'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$TRACE"\nprintf "172.20.0.2\\n"\n', {mode: 0o755});
+  fs.writeFileSync(path.join(bin, 'docker'), '#!/bin/sh\nprintf "%s %s\\n" "$NGINX_PROXY_IMAGE" "$*" >> "$TRACE"\nprintf "172.20.0.2\\n"\n', {mode: 0o755});
   const result = spawnSync(process.execPath, [path.join(root,'operations/dist/projects-routing/entry.js'),'routing','proxies',root,'','selected'], {cwd: path.join(root, 'nginx-proxy'), encoding: 'utf8', env: {...process.env, PATH: bin + ':' + process.env.PATH, TRACE: trace}});
   assert.equal(result.status, 0, result.stderr);
   const commands = fs.readFileSync(trace, 'utf8');

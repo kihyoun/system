@@ -203,7 +203,10 @@ export class RunnerLifecycleService {
       ]);
       const file = path.join(temporary, 'compose.json');
       fs.writeFileSync(file, definition, { mode: 0o600 });
-      await this.run(context, 'docker-compose', [
+      await this.run(context, 'docker', [
+        '--host=unix:///var/run/docker.sock',
+        'compose',
+        '--compatibility',
         '-p',
         pool,
         '-f',

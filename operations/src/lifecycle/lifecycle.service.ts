@@ -62,7 +62,10 @@ export class LifecycleService {
     };
   }
   private compose(context: LifecycleContext, service: string, args: string[]) {
-    return this.command(context, 'docker-compose', [
+    return this.command(context, 'docker', [
+      '--host=unix:///var/run/docker.sock',
+      'compose',
+      '--compatibility',
       '-f',
       '../system/docker-compose.yml',
       ...args,
@@ -136,8 +139,11 @@ export class LifecycleService {
     }
     await this.command(
       selected,
-      'docker-compose',
+      'docker',
       [
+        '--host=unix:///var/run/docker.sock',
+        'compose',
+        '--compatibility',
         '-f',
         '../system/docker-compose.yml',
         ...(selected.environment.GITLAB_OMNIBUS_CONFIG

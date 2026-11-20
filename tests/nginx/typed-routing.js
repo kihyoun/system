@@ -51,11 +51,11 @@ test('uncertain reload failure restores template bytes and candidate fragments',
 
 test('stop uses selected Compose environment and skips managed Wizard proxy ownership',t=>{
  const f=fixture(t);f.service.run({...f.command,action:'stop'});
- assert.deepEqual(f.calls.at(-1).args,['-f','../system/docker-compose.yml','stop','web']);
+ assert.deepEqual(f.calls.at(-1).args,['--host=unix:///var/run/docker.sock','compose','--compatibility','-f','../system/docker-compose.yml','stop','web']);
  assert.equal(f.calls.at(-1).options.env.PERSISTENT_DIR,'/selected/data');
  fs.writeFileSync(path.join(f.root,'system/.projects.env/.wizard.env'),'PROJECT_NAME=wizard\nPROJECT_TEMPLATE=wizard\n');
  fs.writeFileSync(path.join(f.root,'system/.projects.env/.sample.env'),'PROJECT_NAME=sample\n');
  f.calls.length=0;f.service.run({...f.command,action:'stop-proxies'});
- assert.deepEqual(f.calls.map(row=>row.args),[['-p','sample','down']]);
+ assert.deepEqual(f.calls.map(row=>row.args),[['--host=unix:///var/run/docker.sock','compose','--compatibility','-p','sample','down']]);
  assert.throws(()=>f.service.run({...f.command,root:'relative'}),/Absolute/);
 });

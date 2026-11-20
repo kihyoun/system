@@ -25,7 +25,6 @@ write('system/.docker.env', 'GITLAB_HOST=gitlab.localhost\nGITLAB_DOMAIN_MODE=0\
 write('system/.projects.env/.wizard.env', 'PROJECT_NAME=wizard\nPROJECT_TEMPLATE=wizard\nUSE_PROD_HOST=true\nUSE_BETA_HOST=true\nUSE_REVIEW_HOST=true\n');
 NODE
 printf '#!/bin/sh\necho "$*" >> "$TRACE"\n' > "$fixture/bin/docker"
-cp "$fixture/bin/docker" "$fixture/bin/docker-compose"
 chmod +x "$fixture/bin/"*
 export PATH="$fixture/bin:$PATH" TRACE="$fixture/trace"
 touch "$TRACE"

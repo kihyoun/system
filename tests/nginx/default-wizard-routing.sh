@@ -22,7 +22,6 @@ write('system/.docker.env','GITLAB_HOST=gitlab.localhost\nGITLAB_DOMAIN_MODE=0\n
 fs.writeFileSync(path.join(fixture,'system/.projects.env/.wizard.env'),require(path.join(root,'sync/dist/DefaultWizard')).wizardConfiguration({WIZARD_HOST:'localhost'}));
 NODE
 printf '#!/bin/sh\necho "$*" >> "$TRACE"\n' > "$fixture/bin/docker"
-cp "$fixture/bin/docker" "$fixture/bin/docker-compose"
 chmod +x "$fixture/bin/"*
 export PATH="$fixture/bin:$PATH" TRACE="$fixture/trace"
 touch "$TRACE"

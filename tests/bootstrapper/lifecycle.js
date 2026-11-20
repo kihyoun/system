@@ -90,7 +90,7 @@ test('native runner entry reuses only the verified parent upgrade lease and leav
  const f=fixture(t),operation='d'.repeat(32),owner={format:'system-gitlab-upgrade-lock-v1',operation,pid:process.pid,start:fs.readFileSync('/proc/self/stat','utf8').split(' ').at(21)};
  const files=['.gitlab-upgrade-lock','.storage-operation-lock','.projects.env/.wizard.env.environments.lock'].map(name=>{const directory=path.join(f.context.state,name);fs.mkdirSync(directory,{recursive:true});const file=path.join(directory,'upgrade-owner.json');fs.writeFileSync(file,JSON.stringify(owner));return file;});
  for(const file of ['compose.js','docker-compose.yml'])fs.copyFileSync(path.resolve(__dirname,'../../gitlab-runner',file),path.join(f.root,'gitlab-runner',file));
- fs.mkdirSync(path.join(f.root,'bin'));const marker=path.join(f.root,'called');fs.writeFileSync(path.join(f.root,'bin/docker-compose'),'#!/bin/sh\nprintf called > "$MARKER"\n',{mode:0o755});
+ fs.mkdirSync(path.join(f.root,'bin'));const marker=path.join(f.root,'called');fs.writeFileSync(path.join(f.root,'bin/docker'),'#!/bin/sh\nprintf called > "$MARKER"\n',{mode:0o755});
  const env={...f.context.environment,PATH:path.join(f.root,'bin')+':'+process.env.PATH,MARKER:marker,SYSTEM_GITLAB_UPGRADE_OPERATION:operation,GITLAB_RUNNER_SCALE:'0',PERSISTENT_DIR:path.join(f.root,'data')};
  const invoke=(extra,action='runner-pool')=>require('node:child_process').spawnSync(process.execPath,[path.resolve(__dirname,'../../operations/dist/lifecycle/entry.js'),action,f.root,'down','runner'],{env:{...env,...extra},encoding:'utf8',timeout:5000});
  const good=invoke({});assert.equal(good.status,0,good.stderr);assert(fs.existsSync(marker));for(const file of files)assert.deepEqual(JSON.parse(fs.readFileSync(file)),owner);
@@ -110,7 +110,7 @@ test('GitLab startup preserves verified upgrade supervision and isolates ordinar
   const f = fixture(t);
   await f.service.gitlab({...f.context, supervisedGroup}, true);
   const commands = f.calls.filter(call => call.binary);
-  assert(commands.some(call => call.binary === 'docker-compose'));
+  assert(commands.some(call => call.binary === 'docker' && call.args.includes('compose')));
   assert(commands.some(call => call.args[0]?.endsWith('prepare-root-password.js')));
   for (const call of commands) assert.equal(call.options.inheritGroup, supervisedGroup === true);
  }

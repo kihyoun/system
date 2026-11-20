@@ -96,11 +96,23 @@ export class ProjectsRoutingService {
       selected,
       Object.fromEntries(selected.map((key) => [key, process.env[key] || ''])),
     );
-    this.process.run('docker-compose', ['-f', '../system/docker-compose.yml', 'stop', 'web'], {
-      cwd: path.join(root, 'nginx'),
-      env: { ...process.env, ...environment },
-      timeout: 180000,
-    });
+    this.process.run(
+      'docker',
+      [
+        '--host=unix:///var/run/docker.sock',
+        'compose',
+        '--compatibility',
+        '-f',
+        '../system/docker-compose.yml',
+        'stop',
+        'web',
+      ],
+      {
+        cwd: path.join(root, 'nginx'),
+        env: { ...process.env, ...environment },
+        timeout: 180000,
+      },
+    );
   }
   private stopProxies(command: RoutingCommand): void {
     for (const file of this.projectPaths(command.root)) {
@@ -108,10 +120,14 @@ export class ProjectsRoutingService {
         name = project.PROJECT_NAME;
       if (project.PROJECT_TEMPLATE === 'wizard' && name === 'wizard') continue;
       if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw Error('Invalid project proxy identity.');
-      this.process.run('docker-compose', ['-p', name, 'down'], {
-        cwd: path.join(command.root, 'nginx-proxy'),
-        timeout: 180000,
-      });
+      this.process.run(
+        'docker',
+        ['--host=unix:///var/run/docker.sock', 'compose', '--compatibility', '-p', name, 'down'],
+        {
+          cwd: path.join(command.root, 'nginx-proxy'),
+          timeout: 180000,
+        },
+      );
     }
   }
   private projectPaths(root: string): string[] {
@@ -184,8 +200,11 @@ export class ProjectsRoutingService {
             !!command.projects?.length ||
             process.env.SYSTEM_PROJECT_ROUTING_ONLY === 'true';
           this.process.run(
-            'docker-compose',
+            'docker',
             [
+              '--host=unix:///var/run/docker.sock',
+              'compose',
+              '--compatibility',
               '-p',
               name,
               'up',
@@ -348,8 +367,11 @@ export class ProjectsRoutingService {
         });
       else
         this.process.run(
-          'docker-compose',
+          'docker',
           [
+            '--host=unix:///var/run/docker.sock',
+            'compose',
+            '--compatibility',
             '-f',
             '../system/docker-compose.yml',
             'up',

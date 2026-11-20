@@ -40,10 +40,7 @@ try {
   fs.symlinkSync(path.join(root,'operations'),path.join(fixture,'operations'),'dir');
   fs.copyFileSync(path.join(root,'gitlab/security-release.json'),path.join(fixture,'gitlab/security-release.json'));
   const log = path.join(fixture, 'compose-log.jsonl');
-  fs.writeFileSync(path.join(fixture, 'bin/docker-compose'), `#!/usr/bin/env node\nconst fs=require('fs'); const args=process.argv.slice(2); fs.appendFileSync(process.env.COMPOSE_LOG, JSON.stringify({args,definition:JSON.parse(fs.readFileSync(args[args.indexOf('-f')+1],'utf8'))})+'\\n');\n`, {mode: 0o755});
-  fs.writeFileSync(path.join(fixture, 'bin/docker'), '#!/bin/sh\ncat >/dev/null\nprintf \'{"token":"glrt-persisted_test"}\\n\'\n', {mode: 0o755});
-  fs.writeFileSync(path.join(fixture, 'gitlab-runner/register.sh'), 'exit 0\n');
-  fs.writeFileSync(path.join(fixture, 'gitlab-runner/unregister.sh'), 'exit 99\n');
+  fs.writeFileSync(path.join(fixture,'bin/docker'),'#!'+process.execPath+'\nconst fs=require("fs"),args=process.argv.slice(2);if(args.includes("compose")){fs.appendFileSync(process.env.COMPOSE_LOG,JSON.stringify({args,definition:JSON.parse(fs.readFileSync(args[args.indexOf("-f")+1],"utf8"))})+"\\n");}else{process.stdin.resume();process.stdin.on("end",()=>console.log(JSON.stringify({token:"glrt-persisted_test"})));}\n',{mode:0o755});
   fs.writeFileSync(path.join(fixture, 'gitlab/.docker.env'), 'export GITLAB_HOST=gitlab.example.com\nexport GITLAB_REGISTRY_HOST=registry.example.com\n');
   fs.symlinkSync(path.join(fixture, 'project-state'), path.join(fixture, 'system/.projects.env'));
   fs.writeFileSync(path.join(fixture, 'project-state/.project.env'), 'PROJECT_NAME=project\nPROJECT_TEMPLATE=web\nGITLAB_RUNNER_SCALE=2\n');
@@ -67,14 +64,15 @@ try {
   assert.equal(fs.readFileSync(marker, 'utf8'), 'manager-two-stable');
   writeMain(0); invoke('start.sh', 'main');
   const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map(line => JSON.parse(line));
-  assert.deepStrictEqual(calls.map(call => call.args[1]), ['runner', 'project_runner', 'runner', 'runner', 'project_runner', 'runner', 'runner']);
-  assert.deepStrictEqual(calls.map(call => call.args[4]), ['up', 'up', 'up', 'down', 'down', 'up', 'down']);
+  assert.deepStrictEqual(calls.map(call => call.args[call.args.indexOf('-p')+1]), ['runner', 'project_runner', 'runner', 'runner', 'project_runner', 'runner', 'runner']);
+  assert.deepStrictEqual(calls.map(call => call.args[call.args.indexOf('-f')+2]), ['up', 'up', 'up', 'down', 'down', 'up', 'down']);
   assert.deepStrictEqual(Object.keys(calls[0].definition.services), ['docker_1', 'docker_2']);
   assert.deepStrictEqual(Object.keys(calls[2].definition.services), ['docker_1']);
   assert.deepStrictEqual(calls[5].definition.services, calls[0].definition.services);
   for (const call of calls) {
+    assert.deepEqual(call.args.slice(0,3),['--host=unix:///var/run/docker.sock','compose','--compatibility']);
     assert(call.args.includes('--remove-orphans'));
-    assert(!fs.existsSync(call.args[3]), 'generated temporary definition must be cleaned');
+    assert(!fs.existsSync(call.args[call.args.indexOf('-f')+1]), 'generated temporary definition must be cleaned');
   }
 
   // Atomic runner-token writes must target /state rather than replace the

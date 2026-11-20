@@ -28,7 +28,6 @@ WIZARD_SSL_KEY=/ssl/live/example/privkey.pem
 WIZARD_ALIASES='example.test old.example.test'
 ENV
 printf '#!/bin/sh\necho "$*" >> "$TRACE"\n' > "$fixture/bin/docker"
-cp "$fixture/bin/docker" "$fixture/bin/docker-compose"
 chmod +x "$fixture/bin/"*
 export PATH="$fixture/bin:$PATH" TRACE="$fixture/trace"
 cd "$fixture/nginx"
