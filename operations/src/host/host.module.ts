@@ -1,3 +1,4 @@
+import { RecoveryPublicationService } from './recovery-publication.service';
 import { UpgradeLifecycleService } from './upgrade-lifecycle.service';
 import { NativeHostAttachedProcess, type HostAttachedProcess } from './attached-process';
 import type { LifecycleEvidencePort } from '../release/types';
@@ -40,6 +41,7 @@ export class HostModule {
     return {
       module: HostModule,
       providers: [
+        { provide: RecoveryPublicationService, useFactory: () => new RecoveryPublicationService() },
         { provide: UpgradeLifecycleService, useFactory: () => new UpgradeLifecycleService() },
         {
           provide: HOST_ATTACHED_PROCESS,
@@ -87,6 +89,7 @@ export class HostModule {
         })),
       ],
       exports: [
+        RecoveryPublicationService,
         UpgradeLifecycleService,
         HostStorageService,
         HostReleaseAuthorityService,

@@ -994,7 +994,9 @@ class ExportContracts(unittest.TestCase):
             def poll(self):
                 return 0
         source = (self.release['sourceRevision'], self.release['sourceTree'], self.release['wizardRevision'])
-        with patch.object(exporter.subprocess, 'Popen', side_effect=lambda *args, **kwargs: Process()):
+        real_popen = subprocess.Popen
+        with patch.object(exporter.subprocess, 'Popen', side_effect=lambda *args, **kwargs:
+                Process() if args[0][0] == 'docker' else real_popen(*args, **kwargs)):
             first = exporter.save_archive(self.root, self.alias, self.release['imageId'], source)
             second = exporter.save_archive(self.root, self.alias, self.release['imageId'], source)
         self.assertNotEqual(first['file'], second['file'])
@@ -1005,6 +1007,8 @@ class ExportContracts(unittest.TestCase):
         real_popen, real_timer = subprocess.Popen, threading.Timer
         processes = []
         def process(*args, **kwargs):
+            if args[0][0] != 'docker':
+                return real_popen(*args, **kwargs)
             value = real_popen(['python3', '-c', 'import sys,time;sys.stdout.write("x");sys.stdout.flush();time.sleep(30)'],
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             processes.append(value)

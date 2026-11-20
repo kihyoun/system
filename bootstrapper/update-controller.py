@@ -332,8 +332,7 @@ def prepare_release_selection(config, accepted, release, controller, wizard):
     before, payloads = release_selection(config)
     require(all(value is None for value in before.values()) or all(before.values()),
             'public-release-selection-incomplete')
-    receipt = {'schemaVersion': 1, 'sourceCommit': release['sourceRevision'],
-               'sourceTree': release['sourceTree'], 'wizardSourceRevision': release['wizardRevision'],
+    receipt = {'schemaVersion': 1, **recovery.host_operation('releaseInstalledSource', release),
                'images': {'controller': controller, 'wizard': wizard}, 'status': 'selected',
                'selectedAt': runtime.now(), 'productRelease': {'version': accepted['version'],
                    'tag': accepted['tag'], 'sourceRevision': accepted['source']['revision']},
@@ -416,15 +415,13 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
             'public-controller-does-not-match-accepted-candidate')
     pulled_wizard = None
     if wizard is not None:
-        pulled_wizard = installer.checked_image(wizard, {'sourceCommit': release['sourceRevision'],
-                                                        'wizardSourceRevision': release['wizardRevision']}, wizard=True)
+        pulled_wizard = installer.checked_image(wizard, recovery.host_operation('releaseInstalledSource', release), wizard=True)
         require(pulled_wizard['imageId'] == release['wizardImageId'] and
                 pulled_wizard['candidateJobId'] == release['candidateJobId'],
                 'public-Wizard-does-not-match-accepted-candidate')
     selection = None
     if release_metadata is not None:
-        identity = {'sourceCommit': release['sourceRevision'], 'sourceTree': release['sourceTree'],
-                    'wizardSourceRevision': release['wizardRevision']}
+        identity = recovery.host_operation('releaseInstalledSource', release)
         accepted = installer.accepted_metadata(release_metadata, identity, controller, wizard)
         require(accepted['version'] == (ROOT / 'VERSION').read_text().strip() and
                 accepted['acceptance'].get('evidenceSha256') == (

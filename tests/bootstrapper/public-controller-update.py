@@ -707,6 +707,19 @@ class PublicControllerUpdate(unittest.TestCase):
         tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(tool.release_selection(self.config), (before, payloads))
 
+    def test_monorepo_selection_records_common_source_and_wizard_tree_without_gitlink(self):
+        accepted = self.accepted_metadata()
+        self.release.pop('wizardRevision')
+        self.release.update(sourceLayout='system-monorepo-v1', wizardSourceTree='c' * 40)
+        selected, before, after = tool.prepare_release_selection(
+            self.config, accepted, self.release, self.pulled, self.pulled_wizard)
+        receipt = json.loads(after['.release-images.json'])
+        self.assertEqual(receipt['sourceCommit'], self.release['sourceRevision'])
+        self.assertEqual(receipt['sourceLayout'], 'system-monorepo-v1')
+        self.assertEqual(receipt['wizardSourceTree'], 'c' * 40)
+        self.assertNotIn('wizardSourceRevision', receipt)
+        self.assertEqual(tool.release_selection(self.config)[1], before)
+
     def test_metadata_preflight_checks_without_writes_and_refuses_other_attempt(self):
         accepted = self.accepted_metadata()
         before = tool.release_selection(self.config)

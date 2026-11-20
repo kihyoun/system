@@ -77,10 +77,12 @@ def installed(config, repository, target=None):
     require(metadata.get('version') == version and metadata.get('source', {}).get('repository') ==
             'https://github.com/' + repository + '.git' and
             all(selected.get(key) == metadata['source'].get(field) for key, field in
-                [('sourceCommit', 'revision'), ('sourceTree', 'tree'), ('wizardSourceRevision', 'wizardRevision')]),
+                [('sourceCommit', 'revision'), ('sourceTree', 'tree'), ('wizardSourceRevision', 'wizardRevision'),
+                 ('sourceLayout', 'sourceLayout'), ('wizardSourceTree', 'wizardSourceTree')]),
             'installed-source-does-not-match-official-release')
     successor.verify_source_objects({'sourceRevision': metadata['source']['revision'],
-        'sourceTree': metadata['source']['tree'], 'wizardRevision': metadata['source']['wizardRevision']}, ROOT)
+        'sourceTree': metadata['source']['tree'], **{key: metadata['source'][key] for key in
+            ('sourceLayout', 'wizardSourceTree', 'wizardRevision') if key in metadata['source']}}, ROOT)
     profile = successor.private_input(config['_root'] / 'configuration/.release-images.env')
     expected_profile = ''.join(key + '=' + updater.installer.reference(metadata['images'][role]['reference']) + '\n'
                                for role, key in [('controller', 'BOOTSTRAPPER_IMAGE'), ('wizard', 'WIZARD_IMAGE')]).encode()
@@ -101,7 +103,7 @@ def installed(config, repository, target=None):
         labels = image.get('Config', {}).get('Labels', {})
         require(image['Id'] == expected['imageId'] and
                 labels.get('org.opencontainers.image.revision') == metadata['source'][
-                    'revision' if role == 'controller' else 'wizardRevision'] and
+                    'revision' if role == 'controller' or metadata['source'].get('sourceLayout') == 'system-monorepo-v1' else 'wizardRevision'] and
                 labels.get('org.system-bootstrapper.test-job') == str(metadata['acceptance']['candidateJobId']) and
                 (role != 'wizard' or labels.get('org.system-bootstrapper.source-revision') == metadata['source']['revision']),
                 'installed-official-image-labels-mismatch')
@@ -333,7 +335,9 @@ def apply_locked(args, config, target):
         # backup takes GitLab offline. Reuse the native recovery exporter.
         (target / 'images').mkdir(mode=0o700)
         retained = {}
-        source = tuple(previous['source'][key] for key in ('revision', 'tree', 'wizardRevision'))
+        source = {'sourceCommit': previous['source']['revision'], 'sourceTree': previous['source']['tree'],
+            **{key: previous['source'][key] for key in ('sourceLayout', 'wizardSourceTree') if key in previous['source']},
+            **({'wizardSourceRevision': previous['source']['wizardRevision']} if 'wizardRevision' in previous['source'] else {})}
         for role in ('controller', 'wizard'):
             image = previous['images'][role]
             retained[role] = archives.save_archive(target, image['reference'], image['imageId'], source)

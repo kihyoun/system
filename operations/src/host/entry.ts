@@ -1,3 +1,8 @@
+import {
+  RecoveryPublicationService,
+  recoverySource,
+  releaseInstalledSource,
+} from './recovery-publication.service';
 import { UpgradeLifecycleService } from './upgrade-lifecycle.service';
 import fs from 'node:fs';
 import { UpgradePrerequisiteService } from './upgrade-prerequisite.service';
@@ -37,6 +42,23 @@ export function compatibility(input: {
   const args = input.arguments,
     host = new HostInstallService(undefined, undefined, undefined, undefined, input.deadline);
   switch (input.operation) {
+    case 'releaseInstalledSource':
+      return releaseInstalledSource(args[0]);
+    case 'recoverySource':
+      return recoverySource(args[0]);
+    case 'refreshRecoveryManifest':
+      return new RecoveryPublicationService().refresh(
+        args[0],
+        args[1],
+        args[2],
+        String(args[3]),
+        String(args[4]),
+        String(args[5]),
+        String(args[6]),
+        String(args[7]),
+        args[8] === null ? undefined : String(args[8]),
+        args[9] === null ? undefined : String(args[9]),
+      );
     case 'approvedUpgradePlan':
       return new UpgradeLifecycleService().approvedPlan(String(args[0]), args[1]);
     case 'upgradePhase':

@@ -27,65 +27,20 @@ def inspect_container(name):
 
 
 def source_identity(checkout):
-    require(not run(['git', '-C', str(checkout), 'status', '--porcelain']).strip(), 'recovery-source-checkout-modified')
-    commit = run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).decode().strip()
-    tree = run(['git', '-C', str(checkout), 'rev-parse', 'HEAD^{tree}']).decode().strip()
-    link = run(['git', '-C', str(checkout), 'ls-tree', 'HEAD', 'wizard']).decode().strip().split()
-    require(recovery.git_id(commit) and recovery.git_id(tree) and len(link) == 4 and
-            link[:2] == ['160000', 'commit'] and link[3] == 'wizard' and recovery.git_id(link[2]),
-            'invalid-recovery-source-identity')
-    return commit, tree, link[2]
+    return recovery.host_operation('source', checkout)
 
 
 def refreshed_manifest(previous, archive, source, controller_reference, controller_image,
                        gitlab_reference, gitlab_image, wizard_reference,
                        runner_reference=None, runner_image=None):
-    """Keep old archives/metadata while atomically replacing the active selectors."""
-    commit, tree, wizard = source
-    value = copy.deepcopy(previous)
-    old = value.get('currentController')
-    if old:
-        value.setdefault('controllerHistory', []).append(copy.deepcopy(old))
-    rows = value['archives']
-    matching = [row for row in rows if row.get('imageId') == controller_image]
-    require(len(matching) <= 1, 'duplicate-current-controller-archive')
-    if matching:
-        rows[rows.index(matching[0])] = archive
-    else:
-        rows.append(archive)
-    aliases = {'system_bootstrapper', controller_reference}
-    # Keep historical versioned aliases bound to their original archived image.
-    # Only the unversioned convenience selector moves to the current controller.
-    retained = [row for row in value['localImages'] if row['tag'] not in aliases]
-    value['localImages'] = retained + [{'tag': tag, 'imageId': controller_image} for tag in sorted(aliases)]
-    target_digest = recovery.canonical_digest(gitlab_reference)
-    previous_gitlab = [row for row in value['publicImages'] if recovery.canonical_digest(row['reference']).split('@')[0]
-                       == target_digest.split('@')[0]]
-    require(bool(previous_gitlab), 'existing-GitLab-public-image-declaration-required')
-    alias = gitlab_reference.split('@')[0]
-    # Reusing the old version alias for the new version would make it misleading;
-    # saved configuration selects the new pinned reference after migration.
-    value['publicImages'] = [row for row in value['publicImages'] if row not in previous_gitlab]
-    value['publicImages'].append({'reference': gitlab_reference, 'tag': alias, 'imageId': gitlab_image})
-    if runner_reference is not None:
-        require(recovery.image_id(runner_image), 'invalid-current-runner-image')
-        repository = recovery.canonical_digest(runner_reference).split('@')[0]
-        previous_runner = [row for row in value['publicImages']
-                           if recovery.canonical_digest(row['reference']).split('@')[0] == repository]
-        require(bool(previous_runner), 'existing-Runner-public-image-declaration-required')
-        value['publicImages'] = [row for row in value['publicImages'] if row not in previous_runner]
-        value['publicImages'].append({'reference': runner_reference,
-                                     'tag': runner_reference.split('@')[0], 'imageId': runner_image})
-    value.update(sourceCommit=commit, sourceTree=tree, deployedCodeTree=tree, wizardSourceRevision=wizard)
-    value['currentController'] = {'imageId': controller_image, 'reference': controller_reference,
-                                  'sourceCommit': commit, 'sourceTree': tree, 'archive': archive['file'],
-                                  'packagedWizardSourceRevision': wizard,
-                                  'productionWizardReference': wizard_reference}
-    return value
+    return recovery.host_operation('refreshRecoveryManifest', previous, archive, source,
+        controller_reference, controller_image, gitlab_reference, gitlab_image, wizard_reference,
+        runner_reference, runner_image)
 
 
 def save_archive(directory, reference, image, source):
-    relative = 'images/controller-' + source[0][:12] + '-' + image.split(':')[1][:12] + '-' + uuid.uuid4().hex[:12] + '.tar.gz'
+    source = recovery.host_operation('recoverySource', source)
+    relative = 'images/controller-' + source['sourceCommit'][:12] + '-' + image.split(':')[1][:12] + '-' + uuid.uuid4().hex[:12] + '.tar.gz'
     target = directory / relative
     require(not target.exists() and not target.is_symlink(), 'new-recovery-archive-path-required')
     temporary = target.with_name('.' + target.name + '.tmp-' + uuid.uuid4().hex)
@@ -126,8 +81,7 @@ def save_archive(directory, reference, image, source):
         if temporary.exists():
             temporary.unlink()
     return {'file': relative, 'sha256': recovery.sha(target), 'bytes': target.stat().st_size,
-            'imageId': image, 'sourceCommit': source[0], 'sourceTree': source[1],
-            'wizardSourceRevision': source[2]}
+            'imageId': image, **source}
 
 
 def publish_manifest(directory, value, checkout, configuration, previous_bytes):
@@ -198,7 +152,7 @@ def record(config, release, evidence, output):
                 'configuration-or-GitLab-changed-during-recovery-export')
         publish_manifest(directory, value, checkout, config['_main'], previous_bytes)
         result = {'format': 'system-recovery-export-v1', 'at': runtime.now(),
-                  'sourceRevision': source[0], 'controllerImageId': controller['Image'],
+                  'sourceRevision': source['sourceCommit'], 'controllerImageId': controller['Image'],
                   'GitLabImageId': gitlab['Image'], 'manifestSha256': recovery.sha(directory / 'images.json'),
                   'runnerImageId': runner['Id'],
                   'controllerArchive': archive['file'], 'previousManifestRetained': True,
