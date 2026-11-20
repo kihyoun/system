@@ -95,7 +95,7 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
           .get(HostInstallService)
           .install(installArguments(options.forward), options.checkout);
       } else {
-        application.get(HostStorageService).execute({
+        await application.get(HostStorageService).execute({
           operation: args[0] as 'harvest' | 'restore',
           checkout: options.checkout,
           image: options.image,
