@@ -371,6 +371,14 @@ test('native helper diagnostics identify only the declared phase and preserve bo
   }
   candidate.inner=async()=>{throw Error('canceled-or-overall-timeout');};
   await assert.rejects(()=>native.invoke(['initialize']),/^Error: canceled-or-overall-timeout$/);
+  for(const reason of ['candidate-overall-timeout','candidate-cleanup-timeout']){
+    const failure=Object.assign(Error(reason),{systemCode:'ETIMEDOUT',noRetry:true});
+    candidate.inner=async()=>{throw failure;};
+    await assert.rejects(()=>native.invoke(['--operation','recover']),error=>{
+      assert.equal(error,failure);assert.equal(error.message,reason);assert.equal(error.systemCode,'ETIMEDOUT');
+      assert.equal(error.noRetry,true);assert.equal(error.exitCode,undefined);assert.equal(failureReason(error.message),reason);return true;
+    });
+  }
 });
 
 test('fixed Python diagnostic markers survive the real Docker sanitizer and native phase wrapper',async()=>{

@@ -253,7 +253,7 @@ class NativeCLI {
         this.fixture + '/source/tests/e2e/public-upgrade-host.py', ...args], {timeout: 1200000, failureCodes});
       return JSON.parse(raw.split('\n').at(-1));
     } catch (error) {
-      if (['canceled-or-overall-timeout', 'readiness-timeout'].includes(error.message)) throw error;
+      if (['canceled-or-overall-timeout', 'readiness-timeout', 'candidate-overall-timeout', 'candidate-cleanup-timeout'].includes(error.message)) throw error;
       if (Object.values(failureCodes).includes(error.message)) throw error;
       const failure = Error('public-upgrade-native-' + operation + '-failed');
       if (Number.isInteger(error.exitCode)) failure.exitCode = error.exitCode;
