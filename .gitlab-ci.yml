@@ -38,6 +38,7 @@ stages:
   - build
   - deploy
   - public-release
+  - npm-release
 
 cache:
   key: ${CI_COMMIT_REF_SLUG}
@@ -111,7 +112,7 @@ renovate:discover:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RENOVATE_ENABLED == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true"'
     - when: never
 
-# Package the exact gitlink while the trusted checkout still contains Git data.
+# Package the exact shared Wizard tree while the trusted checkout contains Git data.
 # Only the validated source snapshot is passed to downstream candidate builds.
 prepare:wizard-source:
   stage: prepare
@@ -134,6 +135,28 @@ prepare:wizard-source:
   artifacts:
     expire_in: 1 day
     paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/, .codeql-context/]
+  rules: *runtime-rules
+
+# Package-only checks share the accepted source; no second platform is created.
+test:npm-package:
+  stage: test
+  image: node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
+  services: []
+  tags: [docker]
+  cache: []
+  dependencies: []
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
+  timeout: 5m
+  allow_failure: false
+  script:
+    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+    - npm --prefix operations run build
+    - node --test operations/tests/cli.test.cjs operations/tests/package.test.cjs
+    - node gitlab/package-cli.js
+  artifacts:
+    expire_in: 1 year
+    paths: [test-results/npm-package/]
   rules: *runtime-rules
 
 # The existing trusted socket runner launches a socket-free test child.
@@ -289,9 +312,9 @@ build:
     - docker push $IMAGE_TAG
   rules: *runtime-rules
 
-# Optional Wizard-only acceptance on the existing reserved HTTPS Review host.
+# Optional Wizard-only acceptance on the configured fixed HTTPS Beta host.
 # The complete candidate is reused; no second Wizard pipeline/build is started.
-.wizard-review:
+.wizard-beta:
   stage: deploy
   image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
@@ -306,31 +329,34 @@ build:
     - timeout -k 5 110 sh bootstrapper/install-runtime.sh
   timeout: 14m
   interruptible: false
-  resource_group: wizard-review
+  resource_group: wizard-beta
+  artifacts:
+    reports:
+      dotenv: test-results/system-beta/environment.env
   allow_failure: true
   rules:
-    - if: '$SYSTEM_REVIEW_ENABLED == "true" && $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       changes: *runtime-changes
       when: manual
     - when: never
 
-deploy:wizard-review:
-  extends: .wizard-review
+deploy:wizard-beta:
+  extends: .wizard-beta
   dependencies: [test:platform-candidate]
   script:
-    - node project-bootstrap/system-review/run.js deploy
+    - node project-bootstrap/system-beta/run.js deploy
   environment:
-    name: 'wizard-review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'
-    url: 'https://$WIZARD_REVIEW_HOST'
-    on_stop: stop:wizard-review
+    name: 'wizard-beta/$CI_PROJECT_ID'
+    url: '$SYSTEM_BETA_URL'
+    on_stop: stop:wizard-beta
 
-stop:wizard-review:
-  extends: .wizard-review
+stop:wizard-beta:
+  extends: .wizard-beta
   dependencies: []
   script:
-    - node project-bootstrap/system-review/run.js stop
+    - node project-bootstrap/system-beta/run.js stop
   environment:
-    name: 'wizard-review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'
+    name: 'wizard-beta/$CI_PROJECT_ID'
     action: stop
 
 # Publish the exact complete controller and Wizard from the mandatory candidate.
@@ -425,6 +451,30 @@ deploy:github-release:
     expire_in: 1 year
     paths: [test-results/public-release/]
   rules:
-    - if: '$GITHUB_RELEASE_PUBLISH_ENABLED == "true" && $DOCKERHUB_PUBLISH_ENABLED == "true" && $GITHUB_BACKUP_ENABLED == "true" && $WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+    - if: '$GITHUB_RELEASE_PUBLISH_ENABLED == "true" && $DOCKERHUB_PUBLISH_ENABLED == "true" && $GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+      changes: *runtime-changes
+    - when: never
+
+# Token-based publication from self-hosted GitLab after accepted public release.
+deploy:npm:
+  stage: npm-release
+  image: node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
+  services: []
+  tags: [docker]
+  cache: []
+  variables:
+    GIT_DEPTH: "0"
+    GIT_SUBMODULE_STRATEGY: none
+  dependencies: [test:npm-package, test:platform-candidate, deploy:dockerhub, deploy:github, deploy:github-release]
+  timeout: 5m
+  interruptible: false
+  resource_group: npm-release
+  allow_failure: false
+  script:
+    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+    - npm --prefix operations run build
+    - node gitlab/publish-npm.js
+  rules:
+    - if: '$NPM_PUBLISH_ENABLED == "true" && $GITHUB_RELEASE_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       changes: *runtime-changes
     - when: never
