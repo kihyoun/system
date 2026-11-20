@@ -34,20 +34,24 @@ export function prepareApplication(template: string, key: string, settings: any)
     }
   }
   visit(root);
-  for (const relative of ['refresh-ca.sh', 'ca/cacert-2026-10-20.crt']) {
+  for (const [relative, source] of [
+    ['runtime/project-ci.cjs', 'wizard/.gitlab/runtime/project-ci.cjs'],
+    ['runtime/LICENSES.txt', 'wizard/.gitlab/runtime/LICENSES.txt'],
+    ['bootstrapper/ca/cacert-2026-10-20.crt', 'bootstrapper/ca/cacert-2026-10-20.crt'],
+  ]) {
     files.push({
       action: 'create',
       file_path: '.system-bootstrapper/' + relative,
-      content: fs.readFileSync(path.resolve(__dirname, '../../bootstrapper', relative), 'utf8'),
+      content: fs.readFileSync(path.resolve(__dirname, '../..', source), 'utf8'),
     });
   }
-  return { files, templateVersion: 1, ci: applicationCi(key, settings, template) };
+  return { files, templateVersion: 2, ci: applicationCi(key, settings, template) };
 }
 
 export function applicationCi(key: string, settings: any, template: string) {
   let ci =
     Helper.textLogo +
-    `# Managed ${template} starter v1; editable in GitLab.
+    `# Managed ${template} starter v2; editable in GitLab.
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -55,11 +59,11 @@ workflow:
       when: never
     - if: '$CI_COMMIT_BRANCH'
     - when: never
-image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
 default:
   tags: [docker]
   before_script:
-    - sh .system-bootstrapper/refresh-ca.sh
+    - node .system-bootstrapper/runtime/project-ci.cjs prepare-runtime .system-bootstrapper
 variables:
   IMAGE_TAG: '$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA'
   APP_LOG_MAX_SIZE: '10m'
@@ -68,7 +72,7 @@ stages: [build, test, deploy]
 build:
   stage: build
   before_script:
-    - sh .system-bootstrapper/refresh-ca.sh
+    - node .system-bootstrapper/runtime/project-ci.cjs prepare-runtime .system-bootstrapper
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - docker build --provenance=false -t "$IMAGE_TAG" .
@@ -76,7 +80,7 @@ build:
 test:http:
   stage: test
   before_script:
-    - sh .system-bootstrapper/refresh-ca.sh
+    - node .system-bootstrapper/runtime/project-ci.cjs prepare-runtime .system-bootstrapper
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - echo "$APP_LOG_MAX_SIZE" | grep -Eq '^[1-9][0-9]*[kKmMgG]$'
@@ -109,7 +113,7 @@ deploy:${kind}:
 ${review ? '    on_stop: stop:review\n' : ''}  rules:
     - if: '${review ? '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH' : '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}'
 ${settings[environment + '_DEPLOY_MODE'] === '0' ? '  when: manual\n' : ''}  before_script:
-    - sh .system-bootstrapper/refresh-ca.sh
+    - node .system-bootstrapper/runtime/project-ci.cjs prepare-runtime .system-bootstrapper
     - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - echo "$APP_LOG_MAX_SIZE" | grep -Eq '^[1-9][0-9]*[kKmMgG]$'
