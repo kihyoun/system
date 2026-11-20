@@ -21,11 +21,16 @@ The default **Overview** page introduces the platform. **Install System Bootstra
 Select **Docs** in the top toolbar to read and search the integrated handbook,
 including Quick Start, installation and configuration guides. Docs works without
 a Sync connection; `/docs#docs/getting-started` opens its first chapter directly.
+The public releases chapter also provides an offline migration guide: select the
+installed and target versions to read the exact declared steps and mandatory
+intermediate releases. The same maintained transition metadata drives CLI
+preflight. Selection starts no operation; upgrades require a reviewed plan and
+explicit confirmation in the operator’s terminal.
 Select **Wizard** in the main navigation to configure an instance. `/configuration` remains a direct entry to the Wizard workspace.
 Switching between Overview, Wizard, Docs and the footer's Privacy/Imprint views preserves the
 current connection, configuration and in-progress form state in the browser.
 
-The toolbar's **EN | DE** switch selects English or German for the interface and
+The toolbar's **EN | DE | 한국어** switch selects English, German or Korean for the interface and
 all handbook chapters. The preference is stored only in this browser; changing
 it preserves the current configuration, connection and chapter. Commands,
 configuration keys, file paths, code examples and operator-supplied information
@@ -34,15 +39,16 @@ the Wizard, with a wider chapter list.
 
 Application text uses stable, pinned `i18next` and `react-i18next` releases with
 local translation resources. Material UI's built-in component text uses its
-documented `deDE` / `enUS` theme locales. Translation lookup, interpolation and
+documented `deDE` / `enUS` / `koKR` theme locales. Translation lookup, interpolation and
 plural selection stay in i18next; the original guide files remain the English
 documentation source.
 
-The original repository guides remain English. German reader translations live
-in `src/docs/locales/de/`; their `sources.json` records the reviewed English
+The original repository guides and GitHub READMEs remain English. German and
+Korean reader translations live in `src/docs/locales/de/` and
+`src/docs/locales/ko/`; each `sources.json` records the reviewed English
 chapter hashes. After editing a guide, regenerate the English reader from the
-System checkout, review the corresponding German translation and update its
-source hash. Run `npm run docs:compile` to update the bundled German catalog.
+System checkout, review both corresponding translations and update their
+source hashes. Run `npm run docs:compile` to update both bundled locale catalogs.
 `npm run docs:check` rejects missing or stale translations and changes to commands,
 inline code, link destinations, heading structure or table structure. The normal
 production build runs this check.
@@ -163,7 +169,13 @@ Backup/Open. See the
 [project guide](https://github.com/kihyoun/system/blob/master/docs/PROJECT_BOOTSTRAP_GUIDE.md)
 for error recovery and deployment details. Ordinary edits to an existing
 project's environments retain the configuration/Push workflow; they do not
-rename its repository or rewrite committed CI automatically.
+rename its repository or rewrite committed CI automatically. Optional per-environment
+exact host aliases redirect HTTP and HTTPS to the existing canonical host,
+preserving the path and query and allowing ACME HTTP-01. Provision a certificate
+covering the canonical host and aliases. Push reviews its expected service impact:
+existing application routing edits use a proxy reload while GitLab remains
+available; wider changes require a platform restart. Fetch, JSON/ZIP Backup/Open
+and Push retain alias settings and environment ownership.
 
 ### The default Wizard project
 

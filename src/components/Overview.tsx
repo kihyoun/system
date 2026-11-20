@@ -41,11 +41,10 @@ export default function Overview() {
        <Grid container spacing={{ xs: 3, md: 5 }} sx={{ alignItems: 'center' }}>
         <Grid size={{ xs: 12, md: 7 }}>
         <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: '0.14em' }}>{t("System Bootstrapper · Open source")}</Typography>
-        <Typography component="h1" variant="h3" sx={{ mt: 1, mb: 2, fontWeight: 700, fontSize: { xs: '2.5rem', md: '4rem' }, letterSpacing: '-0.04em' }}>
+        <Typography component="h1" variant="h3" sx={{ mt: 1, mb: 2, fontWeight: 700, fontSize: { xs: '2.375rem', md: '3.75rem' }, letterSpacing: '-0.04em' }}>
           You build it. You own it.
         </Typography>
-        <Typography variant="h6" component="p" sx={{ mb: 2, maxWidth: 760 }}>{t("Build your web projects. Bring your development tools together.")}</Typography>
-        <Typography color="text.secondary" sx={{ maxWidth: 850, lineHeight: 1.75 }}>{t("System Bootstrapper brings your development platform to your own server. Build, test and publish your web projects — with your tools and data under your control.")}</Typography>
+        <Typography color="text.secondary" sx={{ maxWidth: 850, lineHeight: 1.75 }}>{t("System Bootstrapper is an open-source platform that brings your development tools together on your own server.")}</Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 3, alignItems: { sm: 'center' } }}>
           <Button variant="contained" color="secondary" disableElevation endIcon={<ArrowForwardIcon />} onClick={showInstall}>{t("Install System Bootstrapper")}</Button>
           <Button component="a" href="#docs/getting-started" startIcon={<MenuBookIcon />} sx={{ color: theme => theme.palette.mode === 'dark' ? 'primary.light' : 'primary.dark' }}>{t("Read the handbook")}</Button>

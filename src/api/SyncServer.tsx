@@ -136,13 +136,38 @@ export default class SyncServer {
     return skipCount;
   }
 
-  async push() {
+  async pushImpact() {
+    const content = await this.main.generateZip();
+    const formData = new FormData();
+    formData.append('bootstrapper.zip', new File([content], 'bootstrapper.zip'));
+    await this.token();
+    return (await axios.post(this.serverAddress + '/config/impact', formData, this.getFileHeaders())).data;
+  }
+
+  async push(impact?: string) {
     const bootstrapperRaw = await this.main.generateZip();
     const file = new File([bootstrapperRaw], 'bootstrapper.zip');
     const formData = new FormData();
     formData.append('bootstrapper.zip', file);
+    if (impact) formData.append('impact', impact);
     await this.token();
     return axios.post(this.serverAddress + '/config/zip', formData, this.getFileHeaders());
+  }
+
+  async diagnosticRequest(route: string, data?: any): Promise<any> {
+    await this.token();
+    const config = {headers: {Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json'}};
+    const response = data === undefined ? await axios.get(this.serverAddress + route, config) :
+      await axios.post(this.serverAddress + route, data, config);
+    return response.data;
+  }
+
+  async downloadBackup(id: string): Promise<Blob> {
+    if (!/^[a-f0-9]{32}$/.test(id)) throw new Error('Invalid backup operation.');
+    await this.token();
+    const response = await axios.get(this.serverAddress + '/backup/' + id + '/download',
+      {headers: {Authorization: `Bearer ${this.accessToken}`}, responseType: 'blob'});
+    return response.data;
   }
 
   async pushMain() {

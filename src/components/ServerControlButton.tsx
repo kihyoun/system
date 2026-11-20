@@ -34,12 +34,12 @@ export default function ServerControlButton(props: any) {
             });
         });
     };
-    const handlePush = () => {
+    const handlePush = (impact?: string) => {
         runInAction(async () => {
             try {
                 props.setOpenSuccess('Sending Data...');
-                await props.main.sync.push();
-                props.setOpenSuccess('Ready.');
+                const result = await props.main.sync.push(impact);
+                props.setOpenSuccess(result.data?.message || 'Ready.');
                 handleClose();
                 setPush(false);
             }
@@ -151,7 +151,7 @@ export default function ServerControlButton(props: any) {
         });
     };
     return (<React.Fragment>
-      <PushDialog open={push} setOpen={setPush} handlePush={handlePush} onClose={() => setPush(false)}/>
+      <PushDialog main={props.main} open={push} setOpen={setPush} handlePush={handlePush} onClose={() => setPush(false)}/>
       <Button disabled={harvestPending} style={{ marginRight: '1ch' }} variant="text" aria-controls="simple-menu" aria-haspopup="true" color={'primary'} component="span" startIcon={<SyncIcon />} onClick={handleClick}>
         {harvestPending ? t("Harvest in progress...") : t("Synchronize")}
       </Button>

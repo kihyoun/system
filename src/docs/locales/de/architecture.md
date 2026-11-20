@@ -15,6 +15,20 @@ Die Plattform verbindet GitLab Community Edition, dessen Container-Registry,
 GitLab-Runner-Manager, NGINX-Routing, eine authentifizierte Sync-API und einen
 React-Konfigurations-Wizard. Shell-Skripte und Docker Compose koordinieren ihren Lebenszyklus.
 
+## Interne Sync-API
+
+Sync verwendet NestJS mit dem Express-Adapter. Fachliche Module trennen
+Authentifizierung, Konfiguration, Projektabläufe, Betriebsaufgaben und Diagnose;
+ein gemeinsames Laufzeitmodul stellt den Vorgangsstatus und die bestehende
+Speichersperre bereit. Controller bearbeiten HTTP-Anfragen, und injizierte Dienste
+koordinieren die Werkzeuge des Repositorys.
+
+Die öffentliche API auf Port `8071`, Konfigurations- und Seed-Formate sowie
+Betriebsabläufe bleiben kompatibel. Es kommen weder eine Datenbank noch ein
+separater Deployment-Dienst hinzu. Anwendungsvorlagen bleiben Angular-, React-
+und allgemeine Webprojekte; NestJS wird im internen Sync-Dienst verwendet.
+Die [Testanleitung](../tests/README.md) beschreibt die isolierten Prüfbefehle.
+
 ## Wegweiser für den Betrieb
 
 Anwendungsvorlagen decken Angular, React und allgemeine Webprojekte ab. Die
@@ -187,7 +201,7 @@ Containerdefinitionen sind reproduzierbar; GitLab-Repositorys, Datenbanken, Regi
 | `gitlab-runner/` | Runner-Konfiguration, Registrierung und Lebenszyklusskripte. |
 | `nginx/` | Konfiguration und Lebenszyklusskripte des zentralen Reverse-Proxys. |
 | `nginx-proxy/` | Konfiguration der Production-, Beta- und Review-Proxys. |
-| `sync/` | Synchronisationsbezogene Konfiguration und Skripte. |
+| `sync/` | Modulare NestJS-API für Konfiguration, Projektabläufe, Betriebsaufgaben und Diagnose. |
 | `wizard/` | Submodul des Konfigurations-Wizards. |
 | `.gitlab-ci.yml` | Kurzer Dokumentationspfad; erforderliche Komponenten-, Image- und kurzlebige Plattformprüfungen; Image-Veröffentlichung und optionaler GitHub-Spiegel. |
 | [tests/](../tests/README.md) | Komponentenübersicht, isolierte Testbefehle und explizite Grenzen für Live-Integration. |

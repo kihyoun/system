@@ -8,13 +8,21 @@
 | Öffnen | Lädt eine Konfigurationsdatei von deinem Computer in den Wizard |
 | Sichern | Lädt Konfiguration als JSON oder als ZIP mit JSON, erzeugten Umgebungsdateien, `recovery.json` und `RECOVERY.md` herunter |
 | Abrufen | Ruft gespeicherte Instanzeinstellungen ab; ohne Konfiguration lädt die aktuelle Version gekennzeichnete Vorschläge |
-| Übertragen | Überträgt die Wizard-Konfiguration und startet die Instanz automatisch neu |
+| Übertragen | Prüft und überträgt die Konfiguration; bestehendes Anwendungsrouting lädt den Proxy neu, weitergehende Änderungen starten die Instanz neu |
 | Neustarten | Startet die Dienste mit der übertragenen Konfiguration neu |
 | Registrieren / Registrierung aufheben | Prüft/registriert die konfigurierten Runner-Manager oder hebt ihre Registrierung auf |
 | Harvest | Veröffentlicht einen kalten Schnappschuss der GitLab-Daten, Zertifikate und des Zertifikatserneuerungszustands im Seed-Verzeichnis |
+| Harvest und Konfigurationssicherung | Koordiniert einen nativen Harvest mit einer passenden Konfigurations-ZIP zum getrennten Herunterladen und Aufbewahren |
+| Entwicklungsvorschauen einrichten | Bereitet ausdrücklich die kanonische Quellcode-/Build-Zuordnung für optionale Review- und Beta-Umgebungen vor und erhält Production |
+| Ablauf von Zugangsdaten | Liest Metadaten ausgewählter Automatisierungszugänge und zeigt bekannte Daten, Warnungen und unbekannte Zustände |
+| Systemdiagnose | Prüft die konfigurierte Registry-Verbindung; eine optionale getrennte Aktion lädt das exakte Helper-Image über den ausgewählten Runner-Daemon |
 | Seed | Prüft einen abgeschlossenen Seed und stellt ihn in frischen Verzeichnissen für die aktiven Dienstdaten wieder her |
 | Zurücksetzen | Löscht die Haupt- und Projektkonfigurationen über den Ablauf zum Zurücksetzen |
 | Aktualisieren | Aktualisiert den Quellcode über den bestehenden Aktualisierungsablauf |
+
+Voraussetzungen und Grenzen erklären [Entwicklungsvorschauen](DEVELOPMENT_PREVIEWS.md),
+[gemeinsame Sicherungen](COORDINATED_BACKUP.md), [Ablauf von Zugangsdaten](TOKEN_EXPIRY.md)
+und [Systemdiagnose](SYSTEM_DIAGNOSTICS.md).
 
 **Konfiguration und persistente Dienstdaten werden getrennt verwaltet.** Öffnen/Sichern
 und Übertragen/Abrufen verwalten die Konfiguration. Harvest/Seed verarbeiten Dienstdaten.

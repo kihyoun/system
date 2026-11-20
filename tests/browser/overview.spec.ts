@@ -34,6 +34,9 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.goto('/');
     const title = page.getByRole('heading', { level: 1, name: 'You build it. You own it.', exact: true });
     await expect(title).toBeVisible();
+    await expect(title).toHaveCSS('font-size', viewport.width < 900 ? '38px' : '60px');
+    await expect(page.getByText('System Bootstrapper is an open-source platform that brings your development tools together on your own server.', {exact:true})).toBeVisible();
+    await expect(page.getByText('Build your web projects. Bring your development tools together.', {exact:true})).toHaveCount(0);
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
     await expect(page.getByRole('heading', { level: 2, name: 'How it works', exact: true })).toBeVisible();
     const titleLayout = await title.evaluate(heading => {

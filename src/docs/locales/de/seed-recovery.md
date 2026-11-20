@@ -54,11 +54,18 @@ eines neuen Pakets aktualisieren deren Laufzeit nicht. Beziehen Sie kompatiblen 
 Checkout und Controller unabhängig; verwenden Sie nicht blind einen alten gespeicherten
 Controller als Wiederherstellungshelfer und ersetzen Sie keine Images in der Konfiguration.
 
-Aus dem konfigurierten Backupverzeichnis wird weder Seed-Generation noch Manifest abgeleitet.
+Gewöhnliche reine Konfigurationsexporte leiten weder Seed-Generation noch Manifest aus dem konfigurierten Backupverzeichnis ab.
 Jeder reine Konfigurationsexport verlangt ausdrücklich einen passenden vollständigen Seed:
 Prüfen Sie vor der Wiederherstellung Generation, Manifest, Zeitstempel und genaues
 geharvestetes GitLab-Image. Ein älterer Seed und neuere Konfiguration können inkompatibel sein.
 Bewahren Sie Paket und Seed unabhängig auf; keines belegt das Vorhandensein oder die Prüfung des anderen.
+
+Der ausdrücklich gestartete [gemeinsame Sicherungsablauf](COORDINATED_BACKUP.md) erfasst
+stabile Konfiguration und führt nativen Harvest unter gemeinsamen Betriebssperren aus.
+Seine gewöhnliche Konfigurations-ZIP enthält die Zuordnung zu genau diesem abgeschlossenen Seed.
+Es bleiben zwei getrennte Wiederherstellungseingaben; das Herunterladen und unabhängige
+Aufbewahren der ZIP ist weiterhin notwendig. Importierte Metadaten belegen keine neue
+Seed-Übereinstimmung und autorisieren keine Wiederherstellung.
 
 Für ein dokumentiertes akzeptiertes Produkt-Release rufen Sie dessen
 [öffentliche Release-Metadaten](RELEASES.md) ab und laden den exakten Quellcode-Commit mit

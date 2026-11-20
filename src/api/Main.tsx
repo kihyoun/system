@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import md5 from 'md5';
 import {environment} from './Environment';
 import {recoveryMetadata, recoveryGuide, importedRecovery} from './Recovery';
+import {previewSetupIntent, type PreviewSetupIntent} from './PreviewSetupIntent';
 
 /**
  * General Configuration Object
@@ -23,10 +24,12 @@ export default class Main {
     private _syncServer!: SyncServer;
     recoveryObservation: any = null;
     importedRecovery: any = null;
+    backupSeedAssociation: any = null;
     private backupCreatedAt = new Date();
     init = true;
     uploadProgress = false;
     derivedFields: { [key: string]: string } = {};
+    previewSetup: PreviewSetupIntent | null = null;
     id = uuidv4();
 
     /**
@@ -45,8 +48,10 @@ export default class Main {
 
     public generateConfig(_config: any | undefined): void {
       this.recoveryObservation = null;
+      this.backupSeedAssociation = null;
       this.importedRecovery = null;
       this.derivedFields = {};
+      this.previewSetup = null;
       this._config = new MainConfig(_config);
       this._syncServer = this._syncServer ? this._syncServer : new SyncServer(this);
       this._placeHolder = new MainConfig(_config);
@@ -127,7 +132,8 @@ export default class Main {
         main         : this._config.asJson,
         proxies      : proxies,
         derivedFields: this.derivedFields,
-        recovery     : recoveryMetadata(this._config.content, this.recoveryObservation, this.backupCreatedAt, this.importedRecovery)
+        previewSetup : previewSetupIntent(this.previewSetup),
+        recovery     : recoveryMetadata(this._config.content, this.recoveryObservation, this.backupCreatedAt, this.importedRecovery, this.backupSeedAssociation)
       }
     }
 
@@ -161,9 +167,11 @@ export default class Main {
       runInAction(() => this.uploadProgress = true);
       runInAction(() => {
         this.recoveryObservation = null;
+        this.backupSeedAssociation = null;
         this.generateConfig(config.main);
         this.importedRecovery = importedRecovery(config.recovery);
         this.derivedFields = config.derivedFields || {};
+        this.previewSetup = previewSetupIntent(config.previewSetup);
 
         if (!this.sync.connected) {
           this.sync.generateConfig();
@@ -193,8 +201,10 @@ export default class Main {
       const assignments = environment(data);
       runInAction(() => {
         this.recoveryObservation = null;
+        this.backupSeedAssociation = null;
         this.importedRecovery = null;
         this.derivedFields = {};
+        this.previewSetup = null;
         this.uploadProgress = true;
         this.init=false;
       });
@@ -257,16 +267,17 @@ export default class Main {
       });
     }
 
-    public generateZip() {
+    public generateZip(sourceFiles?: {main: string; projects: {filename: string; data: string}[]}) {
       this.backupCreatedAt = new Date();
       const zip = new JSZip();
       const backup = this.asJson;
       zip.file('bootstrapper.json', JSON.stringify(backup, null, 4));
       zip.file('recovery.json', JSON.stringify(backup.recovery, null, 2));
       zip.file('RECOVERY.md', recoveryGuide(backup.recovery));
-      zip.file('.docker.env', this._config.content);
+      zip.file('.docker.env', sourceFiles?.main ?? this._config.content);
       const projects = zip.folder('.projects.env');
-      this._projects.forEach(projectConfig => {
+      if (sourceFiles) sourceFiles.projects.forEach(file => projects?.file(file.filename, file.data));
+      else this._projects.forEach(projectConfig => {
         projects?.file(`.${projectConfig.projectKey}.env`, projectConfig.content);
       });
 

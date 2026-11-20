@@ -1,6 +1,9 @@
 /** Offline test adapter for the Wizard's actual Fetch -> Backup model. */
 import fs from 'node:fs';
 import Main from '../src/api/Main';
+import {validSeedAssociation} from '../src/api/Recovery';
+import crypto from 'node:crypto';
+import {previewSetupIntent} from '../src/api/PreviewSetupIntent';
 
 export async function exportConfiguration(inputPath: string, outputPath: string): Promise<void> {
   const input = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
@@ -20,7 +23,23 @@ export async function exportConfiguration(inputPath: string, outputPath: string)
     project.bootstrapPending = fileinfo.bootstrapPending || false;
     project.template = fileinfo.template || project.repository?.template || project.template;
   }
-  const archive = await main.generateZip();
+  if (input.previewSetup !== undefined) {
+    const intent = previewSetupIntent(input.previewSetup);
+    if (!intent) throw new Error('Invalid portable preview intent');
+    main.previewSetup = intent;
+  }
+  let sourceFiles;
+  if (input.seedAssociation) {
+    if (!validSeedAssociation(input.seedAssociation)) throw new Error('Invalid backup pair');
+    const files = [{filename: '.docker.env', data: input.main.data}, ...input.projects.map((file: any) => ({
+      filename: '.projects.env/' + file.filename, data: file.data}))];
+    const actual = files.map(file => ({filename: file.filename,
+      sha256: crypto.createHash('sha256').update(file.data).digest('hex')}));
+    if (JSON.stringify(actual) !== JSON.stringify(input.seedAssociation.configurationFiles)) throw new Error('Backup pair checksum mismatch');
+    main.backupSeedAssociation = input.seedAssociation;
+    sourceFiles = {main: input.main.data, projects: input.projects};
+  }
+  const archive = await main.generateZip(sourceFiles);
   fs.writeFileSync(outputPath, Buffer.from(await archive.arrayBuffer()), {mode: 0o600, flag: 'wx', flush: true});
 }
 

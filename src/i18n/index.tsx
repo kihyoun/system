@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { createInstance, type i18n } from 'i18next';
 import { I18nextProvider, initReactI18next, useTranslation } from 'react-i18next';
+import {routingGerman} from './routing';
 import shell from './shell';
 import wizard from './wizard';
 import docs from './docs';
+import credentials from './credentialStatus';
+import diagnostics from './diagnostics';
+import previewSetup from './previewSetup';
+import operationsDocs from './operationsDocs';
+import korean from './korean';
+import {nativeOperationGerman} from './nativeOperationMessages';
 
-export type Locale = 'en' | 'de';
+export type Locale = 'en' | 'de' | 'ko';
 type Values = Record<string, string | number>;
 export const localeStorageKey = 'system-bootstrapper.locale';
-const german: Record<string, string> = { ...shell, ...wizard, ...docs,
+export const german: Record<string, string> = { ...routingGerman, ...shell, ...wizard, ...docs, ...credentials, ...diagnostics, ...previewSetup, ...operationsDocs, ...nativeOperationGerman,
+  'Korean': 'Koreanisch',
+  'Platform operations': 'Plattformbetrieb',
+  'Harvest and configuration backup': 'Harvest und Konfigurationssicherung',
   'docs.searchResults_one': '{{count}} Kapitel zu „{{query}}“',
   'docs.searchResults_other': '{{count}} Kapitel zu „{{query}}“',
   'code.copyExample': '{{language}}-Beispiel kopieren',
@@ -25,8 +35,8 @@ function instance(locale: Locale, globalDefault = false) {
   const language = createInstance();
   if (globalDefault) language.use(initReactI18next);
   void language.init({
-    lng: locale, supportedLngs: ['en', 'de'], fallbackLng: 'en', initAsync: false,
-    resources: { en: { translation: english }, de: { translation: german } },
+    lng: locale, supportedLngs: ['en', 'de', 'ko'], fallbackLng: 'en', initAsync: false,
+    resources: { en: { translation: english }, de: { translation: german }, ko: { translation: korean } },
     keySeparator: false, nsSeparator: false, interpolation: { escapeValue: false },
     react: { useSuspense: false },
   });
@@ -51,7 +61,10 @@ function renderText(language: i18n, text: string, locale: Locale, values?: Value
 export function translate(text: string, locale: Locale, values?: Values): string { return renderText(defaultLanguage, text, locale, values); }
 
 function savedLocale(): Locale {
-  try { return window.localStorage.getItem(localeStorageKey) === 'de' ? 'de' : 'en'; }
+  try {
+    const saved = window.localStorage.getItem(localeStorageKey);
+    return saved === 'de' || saved === 'ko' ? saved : 'en';
+  }
   catch { return 'en'; }
 }
 
@@ -72,8 +85,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 export function useI18n() {
   const { i18n: language } = useTranslation();
-  const locale: Locale = language.resolvedLanguage === 'de' ? 'de' : 'en';
-  const setLocale = useCallback((next: Locale) => { if (next === 'en' || next === 'de') void language.changeLanguage(next); }, [language]);
+  const locale: Locale = language.resolvedLanguage === 'de' || language.resolvedLanguage === 'ko' ? language.resolvedLanguage : 'en';
+  const setLocale = useCallback((next: Locale) => { if (next === 'en' || next === 'de' || next === 'ko') void language.changeLanguage(next); }, [language]);
   const t = useCallback((text: string, values?: Values) => renderText(language, text, locale, values), [language, locale]);
   return { locale, setLocale, t };
 }

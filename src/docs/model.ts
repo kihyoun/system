@@ -1,5 +1,6 @@
 import content from './content.json';
 import german from './locales/de.json';
+import korean from './locales/ko.json';
 import { translate, type Locale } from '../i18n';
 
 export type Chapter = { id: string; title: string; group: string; source: string; sourceStart?: number;
@@ -7,7 +8,7 @@ export type Chapter = { id: string; title: string; group: string; source: string
 export const chapters: Chapter[] = content.chapters;
 export const images: Record<string, string> = content.images;
 type Translation = { sourceSha256: string; markdown: string };
-const translations = german.chapters as Record<string, Translation>;
+const translations: Record<'de' | 'ko', Record<string, Translation>> = { de: german.chapters, ko: korean.chapters };
 
 export function headingSlug(text: string): string {
   return text.toLowerCase().replace(/`/g, '').replace(/[^\p{L}\p{N}_\- ]/gu, '').replace(/ /g, '-');
@@ -31,15 +32,20 @@ export function markdownHeadings(markdown: string) {
   return result;
 }
 
-const germanChapters: Chapter[] = chapters.map(chapter => {
-  const markdown = translations[chapter.id]?.markdown ?? chapter.markdown;
-  const original = chapter.headings.length ? chapter.headings : markdownHeadings(chapter.markdown);
-  const headings = markdownHeadings(markdown).map((heading, index) => ({ ...heading, anchor: original[index]?.anchor ?? heading.anchor }));
-  return { ...chapter, title: translate(chapter.title, 'de'), group: translate(chapter.group, 'de'),
-    prerequisite: translate(chapter.prerequisite, 'de'), outcome: translate(chapter.outcome, 'de'), markdown, headings };
-});
+function translatedChapters(locale: 'de' | 'ko'): Chapter[] {
+  return chapters.map(chapter => {
+    // Catalog compilation guarantees complete translations for every chapter.
+    const markdown = translations[locale][chapter.id].markdown;
+    const original = chapter.headings.length ? chapter.headings : markdownHeadings(chapter.markdown);
+    const headings = markdownHeadings(markdown).map((heading, index) => ({ ...heading, anchor: original[index]?.anchor ?? heading.anchor }));
+    return { ...chapter, title: translate(chapter.title, locale), group: translate(chapter.group, locale),
+      prerequisite: translate(chapter.prerequisite, locale), outcome: translate(chapter.outcome, locale), markdown, headings };
+  });
+}
 
-export function localizedChapters(locale: Locale): Chapter[] { return locale === 'de' ? germanChapters : chapters; }
+const catalogs: Record<Locale, Chapter[]> = { en: chapters, de: translatedChapters('de'), ko: translatedChapters('ko') };
+
+export function localizedChapters(locale: Locale): Chapter[] { return catalogs[locale]; }
 
 export function docsLocation(hash = window.location.hash, catalog: Chapter[] = chapters): { chapter: Chapter; anchor: string } {
   const [, id, ...anchor] = hash.split('/');

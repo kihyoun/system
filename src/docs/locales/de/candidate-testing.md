@@ -3,8 +3,10 @@
 `candidate.js` führt ein ausdrückliches Smoke- oder vollständiges Plattformszenario mit privatem Daemon aus.
 Es ist vom isolierten Manifest getrennt; Offline-Transporte prüfen seinen
 Lebenszyklusvertrag, ohne Docker zu starten. Die erforderliche Root-CI-Plattformschranke
-führt das vollständige Szenario aus, einschließlich Konfigurations-plus-Seed-Wiederherstellung, ungecachter
-Beschaffung privater Wizard-Images und lokaler ACME-Erneuerung.
+führt das vollständige Szenario aus, einschließlich nativer geführter
+Quelleinrichtung/Übernahme und Review-/Beta-Lebenszyklen,
+Konfigurations-plus-Seed-Wiederherstellung, ungecachter Beschaffung privater
+Wizard-Images und lokaler ACME-Erneuerung.
 
 ## Grenze und Voraussetzungen
 
@@ -17,7 +19,7 @@ Loopback des CI-Containers. Auf dem äußeren Daemon wird kein Port veröffentli
 des zugehörigen Kandidaten über dessen privates Bridge-Gateway und privates NGINX.
 
 Der Treiber erstellt einen zufällig benannten, mit Eigentumslabel versehenen **privilegierten DinD**-
-Container, ein internes Netzwerk und ein Docker-Datenvolume. DinD hat seinen eigenen Unix-
+Container, ein zugehöriges Netzwerk und ein Docker-Datenvolume. DinD hat seinen eigenen Unix-
 Socket; der Host-Socket wird niemals hinein eingebunden. Feste `system_*`-Namen, innere
 Docker-Netzwerke, Ports 80/8071/5050 und Dienst-Volumes bleiben auf diesen Daemon beschränkt.
 Der innere Bootstrapper erhält diesen **inneren** Socket, weil der normale System-
@@ -30,9 +32,56 @@ Ressourcen-Lease des Koordinators und vereinbaren Sie ein Testfenster. Der DinD-
 auf vier CPUs und 12 GiB RAM begrenzt. Planen Sie zusätzliche Reserve auf dem äußeren
 Host, für Image-Archive, Image-Entpackung und GitLabs Datenvolume ein; Dockers Volume
 erzwingt keine Speicherplatzquote. Speicherplatz-/RAM-Prüfungen und eine Lease müssen außerhalb
-dieses Treibers vor dessen Aufruf erfolgen. Ein internes äußeres Netzwerk verhindert externe
-Abhängigkeitsdownloads; Dienst-Images müssen vorgeladen sein. Das vollständige Runner-/Registry-
-Szenario benötigt außerdem seine deklarierten Helfer- und Build-Image-Parameter.
+dieses Treibers vor dessen Aufruf erfolgen. Smoke-Szenarien verwenden ein internes
+äußeres Netzwerk. Das vollständige geführte Szenario erlaubt ausdrücklich ausgehenden
+Zugriff auf seiner eigenen Bridge für den öffentlichen HTTPS-Git-Ursprung sowie native
+Paket-, Browser- und Image-Downloads; es veröffentlicht weiterhin keine äußeren Ports.
+Dienst-Images bleiben deklariert und vorgeladen. Das vollständige Runner-/Registry-
+Szenario benötigt außerdem seine deklarierten Helfer- und Build-Eingaben.
+
+Das geführte Szenario verwendet den öffentlichen Ursprung des festgelegten
+Submoduls aus `.gitmodules`; ein Betreiber-Fork kann `SYSTEM_TEST_WIZARD_ORIGIN`
+auf seine öffentliche HTTPS-Git-URL setzen. Die nativen Prüfungen öffentlicher
+Adressen und freigegebener Erzeuger bleiben aktiv. Ein geänderter Upstream-Erzeuger
+ist eine fehlerhafte Eingabe und keine Erlaubnis, andere CI in das Quellprojekt zu
+kopieren. Private Ursprünge werden für diese Importabnahme nicht unterstützt.
+GitLab, Sync, Wizard, Review und Beta verwenden TLS für exakte Hosts über die
+vorhandene lokale ACME-Stelle. Die Registry bleibt der vorhandene private
+HTTP-Endpunkt auf Port 5050; dieses Szenario behauptet keine HTTPS-Registry-Prüfung.
+
+Die vollständige Prüfschranke führt die geführte Einrichtung einmal auf ihrer
+frischen ursprünglichen Plattform aus und nutzt dann deren normale Pipelines
+für den importierten Standardbranch, den Merge-Request und den Standardbranch
+nach dem Merge. Sie startet die echten manuellen Review-/Beta-Deploy- und Stop-Jobs
+und erhält die ursprüngliche Hauptkonfiguration und das laufende Wizard-Image
+während der gesamten Einrichtung. Die Veröffentlichungsschranke verlangt diese
+nativen Phasen und Identitäten; bestandene Offline-Testfälle können sie nicht
+ersetzen. Diese Phasen teilen die unten beschriebene feste absolute Szenariofrist.
+Die Phasenlaufzeiten enthalten die Arbeit; eine Zeitüberschreitung lässt die
+Abnahme ohne automatische Verlängerung scheitern.
+
+Nur der einzelne verwaltete Docker-Runner der ursprünglichen geführten Testplattform
+erlaubt zwei gleichzeitige Jobs mit jeweils höchstens 2 GiB RAM und einer CPU.
+Dadurch kann die native Quellpipeline Browserprüfungen parallel zur Image-Auslieferung
+ausführen. Die Testumgebung lehnt widersprüchliche Runner-Einstellungen ab und erhält
+registrierte Identität, Endpunkte, öffentliches Vertrauen und Quell-CI-Bytes.
+Der bestehende Auslieferungs-Builder mit 4 GiB und zwei CPUs sowie der
+Verifier-Browser mit 1 GiB und einer CPU behalten ihre eigenen Grenzen; sämtliche
+verschachtelten Vorgänge teilen weiterhin die feste Kandidatengrenze von 12 GiB
+und vier CPUs. Dies sind Obergrenzen, keine Reservierungen. Nur der abschließende
+vollständige Plattform-CI-Lauf belegt Abnahme und tatsächliche Laufzeitverbesserungen;
+Offline-Verträge messen diese nicht.
+
+Verwerfbare GitLab-Instanzen verwenden `puma['worker_processes'] = 2` über die
+offizielle Umgebungsvariable `GITLAB_OMNIBUS_CONFIG`. Verschachtelte Container können
+die Ressourcen des äußeren Hosts statt der Grenzen des privaten Daemons erkennen.
+Der ursprüngliche und der wiederhergestellte Controller übergeben dieselbe Einstellung;
+der native GitLab-Start reicht sie bei der ersten Erstellung, beim Upgrade und beim Rollback weiter.
+Dabei werden die deklarierten unveränderten GitLab-Images verwendet. Der gewöhnliche Start
+bleibt unverändert, wenn die Variable nicht gesetzt oder leer ist. Die Einstellung wird vor
+`gitlab.rb` ausgewertet und nicht in diese Datei geschrieben. Deshalb muss sie bei jeder
+Controller-Erstellung übergeben werden. Siehe GitLabs [Docker-Konfiguration](https://docs.gitlab.com/install/docker/configuration/#pre-configure-docker-container)
+und [Puma-Dimensionierung](https://docs.gitlab.com/administration/operations/puma/).
 
 ## Ausdrückliche Parameter
 
@@ -71,9 +120,14 @@ Beispielsweise hat eine Rolle diese Form:
 ```
 
 `readinessMilliseconds` ist optional: 1.000–1.200.000, Standard 1.200.000 pro Smoke-
-Bereitschaftsschranke. Der normale Lebenszyklus hat ein zwanzigminütiges Budget; vollständige ACME-
-Wiederherstellung teilt ein fünfundzwanzigminütiges Budget unter allen Eigentümern. Beide werden
-zwischen begrenzten Docker-/HTTP-Vorgängen geprüft. Jeder gestreamte Archivimport ist auf
+Bereitschaftsschranke. Normale Smoke-Tests haben ein zwanzigminütiges Budget;
+ACME ohne GitLab-Upgrade teilt ein fünfundzwanzigminütiges Budget unter allen
+Eigentümern. Ein GitLab-Upgrade ohne geführte Vorschauen hat sechzig Minuten.
+`guidedPreviewAcceptance === true` und `gitlabUpgradeAcceptance === true`
+wählen zusammen fünfundsiebzig Minuten; eine zusätzlich vorbereitete `publicUpgrade`-
+Testumgebung wählt 110 Minuten für die zusätzlichen nativen öffentlichen CLI-,
+Sicherungs- und Wiederherstellungsprüfungen. Jedes Szenario verwendet eine absolute
+Frist, die zwischen begrenzten Docker-/HTTP-Vorgängen geprüft wird. Jeder gestreamte Archivimport ist auf
 zehn Minuten begrenzt;
 andere Docker-Vorgänge auf zwei Minuten und einzelne HTTP-Anfragen auf zehn
 Sekunden. Ein ausdrückliches Abgeben der Ereignisschleife vor jedem Docker-Vorgang liefert
@@ -173,9 +227,13 @@ müssen ausdrücklich an den zugehörigen privaten Daemon angepasst werden.
 bestehende Veröffentlichungsphase. Sein vertrauenswürdiger Node-24-/Alpine-Elternprozess installiert dieselben
 festgelegten CLI-Werkzeuge wie System, baut den vollständigen System-Kontext und den Wizard
 aus dem validierten festgelegten Snapshot und lädt die festgelegten Dienst-Images vor.
-Der Job wird mit einer GitLab-Ressourcengruppe serialisiert. Image-Vorbereitung hat ein
-separates begrenztes Budget; private Ausführung hat ein normales zwanzigminütiges Limit, erweitert auf ein gemeinsames
-fünfundzwanzigminütiges Limit für ACME-Wiederherstellung.
+Der Job wird mit einer GitLab-Ressourcengruppe serialisiert. Die Image-Vorbereitung
+hat ein separates begrenztes Budget. Die kombinierte Ausführung geführter Vorschauen
+und des GitLab-Upgrades mit öffentlicher Release-Upgrade-Testumgebung hat ein festes
+gemeinsames Limit von 110 Minuten für ursprünglichen Host, wiederhergestellten Host,
+ACME-Stelle und weitere Ressourceneigentümer. Ohne diese zusätzliche Testumgebung
+behält das kombinierte Szenario fünfundsiebzig Minuten. Das Runner-Skript erlaubt
+115 Minuten, die separate Bereinigung zwei Minuten und der gesamte Job 120 Minuten.
 Der Runner-Host benötigt zwölf GiB Kandidaten-RAM zusätzlich zu seiner bestehenden Plattform-/Job-
 Reserve und genügend freien Speicher für Image-Archive, Entpackung und GitLab-Zustand.
 
@@ -280,14 +338,19 @@ Ohne das ausdrückliche Szenario `privateWizardRecovery` scheitert eine wiederhe
 Registry-Festlegung mit `wizard-pin-recovery-artifact-not-declared`; sie wird niemals
 still auf das lokale Test-Image geändert.
 
-Das private Image-Szenario veröffentlicht über einen echten CI-Job auf einem separaten Branch des verwalteten Wizard-
-Projekts ein Derivat des deklarierten aus Quellcode gebauten
-Wizard-Images. Eine eindeutige Markerschicht unterscheidet seine Image-ID von jedem vorbereiteten
-Archiv. Die tatsächlich exportierte Konfiguration legt diesen per CI veröffentlichten Registry-Digest fest.
+Im vollständigen geführten Szenario verwendet die Wiederherstellung privater Images
+das tatsächliche Wizard-Artefakt aus der geprüften Standardbranch-Pipeline nach dem
+Merge erneut. Sie prüft unabhängig den kanonischen Quellbeleg, native Pflichtjobs
+und Artefakte, Registry-Digest, Image-ID und Quelllabel. Ein zusätzlicher Build für
+ein privates Image ist nicht nötig. Sein Image darf in keinem vorbereiteten Archiv
+vorhanden sein. Der nicht geführte Testfall veröffentlicht stattdessen ein Derivat
+über seinen bestehenden eigenen CI-Branch und eine eindeutige Markerschicht.
+Die tatsächlich exportierte Konfiguration legt den per CI veröffentlichten Registry-Digest fest.
 Der neue Daemon darf vor dem Start weder dessen Digest-Referenz noch dessen private Image-ID
 besitzen. Nach der Seed-Wiederherstellung beschafft der Starthelfer aus neuem Quellcode
 das exakte Image mit einem temporären projektbegrenzten `read_registry`-Deploy-Token.
-Der Adapter prüft Image-ID und Marker des laufenden Wizards und bestätigt, dass
+Der Adapter prüft die exakte Image-ID und Quellrevision des laufenden Wizards
+(oder den Marker des älteren Testfalls) und bestätigt, dass
 kein aktives reserviertes Wiederherstellungs-Token verbleibt. Erst dann darf der Bericht
 `privateWizardPinVerified: true` melden. Die Testumgebung liefert weder eine alte Docker-Anmeldung
 noch ein privates Image-Archiv oder Ersatz-Image. Dieses Szenario erfordert tatsächlich erfolgreiche
@@ -310,10 +373,15 @@ internen Docker-Bridge ohne veröffentlichten Port. Sie überstehen die Löschun
 Daemons. Jeder verwendet bestehendes Eigentumsjournal und geschützte Bereinigung
 mit höchstens einem Container/Netzwerk/Volume je Eigentümer. Ein kurzer Initialisierer läuft
 ohne Netzwerk und überschreibt im Image deklarierte Volumes mit tmpfs. Jeder Eigentümer
-erbt absolute Frist und Abbruch des ursprünglichen Kandidaten. Das erweiterte
-Szenario `acmeRenewalAcceptance: true` hat ein gemeinsames Lebenszyklus-
-budget von 1.500 Sekunden einschließlich beider Plattformhosts und dieser Testeigentümer. Normale
-Kandidaten behalten ihr Budget von 1.200 Sekunden; keine einzelne Phase setzt es zurück.
+erbt absolute Frist und Abbruch des ursprünglichen Kandidaten. Ein Szenario
+`acmeRenewalAcceptance: true` ohne GitLab-Upgrade hat ein gemeinsames
+Lebenszyklusbudget von 1.500 Sekunden einschließlich beider Plattformhosts und
+dieser Testeigentümer. GitLab-Upgrades verwenden das sechzigminütige Budget oder
+fünfundsiebzig Minuten, wenn geführte Vorschauen ebenfalls aktiviert sind.
+Die zusätzliche öffentliche Release-Upgrade-Testumgebung wählt für dieses kombinierte
+Szenario 110 Minuten.
+Normale Smoke-Tests behalten 1.200 Sekunden. Weder eine neue Phase noch ein
+Hostwechsel setzt die Frist zurück oder verlängert sie automatisch.
 Äußere Skript- und CI-Job-Limits müssen darüber hinaus Reserve für Vorbereitung, Veröffentlichung
 und unabhängige Bereinigung erhalten. Bereinigung nach erzwungenem Beenden
 muss schwere Plattformeigentümer vor diesen Testeigentümern entfernen.
@@ -381,15 +449,108 @@ Der äußere Beleg kopiert den begrenzten Migrationsnachweis; die detaillierten 
 phasen gehören zum Beleg des wiederhergestellten Kandidaten. Weder rohe private Checkpoints
 noch Konfiguration, Zugangsdaten oder Datenbankprotokolle werden jemals öffentliche CI-Artefakte.
 
-Das optionale Nachfolgerszenario teilt ein endliches Gesamt-Kandidatenbudget von 60 Minuten,
-einschließlich der vorherigen Kaltwiederherstellungsszenarien und beider Versions-
-übergänge. Native Upgrade- und Rollback-Bereitschaft erlauben jeweils 900 Sekunden innerhalb
+Das Nachfolgerszenario verwendet nur dann ein festes Gesamt-Kandidatenbudget von
+110 Minuten, wenn sowohl `guidedPreviewAcceptance === true` als auch
+`gitlabUpgradeAcceptance === true` gelten und eine vorbereitete `publicUpgrade`-
+Testumgebung vorhanden ist. Das kombinierte Szenario ohne diese Testumgebung behält
+75 Minuten. Beide umfassen drei echte native Wizard-Push-/MR-/Push-Pipelines mit
+jeweils vier erforderlichen Jobs, manuelles Review/Beta Deploy und Stop,
+Kaltwiederherstellung und beide GitLab-Versionsübergänge. Die öffentliche Release-
+Testumgebung führt zusätzlich den echten öffentlichen CLI-Plan und dessen Anwendung,
+eine neue passende kalte Seed-/Konfigurationssicherung, unterbrochene Offline-Image-
+Wiederherstellung und einen separaten Controller-Neustart mit dauerhaften
+Wiederherstellungsselektoren aus. Dies sind feste Obergrenzen, keine Laufzeitgarantien.
+Ein Upgrade ohne geführte Vorschauen
+behält sein Budget von 60 Minuten. Ursprünglicher und wiederhergestellter Kandidat,
+ACME-Stelle und alle weiteren Ressourceneigentümer teilen die ursprüngliche absolute
+Frist; weder eine Phase noch ein Hostwechsel setzt sie zurück, und eine
+Zeitüberschreitung verlängert sie nicht automatisch. Native Upgrade- und
+Rollback-Bereitschaft erlauben jeweils 900 Sekunden innerhalb
 eines Aufruflimits von 1.200 Sekunden und derselben absoluten Kandidatenfrist. Bereitschaft
 verlangt weiterhin abgeschlossene Hintergrundmigrationen; ein erfolgreicher Migrationsbatch allein
 erfüllt diese Bedingung nicht. Das Szenario verwendet die bestehende serialisierte Ressourcen-
-gruppe und 12-GiB-Grenze des privaten Daemons; prüfen Sie die tatsächliche Host-Reserve vor dem
-Start. Der Plattformjob erlaubt ein 65-minütiges Skript und eine separate zweiminütige Bereinigung
-innerhalb eines 70-minütigen Job-Limits und lässt Zeit für Vorbereitung, Veröffentlichung und Artefakt-
+gruppe und Grenze des privaten Daemons von 12 GiB und vier CPUs; prüfen Sie vor
+dem Start die tatsächliche Host-Reserve. Der Plattformjob erlaubt ein 115-minütiges
+Skript und eine separate zweiminütige Bereinigung innerhalb eines 120-minütigen
+Job-Limits und lässt Zeit für Vorbereitung, Veröffentlichung und Artefakt-
 sammlung. Normale Smoke- und reine ACME-Lebenszyklusbudgets bleiben unverändert. Ein
 erfolgreicher nachgebildeter Adaptervertrag ist keine erfolgreiche echte Migration; verwenden Sie die
-vollständige Plattform-CI-Schranke für diesen Nachweis.
+vollständige Plattform-CI-Schranke für diesen Nachweis. Abgeschlossene Unterprozesse mit Fehlerstatus sowie bestätigte
+endgültige Container- oder Identitätsfehler führen zum sofortigen Abbruch. Vorübergehende
+Startzustände dürfen innerhalb der bestehenden Vorgangsfristen abgefragt werden. Berichte
+unterscheiden Prozessfehler, Zeitüberschreitungen einzelner Vorgänge und eine erschöpfte
+Gesamtfrist für Kandidat oder Bereinigung. Ein Client, der nach einer Zeitüberschreitung
+mit Status null endet, beweist keinen erfolgreichen Abschluss seines entfernten Vorgangs.
+
+## Abnahme des öffentlichen Release-Upgrades über die CLI
+
+`public-upgrade.js` erweitert denselben wiederhergestellten Kandidaten nach der
+GitLab-Migration und vor dem bestehenden kalten Datenbank-Rollback. Die Vorbereitung
+wählt das ausdrücklich vorherige öffentliche Release aus dem Upgrade-Graphen,
+prüft öffentliche Manifest-/Konfigurations-Digests getrennt von erfassten
+Daemon-IDs und Quell-/Job-Labels und hält einen sauberen
+Ziel-Checkout mit Git-Objekten und Wizard-Gitlinks beider Releases vor. Es wird
+keine zweite Plattform angelegt.
+
+Die Phase führt tatsächlich `plan`, abgelehntes unbestätigtes `apply`, erfolgreiches
+bestätigtes `apply` und `status` der eingecheckten öffentlichen CLI aus. Apply
+sichert unabhängige vorherige Image-Archive und erstellt eine native passende
+Konfigurations-ZIP samt abgeschlossenem Seed. Dafür ist eine zusätzliche kalte
+Sicherung des aktuellen Servicezustands nötig: Der frühere GitLab-Migrations-
+Checkpoint enthält die alte Datenbank und kann dieses passende Paar nicht ersetzen.
+Die Phase verbindet dasselbe eigene Sicherungsgerät erneut und trennt es vor der
+Wiederherstellung vollständig. Sie verwendet den vorherigen Registry-CI-Job weiter; schreibgeschützte
+Identitäts-, Registry-Tag-, Datenstichproben- und Runner-Prüfungen erzeugen keine
+weiteren Jobs oder Repository-Commits.
+Die Identitätsprüfungen verwenden die privaten API-Zugangsdaten der Testumgebung
+während ihrer Gültigkeit weiter, einschließlich der letzten Prüfung der wiederhergestellten
+Konfiguration, und widerrufen sie danach über die bestehende authentifizierte API.
+Die unabhängige breite Testreferenz vergleicht mit begrenzten REST-Lesezugriffen die
+ersten zehn IDs jeder erfassten Datensatzart sowie Projekt-HEADs vor dem Austausch,
+nach dem Upgrade, nach der Offline-Wiederherstellung und nach dem Neustart.
+Sie verlangt Administratorsichtbarkeit, vollständige begrenzte Paginierung und
+höchstens 40 Testprojekte; unvollständige Bestandslisten werden abgewiesen.
+Dies vermeidet wiederholte Rails-Starts für Zugangsdaten und doppelte Stichproben.
+Die separaten Rails-Stichproben der Produktions-CLI und alle detaillierten
+Identitätsprüfungen bleiben unverändert.
+
+Vor `recover` werden beide vorherigen Image-IDs entfernt und der Transport über
+ihre ursprünglichen Digests abgeschaltet. Ein einmaliger Compose-Fehler
+unterbricht den ersten nativen Rollback, nachdem dessen kritischer Journal- und
+Lease-Zustand gesichert wurde. Status muss diesen Checkpoint anzeigen. Die nächste
+Wiederherstellung muss ihn übernehmen, geprüfte Archive laden und dauerhafte
+Wiederherstellungsaliase wählen. Ein Neustart des vorherigen Controllers in einem
+separaten Prozess muss diese Auswahl erhalten und Status- sowie Datenprüfungen
+bestehen. Vor dem anschließenden bestehenden Datenbank-Rollback werden die genaue
+ursprüngliche Testkonfiguration und die Release-Profile wiederhergestellt.
+Der abschließende normale Controller startet nach vollständiger physischer Trennung
+des Sicherungsgeräts und besteht authentifiziertes Fetch. Fehlgeschlagene Schritte
+veröffentlichen keinen Upgrade-Erfolg.
+
+Ein auf 512 MiB und eine CPU begrenzter Helfer verwendet das eingebettete Python
+des angegebenen GitLab-Images sowie Docker-/Compose-Binärdateien und den
+musl-Loader des vorbereiteten Controllers. Seine Mounts gehören ausschließlich
+zum privaten Daemon. Eingecheckte Testadapter bilden Ubuntu/systemd und die
+Host-Mountansicht sowie die öffentlichen Metadaten des noch unveröffentlichten
+Ziels und den genauen Transport vom Digest zum vorbereiteten Image nach.
+Die Konfigurations-Digests des Ziels stammen aus gehashten Konfigurationsdateien
+der bereits gespeicherten Image-Archive. Die echte
+öffentliche Autoritätsprüfung, Quellprüfung, Sicherung, der Updater, Leases,
+Journale und Wiederherstellung laufen unverändert. Die Zuordnung vorheriger
+Digests bleibt während der Archivwiederherstellung abgeschaltet. Synthetische
+zukünftige Veröffentlichungseingaben werden niemals als Release-Nachweis exportiert.
+Dieser Test belegt weder tatsächliche systemd-Zeitplanung noch einen zukünftigen
+öffentlichen Upload; Host- und Veröffentlichungsprüfungen bleiben verpflichtend.
+Offline-Vertragstests prüfen die Adaptergrenzen; erst die vollständige native
+Kandidatenphase liefert den Upgrade-Abnahmenachweis.
+
+## Geführte Vorschau-Abnahme nach dem Deployment
+
+Das [native Werkzeug zur geführten Vorschau-Abnahme](GUIDED_PREVIEW_ACCEPTANCE.md)
+prüft den frischen Quellimport, die tatsächlich erforderlichen Wizard-Push-/MR-Pipelines,
+die Source-Primary-Übernahme und Review-Deploy/Stop nach dem bewussten Deployment
+eines akzeptierten Controllers. Es verwendet ausdrücklich bereitgestellte private
+Betreibereingaben und den nativen lokalen Docker-Socket. Weder die Spezifikation
+der isolierten Testplattform noch eine zusätzliche CI-Pipeline aktiviert es.
+Ein reiner Prüfplan oder ein erfolgreicher Offline-Fixture-Test belegt nicht,
+dass die echte Betreiberabnahme durchgeführt wurde.

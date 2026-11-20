@@ -78,3 +78,12 @@ test('a failed authenticated upload rejects Push with the server error', async (
     main.sync.serverAddress + '/token', main.sync.serverAddress + '/config/zip'
   ]);
 });
+
+test('native backup failure is returned as terminal status rather than swallowed as a project-job error', async () => {
+  const main = connected();
+  const status = {id: 'a'.repeat(32), state: 'failed', error: 'seed-filesystem-unavailable'};
+  get.mockResolvedValueOnce({data: status});
+  await expect(main.sync.diagnosticRequest('/backup/' + status.id)).resolves.toEqual(status);
+  expect(get).toHaveBeenCalledTimes(1);
+  expect(get.mock.calls[0][1].headers.Authorization).toBe('Bearer test-token');
+});

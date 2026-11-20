@@ -54,3 +54,33 @@ test('offline adapter executes actual Wizard models and writes a signed private 
     assert.equal(metadata.seed.manifest, null);
   } finally { fs.rmSync(root, {recursive: true, force: true}); }
 });
+
+test('coordinated export binds completed generation to exact ENV bytes through ordinary ZIP exporter', async () => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'wizard-paired-export-'));
+  try {
+    const main=logo+"\nGITLAB_IMAGE='gitlab/test:1'\n# retain exact spacing\n";
+    const project=logo+"\nPROJECT_NAME='demo'\nPROJECT_KEY='demo'\n";
+    const digest=data=>crypto.createHash('sha256').update(data).digest('hex');
+    const association={format:'system-backup-pair-v1',status:'matched-completed-seed',verified:true,operation:'a'.repeat(32),generation:'new',
+      manifest:'snapshots/new/manifest.json',manifestSha256:'b'.repeat(64),completedAt:'2026-01-01T00:00:00Z',capturedAt:'2026-01-01T00:00:00Z',
+      configurationFiles:[{filename:'.docker.env',sha256:digest(main)},{filename:'.projects.env/.demo.env',sha256:digest(project)}]};
+    const input=path.join(root,'input.json'),output=path.join(root,'backup.zip');
+    const previewSetup={version:1,namespace:'team',wizard:{mode:'import',project:'wizard-source',origin:'https://github.com/example/wizard.git'},
+      review:{enabled:true,host:'review.example.test',ssl:'/ssl/review/fullchain.pem',sslKey:'/ssl/review/privkey.pem'},beta:{enabled:false,host:'',ssl:'',sslKey:''}};
+    fs.writeFileSync(input,JSON.stringify({main:{data:main},projects:[{filename:'.demo.env',data:project}],seedAssociation:association,previewSetup}));
+    const result=spawnSync(process.execPath,[cli,input,output],{encoding:'utf8'});
+    assert.equal(result.status,0,result.stderr);
+    const zip=await JSZip.loadAsync(fs.readFileSync(output));
+    assert.equal(await zip.file('.docker.env').async('string'),main);
+    assert.equal(await zip.file('.projects.env/.demo.env').async('string'),project);
+    const metadata=JSON.parse(await zip.file('recovery.json').async('string'));
+    assert.deepEqual(metadata.seed,association);
+    assert.deepEqual(JSON.parse(await zip.file('bootstrapper.json').async('string')).previewSetup,previewSetup);
+    assert.deepEqual(JSON.parse(await zip.file('bootstrapper.json').async('string')).recovery,metadata);
+    assert.deepEqual(Object.keys(zip.files).sort(), ['.docker.env', '.projects.env/', '.projects.env/.demo.env', 'RECOVERY.md', 'bootstrapper.json', 'recovery.json'].sort());
+    association.configurationFiles[0].sha256='c'.repeat(64);
+    fs.writeFileSync(input,JSON.stringify({main:{data:main},projects:[{filename:'.demo.env',data:project}],seedAssociation:association}));
+    assert.equal(spawnSync(process.execPath,[cli,input,path.join(root,'rejected.zip')]).status,1);
+    assert.equal(fs.existsSync(path.join(root,'rejected.zip')),false);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});

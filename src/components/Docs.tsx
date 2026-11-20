@@ -6,6 +6,7 @@ import ArrowBack from '@mui/icons-material/ArrowBack';
 import ArrowForward from '@mui/icons-material/ArrowForward';
 import { docsHref, docsLocation, localizedChapters, searchDocs } from '../docs/model';
 import Markdown from './docs/Markdown';
+import MigrationGuide from './docs/MigrationGuide';
 import { useI18n } from '../i18n';
 
 function useDocsLocation() {
@@ -77,6 +78,7 @@ export default function Docs({ navigationVersion = 0 }: { navigationVersion?: nu
           <Typography variant="h3" component="h1" ref={title} tabIndex={-1} sx={{ fontSize: { xs: '1.9rem', sm: '2.5rem' }, fontWeight: 750, letterSpacing: '-.04em', lineHeight: 1.2, mb: 3, scrollMarginTop: '7rem', outline: 'none' }}>{t(chapter.title)}</Typography>
           <Paper variant="outlined" sx={{ p: { xs: 2, sm: 2.5 }, mb: 3, borderRadius: 2, bgcolor: 'action.hover' }}><Typography variant="subtitle2" sx={{ mb: .5 }}>{t('Before you begin')}</Typography><Typography variant="body2" sx={{ lineHeight: 1.7 }}>{t(chapter.prerequisite)}</Typography><Divider sx={{ my: 1.5 }} /><Typography variant="subtitle2" sx={{ mb: .5 }}>{t('Expected result')}</Typography><Typography variant="body2" sx={{ lineHeight: 1.7 }}>{t(chapter.outcome)}</Typography></Paper>
           {chapter.headings.length > 3 && <Box component="nav" aria-label={t('On this page')} sx={{ mb: 4 }}><Typography variant="overline" color="text.secondary">{t('On this page')}</Typography><Stack spacing={.65}>{chapter.headings.filter((h, i) => i > 0 && h.level <= 3).map(h => <Link key={h.anchor} href={docsHref(chapter.id, h.anchor)} variant="body2">{h.title}</Link>)}</Stack></Box>}
+          {chapter.id === 'releases' && <MigrationGuide />}
           <Markdown key={chapter.id} chapter={chapter} />
           <Divider sx={{ mt: 5, mb: 3 }} />
           <Stack component="nav" aria-label={t('Chapter navigation')} direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: 'stretch' }}>

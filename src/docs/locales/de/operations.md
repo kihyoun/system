@@ -146,3 +146,11 @@ Agentendurchlauf und speichert lokale Berichte; eine Nachricht in einem bestehen
 Chat ist damit nicht zugesagt. Prüfe Zeit, Exit-Ergebnis und Protokoll jedes
 Durchlaufs: Eine alte `latest.md` belegt keinen neuen erfolgreichen Durchlauf.
 Siehe die offizielle [Dokumentation zum nicht interaktiven Codex-Modus](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+### Host-Kompatibilität und Container-Protokolle
+
+Verwenden Sie [Container-Kompatibilität und begrenzte Protokolle](HOST_OPERATIONS.md),
+bevor Sie MongoDB-Images auswählen oder Kernel-Wartung planen und wenn Sie die
+Docker-Protokollaufbewahrung konfigurieren oder prüfen. Der Leitfaden behandelt
+Ubuntus Upstream-Kernel-Nachweise, CPU-/Image-Fehlerdiagnosen, Rotation nach Größe
+und Dateianzahl, erhaltene Einstellungen und bewusste Neuerstellung.

@@ -261,7 +261,10 @@ und Erneuerungseinrichtung.
 Die erste Ausstellung speicherte **standalone** als Authentifikator. Bliebe diese Einstellung
 unverändert, würde eine spätere Erneuerung mit NGINX um Port 80 konkurrieren. Der aktuelle
 Modus-2-Proxy bedient HTTP-01 aus dem gemeinsamen Webroot; der anfängliche Startproxy
-und der normale HTTP-Modus bieten diese Route nicht für jeden konfigurierten Host.
+bietet diese Route nicht für jeden konfigurierten Host. Die aktuellen normalen HTTP-Routen
+bedienen ebenfalls das gemeinsame Webroot, sodass eine bestehende Anwendung vor dem
+Wechsel zu HTTPS ein Zertifikat erhalten kann. Das [HTTPS-Verfahren für Anwendungen](PROJECT_BOOTSTRAP_GUIDE.md#give-an-application-a-trusted-https-hostname)
+beschreibt eine unabhängige Zertifikatslinie für die Anwendung und den Umgang mit Browserdaten.
 
 Erstellen Sie auf dem Server einen harmlosen Test im tatsächlichen Webroot:
 

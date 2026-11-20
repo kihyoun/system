@@ -20,6 +20,10 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import GetAppIcon from '@mui/icons-material/GetApp';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 import { derivedWarning } from '../DerivedLabel';
+import PreviewSetupDialog from './projects-overview/PreviewSetupDialog';
+import BackupWorkflowDialog from './dialog/BackupWorkflowDialog';
+import SystemDiagnosticsDialog from '../dialogs/SystemDiagnosticsDialog';
+import TokenOverviewDialog from '../dialogs/TokenOverviewDialog';
 const TabPanel = (props: any) => {
     const { children, value, index, ...other } = props;
     return (<div role="tabpanel" hidden={value !== index} id={`simple-tabpanel-${index}`} aria-labelledby={`simple-tab-${index}`} {...other}>
@@ -61,6 +65,7 @@ const FormWizard = observer((props: any) => {
     const [files, setFiles] = useState([]);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const [progress, setProgress] = useState(100);
+    const [operation, setOperation] = useState('');
     const { classes } = useStyles({ progress: progress });
     useEffect(() => {
         runInAction(() => {
@@ -110,6 +115,13 @@ const FormWizard = observer((props: any) => {
         };
     };
     return (<React.Fragment>
+      {operation === 'previews' && <PreviewSetupDialog main={main} close={() => setOperation('')}/>}
+      {operation === 'backup' && <BackupWorkflowDialog sync={main.sync} onClose={() => setOperation('')}/>}
+      {operation === 'credentials' && <TokenOverviewDialog main={main} onClose={() => setOperation('')}/>}
+      {operation === 'diagnostics' && <SystemDiagnosticsDialog open onClose={() => setOperation('')}
+        loadTargets={() => main.sync.diagnosticRequest('/diagnostics')}
+        checkConnection={target => main.sync.diagnosticRequest('/diagnostics/connection', {target})}
+        tryHelperPull={runner => main.sync.diagnosticRequest('/diagnostics/pull', {runner})}/>}
       {downloadDocker && <DownloadDockerDialog main={main} setClose={() => setDownloadDocker(false)}/>}
       {downloadProjects && <DownloadProjectsDialog main={main} setClose={() => setDownloadProjects(false)}/>}
       {downloadJson && <DownloadJsonDialog main={main} setClose={() => setDownloadJson(false)}/>}
@@ -179,6 +191,12 @@ const FormWizard = observer((props: any) => {
                 </MenuItem>
               </Menu>
             </Toolbar>
+            <ButtonGroup variant="text" sx={{flexWrap: 'wrap'}} aria-label={t('Platform operations')}>
+              <Button disabled={!main.sync.connected} onClick={() => setOperation('previews')}>{t('Set up development previews')}</Button>
+              <Button disabled={!main.sync.connected} onClick={() => setOperation('backup')}>{t('Harvest and configuration backup')}</Button>
+              <Button disabled={!main.sync.connected} onClick={() => setOperation('credentials')}>{t('Credential expiry')}</Button>
+              <Button disabled={!main.sync.connected} onClick={() => setOperation('diagnostics')}>{t('System diagnostics')}</Button>
+            </ButtonGroup>
           </Paper>
         </Grid>
         <Grid size={12}>

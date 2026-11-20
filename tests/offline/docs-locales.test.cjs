@@ -37,3 +37,33 @@ test('German docs compiler rejects stale, missing, summarized or technically cha
     assert.throws(() => compile(root), /ENOENT/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('Korean docs preserve complete technical content and reject stale, missing or changed locale sources', async () => {
+  const {compile} = await import('../../scripts/compile-docs-locales.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-docs-korean-'));
+  const source = '# Backup\n\nKeep the configuration ZIP separately from the service-data Seed. An unavailable backup disk must never become a directory on the system disk.\n\nUse `SEED_DIR` and the [recovery guide](#docs/recovery).\n\n```sh\nrsync --delete "$SOURCE/" "$TARGET/"\n```\n';
+  const translated = '# 백업\n\n설정 ZIP은 서비스 데이터 Seed와 별도로 보관하세요. 백업 디스크를 사용할 수 없을 때 시스템 디스크의 디렉터리로 대신 저장해서는 안 됩니다.\n\n`SEED_DIR`와 [복구 안내서](#docs/recovery)를 사용하세요.\n\n```sh\nrsync --delete "$SOURCE/" "$TARGET/"\n```\n';
+  const directory = path.join(root, 'src/docs/locales/ko');
+  fs.mkdirSync(directory, {recursive:true});
+  const filename = path.join(directory, 'backup.md');
+  const content = {chapters:[{id:'backup',markdown:source}]};
+  const contentFile = path.join(root, 'src/docs/content.json');
+  fs.writeFileSync(contentFile, JSON.stringify(content));
+  fs.writeFileSync(path.join(directory, 'sources.json'), JSON.stringify({backup:crypto.createHash('sha256').update(source).digest('hex')}));
+  try {
+    fs.writeFileSync(filename, translated);
+    assert.equal(compile(root,'ko').chapters.backup.markdown,translated);
+    for (const broken of [translated.replace('--delete','--archive'), translated.replace('`SEED_DIR`','`PERSISTENT_DIR`'),
+      translated.replace('#docs/recovery','#docs/storage'), '# 백업\n\n짧은 요약.\n', source]) {
+      fs.writeFileSync(filename,broken);
+      assert.throws(() => compile(root,'ko'));
+    }
+    fs.writeFileSync(filename,translated);
+    content.chapters[0].markdown += '\nChanged recovery requirement.\n';
+    fs.writeFileSync(contentFile,JSON.stringify(content));
+    assert.throws(() => compile(root,'ko'),/English source changed/);
+    content.chapters[0].markdown = source;fs.writeFileSync(contentFile,JSON.stringify(content));
+    fs.unlinkSync(filename);assert.throws(() => compile(root,'ko'),/ENOENT/);
+    assert.throws(() => compile(root,'unsupported'),/Unsupported documentation locale/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});

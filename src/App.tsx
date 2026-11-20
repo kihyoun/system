@@ -1,5 +1,5 @@
 import { I18nProvider, useI18n } from './i18n';
-import { deDE, enUS } from '@mui/material/locale';
+import { deDE, enUS, koKR } from '@mui/material/locale';
 import ListItemButton from '@mui/material/ListItemButton';
 import { makeStyles } from 'tss-react/mui';
 import React, { useEffect, useRef, useState } from 'react';
@@ -173,7 +173,7 @@ const AppContent = observer(() => {
         setOpen(false);
     };
     const theme = createTheme({
-        typography: { fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+        typography: { fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR", sans-serif' },
         palette: {
             primary: dark ? grey : blue,
             secondary: {
@@ -187,7 +187,7 @@ const AppContent = observer(() => {
                 : { default: grey[50], paper: '#fff' },
             mode: dark ? 'dark' : 'light'
         }
-    }, locale === 'de' ? deDE : enUS);
+    }, locale === 'ko' ? koKR : locale === 'de' ? deDE : enUS);
     const compact = useMediaQuery(theme.breakpoints.down('md'));
     const [open, setOpen] = React.useState(() => !compact);
     useEffect(() => {
@@ -288,11 +288,13 @@ const AppContent = observer(() => {
                       <Tab value="docs" label="Docs" icon={<MenuBookIcon fontSize="small" />} iconPosition="start" id="main-tab-docs" aria-controls="main-panel-docs" />
                     </Tabs>
                   </Box>
-                  <Box sx={{ gridColumn: 2, gridRow: 1, justifySelf: 'end', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 1, maxWidth: { xs: 112, sm: 250 }, '@container (min-width: 1200px)': { gridColumn: 3 } }}>
+                  <Box sx={{ gridColumn: 2, gridRow: 1, justifySelf: 'end', display: 'flex', flexWrap: { xs: 'wrap', sm: 'nowrap' }, justifyContent: 'flex-end', alignItems: 'center', gap: 1, maxWidth: { xs: 156, sm: 'none' }, '@container (min-width: 1200px)': { gridColumn: 3 } }}>
                     <Box role="group" aria-label={t('Language')} sx={{ display: 'flex', alignItems: 'center', '& .MuiButton-root': { minWidth: 32, px: 0.75, fontWeight: 700, color: 'inherit', '&:focus-visible': { outline: '2px solid currentColor', outlineOffset: 2 } } }}>
                       <Button lang="en" aria-label={t('English')} aria-pressed={locale === 'en'} onClick={() => setLocale('en')} sx={{ textDecoration: locale === 'en' ? 'underline' : 'none', textUnderlineOffset: '0.3em' }}>EN</Button>
                       <Box component="span" aria-hidden="true">|</Box>
                       <Button lang="de" aria-label={t('German')} aria-pressed={locale === 'de'} onClick={() => setLocale('de')} sx={{ textDecoration: locale === 'de' ? 'underline' : 'none', textUnderlineOffset: '0.3em' }}>DE</Button>
+                      <Box component="span" aria-hidden="true">|</Box>
+                      <Button lang="ko" aria-label={t('Korean')} aria-pressed={locale === 'ko'} onClick={() => setLocale('ko')} sx={{ whiteSpace: 'nowrap', textDecoration: locale === 'ko' ? 'underline' : 'none', textUnderlineOffset: '0.3em' }}>한국어</Button>
                     </Box>
                     <DarkModeSwitch handleChange={handleDarkMode}/>
                   </Box>

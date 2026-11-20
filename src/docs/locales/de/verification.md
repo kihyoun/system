@@ -32,6 +32,18 @@ Lockdatei und führt `npm run build` aus, dessen Prebuild ESLint ohne automatisc
 Laufzeit- und gemeinsame Bibliotheksversionen werden beim Bau ausgegeben. Diese Ruby-
 Testlaufzeit ist von GitLabs eingebetteter Rails-Laufzeit getrennt.
 
+Die Vorbereitung der Kandidaten-Images führt außerdem
+`tests/wizard/configuration-routing-export.js` mit dem tatsächlichen
+Konfigurationsexporter des gebauten Wizards vor dem Start der vollständigen Plattform aus.
+Die Prüfung umfasst den ersten Save/Fetch/Backup-Rundlauf, den exakten Erhalt des
+Serverbelegs und selektives Routing, wenn Fetch die abgeleiteten Repository-Metadaten ergänzt.
+Für einen separaten Lauf bauen Sie den Wizard-Exporter mit `npm run build:config-export`
+im initialisierten `wizard`-Checkout und führen anschließend Folgendes aus:
+
+```sh
+node tests/wizard/configuration-routing-export.js --exporter wizard/build-tools/export-configuration.cjs
+```
+
 Das Image setzt `SYSTEM_TEST_ISOLATED=1` und ruft `node tests/run.js` auf. Wählen Sie
 `all` oder eines von `gitlab`, `sync`, `gitlab-runner`, `bootstrapper`, `nginx`, `wizard`,
 `shared` und `performance`. Prüfungen laufen nacheinander mit erzwungenen Zeitlimits je
@@ -54,6 +66,18 @@ mkdir -p test-results
 docker run --rm --network none \
   -v "$PWD/test-results:/candidate/test-results" system-component-tests all
 ```
+
+Die Testumgebungen für Host-Kompatibilität und Protokollierung laufen in der
+Komponente `bootstrapper`. Die Vorbereitung des Kandidaten-Images führt zusätzlich
+eine kleine echte Docker-Rotationsprüfung mit zwei eigenen verwerfbaren
+Container-Generationen aus. Sie prüft die tatsächlichen Dateigrößen und die
+Dateianzahl sowie das erneute Lesen der Protokolle. Die native
+Wiederherstellungsprüfung prüft eigene Protokollierungseinstellungen mit dem
+echten Konfigurationsexporter und einer Seed-Wiederherstellung. Umfang und
+Befehle stehen im [Host-Betriebsleitfaden](../docs/HOST_OPERATIONS.md).
+Die ausdrücklich aktivierte Prüfung `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`
+verifiziert außerdem mit einem einzelnen ressourcenbegrenzten Container, dass das native Compose
+den Controller der Public-Upgrade-Testumgebung nach manuellem Austausch und beim abschließenden Zurücksetzen erkennt und neu erstellt.
 
 ## Testorganisation
 
@@ -219,6 +243,37 @@ eine vor ihrem Gegenstand hochgeladene Attestierung mit `blob unknown to registr
 Registry-Digest-, Pull-/Run- und Artefaktprüfungen bleiben erforderlich; diese Wege
 beanspruchen keine Attestierungsprüfung. Anderes Metadatenverhalten von Kandidaten-Images bleibt
 unverändert.
+
+## Statische Sicherheitsprüfung
+
+Merge Requests mit Laufzeitänderungen und Builds des Standardbranches führen den
+erforderlichen Job `test:codeql` parallel zu den Komponentenprüfungen aus. Er prüft
+den versionierten System-Quellcode und den exakten Wizard-Gitlink mit CodeQL 2.27.4
+und dessen offizieller Standard-Code-Scanning-Suite für JavaScript/TypeScript.
+Keine Regeln, Pfade oder alten Befunde werden unterdrückt. Das festgelegte
+öffentliche CLI-Bundle wird vor der Verwendung anhand seiner Prüfsumme geprüft.
+Der Scan-Kindcontainer hat weder Netzwerk noch Docker-Socket oder Zugangsdaten
+und kann keine Anwendungs-Builds ausführen.
+
+Für die CodeQL CLI gelten eigene [Lizenzbedingungen](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md).
+Die kostenlose automatisierte Nutzung setzt eine auf GitHub gehostete und gepflegte
+Open-Source-Codebasis voraus; ein externer GitLab-Runner wird unterstützt. Ein privater
+oder ausschließlich auf GitLab gepflegter Fork muss seine Lizenzberechtigung vor
+Ausführung dieses Jobs klären. Die MIT-Lizenz des Projekts gewährt keine CodeQL-Lizenz,
+und der Job schließt kein Abonnement ab. Rechenleistung und Speicher des Runners
+liegen weiterhin in der Verantwortung des Betreibers.
+
+`node tests/prepare-codeql.js` paketiert nach der normalen Wizard-Quellvorbereitung
+die versionierten Eingaben. `sh tests/ci-codeql.sh` führt diesen geprüften Kontext
+auf dem ausgewählten vertrauenswürdigen Docker-Runner mit dessen üblichen
+CI-Identitätsvariablen aus. Der Kindcontainer ist auf 6 GiB RAM und zwei CPUs
+begrenzt; Image-Vorbereitung und Scan haben jeweils ein Zeitlimit von 15 Minuten.
+Dieser statische Job startet keine verwerfbare Plattform. SARIF-Ergebnisse,
+Extraktionsabdeckung, Quellidentitäten und Bereinigungsnachweise werden unter
+`test-results/codeql/` aufbewahrt. Fehlende Abdeckung oder ein beliebiger Befund
+lassen den Job fehlschlagen. Breitere Qualitätssuites können getrennt zur
+Einzelfallprüfung ausgeführt werden; ihre zusätzlichen Heuristiken sind nicht
+mit dieser Standard-Sicherheitsprüfung gleichzusetzen.
 
 ## Ausdrückliche Live-Adapter
 

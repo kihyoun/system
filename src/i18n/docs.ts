@@ -1,4 +1,7 @@
 const docs: Record<string, string> = {
+  "6.4 Host workload compatibility and logs": "6.4 Host-Workload-Kompatibilität und Protokolle",
+  "Access to the Linux x86_64 Docker daemon host and the selected immutable workload images.": "Zugriff auf den Linux-x86_64-Docker-Daemon-Host und die ausgewählten unveränderlichen Workload-Images.",
+  "You distinguish CPU, upstream-kernel and image failures and verify bounded logs with preserved settings.": "Sie unterscheiden CPU-, Upstream-Kernel- und Image-Fehler und prüfen begrenzte Protokolle mit erhaltenen Einstellungen.",
   "8.12 Dependency security": "8.12 Sicherheit von Abhängigkeiten",
   "The declared Node/npm toolchains, committed lockfiles and the affected application/build checks.": "Die festgelegten Node-/npm-Werkzeuge, eingecheckte Lockfiles und betroffene Anwendungs-/Build-Prüfungen.",
   "You can audit actual dependency paths, apply stable compatible fixes and validate scoped overrides without bypassing release gates.": "Sie können tatsächliche Abhängigkeitspfade prüfen, stabile kompatible Korrekturen anwenden und begrenzte Overrides ohne Umgehen der Release-Prüfungen validieren.",

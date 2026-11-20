@@ -54,3 +54,30 @@ und wiederholen Sie diese Prüfungen. Bewahren Sie bei Paketaktualisierungen die
 Verwenden Sie [Renovates freigabegesteuerte Pakete](DEPENDENCY_UPDATES.md) zur weiteren
 Erkennung. Ein Botvorschlag, erfolgreiches Audit oder veröffentlichtes Release gibt
 Production nicht selbst frei; Release-Abnahme und bewusste Bereitstellung bleiben erforderlich.
+
+## HTTP-Grenze von Sync
+
+Sync begrenzt die gesamte Steuerungs-API auf 600 Anfragen pro Minute und
+fehlgeschlagene Anmelde- oder Token-Erneuerungsversuche auf 20 pro 15 Minuten.
+Diese Prozessgrenzen gelten gemeinsam, auch hinter dem Reverse Proxy.
+Weiterleitungsheader des Clients erhöhen das Kontingent nicht. Erfolgreiche
+Authentifizierung verbraucht das Fehlerkontingent nicht. Ein Neustart setzt die
+Zähler im Arbeitsspeicher zurück. Clients müssen HTTP 429 und die Retry-Header
+beachten, statt ohne Pause erneut anzufragen.
+
+Browserzugriffe erlauben die exakt konfigurierten Wizard- und Sync-Ursprünge,
+aktivierte Wizard-Review/Beta-Ursprünge und den eigenen Ursprung der Anfrage für
+lokalen Zugriff. Zusätzliche Browserclients benötigen explizite Ursprünge in der
+gespeicherten Haupt-Laufzeiteinstellung `SYNC_ALLOWED_ORIGINS`, beispielsweise
+`http://localhost:5173`. Mehrere Ursprünge werden durch Leerzeichen oder Kommas
+getrennt; Schema und optionaler Port gehören dazu, Pfad, Platzhalter und
+abschließender Schrägstrich nicht. Ein erlaubter Ursprung ersetzt keine
+Authentifizierung: API-Clients benötigen weiterhin normale Zugangsdaten und
+Tokens. Clients ohne Origin-Header bleiben unterstützt. Öffentlicher Zugriff
+benötigt den dokumentierten TLS-Proxy.
+
+JSON- und URL-kodierte Anfragen sind auf 5 MiB begrenzt; ein Konfigurations-ZIP-
+Upload auf eine Datei mit 50 MiB. Fehlerantworten enthalten weder interne
+Stacktraces noch Dateisystempfade. Konfigurationsdownloads prüfen das
+Operationsverzeichnis, lesen eine reguläre Datei mit Größenbegrenzung ohne
+symbolischen Links zu folgen und prüfen und senden anschließend dieselben Bytes.
