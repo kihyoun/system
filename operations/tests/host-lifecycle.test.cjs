@@ -53,21 +53,16 @@ test('host lifecycle Nest context provides shared services without starting host
   } finally { await app.close(); }
 });
 
-test('configuration adapter separates diagnostics and cancels a stuck shell', async t => {
+test('configuration adapter accepts data and refuses execution or cancelled work', async t => {
   const { readEnvironment } = require('../dist/host-lifecycle/lifecycle.service');
-  const { ManagedChildProcess } = require('../dist/runtime/managed-child');
   const f = fixture(t), file = path.join(f.root, 'config');
-  fs.writeFileSync(file, 'printf "Configuration loaded\\n"\nexport TEST_VALUE=kept\n');
-  const env = await readEnvironment(new ManagedChildProcess(), [file], process.env, f.root);
-  assert.equal(env.TEST_VALUE, 'kept');
-  assert(!Object.keys(env).some(key => key.includes('Configuration loaded')));
+  const runner = {run(){assert.fail('configuration must not spawn a process');}};
+  fs.writeFileSync(file, 'export TEST_VALUE=kept\n');
+  assert.equal((await readEnvironment(runner, [file], {}, f.root)).TEST_VALUE, 'kept');
   fs.writeFileSync(file, 'sleep 60\n');
-  const abort = new AbortController();
-  const started = Date.now();
-  const waiting = readEnvironment(new ManagedChildProcess(), [file], process.env, f.root, abort.signal);
-  setTimeout(() => abort.abort(), 40);
-  await assert.rejects(waiting, /external-command-failed/);
-  assert(Date.now() - started < 3000);
+  await assert.rejects(readEnvironment(runner, [file], {}, f.root), /assignment-required/);
+  const abort = new AbortController(); abort.abort();
+  await assert.rejects(readEnvironment(runner, [file], {}, f.root, abort.signal), /external-command-failed/);
 });
 test('release fallback keeps empty build selector offline and rejects special file modes', t => {
   const { releaseFallback } = require('../dist/host-lifecycle/lifecycle.service');

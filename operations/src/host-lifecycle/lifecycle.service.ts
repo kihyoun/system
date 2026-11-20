@@ -1,33 +1,23 @@
+import { environmentAssignments } from '../runtime/environment-assignments';
+import { ProcessFailure } from '../runtime/process';
 import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ManagedChildProcess, type LifecycleProcess } from '../runtime/managed-child';
 import { HostPersistenceService, storageEnvironment } from './persistence.service';
 
-/** Bash remains only the adapter for the existing shell configuration format. */
+/** Load the declarative configuration without a shell interpreter. */
 export async function readEnvironment(
-  runner: LifecycleProcess,
+  _runner: LifecycleProcess,
   files: string[],
   env: NodeJS.ProcessEnv,
-  cwd: string,
+  _cwd: string,
   signal?: AbortSignal,
 ): Promise<NodeJS.ProcessEnv> {
-  const raw = await runner.run(
-    'bash',
-    [
-      '-e',
-      '-c',
-      'set -a; for file in "$@"; do source "$file" >&2; done; env -0',
-      'configuration',
-      ...files,
-    ],
-    { env, cwd, signal, timeout: 15000 },
-  );
-  const result: NodeJS.ProcessEnv = {};
-  for (const entry of raw.split('\0')) {
-    const separator = entry.indexOf('=');
-    if (separator > 0) result[entry.slice(0, separator)] = entry.slice(separator + 1);
-  }
+  if (signal?.aborted) throw new ProcessFailure('configuration', null, 'SIGTERM', true);
+  const result = { ...env };
+  for (const file of files)
+    Object.assign(result, environmentAssignments(fs.readFileSync(file, 'utf8')));
   return result;
 }
 export function releaseFallback(filename: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

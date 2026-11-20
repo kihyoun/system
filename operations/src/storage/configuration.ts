@@ -1,3 +1,4 @@
+import { environmentAssignments } from '../runtime/environment-assignments';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,29 +26,19 @@ export function cube(raw: Buffer): void {
     'configuration-cube-mismatch',
   );
 }
-/** Compatibility adapter for the existing operator-owned Bash assignment format.
- * This is data interpretation, not an alternate operation workflow. No caller
- * command is appended; selected variable names and output framing are fixed.
- */
+/** Select declarative configuration values without executing operator input. */
 export function readAssignments(
   filename: string,
   names: readonly string[],
   inherited: NodeJS.ProcessEnv,
-  runner: ProcessRunner = nativeProcess,
+  _runner: ProcessRunner = nativeProcess,
 ): Record<string, string> {
   requireValue(
     names.every((name) => /^[A-Z][A-Z0-9_]*$/.test(name)),
     'invalid-configuration-selector',
   );
-  const print = names.map((key) => 'printf "%s\\0" "${' + key + '-}";').join(' ');
-  const result = runner.run(
-    'bash',
-    ['-c', 'set -eu; set -a; source "$1"; ' + print, 'read-configuration', filename],
-    { env: inherited, maxBuffer: 65536, timeout: 10000 },
-  );
-  const values = result.stdout.split('\0');
-  requireValue(values.length === names.length + 1, 'invalid-storage-selector');
-  return Object.fromEntries(names.map((key, index) => [key, values[index]]));
+  const values = { ...inherited, ...environmentAssignments(fs.readFileSync(filename, 'utf8')) };
+  return Object.fromEntries(names.map((key) => [key, values[key] || '']));
 }
 export function configuration(
   environment: NodeJS.ProcessEnv = process.env,
@@ -73,24 +64,15 @@ export function configuration(
 export function imageFromConfiguration(
   raw: Buffer,
   fallback = '',
-  runner: ProcessRunner = nativeProcess,
+  _runner: ProcessRunner = nativeProcess,
 ): string {
   cube(raw);
-  const result = runner.run('bash', ['-s'], {
-    input: Buffer.concat([
-      Buffer.from('set -eu\n'),
-      raw,
-      Buffer.from('\nprintf "%s" "${GITLAB_IMAGE-}"\n'),
-    ]),
-    env: { ...process.env, GITLAB_IMAGE: fallback },
-    maxBuffer: 65536,
-    timeout: 10000,
-  });
+  const value = environmentAssignments(raw.toString('utf8')).GITLAB_IMAGE ?? fallback;
   requireValue(
-    !result.stdout || /^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/.test(result.stdout),
+    !value || /^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/.test(value),
     'matching-configuration-backup-required',
   );
-  return result.stdout;
+  return value;
 }
 export function validateBackup(filename: string, runner: ProcessRunner = nativeProcess): string[] {
   const options = { maxBuffer: 1024 * 1024, timeout: 10000 };
