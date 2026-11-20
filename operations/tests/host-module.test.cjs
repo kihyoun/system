@@ -133,3 +133,16 @@ test('native checkpoint verifies retained bytes and shared recovery rejects a co
  let unblock,finished=0;const waiting=new Promise(resolve=>unblock=resolve),port={async prepare(){await waiting;return {};},finish(failed){finished++;assert.equal(failed,false);}},sequence={async run(){}};
  const recovery=new PromotionRecoveryService(port,sequence),first=recovery.abort({});await assert.rejects(recovery.abort({}),/already-running/);assert.equal(finished,0);unblock();await first;assert.equal(finished,1);
 });
+
+test('retained recovery publication advances both security images without losing earlier archives',()=>{
+ const {RecoveryPublicationService}=require('../dist/host/recovery-publication.service');
+ const security=require('../../gitlab/security-release.json'), service=new RecoveryPublicationService();
+ const old={archives:[{file:'images/old.tar.gz',imageId:'sha256:'+'1'.repeat(64)}],localImages:[{tag:'system_bootstrapper',imageId:'sha256:'+'1'.repeat(64)}],publicImages:[{reference:security.fromImage,tag:security.fromImage.split('@')[0]},{reference:security.runner.fromImage,tag:security.runner.fromImage.split('@')[0]}],currentController:{reference:'controller:old',imageId:'sha256:'+'1'.repeat(64)}};
+ const before=structuredClone(old),archive={file:'images/new.tar.gz',imageId:'sha256:'+'2'.repeat(64)};
+ const refresh=previous=>service.refresh(previous,archive,['a'.repeat(40),'b'.repeat(40),'c'.repeat(40)],'controller:new',archive.imageId,security.toImage,'sha256:'+'3'.repeat(64),'wizard:retained',security.runner.toImage,'sha256:'+'4'.repeat(64));
+ const value=refresh(old);
+ assert.deepEqual(old,before);assert.deepEqual(value.archives[0],before.archives[0]);assert.deepEqual(value.controllerHistory,[before.currentController]);
+ assert.deepEqual(new Set(value.publicImages.map(row=>row.reference)),new Set([security.toImage,security.runner.toImage]));
+ assert.equal(value.publicImages[1].imageId,'sha256:'+'4'.repeat(64));
+ assert.throws(()=>refresh({...old,publicImages:old.publicImages.slice(0,1)}),/Runner-public-image-declaration/);
+});
