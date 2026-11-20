@@ -46,3 +46,10 @@ configuration restore and CLI consumers use the same versioned decisions.
 Build operations before invoking these compatibility imports. Collector results
 remain scoped to one invocation; neither the Nest context nor module imports
 cache evidence across plan and apply.
+
+`SourceTransferService` owns DNS-pinned public source reads, exact producer
+verification and default-branch-first atomic transfer. Its injected Git/DNS port
+keeps credentials out of source reads and command arguments. Historical refs use
+`ci.skip`; the default branch retains its ordinary native push pipeline. Only an
+exact completed import or exact default-only intermediate state can resume.
+Temporary credential helpers are removed on every exit.

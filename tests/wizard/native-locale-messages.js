@@ -29,7 +29,7 @@ try {
     'sync/src/PreviewSetup.ts',
     'sync/src/SystemBetaSetup.ts',
     'operations/src/project-lifecycle/preview-settings.ts',
-    'project-bootstrap/preview-setup/source.js',
+    'operations/src/project-lifecycle/source-transfer.service.ts',
     'project-bootstrap/preview-setup/provision.rb',
     'project-bootstrap/preview-setup/producers.js',
     'project-bootstrap/wizard-source-primary/run.js',
