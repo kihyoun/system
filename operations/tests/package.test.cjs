@@ -11,7 +11,8 @@ test('public tarball carries compiled CLI and offline validation assets without 
   try {
     const [record]=JSON.parse(execFileSync('npm',['pack','--json','--ignore-scripts','--pack-destination',temporary],{cwd:root,encoding:'utf8'}));
     const files=record.files.map(file=>file.path);
-    for(const required of ['dist/cli.js','dist/index.js','dist/storage/entry.js','assets/project-bootstrap/preview-setup/settings.js','README.md','LICENSE'])assert(files.includes(required),required);
+    assert(!files.includes('assets/project-bootstrap/preview-setup/settings.js'));
+    for(const required of ['dist/cli.js','dist/index.js','dist/storage/entry.js','dist/project-lifecycle/preview-settings.js','README.md','LICENSE'])assert(files.includes(required),required);
     assert(files.every(file=>/^(?:dist\/|assets\/|README.md$|LICENSE$|package.json$)/.test(file)));
     assert(!files.some(file=>/(?:^|\/)(?:node_modules|\.env|\.npmrc|private|tests)(?:\/|$)/.test(file)));
     execFileSync('tar',['-xzf',path.join(temporary,record.filename),'-C',temporary]);

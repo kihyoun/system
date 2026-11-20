@@ -38,3 +38,11 @@ exercise malformed/oversized/unscoped responses and credential cleanup, and
 verify the larger-manifest fallback. The existing full candidate still proves
 real GitLab CI, adoption, Review/Beta deployment and recovery; these focused
 checks do not replace it.
+
+The operations project-lifecycle feature owns the strict TypeScript portable
+settings validator and bounded evidence read collectors. The historical
+`settings.js` and `reads.js` imports delegate to that compiled policy, so Sync,
+configuration restore and CLI consumers use the same versioned decisions.
+Build operations before invoking these compatibility imports. Collector results
+remain scoped to one invocation; neither the Nest context nor module imports
+cache evidence across plan and apply.

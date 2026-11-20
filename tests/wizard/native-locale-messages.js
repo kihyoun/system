@@ -28,7 +28,7 @@ try {
   for (const filename of [
     'sync/src/PreviewSetup.ts',
     'sync/src/SystemBetaSetup.ts',
-    'project-bootstrap/preview-setup/settings.js',
+    'operations/src/project-lifecycle/preview-settings.ts',
     'project-bootstrap/preview-setup/source.js',
     'project-bootstrap/preview-setup/provision.rb',
     'project-bootstrap/preview-setup/producers.js',
@@ -53,7 +53,7 @@ try {
     messages.add(message);
   }
   const environments = fs.readFileSync(path.join(root, 'sync/src/WizardEnvironments.ts'), 'utf8');
-  const dynamic = /throw new Error\('([^'\n]+)' \+ name \+ '([^'\n]+)'\)/.exec(environments);
+  const dynamic = /throw new Error\(\s*'([^'\n]+)' \+ name \+ '([^'\n]+)'\s*,?\s*\)/.exec(environments);
   assert(dynamic, 'Native exact-host certificate diagnostic changed.');
   for (const name of ['review', 'beta']) messages.add(dynamic[1] + name + dynamic[2]);
   for (const message of messages) {

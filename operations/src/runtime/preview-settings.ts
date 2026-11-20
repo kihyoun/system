@@ -1,19 +1,6 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { settings } from '../project-lifecycle/preview-settings';
 
-/** Compatibility adapter to the shared versioned preview-settings validator. */
+/** Shared versioned validator used by configuration, storage and preview setup. */
 export function normalizePreview(input: unknown): unknown {
-  const packaged = resolve(__dirname, '../../assets/project-bootstrap/preview-setup/settings.js');
-  const checkout = resolve(__dirname, '../../../project-bootstrap/preview-setup/settings.js');
-  const filename = existsSync(packaged) ? packaged : checkout;
-  const adapter: unknown = require(filename);
-  if (
-    !adapter ||
-    typeof adapter !== 'object' ||
-    !('settings' in adapter) ||
-    typeof adapter.settings !== 'function'
-  ) {
-    throw new Error('preview-settings-adapter-unavailable');
-  }
-  return adapter.settings(input);
+  return settings(input);
 }
