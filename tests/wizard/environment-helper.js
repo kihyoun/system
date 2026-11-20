@@ -59,6 +59,21 @@ class Fixture extends Runtime {
 }
 async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
 (async () => {
+  const {EnvironmentProcess} = require('../../operations/dist/project-lifecycle/environment-process');
+  const calls=[];
+  const transport=new EnvironmentProcess({run:async(binary,args,options)=>{
+    calls.push({binary,args,options});
+    if(args[0]==='wait')return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('cancelled')),{once:true}));
+    return ' clean \n';
+  }});
+  const pending=transport.command(['wait']);transport.cancel();await assert.rejects(pending,/cancelled/);
+  await assert.rejects(transport.command(['start']),/cancelled/);
+  assert.equal(await transport.command(['cleanup'],'private-input',{cleanup:true}),'clean');
+  assert.equal(calls.length,2);assert.equal(calls[1].options.signal.aborted,false);
+  assert(calls[1].options.timeout<=90000);assert.equal(calls[1].options.input,'private-input');
+  transport.cleanupDeadline=Date.now()-1;
+  await assert.rejects(transport.command(['cleanup'],'',{cleanup:true}),/recovery budget/);
+  assert.equal(await transport.command(['unlock'],'',{cleanup:true,release:true}),'clean');
   const args = ['--action', 'deploy', '--kind', 'review', '--project', '1', '--pipeline', '10', '--job', '20', '--sha', sha,
     '--mr', '1', '--operation', op, '--controller', 'system_bootstrapper_1'];
   assert.deepStrictEqual(parse(args), request());
