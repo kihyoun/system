@@ -175,3 +175,16 @@ candidate or changes the Production image pin. If the config was adopted but the
 checkpoint write was interrupted, a verified repeated adoption repairs that
 checkpoint without rewriting the config. Do not replace `build-stage` with a
 source reimport to bypass a conflicting plan.
+
+The compiled operations `UpgradeModule` supplies staging and adoption through a
+standalone Nest service. The typed session retains exact repository/file checks,
+commit intents, uncertain-response reconciliation, reviewed fast-forward ancestry,
+source-preserving recipe upgrades and stopped-generation history. The original
+operator command delegates to that service; historical recipe generators remain
+byte-stable format adapters.
+
+Before staging, the isolated clean helper must match the complete reviewed
+project-bootstrap tree, compiled operations tree, resolved production dependency
+packages and CA bootstrap inputs. Verification compares a deterministic aggregate
+hash inside the image with networking, writes and host mounts disabled. Build
+operations and package the same dependency versions before preparing the helper.
