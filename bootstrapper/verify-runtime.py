@@ -437,12 +437,13 @@ def runner_contacts(config, baseline, token_file):
                 return result
         raise recovery.RecoveryError('GitLab-runner-API-pagination-limit')
     runners = pages('/runners/all')
-    expected = set()
+    expected = {}
     for index in range(1, runner_count(config) + 1):
         raw = (config['_root'] / f'runners/runner/{index}/config/.runner_system_id').read_bytes()
-        expected.add(hashlib.sha256(raw.strip()).hexdigest())
+        expected[hashlib.sha256(raw.strip()).hexdigest()] = f'runner_docker_{index}'
     require(len(expected) == runner_count(config), 'runner-manager-identities-not-unique')
     matched = {}
+    probes = 0
     started = datetime.datetime.fromisoformat(baseline['startedAt'])
     for runner in runners:
         require(isinstance(runner.get('id'), int), 'invalid-GitLab-runner-id')
@@ -450,12 +451,31 @@ def runner_contacts(config, baseline, token_file):
             identity = hashlib.sha256(manager.get('system_id', '').encode()).hexdigest()
             if identity in expected:
                 contact = manager.get('contacted_at')
+                # Workhorse can serve idle job polls without updating the Rails
+                # contact timestamp. Probe the retained configuration explicitly;
+                # this proves authentication, not job execution or poller activity.
+                if contact is not None and manager.get('status') == 'online' and \
+                        datetime.datetime.fromisoformat(contact.replace('Z', '+00:00')) < started:
+                    try:
+                        run([*DOCKER, 'exec', expected[identity], 'gitlab-runner', 'verify',
+                             '--config', '/etc/gitlab-runner/config.toml'], timeout=15)
+                    except recovery.RecoveryError:
+                        if recovery.OPERATION_DEADLINE is not None and time.monotonic() >= recovery.OPERATION_DEADLINE:
+                            raise recovery.RecoveryError('operation-readiness-deadline-expired') from None
+                        raise recovery.RecoveryError('runner-manager-authentication-probe-failed') from None
+                    probes += 1
+                    refreshed = [row for row in pages('/runners/' + str(runner['id']) + '/managers')
+                                 if hashlib.sha256(row.get('system_id', '').encode()).hexdigest() == identity]
+                    require(len(refreshed) == 1, 'runner-manager-identity-changed-during-probe')
+                    manager = refreshed[0]
+                    contact = manager.get('contacted_at')
                 require(contact is not None and manager.get('status') == 'online' and
                         datetime.datetime.fromisoformat(contact.replace('Z', '+00:00')) >= started,
                         'runner-manager-contact-not-fresh')
                 matched[identity] = {'identitySha256': identity, 'runnerId': runner['id'], 'contactedAt': contact}
-    require(set(matched) == expected, 'expected-runner-managers-not-online')
-    return {'checked': True, 'online': len(matched), 'contactsAfterStart': True}
+    require(set(matched) == set(expected), 'expected-runner-managers-not-online')
+    return {'checked': True, 'online': len(matched), 'contactsAfterStart': True,
+            'authenticationProbeCount': probes, 'jobExecutionChecked': False}
 
 
 def verify(config, baseline, checkout, token_file=None, redirect_from=None, public=False):

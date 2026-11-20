@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -29,6 +30,121 @@ tool = load('public_controller_update', ROOT / 'bootstrapper/update-controller.p
 fixtures = load('successor_fixtures', ROOT / 'tests/bootstrapper/successor-host-tools.py')
 runtime, recovery = successor.runtime, successor.recovery
 inspect_runtime_services = runtime.inspect_services
+
+
+class ReadinessDeadline(unittest.TestCase):
+    def test_deadline_transport_timeouts_preserve_the_previous_failure_only_at_expiry(self):
+        for transport in ('command', 'http'):
+            for expires in (False, True):
+                with self.subTest(transport=transport, expires=expires):
+                    clock = [100.0]
+                    def timed_out(*args, **kwargs):
+                        self.assertAlmostEqual(kwargs['timeout'], 0.1)
+                        clock[0] = 103.1 if expires else 103.05
+                        if transport == 'command':
+                            raise subprocess.TimeoutExpired(args[0], kwargs['timeout'])
+                        raise runtime.urllib.error.URLError('synthetic-transport-timeout')
+                    def verify(*args, **kwargs):
+                        if clock[0] == 100:
+                            raise recovery.RecoveryError('runner-manager-contact-not-fresh')
+                        if transport == 'command':
+                            recovery.run(['git', 'status'])
+                        runtime.http('http://fixture.example.invalid/')
+                    def sleep(seconds):
+                        clock[0] += seconds
+                    with patch.object(recovery, 'OPERATION_DEADLINE', None), \
+                            patch.object(tool.time, 'monotonic', side_effect=lambda: clock[0]), \
+                            patch.object(tool.time, 'sleep', side_effect=sleep), \
+                            patch.object(recovery.subprocess, 'run', side_effect=timed_out), \
+                            patch.object(runtime.urllib.request, 'build_opener') as opener, \
+                            patch.object(runtime, 'verify', side_effect=verify) as checked:
+                        opener.return_value.open.side_effect = timed_out
+                        label = ('runner-manager-contact-not-fresh' if expires else
+                                 'command-failed:git' if transport == 'command' else 'application-endpoint-not-ready')
+                        with self.assertRaisesRegex(recovery.RecoveryError, '^controller-update-readiness-failed:' + label + '$'):
+                            tool.wait_ready({}, {}, None, None, 3.1)
+                        self.assertEqual(checked.call_count, 2)
+                        self.assertIsNone(recovery.OPERATION_DEADLINE)
+
+    def test_changed_service_predicate_at_the_deadline_replaces_the_previous_failure(self):
+        clock = [100.0]
+        def verify(*args, **kwargs):
+            if clock[0] == 100:
+                raise recovery.RecoveryError('runner-manager-contact-not-fresh')
+            clock[0] = 103.1
+            raise recovery.RecoveryError('service-not-healthy')
+        def sleep(seconds):
+            clock[0] += seconds
+        with patch.object(recovery, 'OPERATION_DEADLINE', None), \
+                patch.object(tool.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(tool.time, 'sleep', side_effect=sleep), \
+                patch.object(runtime, 'verify', side_effect=verify) as checked:
+            with self.assertRaisesRegex(recovery.RecoveryError, '^controller-update-readiness-failed:service-not-healthy$'):
+                tool.wait_ready({}, {}, None, None, 3.1)
+            self.assertEqual(checked.call_count, 2)
+            self.assertIsNone(recovery.OPERATION_DEADLINE)
+
+    def test_last_service_failure_survives_sleep_or_budget_expiry_in_a_retry(self):
+        for expires_in_retry in (False, True):
+            with self.subTest(expires_in_retry=expires_in_retry):
+                clock = [100.0]
+                def verify(*args, **kwargs):
+                    if expires_in_retry and clock[0] > 100:
+                        clock[0] = 105.0
+                        recovery.budget(10)
+                    raise recovery.RecoveryError('runner-manager-contact-not-fresh')
+                def sleep(seconds):
+                    clock[0] += seconds
+                with patch.object(recovery, 'OPERATION_DEADLINE', None), \
+                        patch.object(tool.time, 'monotonic', side_effect=lambda: clock[0]), \
+                        patch.object(tool.time, 'sleep', side_effect=sleep), \
+                        patch.object(runtime, 'verify', side_effect=verify) as checked:
+                    with self.assertRaisesRegex(recovery.RecoveryError,
+                            '^controller-update-readiness-failed:runner-manager-contact-not-fresh$'):
+                        tool.wait_ready({}, {}, None, None, 5 if expires_in_retry else 3)
+                    self.assertEqual(checked.call_count, 2 if expires_in_retry else 1)
+                    self.assertIsNone(recovery.OPERATION_DEADLINE)
+
+    def test_first_attempt_budget_expiry_has_a_fixed_diagnostic(self):
+        with patch.object(recovery, 'OPERATION_DEADLINE', None), \
+                patch.object(tool.time, 'monotonic', return_value=100.0), \
+                patch.object(tool.time, 'sleep') as sleep, \
+                patch.object(runtime, 'verify', side_effect=lambda *args, **kwargs: recovery.budget(10)) as checked:
+            with self.assertRaisesRegex(recovery.RecoveryError,
+                    '^controller-update-readiness-failed:operation-readiness-deadline-expired$'):
+                tool.wait_ready({}, {}, None, None, 0)
+            checked.assert_called_once()
+            sleep.assert_not_called()
+            self.assertIsNone(recovery.OPERATION_DEADLINE)
+
+    def test_earlier_outer_deadline_bounds_sleep_and_retries_and_is_restored(self):
+        for outer in (102.5, 0.0):
+            with self.subTest(outer=outer):
+                clock, sleeps = [100.0], []
+                def verify(*args, **kwargs):
+                    self.assertEqual(recovery.OPERATION_DEADLINE, outer)
+                    recovery.budget(10)
+                    raise recovery.RecoveryError('runner-manager-contact-not-fresh')
+                def sleep(seconds):
+                    sleeps.append(seconds)
+                    clock[0] += seconds
+                with patch.object(recovery, 'OPERATION_DEADLINE', outer), \
+                        patch.object(tool.time, 'monotonic', side_effect=lambda: clock[0]), \
+                        patch.object(tool.time, 'sleep', side_effect=sleep), \
+                        patch.object(runtime, 'verify', side_effect=verify) as checked:
+                    label = 'runner-manager-contact-not-fresh' if outer > 100 else 'operation-readiness-deadline-expired'
+                    with self.assertRaisesRegex(recovery.RecoveryError, '^controller-update-readiness-failed:' + label + '$'):
+                        tool.wait_ready({}, {}, None, None, 120)
+                    checked.assert_called_once()
+                    self.assertEqual(sleeps, [2.5] if outer > 100 else [])
+                    self.assertEqual(recovery.OPERATION_DEADLINE, outer)
+
+    def test_unexpected_exception_text_is_not_copied_into_the_diagnostic(self):
+        with patch.object(recovery, 'OPERATION_DEADLINE', None), \
+                patch.object(tool.time, 'monotonic', return_value=100.0), \
+                patch.object(runtime, 'verify', side_effect=RuntimeError('private-token')):
+            with self.assertRaisesRegex(recovery.RecoveryError, '^controller-update-readiness-failed:RuntimeError$'):
+                tool.wait_ready({}, {}, None, None, 0)
 
 
 class PublicControllerUpdate(unittest.TestCase):

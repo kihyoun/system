@@ -258,18 +258,33 @@ def repair_baseline(config, baseline, services, lease=None):
 def wait_ready(config, baseline, token_file, redirect_from, timeout):
     deadline = time.monotonic() + timeout
     previous_deadline = recovery.OPERATION_DEADLINE
-    recovery.OPERATION_DEADLINE = min(previous_deadline, deadline) if previous_deadline else deadline
+    if previous_deadline is not None:
+        deadline = min(previous_deadline, deadline)
+    recovery.OPERATION_DEADLINE = deadline
+    last_failure = None
     try:
-        while True:
+        # Keep the first readiness attempt, including timeout=0, but never start
+        # another after either deadline. A budget expiry within a retry must not
+        # replace the service failure that made the retry necessary.
+        while last_failure is None or time.monotonic() < deadline:
             try:
                 receipt = runtime.verify(config, baseline, ROOT, token_file, redirect_from, public=True)
                 require(receipt['runnerManagers']['checked'], 'controller-update-runner-contact-proof-required')
                 return receipt
             except Exception as error:
-                if time.monotonic() >= deadline:
-                    raise recovery.RecoveryError('controller-update-readiness-failed:' +
-                        (str(error) if isinstance(error, recovery.RecoveryError) else type(error).__name__)) from None
-                time.sleep(min(3, max(0, deadline - time.monotonic())))
+                label = str(error) if isinstance(error, recovery.RecoveryError) else type(error).__name__
+                remaining = deadline - time.monotonic()
+                # These wrappers normalize transport timeouts into fixed errors.
+                # Only at expiry can they obscure the previous service failure.
+                deadline_transport = remaining <= 0 and label in (
+                    'application-endpoint-not-ready', 'command-failed:git',
+                    'command-failed:docker', 'command-failed:findmnt',
+                    'command-failed:bash', 'command-failed:systemctl')
+                if last_failure is None or (label != 'operation-readiness-deadline-expired' and not deadline_transport):
+                    last_failure = label
+                if remaining > 0:
+                    time.sleep(min(3, remaining))
+        raise recovery.RecoveryError('controller-update-readiness-failed:' + last_failure) from None
     finally:
         recovery.OPERATION_DEADLINE = previous_deadline
 

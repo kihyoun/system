@@ -158,6 +158,17 @@ sudo python3 bootstrapper/upgrade-release.py \
   --token-file /root/system-api-token
 ```
 
+Idle runner contacts can have cached timestamps. If a matching manager is online
+but its contact predates the baseline, the native verifier runs the official
+`gitlab-runner verify --config /etc/gitlab-runner/config.toml` inside that existing
+container, limited to 15 seconds within the readiness deadline. It then rereads
+the API and still requires the retained identity, online status and contact after
+the baseline. This checks authentication of the saved configuration without
+registration, configuration changes or a new job. The receipt records
+`authenticationProbeCount` and `jobExecutionChecked=false`: running poller activity
+and job execution are outside this check. The isolated platform candidate verifies
+real CI execution before publication.
+
 A failed read-only preflight remains inspectable through status. After correcting
 its prerequisites, repeat planning in the same directory only when status says
 failed and no reviewed plan or updater checkpoint exists. If a lost process left

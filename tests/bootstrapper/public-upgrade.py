@@ -692,7 +692,7 @@ class BackupAndApply(unittest.TestCase):
         clock, inspections = self.readiness_transport(events, healthy_after=100)
         with self.assertRaisesRegex(successor.recovery.RecoveryError, 'controller-update-readiness-failed:service-not-healthy'):
             tool.apply(args, self.config)
-        self.assertEqual((clock[0], inspections), (6, [0, 3, 6]))
+        self.assertEqual((clock[0], inspections), (6, [0, 3]))
         self.assertNotIn('native-update', events)
         self.assertEqual(tool.data_sample.call_count, 1)
         self.assertEqual(json.loads(successor.private_input(self.target / 'operation.json'))['phase'], 'needs-inspection')
@@ -709,7 +709,7 @@ class BackupAndApply(unittest.TestCase):
             with self.assertRaisesRegex(successor.recovery.RecoveryError, 'controller-update-readiness-failed:service-not-healthy'):
                 tool.apply(args, self.config)
             self.assertEqual(successor.recovery.OPERATION_DEADLINE, 4)
-        self.assertEqual((clock[0], inspections), (4, [0, 3, 4]))
+        self.assertEqual((clock[0], inspections), (4, [0, 3]))
         self.assertNotIn('native-update', events)
 
     def test_backup_failure_never_starts_updater_and_retains_inspectable_operation(self):

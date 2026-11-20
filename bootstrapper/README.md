@@ -174,7 +174,7 @@ Optional flags are:
 | --- | --- |
 | `--swap-gib 8` | Explicitly allocate 8 GiB at `/swapfile` on the root disk if no swap is active. An existing file or insufficient room fails; the data volume is never used for swap. Default: no swap change. |
 | `--timeout 1200` | Retry application acceptance for up to the selected readiness window, maximum 3600 seconds. Individual network/command timeouts also bound each probe. |
-| `--gitlab-token-file /root/gitlab-read-api-token` | An optional operator-supplied administrative API token in a regular mode-0600 file. Its permissions must allow reading `/runners/all` and runner managers. Verifies each expected manager is online and contacted GitLab after this operation began. The value is read from the file and never put in a command argument or receipt. |
+| `--gitlab-token-file /root/gitlab-read-api-token` | An optional operator-supplied administrative API token in a regular mode-0600 file. Its permissions must allow reading `/runners/all` and runner managers. Checks retained manager identities and authenticated contact after this operation began; see the probe scope below. The value is read from the file and never put in a command argument or receipt. |
 | `--redirect-from https://example.com` | Additionally verify a permanent redirect, preserving path/query, from this origin to the configured public Wizard origin. No canonical domain is assumed. |
 | `--renewal-dry-run` | Run Certbot's staging renewal through the installed lease wrapper, without randomized delay; reject a failed deploy hook and repeat acceptance afterward. Requires real configured certificate lineages, working DNS and reachable ACME endpoints. |
 | `RECOVERY_MANIFEST_SHA256` | Optional independently retained SHA-256 for `recovery/images.json`, checked before trusting its archive/source declarations. |
@@ -186,6 +186,18 @@ configured service images, every core service's retained data mount and named-vo
 bind device, Certbot state/timer for HTTPS, and private image recovery cleanup.
 Without an API token, runner containers and retained identity files are checked;
 the result explicitly marks GitLab-side fresh-contact verification as **not checked**.
+
+GitLab can retain an older contact timestamp while serving idle polls. For a matching
+online manager with an older timestamp, the verifier runs the official
+`gitlab-runner verify --config /etc/gitlab-runner/config.toml` inside its existing
+container, limited to 15 seconds within the readiness deadline. It then rechecks
+the same manager identity, online status and contact time against the baseline.
+This authenticates the retained configuration without registering a runner,
+changing configuration or creating a job. The receipt records
+`authenticationProbeCount` and `jobExecutionChecked=false`; this check does not prove
+running poller activity or job execution. Real CI execution is covered by the
+isolated platform candidate.
+
 The verifier covers core services and the configured main runner pool; custom
 application-specific acceptance remains that application's responsibility.
 
