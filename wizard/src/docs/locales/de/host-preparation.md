@@ -2,7 +2,7 @@
 
 Für einen frischen Ubuntu-24.04- oder 26.04-LTS-amd64-Host wählt die [Schnellinstallation mit einem Befehl](docs/QUICKSTART.md)
 ein akzeptiertes öffentliches Release und übergibt an diese nativen Werkzeuge. Sie benötigt
-8 GiB RAM, 40 GiB freien Speicher, curl, standardmäßiges Python 3 und Administratorzugriff.
+8 GiB RAM, 40 GiB freien Speicher, curl und Administratorzugriff.
 Vorhandene Installationen, DNS/HTTPS und Wiederherstellung nutzen die folgenden expliziten Wege.
 
 ## Ein getestetes öffentliches Release installieren
@@ -44,7 +44,7 @@ Siehe die vollständige [lokale](docs/HANDBOOK.md#0-getting-started) oder
 
 ## Host-Abhängigkeiten vorbereiten
 
-Führen Sie das Host-Installationsprogramm aus einem lokalen Checkout unter Ubuntu aus, einschließlich Ubuntu in
+Bereiten Sie zuerst die unten beschriebene Laufzeit vor. Führen Sie danach das Host-Installationsprogramm aus einem lokalen Checkout unter Ubuntu aus, einschließlich Ubuntu in
 WSL2 mit aktiviertem systemd. Es installiert Docker Engine aus Dockers APT-
 Repository, Buildx und das Compose-Plugin, startet Docker und führt `hello-world` aus.
 Es aktualisiert keine unbeteiligten Betriebssystempakete.
@@ -57,7 +57,8 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo node bootstrapper/install.js
+# After preparing the runtime below:
+sudo /opt/system-bootstrapper-runtime/bin/node bootstrapper/install.js
 ```
 
 Das Installationsprogramm stellt einen `docker-compose`-Wrapper für die Orchestrierungsskripte bereit.
@@ -77,18 +78,21 @@ Quickstart installiert nvm **0.41.0** aus dem festgelegten Commit mit geprüftem
 Skript-Hash und installiert darüber Node **24.22.0**. Die eigene Installation liegt
 unter `/opt/system-bootstrapper-runtime`; vorhandene nvm-Installationen,
 Standardversionen und Shell-Profile der Benutzer bleiben erhalten. Auch der Hash
-des von nvm geladenen Node-Archivs wird geprüft. Kompilierte Operations-Dateien
-und Abhängigkeiten stammen aus dem akzeptierten Controller-Image; der dafür
-angelegte Container wird nicht gestartet. Ein npm-Installationslauf auf dem Host
-ist nicht erforderlich.
+des von nvm geladenen Node-Archivs wird geprüft. Quickstart prüft das CLI-Archiv
+und installiert es mit seinen gebündelten Abhängigkeiten offline, ohne
+Installationsskripte auszuführen. Die kompilierten Dateien werden anschließend
+in den passenden akzeptierten Checkout kopiert; ein erneuter Build ist unnötig.
 
-Beim manuellen Weg zuerst die nativen Host-Abhängigkeiten installieren, den
-geprüften Release-Checkout wählen und die öffentlichen Metadaten anhand des [Release-Leitfadens](docs/RELEASES.md) verifizieren.
+Beim manuellen Weg zuerst den geprüften Release-Checkout wählen und die öffentlichen Metadaten anhand des [Release-Leitfadens](docs/RELEASES.md) verifizieren.
 Danach vor jedem Host-Lebenszyklus-, Persistenz- oder Installationseinstieg ausführen:
 
 ```sh
-SYSTEM_RELEASE_TAG=v2.0.0
+SYSTEM_RELEASE_TAG='vMAJOR.MINOR.PATCH' # Exact reviewed public release
 sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
+# The checkout must match that release's verified source revision.
+test ! -e operations/dist && test ! -e operations/node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules
 ```
 
 Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery

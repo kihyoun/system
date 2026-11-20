@@ -2,7 +2,7 @@
 
 For a fresh Ubuntu 24.04 or 26.04 LTS amd64 host, the [one-command Quickstart](docs/QUICKSTART.md)
 selects an accepted public release and delegates to these native tools. It requires
-8 GiB RAM, 40 GiB free disk, curl, standard Python 3 and administrator access.
+8 GiB RAM, 40 GiB free disk, curl and administrator access.
 Existing installations, DNS/HTTPS and recovery use the explicit paths below.
 
 ## Install a tested public release

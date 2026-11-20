@@ -2,7 +2,7 @@
 
 새 Ubuntu 24.04 또는 26.04 LTS amd64 호스트에서는 [단일 명령 빠른 시작](docs/QUICKSTART.md)이
 승인된 공개 릴리스를 선택하고 아래의 기본 도구에 작업을 위임합니다. RAM 8 GiB,
-여유 디스크 40 GiB, curl, 표준 Python 3, 관리자 접근 권한이 필요합니다.
+여유 디스크 40 GiB, curl, 관리자 접근 권한이 필요합니다.
 기존 설치, DNS/HTTPS, 복구에는 아래의 명시적인 경로를 사용하세요.
 
 ## 테스트된 공개 릴리스 설치
@@ -38,7 +38,7 @@ Sync와 수명 주기 도구를 포함합니다. `bootstrapper/Dockerfile`에서
 
 ## 호스트 의존성 준비
 
-Ubuntu의 로컬 체크아웃에서 호스트 설치 프로그램을 실행하세요. systemd를 활성화한 WSL2의
+먼저 아래의 런타임 준비 절차를 완료한 후 Ubuntu의 로컬 체크아웃에서 호스트 설치 프로그램을 실행하세요. systemd를 활성화한 WSL2의
 Ubuntu도 포함됩니다. Docker APT 저장소에서 Docker Engine, Buildx, Compose 플러그인을
 설치하고 Docker를 시작한 뒤 `hello-world`를 실행합니다. 관련 없는 운영체제 패키지는
 업그레이드하지 않습니다.
@@ -51,7 +51,8 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo node bootstrapper/install.js
+# After preparing the runtime below:
+sudo /opt/system-bootstrapper-runtime/bin/node bootstrapper/install.js
 ```
 
 설치 프로그램은 오케스트레이션 스크립트용 `docker-compose` 래퍼를 제공합니다.
@@ -69,17 +70,20 @@ Quickstart는 고정된 커밋과 스크립트 해시를 확인하여 nvm **0.41
 nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
 `/opt/system-bootstrapper-runtime`이며 기존 사용자의 nvm 설치, 기본 버전과
 셸 프로필은 변경하지 않습니다. nvm이 내려받은 Node 압축 파일의 고정 해시도
-확인합니다. 컴파일된 Operations 파일과 의존성은 승인된 Controller 이미지에서
-복사하며, 추출용 컨테이너는 시작하지 않습니다. 호스트에서 npm 설치를 실행할
-필요가 없습니다.
+확인합니다. Quickstart는 검증된 CLI 아카이브와 포함된 의존성을 오프라인으로
+설치하며 설치 스크립트를 실행하지 않습니다. 이 컴파일된 파일을 동일한 승인
+소스 체크아웃에 복사하므로 다시 빌드할 필요가 없습니다.
 
-수동 설치에서는 먼저 네이티브 호스트 의존성을 설치하고, 검토된 릴리스의 소스를
-체크아웃한 다음 [릴리스 안내](docs/RELEASES.md)에 따라 공개 메타데이터를 검증합니다.
+수동 설치에서는 먼저 검토된 릴리스의 소스를 체크아웃한 다음 [릴리스 안내](docs/RELEASES.md)에 따라 공개 메타데이터를 검증합니다.
 호스트 수명 주기, 영구 저장 또는 설치 진입점을 호출하기 전에 다음 명령으로 런타임을 준비하세요.
 
 ```sh
-SYSTEM_RELEASE_TAG=v2.0.0
+SYSTEM_RELEASE_TAG='vMAJOR.MINOR.PATCH' # Exact reviewed public release
 sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
+# The checkout must match that release's verified source revision.
+test ! -e operations/dist && test ! -e operations/node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules
 ```
 
 기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
