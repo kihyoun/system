@@ -38,13 +38,19 @@ describe('Docs reader', () => {
   });
 
   it('uses the shared app drawer for wider, collapsible chapter navigation', async () => {
-    render(<App />);
-    expect(screen.getByRole('navigation', { name: 'Documentation chapters' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Close docs drawer' }));
-    const open = await screen.findByRole('button', { name: 'Open docs drawer' });
+    const { container } = render(<App />);
+    // Scope named controls to the real drawer and toolbar. Searching the entire
+    // handbook repeatedly makes this interaction test depend on chapter size.
+    const drawer = within(container.querySelector<HTMLElement>('#docs-drawer')!);
+    const toolbar = within(container.querySelector<HTMLElement>('header')!);
+    expect(drawer.getByRole('navigation', { name: 'Documentation chapters' })).toBeVisible();
+    fireEvent.click(drawer.getByRole('button', { name: 'Close docs drawer' }));
+    const open = await toolbar.findByRole('button', { name: 'Open docs drawer' });
+    expect(open).toBeVisible();
     expect(open).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(open);
-    expect(screen.getByRole('button', { name: 'Close docs drawer' })).toBeVisible();
+    expect(drawer.getByRole('button', { name: 'Close docs drawer' })).toBeVisible();
+    expect(drawer.getByRole('navigation', { name: 'Documentation chapters' })).toBeVisible();
   });
 
   it('renders safe Markdown tables, inline code and local links', () => {

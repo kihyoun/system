@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, Chip, Divider, IconButton, InputAdornment, Link, List, ListItemButton, ListItemText, Paper, Stack, TextField, Typography } from '@mui/material';
 import Search from '@mui/icons-material/Search';
 import Close from '@mui/icons-material/Close';
@@ -34,7 +34,7 @@ export function DocsNavigation({ onNavigate = () => {} }: { onNavigate?: () => v
   </Box>;
 }
 
-export default function Docs({ navigationVersion = 0 }: { navigationVersion?: number }) {
+function Docs({ navigationVersion = 0 }: { navigationVersion?: number }) {
   const { locale, t } = useI18n();
   const chapters = localizedChapters(locale);
   const [location, setLocation] = useState(() => docsLocation());
@@ -90,3 +90,5 @@ export default function Docs({ navigationVersion = 0 }: { navigationVersion?: nu
     </Box>
   </Box>;
 }
+
+export default memo(Docs);
