@@ -6,7 +6,6 @@ require 'stringio'
 class BootstrapError < StandardError; end
 def Date.tomorrow = today + 1
 load File.expand_path('../../project-bootstrap/preview-setup/provision.rb', __dir__)
-load File.expand_path('../../project-bootstrap/wizard-environments/source-primary-activate.rb', __dir__)
 operation = 'a' * 48
 input = {'action' => 'preview-setup-preflight', 'namespace' => 'team', 'operation' => operation,
   'sources' => [{'mode' => 'import', 'project' => 'wizard-fork', 'ciPath' => '.gitlab/primary.yml'}]}
@@ -272,23 +271,7 @@ rescue BootstrapError
   raise 'conflict wrote to operator project' unless calls.drop(count).all? { |row| row[0] == Net::HTTP::Get }
 end
 
-# Initial environment variables are created only for the explicit server-owned
-# bootstrap reservation. Ordinary adoption keeps its existing strict value guard.
-settings = {'review' => {'enabled' => true, 'host' => 'review.example.test'}, 'beta' => {'enabled' => false, 'host' => ''}}
-environment = {'helperImage' => 'sha256:' + 'b' * 64, 'operation' => operation, 'settings' => settings, 'initialVariablesMissing' => true}
-variables = {}
-initial = {'environments' => environment, 'sourcePrimary' => {'bootstrap' => true}, 'action' => 'wizard-environments-primary'}
-helper = WizardSourcePrimaryEnvironments.new(api, initial, {'id' => 7})
-status = WizardSourcePrimaryEnvironments.new(api, initial.merge('action' => 'wizard-environments-primary-status'), {'id' => 7})
-count = calls.length
-raise 'status did not report missing variables' unless status.send(:synchronize).dig(:environments, 'phase') == 'pending'
-raise 'status created initial variables' unless variables.empty? && calls.drop(count).all? { |row| row[0] == Net::HTTP::Get }
-raise 'initial variables not ready' unless helper.send(:synchronize).dig(:environments, 'phase') == 'ready'
-raise 'wrong initial Review variable' unless variables.dig('WIZARD_REVIEW_HOST', 'value') == 'review.example.test'
-variables.delete('WIZARD_REVIEW_HOST')
-ordinary = WizardSourcePrimaryEnvironments.new(api, initial.merge('sourcePrimary' => {'bootstrap' => false}), {'id' => 7})
-raise 'ordinary binding recreated missing variables' unless ordinary.send(:synchronize).dig(:environments, 'phase') == 'requires-reconciliation'
-puts 'Preview setup native adapter: read-only preflight, detailed runner access, owned private import, merge/publication guards, scoped credentials and initial-only resumable environment variables passed.'
+puts 'Preview setup adapter: read-only preflight, detailed runner access, owned private import, merge/publication guards and scoped credentials passed.'
 load File.expand_path('preview-evidence.rb', __dir__)
 
 # Shared System setup is read-only and accepts a protected regular Wizard tree,

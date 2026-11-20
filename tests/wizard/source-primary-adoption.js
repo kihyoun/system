@@ -708,6 +708,8 @@ async function bindingRefresh(f) {
     }
   };
   const activate = () => activationService.activate(activationInput, activationProject, activationSession);
+  activationInput.action='wizard-environments-primary-status';assert.equal((await activate()).environments.phase,'pending');assert.equal(activationWrites.length,0);assert.equal(activationVariables.size,0);
+  activationInput.action='wizard-environments-primary';
   assert.equal((await activate()).environments.phase,'pending');assert.equal(activationWrites.length,1);assert(!activationLocked);
   activationInput.action='wizard-environments-primary-status';assert.equal((await activate()).environments.phase,'pending');assert.equal(activationWrites.length,1);
   activationInput.action='wizard-environments-primary';assert.equal((await activate()).environments.phase,'ready');assert.equal(activationWrites.length,4);
@@ -730,6 +732,27 @@ async function bindingRefresh(f) {
   await assert.rejects(activate,/variable ownership changed/);delete activationVariables.get('WIZARD_REVIEW_HOST').hidden;
   await assert.rejects(()=>activationService.activate(activationInput,activationProject,{...activationSession,async withAdvisoryLock(){throw Error('busy');}}),/busy/);
   assert.equal(activationWrites.length,4);
+  // Settings changes resume from previous owned values, preserving generation floors.
+  const previousEnvironment = structuredClone(activationEnvironment);
+  const nextEnvironment = structuredClone(previousEnvironment);
+  nextEnvironment.operation = '3'.repeat(48);
+  nextEnvironment.settings.review.host = 'new-review.example.test';
+  activationInput.previousEnvironments = previousEnvironment;
+  activationInput.environments = nextEnvironment;
+  activationInput.action = 'wizard-environments-primary';
+  loseActivationResponse = true;
+  assert.equal((await activate()).environments.phase, 'pending');
+  assert.deepEqual(activationWrites.slice(4), ['SYSTEM_WIZARD_ENVIRONMENT_OPERATION']);
+  activationInput.action = 'wizard-environments-primary-status';
+  assert.equal((await activate()).environments.phase, 'pending');assert.equal(activationWrites.length, 5);
+  activationInput.action = 'wizard-environments-primary';
+  assert.equal((await activate()).environments.phase, 'ready');
+  assert.deepEqual(activationWrites.slice(4), ['SYSTEM_WIZARD_ENVIRONMENT_OPERATION', 'WIZARD_REVIEW_HOST']);
+  assert.deepEqual(nextEnvironment.deployments, previousEnvironment.deployments);
+  activationInput.action = 'wizard-environments-primary-status';
+  assert.equal((await activate()).environments.phase, 'ready');assert.equal(activationWrites.length, 6);
+  activationVariables.get('WIZARD_REVIEW_HOST').value = 'foreign.example.test';
+  assert.equal((await activate()).environments.phase, 'requires-reconciliation');assert.equal(activationWrites.length, 6);
   activationProject.visibility='public';await assert.rejects(activate,/ownership changed/);assert(!activationLocked);
   console.log('Source-primary adoption: exact ownership/native evidence, versioned rebind/refusals, metadata-only refresh with unchanged Production/native CI/recovery aliases, preserved private history/floors, CAS, shared mutex, idempotency and initial private-image guard passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;});

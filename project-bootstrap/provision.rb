@@ -53,7 +53,7 @@ begin
     raise BootstrapError, 'Namespace lookup failed' unless code == 200
     full_path = namespace.fetch('full_path') + '/' + key
     encoded = URI.encode_www_form_component(full_path)
-    wizard_actions = ['wizard-source', 'wizard-build', 'wizard-build-status', 'wizard-environments', 'wizard-environments-status', 'wizard-source-primary-status', 'wizard-environments-primary', 'wizard-environments-primary-status']
+    wizard_actions = ['wizard-source', 'wizard-build', 'wizard-build-status', 'wizard-environments', 'wizard-environments-status', 'wizard-source-primary-status']
     bound = wizard_actions.include?(input['action']) && input['repository']
     if bound
       repository = input.fetch('repository')
@@ -69,8 +69,6 @@ begin
     raise BootstrapError, 'Project lookup failed' unless [200, 404].include?(code)
     if input['action'] == 'wizard-source-primary-status'
       result = WizardSourcePrimaryStatus.new(api, input, project).call
-    elsif ['wizard-environments-primary', 'wizard-environments-primary-status'].include?(input['action'])
-      result = WizardSourcePrimaryEnvironments.new(api, input, project).call
     elsif ['wizard-environments', 'wizard-environments-status'].include?(input['action'])
       raise BootstrapError, 'Wizard repository missing' unless code == 200
       result = WizardEnvironmentsAdapter.new(api, input, project).call
