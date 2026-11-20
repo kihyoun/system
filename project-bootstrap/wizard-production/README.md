@@ -150,3 +150,10 @@ optional-job, digest and modern check mismatches and verifies token revocation.
 These are component checks. Verify a real successful pipeline, separate
 candidate, Production promotion and rollback on your own infrastructure before
 relying on the procedure for a service you need to keep available.
+
+The compiled operations `ProductionModule` supplies the standalone operator
+service. Its typed promotion session owns preview, candidate health gates,
+route cutover, durable checkpoints, rollback and inactive-owner recovery. Docker
+execution uses a bounded adapter; independent GitLab proof remains the retained
+Ruby format adapter. The historical `run.js` command and exported policy helpers
+are compatibility entry points and require a built operations package.
