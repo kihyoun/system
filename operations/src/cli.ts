@@ -81,6 +81,7 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
         '  controller-update   Update or recover an accepted controller/Wizard pair\n' +
         '  upgrade             Plan, apply or recover an official public release upgrade\n\n' +
         '  recovery-export     Retain the accepted running controller image and source\n' +
+        '  recovery            Verify or load retained accepted recovery archives\n' +
         '  gitlab-credentials  Initialize or recover the private automation credential\n\n' +
         'Host commands require --checkout /absolute/reviewed/source.\n' +
         'Storage: --image IMAGE --persistence-env FILE [--check-only] [--configuration-backup ZIP]\n' +
@@ -88,16 +89,19 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     );
     return;
   }
-  if (args[0] === 'controller-update' || args[0] === 'upgrade') {
+  if (['controller-update', 'upgrade', 'recovery'].includes(args[0])) {
     const checkout = args.indexOf('--checkout');
     if (checkout < 1 || !args[checkout + 1]?.startsWith('/'))
       throw new Error('explicit-host-checkout-required');
     if (args[0] === 'controller-update') {
       const { pairedControllerMain } = await import('./host/paired-controller-entry.js');
       await pairedControllerMain([...args.slice(1)]);
-    } else {
+    } else if (args[0] === 'upgrade') {
       const { publicUpgradeMain } = await import('./host/public-upgrade-entry.js');
       await publicUpgradeMain([...args.slice(1)]);
+    } else {
+      const { recoveryMain } = await import('./host/recovery-entry.js');
+      await recoveryMain([...args.slice(1)]);
     }
     return;
   }

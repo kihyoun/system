@@ -55,7 +55,7 @@ test('host commands require explicit source and image before any native command'
     checkout:'/source',image:'pin',persistenceEnv:'/etc/system-bootstrapper/persistence.env',configurationBackup:'/backup.zip',checkOnly:true,forward:[]
   });
   assert.throws(()=>parseHostArguments(['harvest','--image','one','--image','two']),/duplicate-option/);
-  for (const action of ['controller-update','upgrade']) {
+  for (const action of ['controller-update','upgrade','recovery']) {
     const missing=run([action]);assert.equal(missing.status,1);assert.equal(missing.stdout,'');assert.match(missing.stderr,/explicit-host-checkout-required/);
     const invalid=run([action,'--checkout','/source','--force']);assert.equal(invalid.status,1);assert.equal(invalid.stdout,'');assert.match(invalid.stderr,/operation-failed/);
   }

@@ -89,6 +89,14 @@ The CLI and controller ship the same source-owned lifecycle evidence validators
 as explicit package assets, so offline recovery does not load missing code from
 outside the installed package. Packaging checks compare those bytes with source.
 
+`system-bootstrapper recovery verify|load --checkout /absolute/reviewed/source
+--directory /absolute/retained/recovery` shares the offline manifest and image
+services. `verify` audits the manifest; `load` reconstructs its accepted image
+identities without starting services. `--configuration` additionally checks the
+selected configuration. Legacy `--checksums-only` supports audit only, and cannot
+load images or approve configuration. Preserve the independently recorded manifest
+hash and supply it with `--expected-manifest-sha256` when available.
+
 The [operation architecture and entry-point inventory](ARCHITECTURE.md) maps
 API/CLI compatibility paths, privileges, durable ownership, native boundaries,
 focused tests and failure/recovery responsibilities across the platform.

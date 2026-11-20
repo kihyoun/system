@@ -29,7 +29,15 @@ export async function main(args: string[]): Promise<void> {
   const command = args[0],
     values: Record<string, string> = {};
   if (
-    !['initialize', 'renew', 'reconcile-initial', 'activate', 'project', 'renew-project', 'token-metadata'].includes(command)
+    ![
+      'initialize',
+      'renew',
+      'reconcile-initial',
+      'activate',
+      'project',
+      'renew-project',
+      'token-metadata',
+    ].includes(command)
   )
     throw Error('Unsupported GitLab credential action.');
   for (let index = 1; index < args.length; index += 2) {
