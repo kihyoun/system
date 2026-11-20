@@ -288,9 +288,14 @@ ended, remove only that stale lock and retry startup; retain the pending file so
 the helper can revoke the reserved credential. Credential failures stop startup
 before Wizard and project services rather than substituting a different image.
 
+If Harvest cannot confirm completion of the remote GitLab stop command, it keeps
+its Seed and certificate barriers and does not resume services. Inspect the remote
+worker and retained operation ownership before recovery; elapsed client timeout
+alone does not prove that a delayed Docker command has finished.
+
 ## Verification boundaries
 
-`tests/seed/recovery-contract.py` exercises the real shell scripts and rsync with a
+`operations/tests/storage-copy.test.cjs` exercises the native services and real rsync with a
 fixture Docker command, including failed copies, forced shutdown, version mismatch,
 corruption, missing completion markers, active writers, renewal locking and
 interrupted-copy durability. Wizard model regressions cover literal assignments,

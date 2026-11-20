@@ -63,7 +63,6 @@
   {"component":"bootstrapper","file":"persistence/persistence-init.test.js","timeoutSeconds":15},
   {"component":"bootstrapper","file":"persistence/persistence-push.test.js","timeoutSeconds":25},
   {"component":"bootstrapper","file":"persistence/persistence-start.test.js","timeoutSeconds":15},
-  {"component":"bootstrapper","file":"seed/recovery-contract.py","timeoutSeconds":60},
   {"component":"wizard","file":"wizard/production-promotion.js","timeoutSeconds":25},
   {"component":"gitlab","file":"gitlab/wizard-production.rb","timeoutSeconds":25},
   {"component":"bootstrapper","file":"seed/restore-durability.js","timeoutSeconds":15},

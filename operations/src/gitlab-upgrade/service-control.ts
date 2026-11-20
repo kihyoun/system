@@ -5,6 +5,66 @@ export interface GitLabControlPort {
   command(args: string[], timeout: number): string | void | Promise<string | void>;
   uptime(): number | Promise<number>;
 }
+/** Native argv shared with synchronous Seed workers. */
+export function gitLabControlArguments(
+  container: string,
+  action: 'start' | 'stop',
+  seconds: number,
+  service = '',
+  svWait = 90,
+): string[] {
+  return [
+    'exec',
+    '--env',
+    'SVWAIT=' + svWait,
+    container,
+    'timeout',
+    '-k',
+    '2',
+    String(seconds),
+    'gitlab-ctl',
+    action,
+    ...(service ? [service] : []),
+  ];
+}
+export function gitLabServiceArguments(
+  container: string,
+  action: 'status' | 'u',
+  seconds: number,
+): string[] {
+  return [
+    'exec',
+    container,
+    'timeout',
+    '-k',
+    '1',
+    String(seconds),
+    'find',
+    '/opt/gitlab/service',
+    '-mindepth',
+    '1',
+    '-maxdepth',
+    '1',
+    '-type',
+    'l',
+    '-exec',
+    '/opt/gitlab/embedded/bin/sv',
+    action,
+    '{}',
+    '+',
+    ...(action === 'u' ? ['-print'] : []),
+  ];
+}
+export function gitLabServicesDown(statuses: unknown): boolean {
+  return (
+    typeof statuses === 'string' &&
+    statuses.trim().length > 0 &&
+    statuses
+      .trim()
+      .split('\n')
+      .every((line) => /^down: /.test(line))
+  );
+}
 /** Native runit control shared by controller maintenance and GitLab migration. */
 export async function controlGitLabServices(
   port: GitLabControlPort,
@@ -20,19 +80,7 @@ export async function controlGitLabServices(
     ensure(remaining > 0 && remaining <= seconds, 'remote-GitLab-service-deadline-expired');
     const budget = Math.min(remaining, options.perService ?? remaining);
     await port.command(
-      [
-        'exec',
-        '--env',
-        'SVWAIT=' + String(options.svWait ?? 90),
-        container,
-        'timeout',
-        '-k',
-        '2',
-        String(budget),
-        'gitlab-ctl',
-        action,
-        ...(service ? [service] : []),
-      ],
+      gitLabControlArguments(container, action, budget, service, options.svWait ?? 90),
       budget + (options.grace ?? 15),
     );
     if (action === 'stop' && service) {
@@ -63,38 +111,10 @@ export async function requireGitLabServicesDown(
   seconds = 20,
 ): Promise<void> {
   const statuses = await port.command(
-    [
-      'exec',
-      container,
-      'timeout',
-      '-k',
-      '1',
-      String(seconds),
-      'find',
-      '/opt/gitlab/service',
-      '-mindepth',
-      '1',
-      '-maxdepth',
-      '1',
-      '-type',
-      'l',
-      '-exec',
-      '/opt/gitlab/embedded/bin/sv',
-      'status',
-      '{}',
-      '+',
-    ],
+    gitLabServiceArguments(container, 'status', seconds),
     seconds + 5,
   );
-  ensure(
-    typeof statuses === 'string' &&
-      statuses.trim().length > 0 &&
-      statuses
-        .trim()
-        .split('\n')
-        .every((line) => /^down:/.test(line)),
-    'GitLab-services-not-all-down',
-  );
+  ensure(gitLabServicesDown(statuses), 'GitLab-services-not-all-down');
 }
 export async function gitLabReadiness(
   port: Pick<GitLabControlPort, 'command'>,

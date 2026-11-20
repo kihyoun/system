@@ -383,7 +383,7 @@ locks, failure handling and restoration on empty storage.
 The shell/rsync regression uses temporary data and a fixture Docker command:
 
 ```bash
-python3 tests/seed/recovery-contract.py
+node --test operations/tests/storage-copy.test.cjs
 ```
 
 Run the [full disposable acceptance suite](tests/e2e/README.md) to exercise real

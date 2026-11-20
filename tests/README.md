@@ -92,6 +92,10 @@ fixture's manually replaced controller and final reset using one bounded contain
 | `shared/` | Runner/context contracts, cleanup/failure propagation, private-daemon lifecycle, payload-only recovery and local ACME fixtures |
 | `performance/resources/` | Offline resource-collector contracts and explicit measurement tools |
 
+Cold-copy/restore fault cases are consolidated in `operations/tests/storage-copy.test.cjs`,
+run by the existing operations-runtime check. They use real rsync, native find/runit
+command fixtures and subprocess timeouts; Docker/GitLab remain controlled transports.
+
 The manifest is authoritative for exact check names, prerequisites and budgets.
 Tests use temporary files, synthetic Git repositories, fake Rails/Docker/API
 transports and isolated HTTP processes. A fixture passing does not establish

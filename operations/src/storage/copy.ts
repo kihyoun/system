@@ -1,3 +1,8 @@
+import {
+  gitLabControlArguments,
+  gitLabServiceArguments,
+  gitLabServicesDown,
+} from '../gitlab-upgrade/service-control';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ProcessRunner, nativeProcess, ProcessFailure } from '../runtime/process';
@@ -14,14 +19,11 @@ export interface CopyPaths {
 export interface CopyRuntime {
   process: ProcessRunner;
   monotonicSeconds(): number;
-  wait(milliseconds: number): void;
   log(message: string): void;
 }
 export const nativeCopyRuntime: CopyRuntime = {
   process: nativeProcess,
   monotonicSeconds: () => Math.floor(Number(fs.readFileSync('/proc/uptime', 'utf8').split(' ')[0])),
-  wait: (milliseconds) =>
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds),
   log: (message) => console.error(message),
 };
 export function copyPaths(environment: NodeJS.ProcessEnv = process.env): CopyPaths {
@@ -33,32 +35,6 @@ export function copyPaths(environment: NodeJS.ProcessEnv = process.env): CopyPat
     gitlab: environment.GITLAB_CONTAINER || 'system_gitlab_1',
   };
 }
-// These bounded snippets run inside GitLab's supported runit environment.
-// The host operation and deadline decisions belong to TypeScript.
-export const servicesDown = `found=false
-for service in /opt/gitlab/service/*; do
- [ -L "$service" ] || continue
- found=true
- state=$(/opt/gitlab/embedded/bin/sv status "$service")
- case "$state" in down:\\ *) ;; *) exit 1 ;; esac
-done
-[ "$found" = true ]`;
-export const servicesUp = `found=false
-failed=0
-for service in /opt/gitlab/service/*; do
- [ -L "$service" ] || continue
- found=true
- /opt/gitlab/embedded/bin/sv u "$service" >/dev/null || failed=1
-done
-[ "$found" = true ] && [ "$failed" = 0 ]`;
-export const quiesceServices = `read -r uptime rest </proc/uptime
-remaining=$(($1 - \${uptime%%.*}))
-code=124
-if [ "$remaining" -gt 0 ] && [ "$remaining" -le 120 ]; then
- code=0
- timeout -k 1 "$remaining" gitlab-ctl stop >/dev/null 2>&1 || code=$?
-fi
-printf "harvest-quiesce-exit:%s\\n" "$code"`;
 function state(text: string) {
   const match = /^(true|false) ([0-9]{1,3}) (true|false)$/.exec(text.trim());
   requireValue(match && Number(match[2]) <= 255, 'gitlab-state-unavailable');
@@ -146,29 +122,28 @@ export function harvest(
       requireValue(budget > 3, 'gitlab-stop-deadline');
       quiesceDeadline = deadline - 12;
       touched = true;
-      const response = run(
-        [
-          'exec',
-          '--env',
-          'SVWAIT=90',
-          gitlab,
-          '/bin/sh',
-          '-ec',
-          quiesceServices,
-          'sh',
-          String(quiesceDeadline),
-        ],
-        budget * 1000,
-      );
-      const witness = /^harvest-quiesce-exit:(0|[1-9][0-9]{0,2})$/.exec(response);
-      requireValue(witness && Number(witness[1]) <= 255, 'gitlab-quiesce-unconfirmed');
-      quiesced = true;
-      if (witness[1] !== '0')
-        throw Object.assign(new StorageError('gitlab-quiesce-failed'), {
-          exitCode: Number(witness[1]),
-        });
+      try {
+        run(
+          gitLabControlArguments(gitlab, 'stop', quiesceDeadline - runtime.monotonicSeconds()),
+          budget * 1000,
+        );
+        quiesced = true;
+      } catch (error) {
+        // Docker's generic/launch errors do not prove that its remote worker ended.
+        // A native command exit (including timeout 124) is a completion witness.
+        quiesced =
+          error instanceof ProcessFailure &&
+          !error.uncertain &&
+          error.status !== null &&
+          error.status > 1 &&
+          ![125, 126, 127].includes(error.status);
+        throw error;
+      }
       phase = 'gitlab-services-down';
-      stop(['exec', gitlab, '/bin/sh', '-ec', servicesDown]);
+      requireValue(
+        gitLabServicesDown(stop(gitLabServiceArguments(gitlab, 'status', 5))),
+        'gitlab-services-not-all-down',
+      );
       phase = 'gitlab-stop';
       const remaining = deadline - runtime.monotonicSeconds() - 3;
       requireValue(remaining > 0, 'gitlab-stop-deadline');
@@ -212,20 +187,24 @@ export function harvest(
   } catch (error) {
     failure = error;
     if (phase === 'gitlab-stopped-check') runtime.log('Harvest GitLab state: unavailable.');
-    uncertain = error instanceof ProcessFailure && error.uncertain;
+    uncertain = (error instanceof ProcessFailure && error.uncertain) || (touched && !quiesced);
     runtime.log('Harvest phase failed: ' + phase + '.');
   } finally {
-    // A stopped Docker client is not a witness that its remote command completed.
-    if (touched && !quiesced)
-      while (runtime.monotonicSeconds() <= quiesceDeadline + 2) runtime.wait(1000);
-    if (resume) {
+    // A duration-based remote timeout may start after a delayed Docker request.
+    // Never resume against an unconfirmed worker; preserve its barriers for recovery.
+    if (resume && !(touched && !quiesced)) {
       try {
         const running = run(['inspect', '--format', '{{.State.Running}}', gitlab], 4000);
         if (running === 'false') run(['start', gitlab], 14000);
         else {
           requireValue(running === 'true', 'gitlab-state-unavailable');
-          if (touched)
-            run(['exec', gitlab, 'timeout', '-k', '1', '10', '/bin/sh', '-ec', servicesUp], 14000);
+          if (touched) {
+            const resumed = run(gitLabServiceArguments(gitlab, 'u', 10), 14000);
+            requireValue(
+              resumed.split('\n').some((line) => /^\/opt\/gitlab\/service\/[^/\s]+$/.test(line)),
+              'gitlab-service-resume-unconfirmed',
+            );
+          }
         }
       } catch (error) {
         uncertain ||= error instanceof ProcessFailure && error.uncertain;
@@ -252,7 +231,16 @@ export function harvest(
       }
     }
   }
-  if (failure) throw failure;
+  if (failure) {
+    if (
+      uncertain &&
+      !(failure instanceof Error && 'uncertain' in failure && failure.uncertain === true)
+    )
+      throw Object.assign(new StorageError('harvest-completion-uncertain', true), {
+        exitCode: failure instanceof ProcessFailure ? failure.status || 1 : 1,
+      });
+    throw failure;
+  }
   runtime.log('Harvest completed; previous snapshots remain available.');
 }
 export function restore(
