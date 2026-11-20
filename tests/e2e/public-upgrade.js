@@ -113,8 +113,16 @@ function prepareSource(output, previous, env = process.env, execute = execFileSy
   } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
 }
 async function replaceController(candidate, baseline, image, fixture) {
-  const args = ['create', '--name', 'system_bootstrapper_1', '--restart', baseline.HostConfig.RestartPolicy.Name,
-    '--label', 'com.docker.compose.project=system', '--label', 'com.docker.compose.service=bootstrapper'];
+  const labels = Object.fromEntries(Object.entries(baseline.Config.Labels || {})
+    .filter(([key]) => key.startsWith('com.docker.compose.') && key !== 'com.docker.compose.image'));
+  // The restored controller was created manually. Compose discovers only
+  // containers with a config-hash label; this fixture marker makes its native
+  // configuration differ so Compose recreates the controller with real labels.
+  labels['com.docker.compose.config-hash'] ||= hash(JSON.stringify({fixture: 'public-upgrade-controller', image}));
+  Object.assign(labels, {'com.docker.compose.project': 'system', 'com.docker.compose.service': 'bootstrapper',
+    'com.docker.compose.container-number': '1', 'com.docker.compose.oneoff': 'False'});
+  const args = ['create', '--name', 'system_bootstrapper_1', '--restart', baseline.HostConfig.RestartPolicy.Name];
+  for (const [key, value] of Object.entries(labels)) args.push('--label', key + '=' + value);
   for (const value of baseline.Config.Env) args.push('--env', value);
   for (const value of baseline.HostConfig.ExtraHosts || []) args.push('--add-host', value);
   for (const mount of baseline.Mounts) {
@@ -233,7 +241,8 @@ class NativeCLI {
     required(['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover'].includes(operation),
       'public-upgrade-native-operation-invalid');
     const failureCodes = Object.fromEntries([...new Set([
-      ...Object.values(diagnostics.errors), ...Object.values(diagnostics.exceptionTypes), diagnostics.fallback
+      ...Object.values(diagnostics.errors), ...Object.values(diagnostics.dockerOperations),
+      ...Object.values(diagnostics.exceptionTypes), diagnostics.fallback
     ])].map(code => [diagnostics.marker + code, 'public-upgrade-native-' + operation + '-' + code]));
     try {
       const raw = await candidate.inner([...command, candidate.spec.images.gitlab.id,

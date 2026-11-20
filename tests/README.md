@@ -73,6 +73,9 @@ owned disposable container generations. It verifies actual file sizes/count and
 log readback; the native recovery probe checks custom logging settings through
 the real configuration exporter and Seed restore. See
 [host operations](../docs/HOST_OPERATIONS.md) for scope and commands.
+The opt-in `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`
+probe also verifies that native Compose discovers and recreates the public-upgrade
+fixture's manually replaced controller and final reset using one bounded container.
 
 ## Test organization
 

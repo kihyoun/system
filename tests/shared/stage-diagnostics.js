@@ -4,7 +4,8 @@
 const publicUpgrade = require('../e2e/public-upgrade-diagnostics.json');
 const REASONS = new Set([
   ...['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover'].flatMap(operation =>
-    [...Object.values(publicUpgrade.errors), ...Object.values(publicUpgrade.exceptionTypes), publicUpgrade.fallback]
+    [...Object.values(publicUpgrade.errors), ...Object.values(publicUpgrade.dockerOperations),
+      ...Object.values(publicUpgrade.exceptionTypes), publicUpgrade.fallback]
       .map(code => 'public-upgrade-native-' + operation + '-' + code)),
   'public-upgrade-data-inventory-invalid',
   'public-upgrade-data-inventory-limit',

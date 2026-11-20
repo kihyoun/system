@@ -151,6 +151,13 @@
     "command-failed:tar": "tar-command-failed",
     "command-failed:gzip": "gzip-command-failed"
   },
+  "dockerOperations": {
+    "data-sample": "docker-data-sample-failed",
+    "compose-up": "docker-compose-up-failed",
+    "controller-stop": "docker-controller-stop-failed",
+    "installed-check": "docker-installed-check-failed",
+    "update-preflight": "docker-update-preflight-failed"
+  },
   "exceptionTypes": {
     "FileNotFoundError": "file-missing",
     "PermissionError": "permission-denied",

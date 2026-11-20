@@ -120,6 +120,64 @@ class NativeFixtureInitialization(unittest.TestCase):
         self.assertEqual(result.stdout, '')
         self.assertEqual(result.stderr, adapter.DIAGNOSTICS['marker'] + 'file-missing\n')
 
+    def test_helper_classifies_real_docker_failure_frames_without_exporting_private_context(self):
+        adapter = load('native_public_fixture_operation_diagnostics', ROOT / 'tests/e2e/public-upgrade-host.py')
+
+        def docker_failure(*arguments, **options):
+            try:
+                raise RuntimeError('private-cause /private/credential')
+            except RuntimeError as cause:
+                raise successor.recovery.RecoveryError('command-failed:docker') from cause
+
+        def update(check_only):
+            return adapter.tool.updater.update({}, {}, {}, None, b'', b'', {},
+                                               'private-image', 'private-checkpoint', 'private-token',
+                                               check_only=check_only)
+
+        cases = [
+            (adapter.tool.data_sample, adapter.tool, 'run', 'docker-data-sample-failed'),
+            (lambda: adapter.tool.updater.compose({}, 'private-image'), adapter.tool.updater,
+             'run', 'docker-compose-up-failed'),
+            (lambda: adapter.tool.updater.stop_controller({'Id': 'private-container', 'State': {'Running': True}}),
+             adapter.tool.updater, 'run', 'docker-controller-stop-failed'),
+            (lambda: adapter.tool.installed({'_root': Path('/private/live'), 'BOOTSTRAPPER_IMAGE': 'example/controller',
+                                            'WIZARD_IMAGE': 'example/wizard'}, 'example/system'),
+             successor, 'private_input', 'docker-installed-check-failed'),
+            (lambda: update(True), adapter.tool.runtime, 'public_manifest_absent', 'docker-update-preflight-failed'),
+            (lambda: update(False), adapter.tool.runtime, 'public_manifest_absent', 'docker-command-failed')]
+        for call, owner, function, expected in cases:
+            def failed():
+                print('private-stdout')
+                print('private-stderr', file=sys.stderr)
+                call()
+            with self.subTest(operation=expected), patch.object(owner, function, side_effect=docker_failure), \
+                    patch.object(adapter.tool.updater.promoter, 'owned'), \
+                    patch.object(successor, 'environment', return_value={}), \
+                    patch.object(adapter, 'main', side_effect=failed), \
+                    patch('sys.stdout', new=io.StringIO()) as output, \
+                    patch('sys.stderr', new=io.StringIO()) as diagnostic:
+                self.assertEqual(adapter.entrypoint(), 1)
+                self.assertEqual(output.getvalue(), '')
+                self.assertEqual(diagnostic.getvalue(), adapter.DIAGNOSTICS['marker'] + expected + '\n')
+
+        # A matching filename/function name is insufficient: only original
+        # repository code objects may narrow the generic fixed diagnostic.
+        for filename in ('/private/external.py', str(ROOT / 'bootstrapper/upgrade-release.py')):
+            scope = {'docker_failure': docker_failure}
+            exec(compile('def data_sample():\n    docker_failure()\n', filename, 'exec'), scope)
+            with self.subTest(spoofed_frame=filename), patch.object(adapter, 'main', side_effect=scope['data_sample']), \
+                    patch('sys.stdout', new=io.StringIO()) as output, \
+                    patch('sys.stderr', new=io.StringIO()) as diagnostic:
+                self.assertEqual(adapter.entrypoint(), 1)
+                self.assertEqual(output.getvalue(), '')
+                self.assertEqual(diagnostic.getvalue(), adapter.DIAGNOSTICS['marker'] + 'docker-command-failed\n')
+
+        with patch.object(adapter.tool, 'run', side_effect=RuntimeError('command-failed:docker')):
+            try:
+                adapter.tool.data_sample()
+            except RuntimeError as error:
+                self.assertEqual(adapter.diagnostic_code(error), 'unclassified-error')
+
     def test_native_installer_checks_images_through_the_fixture_registry_transport(self):
         installer = tool.updater.installer
         identity = {'sourceCommit': 'a' * 40, 'wizardSourceRevision': 'b' * 40}

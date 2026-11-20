@@ -34,12 +34,30 @@ def load(name, filename):
 
 tool = load('candidate_public_upgrade_cli', 'bootstrapper/upgrade-release.py')
 DIAGNOSTICS = json.loads((SOURCE / 'tests/e2e/public-upgrade-diagnostics.json').read_bytes())
+DOCKER_OPERATION_FRAMES = (
+    (tool.data_sample.__code__, 'data-sample'),
+    (tool.updater.compose.__code__, 'compose-up'),
+    (tool.updater.stop_controller.__code__, 'controller-stop'),
+    (tool.installed.__code__, 'installed-check'),
+    (tool.updater.update.__code__, 'update-preflight'),
+)
 
 
 def diagnostic_code(error):
     if isinstance(error, (successor.recovery.RecoveryError, tool.updater.installer.ReleaseError)):
         code = DIAGNOSTICS['errors'].get(str(error))
         if code:
+            if isinstance(error, successor.recovery.RecoveryError) and str(error) == 'command-failed:docker':
+                # Code identity admits only the loaded repository functions,
+                # including when another frame spoofs their filename/name.
+                # Keep the innermost known operation; inspect no command data.
+                trace = error.__traceback__
+                while trace is not None:
+                    for frame, operation in DOCKER_OPERATION_FRAMES:
+                        if trace.tb_frame.f_code is frame and (operation != 'update-preflight' or
+                                trace.tb_frame.f_locals.get('check_only') is True):
+                            code = DIAGNOSTICS['dockerOperations'][operation]
+                    trace = trace.tb_next
             return code
     return DIAGNOSTICS['exceptionTypes'].get(type(error).__name__, DIAGNOSTICS['fallback'])
 

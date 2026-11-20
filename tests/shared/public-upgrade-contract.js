@@ -6,7 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
-const {download, prepare, archiveConfigDigest, prepareSource, run, preserved, controllerFixture, waitForServices, NativeCLI} = require('../e2e/public-upgrade');
+const {download, prepare, archiveConfigDigest, prepareSource, run, preserved, replaceController, controllerFixture, waitForServices, NativeCLI} = require('../e2e/public-upgrade');
 const {preparationFailure} = require('../e2e/prepare-images');
 const edge = require('../../bootstrapper/upgrade-paths.json').transitions[0];
 const id = char => 'sha256:' + char.repeat(64);
@@ -25,6 +25,35 @@ function controllerBaseline() {
     "GITLAB_OMNIBUS_CONFIG=puma['worker_processes'] = 2", 'GITLAB_RUNNER_HELPER_IMAGE=candidate-helper:under-test',
     'SYSTEM_WIZARD_ENVIRONMENT_IMAGE=' + id('5')]}, HostConfig: {ExtraHosts: ['gitlab.candidate.test:host-gateway']}};
 }
+test('manual controller replacement remains discoverable by native Compose without copying image identity labels', async () => {
+  const candidate = {inner: async args => calls.push(args)}, calls = [];
+  for (const existing of [undefined, {'com.docker.compose.config-hash': 'a'.repeat(64),
+    'com.docker.compose.container-number': '9', 'com.docker.compose.oneoff': 'True',
+    'com.docker.compose.project': 'old-project', 'com.docker.compose.service': 'old-service',
+    'com.docker.compose.project.working_dir': '/native/source', 'com.docker.compose.image': id('2'),
+    'org.opencontainers.image.revision': 'b'.repeat(40), 'org.system-bootstrapper.test-job': '31'}]) {
+    calls.length = 0;
+    const baseline = {...controllerBaseline(), Mounts: [], HostConfig: {RestartPolicy: {Name: 'always'}},
+      Config: {...controllerBaseline().Config, Labels: existing}};
+    const before = JSON.stringify(baseline);
+    await replaceController(candidate, baseline, id('3'));
+    assert.deepEqual(calls.map(args => args[0]), ['stop', 'rm', 'create', 'start']);
+    const args = calls[2], labels = Object.fromEntries(args.flatMap((value, index) =>
+      value === '--label' ? [[args[index + 1].split('=')[0], args[index + 1].slice(args[index + 1].indexOf('=') + 1)]] : []));
+    assert.equal(labels['com.docker.compose.project'], 'system');
+    assert.equal(labels['com.docker.compose.service'], 'bootstrapper');
+    assert.equal(labels['com.docker.compose.container-number'], '1');
+    assert.equal(labels['com.docker.compose.oneoff'], 'False');
+    assert.match(labels['com.docker.compose.config-hash'], /^[a-f0-9]{64}$/);
+    assert(!Object.hasOwn(labels, 'com.docker.compose.image'));
+    assert(Object.keys(labels).every(key => key.startsWith('com.docker.compose.')));
+    if (existing) {
+      assert.equal(labels['com.docker.compose.config-hash'], existing['com.docker.compose.config-hash']);
+      assert.equal(labels['com.docker.compose.project.working_dir'], '/native/source');
+    }
+    assert.equal(JSON.stringify(baseline), before);
+  }
+});
 test('controller override retains fixture adapters while native Compose owns images, storage and staged startup', () => {
   const baseline = controllerBaseline(), before = JSON.stringify(baseline);
   const selected = controllerFixture(baseline, '/recovered-data/platform/fixture').services.bootstrapper;
@@ -328,7 +357,8 @@ test('fixed Python diagnostic markers survive the real Docker sanitizer and nati
     candidate.daemon='owned-disposable-daemon';
     const native=new NativeCLI(candidate);
     for(const operation of ['initialize','restore-original','plan','apply','status','recover']){
-      for(const code of ['docker-command-failed','release-changed-after-plan','image-archive-failed-or-timed-out']){
+      for(const code of ['docker-command-failed','release-changed-after-plan','image-archive-failed-or-timed-out',
+        ...Object.values(diagnostics.dockerOperations)]){
         process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR='private-token\n'+diagnostics.marker+code+'\nprivate-stderr';
         await assert.rejects(()=>native.invoke(['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation]),error=>{
           assert.equal(error.message,'public-upgrade-native-'+operation+'-'+code);
@@ -337,7 +367,8 @@ test('fixed Python diagnostic markers survive the real Docker sanitizer and nati
         });
       }
     }
-    for(const message of [diagnostics.marker+'private-token',diagnostics.marker+'docker-command-failed private-token','prefix '+diagnostics.marker+'docker-command-failed']){
+    for(const message of [diagnostics.marker+'private-token',diagnostics.marker+'docker-command-failed private-token',
+      'prefix '+diagnostics.marker+'docker-command-failed',diagnostics.marker+'docker-data-sample-failed private-token']){
       process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR=message;
       await assert.rejects(()=>native.invoke(['--operation','plan']),error=>error.message==='public-upgrade-native-plan-failed'&&error.exitCode===7);
     }
