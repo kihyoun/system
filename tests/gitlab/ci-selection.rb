@@ -10,7 +10,7 @@ raise 'Cube signature changed' unless text[807] == '$' && Digest::MD5.hexdigest(
 config = YAML.safe_load(text, aliases: true)
 jobs = config.select { |name, value| !name.start_with?('.') && value.is_a?(Hash) && value.key?('script') }
 jobs.transform_values! { |job| job['extends'] ? config.fetch(job['extends']).merge(job) : job }
-full = %w[prepare:wizard-source test:codeql test:isolated test:candidate-image test:wizard-browser test:platform-candidate build]
+full = %w[prepare:wizard-source test:codeql test:isolated test:candidate-image test:wizard-browser test:platform-candidate test:npm-package build]
 baseline = {'CI_PIPELINE_SOURCE' => 'merge_request_event', 'CI_DEFAULT_BRANCH' => 'master',
             'GITHUB_BACKUP_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'false'}
 condition = lambda do |expression, environment|
@@ -64,24 +64,26 @@ assert_jobs.call('case mismatch', ['readme.md'], runtime)
 assert_jobs.call('suffixed guide', ['README.md.js'], runtime)
 assert_jobs.call('empty MR', [], light)
 assert_jobs.call('large comparison', Array.new(50_001, 'README.md'), runtime)
+beta_jobs = %w[deploy:wizard-beta stop:wizard-beta]
 push = baseline.merge('CI_PIPELINE_SOURCE' => 'push', 'CI_COMMIT_BRANCH' => 'master', 'CI_COMMIT_REF_PROTECTED' => 'true')
 assert_jobs.call('protected docs push mirrors but does not publish images', ['AGENTS.md'], light + ['deploy:github'], push)
-assert_jobs.call('protected runtime push', ['system/start.sh'], runtime + ['deploy:github'], push)
-assert_jobs.call('disabled GitHub mirror', ['system/start.sh'], runtime,
+assert_jobs.call('protected runtime push', ['system/start.sh'], runtime + beta_jobs + ['deploy:github'], push)
+assert_jobs.call('disabled GitHub mirror', ['system/start.sh'], runtime + beta_jobs,
                  push.merge('GITHUB_BACKUP_ENABLED' => 'false'))
 hub = push.merge('DOCKERHUB_PUBLISH_ENABLED' => 'true')
-assert_jobs.call('enabled protected runtime push publishes accepted images', ['system/start.sh'], runtime + ['deploy:github', 'deploy:dockerhub'], hub)
+assert_jobs.call('enabled protected runtime push publishes accepted images', ['system/start.sh'], runtime + beta_jobs + ['deploy:github', 'deploy:dockerhub'], hub)
 assert_jobs.call('documentation push does not publish public images', ['README.md'], light + ['deploy:github'], hub)
 assert_jobs.call('MR cannot publish even with an enable selector', ['system/start.sh'], runtime,
                  baseline.merge('DOCKERHUB_PUBLISH_ENABLED' => 'true', 'CI_COMMIT_REF_PROTECTED' => 'true'))
 review = baseline.merge('SYSTEM_REVIEW_ENABLED' => 'true', 'CI_PROJECT_ID' => '42', 'CI_MERGE_REQUEST_SOURCE_PROJECT_ID' => '42')
-review_jobs = %w[deploy:wizard-review stop:wizard-review]
-assert_jobs.call('same-project MR offers one optional shared Wizard Review', ['wizard'], runtime + review_jobs, review)
-assert_jobs.call('documentation-only MR needs no candidate artifacts', ['README.md'], light, review)
-assert_jobs.call('fork MR cannot deploy the shared Review', ['wizard'], runtime, review.merge('CI_MERGE_REQUEST_SOURCE_PROJECT_ID' => '43'))
-assert_jobs.call('Review opt-in never deploys a push', ['wizard'], runtime + ['deploy:github'], push.merge('SYSTEM_REVIEW_ENABLED' => 'true'))
+raise 'System Review jobs must not be recreated' if jobs.keys.any? { |name| name.include?('wizard-review') }
+assert_jobs.call('old System Review selector cannot create MR environments', ['wizard/src/index.tsx'], runtime, review)
+assert_jobs.call('fork MR cannot deploy System Beta', ['wizard/src/index.tsx'], runtime, review.merge('CI_MERGE_REQUEST_SOURCE_PROJECT_ID' => '43'))
+assert_jobs.call('old System Review selector does not change protected Beta selection', ['wizard/src/index.tsx'], runtime + beta_jobs + ['deploy:github'], push.merge('SYSTEM_REVIEW_ENABLED' => 'true'))
+assert_jobs.call('monorepo Wizard code retains all required gates', ['wizard/src/index.tsx'], runtime)
+assert_jobs.call('operations code retains all required gates', ['operations/src/cli.ts'], runtime)
 assert_jobs.call('unprotected default push', ['system/start.sh'], runtime, push.merge('CI_COMMIT_REF_PROTECTED' => 'false'))
-assert_jobs.call('first push is conservative', ['README.md'], runtime + ['deploy:github'], push, false)
+assert_jobs.call('first push is conservative', ['README.md'], runtime + beta_jobs + ['deploy:github'], push, false)
 assert_jobs.call('other branch push', ['system/start.sh'], [], push.merge('CI_COMMIT_BRANCH' => 'feature'))
 assert_jobs.call('tag push', ['system/start.sh'], [], push.merge('CI_COMMIT_BRANCH' => nil, 'CI_COMMIT_TAG' => 'v1'))
 assert_jobs.call('protected semantic version tag runs all acceptance before public release', ['README.md'], runtime + ['deploy:dockerhub'],
@@ -100,7 +102,7 @@ renovate = hub.merge('CI_PIPELINE_SOURCE' => 'schedule', 'RENOVATE_ENABLED' => '
 assert_jobs.call('Renovate schedule runs only discovery', ['system/start.sh'], ['renovate:discover'], renovate, false)
 assert_jobs.call('unprotected schedule receives no bot', ['system/start.sh'], [], renovate.merge('CI_COMMIT_REF_PROTECTED' => 'false'), false)
 assert_jobs.call('MR selector cannot run bot', ['system/start.sh'], runtime, baseline.merge('RENOVATE_ENABLED' => 'true'))
-assert_jobs.call('release metadata follows all image and mirror gates', ['system/start.sh'], runtime + ['deploy:github', 'deploy:dockerhub', 'deploy:github-release'],
+assert_jobs.call('release metadata follows all image and mirror gates', ['system/start.sh'], runtime + beta_jobs + ['deploy:github', 'deploy:dockerhub', 'deploy:github-release'],
                  hub.merge('GITHUB_RELEASE_PUBLISH_ENABLED' => 'true', 'WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED' => 'true'))
 Dir.mktmpdir('ci-renames-') do |directory|
   git = lambda do |*arguments|
@@ -139,17 +141,29 @@ raise 'Documentation lane must retain its short bounded budget' unless documenta
 raise 'Documentation lane must not require runtime artifacts' if documentation['needs'] || documentation['dependencies']
 raise 'Documentation lane must be required' unless documentation['allow_failure'] == false
 hub_job = jobs.fetch('deploy:dockerhub')
-review_jobs.each do |name|
+beta_jobs.each do |name|
   job = jobs.fetch(name)
-  raise 'Review must remain optional, serialized and manually selected' unless job['allow_failure'] == true && job['resource_group'] == 'wizard-review' &&
+  raise 'Beta must remain optional, serialized and manual' unless job['allow_failure'] == true && job['resource_group'] == 'wizard-beta' &&
     job['stage'] == 'deploy' && job['services'] == [] && job['tags'] == ['docker'] && job['rules'].first['when'] == 'manual' &&
     job['rules'].last == {'when' => 'never'} && !job['needs']
-  raise 'Review installation must preserve its finite cleanup reserve' unless job['before_script'] == ['timeout -k 5 110 sh bootstrapper/install-runtime.sh'] &&
+  raise 'Beta must prepare operations with a finite cleanup reserve' unless job['before_script'] == [
+    'timeout -k 5 110 sh bootstrapper/install-runtime.sh',
+    'npm --prefix operations ci --ignore-scripts --no-audit --no-fund', 'npm --prefix operations run build'] &&
     job.dig('variables', 'RUNNER_SCRIPT_TIMEOUT') == '12m' && job['timeout'] == '14m'
+  raise 'Beta URL must come from verified binding output' unless job.dig('artifacts', 'reports', 'dotenv') == 'test-results/system-beta/environment.env'
 end
-raise 'Review must reuse the candidate; Stop must survive artifact expiry' unless jobs.fetch('deploy:wizard-review')['dependencies'] == ['test:platform-candidate'] &&
-  jobs.fetch('stop:wizard-review')['dependencies'] == [] && jobs.fetch('deploy:wizard-review').dig('environment', 'on_stop') == 'stop:wizard-review' &&
-  jobs.fetch('stop:wizard-review').dig('environment', 'action') == 'stop'
+raise 'Beta must reuse candidate; Stop must survive artifact expiry' unless jobs.fetch('deploy:wizard-beta')['dependencies'] == ['test:platform-candidate'] &&
+  jobs.fetch('stop:wizard-beta')['dependencies'] == [] && jobs.fetch('deploy:wizard-beta').dig('environment', 'on_stop') == 'stop:wizard-beta' &&
+  jobs.fetch('stop:wizard-beta').dig('environment', 'action') == 'stop'
+project_ci = File.read(File.join(root, 'project-bootstrap/wizard-environments/recipe.js'))
+raise 'Generic project Review and Beta recipes must remain available' unless project_ci.include?("['review', 'beta']") && project_ci.include?('review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID')
+npm_job = jobs.fetch('deploy:npm')
+raise 'npm release must consume all accepted artifacts' unless npm_job['dependencies'] == %w[test:npm-package test:platform-candidate deploy:dockerhub deploy:github deploy:github-release] && !npm_job['needs']
+raise 'npm release protection changed' unless npm_job['allow_failure'] == false && npm_job['interruptible'] == false && npm_job['resource_group'] == 'npm-release' &&
+  npm_job['rules'].first['if'].include?('$NPM_PUBLISH_ENABLED == "true"') && npm_job['rules'].first['if'].include?('$CI_COMMIT_REF_PROTECTED == "true"') && npm_job['rules'].last == {'when' => 'never'}
+assert_jobs.call('npm opt-in adds publication only after accepted public release', ['operations/src/cli.ts'], runtime + beta_jobs + %w[deploy:github deploy:dockerhub deploy:github-release deploy:npm],
+  hub.merge('GITHUB_RELEASE_PUBLISH_ENABLED' => 'true', 'NPM_PUBLISH_ENABLED' => 'true'))
+assert_jobs.call('npm selectors cannot publish in MR', ['operations/src/cli.ts'], runtime, baseline.merge('NPM_PUBLISH_ENABLED' => 'true', 'GITHUB_RELEASE_PUBLISH_ENABLED' => 'true'))
 mirror_job = jobs.fetch('deploy:github')
 raise 'Wizard dependency publication evidence must remain available' unless mirror_job.dig('artifacts', 'paths') == ['test-results/github/'] &&
   mirror_job.dig('artifacts', 'when') == 'always' && mirror_job['script'] == ['node operations/dist/mirror/entry.js ci']
