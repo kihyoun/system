@@ -121,3 +121,17 @@ test('retained monorepo archives bind the original System commit and Wizard tree
   const invalid=structuredClone(manifest);change(invalid);fs.writeFileSync(filename,JSON.stringify(invalid));assert.throws(()=>service.load(directory,f.checkout));
  }
 });
+test('host source verification distinguishes historical Git objects from current checkout and rejects unrelated ancestry',t=>{
+ const f=fixture(t,true),source={sourceRevision:f.identity.sourceCommit,sourceTree:f.identity.sourceTree,sourceLayout:f.identity.sourceLayout,wizardSourceTree:f.identity.wizardSourceTree};
+ const service=new api.HostSourceService();service.verifyCheckout(source,f.checkout);
+ fs.writeFileSync(path.join(f.checkout,'source.txt'),'newer reviewed tools');assert.throws(()=>service.verifyCheckout(source,f.checkout),/modified/);
+ f.git('add','.');f.git('commit','--quiet','-m','Newer tools');service.verifyObjects(source,f.checkout);
+ assert.throws(()=>service.verifyCheckout(source,f.checkout),/revision-mismatch/);service.verifyAncestry(source.sourceRevision,f.git('rev-parse','HEAD'),f.checkout);
+ f.git('checkout','--orphan','unrelated');f.git('commit','--quiet','-m','Unrelated');assert.throws(()=>service.verifyAncestry(source.sourceRevision,f.git('rev-parse','HEAD'),f.checkout),/not-descendant/);
+});
+test('reviewed upgrade graph resolves explicit paths and rejects unsafe migration promises',()=>{
+ const edge=(from,to)=>({from,to,kind:'controller-wizard',databaseMigration:false,serviceImagesPreserved:true,services:['controller','Wizard'],minimumFreeGiB:8,requiredStage:'public-release-upgrade-'+from.replaceAll('.','-')+'-to-'+to.replaceAll('.','-'),steps:['prerequisites','backup','preflight','apply','verify','recovery']});
+ const graph={format:'system-upgrade-paths-v1',versions:['1.0.0','1.1.0','2.0.0'],transitions:[edge('1.0.0','1.1.0'),edge('1.1.0','2.0.0')]};
+ assert.equal(api.upgradePath(graph,'missing','2.0.0').status,'unknown');assert.equal(api.upgradePath(graph,'1.0.0','1.0.0').status,'unnecessary');assert.equal(api.upgradePath(graph,'2.0.0','1.0.0').status,'unsupported');assert.equal(api.upgradePath(graph,'1.0.0','2.0.0').transitions.length,2);
+ for(const change of [g=>g.transitions[0].databaseMigration=true,g=>g.transitions[0].steps.pop(),g=>g.transitions.push(g.transitions[0]),g=>g.versions.reverse(),g=>g.transitions[0].minimumFreeGiB=7,g=>g.versions.push('02.0.0')]){const invalid=structuredClone(graph);change(invalid);assert.throws(()=>api.validateUpgradeGraph(invalid));}
+});

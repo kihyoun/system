@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import {HostSourceService} from './source';
+import {validateUpgradeGraph,upgradePath} from './upgrade-graph';
 import {RecoveryImageService} from './recovery-images';
 import {RecoveryManifestService,type RecoveryManifest} from './recovery-manifest';
 import path from 'node:path';
@@ -8,6 +10,11 @@ import {HostInstallService,reference,sourceIdentity,checkedImage,acceptedMetadat
 export function compatibility(input: {operation: string; arguments: unknown[]; deadline?: number}) {
   const args=input.arguments,host=new HostInstallService(undefined,undefined,undefined,undefined,input.deadline);
   switch(input.operation) {
+    case 'verifySourceObjects':return new HostSourceService(host).verifyObjects(args[0],String(args[1]));
+    case 'verifyCheckout':return new HostSourceService(host).verifyCheckout(args[0],String(args[1]));
+    case 'verifyAncestry':return new HostSourceService(host).verifyAncestry(args[0],args[1],String(args[2]));
+    case 'validateUpgradeGraph':return validateUpgradeGraph(args[0]);
+    case 'upgradePath':return upgradePath(args[0],String(args[1]),String(args[2]));
     case 'restoreImages':return new RecoveryImageService(host).restore(String(args[0]),args[1] as RecoveryManifest);
     case 'loadManifest':return new RecoveryManifestService(host).load(String(args[0]),String(args[1]),args[2]?String(args[2]):undefined,args[3]===true,args[4]===null||args[4]===undefined?undefined:String(args[4]));
     case 'validateSelected':return new RecoveryManifestService(host).validateSelected(args[0] as RecoveryManifest,String(args[1]));

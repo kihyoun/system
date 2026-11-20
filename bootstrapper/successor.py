@@ -238,27 +238,15 @@ def release_inputs(release_bytes, evidence_bytes, security_release):
 
 
 def verify_source_objects(release, checkout):
-    checkout = str(checkout)
-    require(run(['git', '-C', checkout, 'rev-parse', release['sourceRevision'] + '^{tree}']).decode().strip() == release['sourceTree'],
-            'successor-checkout-tree-mismatch')
-    require(run(['git', '-C', checkout, 'ls-tree', release['sourceRevision'], 'wizard']).decode().strip() ==
-            '160000 commit ' + release['wizardRevision'] + '\twizard', 'successor-checkout-gitlink-mismatch')
+    return recovery.host_operation('verifySourceObjects', release, checkout)
 
 
 def verify_checkout(release, checkout):
-    checkout = str(checkout)
-    require(not run(['git', '-C', checkout, 'status', '--porcelain']).strip(), 'successor-checkout-is-modified')
-    require(run(['git', '-C', checkout, 'rev-parse', 'HEAD']).decode().strip() == release['sourceRevision'],
-            'successor-checkout-revision-mismatch')
-    verify_source_objects(release, checkout)
+    return recovery.host_operation('verifyCheckout', release, checkout)
 
 
 def verify_ancestry(earlier, later, checkout):
-    require(recovery.git_id(earlier) and recovery.git_id(later), 'staged-controller-source-identity-invalid')
-    try:
-        run(['git', '--no-replace-objects', '-C', str(checkout), 'merge-base', '--is-ancestor', earlier, later])
-    except recovery.RecoveryError:
-        raise recovery.RecoveryError('staged-controller-source-is-not-descendant') from None
+    return recovery.host_operation('verifyAncestry', earlier, later, checkout)
 
 
 def normalized_job(name):

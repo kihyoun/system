@@ -53,3 +53,12 @@ file or a separate gzip child. Its 900-second load bound never exceeds a supplie
 remaining operation deadline. A failed load cannot proceed to tagging. Existing
 Python recovery callers forward to these services; retained paired-checkpoint
 rollback orchestration remains with its existing coordinator.
+
+`HostSourceService` validates recorded source objects separately from a clean
+current checkout, and checks allowed commit ancestry with Git replacement objects
+disabled. `validateUpgradeGraph` and `upgradePath` share the reviewed ordered
+version graph and explicit prerequisite/backup/preflight/apply/verify/recovery
+steps. Unknown versions, reverse paths, duplicate edges, unsupported database
+migration claims and incomplete preservation promises are refused. The Python
+source/graph APIs forward to these implementations while their higher-level
+coordinators remain in use.
