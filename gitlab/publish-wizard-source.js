@@ -17,6 +17,16 @@ function local(args, environment, cwd) {
   return result.stdout.trim();
 }
 
+// Read the committed layout, never a working-tree path or an obsolete selector.
+function sourceKind(env, git) {
+  if (!revision(env.CI_COMMIT_SHA) || git(['rev-parse', 'HEAD']) !== env.CI_COMMIT_SHA)
+    throw Error('Source publication checkout does not match the pipeline.');
+  const row = git(['ls-tree', 'HEAD', '--', 'wizard']);
+  if (/^040000 tree [a-f0-9]{40}\twizard$/.test(row)) return 'tree';
+  if (/^160000 commit [a-f0-9]{40}\twizard$/.test(row)) return 'gitlink';
+  throw Error('An exact Wizard source tree or historical gitlink is required.');
+}
+
 function context(env, git) {
   if (env.WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED !== 'true' || env.GITHUB_BACKUP_ENABLED !== 'true' ||
       env.GITLAB_CI !== 'true' || env.CI_PIPELINE_SOURCE !== 'push' || env.CI_COMMIT_TAG ||
@@ -25,8 +35,7 @@ function context(env, git) {
       env.CI_PROJECT_PATH !== env.GITHUB_BACKUP_SOURCE_PROJECT || !revision(env.CI_COMMIT_SHA) ||
       !['CI_PROJECT_ID', 'CI_PIPELINE_ID', 'CI_JOB_ID'].every(key => number(env[key])))
     throw Error('Wizard source publication requires an enabled protected System default-branch push.');
-  if (git(['rev-parse', 'HEAD']) !== env.CI_COMMIT_SHA)
-    throw Error('Source publication checkout does not match the pipeline.');
+  if (sourceKind(env, git) === 'tree') return null;
   const row = /^160000 commit ([a-f0-9]{40})\twizard$/.exec(git(['ls-tree', 'HEAD', '--', 'wizard']));
   if (!row || git(['config', '--blob', 'HEAD:.gitmodules', '--get', 'submodule.wizard.path']) !== 'wizard')
     throw Error('An exact Wizard gitlink is required.');
@@ -65,6 +74,7 @@ async function publish(env = process.env, cwd = process.cwd(), run = local,
     transport = async (args, environment) => startTransport(args, 30, environment).done) {
   const clean = isolatedEnvironment(env), git = args => run(args, clean, cwd);
   const receipt = context(env, git);
+  if (receipt === null) return null;
   const privateEnv = {...clean, GIT_CONFIG_COUNT: '3',
     GIT_CONFIG_KEY_2: 'http.' + new URL(env.CI_SERVER_URL).origin + '/.extraHeader',
     GIT_CONFIG_VALUE_2: 'Authorization: Basic ' + Buffer.from('gitlab-ci-token:' + env.CI_JOB_TOKEN).toString('base64')};
@@ -108,6 +118,12 @@ async function publish(env = process.env, cwd = process.cwd(), run = local,
   }
 }
 
-module.exports = {context, isolatedEnvironment, publish};
-if (require.main === module) publish().then(() => console.log('Exact Wizard source publicly verified.'))
-  .catch(() => { console.error('Wizard source publication failed; inspect approved mappings and access.'); process.exitCode = 1; });
+module.exports = {context, sourceKind, isolatedEnvironment, publish};
+if (require.main === module) {
+  if (process.argv[2] === '--source-kind') {
+    try { console.log(sourceKind(process.env, args => local(args, isolatedEnvironment(process.env), process.cwd()))); }
+    catch (_) { console.error('Wizard source layout verification failed.'); process.exitCode = 1; }
+  } else publish().then(receipt => console.log(receipt ? 'Exact Wizard source publicly verified.' :
+    'Wizard source is included in the shared System tree; no separate publication.'))
+    .catch(() => { console.error('Wizard source publication failed; inspect approved mappings and access.'); process.exitCode = 1; });
+}

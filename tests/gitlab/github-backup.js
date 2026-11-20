@@ -160,6 +160,23 @@ async function main() {
   fs.writeFileSync(knownHosts, 'github.com ' + publicKey + '\n');
   fail(f.ci({...ciEnvironment, GITHUB_SSH_PRIVATE_KEY: 'invalid-key-material'}), /SSH identity could not be loaded/);
   assert.deepEqual(fs.readdirSync(privateTemp), [], 'key-loading failure also cleans owned state');
+  fs.mkdirSync(path.join(f.work, 'wizard'));
+  fs.writeFileSync(path.join(f.work, 'wizard', 'README.md'), 'Shared Wizard source\n');
+  git(f.work, 'add', 'wizard'); git(f.work, 'commit', '-qm', 'Shared source');
+  const sharedSha = git(f.work, 'rev-parse', 'HEAD');
+  git(f.work, 'push', '-q', 'origin', 'HEAD:main');
+  result = f.ci({...ciEnvironment, CI_COMMIT_SHA: sharedSha,
+    WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED: 'true', WIZARD_GITHUB_SSH_PRIVATE_KEY: '',
+    WIZARD_PRIMARY_REPOSITORY_URL: 'obsolete restored selector'});
+  pass(result);
+  assert.equal(f.tip(), sharedSha, 'Shared System source mirrors despite obsolete Wizard publication variables');
+  assert.deepEqual(fs.readdirSync(privateTemp), [], 'shared source also cleans its System credential');
+  const sharedClone = path.join(f.dir, 'shared-clone');
+  git(f.dir, 'clone', '-q', f.backup, sharedClone);
+  assert.equal(fs.readFileSync(path.join(sharedClone, 'wizard', 'README.md'), 'utf8'), 'Shared Wizard source\n');
+  assert(!fs.existsSync(path.join(sharedClone, '.gitmodules')));
+  fail(f.ci({...ciEnvironment, CI_COMMIT_SHA: f.sha, WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED: 'true'}),
+    /source layout could not be verified/);
   console.log('PASS: protected CI eligibility, verified file host keys, file/text identities, redaction and owned credential cleanup');
   }
   f = fixture();

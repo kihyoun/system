@@ -27,7 +27,7 @@ function prepare(root) {
     const match = /^(\d+) (\w+) [a-f0-9]{40}\t(.+)$/.exec(entry);
     if (!match) throw Error('Unexpected committed source entry.');
     return {mode: match[1], type: match[2], name: match[3]};
-  }).filter(entry => entry.name !== 'wizard' && included(entry.name));
+  }).filter(entry => entry.name !== 'wizard' && !entry.name.startsWith('wizard/') && included(entry.name));
   if (entries.some(entry => entry.type !== 'blob' || !['100644', '100755'].includes(entry.mode)))
     throw Error('Static scan context refuses source links and nested submodules.');
   for (const required of ['tests/codeql/Dockerfile', 'tests/codeql/scan.sh', 'tests/codeql/check-sarif.js'])
@@ -45,8 +45,10 @@ function prepare(root) {
     execFileSync('tar', ['-xf', archive, '-C', source]);
     // Deployment snapshots intentionally omit historical managed build recipes.
     // Static analysis scans all public committed Wizard blobs at that same pin.
-    const wizard = path.join(root, 'wizard');
-    const wizardFiles = at(wizard, 'ls-tree', '-rz', snapshot.sourceRevision).toString().split('\0').filter(Boolean).map(entry => {
+    const shared = snapshot.sourceLayout === 'system-monorepo-v1';
+    const wizard = shared ? root : path.join(root, 'wizard');
+    const wizardTree = shared ? snapshot.wizardSourceTree : snapshot.sourceRevision;
+    const wizardFiles = at(wizard, 'ls-tree', '-rz', wizardTree).toString().split('\0').filter(Boolean).map(entry => {
       const match = /^(\d+) (\w+) [a-f0-9]{40}\t(.+)$/.exec(entry);
       if (!match) throw Error('Unexpected committed Wizard entry.');
       return {mode: match[1], type: match[2], name: match[3]};
@@ -54,11 +56,13 @@ function prepare(root) {
     if (wizardFiles.some(entry => entry.type !== 'blob' || !['100644', '100755'].includes(entry.mode)))
       throw Error('Static scan refuses Wizard links and nested submodules.');
     const wizardArchive = path.join(temporary, 'wizard.tar');
-    at(wizard, 'archive', '--format=tar', '--output=' + wizardArchive, snapshot.sourceRevision, '--', ...wizardFiles.map(file => file.name));
+    at(wizard, 'archive', '--format=tar', '--output=' + wizardArchive, wizardTree, '--', ...wizardFiles.map(file => file.name));
     fs.mkdirSync(path.join(source, 'wizard'));
     execFileSync('tar', ['-xf', wizardArchive, '-C', path.join(source, 'wizard')]);
     const files = [...entries.map(entry => entry.name), ...wizardFiles.map(file => 'wizard/' + file.name)].sort();
-    const manifest = {revision, wizardRevision: snapshot.sourceRevision, files};
+    const manifest = {revision, ...(shared ? {sourceLayout: snapshot.sourceLayout,
+      sourceRevision: snapshot.sourceRevision, wizardSourceTree: snapshot.wizardSourceTree} :
+      {wizardRevision: snapshot.sourceRevision}), files};
     fs.writeFileSync(path.join(source, 'scan-source.json'), JSON.stringify(manifest) + '\n');
     execFileSync('tar', ['-cf', archive, '-C', temporary, 'source']);
     const names = execFileSync('tar', ['-tf', archive], {encoding: 'utf8', maxBuffer: 4 * 1024 * 1024})

@@ -50,7 +50,13 @@ unset GITHUB_SSH_PRIVATE_KEY
 GITHUB_BACKUP_KNOWN_HOSTS_FILE="$private_dir/known_hosts"
 GITHUB_BACKUP_IDENTITY_FILE="$private_dir/identity"
 export GITHUB_BACKUP_KNOWN_HOSTS_FILE GITHUB_BACKUP_IDENTITY_FILE
+# An old opt-in can remain in restored GitLab variables. Shared source needs no
+# second repository/key; inspect the exact committed layout before reading it.
+wizard_source_kind=tree
 if [ "${WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED:-}" = true ]; then
+  wizard_source_kind=$(node "$script_dir/publish-wizard-source.js" --source-kind) || fail 'Wizard source layout could not be verified'
+fi
+if [ "${WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED:-}" = true ] && [ "$wizard_source_kind" = gitlink ]; then
   [ -n "${WIZARD_GITHUB_SSH_PRIVATE_KEY:-}" ] && [ -f "$WIZARD_GITHUB_SSH_PRIVATE_KEY" ] || fail 'protected Wizard SSH file variable missing'
   tr -d '\r' <"$WIZARD_GITHUB_SSH_PRIVATE_KEY" >"$private_dir/wizard-identity" 2>/dev/null || fail 'Wizard SSH identity could not be copied'
   chmod 600 "$private_dir/wizard-identity"

@@ -117,6 +117,26 @@ async function main() {
   f = fixture();
   await assert.rejects(f.run({}, async (args, env) => args.includes('https://github.com/example/wizard.git') ? 1 : f.transport(args, env)), /Anonymous/);
   assert(!fs.existsSync(path.join(f.system, 'test-results/github/wizard-source.json')), 'Unverified public access must not publish a receipt');
+  f = fixture();
+  git(f.system, 'rm', '--cached', 'wizard');
+  git(f.system, 'rm', '.gitmodules');
+  fs.mkdirSync(path.join(f.system, 'wizard'));
+  fs.writeFileSync(path.join(f.system, 'wizard', 'README.md'), 'Shared Wizard source\n');
+  git(f.system, 'add', 'wizard'); git(f.system, 'commit', '-qm', 'Shared source layout');
+  f.env.CI_COMMIT_SHA = git(f.system, 'rev-parse', 'HEAD');
+  // Retained old selectors and no Wizard credentials must never trigger a fetch.
+  const shared = await f.run({CI_JOB_TOKEN: '', WIZARD_PRIMARY_REPOSITORY_URL: 'obsolete invalid selector',
+    WIZARD_GITHUB_BACKUP_REMOTE: ''});
+  assert.equal(shared, null);
+  assert.equal(f.calls.length, 0);
+  assert(!fs.existsSync(path.join(f.system, 'test-results/github/wizard-source.json')),
+    'Shared source must not fabricate a historical publication receipt');
+  for (const changed of [{CI_COMMIT_SHA: f.sha}, {CI_PIPELINE_SOURCE: 'merge_request_event'},
+    {CI_COMMIT_REF_PROTECTED: 'false'}, {CI_JOB_ID: '0'}]) await assert.rejects(f.run(changed));
+  git(f.system, 'rm', '-r', 'wizard'); git(f.system, 'commit', '-qm', 'Missing source');
+  f.env.CI_COMMIT_SHA = git(f.system, 'rev-parse', 'HEAD');
+  await assert.rejects(f.run(), /source tree or historical gitlink/);
+  assert.equal(f.calls.length, 0);
   console.log('Wizard dependency publication: gates, exact immutable refs, retries, isolated auth and fresh recursive checkout passed.');
 }
 main().finally(() => fs.rmSync(directory, {recursive: true, force: true})).catch(error => {
