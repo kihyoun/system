@@ -635,7 +635,7 @@ class ReleaseProfile(unittest.TestCase):
             selector.write_text("PERSISTENCE_MODE=local\nPERSISTENT_MOUNT=/\nPERSISTENT_DIR='" + str(root) + "'\n")
             execute = subprocess.run
             def checked(arguments, **kwargs):
-                if arguments[:2] == ['bash', str(ROOT / 'bootstrapper/persistence.sh')]:
+                if arguments[:2] == ['node', str(ROOT / 'bootstrapper/persistence.js')]:
                     return subprocess.CompletedProcess(arguments, 0)
                 return execute(arguments, **kwargs)
             with patch.object(successor.runtime.subprocess, 'run', side_effect=checked):

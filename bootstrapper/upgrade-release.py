@@ -128,7 +128,9 @@ def backup_target(config, filename):
     # creates a fallback when media is absent, even in --check-only mode.
     require(config.get('SEED_DIR') and config.get('SEED_MOUNT'), 'explicit-backup-filesystem-required')
     environment = dict(os.environ, PERSISTENCE_ENV_FILE=str(config['_persistence_env']))
-    run(['bash', str(ROOT / 'bootstrapper/seed-operation.sh'), 'harvest', '--image', config['BOOTSTRAPPER_IMAGE'],
+    retained = Path('/opt/system-bootstrapper-runtime/bin/node')
+    node = str(retained.resolve()) if retained.is_file() else 'node'
+    run([node, str(ROOT / 'bootstrapper/seed-operation.js'), 'harvest', '--image', config['BOOTSTRAPPER_IMAGE'],
          '--check-only'], env=environment, timeout=300)
     path = Path(filename)
     require(path.is_absolute() and path == path.resolve() and not path.exists() and

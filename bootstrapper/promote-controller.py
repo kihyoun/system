@@ -40,8 +40,9 @@ def owned(row, service):
 def gitlab_probe(expected, row):
     owned(row, 'gitlab')
     require(row['State']['Running'] and not row['State'].get('OOMKilled'), 'old-GitLab-is-not-running')
-    script = (successor.HERE.parent / 'gitlab/upgrade-preflight.rb').read_bytes()
-    output = run([*DOCKER, 'exec', '-i', row['Id'], 'gitlab-rails', 'runner', '-'], input=script)
+    retained = Path('/opt/system-bootstrapper-runtime/bin/node')
+    node = str(retained.resolve()) if retained.is_file() else 'node'
+    output = run([node, str(successor.HERE.parent / 'operations/dist/gitlab-preflight/entry.js'), row['Id']])
     proof = json.loads(output.decode().splitlines()[-1])
     require(proof.get('version') == expected['fromVersion'] and proof.get('edition') == 'CE' and
             type(proof.get('runningJobs')) is int and proof.get('unfinishedBackgroundMigrations') == 0,

@@ -1,3 +1,5 @@
+import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
+import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
 import { CandidateAuthorityService } from './candidate-authority.service';
 import { CandidateGitLabService } from './candidate-gitlab.service';
 import { PromotionRecoveryService } from './promotion-recovery.service';
@@ -88,6 +90,7 @@ export class HostModule {
     };
     return {
       module: HostModule,
+      imports: [GitlabPreflightModule],
       providers: [
         {
           provide: CandidateGitLabService,
@@ -109,6 +112,7 @@ export class HostModule {
             HostSourceService,
             RecoveryImageService,
             RuntimeInspectionService,
+            GitlabPreflightService,
           ],
           useFactory: (
             host: HostInstallService,
@@ -118,6 +122,7 @@ export class HostModule {
             source: HostSourceService,
             images: RecoveryImageService,
             inspection: RuntimeInspectionService,
+            preflight: GitlabPreflightService,
           ) =>
             new PromotionNativePortService(
               host,
@@ -128,6 +133,7 @@ export class HostModule {
               images,
               inspection,
               options.promotionGitLabProbe,
+              preflight,
             ),
         },
         {

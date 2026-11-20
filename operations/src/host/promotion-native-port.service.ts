@@ -1,3 +1,4 @@
+import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -45,6 +46,7 @@ export class PromotionNativePortService implements PromotionAbortPort {
     readonly images: RecoveryImageService,
     readonly inspection: RuntimeInspectionService,
     readonly gitlabProbe?: PromotionGitLabProbe,
+    readonly nativeGitlabProbe?: GitlabPreflightService,
   ) {}
   private current() {
     ensure(this.context, 'promotion-native-context-required');
@@ -52,7 +54,7 @@ export class PromotionNativePortService implements PromotionAbortPort {
   }
   async prepare(input: PromotionNativeInput): Promise<PromotionAbortInput> {
     ensure(!this.context && this.host.rootUser(), 'root-and-idle-promotion-context-required');
-    ensure(this.gitlabProbe, 'native-GitLab-preflight-provider-required');
+    ensure(this.gitlabProbe || this.nativeGitlabProbe, 'native-GitLab-preflight-provider-required');
     for (const value of [input.checkout, input.checkpoint, input.persistenceEnv])
       ensure(path.isAbsolute(value), 'absolute-promotion-input-required');
     const config = await this.runtime.settings(
@@ -199,7 +201,11 @@ export class PromotionNativePortService implements PromotionAbortPort {
         !state.OOMKilled,
       'old-GitLab-is-not-running',
     );
-    const proof = await this.gitlabProbe!.probe(row, config);
+    const proof = this.gitlabProbe
+      ? await this.gitlabProbe.probe(row, config)
+      : await this.nativeGitlabProbe!.probe(String(row.Id), {
+          command: (args, timeout) => this.command(args, timeout),
+        });
     ensure(
       proof.version === security.fromVersion &&
         proof.edition === 'CE' &&
