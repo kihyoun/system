@@ -88,6 +88,9 @@ export class GitlabNativeApiService {
         value,
         [
           'curl',
+          '-q',
+          '--proxy',
+          '',
           '--silent',
           '--show-error',
           '--proto',

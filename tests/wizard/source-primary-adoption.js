@@ -473,7 +473,7 @@ async function bindingRefresh(f) {
   const nativeApiProof=await nativeApi.request(nativeApiContext,'private-fixture-secret','POST','projects/7/variables',{value:'private-value'});
   assert.equal(nativeApiProof.status,200);assert.equal(nativeApiProof.value.id,7);
   assert(!JSON.stringify(nativeApiCalls[0].args).includes('private-fixture-secret'));assert(nativeApiCalls[0].options.input.includes('private-fixture-secret'));
-  assert(!nativeApiCalls[0].args.includes('--location'));assert(nativeApiCalls[0].args.includes('http://127.0.0.1/api/v4/projects/7/variables'));
+  assert.equal(nativeApiCalls[0].args[nativeApiCalls[0].args.indexOf('curl')+1],'-q');assert.equal(nativeApiCalls[0].args[nativeApiCalls[0].args.indexOf('--proxy')+1],'');assert(!nativeApiCalls[0].args.includes('--location'));assert(nativeApiCalls[0].args.includes('http://127.0.0.1/api/v4/projects/7/variables'));
   for(const route of ['https://foreign.test','//foreign.test','../admin','projects/7%0aSECRET'])await assert.rejects(()=>nativeApi.request(nativeApiContext,'token','GET',route),/request-invalid/);
   nativeApiOutput='{}\nBOOTSTRAPPER_HTTP_STATUS:302';await assert.rejects(()=>nativeApi.request(nativeApiContext,'token','POST','projects'),error=>error.uncertain===true&&!error.message.includes('token'));
   nativeApiOutput='invalid\nBOOTSTRAPPER_HTTP_STATUS:200';await assert.rejects(()=>nativeApi.request(nativeApiContext,'token','GET','projects'),error=>error.uncertain===false);
