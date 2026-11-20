@@ -75,6 +75,9 @@ Dateianzahl sowie das erneute Lesen der Protokolle. Die native
 Wiederherstellungsprüfung prüft eigene Protokollierungseinstellungen mit dem
 echten Konfigurationsexporter und einer Seed-Wiederherstellung. Umfang und
 Befehle stehen im [Host-Betriebsleitfaden](../docs/HOST_OPERATIONS.md).
+Die ausdrücklich aktivierte Prüfung `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`
+verifiziert außerdem mit einem einzelnen ressourcenbegrenzten Container, dass das native Compose
+den Controller der Public-Upgrade-Testumgebung nach manuellem Austausch und beim abschließenden Zurücksetzen erkennt und neu erstellt.
 
 ## Testorganisation
 

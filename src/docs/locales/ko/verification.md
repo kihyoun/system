@@ -69,6 +69,9 @@ docker run --rm --network none \
 다시 읽은 결과를 검증합니다. 기본 복구 검사는 실제 구성 내보내기 도구와 Seed
 복원을 통해 사용자 정의 로깅 설정을 검사합니다. 범위와 명령은
 [호스트 운영](../docs/HOST_OPERATIONS.md)을 참고하세요.
+명시적으로 활성화하는 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`
+검사는 리소스가 제한된 컨테이너 하나를 사용하여 네이티브 Compose가 공개 업그레이드 픽스처의
+수동 교체 및 최종 초기화 단계에서 컨트롤러를 찾고 다시 생성하는지도 검증합니다.
 
 ## 테스트 구성
 
