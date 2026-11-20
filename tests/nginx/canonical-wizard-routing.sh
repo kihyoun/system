@@ -7,7 +7,7 @@ ln -s "$root/operations" "$fixture/operations"
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture"/{system/.projects.env,gitlab,nginx,nginx-proxy/.projects,wizard,project-bootstrap,bin} /templates
 cp -a "$root/nginx/.templates" "$fixture/nginx/"
-cp "$root/nginx/"{start.sh,wizard-aliases.js,application-aliases.js} "$fixture/nginx/"
+cp "$root/nginx/"{wizard-aliases.js,application-aliases.js} "$fixture/nginx/"
 cp "$root/project-bootstrap/preserve-system-project.js" "$fixture/project-bootstrap/"
 printf 'BOOTSTRAPPER_IP=127.0.0.1\n' > "$fixture/.docker.env"
 printf 'GITLAB_IP=127.0.0.1\n' > "$fixture/gitlab/.docker.env"
@@ -33,23 +33,23 @@ chmod +x "$fixture/bin/"*
 export PATH="$fixture/bin:$PATH" TRACE="$fixture/trace"
 cd "$fixture/nginx"
 for mode in start reload; do
-  if [[ $mode == start ]]; then bash -e start.sh; else bash -e start.sh reload; fi
+  if [[ $mode == start ]]; then node "$root/operations/dist/projects-routing/entry.js" routing start "$fixture" /templates; else node "$root/operations/dist/projects-routing/entry.js" routing reload "$fixture" /templates; fi
   test "$(grep -c 'return 308 https://wizard.example.test$request_uri;' /templates/zz-wizard-aliases.conf.template)" -eq 2
   test "$(grep -c 'location \^~ /.well-known/acme-challenge/' /templates/zz-wizard-aliases.conf.template)" -eq 2
 done
 cp /templates/default.conf.template "$fixture/original-main"
 cp /templates/zz-wizard-aliases.conf.template "$fixture/original-alias"
 printf '\nGITLAB_HOST=example.test\n' >> "$fixture/system/.docker.env"
-if bash -e start.sh reload > /dev/null 2>&1; then echo 'Conflicting aliases were accepted.' >&2; exit 1; fi
+if node "$root/operations/dist/projects-routing/entry.js" routing reload "$fixture" /templates > /dev/null 2>&1; then echo 'Conflicting aliases were accepted.' >&2; exit 1; fi
 cmp /templates/default.conf.template "$fixture/original-main"
 cmp /templates/zz-wizard-aliases.conf.template "$fixture/original-alias"
 sed -i '$d' "$fixture/system/.docker.env"
-bash -e start.sh recovery
+node "$root/operations/dist/projects-routing/entry.js" routing recovery "$fixture" /templates
 test -z "$(cat /templates/zz-wizard-aliases.conf.template)"
-bash -e start.sh
+node "$root/operations/dist/projects-routing/entry.js" routing start "$fixture" /templates
 cmp /templates/zz-wizard-aliases.conf.template "$fixture/original-alias"
 sed -i 's/^WIZARD_ALIASES=.*/WIZARD_ALIASES=""/' "$fixture/system/.docker.env"
-bash -e start.sh reload
+node "$root/operations/dist/projects-routing/entry.js" routing reload "$fixture" /templates
 test -z "$(cat /templates/zz-wizard-aliases.conf.template)"
 grep -q 'nginx -t' "$TRACE"
 grep -q 'nginx -s reload' "$TRACE"

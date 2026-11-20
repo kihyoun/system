@@ -55,7 +55,7 @@ function failureCodes(code) {
 }
 async function refused(candidate,code,operation='harvest') {
   try {
-    await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','bash',operation==='restore'?'seed.sh':'harvest.sh'],
+    await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','node','/system/operations/dist/storage/entry.js','launch',operation],
       {timeout:30000,failureCodes:failureCodes(code)});
   } catch(error) {if(error.message===code)return;throw error;}
   throw Error('storage-refusal-not-enforced');

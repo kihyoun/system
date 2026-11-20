@@ -78,16 +78,24 @@ export class UpgradeRunnerService {
       configurations,
     };
   }
-  runnerPool(session: UpgradeSession, script: string): void {
-    session.run('bash', [script], {
-      cwd: path.join(ROOT, 'gitlab-runner'),
-      timeout: 600000,
-      env: {
-        ...process.env,
-        SYSTEM_CONFIG_DIR: session.state,
-        SYSTEM_GITLAB_UPGRADE_OPERATION: session.operation,
+  runnerPool(session: UpgradeSession, script: 'start' | 'stop'): void {
+    session.run(
+      process.execPath,
+      [
+        path.join(ROOT, 'operations/dist/lifecycle/entry.js'),
+        script === 'start' ? 'runner-start' : 'runner-stop',
+        ROOT,
+      ],
+      {
+        cwd: path.join(ROOT, 'gitlab-runner'),
+        timeout: 600000,
+        env: {
+          ...process.env,
+          SYSTEM_CONFIG_DIR: session.state,
+          SYSTEM_GITLAB_UPGRADE_OPERATION: session.operation,
+        },
       },
-    });
+    );
   }
   runnersStopped(session: UpgradeSession, plan: RunnerPlan): void {
     const names = new Set(session.docker(['ps', '--all', '--format', '{{.Names}}']).split('\n'));
@@ -115,7 +123,7 @@ export class UpgradeRunnerService {
           ),
         );
       }
-    session.runnerPool('start.sh');
+    session.runnerPool('start');
     for (const row of plan.configurations)
       if (
         hash(

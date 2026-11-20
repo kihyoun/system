@@ -38,7 +38,7 @@ function guidedSettings() {
 }
 
 function privateWizardAcceptance(files,exists=filename=>fs.existsSync(path.join(root,filename))) {
-  const helpers=["system/ensure-wizard-image.sh","system/wizard-image-recovery.js","system/wizard-registry-token.rb"];
+  const helpers=[...(files.includes("operations/src/lifecycle/lifecycle.service.ts")?[]:["system/ensure-wizard-image.sh"]),"system/wizard-image-recovery.js","system/wizard-registry-token.rb"];
   if(!helpers.some(filename=>files.includes(filename)))return false;
   if(!helpers.every(filename=>files.includes(filename))||!exists("tests/e2e/recovery.js")||!exists("tests/e2e/wizard-pin-fixture.js"))throw Error("Private Wizard startup requires the complete private-registry recovery contract.");
   return true;

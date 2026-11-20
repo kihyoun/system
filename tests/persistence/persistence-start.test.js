@@ -19,7 +19,7 @@ function fixture(t, configured = false, reset = false) {
   for (const relative of ['system', 'bootstrapper', 'sync', 'wizard', 'nginx/.templates', 'bin', 'mounted/platform/configuration']) {
     fs.mkdirSync(path.join(dir, relative), {recursive: true});
   }
-  for (const relative of ['start.sh', 'sync/start.sh', 'bootstrapper/persistence.sh', 'bootstrapper/storage-env.sh', 'system/.docker.env.example', 'system/.seed.env']) {
+  for (const relative of ['start.sh', 'bootstrapper/persistence.sh', 'bootstrapper/storage-env.sh', 'system/.docker.env.example', 'system/.seed.env']) {
     fs.copyFileSync(path.join(root, relative), path.join(dir, relative));
   }
   fs.symlinkSync(path.join(root, 'operations'), path.join(dir, 'operations'), 'dir');
@@ -43,7 +43,10 @@ function fixture(t, configured = false, reset = false) {
     PERSISTENCE_ENV_FILE: path.join(dir, 'selector.env'), SYSTEM_BOOTSTRAPPER_SKIP_BUILD: '1',
     PERSISTENT_MOUNT: mount, PERSISTENT_DIR: persistent, SEED_DIR: hostSeed, START_CAPTURE: capture,
     START_IMAGE_CAPTURE: path.join(dir, 'image-capture'), START_RELEASE_CAPTURE: path.join(dir, 'release-capture')};
-  const run = sync => spawnSync('bash', [path.join(dir, sync ? 'sync/start.sh' : 'start.sh')], {
+  fs.mkdirSync(path.join(dir,'sync/dist'),{recursive:true});
+  fs.writeFileSync(path.join(dir,'sync/dist/index.js'), 'require("node:fs").appendFileSync(process.env.START_CAPTURE,"node:"+process.env.SEED_DIR+"\\n");');
+  env.SYSTEM_CONFIG_DIR=path.join(dir,'system');
+  const run = sync => spawnSync(sync?process.execPath:'bash', sync?[path.join(root,'operations/dist/lifecycle/entry.js'),'sync-start',dir]:[path.join(dir,'start.sh')], {
     cwd: sync ? path.join(dir, 'sync') : dir, env, encoding: 'utf8'
   });
   return {run, hostSeed, savedSeed, capture, canonical, dir, env, imageCapture: env.START_IMAGE_CAPTURE,
@@ -61,7 +64,7 @@ for (const reset of [false, true]) {
   test(`Sync startup preserves Compose seed during ${reset ? 'reset' : 'fresh'} defaults`, t => {
     const f = fixture(t, false, reset), result = f.run(true);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker-compose:${f.hostSeed}\nnpm:${f.hostSeed}\n`);
+    assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker-compose:${f.hostSeed}\nnode:${f.hostSeed}\n`);
     assert.equal(fs.existsSync(f.canonical), false);
   });
 }
@@ -82,7 +85,7 @@ test('host startup refuses active storage leases before filesystem or Docker wri
 test('configured Sync retains the saved main configuration seed behavior', t => {
   const f = fixture(t, true), result = f.run(true);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(fs.readFileSync(f.capture, 'utf8'), `npm:${f.savedSeed}\n`);
+  assert.equal(fs.readFileSync(f.capture, 'utf8'), `node:${f.savedSeed}\n`);
 });
 
 const releaseController='docker.io/example/system@sha256:'+'a'.repeat(64);

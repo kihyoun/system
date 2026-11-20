@@ -7,10 +7,9 @@ ln -s "$root/operations" "$fixture/operations"
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture"/{system/.projects.env,gitlab,nginx,nginx-proxy/.projects,wizard,bin} /templates/wizard-environments
 cp -a "$root/nginx/.templates" "$fixture/nginx/"
-cp "$root/nginx/"{start.sh,wizard-aliases.js,application-aliases.js} "$fixture/nginx/"
+cp "$root/nginx/"{wizard-aliases.js,application-aliases.js} "$fixture/nginx/"
 mkdir -p "$fixture/project-bootstrap"
 cp "$root/project-bootstrap/preserve-system-project.js" "$fixture/project-bootstrap/"
-cp "$root/nginx-proxy/"{start,stop}.sh "$fixture/nginx-proxy/"
 # Root owns the actual ACME template. This fixture isolates its copy contract.
 printf '# offline ACME sentinel\n' > "$fixture/nginx/.templates/acme-http01.conf.template"
 printf '# owned candidate sentinel\n' > /templates/wizard-environments/review.conf
@@ -31,12 +30,12 @@ chmod +x "$fixture/bin/"*
 export PATH="$fixture/bin:$PATH" TRACE="$fixture/trace"
 touch "$TRACE"
 cd "$fixture/nginx-proxy"
-bash -e start.sh
-bash -e stop.sh
+node "$root/operations/dist/projects-routing/entry.js" routing proxies "$fixture" ""
+node "$root/operations/dist/projects-routing/entry.js" routing stop-proxies "$fixture" ""
 test ! -s "$TRACE"
 cd "$fixture/nginx"
 for mode in start reload; do
-  if [ "$mode" = start ]; then bash -e start.sh; else bash -e start.sh reload; fi
+  if [ "$mode" = start ]; then node "$root/operations/dist/projects-routing/entry.js" routing start "$fixture" /templates; else node "$root/operations/dist/projects-routing/entry.js" routing reload "$fixture" /templates; fi
   test "$(grep -c '^include /etc/nginx/templates/wizard-environments/\*.conf;$' /templates/default.conf.template)" -eq 1
   test "$(grep -c 'server_name production.localhost;' /templates/default.conf.template)" -eq 1
   ! grep -q 'wizard_review\|wizard_beta\|wizard_prod' /templates/default.conf.template

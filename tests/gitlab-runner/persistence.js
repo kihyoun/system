@@ -34,10 +34,11 @@ try {
   for (const directory of ['', '.', 'relative', '/tmp/$HOME']) assert.throws(() => definition('runner', 1, directory));
 
   for (const directory of ['gitlab-runner', 'system', 'gitlab', 'bin', 'project-state']) fs.mkdirSync(path.join(fixture, directory));
-  for (const name of ['start.sh', 'stop.sh', 'pool.sh', 'compose.js', 'docker-compose.yml', 'provision.js', 'provision.rb']) {
+  for (const name of ['compose.js', 'docker-compose.yml', 'provision.js', 'provision.rb']) {
     fs.copyFileSync(path.join(root, 'gitlab-runner', name), path.join(fixture, 'gitlab-runner', name));
   }
   fs.symlinkSync(path.join(root,'operations'),path.join(fixture,'operations'),'dir');
+  fs.copyFileSync(path.join(root,'gitlab/security-release.json'),path.join(fixture,'gitlab/security-release.json'));
   const log = path.join(fixture, 'compose-log.jsonl');
   fs.writeFileSync(path.join(fixture, 'bin/docker-compose'), `#!/usr/bin/env node\nconst fs=require('fs'); const args=process.argv.slice(2); fs.appendFileSync(process.env.COMPOSE_LOG, JSON.stringify({args,definition:JSON.parse(fs.readFileSync(args[args.indexOf('-f')+1],'utf8'))})+'\\n');\n`, {mode: 0o755});
   fs.writeFileSync(path.join(fixture, 'bin/docker'), '#!/bin/sh\ncat >/dev/null\nprintf \'{"token":"glrt-persisted_test"}\\n\'\n', {mode: 0o755});
@@ -53,7 +54,7 @@ try {
   // image as well as the component image. BusyBox rejects GNU's suffix form
   // (XXXXXXXX.json); start/stop must work with the runtime's real utility.
   const invoke = (script, argument) => {
-    const result = spawnSync('bash', [script, ...(argument ? [argument] : [])], {cwd: path.join(fixture, 'gitlab-runner'), env, encoding: 'utf8'});
+    const result = spawnSync(process.execPath, [path.join(root,'operations/dist/lifecycle/entry.js'),'runner-'+script.replace('.sh',''),fixture,...(argument ? [argument] : [])], {cwd: path.join(fixture, 'gitlab-runner'), env, encoding: 'utf8'});
     assert.equal(result.status, 0, result.stderr + result.stdout);
   };
   writeMain(2); invoke('start.sh');

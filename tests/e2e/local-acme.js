@@ -201,7 +201,7 @@ class LocalAcme {
       // Real TLS routing is active using the short-lived bootstrap certificate;
       // Certbot's HTTP-01 webroot will replace it through the actual deploy hook.
       await candidate.stage('acme-initial-proxy-reload',()=>
-        candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']));
+        candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates']));
       await candidate.stage('acme-initial-certbot-issuance',()=>this.certbot(candidate,'/candidate-data/platform',
         ['certonly','--server',DIRECTORY,'--non-interactive','--agree-tos','--register-unsafely-without-email',
         '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture',...domains.flatMap(host=>['-d',host])]));

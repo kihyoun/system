@@ -7,7 +7,7 @@
   {"component":"shared","file":"shared/codeql-parent.js","timeoutSeconds":20},
   {"component":"bootstrapper","file":"bootstrapper/host-operations.py","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/root-password.js","timeoutSeconds":15},
-  {"component":"gitlab","file":"gitlab/startup.sh","timeoutSeconds":20},
+  {"component":"gitlab","file":"gitlab/startup.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/application-templates.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/project-bootstrap.js","timeoutSeconds":45,"port":8071},
   {"component":"gitlab","file":"gitlab/project-bootstrap-resume.rb","timeoutSeconds":20},

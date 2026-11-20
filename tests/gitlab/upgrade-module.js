@@ -31,7 +31,7 @@ test('guardian process port preserves the native watchdog contract and inherited
   guardian.ownedRun(session,'fixture',['arg'],{timeout:1000,input:'private-input',env:{TEST:'private'}});
   assert.equal(calls[1].binary,process.execPath);assert.equal(calls[1].args[1],'watchdog');assert.equal(calls[1].options.detached,true);assert.equal(calls[1].options.timeout,6000);
   assert(!calls[1].args.join(' ').includes('private'));assert.equal(JSON.parse(calls[1].options.input).timeout,1000);
-  session.run=port.run;session.runnerPool('start.sh');
+  session.run=port.run;session.runnerPool('start');
   assert.equal(calls.at(-1).options.env.SYSTEM_GITLAB_UPGRADE_OPERATION,session.operation);
   assert.equal(calls.at(-1).options.env.SYSTEM_CONFIG_DIR,base.stateDir);
   session.start('fixture',true);

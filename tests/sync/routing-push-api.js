@@ -8,16 +8,18 @@ const child = require('node:child_process');
 const source = path.resolve(__dirname, '../..'), root = fs.mkdtempSync(path.join(os.tmpdir(), 'routing-push-api-'));
 fs.symlinkSync(path.join(source,'operations'),path.join(root,'operations'),'dir');
 for (const folder of ['sync', 'system', 'state/.projects.env', 'nginx', 'project-bootstrap']) fs.mkdirSync(path.join(root, folder), {recursive: true});
-for (const name of ['system/push.sh', 'nginx/wizard-aliases.js', 'nginx/application-aliases.js',
+for (const name of ['nginx/wizard-aliases.js', 'nginx/application-aliases.js',
   'project-bootstrap/preserve-system-project.js', 'project-bootstrap/routing-impact.js', 'project-bootstrap/configuration-archive.js'])
   fs.copyFileSync(path.join(source, name), path.join(root, name));
 fs.writeFileSync(path.join(root, 'project-bootstrap/apply.sh'), 'printf "%s\\n" "$*" >> ../apply-trace\n[[ ! -f ../fail-apply ]]\n');
 process.chdir(path.join(root, 'sync'));
 process.env.SYSTEM_CONFIG_DIR = path.join(root, 'state'); process.env.SYNC_USER = 'fixture'; process.env.SYNC_PASS = 'fixture-password';
 let server, application;
-const execute = child.execSync;
-child.execSync = (command, options) => {
-  assert.equal(command, 'cd ../system; bash push.sh', 'route-only Push must not stop GitLab or the platform');
+const execute = child.execFileSync;
+child.execFileSync = (command, args, options) => {
+  if(command!==process.execPath)return execute(command,args,options);
+  assert(args[0].endsWith('/configuration/entry.js'));
+  assert.equal(args[1],'push','route-only Push must not stop GitLab or the platform');
   const {ConfigurationService}=require(path.join(source,'operations/dist/configuration/configuration.service'));
   const {NativeProcessRunner}=require(path.join(source,'operations/dist/runtime/process'));
   const routing={run(value){assert.equal(value.action,'apply');fs.appendFileSync(path.join(root,'apply-trace'),value.projects.join(' ')+'\n');if(fs.existsSync(path.join(root,'fail-apply')))throw Error('Injected routing failure');}};

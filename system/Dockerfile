@@ -28,4 +28,4 @@ WORKDIR /system/sync
 RUN npm ci && npm run build
 # Start
 WORKDIR /system/system
-CMD ["/bin/bash", "./start.sh"]
+CMD ["node", "/system/operations/dist/lifecycle/entry.js", "start", "/system"]

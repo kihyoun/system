@@ -24,7 +24,7 @@ function fixture(t,options={}){
   const calls=[],actions=[];let privateConfig;
   const execute=(command,args,details={})=>{
     calls.push({command,args,details});
-    if(command==='bash'){assert.deepEqual(args,['-e','start.sh','recovery']);return '';}
+    if(command===process.execPath && args.includes('routing')){assert.equal(args[2],'recovery');return '';}
     assert.equal(command,'docker');assert.equal(args[0],'--host=unix:///var/run/docker.sock');
     assert.equal(details.env.DOCKER_HOST,undefined);
     if(args[1]==='image'&&args[2]==='inspect'){

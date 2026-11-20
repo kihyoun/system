@@ -7,11 +7,9 @@ ln -s "$root/operations" "$fixture/operations"
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture"/{system/.projects.env,gitlab,nginx,nginx-proxy/.projects,wizard,gitlab-runner,bin} /templates
 cp -a "$root/nginx/.templates" "$fixture/nginx/"
-cp "$root/nginx/"{start.sh,wizard-aliases.js,application-aliases.js} "$fixture/nginx/"
+cp "$root/nginx/"{wizard-aliases.js,application-aliases.js} "$fixture/nginx/"
 mkdir -p "$fixture/project-bootstrap"
 cp "$root/project-bootstrap/preserve-system-project.js" "$fixture/project-bootstrap/"
-cp "$root/nginx-proxy/"{start,stop}.sh "$fixture/nginx-proxy/"
-cp "$root/gitlab-runner/"{start,stop,register,unregister,pool}.sh "$fixture/gitlab-runner/"
 node - "$root" "$fixture" <<'NODE'
 const fs=require('fs'),path=require('path');
 const [root,fixture]=process.argv.slice(2);
@@ -29,17 +27,17 @@ chmod +x "$fixture/bin/"*
 export PATH="$fixture/bin:$PATH" TRACE="$fixture/trace"
 touch "$TRACE"
 cd "$fixture/nginx-proxy"
-bash -e start.sh
-bash -e stop.sh
+node "$root/operations/dist/projects-routing/entry.js" routing proxies "$fixture" ""
+node "$root/operations/dist/projects-routing/entry.js" routing stop-proxies "$fixture" ""
 test ! -s "$TRACE"
 cd "$fixture/gitlab-runner"
-bash -e start.sh projects
-bash -e stop.sh projects
-bash -e register.sh projects
-bash -e unregister.sh projects
+node "$root/operations/dist/lifecycle/entry.js" runner-start "$fixture" projects
+node "$root/operations/dist/lifecycle/entry.js" runner-stop "$fixture" projects
+node "$root/operations/dist/lifecycle/entry.js" runner-register "$fixture" projects
+node "$root/operations/dist/lifecycle/entry.js" runner-unregister "$fixture" projects
 test ! -s "$TRACE"
 cd "$fixture/nginx"
-bash -e start.sh reload
+node "$root/operations/dist/projects-routing/entry.js" routing reload "$fixture" /templates
 test "$(grep -c 'server_name localhost;' /templates/default.conf.template)" -eq 1
 ! grep -q wizard_prod /templates/default.conf.template
 ! grep -q 'wizard_runner\|wizard_prod' "$TRACE"
@@ -61,7 +59,7 @@ EOF
       done
       for mode in start reload; do
         : > "$TRACE"
-        if [ "$mode" = start ]; then bash -e start.sh; else bash -e start.sh reload; fi
+        if [ "$mode" = start ]; then node "$root/operations/dist/projects-routing/entry.js" routing start "$fixture" /templates; else node "$root/operations/dist/projects-routing/entry.js" routing reload "$fixture" /templates; fi
         for env in PROD BETA REVIEW; do
           flag=$(printf '%s' "$env" | tr '[:upper:]' '[:lower:]')
           count=$(grep -c "server_name $env.localhost;" /templates/default.conf.template || true)
@@ -95,14 +93,14 @@ for environment in PROD BETA REVIEW; do
   for mode in start reload; do
     : > "$TRACE"
     result=0
-    if [ "$mode" = start ]; then bash -e start.sh || result=$?; else bash -e start.sh reload || result=$?; fi
+    if [ "$mode" = start ]; then node "$root/operations/dist/projects-routing/entry.js" routing start "$fixture" /templates || result=$?; else node "$root/operations/dist/projects-routing/entry.js" routing reload "$fixture" /templates || result=$?; fi
     test "$result" -ne 0
     test ! -s "$TRACE"
   done
 done
 mv "$fixture/nginx/.templates/default.ssl.conf.saved" "$fixture/nginx/.templates/default.ssl.conf.template"
 echo 'PASS: enabled application rendering failures stop start/reload before Docker.'
-bash -e start.sh recovery
+node "$root/operations/dist/projects-routing/entry.js" routing recovery "$fixture" /templates
 grep -q 'server_name gitlab.localhost;' /templates/default.conf.template
 grep -q 'server_name registry.localhost;' /templates/default.conf.template
 ! grep -q 'server_name localhost;\|server_name sync.localhost;\|wizard-environments\|wizard_prod' /templates/default.conf.template

@@ -33,12 +33,11 @@ RUN cd operations && npm run build
 COPY gitlab/*.js gitlab/*.sh gitlab/*.rb gitlab/*.json gitlab/docker-compose.omnibus.yml ./gitlab/
 COPY gitlab/renovate ./gitlab/renovate
 COPY renovate.json ./
-COPY gitlab-runner/*.js gitlab-runner/*.sh gitlab-runner/*.rb gitlab-runner/docker-compose.yml ./gitlab-runner/
-COPY nginx/*.sh nginx/*.js ./nginx/
+COPY gitlab-runner/*.js gitlab-runner/*.rb gitlab-runner/docker-compose.yml ./gitlab-runner/
+COPY nginx/*.js ./nginx/
 COPY nginx/.templates ./nginx/.templates
-COPY nginx-proxy/*.sh ./nginx-proxy/
+COPY nginx-proxy/ ./nginx-proxy/
 COPY start.sh ./
-COPY sync/start.sh ./sync/
 COPY system/ ./system/
 COPY bootstrapper/ ./bootstrapper/
 COPY tests ./tests

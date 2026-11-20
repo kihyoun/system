@@ -48,7 +48,7 @@ test('fixture TLS uses one existing authority and extends its exact owned SANs',
   assert.equal(f.candidate.guidedAcmeIdentity.serial,'AA');
   assert.equal(f.calls.filter(call=>call.probe).length,3);
   const configure=f.calls.find(call=>call.inner?.includes('/system/gitlab')).inner;
-  assert(configure.includes('start.sh'),'the native committed GitLab configuration entrypoint is required');
+  assert(configure.includes('gitlab-start'),'the native committed GitLab configuration entrypoint is required');
   const tls=f.calls.find(call=>call.input?.settings).input;
   assert.equal(tls.settings.GITLAB_EXTERNAL_URL,'https://gitlab.candidate.test');
   assert.equal(tls.settings.GITLAB_DOMAIN_MODE,'2');

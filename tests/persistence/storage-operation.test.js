@@ -157,7 +157,7 @@ test('unchanged Wizard JSZip DOS backups and mixed Unix entries retain strict me
 test('a real configuration import preserves the acquired server-owned environment mutex',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',system=f.root+'/source/system';
   fs.mkdirSync(system,{recursive:true});fs.symlinkSync(path.resolve(__dirname,'../../operations'),f.root+'/source/operations','dir');fs.mkdirSync(f.root+'/source/project-bootstrap');fs.mkdirSync(f.root+'/source/nginx');
-  for(const relative of ['system/push.sh','nginx/wizard-aliases.js','nginx/application-aliases.js','project-bootstrap/routing-impact.js','project-bootstrap/configuration-archive.js','project-bootstrap/preserve-system-project.js'])
+  for(const relative of ['nginx/wizard-aliases.js','nginx/application-aliases.js','project-bootstrap/routing-impact.js','project-bootstrap/configuration-archive.js','project-bootstrap/preserve-system-project.js'])
     fs.copyFileSync(path.join(__dirname,'../..',relative),f.root+'/source/'+relative);
   execFileSync('python3',['-c',
     'import zipfile,sys\nwith zipfile.ZipFile(sys.argv[1],"w") as z:\n z.writestr(".docker.env","export SYNC_ENABLE=true\\n")\n z.writestr(".projects.env/new.env","export PROJECT=new\\n")',f.root+'/source/bootstrapper.zip']);
@@ -165,10 +165,10 @@ test('a real configuration import preserves the acquired server-owned environmen
   held.acquireEnvironment();const inode=fs.statSync(held.environment).ino;
   const base={...process.env,SYSTEM_CONFIG_DIR:state};
   for(const spec of [undefined,{...held.spec,helperName:'foreign'},{...held.spec,operation:'harvest'}]){
-    assert.throws(()=>execFileSync('bash',['push.sh'],{cwd:system,env:{...base,...(spec?{SYSTEM_STORAGE_SPEC:JSON.stringify(spec)}:{})},encoding:'utf8',stdio:'pipe'}));
+    assert.throws(()=>execFileSync(process.execPath,[path.resolve(__dirname,'../../operations/dist/configuration/entry.js'),'push',f.root+'/source',state,f.root+'/source/bootstrapper.zip'],{cwd:system,env:{...base,...(spec?{SYSTEM_STORAGE_SPEC:JSON.stringify(spec)}:{})},encoding:'utf8',stdio:'pipe'}));
     assert.equal(fs.statSync(held.environment).ino,inode);
   }
-  execFileSync('bash',['push.sh'],{cwd:system,env:{...base,SYSTEM_STORAGE_SPEC:JSON.stringify(held.spec)},encoding:'utf8'});
+  execFileSync(process.execPath,[path.resolve(__dirname,'../../operations/dist/configuration/entry.js'),'push',f.root+'/source',state,f.root+'/source/bootstrapper.zip'],{cwd:system,env:{...base,SYSTEM_STORAGE_SPEC:JSON.stringify(held.spec)},encoding:'utf8'});
   assert.equal(fs.statSync(held.environment).ino,inode);
   assert.equal(fs.readFileSync(state+'/.projects.env/new.env','utf8'),'export PROJECT=new\n');
   held.release(true);
@@ -237,15 +237,15 @@ test('a settled startup failure retries while killed or unknown work retains its
 });
 test('a busy controller waits without writers while settled startup failures remain retryable',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',system=f.root+'/source/system';fs.mkdirSync(system,{recursive:true});
-  for(const file of ['start.sh','seed-operation.js'])fs.copyFileSync(path.join(__dirname,'../../system',file),path.join(system,file));
+  for(const file of ['seed-operation.js'])fs.copyFileSync(path.join(__dirname,'../../system',file),path.join(system,file));
   fs.symlinkSync(path.resolve(__dirname,'../../operations'),f.root+'/source/operations','dir');
   fs.writeFileSync(system+'/persistence-init.js','process.exit(1);\n');
   const env={...process.env,SYSTEM_CONFIG_DIR:state},held=new operation.StorageLease(state,{operation:'harvest',helperName:'fixture',imageId:'sha256:'+'a'.repeat(64)});
-  const busy=spawnSync('timeout',['--kill-after=1','3','bash','start.sh'],{cwd:system,env,encoding:'utf8'});
+  const busy=spawnSync('timeout',['--kill-after=1','3',process.execPath,path.resolve(__dirname,'../../operations/dist/lifecycle/entry.js'),'start',f.root+'/source'],{cwd:system,env,encoding:'utf8'});
   assert.equal(busy.status,124,busy.stderr);assert.match(busy.stderr,/Startup paused/);
   assert(fs.existsSync(held.owner));held.release(true);
   for(let attempt=0;attempt<2;attempt++){
-    const settled=spawnSync('bash',['start.sh'],{cwd:system,env,encoding:'utf8',timeout:5000});
+    const settled=spawnSync(process.execPath,[path.resolve(__dirname,'../../operations/dist/lifecycle/entry.js'),'start',f.root+'/source'],{cwd:system,env,encoding:'utf8',timeout:5000});
     assert.equal(settled.status,1,settled.stderr);
     assert(!fs.existsSync(path.join(state,'.storage-operation-lock')));
   }

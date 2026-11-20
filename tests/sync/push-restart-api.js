@@ -6,7 +6,6 @@ const path = require('path');
 const http = require('http');
 const {spawn} = require('child_process');
 const entry = process.env.SYNC_ENTRY || path.resolve(__dirname, '../../sync/dist/index.js');
-const pushScript = process.env.PUSH_SCRIPT || path.resolve(__dirname, '../../system/push.sh');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function scenario(validArchive) {
@@ -20,8 +19,7 @@ async function scenario(validArchive) {
   fs.copyFileSync(path.resolve(__dirname, '../../nginx/application-aliases.js'), path.join(root, 'nginx/application-aliases.js'));
   fs.copyFileSync(path.resolve(__dirname, '../../project-bootstrap/routing-impact.js'), path.join(root, 'project-bootstrap/routing-impact.js'));
   fs.copyFileSync(path.resolve(__dirname, '../../project-bootstrap/configuration-archive.js'), path.join(root, 'project-bootstrap/configuration-archive.js'));
-  fs.copyFileSync(pushScript, path.join(root, 'system/push.sh'));
-  fs.writeFileSync(path.join(root, 'system/stop-intermediate.sh'), 'touch ../stopped\n');
+
   const saved = path.join(root, 'state/.docker.env');
   fs.writeFileSync(saved, 'export GITLAB_RUNNER_SCALE=1\n');
   // Stored ZIP fixture: .docker.env containing export GITLAB_RUNNER_SCALE=4.

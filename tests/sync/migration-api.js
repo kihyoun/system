@@ -9,7 +9,8 @@ const cube = fs.readFileSync(path.resolve(__dirname, '../../system/.docker.env.e
 const configuration = index => cube + '\nexport MIGRATION_FIXTURE="configuration-' + index + '"\n';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-migration-'));
 for (const name of ['sync', 'system', 'state']) fs.mkdirSync(path.join(root, name));
-fs.writeFileSync(path.join(root, 'system/stop-intermediate.sh'), 'exit 0\n');
+fs.mkdirSync(path.join(root,'operations/dist/lifecycle'),{recursive:true});
+fs.writeFileSync(path.join(root,'operations/dist/lifecycle/entry.js'),'process.exit(0);\n');
 const entry = path.resolve(__dirname, '../../sync/dist/index.js');
 const child = spawn(process.execPath, [entry], {cwd: path.join(root, 'sync'),
   env: {...process.env, SYSTEM_CONFIG_DIR: path.join(root, 'state'), SYNC_USER: 'migration-test', SYNC_PASS: 'test-only'}, stdio: ['ignore','pipe','pipe']});

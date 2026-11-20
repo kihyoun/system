@@ -6,7 +6,7 @@ const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const {test} = require('node:test');
 
-const script = path.resolve(__dirname, '../../system/push.sh');
+const script = path.resolve(__dirname, '../../operations/dist/configuration/entry.js');
 const {publish} = require('../../system/wizard-public');
 // Small stored ZIP fixtures keep this acceptance test independent of Python or
 // a zip writer package. Production unzip and rsync execute without stubs.
@@ -50,7 +50,7 @@ function fixture(t, entries) {
   fs.symlinkSync(path.join(state, '.docker.env'), path.join(runtime, '.docker.env'));
   fs.symlinkSync(path.join(state, '.projects.env'), path.join(runtime, '.projects.env'));
   if (entries) fs.writeFileSync(path.join(root, 'bootstrapper.zip'), zip(entries));
-  const run = (extraEnv = {}) => spawnSync('bash', [script], {
+  const run = (extraEnv = {}) => spawnSync(process.execPath, [script,'push',path.resolve(__dirname,'../..'),state,path.join(root,'bootstrapper.zip')], {
     cwd: runtime, encoding: 'utf8', env: {...process.env, SYSTEM_CONFIG_DIR: state, ...extraEnv}
   });
   return {root, runtime, state, run};

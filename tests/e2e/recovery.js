@@ -277,7 +277,7 @@ async function capture(original,dependencies={}) {
       },{settings,certificate,privateKey,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef,realAcme:!!dependencies.acme});
       inputs.expected.wizardAliases=WIZARD_ALIAS;
       if(dependencies.acme)inputs.expected.acme=guided?original.guidedAcmeIdentity:await dependencies.acme.issue(original);
-      else await original.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
+      else await original.inner(['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates']);
       const connection=dependencies.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{};
       await verifyAliasLifecycle(original,connection,'original');
       await require('./application-routing').setup(original,connection);
@@ -328,8 +328,8 @@ async function capture(original,dependencies={}) {
 
 async function captureSeed(original,inputs) {
   const step=(name,action,allowedReasons)=>checkpoint(original,'recovery-seed-'+name,action,allowedReasons);
-  await step('runner-stop',()=>original.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','bash','stop.sh']));
-  await step('harvest',()=>original.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],
+  await step('runner-stop',()=>original.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','node','/system/operations/dist/lifecycle/entry.js','runner-stop','/system']));
+  await step('harvest',()=>original.inner(['exec','-w','/system/system','system_bootstrapper_1','node','/system/operations/dist/storage/entry.js','launch','harvest'],
     {timeout:180000,failureCodes:HARVEST_FAILURE_CODES}),Object.values(HARVEST_FAILURE_CODES));
   const current=await step('manifest-current',async()=>{
     const current=await original.inner(['run','--rm','--network','none','--read-only',
@@ -374,7 +374,7 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await candidate.inner([...args,'--entrypoint','/bin/sh','system-candidate:under-test','-c','sleep infinity']);
   await candidate.inner(['start','system_bootstrapper_1']);
   await transferToController(candidate,input.configArchive,'/system/bootstrapper.zip');
-  await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','push.sh']);
+  await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','node','/system/operations/dist/configuration/entry.js','push','/system','/state','/system/bootstrapper.zip']);
   const wizardImage=await candidate.inner(['exec','system_bootstrapper_1','bash','-c','source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"']);
   if(wizardImage!==(privateWizard?.imageRef||'systembootstrapper/wizard'))throw Error('wizard-pin-recovery-artifact-not-declared');
   if(privateWizard)for(const identity of [privateWizard.imageRef,privateWizard.imageId]){
@@ -396,7 +396,7 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await candidate.call(['exec','-i',candidate.daemon,'sh','-ec',
     'umask 077; mkdir -m 700 /recovery-inputs; cat > '+hostBackup],{inputFile:input.configArchive});
   await candidate.stage('recovery-seed-native-restore',()=>candidate.inner(
-    ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','bash','seed.sh'],
+    ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','node','/system/operations/dist/storage/entry.js','launch','restore'],
     {timeout:180000,failureCodes:SEED_RESTORE_FAILURE_CODES}));
   if(candidate.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(candidate);
   await storageAdapter.detach(candidate,{retainDevice:!!candidate.spec.publicUpgrade});
@@ -491,7 +491,7 @@ async function verifyAliasLifecycle(candidate,connection,phase,dependencies={}) 
     ['canonical-alias-redirect-failed','canonical-alias-challenge-failed']);
   await step('routing',()=>verify(candidate,connection));
   await step('reload',async()=>{
-    await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
+    await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates']);
     await verify(candidate,connection);
   });
   await step('restart',async()=>{

@@ -123,7 +123,7 @@ test('bootstrap uses only declared binary streams and restores before normal con
   const uploads=calls.filter(call=>call.options?.inputFile);
   assert.deepEqual(uploads.map(call=>call.options.inputFile),[input.configArchive,input.seedArchive,input.configArchive,input.configArchive]);
   assert(!calls.some(call=>call.options?.input && Buffer.isBuffer(call.options.input)),'archive bytes never buffered into JSON input');
-  const seed=calls.findIndex(call=>call.args.includes('seed.sh'));
+  const seed=calls.findIndex(call=>call.args.includes('/system/operations/dist/storage/entry.js')&&call.args.includes('restore'));
   const normalCreate=calls.findIndex(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint'));
   assert(seed>=0&&normalCreate>seed,'restore completes before normal controller creation');
   assert(calls[seed].args.includes('SYSTEM_SEED_CONFIGURATION_BACKUP=/recovery-inputs/bootstrapper.zip'),
@@ -168,7 +168,7 @@ test('native Seed restore records exact public failures through the Docker bound
       const stages=[],events=[];
       const candidate={spec:{restore:input},daemon:'owned-private-daemon',results:stages,now:()=>0,checkpoint:()=>{},stage:Candidate.prototype.stage,
         call:async()=>'',inner:async(args,options)=>{
-          if(args.includes('seed.sh'))return driver.exec(['exec'],options);
+          if(args.includes('/system/operations/dist/storage/entry.js')&&args.includes('restore'))return driver.exec(['exec'],options);
           return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'systembootstrapper/wizard':'';
         }};
       await assert.rejects(()=>recovery.bootstrapRestore(candidate,{storage:{...storageFixture,detach:async()=>events.push('detached')}}),error=>{
@@ -299,7 +299,7 @@ test('original and restored alias checks rerender/reload and restart only the pr
     }});
     assert.deepEqual(events,[
       'recovery-'+phase+'-alias-routing','verified','recovery-'+phase+'-alias-reload',
-      ['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload'],'verified',
+      ['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates'],'verified',
       'recovery-'+phase+'-alias-restart',['restart','system_web_1'],'verified'
     ]);
   }
@@ -725,7 +725,7 @@ function coldSeedFixture(t,failure){
   const input=fixture(t),events=[],stages=[];
   const candidate={daemon:'owned-daemon',results:stages,now:()=>0,checkpoint:()=>{},stage:require('./disposable-candidate').Candidate.prototype.stage,
     inner:async(args,options)=>{
-      const kind=args.includes('stop.sh')?'runner-stop':args.includes('harvest.sh')?'harvest':'manifest-current';events.push(kind);
+      const kind=args.includes('runner-stop')?'runner-stop':args.includes('harvest')?'harvest':'manifest-current';events.push(kind);
       if(kind==='harvest')assert.deepEqual(options.failureCodes,recovery.HARVEST_FAILURE_CODES);
       if(kind===failure?.step)throw Object.assign(Error(failure.message||'private-upstream-error'),failure.metadata);
       return kind==='manifest-current'?'/seed/snapshots/completed-fixture':'';
@@ -780,7 +780,7 @@ test('fixed Harvest failure codes identify internal phases without exposing arbi
   const script=fs.readFileSync(path.join(__dirname,'../../operations/src/storage/copy.ts'),'utf8');
   for(const [line,code]of Object.entries(recovery.HARVEST_FAILURE_CODES)){
     assert.equal(failureReason(code),code);
-    if(line.startsWith('Harvest phase failed: '))assert(script.includes("phase='"+line.slice('Harvest phase failed: '.length,-1)+"'"));
+    if(line.startsWith('Harvest phase failed: '))assert(script.includes("phase = '"+line.slice('Harvest phase failed: '.length,-1)+"'"));
     // Historical shell messages remain accepted for older saved diagnostics.
     else if(!line.includes(' ')&&line!=='storage-operation-busy')assert(script.includes(line));
     const f=coldSeedFixture(t,{step:'harvest',message:code,metadata:{exitCode:1}});

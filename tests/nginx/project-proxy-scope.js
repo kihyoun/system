@@ -10,7 +10,6 @@ test('targeted proxy setup prepares only the selected application without recrea
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   fs.symlinkSync(path.resolve(__dirname,'../../operations'),path.join(root,'operations'),'dir');
   for (const directory of ['nginx-proxy/.projects', 'system/.projects.env', 'bin']) fs.mkdirSync(path.join(root, directory), {recursive: true});
-  fs.copyFileSync(path.join(__dirname, '../../nginx-proxy/start.sh'), path.join(root, 'nginx-proxy/start.sh'));
   fs.writeFileSync(path.join(root, 'system/.docker.env'), 'NGINX_PROXY_IMAGE="operator-proxy@sha256:' + 'a'.repeat(64) + '"\n');
   for (const key of ['selected', 'unrelated']) fs.writeFileSync(path.join(root, 'system/.projects.env/.' + key + '.env'),
     'PROJECT_NAME=' + key + '\nUSE_PROD_HOST=true\nUSE_BETA_HOST=false\nUSE_REVIEW_HOST=true\n');
@@ -18,7 +17,7 @@ test('targeted proxy setup prepares only the selected application without recrea
   const bin = path.join(root, 'bin'), trace = path.join(root, 'trace');
   fs.writeFileSync(path.join(bin, 'docker-compose'), '#!/bin/sh\nprintf "%s %s\\n" "$NGINX_PROXY_IMAGE" "$*" >> "$TRACE"\n', {mode: 0o755});
   fs.writeFileSync(path.join(bin, 'docker'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$TRACE"\nprintf "172.20.0.2\\n"\n', {mode: 0o755});
-  const result = spawnSync('bash', ['start.sh', 'selected'], {cwd: path.join(root, 'nginx-proxy'), encoding: 'utf8', env: {...process.env, PATH: bin + ':' + process.env.PATH, TRACE: trace}});
+  const result = spawnSync(process.execPath, [path.join(root,'operations/dist/projects-routing/entry.js'),'routing','proxies',root,'','selected'], {cwd: path.join(root, 'nginx-proxy'), encoding: 'utf8', env: {...process.env, PATH: bin + ':' + process.env.PATH, TRACE: trace}});
   assert.equal(result.status, 0, result.stderr);
   const commands = fs.readFileSync(trace, 'utf8');
   assert.match(commands, /-p selected up --no-recreate --no-build -d prod/);
@@ -28,7 +27,7 @@ test('targeted proxy setup prepares only the selected application without recrea
   assert.equal(fs.readFileSync(path.join(root, 'nginx-proxy/.projects/.unrelated.env'), 'utf8'), 'unchanged sibling');
   assert.equal(fs.readFileSync(path.join(root, 'nginx-proxy/.projects/.selected.env'), 'utf8'), 'PROD_PROXY=172.20.0.2\nREVIEW_PROXY=172.20.0.2\n');
   fs.writeFileSync(trace, '');
-  const startup = spawnSync('bash', ['start.sh'], {cwd: path.join(root, 'nginx-proxy'), encoding: 'utf8', env: {...process.env,
+  const startup = spawnSync(process.execPath, [path.join(root,'operations/dist/projects-routing/entry.js'),'routing','proxies',root,''], {cwd: path.join(root, 'nginx-proxy'), encoding: 'utf8', env: {...process.env,
     PATH: bin + ':' + process.env.PATH, TRACE: trace, SYSTEM_PROJECT_ROUTING_ONLY: 'false'}});
   assert.equal(startup.status, 0, startup.stderr);
   const startupCommands = fs.readFileSync(trace, 'utf8');

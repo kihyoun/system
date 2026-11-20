@@ -15,8 +15,8 @@ function fixture(t,retainedTag=false){
   const events=[];let runnerImage=imageIds[release.runner.fromImage],gitlabImage=imageIds[release.fromImage],runnerRunning=true,gitlabRunning=true,wrongRunner=false,wrongIdentity=false;
   let taggedImage={Id:imageIds[release.runner.fromImage],RepoDigests:[oldDigest]};
   const engine=new Upgrade({sourceRevision:'a'.repeat(40),stateDir:'/state',persistentDir:'/platform',checkpointDir:'/state/gitlab-upgrades/test',evidence:'/state/evidence.json',readyTimeoutSeconds:60},{serviceData,certbot,runnerData,seed:path.join(root,'absent-backup-target'),run(binary,args,opts={}){
-    if(binary==='bash'){
-      if(opts.cwd.endsWith('/gitlab-runner')){events.push('runner-'+args[0]);runnerRunning=args[0]==='start.sh';if(runnerRunning){runnerImage=wrongRunner?'sha256:'+'9'.repeat(64):imageIds[engine.runnerReference()];if(wrongIdentity)atomic(path.join(runnerConfig,'.runner_system_id'),'unexpected-new-manager');}}
+    if(binary==='bash'||(binary===process.execPath && args[0].includes('/operations/dist/'))){
+      if(opts.cwd.endsWith('/gitlab-runner')){events.push(args[1]);runnerRunning=args[1]==='runner-start';if(runnerRunning){runnerImage=wrongRunner?'sha256:'+'9'.repeat(64):imageIds[engine.runnerReference()];if(wrongIdentity)atomic(path.join(runnerConfig,'.runner_system_id'),'unexpected-new-manager');}}
       else if(opts.cwd.endsWith('/gitlab')){gitlabRunning=true;gitlabImage=engine.configuration().includes(release.toImage)?imageIds[release.toImage]:imageIds[release.fromImage];events.push('gitlab-start');}
       return '';
     }
@@ -42,7 +42,7 @@ test('native migration updates Runner only after final idle check, and cold roll
   const f=fixture(t);f.engine.lock('a'.repeat(64));const result=await f.engine.migrate(f.plan);
   assert.equal(runnerSelection(f.engine.configuration()),release.runner.toImage);assert.equal(f.runner(),imageIds[release.runner.toImage]);
   assert(fs.readFileSync(path.join(f.runnerConfig,'config.toml'),'utf8').includes(release.runner.helperImage));
-  assert(f.events.indexOf('scheduling-idle')<f.events.indexOf('runner-stop.sh'));assert(f.events.indexOf('runner-stop.sh')<f.events.indexOf('gitlab-stop'));
+  assert(f.events.indexOf('scheduling-idle')<f.events.indexOf('runner-stop'));assert(f.events.indexOf('runner-stop')<f.events.indexOf('gitlab-stop'));
   assert(!fs.existsSync(path.join(f.root,'absent-backup-target')),'No backup target is needed for the local live lease.');
   await f.engine.rollback(result.checkpointSha256);assert.equal(f.engine.configuration(),f.saved);assert.equal(f.runner(),imageIds[release.runner.fromImage]);assert.equal(fs.readFileSync(path.join(f.runnerConfig,'config.toml'),'utf8'),f.originalToml);assert.equal(fs.readFileSync(path.join(f.runnerConfig,'.runner_system_id'),'utf8'),'retained-manager-identity');
 });

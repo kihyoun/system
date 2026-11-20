@@ -8,8 +8,8 @@
       "networks": ["system_gitlab"],
       "volumes": [
         {"type": "bind", "source": "/var/run/docker.sock", "target": "/var/run/docker.sock"},
-        {"type": "bind", "source": "${RUNNER_CONFIG_DIR:?Use start.sh to select the runner manager directory}", "target": "/etc/gitlab-runner"},
-        {"type": "bind", "source": "${RUNNER_HOME_DIR:?Use start.sh to select the runner manager directory}", "target": "/home/gitlab-runner"}
+        {"type": "bind", "source": "${RUNNER_CONFIG_DIR:?Use the runner-start CLI to select the runner manager directory}", "target": "/etc/gitlab-runner"},
+        {"type": "bind", "source": "${RUNNER_HOME_DIR:?Use the runner-start CLI to select the runner manager directory}", "target": "/home/gitlab-runner"}
       ],
       "extra_hosts": ["${GITLAB_REGISTRY_HOST}:host-gateway", "${GITLAB_HOST}:host-gateway"]
     }

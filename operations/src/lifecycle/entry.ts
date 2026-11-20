@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { fileLock } from '../runtime/file-lock';
 import path from 'node:path';
 import fs from 'node:fs';
 import { NestFactory } from '@nestjs/core';
@@ -26,9 +27,12 @@ export async function main(args = process.argv.slice(2), environment = process.e
     abortOnError: false,
   });
   const state = environment.SYSTEM_CONFIG_DIR || '/state';
+  let unlock: (() => void) | undefined;
   let operation: string | undefined,
     settled: number | null = 1;
   try {
+    if (/^runner-(start|stop|register|unregister)$/.test(action))
+      unlock = fileLock('/tmp/system-bootstrapper-runner-registration.lock');
     const upgrade =
       (action.startsWith('runner-') || action === 'gitlab-start') &&
       inheritedUpgrade(state, environment.SYSTEM_GITLAB_UPGRADE_OPERATION);
@@ -61,7 +65,13 @@ export async function main(args = process.argv.slice(2), environment = process.e
       signal: controller.signal,
       supervisedGroup: upgrade,
     };
-    if (action === 'gitlab-start') await app.get(LifecycleService).gitlab(context, true);
+    if (action === 'refresh-source') await app.get(LifecycleService).refreshSource(context);
+    else if (action === 'gitlab-start' || action === 'gitlab-stop')
+      await app.get(LifecycleService).gitlab(context, action === 'gitlab-start');
+    else if (action === 'wizard-start' || action === 'wizard-stop')
+      await app.get(LifecycleService).wizard(context, action === 'wizard-start');
+    else if (action === 'sync-start' || action === 'sync-stop')
+      await app.get(LifecycleService).sync(context, action === 'sync-start');
     else if (action === 'runner-provision')
       await app.get(RunnerLifecycleService).provisionToken(context);
     else if (action === 'runner-refresh')
@@ -89,6 +99,7 @@ export async function main(args = process.argv.slice(2), environment = process.e
     try {
       if (operation) startupSettled(state, operation, settled);
     } finally {
+      unlock?.();
       await app.close();
       process.off('SIGTERM', term);
       process.off('SIGINT', int);

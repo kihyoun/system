@@ -25,6 +25,40 @@ export class ConfigurationService {
     @Inject(CONFIGURATION_PROCESS) private readonly process: ProcessRunner,
     private readonly routing: ProjectsRoutingService,
   ) {}
+  deleteProjects(root: string, state: string): void {
+    if (!path.isAbsolute(state)) throw Error('Absolute configuration path required.');
+    if (!path.isAbsolute(root)) throw Error('Absolute checkout path required.');
+    this.process.run(
+      process.execPath,
+      [path.join(root, 'operations/dist/lifecycle/entry.js'), 'stop-intermediate', root],
+      {
+        cwd: root,
+        env: { ...process.env, SYSTEM_CONFIG_DIR: state },
+        timeout: 180000,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    const operation = startupBegin(state, process.pid);
+    let settled: number | null = 1;
+    try {
+      const remove = (directory: string) => {
+        const stat = fs.lstatSync(directory, { throwIfNoEntry: false });
+        if (!stat) return;
+        if (!stat.isDirectory() || stat.isSymbolicLink())
+          throw Error('Unsafe project configuration directory.');
+        for (const item of fs.readdirSync(directory, { withFileTypes: true })) {
+          const filename = path.join(directory, item.name);
+          if (item.isDirectory()) remove(filename);
+          else if (item.isFile() && item.name.endsWith('.env')) fs.unlinkSync(filename);
+        }
+      };
+      remove(path.join(state, '.projects.env'));
+      remove(path.join(state, 'projects.env'));
+      settled = 0;
+    } finally {
+      startupSettled(state, operation, settled);
+    }
+  }
   push(command: PushCommand): string {
     for (const file of [command.root, command.state, command.archive])
       if (!path.isAbsolute(file)) throw Error('Absolute configuration paths required.');

@@ -72,7 +72,7 @@ async function recoverImage(settings=process.env,dependencies={}) {
   try {
     // A fresh host cannot authenticate to its own registry until GitLab and a
     // routing-only proxy exist. This mode never pulls/starts Wizard or Sync.
-    run('bash',['-e','start.sh','recovery'],{cwd:path.join(__dirname,'../nginx'),env});
+    run(process.execPath,[path.join(__dirname,'../operations/dist/projects-routing/entry.js'),'routing','recovery',path.resolve(__dirname,'..'),'/templates'],{cwd:path.join(__dirname,'../nginx'),env});
     const waitReady=dependencies.waitReady||(async()=>{
       const until=Date.now()+300000;
       do {

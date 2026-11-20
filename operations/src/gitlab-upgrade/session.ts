@@ -126,7 +126,7 @@ export class UpgradeSession {
   runnerPlan(verifyRunning = true): RunnerPlan {
     return this.capabilities.runner.runnerPlan(this, verifyRunning);
   }
-  runnerPool(script: string): void {
+  runnerPool(script: 'start' | 'stop'): void {
     return this.capabilities.runner.runnerPool(this, script);
   }
   runnersStopped(plan: RunnerPlan): void {

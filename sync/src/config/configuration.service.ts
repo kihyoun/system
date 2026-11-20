@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import md5 from 'md5';
 import type { UploadedFile, FileArray } from 'express-fileupload';
 import { mainConfigPath, projectsDirectory, projectConfigPath } from '../StatePaths';
@@ -82,12 +82,22 @@ export class ConfigurationService {
           message: 'Configuration changed since impact review. Review Push again.',
         });
       fs.writeFileSync('../bootstrapper.zip', file.data);
-      const out = execSync('cd ../system; bash push.sh', {
-        env: {
-          ...process.env,
-          SYSTEM_PUSH_IMPACT: typeof input?.impact === 'string' ? input.impact : '',
+      const out = execFileSync(
+        process.execPath,
+        [
+          path.resolve('../operations/dist/configuration/entry.js'),
+          'push',
+          path.resolve('..'),
+          process.env.SYSTEM_CONFIG_DIR || path.resolve('../system'),
+          path.resolve('../bootstrapper.zip'),
+        ],
+        {
+          env: {
+            ...process.env,
+            SYSTEM_PUSH_IMPACT: typeof input?.impact === 'string' ? input.impact : '',
+          },
         },
-      });
+      );
       const mode = /^APPLY_MODE=(none|routing|restart)$/m.exec(out.toString())?.[1] || 'restart';
       this.runtime.status.needRestart = mode === 'restart';
       return {
@@ -119,7 +129,11 @@ export class ConfigurationService {
         throw new SyncHttpError(400, { message: error.message });
       }
       console.log('Stopping intermediate Services...');
-      const out = execSync('cd ../system; bash stop-intermediate.sh');
+      const out = execFileSync(process.execPath, [
+        path.resolve('../operations/dist/lifecycle/entry.js'),
+        'stop-intermediate',
+        path.resolve('..'),
+      ]);
       fs.writeFileSync(projectConfigPath(input.projectKey), input.data);
       this.runtime.status.needRestart = true;
       return { message: 'New Project added.', status: this.runtime.status, output: out.toString() };
@@ -145,7 +159,11 @@ export class ConfigurationService {
         throw new SyncHttpError(400, { message: error.message });
       }
       console.log('Stopping intermediate services...');
-      const out = execSync('cd ../system; bash stop-intermediate.sh');
+      const out = execFileSync(process.execPath, [
+        path.resolve('../operations/dist/lifecycle/entry.js'),
+        'stop-intermediate',
+        path.resolve('..'),
+      ]);
       fs.writeFileSync(mainConfigPath(), file.data);
       this.runtime.status.needRestart = true;
       return {
@@ -161,14 +179,18 @@ export class ConfigurationService {
   deleteProjects() {
     try {
       console.log('Stopping intermediate services...');
-      const out = execSync('cd ../system; bash stop-intermediate.sh');
       console.log('Deleting project configurations...');
-      const out2 = execSync('cd ../system; bash delete-projects.sh');
+      const out2 = execFileSync(process.execPath, [
+        path.resolve('../operations/dist/configuration/entry.js'),
+        'delete-projects',
+        path.resolve('..'),
+        process.env.SYSTEM_CONFIG_DIR || path.resolve('../system'),
+      ]);
       this.runtime.status.needRestart = true;
       return {
         message: 'Deleting project configuration done.',
         status: this.runtime.status,
-        output: out.toString() + out2.toString(),
+        output: out2.toString(),
       };
     } catch {
       throw operationFailed();
@@ -179,7 +201,11 @@ export class ConfigurationService {
       throw new SyncHttpError(404, 'File does not exist.', true);
     try {
       console.log('Stopping intermediate services...');
-      const out = execSync('cd ../system; bash stop-intermediate.sh');
+      const out = execFileSync(process.execPath, [
+        path.resolve('../operations/dist/lifecycle/entry.js'),
+        'stop-intermediate',
+        path.resolve('..'),
+      ]);
       console.log('Unlink ../systen/.docker.env');
       fs.unlinkSync(mainConfigPath());
       this.runtime.status.needRestart = true;

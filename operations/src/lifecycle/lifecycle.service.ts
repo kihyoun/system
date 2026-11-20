@@ -84,7 +84,7 @@ export class LifecycleService {
     });
     return value;
   }
-  private async wizard(context: LifecycleContext, start: boolean) {
+  async wizard(context: LifecycleContext, start: boolean) {
     const selected = this.configured(context)
       ? this.load(context, ['system/.docker.env'])
       : context;
@@ -187,7 +187,7 @@ export class LifecycleService {
       if (errors.length) throw new AggregateError(errors, 'Intermediate service shutdown failed.');
     }
   }
-  private async sync(context: LifecycleContext, start: boolean) {
+  async sync(context: LifecycleContext, start: boolean) {
     if (this.configured(context) && start) {
       const selected = this.load(context, ['system/.docker.env']);
       if (selected.environment.SYNC_ENABLE === 'true')
@@ -265,6 +265,20 @@ export class LifecycleService {
       await delay(1000, undefined, { signal: context.signal });
     }
     throw new ProcessFailure('sync-listener', null, 'SIGTERM', true);
+  }
+  async refreshSource(context: LifecycleContext): Promise<void> {
+    await this.intermediate(context, false);
+    for (const args of [
+      ['reset', '--hard'],
+      ['pull', '-r'],
+      ['submodule', 'update'],
+    ])
+      await this.children.run('git', args, {
+        cwd: context.root,
+        env: context.environment,
+        signal: context.signal,
+        timeout: 180000,
+      });
   }
   async run(action: LifecycleAction, context: LifecycleContext): Promise<void> {
     if (

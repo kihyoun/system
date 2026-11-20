@@ -231,14 +231,18 @@ export class UpgradeRuntimeService {
           session.aliases,
         ),
       );
-    session.run('bash', ['start.sh'], {
-      cwd: path.join(ROOT, 'gitlab'),
-      env: {
-        ...process.env,
-        SYSTEM_CONFIG_DIR: session.state,
-        SYSTEM_GITLAB_UPGRADE_OPERATION: session.operation,
+    session.run(
+      process.execPath,
+      [path.join(ROOT, 'operations/dist/lifecycle/entry.js'), 'gitlab-start', ROOT],
+      {
+        cwd: path.join(ROOT, 'gitlab'),
+        env: {
+          ...process.env,
+          SYSTEM_CONFIG_DIR: session.state,
+          SYSTEM_GITLAB_UPGRADE_OPERATION: session.operation,
+        },
       },
-    });
+    );
   }
   syncIdle(session: UpgradeSession): void {
     const value = parseRecord(

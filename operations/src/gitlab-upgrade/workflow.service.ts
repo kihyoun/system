@@ -91,7 +91,7 @@ export class UpgradeWorkflowService {
     if (plan.runner) {
       session.owner.runnersStopped = true;
       session.updateOwner(session.owner.checkpointSha256);
-      session.runnerPool('stop.sh');
+      session.runnerPool('stop');
       session.runnersStopped(plan.runner);
     }
     session.stop();
@@ -118,7 +118,17 @@ export class UpgradeWorkflowService {
     session.start(release.toImage);
     await session.ready(release.toVersion, plan.toImageId);
     if (plan.runner) session.runnersReady(plan.runner);
-    session.run('bash', ['start.sh'], { cwd: path.join(ROOT, 'nginx') });
+    session.run(
+      process.execPath,
+      [
+        path.join(ROOT, 'operations/dist/projects-routing/entry.js'),
+        'routing',
+        'start',
+        ROOT,
+        '/templates',
+      ],
+      { cwd: path.join(ROOT, 'nginx') },
+    );
     atomic(
       path.join(session.checkpoints, 'operation.json'),
       JSON.stringify({
@@ -165,7 +175,17 @@ export class UpgradeWorkflowService {
     else session.docker(['exec', 'system_gitlab_1', 'gitlab-ctl', 'start']);
     await session.ready(release.fromVersion, current.Image);
     if (session.owner.runnersStopped) session.runnersReady(session.runnerPlan(false), true);
-    session.run('bash', ['start.sh'], { cwd: path.join(ROOT, 'nginx') });
+    session.run(
+      process.execPath,
+      [
+        path.join(ROOT, 'operations/dist/projects-routing/entry.js'),
+        'routing',
+        'start',
+        ROOT,
+        '/templates',
+      ],
+      { cwd: path.join(ROOT, 'nginx') },
+    );
     session.unlock();
     return { status: 'previous-generation-resumed' };
   }
@@ -192,7 +212,7 @@ export class UpgradeWorkflowService {
     // The replacement data is discarded, so an exit1/OOM from a failed B is
     // not a reason to reject a verified cold A checkpoint. No writer may run.
     if (checkpoint.plan.runner) {
-      session.runnerPool('stop.sh');
+      session.runnerPool('stop');
       session.runnersStopped(checkpoint.plan.runner);
     }
     if (current.State.Running)
@@ -203,7 +223,17 @@ export class UpgradeWorkflowService {
     session.start(release.fromImage, true);
     await session.ready(release.fromVersion, checkpoint.plan.fromImageId);
     if (checkpoint.plan.runner) session.runnersReady(checkpoint.plan.runner, true);
-    session.run('bash', ['start.sh'], { cwd: path.join(ROOT, 'nginx') });
+    session.run(
+      process.execPath,
+      [
+        path.join(ROOT, 'operations/dist/projects-routing/entry.js'),
+        'routing',
+        'start',
+        ROOT,
+        '/templates',
+      ],
+      { cwd: path.join(ROOT, 'nginx') },
+    );
     atomic(
       path.join(session.checkpoints, 'operation.json'),
       JSON.stringify({

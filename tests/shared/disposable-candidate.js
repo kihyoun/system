@@ -435,9 +435,9 @@ delivery-must-not-run:
       if(!this.spec.recoveryAcceptance) await this.stage('seed-harvest',async()=>{
         const storage=require('../e2e/local-storage');
         await storage.attach(this);
-        await this.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','bash','stop.sh']);
+        await this.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','node','/system/operations/dist/lifecycle/entry.js','runner-stop','/system']);
         await this.inner(['exec','system_bootstrapper_1','sh','-c','printf candidate-seed-proof > /srv/gitlab/config/.candidate-proof']);
-        await this.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],{timeout:180000});
+        await this.inner(['exec','-w','/system/system','system_bootstrapper_1','node','/system/operations/dist/storage/entry.js','launch','harvest'],{timeout:180000});
         const proof=await this.inner(['run','--rm','--network','none','--read-only',
           '--env','GITLAB_IMAGE=candidate-gitlab:under-test',
           '--mount','type=bind,src='+storage.SEED+',dst=/seed,readonly','--entrypoint','node','system-candidate:under-test','-e',

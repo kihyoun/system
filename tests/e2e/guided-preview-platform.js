@@ -182,9 +182,9 @@ async function prepare(candidate,acme,dependencies={}){
     candidate.guidedTrust=await installTrust(candidate,{node:execute});await configureRunner(candidate);
   });
   await candidate.stage('guided-preview-native-https-configuration',async()=>{
-    await candidate.inner(['exec','-w','/system/gitlab','system_bootstrapper_1','bash','-e','start.sh'],{timeout:180000});
+    await candidate.inner(['exec','-w','/system/gitlab','system_bootstrapper_1','node','/system/operations/dist/lifecycle/entry.js','gitlab-start','/system'],{timeout:180000});
     await candidate.wait(async()=>{try{return (await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness'])).includes('ok');}catch{return false;}},600000);
-    await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
+    await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates']);
     // GitLab restricts monitoring endpoints to its local monitoring allowlist.
     // Keep readiness above on loopback; exercise the public sign-in route here.
     for(const [host,route]of [[HOSTS.gitlab,'/users/sign_in'],[HOSTS.sync,'/'],[HOSTS.wizard,'/']]){

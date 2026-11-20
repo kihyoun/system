@@ -13,8 +13,6 @@ test('nginx validation and reload failures restore templates and the previous ac
   for (const directory of ['nginx', 'system/.projects.env', 'gitlab', 'wizard', 'nginx-proxy/.projects', 'project-bootstrap', 'bin', 'templates', 'active'])
     fs.mkdirSync(path.join(root, directory), {recursive: true});
   fs.cpSync(path.join(source, 'nginx/.templates'), path.join(root, 'nginx/.templates'), {recursive: true});
-  const script = fs.readFileSync(path.join(source, 'nginx/start.sh'), 'utf8').replaceAll('/templates', path.join(root, 'templates'));
-  fs.writeFileSync(path.join(root, 'nginx/start.sh'), script);
   for (const file of ['nginx/wizard-aliases.js', 'nginx/application-aliases.js', 'project-bootstrap/preserve-system-project.js'])
     fs.copyFileSync(path.join(source, file), path.join(root, file));
   fs.writeFileSync(path.join(root, '.docker.env'), 'BOOTSTRAPPER_IP=127.0.0.1\n');
@@ -28,7 +26,7 @@ test('nginx validation and reload failures restore templates and the previous ac
     const template = path.join(root, 'templates/default.conf.template'), active = path.join(root, 'active/default.conf');
     fs.writeFileSync(template, 'previous template'); fs.writeFileSync(active, 'previous active config');
     fs.writeFileSync(path.join(root, 'fail'), 'once'); fs.writeFileSync(path.join(root, 'trace'), '');
-    const result = spawnSync('bash', ['-e', 'start.sh', 'reload'], {cwd: path.join(root, 'nginx'), encoding: 'utf8', env: {...process.env,
+    const result = spawnSync(process.execPath, [path.join(root,'operations/dist/projects-routing/entry.js'),'routing','reload',root,path.join(root,'templates')], {cwd: path.join(root, 'nginx'), encoding: 'utf8', env: {...process.env,
       PATH: path.join(root, 'bin') + ':' + process.env.PATH, ACTIVE: path.join(root, 'active'), RENDER: path.join(root, 'bin/render'),
       FAIL: path.join(root, 'fail'), PHASE: phase, TRACE: path.join(root, 'trace')}});
     assert.notEqual(result.status, 0, phase);

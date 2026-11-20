@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { execFile, execSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { RuntimeService } from '../runtime/runtime.service';
 import {
@@ -67,8 +67,11 @@ export class OperationsService {
   patch() {
     try {
       console.log('Stopping intermediate services...');
-      execSync('cd ../system; bash stop-intermediate.sh');
-      const out = execSync('cd ..; git reset --hard; git pull -r; git submodule update');
+      const out = execFileSync(process.execPath, [
+        path.resolve('../operations/dist/lifecycle/entry.js'),
+        'refresh-source',
+        path.resolve('..'),
+      ]);
       this.runtime.status.needRestart = true;
       return {
         message: 'Repository updated.',
@@ -82,7 +85,11 @@ export class OperationsService {
   seed() {
     try {
       // The helper validates fresh storage and cold GitLab under its own lease.
-      const out = execSync('cd ../system; bash seed.sh');
+      const out = execFileSync(
+        process.execPath,
+        [path.resolve('../operations/dist/storage/entry.js'), 'launch', 'restore'],
+        { cwd: path.resolve('../system') },
+      );
       this.runtime.status.needRestart = true;
       return {
         message: 'Seed has been applied. Restarting system.',
@@ -96,7 +103,11 @@ export class OperationsService {
   restart() {
     try {
       console.log('Stopping intermediate services...');
-      const out = execSync('cd ../system; bash stop-intermediate.sh');
+      const out = execFileSync(process.execPath, [
+        path.resolve('../operations/dist/lifecycle/entry.js'),
+        'stop-intermediate',
+        path.resolve('..'),
+      ]);
       return { message: 'Restarting system.', status: this.runtime.status, output: out.toString() };
     } catch {
       throw operationFailed();
@@ -107,8 +118,8 @@ export class OperationsService {
     return new Promise((resolve, reject) => {
       // Keep authenticated status and Fetch responsive while the helper copies.
       execFile(
-        'bash',
-        ['harvest.sh'],
+        process.execPath,
+        [path.resolve('../operations/dist/storage/entry.js'), 'launch', 'harvest'],
         { cwd: path.resolve('../system'), maxBuffer: 1024 * 1024 },
         (error, out) => {
           this.runtime.status.harvestInProgress = false;
@@ -134,8 +145,8 @@ export class OperationsService {
     this.runtime.status.runnerSetupInProgress = true;
     return new Promise((resolve, reject) => {
       execFile(
-        'bash',
-        ['start.sh'],
+        process.execPath,
+        [path.resolve('../operations/dist/lifecycle/entry.js'), 'runner-start', path.resolve('..')],
         { cwd: path.resolve('../gitlab-runner'), timeout: 900000 },
         (error, out) => {
           this.runtime.status.runnerSetupInProgress = false;
@@ -159,7 +170,11 @@ export class OperationsService {
   }
   unregisterRunners() {
     try {
-      const out = execSync('cd ../gitlab-runner; bash unregister.sh');
+      const out = execFileSync(process.execPath, [
+        path.resolve('../operations/dist/lifecycle/entry.js'),
+        'runner-unregister',
+        path.resolve('..'),
+      ]);
       return {
         message: 'Runner unregistered.',
         status: this.runtime.status,
