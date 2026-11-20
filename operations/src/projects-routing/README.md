@@ -12,13 +12,18 @@ The public HTTP configuration API is unchanged. Existing paths in `nginx/`,
 synchronous exports for Sync consumers. Native routing commands resolve their
 process and configuration adapters through Nest dependency injection.
 
-The configuration adapter evaluates the existing shell configuration format in a
-bounded child and returns only requested keys. Project settings are reset between
+The shared literal-assignment parser reads declarative configuration without
+executing shell expansion and returns only requested keys. Project settings are reset between
 projects. Docker and Compose receive argument arrays and bounded timeouts. NGINX
-reload retains a short container-side adapter because its configuration files and
-`nginx` executable live inside the proxy. Template and address-record rollback is
-owned by the TypeScript service; the application entry retains the shared
-process-lifetime `flock` used by configuration Push.
+reload uses the injected `ProxyReloadService` with native Docker argument arrays.
+It binds the operation to the inspected container ID and acquires an exclusive
+container-side lease before snapshotting the active configuration. The pinned
+upstream NGINX template renderer and `nginx` executable remain native dependencies.
+A known render, validation or reload failure restores and reloads the snapshot;
+an uncertain command or failed rollback retains the snapshot and lease for
+inspection instead of racing a possibly active process. Successful operations
+release their own lease. Template and address-record rollback belongs to the
+TypeScript service; configuration Push retains its existing process-lifetime lock.
 
 Targeted application updates preserve running proxy generations. Ordinary
 startup applies saved image and logging selectors. Managed Wizard routing is

@@ -3,13 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { ProcessRunner } from '../runtime/process';
-import { ConfigurationPort } from './ports';
+import { ConfigurationPort, ROUTING_PROCESS, ROUTING_CONFIGURATION } from './ports';
+import { ProxyReloadService } from './proxy-reload.service';
+export { ROUTING_PROCESS, ROUTING_CONFIGURATION } from './ports';
 import * as wizard from './wizard-aliases';
 import * as application from './application-aliases';
 import { impact } from './impact';
 import { Settings } from './types';
-export const ROUTING_PROCESS = Symbol('ROUTING_PROCESS');
-export const ROUTING_CONFIGURATION = Symbol('ROUTING_CONFIGURATION');
 export interface RoutingCommand {
   action:
     'start' | 'stop' | 'reload' | 'recovery' | 'proxies' | 'stop-proxies' | 'apply' | 'impact';
@@ -35,26 +35,12 @@ const keys = [
   ...prefixes.map((prefix) => 'USE_' + prefix + '_HOST'),
 ];
 const defaults = Object.fromEntries(keys.map((key) => [key, '']));
-const reloadScript = `snapshot=$(mktemp -d /tmp/system-routing-conf.XXXXXXXX)
-cp -a /etc/nginx/conf.d/. "$snapshot/"
-rollback() {
-  result=$?; trap - EXIT
-  if [ "$result" != 0 ]; then
-    rm -f /etc/nginx/conf.d/*.conf
-    cp -a "$snapshot/." /etc/nginx/conf.d/
-    nginx -t && nginx -s reload || { echo "Previous proxy configuration could not be reloaded; inspect the proxy before retrying." >&2; result=1; }
-  fi
-  rm -rf "$snapshot"; exit "$result"
-}
-trap rollback EXIT
-/docker-entrypoint.d/20-envsubst-on-templates.sh
-nginx -t
-nginx -s reload`;
 @Injectable()
 export class ProjectsRoutingService {
   constructor(
     @Inject(ROUTING_PROCESS) private readonly process: ProcessRunner,
     @Inject(ROUTING_CONFIGURATION) private readonly configuration: ConfigurationPort,
+    private readonly proxyReload: ProxyReloadService,
   ) {}
   run(command: RoutingCommand): unknown {
     if (!path.isAbsolute(command.root)) throw Error('Absolute routing checkout required.');
@@ -361,10 +347,7 @@ export class ProjectsRoutingService {
         appAliases.replace(/\n*$/, '') + '\n',
       );
       fs.writeFileSync(path.join(directory, 'default.conf.template'), content);
-      if (command.action === 'reload')
-        this.process.run('docker', ['exec', 'system_web_1', 'sh', '-ec', reloadScript], {
-          timeout: 180000,
-        });
+      if (command.action === 'reload') this.proxyReload.reload();
       else
         this.process.run(
           'docker',

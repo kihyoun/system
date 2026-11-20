@@ -1,3 +1,4 @@
+import { ProxyReloadService } from './proxy-reload.service';
 import { Module } from '@nestjs/common';
 import { NativeProcessRunner } from '../runtime/process';
 import { LiteralConfiguration } from './ports';
@@ -13,6 +14,7 @@ import {
       provide: ROUTING_CONFIGURATION,
       useClass: LiteralConfiguration,
     },
+    ProxyReloadService,
     ProjectsRoutingService,
   ],
   exports: [ProjectsRoutingService],

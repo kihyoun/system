@@ -1,4 +1,5 @@
 'use strict';
+const {ProxyReloadService}=require('../../operations/dist/projects-routing/proxy-reload.service');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -46,8 +47,8 @@ test('failed native apply restores previous proxy address records', t => {
   const {ProjectsRoutingService}=require('../../operations/dist/projects-routing/projects-routing.service');
   const {ProcessFailure}=require('../../operations/dist/runtime/process');
   const configuration={read:()=>({PROJECT_NAME:'sample',USE_PROD_HOST:'true',GITLAB_DOMAIN_MODE:'0',GITLAB_REGISTRY_DOMAIN_MODE:'0'})};
-  const runner={run(binary,args){if(binary==='docker'&&args[0]==='exec')throw new ProcessFailure('docker',23,null,false);return {stdout:'172.20.0.2',stderr:'',status:0};}};
-  const service=new ProjectsRoutingService(runner,configuration);
+  const runner={run(binary,args){if(binary==='docker'&&args.includes('exec'))throw new ProcessFailure('docker',23,null,false);return {stdout:args.includes('{{.Id}}')?'a'.repeat(64):'172.20.0.2',stderr:'',status:0};}};
+  const service=new ProjectsRoutingService(runner,configuration,new ProxyReloadService(runner));
   assert.throws(()=>service.run({action:'apply',root,templates:path.join(root,'templates'),projects:['sample']}),error=>error.status===23);
   assert.equal(fs.readFileSync(path.join(root,'nginx-proxy/.projects/.sample.env'),'utf8'),'previous addresses');
 });

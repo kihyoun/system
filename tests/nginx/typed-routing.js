@@ -1,4 +1,5 @@
 'use strict';
+const {ProxyReloadService}=require('../../operations/dist/projects-routing/proxy-reload.service');
 require('../../operations/node_modules/reflect-metadata');
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {ProjectsRoutingService}=require('../../operations/dist/projects-routing/projects-routing.service');
@@ -15,8 +16,8 @@ function fixture(t){
  fs.writeFileSync(path.join(root,'system/docker-compose.yml'),'services: {web: {image: "${NGINX_IMAGE}", volumes: ["${PERSISTENT_DIR}/templates:/templates"], logging: {options: {max-size: "${SYSTEM_LOG_MAX_SIZE}"}}}}');
  fs.writeFileSync(path.join(root,'templates/wizard-environments/beta.conf'),'owned candidate fragment');
  const calls=[];
- const process={run(binary,args,options){assert.notEqual(binary,'bash');calls.push({binary,args,options});return {stdout:'172.20.0.2\n',stderr:'',status:0};}};
- return {root,calls,process,service:new ProjectsRoutingService(process,new LiteralConfiguration()),command:{action:'reload',root,templates:path.join(root,'templates')}};
+ const process={run(binary,args,options){assert.notEqual(binary,'bash');calls.push({binary,args,options});return {stdout:args.includes('{{.Id}}')?'a'.repeat(64):'172.20.0.2\n',stderr:'',status:0};}};
+ return {root,calls,process,service:new ProjectsRoutingService(process,new LiteralConfiguration(),new ProxyReloadService(process)),command:{action:'reload',root,templates:path.join(root,'templates')}};
 }
 test('Nest routing module resolves the typed service and bounded configuration port',async()=>{
  const {NestFactory}=require('../../operations/node_modules/@nestjs/core'),{ProjectsRoutingModule}=require('../../operations/dist/projects-routing/projects-routing.module');
@@ -67,7 +68,7 @@ test('aliases regenerate on start/reload, clear on recovery/disable and conflict
  fs.writeFileSync(main,configured);f.service.run({...f.command,action:'recovery'});assert.equal(read('zz-wizard-aliases.conf.template').trim(),'');
  f.service.run({...f.command,action:'start'});assert.equal(read('zz-wizard-aliases.conf.template'),aliases);
  fs.writeFileSync(main,configured.replace(/^WIZARD_ALIASES=.*$/m,'WIZARD_ALIASES=""'));f.service.run(f.command);assert.equal(read('zz-wizard-aliases.conf.template').trim(),'');
- assert(f.calls.some(call=>call.args.some(arg=>arg.includes('nginx -t'))));assert(f.calls.some(call=>call.args.some(arg=>arg.includes('nginx -s reload'))));
+ assert(f.calls.some(call=>call.args.slice(-2).join(' ')==='nginx -t'));assert(f.calls.some(call=>call.args.slice(-3).join(' ')==='nginx -s reload'));
 });
 test('all eight application environment combinations render on start/reload and missing enabled TLS templates fail before Docker',t=>{
  const f=fixture(t),names=['PROD','BETA','REVIEW'];
@@ -81,8 +82,8 @@ test('all eight application environment combinations render on start/reload and 
   f.service.run({...f.command,action});const rendered=fs.readFileSync(path.join(f.command.templates,'default.conf.template'),'utf8');
   names.forEach((name,index)=>assert.equal(rendered.split('server_name '+name+'.localhost;').length-1,Number(flags[index])));
   const trace=JSON.stringify(f.calls.map(call=>call.args));
-  if(action==='reload'){assert(trace.includes('nginx -t'));assert(trace.includes('nginx -s reload'));assert(!trace.includes('"--build"'));}
-  else{assert(trace.includes('"up","--build","--remove-orphans","--force-recreate","-d","web"'));assert(!trace.includes('nginx -s reload'));}
+  if(action==='reload'){assert(trace.includes('"nginx","-t"'));assert(trace.includes('"nginx","-s","reload"'));assert(!trace.includes('"--build"'));}
+  else{assert(trace.includes('"up","--build","--remove-orphans","--force-recreate","-d","web"'));assert(!trace.includes('"nginx","-s","reload"'));}
   assert(rendered.includes('server_name wizard.example.test;'));assert(rendered.includes('server_name sync.example.test;'));
  }
  fs.unlinkSync(path.join(f.root,'nginx/.templates/default.ssl.conf.template'));

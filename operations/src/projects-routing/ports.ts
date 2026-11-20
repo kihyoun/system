@@ -1,3 +1,5 @@
+export const ROUTING_PROCESS = Symbol('ROUTING_PROCESS');
+export const ROUTING_CONFIGURATION = Symbol('ROUTING_CONFIGURATION');
 import fs from 'node:fs';
 import { environmentAssignments } from '../runtime/environment-assignments';
 import { Settings } from './types';
