@@ -1,85 +1,92 @@
-'use strict';
-const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const crypto = require('crypto');
-const {spawnSync} = require('child_process');
-const root = fs.mkdtempSync(path.join(os.tmpdir(),'ci-parent-'));
-try {
-  fs.mkdirSync(path.join(root,'tests'));
-  fs.mkdirSync(path.join(root,'bin'));
-  fs.copyFileSync(path.join(__dirname,'../ci-isolated.sh'),path.join(root,'tests/ci-isolated.sh'));
-  const trace = path.join(root,'trace.jsonl');
-  const context = Buffer.from('only committed source and validated snapshot');
-  const revision = 'a'.repeat(40);
-  fs.mkdirSync(path.join(root,'.test-context'));
-  fs.writeFileSync(path.join(root,'.test-context/context.tar'),context);
-  fs.writeFileSync(path.join(root,'.test-context/revision'),revision+'\n');
-  const hash=crypto.createHash('sha256').update(context).digest('hex');
-  fs.writeFileSync(path.join(root,'.test-context/sha256'),hash+'\n');
-  const mock = `#!${process.execPath}
-const fs=require('fs'); const args=process.argv.slice(2);
-fs.appendFileSync(${JSON.stringify(trace)},JSON.stringify(args)+'\\n');
-if(args[0]==='build') fs.writeFileSync('received-context',fs.readFileSync(0));
-if(args[0]==='wait') console.log(process.env.MOCK_CHILD_STATUS || '7');
-if(args[0]==='cp') fs.writeFileSync('test-results/copied','report');
-if(args[0]==='container' && args[1]==='ls') {
- if(process.env.MOCK_CLEANUP==='offline') process.exit(1);
- if(process.env.MOCK_CLEANUP!=='absent') console.log('system-tests-21-90001');
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const os=require('node:os');
+const path=require('node:path');
+const {createHash}=require('node:crypto');
+const {ContainerCheckService}=require('../../operations/dist/ci/container-check.service');
+function fixture(t, browser=false){
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'container-check-'));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const context=path.join(root,browser?'.wizard-browser-context':'.test-context');fs.mkdirSync(context);
+ fs.writeFileSync(path.join(context,'context.tar'),'archive');
+ fs.writeFileSync(path.join(context,'sha256'),createHash('sha256').update('archive').digest('hex'));
+ fs.writeFileSync(path.join(context,'revision'),'a'.repeat(40));
+ return {root,env:{CI_PROJECT_ID:'1',CI_JOB_ID:'2',CI_COMMIT_SHA:'a'.repeat(40)}};
 }
-if(args[0]==='image' && args[1]==='ls') {
- if(process.env.MOCK_CLEANUP==='offline') process.exit(1);
- if(process.env.MOCK_CLEANUP!=='absent') console.log('system-component-tests:ci-21-90001');
-}
-if(process.env.MOCK_CLEANUP==='remove-failed' && (args[0]==='rm' || (args[0]==='image' && args[1]==='rm'))) process.exit(1);
-`;
-  fs.writeFileSync(path.join(root,'bin/docker'),mock,{mode:0o755});
-  const env = {...process.env,PATH:path.join(root,'bin')+':'+process.env.PATH,CI_PROJECT_ID:'21',CI_JOB_ID:'90001',CI_COMMIT_SHA:revision};
-  const result = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env,encoding:'utf8',timeout:5000});
-  assert.equal(result.status,7,'the outer job must propagate a failed candidate exit');
-  assert(fs.readFileSync(path.join(root,'received-context')).equals(context),'build only the verified archive through stdin');
-  const calls = fs.readFileSync(trace,'utf8').trim().split('\n').map(line=>JSON.parse(line));
-  const create = calls.find(args=>args[0]==='create');
-  assert(create.includes('--network') && create.includes('none'));
-  assert(create.includes('--init'),'Reap orphaned fixture processes through an init process.');
-  assert(create.includes('--pids-limit') && create.includes('512'));
-  assert(create.includes('--memory') && create.includes('2g'));
-  assert(!create.some(arg=>['-v','--volume','--mount','--privileged','--env','-e'].includes(arg)));
-  assert(calls.findIndex(args=>args[0]==='cp') < calls.findIndex(args=>args[0]==='rm'),'copy failure artifacts before cleanup');
-  assert(calls.some(args=>args[0]==='rm' && args.includes('system-tests-21-90001')));
-  assert(calls.some(args=>args[0]==='image' && args.includes('system-component-tests:ci-21-90001')));
-  assert(fs.existsSync(path.join(root,'test-results/copied')));
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root,'test-results/cleanup/on-exit.json'))).status,'passed');
-  const failedCleanup = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env:{...env,MOCK_CHILD_STATUS:'0',MOCK_CLEANUP:'remove-failed'},encoding:'utf8',timeout:5000});
-  assert.equal(failedCleanup.status,1,'successful tests must not hide failed cleanup');
-  assert(failedCleanup.stderr.includes('cleanup failed'));
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root,'test-results/cleanup/on-exit.json'))).status,'failed');
-  const primaryFailure = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env:{...env,MOCK_CHILD_STATUS:'7',MOCK_CLEANUP:'remove-failed'},encoding:'utf8',timeout:5000});
-  assert.equal(primaryFailure.status,7,'cleanup must preserve the original test failure');
-  const absent = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env:{...env,MOCK_CHILD_STATUS:'0',MOCK_CLEANUP:'absent'},encoding:'utf8',timeout:5000});
-  assert.equal(absent.status,0,'already absent resources are successful idempotent cleanup');
-  const offline = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'cleanup'],{env:{...env,MOCK_CLEANUP:'offline'},encoding:'utf8',timeout:5000});
-  assert.equal(offline.status,1,'daemon failure must differ from absent resources');
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root,'test-results/cleanup/after-script.json'))).status,'failed');
-  assert(fs.existsSync(path.join(root,'test-results/cleanup/on-exit.json')),'retain the separate primary cleanup record');
-  fs.writeFileSync(trace,'');
-  const stale = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env:{...env,CI_COMMIT_SHA:'b'.repeat(40)},encoding:'utf8'});
-  assert.equal(stale.status,1);
-  assert(stale.stderr.includes('stale'));
-  assert.equal(fs.readFileSync(trace,'utf8'),'','refuse stale artifacts before contacting Docker');
-  fs.writeFileSync(path.join(root,'.test-context/sha256'),'0'.repeat(64)+'\n');
-  const damaged = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env,encoding:'utf8'});
-  assert.equal(damaged.status,1,'refuse a damaged context archive');
-  assert.equal(fs.readFileSync(trace,'utf8'),'');
-  fs.writeFileSync(path.join(root,'.test-context/sha256'),hash+'\n');
-  fs.unlinkSync(path.join(root,'.test-context/context.tar'));
-  const missing = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env,encoding:'utf8'});
-  assert.notEqual(missing.status,0,'refuse a missing context archive');
-  assert.equal(fs.readFileSync(trace,'utf8'),'','never fall back to the checkout when an artifact is missing');
-  const invalid = spawnSync('sh',[path.join(root,'tests/ci-isolated.sh'),'gitlab'],{env:{...env,CI_JOB_ID:'../foreign'},encoding:'utf8'});
-  assert.equal(invalid.status,2,'unsafe resource identifiers must be refused');
-  console.log('PASS: verified context only, stale/damaged artifacts fail closed, primary failure preserved, absent resources distinguished and cleanup failures visible.');
-} finally {
-  fs.rmSync(root,{recursive:true,force:true});
-}
+test('isolated checks pass only component selection into a socket-free child',async t=>{
+ const {root,env}=fixture(t),calls=[];
+ const adapter={async run(binary,args,options){calls.push({args,options});return args[0]==='wait'?'0':'';}};
+ await new ContainerCheckService(adapter).execute('isolated',root,env,'sync');
+ const create=calls.find(c=>c.args.includes('create')).args;
+ assert.equal(create.at(-1),'sync');assert.equal(create[create.indexOf('--network')+1],'none');
+ assert.equal(create.includes('--volume'),false);assert.equal(create.includes('--privileged'),false);
+ assert.ok(calls.find(c=>c.args[0]==='build').options.inputFile.endsWith('/context.tar'));
+ assert.equal(calls.filter(c=>c.args[1]==='ls').length,4);
+});
+test('collision refuses build and does not clean existing resources',async t=>{
+ const {root,env}=fixture(t),calls=[];
+ await assert.rejects(new ContainerCheckService({async run(binary,args){calls.push(args);return 'system-tests-1-2';}})
+  .execute('isolated',root,env,'sync'),/already-exists/);
+ assert.equal(calls.length,1);
+});
+test('failed browser wait still exports reports and retains original failure',async t=>{
+ const {root,env}=fixture(t,true),calls=[],failure=Error('wait-lost');
+ const adapter={async run(binary,args,options){calls.push({args,options});if(args[0]==='wait')throw failure;return '';}};
+ await assert.rejects(new ContainerCheckService(adapter).execute('wizard-browser',root,env,'run'),e=>e===failure);
+ const copy=calls.find(c=>c.args[0]==='cp');assert.ok(copy);assert.equal(copy.options.signal,undefined);
+ assert.match(fs.readFileSync(path.join(root,'test-results/wizard-browser/junit.xml'),'utf8'),/failures="1"/);
+});
+test('successful browser process without report is a failure',async t=>{
+ const {root,env}=fixture(t,true);
+ await assert.rejects(new ContainerCheckService({async run(binary,args){return args[0]==='wait'?'0':'';}})
+  .execute('wizard-browser',root,env,'run'),/missing-junit/);
+});
+test('cleanup verifies all ownership labels before removal',async t=>{
+ const {root,env}=fixture(t),calls=[];
+ const adapter={async run(binary,args){calls.push(args);
+  if(args[1]==='ls')return args[0]==='container'?'system-tests-1-2':'';
+  if(args[1]==='inspect')return JSON.stringify([{Id:'b'.repeat(64),Config:{Labels:{'org.system-bootstrapper.test-job':'2'}}}]);return '';
+ }};
+ await assert.rejects(new ContainerCheckService(adapter).execute('isolated',root,env,'cleanup'),/owner-mismatch/);
+ assert.equal(calls.some(args=>args[1]==='rm'),false);
+});
+test('invalid identities and stale, damaged or missing archives fail before Docker',async t=>{
+ const {root,env}=fixture(t);let calls=0;
+ const service=new ContainerCheckService({async run(){calls++;return '';}});
+ for(const override of [{CI_JOB_ID:'../foreign'},{CI_COMMIT_SHA:'b'.repeat(40)}])
+  await assert.rejects(service.execute('isolated',root,{...env,...override},'sync'));
+ fs.writeFileSync(path.join(root,'.test-context/sha256'),'0'.repeat(64));
+ await assert.rejects(service.execute('isolated',root,env,'sync'),/checksum/);
+ fs.rmSync(path.join(root,'.test-context/context.tar'));
+ await assert.rejects(service.execute('isolated',root,env,'sync'));
+ assert.equal(calls,0);
+});
+test('daemon errors and cleanup failures remain failures; primary error wins',async t=>{
+ const {root,env}=fixture(t);
+ await assert.rejects(new ContainerCheckService({async run(){throw Error('daemon-offline');}})
+  .execute('isolated',root,env,'cleanup'),/daemon-offline/);
+ for(const waitFails of [false,true]){
+  let started=false;
+  const primary=Error('original-wait-failure');
+  const adapter={async run(binary,args){
+   if(args[0]==='start')started=true;
+   if(args[0]==='wait'){if(waitFails)throw primary;return '0';}
+   if(args[1]==='ls'&&started)throw Error('cleanup-unavailable');
+   return '';
+  }};
+  await assert.rejects(new ContainerCheckService(adapter).execute('isolated',root,env,'sync'),
+   error=>waitFails ? error===primary : error.message==='cleanup-unavailable');
+ }
+});
+test('browser image retains reviewed trust and the full native browser suite',()=>{
+ const dockerfile=fs.readFileSync(path.join(__dirname,'../wizard-browser.Dockerfile'),'utf8');
+ assert.ok(dockerfile.includes('playwright install-deps chromium')&&dockerfile.includes('playwright install chromium'));
+ assert.ok(dockerfile.includes('ENV NODE_OPTIONS=--use-openssl-ca'));
+ assert.ok(dockerfile.indexOf('check.js --bundle')<dockerfile.indexOf('npm ci'));
+ const dependencies=dockerfile.indexOf('playwright install-deps chromium');
+ const refresh=dockerfile.indexOf('host-bootstrap/entry.js refresh-ca',dependencies);
+ assert.ok(refresh>dependencies&&refresh<dockerfile.indexOf('playwright install chromium'));
+ assert.ok(dockerfile.includes('"test:ci"')&&dockerfile.includes('--reporter=list,html,junit'));
+ assert.equal(dockerfile.includes('--grep'),false);
+});

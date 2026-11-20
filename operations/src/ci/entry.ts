@@ -1,3 +1,4 @@
+import { ContainerCheckService } from './container-check.service';
 import { CodeqlParentService } from './codeql-parent.service';
 import 'reflect-metadata';
 import { CodeqlService } from './codeql.service';
@@ -7,10 +8,12 @@ import { CiModule } from './ci.module';
 import { PlatformCheckService } from './platform.service';
 export async function ciMain(args = process.argv.slice(2)) {
   if (
-    !['platform', 'codeql', 'codeql-parent'].includes(args[0]) ||
+    !['platform', 'codeql', 'codeql-parent', 'isolated', 'wizard-browser'].includes(args[0]) ||
     !args[1]?.startsWith('/') ||
     args.length > 3 ||
-    (args[2] && (args[0] !== 'codeql' ? args[2] !== 'cleanup' : !args[2].startsWith('/')))
+    (args[2] &&
+      !['isolated', 'wizard-browser'].includes(args[0]) &&
+      (args[0] !== 'codeql' ? args[2] !== 'cleanup' : !args[2].startsWith('/')))
   )
     throw new Error('usage-ci-platform-absolute-checkout-cleanup');
   const app = await NestFactory.createApplicationContext(CiModule, { logger: false });
@@ -19,6 +22,12 @@ export async function ciMain(args = process.argv.slice(2)) {
   process.on('SIGINT', cancel);
   process.on('SIGTERM', cancel);
   try {
+    if (args[0] === 'isolated' || args[0] === 'wizard-browser') {
+      await app
+        .get(ContainerCheckService)
+        .execute(args[0], args[1], process.env, args[2] || 'run', abort.signal);
+      return;
+    }
     if (args[0] === 'codeql') {
       await app.get(CodeqlService).scan(args[1], args[2] || '/reports', process.env, abort.signal);
       return;
