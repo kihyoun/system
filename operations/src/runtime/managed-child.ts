@@ -9,6 +9,8 @@ export interface ChildOptions {
   timeout: number | null;
   maxBuffer?: number;
   inherit?: boolean;
+  /** Receives bounded stdout/stderr for an owned diagnostic artifact. */
+  output?: (chunk: Buffer) => void;
   /** A verified upgrade supervisor already owns and journals this process group. */
   inheritGroup?: boolean;
 }
@@ -51,11 +53,24 @@ export class ManagedChildProcess implements LifecycleProcess {
       child.stdout?.on('data', (value: Buffer) => {
         bytes += value.length;
         if (bytes > (options.maxBuffer ?? 1024 * 1024)) cancel();
-        else output += value.toString();
+        else {
+          output += value.toString();
+          try {
+            options.output?.(value);
+          } catch {
+            cancel();
+          }
+        }
       });
       child.stderr?.on('data', (value: Buffer) => {
         bytes += value.length;
         if (bytes > (options.maxBuffer ?? 1024 * 1024)) cancel();
+        else
+          try {
+            options.output?.(value);
+          } catch {
+            cancel();
+          }
       });
       child.on('error', () => {
         spawnError = true;
