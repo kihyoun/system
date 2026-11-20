@@ -8,8 +8,9 @@ import { RetainedRecoveryService } from './recovery.service';
 import { Module } from '@nestjs/common';
 import { HostCertificateService } from './certificate.service';
 import { LocalHostService } from './local.service';
-import { BuildToolsService } from './build-tools.service';
+import { BuildToolsModule } from './build-tools.module';
 @Module({
+  imports: [BuildToolsModule],
   providers: [
     {
       provide: RuntimeVerificationService,
@@ -46,13 +47,12 @@ import { BuildToolsService } from './build-tools.service';
     { provide: RetainedRecoveryService, useFactory: () => new RetainedRecoveryService() },
     { provide: HostCertificateService, useFactory: () => new HostCertificateService() },
     { provide: LocalHostService, useFactory: () => new LocalHostService() },
-    { provide: BuildToolsService, useFactory: () => new BuildToolsService() },
   ],
   exports: [
     RuntimeVerificationService,
     HostInitializeService,
     QuickstartService,
-    BuildToolsService,
+    BuildToolsModule,
     HostCertificateService,
     LocalHostService,
     UbuntuHostService,

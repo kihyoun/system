@@ -11,6 +11,8 @@ COPY operations/package.json operations/package-lock.json ./operations/
 RUN npm ci --prefix operations --ignore-scripts --no-audit --no-fund
 COPY operations/src ./operations/src
 COPY operations/tsconfig.json ./operations/tsconfig.json
+COPY operations/scripts/bundle-project-ci.mjs ./operations/scripts/bundle-project-ci.mjs
+COPY LICENSE ./LICENSE
 RUN node operations/node_modules/typescript/bin/tsc -p operations/tsconfig.json
 RUN node operations/dist/host-bootstrap/entry.js refresh-ca --checkout /candidate && node bootstrapper/ca/check.js
 WORKDIR /candidate/wizard
@@ -22,7 +24,7 @@ RUN test "$(node --version)" = v24.22.0 && test "$(npm --version)" = 11.19.1 \
  && npx --no-install playwright install chromium
 COPY .prettierrc .prettierignore /candidate/
 COPY wizard/ ./
-RUN npm run format:check
+RUN npm run format:check && node /candidate/operations/scripts/bundle-project-ci.mjs --check
 # Full native suite, including its localhost build/preview server and mock APIs.
 ENV CI=true \
     PLAYWRIGHT_HTML_OUTPUT_DIR=/candidate/test-results/wizard-browser/playwright-report \
