@@ -44,7 +44,7 @@ export async function preflightSystemBeta(input: any) {
   if (result.state === 'failed') throw Error(result.message);
   const source = result.projects?.[0];
   if (result.projects?.length !== 1 || !Number.isSafeInteger(source?.id) || source.namespaceId !== value.receipt.repository.namespaceId ||
-      source.path !== value.settings.namespace + '/' + value.settings.wizard.project || !source.defaultBranch) throw Error('Shared source identity or canonical namespace changed.');
+      source.path !== value.settings.namespace + '/' + value.settings.wizard.project || !source.defaultBranch || !/^[a-f0-9]{40}$/.test(source.sourceRevision || '')) throw Error('Shared source identity or canonical namespace changed.');
   if (context(input).previewHash !== value.previewHash) throw Error('Configuration changed; refresh preflight.');
   return {version: 2, previewHash: hash({local: value.previewHash, source, settings}), settings: value.settings, environments: settings, source,
     productionChanged: false, manualDeployment: true, message: 'Shared source, DNS and TLS verified. Confirm to reserve optional Beta; no project, pipeline or build is created.'};
