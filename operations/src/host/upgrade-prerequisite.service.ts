@@ -135,12 +135,11 @@ export class UpgradePrerequisiteService {
           '--host=unix:///var/run/docker.sock',
           'exec',
           'system_gitlab_1',
-          'gitlab-rails',
-          'runner',
-          'puts Gitlab::VERSION',
+          'cat',
+          '/opt/gitlab/embedded/service/gitlab-rails/VERSION',
         ],
         undefined,
-        300000,
+        30000,
       )
       .trim();
     ensure(version === '19.6.1', 'gitlab-prerequisite-running-version-mismatch');
