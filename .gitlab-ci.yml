@@ -293,9 +293,9 @@ test:platform-candidate:
     - npm --prefix operations run build
   script:
     - node gitlab/check-candidate-capacity.js
-    - sh tests/ci-platform.sh
+    - node operations/dist/ci/entry.js platform "$CI_PROJECT_DIR"
   after_script:
-    - sh tests/ci-platform.sh cleanup
+    - node operations/dist/ci/entry.js platform "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
