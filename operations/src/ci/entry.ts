@@ -1,3 +1,4 @@
+import { CodeqlParentService } from './codeql-parent.service';
 import 'reflect-metadata';
 import { CodeqlService } from './codeql.service';
 import path from 'node:path';
@@ -6,10 +7,10 @@ import { CiModule } from './ci.module';
 import { PlatformCheckService } from './platform.service';
 export async function ciMain(args = process.argv.slice(2)) {
   if (
-    !['platform', 'codeql'].includes(args[0]) ||
+    !['platform', 'codeql', 'codeql-parent'].includes(args[0]) ||
     !args[1]?.startsWith('/') ||
     args.length > 3 ||
-    (args[2] && (args[0] === 'platform' ? args[2] !== 'cleanup' : !args[2].startsWith('/')))
+    (args[2] && (args[0] !== 'codeql' ? args[2] !== 'cleanup' : !args[2].startsWith('/')))
   )
     throw new Error('usage-ci-platform-absolute-checkout-cleanup');
   const app = await NestFactory.createApplicationContext(CiModule, { logger: false });
@@ -23,7 +24,7 @@ export async function ciMain(args = process.argv.slice(2)) {
       return;
     }
     await app
-      .get(PlatformCheckService)
+      .get(args[0] === 'codeql-parent' ? CodeqlParentService : PlatformCheckService)
       .execute(path.resolve(args[1]), process.env, args[2] === 'cleanup', abort.signal);
   } finally {
     process.off('SIGINT', cancel);
