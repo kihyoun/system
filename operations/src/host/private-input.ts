@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import { requireValue } from './install';
 /** Validate and read the same open inode, including files replaced concurrently. */
-export function readPrivateInput(
+export function readPrivateSnapshot(
   filename: string,
   maximum = 8 * 1024 ** 2,
   policy: { owner?: number; mode?: number } = {},
-): Buffer {
+): { bytes: Buffer; stat: fs.Stats } {
   requireValue(Number.isSafeInteger(maximum) && maximum > 0, 'invalid-private-input-limit');
   const descriptor = fs.openSync(
     filename,
@@ -30,8 +30,16 @@ export function readPrivateInput(
     )
       used += count;
     requireValue(used <= maximum, 'input-is-too-large');
-    return Buffer.from(bytes.subarray(0, used));
+    return { bytes: Buffer.from(bytes.subarray(0, used)), stat };
   } finally {
     fs.closeSync(descriptor);
   }
+}
+
+export function readPrivateInput(
+  filename: string,
+  maximum = 8 * 1024 ** 2,
+  policy: { owner?: number; mode?: number } = {},
+): Buffer {
+  return readPrivateSnapshot(filename, maximum, policy).bytes;
 }
