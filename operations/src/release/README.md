@@ -43,3 +43,27 @@ entry point, recovery lineage, failed publication and private credential cleanup
 classic/containerd identities and anonymous digest verification.
 These are local synthetic checks; they do not publish images or establish that a
 real platform migration passed.
+
+`ReleaseModule.registerNpm` exports the injectable `NpmPublicationService` for
+standalone Nest callers. Its process, HTTP and GitLab evidence ports are explicit;
+imports do not run commands. `gitlab/package-cli.js` and `gitlab/publish-npm.js`
+open and reliably close that context. The package entry point returns a Promise.
+Preparation requires a clean tracked checkout at the native CI commit, matching
+package/VERSION identity and positive safe pipeline/job identifiers. It packs the
+already built runtime with lifecycle scripts disabled and records its exact
+SHA-256/SHA-512 bytes. The native package job remains responsible for building and
+testing that runtime before packaging; publication never rebuilds it.
+
+Publication requires the existing protected default-branch acceptance gates plus
+successful same-attempt package and GitHub release jobs. It compares all local
+inputs against those jobs' artifacts before contacting npm. New monorepo GitHub
+releases also require the package test; historical Gitlink releases retain their
+existing gates. The npm registry is fixed to `https://registry.npmjs.org/`.
+Publication uses a private temporary copy of the verified tarball and credential
+file, excludes inherited npm configuration and unrelated secrets from the child
+environment, disables package scripts, and removes temporary credentials on all
+exit paths. Existing versions and interrupted retries succeed only when the public
+name, version and integrity match exactly; conflicting versions are never replaced.
+`node tests/gitlab/npm-publication.js` exercises these paths with injected ports
+and no network or live publication. The public CI entry points require the built
+operations runtime and configured protected publisher credentials.

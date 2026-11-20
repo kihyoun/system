@@ -36,3 +36,7 @@ export class ReleaseService {
     );
   }
 }
+export { NpmPublicationError, readNpmReceipt, validateNpmPublication } from './npm-identity';
+export type { NpmReceipt } from './npm-identity';
+export * from './npm-publication.service';
+export * from './release.module';

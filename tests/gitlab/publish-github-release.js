@@ -147,6 +147,10 @@ test('gates bind required successful jobs and byte-identical artifacts before Gi
     return {only_allow_merge_if_pipeline_succeeds: true, default_branch: 'master'};
   };
   await gates(ci, environment, root, gitlab);
+  await assert.rejects(gates(ci, environment, root, gitlab, 'system-monorepo-v1'), /Every required/);
+  jobs.push({name:'test:npm-package',id:77,status:'success',allow_failure:false,pipeline:{id:10},commit:{id:sha}});
+  await gates(ci, environment, root, gitlab, 'system-monorepo-v1');
+  jobs.pop();
   jobs.find(row => row.name === 'test:wizard-browser').status = 'failed';
   await assert.rejects(gates(ci, environment, root, gitlab), /Every required/);
   jobs.find(row => row.name === 'test:wizard-browser').status = 'success';
@@ -258,6 +262,7 @@ for (const monorepo of [false, true]) test('complete publisher derives determini
   for (const [file, bytes] of Object.entries(inputs)) { fs.mkdirSync(path.dirname(path.join(root, file)), {recursive: true}); fs.writeFileSync(path.join(root, file), bytes); }
   const names = ['check:documentation', 'prepare:wizard-source', 'test:candidate-image', 'test:platform-candidate', 'build',
     'test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
+  if (monorepo) names.push('test:npm-package');
   const jobs = names.map((name, index) => ({name, id: name === 'test:platform-candidate' ? 20 : index + 1,
     status: 'success', allow_failure: false, pipeline: {id: 10}, commit: {id: commit}}));
   const fixture = githubFixture();

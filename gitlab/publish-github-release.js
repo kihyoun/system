@@ -74,7 +74,7 @@ async function gates(ci, env, root, gitlab, sourceLayout) {
     if (rows.length < 100) break;
     requireValue(page < 20, 'GitLab job enumeration too large.');
   }
-  const required = ['check:documentation', 'prepare:wizard-source', 'test:candidate-image', 'test:platform-candidate', 'build',
+  const required = [...(sourceLayout === 'system-monorepo-v1' ? ['test:npm-package'] : []), 'check:documentation', 'prepare:wizard-source', 'test:candidate-image', 'test:platform-candidate', 'build',
     'test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github',
     ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(value => 'test:isolated: [' + value + ']')];
   for (const name of required) {
