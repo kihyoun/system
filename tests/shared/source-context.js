@@ -42,7 +42,7 @@ try {
   const binary=Buffer.from([0,255,128,13,10]);
   write('tests/binary.png',binary);
   write('system/.docker.env.example','public example\n');
-  const runtimeInputs=['bootstrapper/persistence.js','bootstrapper/seed-operation.js',
+  const runtimeInputs=['tools/quickstart/quickstart.sh','tools/gitlab/bootstrap-token.rb','bootstrapper/persistence.js','bootstrapper/seed-operation.js',
     'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','gitlab-runner/provision.rb','system/.seed.env',
     'system/persistence-init.js','system/wizard-public.js','system/docker-compose.yml',
     'nginx/wizard-aliases.js',
@@ -78,6 +78,7 @@ try {
   assert.equal(fs.readFileSync(path.join(root,'.test-context/revision'),'utf8').trim(),git('rev-parse','HEAD'));
   const candidate=prepareCandidate(root);
   assert(candidate.files.includes('system/Dockerfile'));
+  for (const name of runtimeInputs.filter(name=>name.startsWith('tools/'))) assert(candidate.files.includes(name), 'Missing candidate bootstrap adapter: '+name);
   assert(candidate.files.includes('wizard/start.sh'));
   assert.deepEqual(candidate.files.filter(name=>name.startsWith('tests/')),['tests/e2e/acme-host-runtime.js']);
   assert.equal(execFileSync('tar',['-xOf',path.join(root,'.candidate-context/context.tar'),'tests/e2e/acme-host-runtime.js'],{encoding:'utf8'}),'committed native ACME transport\n');

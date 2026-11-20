@@ -42,6 +42,7 @@ COPY nginx/.templates ./nginx/.templates
 COPY nginx-proxy/ ./nginx-proxy/
 COPY system/ ./system/
 COPY bootstrapper/ ./bootstrapper/
+COPY tools/ ./tools/
 COPY tests ./tests
 COPY docs/check-wizard-docs.js ./docs/check-wizard-docs.js
 COPY .gitlab-ci.yml ./

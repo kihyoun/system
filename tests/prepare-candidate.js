@@ -9,6 +9,7 @@ const {validate,verifyCommitted,sourceMetadata}=require('../project-bootstrap/wi
 const snapshotPath='project-bootstrap/wizard-source/snapshot.json';
 const allowed=['bootstrapper','system','sync','operations','gitlab','gitlab-runner','nginx','nginx-proxy','project-bootstrap'];
 function included(name) {
+  if (['tools/quickstart/quickstart.sh', 'tools/gitlab/bootstrap-token.rb'].includes(name)) return true;
   if(!/^[A-Za-z0-9._/-]+$/.test(name) || name.split('/').some(x=>x==='..'||x==='.git')) return false;
   if(name===snapshotPath || /(^|\/)(node_modules|dist|test-results|\.test-context|\.candidate-context|\.projects\.env|\.hosts|seed|ssl|configuration)(\/|$)/.test(name)) return false;
   if(/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper\.zip|bootstrapper_initial_root_password)$/.test(name) || /\.(key|pem|p12|pfx)$/.test(name)) return false;

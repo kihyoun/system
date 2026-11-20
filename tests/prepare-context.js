@@ -9,6 +9,7 @@ const snapshotPath = 'project-bootstrap/wizard-source/snapshot.json';
 const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
 
 function included(name) {
+  if (['tools/quickstart/quickstart.sh', 'tools/gitlab/bootstrap-token.rb'].includes(name)) return true;
   if (!/^[A-Za-z0-9._/-]+$/.test(name) || name.split('/').some(part => part === '..' || part === '.git')) return false;
   // Committed source is necessary, but runtime/private/generated paths still
   // do not belong in the test context. The one validated snapshot is added below.
