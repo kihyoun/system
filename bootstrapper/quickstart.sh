@@ -1,295 +1,101 @@
 #!/usr/bin/env bash
-# Thin fresh-host entry point. Python 3 is included in standard Ubuntu 24.04.
+# The only shell bootstrap: prepare pinned Node, verify the accepted CLI, hand off to Nest.
 set -euo pipefail
-if ! command -v python3 >/dev/null 2>&1; then
-  printf 'Quickstart requires the standard Ubuntu Python 3 runtime. Install python3, then retry.\n' >&2
-  exit 1
-fi
-python3 - <<'SYSTEM_QUICKSTART_PY'
-import contextlib
-import fcntl
-import hashlib
-import json
-import os
-from pathlib import Path
-import platform
-import re
-import shutil
-import socket
-import subprocess
-import sys
-import tempfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-
-REPOSITORY = 'kihyoun/system'  # Replaced for the accepted public mirror.
-ACCEPTED_RELEASE_TAG = None  # Replaced only in the accepted public release asset.
-CHECKOUT = Path('/opt/system-bootstrapper')
-HOST_RUNTIME = Path('/opt/system-bootstrapper-runtime')
-NVM_COMMIT = '4e8758a801eea9479b32a904f31093e410ddaba4'
-NVM_SCRIPT_SHA256 = 'e7ffd3d192735da61e5eb04e68f1aca4a293af4cd0000864568d6de7aa8f6fc4'
-NODE_ARCHIVE = 'node-v24.22.0-linux-x64'
-NODE_SHA256 = 'cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008'
-LIVE = Path('/var/lib/system-bootstrapper/platform')
-SELECTOR = Path('/etc/system-bootstrapper/persistence.env')
-ALLOWED_HOSTS = {'api.github.com', 'github.com', 'raw.githubusercontent.com',
-                 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'}
-
-
-class QuickstartError(RuntimeError):
-    pass
-
-
-def require(condition, message):
-    if not condition:
-        raise QuickstartError(message)
-
-
-class PublicRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, request, fp, code, message, headers, target):
-        validate_url(target)
-        return super().redirect_request(request, fp, code, message, headers, target)
-
-
-def validate_url(value):
-    url = urllib.parse.urlsplit(value)
-    require(url.scheme == 'https' and url.hostname in ALLOWED_HOSTS and url.port in (None, 443)
-            and not url.username and not url.password and not url.fragment, 'Unapproved public download origin.')
-    return value
-
-
-def download(value):
-    validate_url(value)
-    request = urllib.request.Request(value, headers={'User-Agent': 'System-Bootstrapper-Quickstart',
-                                                    'Accept': 'application/vnd.github+json'})
-    with urllib.request.build_opener(PublicRedirect()).open(request, timeout=30) as response:
-        data = response.read(8 * 1024 * 1024 + 1)
-    require(len(data) <= 8 * 1024 * 1024, 'Public release input is too large.')
-    return data
-
-
-def command(arguments, timeout=1800):
-    try:
-        subprocess.run(arguments, check=True, timeout=timeout)
-    except (subprocess.SubprocessError, OSError):
-        raise QuickstartError('Native installation step failed: ' + Path(arguments[0]).name +
-                              '. Preserve the selected checkout and state; use the full installation guide.') from None
-
-
-def preflight():
-    require(os.geteuid() == 0, 'Run the one-command Quickstart with sudo/root access.')
-    os_release = {}
-    for line in Path('/etc/os-release').read_text().splitlines():
-        if '=' in line:
-            key, value = line.split('=', 1)
-            os_release[key] = value.strip('"')
-    require(os_release.get('ID') == 'ubuntu' and os_release.get('VERSION_ID') in ('24.04', '26.04')
-            and platform.machine() == 'x86_64', 'Quickstart supports Ubuntu 24.04 / 26.04 LTS amd64 only.')
-    # An 8 GiB guest commonly reports less after kernel/firmware reservations.
-    require(os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') >= 8 * 1024 ** 3 - 512 * 1024 ** 2,
-            'Quickstart requires an 8 GiB-class host (at least 7.5 GiB reported RAM).')
-    require(shutil.disk_usage('/var/lib').free >= 40 * 1024 ** 3, 'Quickstart requires 40 GiB free on the live-data filesystem.')
-    require(shutil.disk_usage('/opt').free >= 1024 ** 3, 'Quickstart requires 1 GiB free for source checkout.')
-    for target in (CHECKOUT, HOST_RUNTIME, LIVE, SELECTOR, Path('/etc/system-bootstrapper'),
-                   Path('/var/lib/system-bootstrapper'), Path('/system')):
-        require(not target.exists() and not target.is_symlink(),
-                'Existing installation or retained state detected at ' + str(target) +
-                '. Use the documented installation, upgrade or recovery path; nothing was overwritten.')
-    for port in (80, 443):
-        with socket.socket() as probe:
-            try:
-                probe.bind(('0.0.0.0', port))
-            except OSError:
-                raise QuickstartError('Port ' + str(port) + ' is already in use. Preserve existing services and use the full guide.') from None
-    if shutil.which('docker'):
-        for arguments in (['container', 'ls', '--all', '--filter', 'name=^/system_', '--format', '{{.ID}}'],
-                          ['volume', 'ls', '--filter', 'name=^system_', '--format', '{{.Name}}']):
-            result = subprocess.run(['docker', '--host=unix:///var/run/docker.sock', *arguments],
-                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15)
-            require(result.returncode == 0 and not result.stdout.strip(),
-                    'Existing System Docker state or unavailable daemon detected; use the full installation guide.')
-
-
-def metadata():
-    selector = 'tags/' + ACCEPTED_RELEASE_TAG if ACCEPTED_RELEASE_TAG else 'latest'
-    release = json.loads(download('https://api.github.com/repos/' + REPOSITORY + '/releases/' + selector))
-    tag = release.get('tag_name', '')
-    require(re.fullmatch(r'v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)', tag)
-            and (ACCEPTED_RELEASE_TAG is None or tag == ACCEPTED_RELEASE_TAG)
-            and release.get('draft') is False and release.get('prerelease') is False,
-            'A published stable accepted release is required.')
-    name = 'system-release-' + tag + '.json'
-    def asset(filename):
-        rows = [row for row in release.get('assets', []) if row.get('name') == filename]
-        require(len(rows) == 1 and rows[0].get('browser_download_url') ==
-                'https://github.com/' + REPOSITORY + '/releases/download/' + tag + '/' + filename,
-                'Expected versioned public release asset is missing.')
-        return download(rows[0]['browser_download_url'])
-    raw = asset(name)
-    require(asset(name + '.sha256').decode() == hashlib.sha256(raw).hexdigest() + '  ' + name + '\n',
-            'Public release metadata checksum mismatch.')
-    value = json.loads(raw)
-    require(value.get('format') == 'system-accepted-release-v1' and value.get('tag') == tag
-            and value.get('version') == tag[1:] and value.get('platform') == 'linux/amd64'
-            and value.get('acceptance', {}).get('controllerWizardSameAttempt') is True
-            and value.get('acceptance', {}).get('requiredChecksPassed') is True,
-            'Accepted public source/image metadata required.')
-    source = value.get('source', {})
-    shared = source.get('sourceLayout') == 'system-monorepo-v1'
-    require(source.get('repository') == 'https://github.com/' + REPOSITORY + '.git'
-            and all(re.fullmatch(r'[a-f0-9]{40}', source.get(key, '')) for key in ('revision', 'tree'))
-            and ((shared and re.fullmatch(r'[a-f0-9]{40}', source.get('wizardSourceTree', '')) and
-                  source.get('wizardRevision') is None and source.get('wizardRepository') is None) or
-                 (source.get('sourceLayout') is None and source.get('wizardSourceTree') is None and
-                  isinstance(source.get('wizardRepository'), str) and
-                  re.fullmatch(r'https://github\.com/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+\.git', source['wizardRepository']) and
-                  re.fullmatch(r'[a-f0-9]{40}', source.get('wizardRevision', '')))),
-            'Exact public source identities are required.')
-    for role in ('controller', 'wizard'):
-        require(re.fullmatch(r'(?:docker\.io/)?[a-z0-9_-]+/[a-z0-9._-]+@sha256:[a-f0-9]{64}',
-                             value.get('images', {}).get(role, {}).get('reference', '')),
-                'Immutable public controller/Wizard images are required.')
-    require(re.fullmatch(r'[a-f0-9]{64}', value.get('quickstart', {}).get('hostInstallerSha256', '')),
-            'Accepted native host installer checksum required.')
-    return value
-
-
-def prepare_host_runtime(selected):
-    """Prepare verified offline inputs without starting code from the image."""
-    require(not HOST_RUNTIME.exists() and not HOST_RUNTIME.is_symlink(), 'Host runtime already exists; preserve it.')
-    require(re.fullmatch(r'(?:docker\.io/)?[a-z0-9_-]+/[a-z0-9._-]+@sha256:[a-f0-9]{64}', selected.get('images', {}).get('controller', {}).get('reference', '')) and
-            re.fullmatch(r'[a-f0-9]{40}', selected.get('source', {}).get('revision', '')),
-            'Immutable accepted runtime image and source required.')
-    HOST_RUNTIME.mkdir(mode=0o755)
-    nvm = HOST_RUNTIME / 'nvm'
-    command(['git', '-c', 'core.hooksPath=/dev/null', 'clone', '--depth', '1', '--branch', 'v0.41.0',
-             '--', 'https://github.com/nvm-sh/nvm.git', str(nvm)])
-    commit = subprocess.check_output(['git', '-C', str(nvm), 'rev-parse', 'HEAD'], timeout=30).decode().strip()
-    require(commit == NVM_COMMIT and hashlib.sha256((nvm / 'nvm.sh').read_bytes()).hexdigest() == NVM_SCRIPT_SHA256,
-            'Pinned nvm source checksum mismatch.')
-    # A dedicated root-owned installation preserves each user's existing nvm,
-    # shell profile and default version. nvm is sourced only during preparation.
-    command(['env', '-u', 'NVM_AUTH_HEADER', '-u', 'NPM_CONFIG_PREFIX', '-u', 'npm_config_prefix', '-u', 'PREFIX',
-             'NVM_DIR=' + str(nvm), 'NVM_NODEJS_ORG_MIRROR=https://nodejs.org/dist', 'NVM_NO_COLORS=1',
-             'bash', '--noprofile', '--norc', '-c',
-             'set -e; cd "$1"; . "$1/nvm.sh" --no-use; test "$(nvm --version)" = 0.41.0; nvm install --no-progress -b 24.22.0',
-             'prepare-host-node', str(nvm)])
-    archive = nvm / '.cache/bin' / NODE_ARCHIVE / (NODE_ARCHIVE + '.tar.xz')
-    require(archive.is_file() and hashlib.sha256(archive.read_bytes()).hexdigest() == NODE_SHA256,
-            'Pinned host Node runtime checksum mismatch.')
-    node = nvm / 'versions/node/v24.22.0/bin/node'
-    require(node.is_file() and not node.is_symlink() and
-            subprocess.check_output([str(node), '--version'], timeout=30).strip() == b'v24.22.0',
-            'Pinned Node runtime version mismatch.')
-    (HOST_RUNTIME / 'bin').mkdir(mode=0o755)
-    (HOST_RUNTIME / 'bin/node').symlink_to(node)
-    (HOST_RUNTIME / 'node-executable').write_text(str(node) + '\n')
-    image = selected['images']['controller']['reference']
-    docker = ['docker', '--host=unix:///var/run/docker.sock']
-    command([*docker, 'pull', image])
-    rows = json.loads(subprocess.check_output([*docker, 'image', 'inspect', image], timeout=30))
-    require(len(rows) == 1 and rows[0].get('Os') == 'linux' and rows[0].get('Architecture') == 'amd64' and
-            image.removeprefix('docker.io/') in [value.removeprefix('docker.io/') for value in rows[0].get('RepoDigests', [])] and
-            rows[0].get('Config', {}).get('Labels', {}).get('org.opencontainers.image.revision') == selected['source']['revision'],
-            'Accepted runtime image identity mismatch.')
-    container = subprocess.check_output([*docker, 'create', '--network', 'none', '--entrypoint', '/bin/true', image], timeout=30).decode().strip()
-    require(re.fullmatch(r'[a-f0-9]{64}', container), 'Owned runtime extraction container required.')
-    try:
-        for name in ('dist', 'node_modules'):
-            destination = CHECKOUT / 'operations' / name
-            require(not destination.exists() and not destination.is_symlink(), 'Compiled runtime destination already exists.')
-            command([*docker, 'cp', container + ':/system/operations/' + name, str(destination)])
-        require((CHECKOUT / 'operations/dist/host/entry.js').is_file(), 'Accepted compiled host runtime is missing.')
-        command([str(node), str(CHECKOUT / 'operations/dist/host/entry.js'), '--help'], timeout=30)
-    finally:
-        command([*docker, 'rm', container], timeout=30)
-    os.environ['PATH'] = str(HOST_RUNTIME / 'bin') + os.pathsep + os.environ.get('PATH', '')
-
-
-def wait_for_wizard(timeout=180):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen('http://127.0.0.1/configuration', timeout=5) as response:
-                ready = response.status == 200 and b'<html' in response.read(1024 * 1024).lower()
-            try:
-                urllib.request.urlopen('http://127.0.0.1/sync/status', timeout=5)
-            except urllib.error.HTTPError as error:
-                if ready and error.code == 401:
-                    return
-        except (OSError, urllib.error.URLError):
-            pass
-        time.sleep(2)
-    raise QuickstartError('Startup was requested but Wizard/Sync readiness timed out. Preserve state and inspect native Docker logs; do not rerun as a fresh install.')
-
-
-def install():
-    preflight()
-    print('Selecting the accepted public release and exact source/image pair...', flush=True)
-    selected = metadata()
-    source = selected['source']
-    with tempfile.TemporaryDirectory(prefix='system-quickstart-') as temporary:
-        native = Path(temporary) / 'install.sh'
-        raw = download('https://raw.githubusercontent.com/' + REPOSITORY + '/' + source['revision'] + '/bootstrapper/install.sh')
-        require(hashlib.sha256(raw).hexdigest() == selected['quickstart']['hostInstallerSha256'], 'Native host installer source mismatch.')
-        native.write_bytes(raw)
-        print('Installing native host dependencies. Package downloads and image pulls can take several minutes...', flush=True)
-        command(['bash', str(native)])
-    # Recheck source destination after dependency setup. Never replace any path.
-    require(not CHECKOUT.exists() and not CHECKOUT.is_symlink(), 'Checkout appeared during setup; preserving it.')
-    command(['git', '-c', 'core.hooksPath=/dev/null', 'clone', '--no-checkout', '--', source['repository'], str(CHECKOUT)])
-    command(['git', '-C', str(CHECKOUT), '-c', 'core.hooksPath=/dev/null', 'checkout', '--detach', source['revision']])
-    tree = subprocess.check_output(['git', '-C', str(CHECKOUT), 'rev-parse', 'HEAD^{tree}']).decode().strip()
-    gitlink = subprocess.check_output(['git', '-C', str(CHECKOUT), 'ls-tree', 'HEAD', 'wizard']).decode().strip()
-    if source.get('sourceLayout') == 'system-monorepo-v1':
-        require(tree == source['tree'] and gitlink == '040000 tree ' + source['wizardSourceTree'] + '\twizard', 'Accepted monorepo source tree mismatch.')
-        prepare_host_runtime(selected)
-    else:
-        require(tree == source['tree'] and gitlink == '160000 commit ' + source['wizardRevision'] + '\twizard', 'Accepted source tree/gitlink mismatch.')
-        mapping = subprocess.check_output(['git', '-C', str(CHECKOUT), 'config', '--file', '.gitmodules', '--get', 'submodule.wizard.url']).decode().strip()
-        require(mapping == source['wizardRepository'], 'Accepted Wizard repository mapping mismatch.')
-        command(['git', '-C', str(CHECKOUT), '-c', 'core.hooksPath=/dev/null', 'submodule', 'update', '--init', '--recursive'])
-    # The native installer enforces clean source, fresh live state, exclusive
-    # initialization and exact pulled-image labels before any service startup.
-    with tempfile.TemporaryDirectory(prefix='system-release-metadata-') as temporary:
-        manifest = Path(temporary) / 'release.json'
-        manifest.write_text(json.dumps(selected))
-        manifest.chmod(0o600)
-        command(['python3', str(CHECKOUT / 'bootstrapper/install-release.py'),
-                 '--controller', selected['images']['controller']['reference'],
-                 '--wizard', selected['images']['wizard']['reference'], '--release-metadata', str(manifest)])
-    wait_for_wizard()
-    print('\nWizard ready: http://127.0.0.1/configuration')
-    print('For a remote host, open a protected tunnel on YOUR workstation:')
-    print('  ssh -N -L 8080:127.0.0.1:80 <your-user>@<your-host>')
-    print('Then open http://127.0.0.1:8080/configuration; use Sync address http://127.0.0.1:8080/sync')
-    print('Read the unique first-access username/password locally on the host:')
-    print('  sudo cat /var/lib/system-bootstrapper/platform/configuration/sync-auth.env')
-    print('Use the tunnel before entering credentials. The initial HTTP service has no public HTTPS.')
-    print('Continue configuration in the Wizard; choose GitLab host ports compatible with your SSH service.')
-    print('Full installation, DNS/HTTPS, recovery and upgrade: ' + selected['documentation']['quickstart'])
-
-
-def main():
-    try:
-        require(os.geteuid() == 0, 'Run this installer with sudo/root access.')
-        descriptor = os.open('/run/system-bootstrapper-quickstart.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(descriptor, 'a') as guard:
-            os.fchmod(guard.fileno(), 0o600)
-            try:
-                fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise QuickstartError('Another Quickstart is running.') from None
-            install()
-        return 0
-    except (QuickstartError, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
-        print('Quickstart: ' + (str(error) if isinstance(error, QuickstartError) else
-                               'Public input or native operation failed. Preserve existing state and consult the full guide.'), file=sys.stderr)
-        return 1
-
-
-if __name__ == '__main__':
-    sys.exit(main())
-SYSTEM_QUICKSTART_PY
+umask 077
+[[ $(id -u) == 0 ]] || { echo 'Run Quickstart with sudo/root access.' >&2; exit 1; }
+exec 9>/run/system-bootstrapper-quickstart.lock
+flock -n 9 || { echo 'Another Quickstart is running.' >&2; exit 1; }
+runtime=/opt/system-bootstrapper-runtime
+for target in "$runtime" /opt/system-bootstrapper /etc/system-bootstrapper /var/lib/system-bootstrapper /system; do
+  [[ ! -e "$target" && ! -L "$target" ]] || { echo "Preserving existing state: $target" >&2; exit 1; }
+done
+# Download into a private temporary directory; execute only checksum-verified bytes.
+staging=$(mktemp -d)
+trap 'rm -rf -- "$staging"' EXIT
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --max-time 180 \
+  https://raw.githubusercontent.com/nvm-sh/nvm/4e8758a801eea9479b32a904f31093e410ddaba4/nvm.sh -o "$staging/nvm.sh"
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --max-time 300 \
+  https://nodejs.org/dist/v24.22.0/node-v24.22.0-linux-x64.tar.xz -o "$staging/node.tar.xz"
+(cd "$staging" && sha256sum --check <<'SYSTEM_RUNTIME_HASHES'
+e7ffd3d192735da61e5eb04e68f1aca4a293af4cd0000864568d6de7aa8f6fc4  nvm.sh
+cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008  node.tar.xz
+SYSTEM_RUNTIME_HASHES
+)
+mkdir "$runtime"
+mkdir -p "$runtime/nvm/versions/node"
+cp "$staging/nvm.sh" "$runtime/nvm/nvm.sh"
+tar -xJf "$staging/node.tar.xz" -C "$runtime/nvm/versions/node" --no-same-owner
+mv "$runtime/nvm/versions/node/node-v24.22.0-linux-x64" "$runtime/nvm/versions/node/v24.22.0"
+ln -s "$runtime/nvm/versions/node/v24.22.0/bin" "$runtime/bin"
+node="$runtime/bin/node"
+[[ $("$node" --version) == v24.22.0 ]]
+printf '%s\n' "$runtime/nvm/versions/node/v24.22.0/bin/node" > "$runtime/node-executable"
+export PATH="$runtime/bin:$PATH"
+"$node" --input-type=module - "$staging" "$runtime" <<'SYSTEM_QUICKSTART_JS'
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import {spawnSync} from 'node:child_process';
+const REPOSITORY = 'kihyoun/system'; // Replaced for the accepted public mirror.
+const ACCEPTED_RELEASE_TAG = null; // Replaced only in the accepted public release asset.
+const allowed = new Set(['api.github.com','github.com','release-assets.githubusercontent.com','objects.githubusercontent.com']);
+const require = (ok, message) => { if (!ok) throw Error(message); };
+async function download(address, limit = 32 * 1024 * 1024) {
+  const signal = AbortSignal.timeout(60000);
+  for(let redirects = 0; redirects < 6; redirects++) {
+    const url = new URL(address);
+    require(url.protocol === 'https:' && allowed.has(url.hostname) && !url.port && !url.username && !url.password && !url.hash, 'Unapproved public download origin.');
+    const response = await fetch(url, {redirect:'manual', signal, headers:{'User-Agent':'System-Bootstrapper-Quickstart'}});
+    if ([301,302,303,307,308].includes(response.status)) {
+      address = new URL(response.headers.get('location'),url).href;
+      await response.body?.cancel();
+      continue;
+    }
+    require(response.ok, 'Public release download failed.');
+    const chunks = []; let size = 0;
+    for await (const chunk of response.body) {
+      size += chunk.length;
+      require(size <= limit, 'Public release input is too large.');
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
+  throw Error('Too many public download redirects.');
+}
+const digest = (data, algorithm, encoding='hex') => crypto.createHash(algorithm).update(data).digest(encoding);
+export async function metadata() {
+  const release = JSON.parse(await download('https://api.github.com/repos/'+REPOSITORY+'/releases/'+(ACCEPTED_RELEASE_TAG ? 'tags/'+ACCEPTED_RELEASE_TAG : 'latest')));
+  const tag = release.tag_name;
+  require(/^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(tag) && (!ACCEPTED_RELEASE_TAG || tag === ACCEPTED_RELEASE_TAG) && release.draft === false && release.prerelease === false, 'Published stable accepted release required.');
+  const asset = async name => {
+    const rows = release.assets.filter(row=>row.name === name);
+    const url = 'https://github.com/'+REPOSITORY+'/releases/download/'+tag+'/'+name;
+    require(rows.length === 1 && rows[0].browser_download_url === url, 'Expected public release asset missing.');
+    return download(url);
+  };
+  const name = 'system-release-'+tag+'.json', raw = await asset(name);
+  require((await asset(name+'.sha256')).toString() === digest(raw,'sha256')+'  '+name+'\n', 'Metadata checksum mismatch.');
+  const value = JSON.parse(raw), source = value.source, receipt = value.quickstart?.cli;
+  require(value.format === 'system-accepted-release-v1' && value.tag === tag && value.version === tag.slice(1) && value.platform === 'linux/amd64' && value.acceptance?.requiredChecksPassed === true && value.acceptance?.controllerWizardSameAttempt === true, 'Accepted public release required.');
+  require(source?.sourceLayout === 'system-monorepo-v1' && source.repository === 'https://github.com/'+REPOSITORY+'.git' && ['revision','tree','wizardSourceTree'].every(key=>/^[a-f0-9]{40}$/.test(source[key])), 'Exact accepted monorepo source required.');
+  require(receipt?.format === 'system-cli-source-v1' && receipt.name === '@systembootstrapper/cli' && receipt.version === value.version && receipt.sourceRevision === source.revision && receipt.sourceTree === source.tree && receipt.filename === 'systembootstrapper-cli-'+value.version+'.tgz' && ['pipelineId','packageJobId'].every(key=>Number.isSafeInteger(receipt[key]) && receipt[key]>0) && /^[a-f0-9]{64}$/.test(receipt.sha256) && /^sha512-[A-Za-z0-9+/]{86}==$/.test(receipt.integrity), 'Exact accepted CLI receipt required.');
+  const artifact = await asset(receipt.filename);
+  require(digest(artifact,'sha256') === receipt.sha256 && 'sha512-'+digest(artifact,'sha512','base64') === receipt.integrity, 'Accepted CLI checksum mismatch.');
+  return {value,artifact};
+}
+export async function main(staging, runtime) {
+  const {value,artifact} = await metadata();
+  const archive = path.join(staging,value.quickstart.cli.filename), manifest = path.join(staging,'release.json');
+  fs.writeFileSync(archive,artifact,{mode:0o600});
+  fs.writeFileSync(manifest,JSON.stringify(value),{mode:0o600});
+  const run = (args,env,timeout) => {
+    const result = spawnSync(process.execPath,args,{env,stdio:'inherit',timeout});
+    require(!result.error && result.status === 0,'Native CLI operation failed. Preserve state and consult the installation guide.');
+  };
+  run([path.join(runtime,'bin/npm'),'install','--offline','--ignore-scripts','--no-audit','--no-fund','--prefix',path.join(runtime,'cli'),archive],{PATH:path.join(runtime,'bin'),HOME:staging,npm_config_cache:path.join(staging,'cache'),npm_config_userconfig:path.join(staging,'user.npmrc'),npm_config_globalconfig:path.join(staging,'global.npmrc')},180000);
+  run([path.join(runtime,'cli/node_modules/@systembootstrapper/cli/dist/host-bootstrap/entry.js'),'quickstart','--checkout','/opt/system-bootstrapper','--metadata',manifest],process.env,3600000);
+  console.log('Wizard ready: http://127.0.0.1/configuration. For remote access use a protected SSH tunnel: ssh -N -L 8080:127.0.0.1:80 <your-user>@<your-host>');
+  console.log('Read first-access credentials locally: sudo cat /var/lib/system-bootstrapper/platform/configuration/sync-auth.env');
+}
+if (process.argv[1] === '-') await main(process.argv[2],process.argv[3]).catch(error=>{console.error('Quickstart: '+error.message);process.exitCode=1;});
+SYSTEM_QUICKSTART_JS

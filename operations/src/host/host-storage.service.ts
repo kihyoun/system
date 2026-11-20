@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { HostPersistenceService } from '../host-lifecycle/persistence.service';
 import { randomBytes } from 'node:crypto';
 import { NativeHostAttachedProcess, type HostAttachedProcess } from './attached-process';
 import path from 'node:path';
@@ -16,6 +17,7 @@ export class HostStorageService {
   constructor(
     readonly host: HostInstallService,
     readonly attached: HostAttachedProcess = new NativeHostAttachedProcess(),
+    readonly persistence = new HostPersistenceService(),
   ) {}
   async execute(command: HostStorageCommand): Promise<void> {
     requireValue(this.host.rootUser(), 'host-storage-requires-root');
@@ -34,7 +36,7 @@ export class HostStorageService {
     privateFile(command.persistenceEnv);
     const { selected } = this.host.storage(command.persistenceEnv, command.checkout);
     if (!command.checkOnly)
-      this.host.run('bash', [path.join(command.checkout, 'bootstrapper/persistence.sh')], {
+      await this.persistence.prepare({
         ...this.host.environment,
         ...selected,
       });

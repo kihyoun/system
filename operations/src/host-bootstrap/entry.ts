@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import 'reflect-metadata';
 import path from 'node:path';
+import { QuickstartService } from './quickstart.service';
 import { UbuntuHostService } from './ubuntu.service';
 import { RetainedRecoveryService } from './recovery.service';
 import { NestFactory } from '@nestjs/core';
@@ -18,6 +19,7 @@ export async function main(input: string[], env = process.env): Promise<void> {
     throw Error('An explicit absolute --checkout is required.');
   if (
     ![
+      'quickstart',
       'install-host',
       'recover-volume',
       'refresh-ca',
@@ -31,6 +33,12 @@ export async function main(input: string[], env = process.env): Promise<void> {
     throw Error('Unsupported host bootstrap action.');
   if (
     command !== 'certbot' &&
+    !(
+      command === 'quickstart' &&
+      args.length === 2 &&
+      args[0] === '--metadata' &&
+      path.isAbsolute(args[1])
+    ) &&
     !(command === 'recover-volume' && args.length === 1 && args[0] === '--verify') &&
     args.length
   )
@@ -46,7 +54,10 @@ export async function main(input: string[], env = process.env): Promise<void> {
   process.on('SIGINT', cancel);
   process.on('SIGTERM', cancel);
   try {
-    if (command === 'install-host') await app.get(UbuntuHostService).install(env, abort.signal);
+    if (command === 'quickstart')
+      await app.get(QuickstartService).install(checkout, args[1], env, abort.signal);
+    else if (command === 'install-host')
+      await app.get(UbuntuHostService).install(env, abort.signal);
     else if (command === 'recover-volume')
       await app
         .get(RetainedRecoveryService)

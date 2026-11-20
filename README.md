@@ -12,7 +12,7 @@ Your source and CI stay editable.
 
 ## Install
 
-On a fresh **Ubuntu 24.04 / 26.04 LTS x86_64** host with **sudo access, curl, Python 3,
+On a fresh **Ubuntu 24.04 / 26.04 LTS x86_64** host with **sudo access, curl,
 internet, at least 8 GiB RAM, 40 GiB free for data plus 1 GiB for source, and free
 ports 80/443**, run:
 

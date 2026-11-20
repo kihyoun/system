@@ -113,23 +113,26 @@ export class GithubPublicationService {
     );
     const template = bounded(path.join(root, 'bootstrapper/quickstart.sh')).toString();
     const marker =
-      'ACCEPTED_RELEASE_TAG = None  # Replaced only in the accepted public release asset.';
+      'const ACCEPTED_RELEASE_TAG = null; // Replaced only in the accepted public release asset.';
     requireValue(
       template.split(marker).length === 2,
       'Quickstart release binding marker required.',
     );
     const repositoryMarker =
-      "REPOSITORY = 'kihyoun/system'  # Replaced for the accepted public mirror.";
+      "const REPOSITORY = 'kihyoun/system'; // Replaced for the accepted public mirror.";
     requireValue(
       template.split(repositoryMarker).length === 2,
       'Quickstart mirror binding marker required.',
     );
     const quickstart = Buffer.from(
       template
-        .replace(marker, "ACCEPTED_RELEASE_TAG = '" + ci.tag + "'  # Accepted public release.")
+        .replace(
+          marker,
+          "const ACCEPTED_RELEASE_TAG = '" + ci.tag + "'; // Accepted public release.",
+        )
         .replace(
           repositoryMarker,
-          "REPOSITORY = '" + ci.repository + "'  # Accepted public mirror.",
+          "const REPOSITORY = '" + ci.repository + "'; // Accepted public mirror.",
         ),
     );
     if (released.sourceLayout !== 'system-monorepo-v1')
