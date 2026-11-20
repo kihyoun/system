@@ -24,15 +24,33 @@ wizardSourceTree, helperImage, wizardImageId, wizardImageRef가 필요합니다.
 저장소를, Wizard 트리는 커밋된 하위 디렉터리를 식별합니다. Stop을 위해 도우미
 이미지를 보관하세요.
 
+인증된 Sync 상태 엔드포인트 /projects/wizard/preview-setup에서 예약 작업 값을
+읽으세요. 승인된 후보의 release.json에서 sourceRevision은 sourceCommit으로,
+imageId는 helperImage로, wizardRegistryReference는 wizardImageRef로 옮기고
+projectId, pipelineId, candidateJobId, wizardSourceTree, wizardImageId는 정확히
+복사하세요. projectPath, namespaceId, defaultBranch는 같은 선택된 공유 GitLab
+프로젝트에서 가져옵니다. Helper 이미지는 정확한 승인 소스/작업 라벨과 함께
+컨트롤러의 Docker 호스트에 이미 있어야 하며 Stop을 위해 보존해야 합니다.
+다른 파이프라인의 값은 이 예약에 권한을 부여할 수 없습니다.
+
 ```sh
 node project-bootstrap/system-beta/bind.js plan /state/beta-input.json
 node project-bootstrap/system-beta/bind.js apply /state/beta-input.json PLAN_HASH
 ```
 
-정확한 해시를 적용하기 전에 계획을 검토하세요. 네이티브 프로젝트 변수
-SYSTEM_BETA_OPERATION과 WIZARD_BETA_HOST를 예약의 작업과 정확한 호스트로
-설정하세요. Deploy와 Stop은 명시적인 수동 System 파이프라인 작업입니다.
-기존 릴리스 아티팩트와 변경 불가능한 이미지를 재사용합니다. 라우팅 전에 프로젝트,
+정식 컨트롤러가 실행 중인 Docker 호스트의 검토된 체크아웃에서 Node 24와 해당
+Docker 소켓 접근 권한으로 연결 도구를 실행하세요. 비공개 입력은 후보 선택이며
+자격 증명 파일이 아닙니다. 정확한 해시를 적용하기 전에 계획을 검토하세요.
+그다음 이미 승인된 보호 기본 브랜치 push 파이프라인을 열고 deploy:wizard-beta 또는
+stop:wizard-beta를 수동으로 실행하세요. 이 선택적 작업은 활성화 프로젝트 변수 없이
+존재하며 설정과 연결은 다른 파이프라인을 시작하지 않습니다. 실행기는 명시적으로
+저장된 v2 연결을 읽고 현재 작업의 프로젝트, 파이프라인, 소스 커밋이 일치하는지
+검사한 뒤 연결된 예약에서 정확한 HTTPS 호스트를 읽습니다. 연결이 없거나 오래되거나
+다른 소유자이면 거부합니다. Deploy 클릭은 연결을 생성하지 않습니다. 기존에 남은
+SYSTEM_BETA_OPERATION 및 WIZARD_BETA_HOST 변수는 일치해야 하며 불필요한 값은
+의도적으로 제거하세요. 이 실행 경로에는 수동으로 준비한 API 토큰이 필요하지 않습니다.
+성공한 실행과 소유 helper 정리 후 test-results/system-beta/environment.env가
+GitLab 환경 링크용 SYSTEM_BETA_URL을 제공합니다. Deploy와 Stop은 기존 릴리스 아티팩트와 변경 불가능한 이미지를 재사용합니다. 라우팅 전에 프로젝트,
 작업, 후보 파이프라인, 공유 소스 트리, 이미지 식별자, 저장소 및 업그레이드 승인과
 브라우저 정리를 확인합니다. 임의 이미지 배포 엔드포인트는 없습니다. 빌드
 아티팩트가 만료되어도 Stop은 가능합니다.

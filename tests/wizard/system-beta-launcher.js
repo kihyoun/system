@@ -2,7 +2,7 @@
 const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
-const {run, request, WORK_BUDGET, CLEANUP_BUDGET} = require('../../project-bootstrap/system-beta/run');
+const {run, request, writeEnvironment, WORK_BUDGET, CLEANUP_BUDGET} = require('../../project-bootstrap/system-beta/run');
 const {environmentHash} = require('../../project-bootstrap/system-beta/binding');
 const copy = value => JSON.parse(JSON.stringify(value));
 const image = char => 'sha256:' + char.repeat(64);
@@ -29,7 +29,8 @@ async function exercise(scenario = {}, action = 'deploy') {
     constructor(selected) {
       runtime = this; this.request = selected; this.helperName = 'wizard-environment-4-808';
       this.created = false; this.cancelled = false; this.pulls = 0;
-      assert.deepEqual(selected, request(action, {...env, ...scenario.env}));
+      const initial = {...env, ...scenario.env};
+      assert.deepEqual(selected, request(action, {...initial, SYSTEM_BETA_OPERATION: initial.SYSTEM_BETA_OPERATION || '0'.repeat(48)}));
     }
     async canonical(command) {
       calls.push({kind: 'canonical', command}); assert.equal(command, 'read');
@@ -119,7 +120,9 @@ async function exercise(scenario = {}, action = 'deploy') {
     const options = {Runtime: FakeRuntime, now: () => elapsed};
     if (action === 'deploy') options.release = {...release, ...scenario.release};
     else Object.defineProperty(options, 'release', {get() { throw Error('Stop read a release artifact'); }});
-    await run(action, {...env, ...scenario.env}, options);
+    const result = await run(action, {...env, ...scenario.env}, options);
+    assert.deepEqual(result, {url: 'https://beta.example.test'});
+    assert.equal(runtime.request.operation, operation);
   } catch (caught) { error = caught; }
   finally { console.log = log; fs.mkdtempSync = makeDirectory; }
   for (const directory of directories) assert(!fs.existsSync(directory), 'Private Docker directory survives completion: ' + directory);
@@ -202,6 +205,24 @@ const removals = result => commands(result).filter(call => ['stop', 'rm'].includ
     result = await exercise(scenario); assert(result.error); assert.equal(result.directories.size, 0);
     assert.equal(commands(result).length, 0, 'Reject input before touching Docker');
   }
+  for (const action of ['deploy', 'stop']) {
+    result = await exercise({env: {SYSTEM_BETA_OPERATION: undefined, WIZARD_BETA_HOST: undefined}}, action);
+    assert.equal(result.error, undefined, 'Existing explicit binding needs no project CI variables');
+  }
+  for (const scenario of [{context: value => { delete value.systemBetaBinding; }},
+    {env: {CI_PIPELINE_ID: '999'}}, {env: {CI_COMMIT_SHA: '9'.repeat(40)}},
+    {env: {CI_PROJECT_ID: '999'}}, {env: {SYSTEM_BETA_OPERATION: '9'.repeat(48)}}]) {
+    result = await exercise(scenario);
+    assert(result.error); assert.equal(commands(result).length, 0, 'Missing or foreign binding cannot start a deployment');
+  }
+  const output = fs.mkdtempSync(path.join(require('os').tmpdir(), 'system-beta-dotenv-'));
+  try {
+    assert.throws(() => writeEnvironment({url: 'https://beta.example.test\nSECRET=value'}, output), /verified Beta/);
+    assert(!fs.existsSync(path.join(output, 'test-results/system-beta/environment.env')));
+    writeEnvironment({url: 'https://beta.example.test'}, output);
+    assert.equal(fs.readFileSync(path.join(output, 'test-results/system-beta/environment.env'), 'utf8'),
+      'SYSTEM_BETA_URL=https://beta.example.test\n');
+  } finally { fs.rmSync(output, {recursive: true, force: true}); }
   assert.throws(() => request('promote', env));
   assert.throws(() => request('deploy', {...env, CI_JOB_ID: 'invalid'}));
   console.log(`System Beta launcher: ${checks} scenarios passed; private two-image preload, offline helper, retained Stop, bounded owned cleanup, response loss, cancellation and credential cleanup.`);

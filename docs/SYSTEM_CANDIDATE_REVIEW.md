@@ -26,14 +26,34 @@ Use exact values from the accepted candidate release metadata and the configured
 reservation. The source commit identifies the shared repository; the Wizard tree
 identifies its committed subdirectory. Retain the helper image for Stop.
 
+Read the reservation operation from the authenticated Sync status endpoint
+/projects/wizard/preview-setup. In the accepted candidate's release.json, map
+sourceRevision to sourceCommit, imageId to helperImage and wizardRegistryReference
+to wizardImageRef; copy projectId, pipelineId, candidateJobId, wizardSourceTree and
+wizardImageId exactly. Supply projectPath, namespaceId and defaultBranch from the
+same selected shared GitLab project. The helper image must already be present on
+the controller's Docker host with the exact accepted source/job labels; retain it
+for Stop. No value from an unrelated pipeline can authorize this reservation.
+
 ```sh
 node project-bootstrap/system-beta/bind.js plan /state/beta-input.json
 node project-bootstrap/system-beta/bind.js apply /state/beta-input.json PLAN_HASH
 ```
 
-Inspect the plan before applying its exact hash. Set the native project variables
-SYSTEM_BETA_OPERATION and WIZARD_BETA_HOST to the reservation's operation and
-exact host. Deploy and Stop are explicit manual System pipeline jobs. They reuse
+Run the binding tool from the reviewed checkout on the Docker host that runs the
+canonical controller, with Node 24 and access to its Docker socket. The private
+input is a candidate selection, not a credential file. Inspect the plan before
+applying its exact hash. Then open that accepted protected default-branch push
+pipeline and manually run deploy:wizard-beta or stop:wizard-beta. These optional
+jobs are present without enabling a project variable; setup and binding do not
+start another pipeline. The launcher reads the explicit persistent v2 binding,
+checks the current job's project, pipeline and source commit against it, and reads
+the exact HTTPS host from the bound reservation. A missing, stale or foreign
+binding fails closed; clicking Deploy never creates one. Old SYSTEM_BETA_OPERATION
+and WIZARD_BETA_HOST variables, if retained, must match or be removed deliberately.
+No manually provisioned API token is needed for this launch path. After successful
+execution and owned helper cleanup, test-results/system-beta/environment.env
+provides SYSTEM_BETA_URL for GitLab's environment link. Deploy and Stop reuse
 the existing release artifact and immutable images; verification checks project,
 job, candidate pipeline, shared source tree, image identities, storage/upgrade
 acceptance and browser cleanup before routing. No arbitrary image endpoint is

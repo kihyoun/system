@@ -12,7 +12,10 @@ function request(action, env) {
     mrIid: 0, sourceCommit: env.CI_COMMIT_SHA, operation: env.SYSTEM_BETA_OPERATION});
 }
 async function run(action, env = process.env, options = {}) {
-  const selected = request(action, env), Driver = options.Runtime || Runtime, runtime = new Driver(selected);
+  // The explicit persisted binding is the authority. CI variables from older
+  // installations are optional consistency checks, never an implicit binding.
+  const selected = request(action, {...env, SYSTEM_BETA_OPERATION: env.SYSTEM_BETA_OPERATION || '0'.repeat(48)});
+  const Driver = options.Runtime || Runtime, runtime = new Driver(selected);
   const now = options.now || Date.now, workDeadline = now() + WORK_BUDGET;
   let cleanupDeadline;
   runtime.deadline = workDeadline;
@@ -45,12 +48,19 @@ async function run(action, env = process.env, options = {}) {
   };
   const signal = () => runtime.cancel();
   process.once('SIGTERM', signal); process.once('SIGINT', signal);
-  let binding;
+  let binding, betaUrl;
   try {
     const context = await runtime.canonical('read');
-    binding = validate(context.systemBetaBinding, context, selected);
-    if (env.WIZARD_BETA_HOST !== context.receipt.wizardWorkflow.environments.settings.beta.host)
+    binding = validate(context.systemBetaBinding, context);
+    if (env.SYSTEM_BETA_OPERATION && env.SYSTEM_BETA_OPERATION !== binding.operation)
+      throw new Error('Selected Beta operation differs from its explicit binding.');
+    selected.operation = binding.operation;
+    validate(binding, context, selected);
+    const host = context.receipt.wizardWorkflow.environments.settings.beta.host;
+    if (typeof host !== 'string' || host.length > 253 || !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(host) ||
+        !host.includes('.') || host.includes('..') || env.WIZARD_BETA_HOST && env.WIZARD_BETA_HOST !== host)
       throw new Error('Displayed Beta host does not match the configured HTTPS route.');
+    betaUrl = 'https://' + host;
     if (action === 'deploy') {
       const release = options.release || JSON.parse(fs.readFileSync('test-results/successor/release.json', 'utf8'));
       if (release.sourceRevision !== selected.sourceCommit || release.projectId !== selected.projectId ||
@@ -91,9 +101,17 @@ async function run(action, env = process.env, options = {}) {
     try { await cleanup(); }
     finally { process.removeListener('SIGTERM', signal); process.removeListener('SIGINT', signal); }
   }
+  return {url: betaUrl};
+}
+function writeEnvironment(result, directory = process.cwd()) {
+  if (!/^https:\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(result?.url || '') || /[\r\n]/.test(result.url))
+    throw new Error('A verified Beta HTTPS URL is required.');
+  const target = path.join(directory, 'test-results/system-beta');
+  fs.mkdirSync(target, {recursive: true});
+  fs.writeFileSync(path.join(target, 'environment.env'), 'SYSTEM_BETA_URL=' + result.url + '\n');
 }
 if (require.main === module) {
   if (process.argv.length !== 3) { console.error('Use deploy or stop.'); process.exitCode = 2; }
-  else run(process.argv[2]).catch(error => { console.error(error.message); process.exitCode = 1; });
+  else run(process.argv[2]).then(result => writeEnvironment(result)).catch(error => { console.error(error.message); process.exitCode = 1; });
 }
-module.exports = {request, run, WORK_BUDGET, CLEANUP_BUDGET};
+module.exports = {request, run, writeEnvironment, WORK_BUDGET, CLEANUP_BUDGET};

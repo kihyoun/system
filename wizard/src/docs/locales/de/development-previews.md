@@ -28,15 +28,36 @@ und der konfigurierten Reservierung. Der Quellcommit bezeichnet das gemeinsame
 Repository, der Wizard-Baum dessen versioniertes Unterverzeichnis. Bewahre das
 Helper-Image für Stop auf.
 
+Lies die Reservierungsoperation am authentifizierten Sync-Statusendpunkt
+/projects/wizard/preview-setup. Ordne in release.json des akzeptierten Kandidaten
+sourceRevision dem Feld sourceCommit, imageId dem Feld helperImage und
+wizardRegistryReference dem Feld wizardImageRef zu. Übernimm projectId, pipelineId,
+candidateJobId, wizardSourceTree und wizardImageId exakt. projectPath, namespaceId
+und defaultBranch stammen aus demselben ausgewählten gemeinsamen GitLab-Projekt.
+Das Helper-Image muss auf dem Docker-Host des Controllers bereits mit den exakten
+akzeptierten Quell-/Job-Labels vorhanden sein; bewahre es für Stop auf. Werte einer
+anderen Pipeline können diese Reservierung nicht autorisieren.
+
 ```sh
 node project-bootstrap/system-beta/bind.js plan /state/beta-input.json
 node project-bootstrap/system-beta/bind.js apply /state/beta-input.json PLAN_HASH
 ```
 
-Prüfe den Plan, bevor du seinen exakten Hash bestätigst. Setze die nativen
-Projektvariablen SYSTEM_BETA_OPERATION und WIZARD_BETA_HOST auf die Operation und
-den exakten Host der Reservierung. Deploy und Stop sind ausdrückliche manuelle
-System-Pipeline-Jobs. Sie verwenden vorhandene Release-Artefakte und unveränderliche
+Führe das Bindungswerkzeug aus dem geprüften Checkout auf dem Docker-Host des
+kanonischen Controllers mit Node 24 und Zugriff auf dessen Docker-Socket aus.
+Die private Eingabe wählt einen Kandidaten aus; sie enthält keine Zugangsdaten.
+Prüfe den Plan vor Bestätigung seines exakten Hashes. Öffne anschließend die bereits
+geprüfte geschützte Standardbranch-Push-Pipeline und starte deploy:wizard-beta oder
+stop:wizard-beta manuell. Die optionalen Jobs sind ohne aktivierende Projektvariable
+vorhanden; Einrichtung und Bindung starten keine weitere Pipeline. Der Launcher
+liest die explizite persistente v2-Bindung, prüft Projekt, Pipeline und Quellcommit
+des aktuellen Jobs dagegen und liest den exakten HTTPS-Host der gebundenen Reservierung.
+Fehlende, veraltete oder fremde Bindungen werden abgelehnt. Deploy erstellt niemals
+eine Bindung. Erhaltene Variablen SYSTEM_BETA_OPERATION und WIZARD_BETA_HOST müssen
+übereinstimmen oder bewusst entfernt werden. Ein manuell bereitgestelltes API-Token
+ist für diesen Startpfad nicht erforderlich. Nach Erfolg einschließlich eigener
+Helper-Bereinigung liefert test-results/system-beta/environment.env die Variable
+SYSTEM_BETA_URL für GitLabs Umgebungslink. Deploy und Stop verwenden vorhandene Release-Artefakte und unveränderliche
 Images. Vor dem Routing werden Projekt, Job, Kandidatenpipeline, gemeinsamer
 Quellbaum, Image-Identitäten, Speicher-/Upgrade-Abnahme und Browserbereinigung
 geprüft. Es gibt keinen Endpunkt für beliebige Images. Stop bleibt bei abgelaufenen
