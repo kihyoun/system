@@ -129,6 +129,10 @@ export async function rails(input: any): Promise<any> {
   }
   railsWorkers++;
   try {
+    if (
+      ['wizard-environments-primary', 'wizard-environments-primary-status'].includes(input.action)
+    )
+      return await runNativeActivation(input);
     return await runRails(input);
   } finally {
     railsWorkers--;
@@ -137,6 +141,55 @@ export async function rails(input: any): Promise<any> {
       next();
     }
   }
+}
+function runNativeActivation(input: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let launched = false;
+    const child = execFile(
+      process.execPath,
+      [
+        path.resolve(__dirname, '../../operations/dist/gitlab-provision/entry.js'),
+        'activate',
+        '--checkout',
+        path.resolve(__dirname, '../..'),
+      ],
+      { timeout: 240000, maxBuffer: 2 * 1024 * 1024 },
+      (error, stdout) => {
+        const failure = () =>
+          Object.assign(
+            new Error(
+              'GitLab activation completion was not confirmed; refresh the recorded operation.',
+            ),
+            {
+              uncertain: launched && input.action === 'wizard-environments-primary',
+              action: input.action,
+            },
+          );
+        if (error) {
+          reject(failure());
+          return;
+        }
+        try {
+          const result = JSON.parse(stdout);
+          if (
+            !result ||
+            typeof result !== 'object' ||
+            Array.isArray(result) ||
+            !result.environments
+          )
+            throw Error('Incomplete activation response');
+          resolve(result);
+        } catch {
+          reject(failure());
+        }
+      },
+    );
+    child.once('spawn', () => {
+      launched = true;
+    });
+    child.stdin.on('error', () => undefined);
+    child.stdin.end(JSON.stringify(input));
+  });
 }
 function runRails(input: any): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -162,8 +215,6 @@ function runRails(input: any): Promise<any> {
       'wizard-environments': 'wizard-environments/activate.rb',
       'wizard-environments-status': 'wizard-environments/activate.rb',
       'wizard-source-primary-status': 'wizard-source-primary/status.rb',
-      'wizard-environments-primary': 'wizard-environments/source-primary-activate.rb',
-      'wizard-environments-primary-status': 'wizard-environments/source-primary-activate.rb',
     };
     const importer = modules[input.action]
       ? fs.readFileSync(

@@ -116,7 +116,7 @@ export class GitlabAuthJournalService {
     validate: (value: unknown) => Value,
     operation: (journal: GitlabPrivateJournalSession<Value>) => Promise<T>,
   ): Promise<T> {
-    if (!/^(?:journal|project-[1-9][0-9]*)$/.test(name))
+    if (!/^(?:journal|project-(?:credentials-)?[1-9][0-9]*)$/.test(name))
       throw Error('gitlab-auth-journal-name-invalid');
     if (
       !path.isAbsolute(configDirectory) ||

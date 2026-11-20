@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import 'reflect-metadata';
+import { SourcePrimaryOperationService } from './source-primary-operation.service';
+import { GitlabProjectCredentialService } from './project-credential.service';
 import fs from 'node:fs';
 import path from 'node:path';
 import { NestFactory } from '@nestjs/core';
@@ -30,13 +32,13 @@ function privateToken(filename: string): string {
 export async function main(args: string[]): Promise<void> {
   if (args.length === 1 && args[0] === '--help') {
     console.log(
-      'GitLab credentials: initialize|renew|reconcile-initial --checkout ABS [--config-directory ABS] [--username NAME --email ADDRESS] [--administrator-token-file ABS]. Run in the controller mount namespace; stdout contains metadata only.',
+      'GitLab credentials: initialize|renew|reconcile-initial|renew-project --checkout ABS [--config-directory ABS] [--username NAME --email ADDRESS] [--administrator-token-file ABS] [--project-id ID --project-path GROUP/PROJECT]. Run in the controller mount namespace; stdout contains metadata only.',
     );
     return;
   }
   const command = args[0],
     values: Record<string, string> = {};
-  if (!['initialize', 'renew', 'reconcile-initial'].includes(command))
+  if (!['initialize', 'renew', 'reconcile-initial', 'activate', 'renew-project'].includes(command))
     throw Error('Unsupported GitLab credential action.');
   for (let index = 1; index < args.length; index += 2) {
     const key = args[index],
@@ -48,6 +50,8 @@ export async function main(args: string[]): Promise<void> {
         '--username',
         '--email',
         '--administrator-token-file',
+        '--project-id',
+        '--project-path',
       ].includes(key) ||
       !value ||
       value.startsWith('--') ||
@@ -61,8 +65,13 @@ export async function main(args: string[]): Promise<void> {
     !path.isAbsolute(values['--checkout']) ||
     Boolean(values['--username']) !== Boolean(values['--email']) ||
     (values['--username'] && command !== 'initialize') ||
-    (command === 'initialize' && values['--administrator-token-file']) ||
-    (command === 'reconcile-initial' && !values['--administrator-token-file'])
+    (['initialize', 'activate', 'renew-project'].includes(command) &&
+      values['--administrator-token-file']) ||
+    (command === 'activate' && values['--config-directory']) ||
+    (command === 'reconcile-initial' && !values['--administrator-token-file']) ||
+    (command === 'renew-project' &&
+      (!/^[1-9][0-9]*$/.test(values['--project-id'] ?? '') || !values['--project-path'])) ||
+    (command !== 'renew-project' && Boolean(values['--project-id'] || values['--project-path']))
   )
     throw Error('Invalid GitLab credential arguments.');
   const administrator = values['--administrator-token-file']
@@ -75,6 +84,18 @@ export async function main(args: string[]): Promise<void> {
   let app: INestApplicationContext | undefined;
   try {
     app = await NestFactory.createApplicationContext(GitlabProvisionModule, { logger: false });
+    if (command === 'activate') {
+      let input = Buffer.alloc(0);
+      for await (const chunk of process.stdin) {
+        input = Buffer.concat([input, Buffer.from(chunk)]);
+        if (input.length > 2 * 1024 * 1024) throw Error('Activation input is too large.');
+      }
+      const result = await app
+        .get(SourcePrimaryOperationService)
+        .execute(values['--checkout'], JSON.parse(input.toString('utf8')), abort.signal);
+      console.log(JSON.stringify(result));
+      return;
+    }
     const service = app.get(GitlabCredentialService);
     const options = {
       checkout: values['--checkout'],
@@ -84,6 +105,31 @@ export async function main(args: string[]): Promise<void> {
         : undefined,
       signal: abort.signal,
     };
+    if (command === 'renew-project') {
+      const authority = await service.ensure(options);
+      const token = await app
+        .get(GitlabProjectCredentialService)
+        .current(
+          authority.context,
+          authority.configDirectory,
+          Number(values['--project-id']),
+          values['--project-path'],
+          authority.credential.token,
+          new Date(),
+          true,
+        );
+      console.log(
+        JSON.stringify({
+          state: 'ready',
+          projectId: Number(values['--project-id']),
+          projectPath: values['--project-path'],
+          tokenId: token.id,
+          expiresAt: token.expiresAt,
+          accessLevel: 40,
+        }),
+      );
+      return;
+    }
     const result =
       command === 'initialize'
         ? await service.ensure(options)

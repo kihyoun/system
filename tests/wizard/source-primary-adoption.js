@@ -580,6 +580,39 @@ async function bindingRefresh(f) {
     const {GitlabLockExecHttpTransport}=require('../../operations/dist/gitlab-provision/lock-exec.service');
     assert.equal((await new GitlabLockExecHttpTransport().request('GET','/exec/'+'a'.repeat(64)+'/json')).status,200);
   } finally {nativeHttp.request=originalRequest;}
+  const {GitlabProjectCredentialService}=require('../../operations/dist/gitlab-provision/project-credential.service');
+  const scopedDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-scoped-credential-'));
+  try {
+    const tokens=new Map(), bots=new Map();let creates=0, lostInvisible=true, next=40;
+    const create=(pending)=>{const id=++next, token={id,user_id:id+100,name:pending.name,expires_at:pending.expiresAt,scopes:['api'],access_level:40,active:true,revoked:false,token:'project-secret-'+id};tokens.set(id,token);bots.set(token.user_id,{id:token.user_id,username:'project_7_bot_'+id,bot:true,is_admin:false,state:'active',external:false});return token;};
+    const api={async request(context,secret,method,route,body){
+      if(route==='projects/7')return {status:200,value:{id:7,path_with_namespace:'team/wizard'}};
+      if(route==='user'){const token=[...tokens.values()].find(token=>token.token===secret);assert(token);assert(bots.get(token.user_id).external);return {status:200,value:bots.get(token.user_id)};}
+      assert.equal(secret,'controller-private-token');
+      if(route.startsWith('users/')){const bot=bots.get(Number(route.split('/')[1]));assert(bot);if(method==='PUT'){assert.deepEqual(body,{external:true});bot.external=true;}return {status:200,value:bot};}
+      if(route.includes('/access_tokens?')){const name=new URL('http://local/'+route).searchParams.get('search');return {status:200,value:[...tokens.values()].filter(token=>token.name===name)};}
+      if(route==='projects/7/access_tokens'){creates++;assert.equal(body.access_level,40);assert.deepEqual(body.scopes,['api']);if(lostInvisible){lostInvisible=false;throw Error('lost project token response');}return {status:201,value:create({name:body.name,expiresAt:body.expires_at})};}
+      const token=tokens.get(Number(route.split('/').at(-1)));assert(token);if(method==='DELETE'){token.revoked=true;token.active=false;return {status:204,value:null};}return {status:200,value:token};
+    }};
+    const service=new GitlabProjectCredentialService(new GitlabAuthJournalService(),api), current=(now=new Date('2026-11-20T00:00:00Z'))=>service.current(nativeApiContext,scopedDirectory,7,'team/wizard','controller-private-token',now);
+    await assert.rejects(()=>current(),/lost project token response/);assert.equal(creates,1);
+    await assert.rejects(()=>current(),/issuance-reconciliation-required/);assert.equal(creates,1,'absent token does not authorize another mint');
+    const pending=JSON.parse(fs.readFileSync(path.join(scopedDirectory,'system-bootstrapper-auth/project-credentials-7.json'))).pending;const orphan=create(pending);
+    const first=await current();assert(tokens.get(orphan.id).revoked);assert.equal(creates,2);assert(bots.get(first.userId).external);
+    assert.equal((await current()).id,first.id);assert.equal(creates,2);
+    const renewed=await current(new Date('2027-02-10T00:00:00Z'));assert.notEqual(renewed.id,first.id);assert(tokens.get(first.id).revoked);assert(bots.get(renewed.userId).external);
+    bots.get(renewed.userId).external=false;await assert.rejects(()=>current(new Date('2027-02-11T00:00:00Z')),/external-required/);
+    const recovered=await service.current(nativeApiContext,scopedDirectory,7,'team/wizard','controller-private-token',new Date('2027-02-11T00:00:00Z'),true);assert.notEqual(recovered.id,renewed.id);assert(tokens.get(renewed.id).revoked);assert(bots.get(recovered.userId).external);
+    await assert.rejects(()=>service.current(nativeApiContext,scopedDirectory,7,'foreign/wizard','controller-private-token'),/project-mismatch/);
+  } finally {fs.rmSync(scopedDirectory,{recursive:true,force:true});}
+  const {SourcePrimaryOperationService}=require('../../operations/dist/gitlab-provision/source-primary-operation.service');
+  const invalidNativeActivation=require('child_process').spawnSync(process.execPath,[path.resolve(__dirname,'../../operations/dist/gitlab-provision/entry.js'),'activate','--checkout',nativeApiContext.checkout],{input:'{}',encoding:'utf8'});
+  assert.equal(invalidNativeActivation.status,1);assert.equal(invalidNativeActivation.stdout,'');assert(invalidNativeActivation.stderr.includes('operation did not complete'));
+  let authorized=0;
+  const nativeActivation=new SourcePrimaryOperationService({async ensure(){authorized++;return {context:nativeApiContext,configDirectory:'/private/config',credential:{token:'admin-only-for-scoped-token'}};}},{async current(context,directory,id,projectPath,administrator){assert.equal(administrator,'admin-only-for-scoped-token');assert.equal(id,7);assert.equal(projectPath,'team/wizard');return {token:'scoped-operation-token'};}},{async request(context,token){assert(['admin-only-for-scoped-token','scoped-operation-token'].includes(token));return {status:200,value:{id:7}};}},{create(context,directory,id,operation,token){assert.equal(token,'scoped-operation-token');assert(/^[a-f0-9]{64}$/.test(operation));return {owned:true};}},{validate(){},async activate(input,project,session){assert(session.owned);return {environments:{phase:'ready'}};}});
+  const nativeActivationInput={action:'wizard-environments-primary',projectKey:'wizard',namespaceId:9,repository:{id:7,path:'team/wizard',namespaceId:9},environments:{operation:'a'.repeat(48)}};
+  assert.equal((await nativeActivation.execute(nativeApiContext.checkout,nativeActivationInput)).environments.phase,'ready');
+  await assert.rejects(()=>nativeActivation.execute(nativeApiContext.checkout,{...nativeActivationInput,namespaceId:88}),/project-binding|project binding/);assert.equal(authorized,1);
   const {GitlabNativeContextService}=require('../../operations/dist/gitlab-provision/native-context.service');
   const {GitlabCredentialService}=require('../../operations/dist/gitlab-provision/credential.service');
   const {NestFactory}=require('../../operations/node_modules/@nestjs/core'), {GitlabProvisionModule}=require('../../operations/dist/gitlab-provision/gitlab-provision.module');

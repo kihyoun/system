@@ -49,7 +49,7 @@ function values(environment: Row): Record<Variable, string> {
 /** Source/ownership verification and compare-before-write reconciliation, independent of credentials. */
 @Injectable()
 export class SourcePrimaryActivationService {
-  async activate(inputValue: unknown, projectValue: unknown, session: GitlabActivationSession) {
+  validate(inputValue: unknown, projectValue: unknown): void {
     const input = row(inputValue),
       project = row(projectValue),
       environment = row(input.environments),
@@ -84,6 +84,13 @@ export class SourcePrimaryActivationService {
       input.controller !== 'system_bootstrapper_1'
     )
       throw Error('Source-primary Wizard repository ownership changed');
+  }
+  async activate(inputValue: unknown, projectValue: unknown, session: GitlabActivationSession) {
+    this.validate(inputValue, projectValue);
+    const input = row(inputValue),
+      project = row(projectValue),
+      environment = row(input.environments),
+      binding = row(input.sourcePrimary);
     const prefix = `projects/${project.id}/`;
     const read = async (route: string, missing = false): Promise<unknown> => {
       const response = await session.request('GET', route);

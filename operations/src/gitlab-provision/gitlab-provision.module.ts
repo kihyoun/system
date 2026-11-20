@@ -1,3 +1,5 @@
+import { SourcePrimaryOperationService } from './source-primary-operation.service';
+import { GitlabProjectCredentialService } from './project-credential.service';
 import { GitlabNativeContextService } from './native-context.service';
 import { GitlabCredentialService } from './credential.service';
 import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
@@ -19,6 +21,8 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
   imports: [GitlabPreflightModule],
   providers: [
     RecoveryRegistryCredentialService,
+    SourcePrimaryOperationService,
+    GitlabProjectCredentialService,
     GitlabNativeContextService,
     GitlabCredentialService,
     GitlabActivationSessionService,
@@ -33,6 +37,8 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
   ],
   exports: [
     RecoveryRegistryCredentialService,
+    SourcePrimaryOperationService,
+    GitlabProjectCredentialService,
     GitlabCredentialService,
     GitlabActivationSessionService,
     SourcePrimaryActivationService,

@@ -139,3 +139,42 @@ The restored credential must still be verified against the restored account and
 its ownership nonce; an unrelated configuration ZIP cannot reconstruct this
 private authority. If a restored token is expired, use the explicit renewal
 recovery above. No root-token rebootstrap is performed for routine renewal.
+
+## Project activation authority
+
+Source-primary environment activation and its status operation share
+`SourcePrimaryOperationService` between the Sync API and the Node activation
+entry point. Project identity and managed configuration are validated before
+issuing a project credential. The existing Wizard payload and result are retained;
+no administrator token is sent to the browser or stored in its configuration.
+
+`GitlabProjectCredentialService` stores each exact project ID/path binding in
+`project-credentials-<id>.json` beside the controller journal. It creates a
+project access token with Maintainer access level `40` and only the `api` scope.
+This grants project API authority, not merely permission to change four variables.
+The dedicated administrator is used for this credential lifecycle; the actual
+activation requests use the project token. Before use, the service verifies the
+GitLab-created project bot, marks it external and verifies that state. This
+prevents the internal-project visibility that an internal creator can otherwise
+confer on a project access token. See GitLab's
+[project token documentation](https://docs.gitlab.com/user/project/settings/project_access_tokens/)
+and [project token API](https://docs.gitlab.com/api/project_access_tokens/).
+
+Project credentials use the same 90-day expiry and 14-day renewal window.
+Creation intent is saved before the request; an uncertain response cannot cause
+another issuance until the exact observed orphan has been revoked. Replacement
+credentials are persisted and verified before retiring the old token. A changed
+project path, permission level, bot identity or external-user status refuses
+ordinary use. For deliberate credential replacement, first restore the correct
+project binding and run:
+
+```sh
+node operations/dist/gitlab-provision/entry.js renew-project --checkout "$PWD" \
+  --project-id YOUR_PROJECT_ID --project-path YOUR_GROUP/YOUR_PROJECT
+```
+
+This command deliberately replaces the bound project credential, verifies the new
+one and revokes the previous one. It outputs metadata only and does not change
+project source, CI variables or deployment state. If the controller administrator
+credential itself needs recovery, complete `renew` first. Pending issuance still
+requires exact reconciliation; this command cannot bypass its private journal.
