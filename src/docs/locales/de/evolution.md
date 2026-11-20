@@ -110,17 +110,22 @@ Freigabe-/Migrationsverfahren.
 
 Für die Kombination aus geführten Vorschauen und GitLab-Migration wählen
 `guidedPreviewAcceptance === true` und `gitlabUpgradeAcceptance === true` ein
-festes gemeinsames Ausführungsbudget von 75 Minuten. Ein Upgrade ohne geführte
+festes gemeinsames Ausführungsbudget von 75 Minuten. Eine zusätzlich vorbereitete
+`publicUpgrade`-Testumgebung wählt ein festes Budget von 90 Minuten für den echten
+öffentlichen CLI-Plan und dessen Anwendung, eine neue passende kalte Seed-/Konfigurationssicherung,
+unterbrochene Offline-Image-Wiederherstellung und einen separaten Controller-Neustart
+mit dauerhaften Wiederherstellungsselektoren. Ohne diese Testumgebung behält das
+kombinierte Szenario 75 Minuten. Ein Upgrade ohne geführte
 Vorschauen behält 60 Minuten; ACME ohne Upgrade behält 25 Minuten; normale
 Smoke-Tests behalten 20 Minuten. Der ursprüngliche Kandidat, der wiederhergestellte
 Kandidat, die ACME-Stelle und alle weiteren Ressourceneigentümer teilen die
 ursprüngliche absolute Frist. Weder eine neue Phase noch ein Hostwechsel setzt
 sie zurück; eine Zeitüberschreitung lässt die Abnahme ohne automatische Verlängerung scheitern.
 
-Der vollständige Plattform-CI-Job erlaubt ein 80-minütiges Runner-Skript, ein
-separates zweiminütiges `after_script` und ein Job-Limit von 85 Minuten für
-Vorbereitung, Ausführung, Veröffentlichung und Artefaktsammlung. Die Grenze von
-75 Minuten umfasst drei echte native Wizard-Pipelines für den importierten
+Der vollständige Plattform-CI-Job erlaubt ein 95-minütiges Runner-Skript, ein
+separates zweiminütiges `after_script` und ein Job-Limit von 100 Minuten für
+Vorbereitung, Ausführung, Veröffentlichung und Artefaktsammlung. Beide Grenzen des
+kombinierten Szenarios umfassen drei echte native Wizard-Pipelines für den importierten
 Standardbranch, den Merge Request und den gemergten Standardbranch mit jeweils
 vier erforderlichen Jobs sowie manuelles Review/Beta Deploy und Stop. Diese Grenze
 ist eine Obergrenze, keine Laufzeitgarantie. Der Kandidat bleibt auf 12 GiB RAM

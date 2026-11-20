@@ -123,8 +123,10 @@ Beispielsweise hat eine Rolle diese Form:
 Bereitschaftsschranke. Normale Smoke-Tests haben ein zwanzigminütiges Budget;
 ACME ohne GitLab-Upgrade teilt ein fünfundzwanzigminütiges Budget unter allen
 Eigentümern. Ein GitLab-Upgrade ohne geführte Vorschauen hat sechzig Minuten.
-Nur `guidedPreviewAcceptance === true` und `gitlabUpgradeAcceptance === true`
-zusammen wählen fünfundsiebzig Minuten. Jedes Szenario verwendet eine absolute
+`guidedPreviewAcceptance === true` und `gitlabUpgradeAcceptance === true`
+wählen zusammen fünfundsiebzig Minuten; eine zusätzlich vorbereitete `publicUpgrade`-
+Testumgebung wählt neunzig Minuten für die zusätzlichen nativen öffentlichen CLI-,
+Sicherungs- und Wiederherstellungsprüfungen. Jedes Szenario verwendet eine absolute
 Frist, die zwischen begrenzten Docker-/HTTP-Vorgängen geprüft wird. Jeder gestreamte Archivimport ist auf
 zehn Minuten begrenzt;
 andere Docker-Vorgänge auf zwei Minuten und einzelne HTTP-Anfragen auf zehn
@@ -227,10 +229,11 @@ festgelegten CLI-Werkzeuge wie System, baut den vollständigen System-Kontext un
 aus dem validierten festgelegten Snapshot und lädt die festgelegten Dienst-Images vor.
 Der Job wird mit einer GitLab-Ressourcengruppe serialisiert. Die Image-Vorbereitung
 hat ein separates begrenztes Budget. Die kombinierte Ausführung geführter Vorschauen
-und des GitLab-Upgrades hat ein festes gemeinsames Limit von fünfundsiebzig Minuten
-für ursprünglichen Host, wiederhergestellten Host, ACME-Stelle und weitere
-Ressourceneigentümer. Das Runner-Skript erlaubt achtzig Minuten, die separate
-Bereinigung zwei Minuten und der gesamte Job fünfundachtzig Minuten.
+und des GitLab-Upgrades mit öffentlicher Release-Upgrade-Testumgebung hat ein festes
+gemeinsames Limit von neunzig Minuten für ursprünglichen Host, wiederhergestellten Host,
+ACME-Stelle und weitere Ressourceneigentümer. Ohne diese zusätzliche Testumgebung
+behält das kombinierte Szenario fünfundsiebzig Minuten. Das Runner-Skript erlaubt
+fünfundneunzig Minuten, die separate Bereinigung zwei Minuten und der gesamte Job einhundert Minuten.
 Der Runner-Host benötigt zwölf GiB Kandidaten-RAM zusätzlich zu seiner bestehenden Plattform-/Job-
 Reserve und genügend freien Speicher für Image-Archive, Entpackung und GitLab-Zustand.
 
@@ -375,6 +378,8 @@ erbt absolute Frist und Abbruch des ursprünglichen Kandidaten. Ein Szenario
 Lebenszyklusbudget von 1.500 Sekunden einschließlich beider Plattformhosts und
 dieser Testeigentümer. GitLab-Upgrades verwenden das sechzigminütige Budget oder
 fünfundsiebzig Minuten, wenn geführte Vorschauen ebenfalls aktiviert sind.
+Die zusätzliche öffentliche Release-Upgrade-Testumgebung wählt für dieses kombinierte
+Szenario neunzig Minuten.
 Normale Smoke-Tests behalten 1.200 Sekunden. Weder eine neue Phase noch ein
 Hostwechsel setzt die Frist zurück oder verlängert sie automatisch.
 Äußere Skript- und CI-Job-Limits müssen darüber hinaus Reserve für Vorbereitung, Veröffentlichung
@@ -445,11 +450,17 @@ phasen gehören zum Beleg des wiederhergestellten Kandidaten. Weder rohe private
 noch Konfiguration, Zugangsdaten oder Datenbankprotokolle werden jemals öffentliche CI-Artefakte.
 
 Das Nachfolgerszenario verwendet nur dann ein festes Gesamt-Kandidatenbudget von
-75 Minuten, wenn sowohl `guidedPreviewAcceptance === true` als auch
-`gitlabUpgradeAcceptance === true` gelten. Das Budget umfasst drei echte native
-Wizard-Push-/MR-/Push-Pipelines mit jeweils vier erforderlichen Jobs, manuelles
-Review/Beta Deploy und Stop, Kaltwiederherstellung und beide GitLab-Versionsübergänge.
-Es ist eine Obergrenze, keine Laufzeitgarantie. Ein Upgrade ohne geführte Vorschauen
+90 Minuten, wenn sowohl `guidedPreviewAcceptance === true` als auch
+`gitlabUpgradeAcceptance === true` gelten und eine vorbereitete `publicUpgrade`-
+Testumgebung vorhanden ist. Das kombinierte Szenario ohne diese Testumgebung behält
+75 Minuten. Beide umfassen drei echte native Wizard-Push-/MR-/Push-Pipelines mit
+jeweils vier erforderlichen Jobs, manuelles Review/Beta Deploy und Stop,
+Kaltwiederherstellung und beide GitLab-Versionsübergänge. Die öffentliche Release-
+Testumgebung führt zusätzlich den echten öffentlichen CLI-Plan und dessen Anwendung,
+eine neue passende kalte Seed-/Konfigurationssicherung, unterbrochene Offline-Image-
+Wiederherstellung und einen separaten Controller-Neustart mit dauerhaften
+Wiederherstellungsselektoren aus. Dies sind feste Obergrenzen, keine Laufzeitgarantien.
+Ein Upgrade ohne geführte Vorschauen
 behält sein Budget von 60 Minuten. Ursprünglicher und wiederhergestellter Kandidat,
 ACME-Stelle und alle weiteren Ressourceneigentümer teilen die ursprüngliche absolute
 Frist; weder eine Phase noch ein Hostwechsel setzt sie zurück, und eine
@@ -459,8 +470,8 @@ eines Aufruflimits von 1.200 Sekunden und derselben absoluten Kandidatenfrist. B
 verlangt weiterhin abgeschlossene Hintergrundmigrationen; ein erfolgreicher Migrationsbatch allein
 erfüllt diese Bedingung nicht. Das Szenario verwendet die bestehende serialisierte Ressourcen-
 gruppe und Grenze des privaten Daemons von 12 GiB und vier CPUs; prüfen Sie vor
-dem Start die tatsächliche Host-Reserve. Der Plattformjob erlaubt ein 80-minütiges
-Skript und eine separate zweiminütige Bereinigung innerhalb eines 85-minütigen
+dem Start die tatsächliche Host-Reserve. Der Plattformjob erlaubt ein 95-minütiges
+Skript und eine separate zweiminütige Bereinigung innerhalb eines 100-minütigen
 Job-Limits und lässt Zeit für Vorbereitung, Veröffentlichung und Artefakt-
 sammlung. Normale Smoke- und reine ACME-Lebenszyklusbudgets bleiben unverändert. Ein
 erfolgreicher nachgebildeter Adaptervertrag ist keine erfolgreiche echte Migration; verwenden Sie die
@@ -486,6 +497,17 @@ Die Phase verbindet dasselbe eigene Sicherungsgerät erneut und trennt es vor de
 Wiederherstellung vollständig. Sie verwendet den vorherigen Registry-CI-Job weiter; schreibgeschützte
 Identitäts-, Registry-Tag-, Datenstichproben- und Runner-Prüfungen erzeugen keine
 weiteren Jobs oder Repository-Commits.
+Die Identitätsprüfungen verwenden die privaten API-Zugangsdaten der Testumgebung
+während ihrer Gültigkeit weiter, einschließlich der letzten Prüfung der wiederhergestellten
+Konfiguration, und widerrufen sie danach über die bestehende authentifizierte API.
+Die unabhängige breite Testreferenz vergleicht mit begrenzten REST-Lesezugriffen die
+ersten zehn IDs jeder erfassten Datensatzart sowie Projekt-HEADs vor dem Austausch,
+nach dem Upgrade, nach der Offline-Wiederherstellung und nach dem Neustart.
+Sie verlangt Administratorsichtbarkeit, vollständige begrenzte Paginierung und
+höchstens 40 Testprojekte; unvollständige Bestandslisten werden abgewiesen.
+Dies vermeidet wiederholte Rails-Starts für Zugangsdaten und doppelte Stichproben.
+Die separaten Rails-Stichproben der Produktions-CLI und alle detaillierten
+Identitätsprüfungen bleiben unverändert.
 
 Vor `recover` werden beide vorherigen Image-IDs entfernt und der Transport über
 ihre ursprünglichen Digests abgeschaltet. Ein einmaliger Compose-Fehler
