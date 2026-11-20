@@ -114,6 +114,19 @@ validators and routing also refer to `sync/src/index.ts`, `wizard/src/api/Main.t
 
 ## Repository-owned initialization and operations
 
+- Put explicitly approved executable scripts outside the NestJS implementation
+  under the top-level `tools/` directory, grouped by purpose (for example,
+  `tools/quickstart/` and `tools/gitlab/`). Document each exception and its caller.
+  The allowed bootstrap exceptions are the initial Quickstart before Node is
+  available and the minimal official GitLab Rails invocation needed to create
+  the first temporary administrator token. Keep token lifecycle, provisioning
+  and all subsequent orchestration in shared NestJS services; revoke the
+  temporary bootstrap token when its work is complete.
+- Moving legacy scripts into `tools/` does not satisfy their migration. Replace
+  our operational Bash, Python and Ruby logic, including embedded shell programs,
+  with shared TypeScript services. Keep native upstream utilities as typed
+  subprocess dependencies. Reserved historical recipe artifacts retain their
+  existing locations and exact bytes; they are not active bootstrap exceptions.
 - Keep every script and tool required to initialize, recover, verify and deploy
   the system in this repository. Another operator must be able to reproduce the
   procedure from a reviewed checkout and their own documented inputs.
