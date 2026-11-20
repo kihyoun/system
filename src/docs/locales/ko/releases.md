@@ -150,6 +150,17 @@ sudo python3 bootstrapper/upgrade-release.py \
   --token-file /root/system-api-token
 ```
 
+유휴 Runner의 접속 시각은 캐시된 값일 수 있습니다. 식별 정보가 일치하는 관리자가
+온라인이지만 접속 시각이 기준 상태보다 이전이면 기본 검증기는 해당 기존
+컨테이너 안에서 공식 명령
+`gitlab-runner verify --config /etc/gitlab-runner/config.toml`을 실행합니다.
+명령은 전체 준비 기한 안에서 최대 15초로 제한됩니다. 이후 API를 다시 읽고
+보존된 식별 정보, 온라인 상태와 기준 상태 이후의 접속을 계속 요구합니다.
+등록이나 구성 변경 또는 새 작업 없이 저장된 구성의 인증을 검사합니다.
+영수증에는 `authenticationProbeCount`와 `jobExecutionChecked=false`가 기록됩니다.
+실행 중인 폴러의 활동과 작업 실행은 이 검사 범위에 포함되지 않습니다.
+격리된 플랫폼 후보는 게시 전에 실제 CI 실행을 검증합니다.
+
 실패한 읽기 전용 사전 점검은 상태 명령으로 확인할 수 있습니다. 사전 요구 사항을
 해결한 후 상태가 실패이며 검토된 계획이나 업데이터 체크포인트가 없을 때만 같은
 디렉터리에서 계획을 다시 만드세요. 프로세스가 사라진 뒤 점검 중으로 남아 있다면

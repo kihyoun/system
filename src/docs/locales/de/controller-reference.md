@@ -174,7 +174,7 @@ Optionale Optionen sind:
 | --- | --- |
 | `--swap-gib 8` | Ausdrücklich 8 GiB unter `/swapfile` auf dem Systemlaufwerk reservieren, wenn kein Swap aktiv ist. Eine vorhandene Datei oder zu wenig Platz führen zum Fehler; das Datenvolume wird niemals für Swap verwendet. Standard: keine Swap-Änderung. |
 | `--timeout 1200` | Anwendungsabnahme bis zum gewählten Bereitschaftszeitfenster wiederholen, höchstens 3600 Sekunden. Einzelne Netzwerk-/Befehlszeitlimits begrenzen zusätzlich jeden Prüfaufruf. |
-| `--gitlab-token-file /root/gitlab-read-api-token` | Ein optionales, vom Betreiber bereitgestelltes administratives API-Token in einer regulären Datei mit Modus 0600. Seine Berechtigungen müssen das Lesen von `/runners/all` und Runner-Managern erlauben. Prüft, dass jeder erwartete Manager online ist und GitLab nach Beginn dieses Vorgangs kontaktiert hat. Der Wert wird aus der Datei gelesen und niemals in ein Befehlsargument oder einen Beleg geschrieben. |
+| `--gitlab-token-file /root/gitlab-read-api-token` | Ein optionales, vom Betreiber bereitgestelltes administratives API-Token in einer regulären Datei mit Modus 0600. Seine Berechtigungen müssen das Lesen von `/runners/all` und Runner-Managern erlauben. Prüft erhaltene Manager-Identitäten und authentifizierten Kontakt nach Beginn dieses Vorgangs; der Prüfumfang wird unten erläutert. Der Wert wird aus der Datei gelesen und niemals in ein Befehlsargument oder einen Beleg geschrieben. |
 | `--redirect-from https://example.com` | Zusätzlich eine permanente Weiterleitung von diesem Ursprung zum konfigurierten öffentlichen Wizard-Ursprung unter Erhalt von Pfad und Abfrage prüfen. Es wird keine kanonische Domain angenommen. |
 | `--renewal-dry-run` | Certbots Staging-Erneuerung ohne zufällige Verzögerung durch den installierten Lease-Wrapper ausführen; einen fehlgeschlagenen Deploy-Hook ablehnen und die Abnahme anschließend wiederholen. Erfordert echte konfigurierte Zertifikatslinien, funktionierendes DNS und erreichbare ACME-Endpunkte. |
 | `RECOVERY_MANIFEST_SHA256` | Optionaler unabhängig aufbewahrter SHA-256 für `recovery/images.json`, geprüft vor dem Vertrauen in dessen Archiv-/Quellcodedeklarationen. |
@@ -186,6 +186,19 @@ konfigurierte Dienst-Images, den erhaltenen Daten-Mount und das Bind-Gerät des 
 Certbot-Zustand/-Timer für HTTPS und die Bereinigung der privaten Image-Wiederherstellung.
 Ohne API-Token werden Runner-Container und erhaltene Identitätsdateien geprüft;
 das Ergebnis kennzeichnet die GitLab-seitige Prüfung frischen Kontakts ausdrücklich als **nicht geprüft**.
+
+GitLab kann beim Beantworten inaktiver Job-Abfragen einen älteren Kontaktzeitpunkt
+beibehalten. Für einen passenden Online-Manager mit älterem Zeitstempel führt die
+Prüfung das offizielle `gitlab-runner verify --config /etc/gitlab-runner/config.toml`
+in dessen vorhandenem Container aus, begrenzt auf 15 Sekunden innerhalb des
+Bereitschaftszeitfensters. Danach werden dieselbe Manager-Identität, der Online-Status
+und der Kontaktzeitpunkt erneut gegen die Baseline geprüft. Dies authentifiziert
+die erhaltene Konfiguration, ohne einen Runner zu registrieren, die Konfiguration
+zu ändern oder einen Job anzulegen. Der Beleg enthält `authenticationProbeCount`
+und `jobExecutionChecked=false`; diese Prüfung belegt weder die Aktivität des
+laufenden Pollers noch die Job-Ausführung. Echte CI-Ausführung wird im isolierten
+Plattformkandidaten geprüft.
+
 Die Prüfung deckt Kerndienste und den konfigurierten Haupt-Runner-Pool ab; individuelle
 anwendungsspezifische Abnahme bleibt Aufgabe der jeweiligen Anwendung.
 

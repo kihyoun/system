@@ -166,6 +166,19 @@ sudo python3 bootstrapper/upgrade-release.py \
   --token-file /root/system-api-token
 ```
 
+Die Kontaktzeitpunkte inaktiver Runner können aus dem Cache stammen. Ist ein
+passender Manager online, sein Kontakt aber älter als die Baseline, führt die
+native Prüfung das offizielle
+`gitlab-runner verify --config /etc/gitlab-runner/config.toml` in dessen vorhandenem
+Container aus, begrenzt auf 15 Sekunden innerhalb des Bereitschaftszeitfensters.
+Danach wird die API erneut gelesen; erhaltene Identität, Online-Status und Kontakt
+nach der Baseline bleiben erforderlich. Dies prüft die Authentifizierung der
+gespeicherten Konfiguration ohne Registrierung, Konfigurationsänderung oder neuen
+Job. Der Beleg enthält `authenticationProbeCount` und `jobExecutionChecked=false`:
+Die Aktivität des laufenden Pollers und die Job-Ausführung gehören nicht zu dieser
+Prüfung. Der isolierte Plattformkandidat prüft echte CI-Ausführung vor der
+Veröffentlichung.
+
 Eine fehlgeschlagene schreibgeschützte Vorprüfung bleibt über Status prüfbar. Nach
 Korrektur der Voraussetzungen darf derselbe Planpfad nur erneut verwendet werden,
 wenn Status fehlgeschlagen meldet und weder geprüfter Plan noch Update-Checkpoint
