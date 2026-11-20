@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -10,6 +10,7 @@ export const runtimeLibraries = [
   '/usr/lib/libgcc_s.so.1',
 ];
 export type TransportResult = { status: number; signal?: NodeJS.Signals };
+export const PUBLIC_UPGRADE_OUTPUT = Symbol('PUBLIC_UPGRADE_OUTPUT');
 class FixtureRefusal extends Error {
   constructor(
     readonly status: number,
@@ -21,6 +22,14 @@ class FixtureRefusal extends Error {
 /** Test-only publication transport; never imported by production operation modules. */
 @Injectable()
 export class PublicUpgradeTransportService {
+  constructor(
+    @Optional()
+    @Inject(PUBLIC_UPGRADE_OUTPUT)
+    private readonly output: {
+      write(bytes: string | Buffer): unknown;
+      once?(event: 'drain', ready: () => void): unknown;
+    } = process.stdout,
+  ) {}
   private async execute(
     command: string,
     args: string[],
@@ -31,7 +40,7 @@ export class PublicUpgradeTransportService {
       (resolve) => {
         const child = spawn(command, args, {
           env,
-          stdio: inspect ? ['inherit', 'pipe', 'inherit'] : 'inherit',
+          stdio: ['inherit', 'pipe', 'inherit'],
         });
         const chunks: Buffer[] = [];
         let bytes = 0,
@@ -41,6 +50,19 @@ export class PublicUpgradeTransportService {
         process.on('SIGINT', interrupt);
         process.on('SIGTERM', terminate);
         child.stdout?.on('data', (chunk: Buffer) => {
+          if (!inspect) {
+            try {
+              if (this.output.write(chunk) === false) {
+                if (!this.output.once) throw Error('fixture-output-drain-required');
+                child.stdout?.pause();
+                this.output.once('drain', () => child.stdout?.resume());
+              }
+            } catch {
+              failure = 126;
+              child.kill('SIGKILL');
+            }
+            return;
+          }
           bytes += chunk.length;
           if (bytes > 64 * 1024 * 1024) {
             failure = 126;
@@ -76,7 +98,7 @@ export class PublicUpgradeTransportService {
       } catch {
         /* Native formatted output that is not JSON stays byte-for-byte intact. */
       }
-      process.stdout.write(output);
+      this.output.write(output);
     }
     return { status: 0 };
   }
@@ -161,7 +183,7 @@ export class PublicUpgradeTransportService {
     if (target === '/' || target === live || target.startsWith(live + '/')) {
       const output: Record<string, string> = { 'MAJ:MIN': '0:1\n', UUID: '\n', TARGET: '/\n' };
       if (Object.hasOwn(output, field)) {
-        process.stdout.write(output[field]);
+        this.output.write(output[field]);
         return { status: 0 };
       }
     }

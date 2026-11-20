@@ -286,7 +286,7 @@ test('same candidate drives real CLI operations, interrupted offline recovery an
   assert.equal(preserved(files), preserved({...files, '.docker.env': files['.docker.env'].replace("'old'", "'target'")}));
 });
 
-test('registry adapter preserves arguments and disables previous digest transport during real archive recovery', () => {
+test('registry adapter preserves arguments and disables previous digest transport during real archive recovery', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'public-upgrade-transport-'));
   try {
     const script = path.resolve(__dirname, '../e2e/public-upgrade-docker.js');
@@ -303,51 +303,64 @@ test('registry adapter preserves arguments and disables previous digest transpor
        console.log(process.env.SYSTEM_TEST_NATIVE_INSPECT||JSON.stringify([{Id:${JSON.stringify(image)},RepoDigests:[]}]))`, {mode:0o755});
     fs.writeFileSync(path.join(directory, 'docker-compose.native'), '#!'+process.execPath+'\n'+
       `require('node:fs').writeFileSync(process.env.SYSTEM_PUBLIC_UPGRADE_FIXTURE+'/arguments',process.argv.slice(2).join('\\n')+'\\n');process.stdout.write(process.env.BOOTSTRAPPER_IMAGE||'');`, {mode:0o755});
-    const invoke=(program,args,options)=>execFileSync(process.execPath,[program,...args],options);
+    const {PublicUpgradeTransportService}=require('../../operations/dist/testing/public-upgrade-transport.service');
+    let output='';
+    const service=new PublicUpgradeTransportService({write:bytes=>{output+=bytes.toString();}});
+    const invoke=async(program,args,options)=>{
+      output='';
+      const result=await service.docker(program,args,options.env);
+      if(result.status!==0||result.signal)throw Object.assign(Error('fixture transport failed'),result);
+      return output;
+    };
     const env = {...process.env, SYSTEM_PUBLIC_UPGRADE_FIXTURE: directory};
     const args = ['--host=unix:///var/run/docker.sock', 'image', 'inspect', reference];
-    const inspected = JSON.parse(invoke(docker, args, {env, encoding: 'utf8'}));
+    // One actual CLI launch proves module/argv wiring; variants exercise that same
+    // compiled service directly and still invoke the real native fixture process.
+    const inspected = JSON.parse(execFileSync(process.execPath,[docker,...args],{env,encoding:'utf8'}));
     assert.equal(inspected[0].Id, image);
     assert.deepEqual(inspected[0].RepoDigests, [reference]);
     for (const indent of [4]) {
       const native = [{Id: image, RepoDigests: ['system-candidate@' + id('7'), 'example/existing@' + id('8')],
         RepoTags: ['candidate:under-test'], Config: {Labels: {fixture: 'preserved'}}, Size: 123}];
-      const result = JSON.parse(invoke(docker, args,
+      const result = JSON.parse(await invoke(docker, args,
         {env: {...env, SYSTEM_TEST_NATIVE_INSPECT: JSON.stringify(native, null, indent)}, encoding: 'utf8'}));
       assert.deepEqual(result, [{...native[0], RepoDigests: [reference]}]);
     }
-    assert.throws(() => invoke(docker, args, {env: {...env, SYSTEM_TEST_NATIVE_FAILURE: '17'}, stdio: 'pipe'}),
+    await assert.rejects(() => invoke(docker, args, {env: {...env, SYSTEM_TEST_NATIVE_FAILURE: '17'}, stdio: 'pipe'}),
       error => error.status === 17, 'failed native inspection must never become successful fabricated identity');
-    assert.throws(() => invoke(docker, ['info'], {env:{...env,SYSTEM_TEST_NATIVE_FAILURE:'23'},stdio:'pipe'}),error=>error.status===23);
-    assert.throws(() => invoke(docker, ['info'], {env:{...env,SYSTEM_TEST_NATIVE_SIGNAL:'SIGTERM'},stdio:'pipe'}),error=>error.signal==='SIGTERM');
-    invoke(docker, ['--host=unix:///var/run/docker.sock','pull','docker.io/'+reference], {env});
+    await assert.rejects(() => invoke(docker, ['info'], {env:{...env,SYSTEM_TEST_NATIVE_FAILURE:'23'},stdio:'pipe'}),error=>error.status===23);
+    assert.throws(() => execFileSync(process.execPath,[docker,'info'], {env:{...env,SYSTEM_TEST_NATIVE_SIGNAL:'SIGTERM'},stdio:'pipe'}),error=>error.signal==='SIGTERM');
+    await invoke(docker, ['--host=unix:///var/run/docker.sock','pull','docker.io/'+reference], {env});
     assert.deepEqual(fs.readFileSync(path.join(directory,'arguments'),'utf8').trim().split('\n'),['image','inspect',image]);
-    invoke(docker, ['exec', 'fixture', 'printf', '%s', 'one two'], {env});
+    await invoke(docker, ['exec', 'fixture', 'printf', '%s', 'one two'], {env});
     assert.equal(fs.readFileSync(path.join(directory, 'arguments'), 'utf8').split('\n').at(-2), 'one two');
-    const output = invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '--no-build', '-d', 'bootstrapper'],
+    const composed = await invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '--no-build', '-d', 'bootstrapper'],
       {env: {...env, BOOTSTRAPPER_IMAGE: reference}, encoding: 'utf8'});
-    assert.equal(output, image);
+    assert.equal(composed, image);
     assert.match(fs.readFileSync(path.join(directory, 'arguments'), 'utf8'), new RegExp('-f\\n' + directory + '/compose.yml\\nup'));
-    assert.equal(invoke(docker,['--host=unix:///var/run/docker.sock','compose','-f','/source/system/docker-compose.yml','create','bootstrapper'],{env:{...env,BOOTSTRAPPER_IMAGE:reference},encoding:'utf8'}),image);
+    assert.equal(await invoke(docker,['--host=unix:///var/run/docker.sock','compose','-f','/source/system/docker-compose.yml','create','bootstrapper'],{env:{...env,BOOTSTRAPPER_IMAGE:reference},encoding:'utf8'}),image);
     fs.writeFileSync(path.join(directory, 'offline-recovery'), 'offline');
-    assert.throws(() => invoke(docker, args, {env, stdio: 'pipe'}), error => error.status === 87);
-    invoke(docker, ['image', 'inspect', 'system-bootstrapper-recovery:' + 'a'.repeat(64)], {env});
+    await assert.rejects(() => invoke(docker, args, {env, stdio: 'pipe'}), error => error.status === 87);
+    await invoke(docker, ['image', 'inspect', 'system-bootstrapper-recovery:' + 'a'.repeat(64)], {env});
     fs.writeFileSync(path.join(directory, 'fail-recovery-once'), 'once');
     const recoveryEnv = {...env, BOOTSTRAPPER_IMAGE: 'system-bootstrapper-recovery:' + 'a'.repeat(64)};
-    assert.throws(() => invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '-d', 'bootstrapper'],
+    await assert.rejects(() => invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '-d', 'bootstrapper'],
       {env: recoveryEnv, stdio: 'pipe'}), error => error.status === 88);
     assert.equal(fs.existsSync(path.join(directory, 'fail-recovery-once')), false);
-    invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '-d', 'bootstrapper'], {env: recoveryEnv});
+    await invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '-d', 'bootstrapper'], {env: recoveryEnv});
   } finally { fs.rmSync(directory, {recursive: true, force: true}); }
 });
 
-test('mount adapter only models the exact owned live filesystem and delegates backup or unrelated paths', () => {
+test('mount adapter only models the exact owned live filesystem and delegates backup or unrelated paths', async () => {
   const script = path.resolve(__dirname, '../e2e/public-upgrade-findmnt.js');
   const env = {...process.env, SYSTEM_PUBLIC_UPGRADE_LIVE: '/recovered-data/platform'};
   assert.equal(execFileSync(process.execPath, [script, '-rn', '-T', '/recovered-data/platform/configuration', '-o', 'MAJ:MIN'], {env, encoding: 'utf8'}), '0:1\n');
+  const {PublicUpgradeTransportService}=require('../../operations/dist/testing/public-upgrade-transport.service');
+  let output='';const service=new PublicUpgradeTransportService({write:bytes=>{output+=bytes.toString();}});
   for (const target of new Set(['/tmp', os.tmpdir()])) {
     const args = ['-rn', '-T', target, '-o', 'MAJ:MIN'];
-    assert.equal(execFileSync(process.execPath, [script,...args], {env, encoding: 'utf8'}), execFileSync('/usr/bin/findmnt', args, {encoding: 'utf8'}));
+    output='';assert.equal((await service.findmnt(args,env)).status,0);
+    assert.equal(output,execFileSync('/usr/bin/findmnt', args, {encoding: 'utf8'}));
   }
 });
 
