@@ -79,14 +79,24 @@ export class GitlabAuthJournalService {
       !fs.statSync(configDirectory).isDirectory()
     )
       throw Error('gitlab-auth-config-directory-invalid');
+    const syncDirectory = (target: string) => {
+      const fd = fs.openSync(
+        target,
+        fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
+      );
+      try {
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+    };
     const directory = path.join(configDirectory, 'system-bootstrapper-auth');
     try {
       fs.mkdirSync(directory, { mode: 0o700 });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
-    const checked = (filename: string, directoryExpected = false) => {
-      const stat = fs.lstatSync(filename);
+    const checkStat = (stat: fs.Stats, directoryExpected = false) => {
       if (
         (directoryExpected ? !stat.isDirectory() : !stat.isFile()) ||
         stat.uid !== process.getuid?.() ||
@@ -95,7 +105,10 @@ export class GitlabAuthJournalService {
       )
         throw Error('gitlab-auth-private-state-invalid');
     };
+    const checked = (filename: string, directoryExpected = false) =>
+      checkStat(fs.lstatSync(filename), directoryExpected);
     checked(directory, true);
+    syncDirectory(configDirectory);
     const lock = path.join(directory, 'journal.lock');
     try {
       const fd = fs.openSync(
@@ -110,17 +123,6 @@ export class GitlabAuthJournalService {
     checked(lock);
     const release = fileLock(lock);
     const filename = path.join(directory, 'journal.json');
-    const syncDirectory = () => {
-      const fd = fs.openSync(
-        directory,
-        fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW,
-      );
-      try {
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
-    };
     try {
       return await operation({
         read: () => {
@@ -132,7 +134,9 @@ export class GitlabAuthJournalService {
           }
           const fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
           try {
-            if (fs.fstatSync(fd).size > 65536) throw Error('gitlab-auth-journal-invalid');
+            const stat = fs.fstatSync(fd);
+            checkStat(stat);
+            if (stat.size > 65536) throw Error('gitlab-auth-journal-invalid');
             return validateAuthJournal(JSON.parse(fs.readFileSync(fd, 'utf8')));
           } catch {
             throw Error('gitlab-auth-journal-invalid');
@@ -156,17 +160,32 @@ export class GitlabAuthJournalService {
               fs.constants.O_NOFOLLOW,
             0o600,
           );
+          let closed = false;
+          let failed = false;
           try {
             fs.writeFileSync(fd, JSON.stringify(value) + '\n');
             fs.fsyncSync(fd);
-          } finally {
             fs.closeSync(fd);
-          }
-          try {
+            closed = true;
             fs.renameSync(temporary, filename);
-            syncDirectory();
+            syncDirectory(directory);
+          } catch (error) {
+            failed = true;
+            throw error;
           } finally {
-            fs.rmSync(temporary, { force: true });
+            let cleanupError: unknown;
+            if (!closed)
+              try {
+                fs.closeSync(fd);
+              } catch (error) {
+                cleanupError = error;
+              }
+            try {
+              fs.rmSync(temporary, { force: true });
+            } catch (error) {
+              cleanupError ??= error;
+            }
+            if (!failed && cleanupError) throw cleanupError;
           }
         },
       });
