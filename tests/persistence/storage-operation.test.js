@@ -163,7 +163,12 @@ test('a real configuration import preserves the acquired server-owned environmen
     'import zipfile,sys\nwith zipfile.ZipFile(sys.argv[1],"w") as z:\n z.writestr(".docker.env","export SYNC_ENABLE=true\\n")\n z.writestr(".projects.env/new.env","export PROJECT=new\\n")',f.root+'/source/bootstrapper.zip']);
   const held=new operation.StorageLease(state,{operation:'restore',helperName:'fixture',imageId:'sha256:'+'a'.repeat(64)});
   held.acquireEnvironment();const inode=fs.statSync(held.environment).ino;
-  execFileSync('bash',['push.sh'],{cwd:system,env:{...process.env,SYSTEM_CONFIG_DIR:state},encoding:'utf8'});
+  const base={...process.env,SYSTEM_CONFIG_DIR:state};
+  for(const spec of [undefined,{...held.spec,helperName:'foreign'},{...held.spec,operation:'harvest'}]){
+    assert.throws(()=>execFileSync('bash',['push.sh'],{cwd:system,env:{...base,...(spec?{SYSTEM_STORAGE_SPEC:JSON.stringify(spec)}:{})},encoding:'utf8',stdio:'pipe'}));
+    assert.equal(fs.statSync(held.environment).ino,inode);
+  }
+  execFileSync('bash',['push.sh'],{cwd:system,env:{...base,SYSTEM_STORAGE_SPEC:JSON.stringify(held.spec)},encoding:'utf8'});
   assert.equal(fs.statSync(held.environment).ino,inode);
   assert.equal(fs.readFileSync(state+'/.projects.env/new.env','utf8'),'export PROJECT=new\n');
   held.release(true);
@@ -203,8 +208,8 @@ test('controller restart refuses running, uncertain, or unowned storage operatio
   operation.startupAllowed(state,true);
   fs.writeFileSync(path.join(upgrade,'upgrade-owner.json'),'{}');
   assert.throws(()=>operation.startupAllowed(state,true),/storage-operation-busy/);
-  const start=fs.readFileSync(path.join(__dirname,'../../system/start.sh'),'utf8');
-  assert(start.indexOf('startup-begin') < start.indexOf('node ./persistence-init.js'));
+  const start=fs.readFileSync(path.join(__dirname,'../../operations/src/lifecycle/lifecycle.service.ts'),'utf8');
+  assert(start.indexOf('startupBegin(context.state') < start.indexOf('system/persistence-init.js'));
 });
 test('startup and cold backup take the same atomic barrier across the writer-start interval',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',spec={operation:'harvest',helperName:'helper',imageId:'sha256:'+'a'.repeat(64)};

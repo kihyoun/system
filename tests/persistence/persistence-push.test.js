@@ -152,3 +152,15 @@ test('ZIP Push validates aliases against its complete new project set before any
   assert.deepEqual(fs.readdirSync(path.join(f.state, '.projects.env')), ['.retained.env']);
   assert.equal(fs.readFileSync(path.join(f.state, '.projects.env/.retained.env'), 'utf8'), 'original project');
 });
+
+test('uncertain import subprocess completion retains shared barriers and does not rewrite saved input', t => {
+  const f=fixture(t,{'.docker.env':'replacement'});
+  fs.writeFileSync(path.join(f.state,'.docker.env'),'previous');
+  const {ConfigurationService}=require('../../operations/dist/configuration/configuration.service');
+  const {ProcessFailure}=require('../../operations/dist/runtime/process');
+  const service=new ConfigurationService({run(){throw new ProcessFailure('unzip',null,'SIGTERM',true);}},{run(){throw Error('routing must not run');}});
+  assert.throws(()=>service.push({root:f.root,state:f.state,archive:path.join(f.root,'bootstrapper.zip')}),ProcessFailure);
+  assert(fs.existsSync(path.join(f.state,'.storage-operation-lock/startup-owner.json')));
+  assert(fs.existsSync(path.join(f.state,'.projects.env/.wizard.env.environments.lock')));
+  assert.equal(fs.readFileSync(path.join(f.state,'.docker.env'),'utf8'),'previous');
+});

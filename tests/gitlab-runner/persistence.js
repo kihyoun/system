@@ -37,6 +37,7 @@ try {
   for (const name of ['start.sh', 'stop.sh', 'pool.sh', 'compose.js', 'docker-compose.yml', 'provision.js', 'provision.rb']) {
     fs.copyFileSync(path.join(root, 'gitlab-runner', name), path.join(fixture, 'gitlab-runner', name));
   }
+  fs.symlinkSync(path.join(root,'operations'),path.join(fixture,'operations'),'dir');
   const log = path.join(fixture, 'compose-log.jsonl');
   fs.writeFileSync(path.join(fixture, 'bin/docker-compose'), `#!/usr/bin/env node\nconst fs=require('fs'); const args=process.argv.slice(2); fs.appendFileSync(process.env.COMPOSE_LOG, JSON.stringify({args,definition:JSON.parse(fs.readFileSync(args[args.indexOf('-f')+1],'utf8'))})+'\\n');\n`, {mode: 0o755});
   fs.writeFileSync(path.join(fixture, 'bin/docker'), '#!/bin/sh\ncat >/dev/null\nprintf \'{"token":"glrt-persisted_test"}\\n\'\n', {mode: 0o755});
@@ -46,7 +47,7 @@ try {
   fs.symlinkSync(path.join(fixture, 'project-state'), path.join(fixture, 'system/.projects.env'));
   fs.writeFileSync(path.join(fixture, 'project-state/.project.env'), 'PROJECT_NAME=project\nPROJECT_TEMPLATE=web\nGITLAB_RUNNER_SCALE=2\n');
   fs.writeFileSync(path.join(fixture, 'project-state/.wizard.env'), 'PROJECT_NAME=wizard\nPROJECT_TEMPLATE=wizard\nGITLAB_RUNNER_SCALE=2\n');
-  const env = {...process.env, PATH: path.join(fixture, 'bin') + ':' + process.env.PATH, COMPOSE_LOG: log};
+  const env = {...process.env, PATH: path.join(fixture, 'bin') + ':' + process.env.PATH, COMPOSE_LOG: log, SYSTEM_CONFIG_DIR:path.join(fixture,'system')};
   const writeMain = scale => fs.writeFileSync(path.join(fixture, 'system/.docker.env'), `export PERSISTENT_DIR='${persistent}'\nexport GITLAB_RUNNER_SCALE=${scale}\n`);
   // Leave mktemp unmocked: run this lifecycle test in the Alpine controller
   // image as well as the component image. BusyBox rejects GNU's suffix form

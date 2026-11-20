@@ -137,7 +137,7 @@ class Upgrade {
     for(let index=1;index<=scale;index++)if(!configurations.some(row=>row.path==='runner/'+index+'/config'))throw Error('upgrade-retained-runner-config-required');
     return {fromImage:reference,fromImageId,toImageId,helperImageId,fromHelperImageId,scale,configurations};
   }
-  runnerPool(script){this.run('bash',[script],{cwd:path.join(ROOT,'gitlab-runner'),timeout:600000});}
+  runnerPool(script){this.run('bash',[script],{cwd:path.join(ROOT,'gitlab-runner'),timeout:600000,env:{...process.env,SYSTEM_CONFIG_DIR:this.state,SYSTEM_GITLAB_UPGRADE_OPERATION:this.operation}});}
   runnersStopped(plan){
     const names=new Set(this.docker(['ps','--all','--format','{{.Names}}']).split('\n'));
     for(const row of plan.configurations){const [pool,index]=row.path.split('/'),name=pool+'_docker_'+index;if(names.has(name)&&this.inspect(name).State?.Running)throw Error('upgrade-runner-writer-still-running');}

@@ -1,6 +1,7 @@
 # Runner persistence
 
-`start.sh` reads the platform's `PERSISTENT_DIR` and generates a Compose service
+The compatibility `start.sh` invokes the shared `RunnerLifecycleService`, which
+reads the platform's `PERSISTENT_DIR` and generates a Compose service
 for each runner manager. Manager `runner_docker_1` binds:
 
 - `PERSISTENT_DIR/runners/runner/1/config` to `/etc/gitlab-runner`;
@@ -43,4 +44,7 @@ docker run --rm --network none --read-only --tmpfs /tmp:exec \
   "$BOOTSTRAPPER_IMAGE" tests/gitlab-runner/persistence.js
 ```
 
-This uses the runtime's actual `mktemp`, without Docker access or live state.
+This uses the runtime's actual temporary filesystem, without Docker access or live state.
+Build the operations package before running the compatibility commands. Runner
+setup shares the persistent controller lease; an inherited upgrade must supply
+its exact operation identity and remain the live ancestor of the runner command.

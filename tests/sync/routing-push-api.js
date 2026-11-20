@@ -18,7 +18,12 @@ let server, application;
 const execute = child.execSync;
 child.execSync = (command, options) => {
   assert.equal(command, 'cd ../system; bash push.sh', 'route-only Push must not stop GitLab or the platform');
-  return execute(command, {...options, stdio: ['pipe', 'pipe', 'pipe']});
+  const {ConfigurationService}=require(path.join(source,'operations/dist/configuration/configuration.service'));
+  const {NativeProcessRunner}=require(path.join(source,'operations/dist/runtime/process'));
+  const routing={run(value){assert.equal(value.action,'apply');fs.appendFileSync(path.join(root,'apply-trace'),value.projects.join(' ')+'\n');if(fs.existsSync(path.join(root,'fail-apply')))throw Error('Injected routing failure');}};
+  const service=new ConfigurationService(new NativeProcessRunner(),routing);
+  const mode=service.push({root,state:path.join(root,'state'),archive:path.join(root,'bootstrapper.zip'),fingerprint:options.env.SYSTEM_PUSH_IMPACT});
+  return Buffer.from('APPLY_MODE='+mode+'\nReady.\n');
 };
 child.execFile = child.spawn = () => { throw Error('GitLab and service transports are forbidden.'); };
 const cube = fs.readFileSync(path.join(source, 'system/.docker.env.example'), 'utf8').slice(0, 1184);

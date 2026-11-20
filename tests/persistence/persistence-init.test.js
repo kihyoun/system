@@ -163,7 +163,8 @@ test('public generator requires exact dedicated mounts rather than root-disk fal
   assert.match(compose, /wizardPublic:\/wizard-public/);
   assert.match(compose, /wizardPublic:\/usr\/share\/nginx\/wizard-public:ro/);
   assert.match(compose, /device: "\$\{PERSISTENT_DIR:\?PERSISTENT_DIR must be set\}\/wizard-public"/);
-  const start = fs.readFileSync(path.join(__dirname, '../../system/start.sh'), 'utf8');
-  assert(start.indexOf('node ./persistence-init.js') < start.indexOf('node ./wizard-public.js'));
-  assert(start.indexOf('node ./wizard-public.js') < start.indexOf('source .docker.env'));
+  const start = fs.readFileSync(path.join(__dirname, '../../operations/src/lifecycle/lifecycle.service.ts'), 'utf8');
+  assert(start.includes('system/persistence-init.js') && start.includes('system/wizard-public.js') && start.includes('await this.intermediate(active'));
+  assert(start.indexOf('system/persistence-init.js') < start.indexOf('system/wizard-public.js'));
+  assert(start.indexOf('system/wizard-public.js') < start.indexOf('await this.intermediate(active'));
 });

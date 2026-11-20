@@ -7,3 +7,8 @@ export type { ProcessRunner, ProcessOptions, ProcessResult } from './runtime/pro
 export { HostModule, HostStorageService, HostInstallService } from './host';
 export { ReleaseModule, NpmPublicationService } from './release';
 export type { NpmPublicationPorts, NpmEvidence, NpmReceipt } from './release';
+export { ConfigurationModule } from './configuration/configuration.module';
+export { ConfigurationService } from './configuration/configuration.service';
+export { LifecycleModule } from './lifecycle/lifecycle.module';
+export { LifecycleService } from './lifecycle/lifecycle.service';
+export { RunnerLifecycleService } from './lifecycle/runner.service';

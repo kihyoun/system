@@ -1,12 +1,4 @@
-#! /bin/bash
-set -eo pipefail
-cd ../nginx; bash -e ./start.sh;
-source ../system/.docker.env
-if [ "${SYNC_ENABLE:-false}" != true ] && [ "${WIZARD_ENABLE:-false}" = true ]; then
-  # Registration also works when the optional Sync listener is disabled.
-  cd ../sync
-  npm run build
-  node dist/DefaultWizard.js || echo 'System Wizard registration failed; the existing interface remains available.' >&2
-fi
-if [[ -n ${SYSTEM_STARTUP_OPERATION:-} ]]; then node ../system/seed-operation.js startup-finish; fi
-cd ../sync; bash -e ./start.sh;
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+exec node "$root/operations/dist/lifecycle/entry.js" start-main "$root"
