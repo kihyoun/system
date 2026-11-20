@@ -121,7 +121,7 @@ function nativeProof(args, proof={}) {
     await ready.ready(release.toVersion,ids.next);assert.equal(sleeps,1,'Explicit startup/migration states remain retryable.');
   }
   const {GitlabPreflightService}=require('../../operations/dist/gitlab-preflight/gitlab-preflight.service');
-  const probe=new GitlabPreflightService(), probeCommands=[], probeInputs=[];
+  const probe=new GitlabPreflightService(new (require('../../operations/dist/gitlab-preflight/gitlab-database.service').GitlabDatabaseService)()), probeCommands=[], probeInputs=[];
   const topology='production:\n  main: &db\n    adapter: postgresql\n    username: gitlab\n    database: main_data\n    host: /var/opt/gitlab/postgresql\n  ci:\n    <<: *db\n    database: ci_data\n    database_tasks: false\n';
   const proof=await probe.probe(running.Id,{command(args,timeout,input){
     if(input!==undefined)probeInputs.push(input);
@@ -138,6 +138,18 @@ function nativeProof(args, proof={}) {
   }
   for(const invalid of ['-1','1.5','NaN','9007199254740992','0\nsecret'])await assert.rejects(()=>probe.probe(running.Id,{command:args=>nativeProof(args,{runningJobs:invalid})}),/upgrade-preflight-refused/);
   const secret=' private:token\\with-space ', tlsTopology=topology.replace('username: gitlab',`username: remote_user\n    password: ${JSON.stringify(secret)}\n    sslmode: verify-full\n    sslrootcert: /private/root.crt\n    sslcert: /private/client.crt\n    sslkey: /private/client.key`).replace('/var/opt/gitlab/postgresql','db.example.test');
+  const database = new (require('../../operations/dist/gitlab-preflight/gitlab-database.service').GitlabDatabaseService)();
+  const session = await database.open(running.Id, {command: args => nativeProof(args, {topology})});
+  assert.equal(session.main, 0); assert.equal(session.ci, 1);
+  const interactive = session.command(session.main, {interactive: true, applicationName: 'bootstrapper-lock:fixture'});
+  assert.equal(interactive[1], '-i');
+  assert(interactive.includes('service=database0 application_name=bootstrapper-lock:fixture'));
+  assert(interactive.some(value => value.includes('default_transaction_read_only=on')));
+  for (const options of [{applicationName: 'bad name'}, {readOnly: 'false'}, {interactive: 1}])
+    assert.throws(() => session.command(0, options), /invalid/);
+  assert.throws(() => session.command(99), /session-invalid/);
+  await session.close(); await session.close();
+  assert.throws(() => session.command(0), /session-invalid/);
   const privateInputs=[], privateCommands=[];
   await probe.probe(running.Id,{command(args,timeout,input){privateCommands.push(args);if(input!==undefined)privateInputs.push(input);return nativeProof(args,{topology:tlsTopology});}});
   assert(privateInputs.some(value=>value.includes('sslmode=verify-full')&&value.includes('user=remote_user')&&value.includes('sslrootcert=/private/root.crt')&&value.includes('sslkey=/private/client.key')));
