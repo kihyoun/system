@@ -1,11 +1,13 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const express = require('../../sync/node_modules/express');
-const {checkRegistry, configuredRegistry, registerSystemDiagnostics} = require('../../sync/dist/SystemDiagnostics');
+const {checkRegistry, configuredRegistry} = require('../../sync/dist/SystemDiagnostics');
 const {inspectRunner, validHelperImage} = require('../../sync/dist/SystemDiagnosticsDocker');
 const {nativeProbe} = require('../../sync/dist/SystemDiagnosticsProbe');
 const http = require('node:http');
+const {createSyncApplication} = require('../../sync/dist/bootstrap');
+const {AuthService} = require('../../sync/dist/auth/auth.service');
+const {DIAGNOSTIC_DEPENDENCIES} = require('../../sync/dist/diagnostics/diagnostics.service');
 const image = 'registry.example.test/runner/helper:x86_64-v1@sha256:' + 'a'.repeat(64);
 const targets = {registry: 'https://registry.example.test:5443', helper: 'https://helper.example.test', helperImage: image,
   runners: ['runner_docker_1'], context: 'controller'};
@@ -84,15 +86,26 @@ for (const [description, content, row] of [
   await assert.rejects(inspectRunner('runner_docker_1', inspectFixture(content, row).read));
 });
 async function fixture(deps, work) {
-  const app = express(); app.use(express.json());
-  registerSystemDiagnostics(app, (req, res, next) => req.headers.authorization === 'Bearer fixture' ? next() : res.sendStatus(401), deps);
-  const server = await new Promise(resolve => {const value = app.listen(0, '127.0.0.1', () => resolve(value));});
+  const previousUser = process.env.SYNC_USER, previousPass = process.env.SYNC_PASS;
+  process.env.SYNC_USER = 'diagnostic-fixture'; process.env.SYNC_PASS = 'fixture-password';
+  let app;
+  try { app = await createSyncApplication(); }
+  finally {
+    if (previousUser === undefined) delete process.env.SYNC_USER; else process.env.SYNC_USER = previousUser;
+    if (previousPass === undefined) delete process.env.SYNC_PASS; else process.env.SYNC_PASS = previousPass;
+  }
+  // Replace only native transports. The controller, real JWT guard, operation
+  // leases, exception filter and concurrency limit come from the Nest graph.
+  Object.assign(app.get(DIAGNOSTIC_DEPENDENCIES), deps);
+  const token = app.get(AuthService).login({username: 'diagnostic-fixture', password: 'fixture-password'}).accessToken;
+  await app.listen(0, '127.0.0.1');
+  const server = app.getHttpServer();
   const request = async (endpoint, body, authenticated = true) => {
     const response = await fetch('http://127.0.0.1:' + server.address().port + '/diagnostics' + endpoint,
-      {method: body === undefined ? 'GET' : 'POST', headers: {'Content-Type': 'application/json', ...(authenticated ? {Authorization: 'Bearer fixture'} : {})}, body: body === undefined ? undefined : JSON.stringify(body)});
+      {method: body === undefined ? 'GET' : 'POST', headers: {'Content-Type': 'application/json', ...(authenticated ? {Authorization: 'Bearer ' + token} : {})}, body: body === undefined ? undefined : JSON.stringify(body)});
     return {status: response.status, cache: response.headers.get('cache-control'), text: await response.text()};
   };
-  try {await work(request);} finally {await new Promise(resolve => server.close(resolve));}
+  try {await work(request);} finally {await app.close();}
 }
 const deps = {targets: async () => targets, probe: driver(), inspect: async () => ({runner: 'runner_docker_1', image, daemon: 'actual host daemon', authentication: 'anonymous', auth: ''}),
   pull: async () => ({success: false, code: 'PULL_FAILED'})};

@@ -39,7 +39,12 @@ try {
     assert(extracted.length >= 2, 'No native public messages extracted from ' + filename);
     for (const message of extracted) messages.add(message);
   }
-  const api = messagesIn('sync/src/index.ts');
+  // Public API messages can move between native Nest modules without changing
+  // the Wizard translation contract. Read their actual producers recursively.
+  const syncSources = fs.readdirSync(path.join(root, 'sync/src'), {recursive: true})
+    .filter(filename => filename.endsWith('.ts'))
+    .map(filename => 'sync/src/' + filename);
+  const api = syncSources.flatMap(messagesIn);
   for (const prefix of ['A GitLab upgrade is in progress.', 'A backup or recovery operation is in progress.',
     'Wait for the current platform operation to finish.', 'Development preview setup status is unavailable.']) {
     const message = api.find(value => value.startsWith(prefix));

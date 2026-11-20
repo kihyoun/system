@@ -13,10 +13,7 @@ for (const name of ['system/push.sh', 'nginx/wizard-aliases.js', 'nginx/applicat
 fs.writeFileSync(path.join(root, 'project-bootstrap/apply.sh'), 'printf "%s\\n" "$*" >> ../apply-trace\n[[ ! -f ../fail-apply ]]\n');
 process.chdir(path.join(root, 'sync'));
 process.env.SYSTEM_CONFIG_DIR = path.join(root, 'state'); process.env.SYNC_USER = 'fixture'; process.env.SYNC_PASS = 'fixture-password';
-const express = require(require.resolve('express', {paths: [path.join(source, 'sync')]}));
-const listen = express.application.listen;
-let server;
-express.application.listen = function (_, callback) { server = listen.call(this, 0, '127.0.0.1', callback); return server; };
+let server, application;
 const execute = child.execSync;
 child.execSync = (command, options) => {
   assert.equal(command, 'cd ../system; bash push.sh', 'route-only Push must not stop GitLab or the platform');
@@ -32,8 +29,10 @@ function zip(data, selectedMain = main) {
   return fs.readFileSync(archive);
 }
 const log = console.log; console.log = () => {};
-require(path.join(source, 'sync/dist/index'));
+const {bootstrap: startSync} = require(path.join(source, 'sync/dist/bootstrap'));
 (async () => {
+  application = await startSync({port: 0, host: '127.0.0.1'});
+  server = application.getHttpServer();
   try {
     while (!server.listening) await new Promise(resolve => setTimeout(resolve, 5));
     const base = 'http://127.0.0.1:' + server.address().port;
@@ -68,6 +67,6 @@ require(path.join(source, 'sync/dist/index'));
     assert.equal((await fetch(base + '/status', {headers})).status, 200);
     log('PASS: authenticated preflight, stale-plan rejection, route-only Push availability, scoped apply and failed-apply saved-state rollback.');
   } finally {
-    console.log = log; await new Promise(resolve => server.close(resolve)); fs.rmSync(root, {recursive: true, force: true});
+    console.log = log; if (application) await application.close(); fs.rmSync(root, {recursive: true, force: true});
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
