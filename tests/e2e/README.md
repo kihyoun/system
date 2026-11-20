@@ -440,7 +440,7 @@ The outer receipt copies the bounded migration proof; the detailed migration
 stages belong to the restored candidate receipt. Raw private checkpoints,
 configuration, credentials and database logs are never public CI artifacts.
 
-The successor scenario uses one fixed 90-minute overall candidate budget only
+The successor scenario uses one fixed 110-minute overall candidate budget only
 when both `guidedPreviewAcceptance === true` and `gitlabUpgradeAcceptance === true`
 and a prepared `publicUpgrade` fixture are present. The combined scenario without
 that fixture retains 75 minutes. Both include the three actual native Wizard
@@ -457,11 +457,16 @@ a 1,200-second invocation limit and the same absolute candidate deadline. Readin
 still requires completed background migrations; a successful migration batch alone
 does not satisfy that condition. The scenario uses the existing serialized resource
 group and 12-GiB/four-CPU private daemon ceiling; check actual host headroom before
-starting it. The platform job allows a 95-minute script and a separate two-minute cleanup
-within a 100-minute job limit, leaving time for preparation, publication and artifact
+starting it. The platform job allows a 115-minute script and a separate two-minute cleanup
+within a 120-minute job limit, leaving time for preparation, publication and artifact
 collection. Ordinary smoke and ACME-only lifecycle budgets remain unchanged. A
 passing mocked adapter contract is not a successful real migration; use the
-complete platform CI gate for that proof.
+complete platform CI gate for that proof. Completed subprocess errors and confirmed
+terminal container/identity failures abort immediately. Temporary startup states
+may be polled within their existing operation limits. Reports distinguish process
+exit failures, operation timeouts and an exhausted overall candidate or cleanup
+deadline; a client exiting with status zero after a timeout is not proof that its
+remote operation completed successfully.
 
 ## Public release CLI upgrade acceptance
 

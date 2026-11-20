@@ -38,7 +38,7 @@ for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},120000
   [{publicUpgrade:{}},1200000],
   [{gitlabUpgradeAcceptance:true,publicUpgrade:{}},3600000],
   [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:null},4500000],
-  [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:{}},5400000]]) {
+  [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:{}},6600000]]) {
   const bounded=new Candidate({...spec,...options},{now:()=>123});
   assert.equal(bounded.deadline,123+budget);
 }
@@ -126,7 +126,28 @@ function fixture(overrides={}) {
     await assert.rejects(streamed.stage('recovery-completed-cold-seed',async()=>streamed.exec(['exec'],{timeout:30})));
     assert.equal(streamed.results.at(-1).systemCode,'ETIMEDOUT');
     assert.equal(streamed.results.at(-1).exitCode,undefined);
+    fs.writeFileSync(path.join(streams,'docker'),'#!/bin/sh\ntrap \'exit 0\' TERM\nwhile :; do :; done\n',{mode:0o755});
+    await assert.rejects(streamed.stage('recovery-completed-cold-seed',async()=>streamed.exec(['exec'],{timeout:100})));
+    assert.equal(streamed.results.at(-1).systemCode,'ETIMEDOUT');
+    assert.equal(streamed.results.at(-1).exitCode,undefined,
+      'a timed-out client exiting cleanly during termination must not report successful completion');
   } finally {process.env.PATH=previousPath;fs.rmSync(streams,{recursive:true,force:true});}
+  for(const [requested,cleanup,reason]of [[100,false,'docker-exec-failed'],[500,false,'candidate-overall-timeout'],[500,true,'candidate-cleanup-timeout']]) {
+    const failure=Object.assign(Error('docker-exec-failed'),{systemCode:'ETIMEDOUT'});
+    const bounded=new Candidate(spec,{now:()=>0,docker:(_args,options)=>{
+      assert.equal(options.timeout,Math.min(requested,250));throw failure;
+    }});
+    bounded.deadline=250;if(cleanup)bounded.cleanupDeadline=250;
+    await assert.rejects(bounded.stage('authenticated-fetch',()=>bounded.call(['exec'],{timeout:requested})),
+      error=>error.message===reason&&error.systemCode==='ETIMEDOUT');
+    assert.equal(bounded.results[0].reason,reason);
+    assert.equal(bounded.results[0].exitCode,undefined);
+    assert.deepEqual(recover({runId:bounded.id,resources:[],results:bounded.results}).results,bounded.results);
+  }
+  const processFailure=Object.assign(Error('docker-exec-failed'),{exitCode:23});
+  const immediatelyFailed=new Candidate(spec,{now:()=>0,docker:()=>{throw processFailure;}});
+  immediatelyFailed.deadline=250;
+  await assert.rejects(immediatelyFailed.call(['exec'],{timeout:500}),error=>error===processFailure);
   const routed=fixture();
   routed.instance.inner=async(args,options)=>{
     if(args[0]==='inspect'){assert(args.includes('{{json .NetworkSettings.Networks}}'));return JSON.stringify({bridge:{Gateway:'172.17.0.1'}});}
@@ -278,7 +299,7 @@ function fixture(overrides={}) {
   const repeatedStatus=recover({runId:status.instance.id,resources:[],results:resumedStatus.results});
   assert.deepEqual(repeatedStatus.results,status.instance.results);
   assert(!JSON.stringify(repeatedStatus.results).includes('secret-fixture-token'));
-  for(const exitCode of [-1,256,'secret-fixture-token']) {
+  for(const exitCode of [-1,0,256,'secret-fixture-token']) {
     const unsafeStatus=recover({runId:status.instance.id,resources:[],results:[{name:'cleanup',status:'failed',exitCode,systemCode:'secret-fixture-token'}]});
     assert.deepEqual(unsafeStatus.results,[{name:'cleanup',status:'failed'}]);
   }

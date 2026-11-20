@@ -123,7 +123,7 @@ async function revoke(candidate,token) {
 async function checkpoint(candidate,name,action,allowedReasons=[]){
   return candidate.stage(name,async()=>{
     try{return await action();}catch(error){
-      if(['canceled-or-overall-timeout','readiness-timeout',...allowedReasons].includes(error?.message))throw error;
+      if(['canceled-or-overall-timeout','candidate-overall-timeout','candidate-cleanup-timeout','readiness-timeout',...allowedReasons].includes(error?.message))throw error;
       const failure=Error(name+'-failed');
       if(Number.isInteger(error?.exitCode)&&error.exitCode>=0&&error.exitCode<=255)failure.exitCode=error.exitCode;
       if(['ETIMEDOUT','ENOBUFS','ENOENT','EACCES'].includes(error?.systemCode))failure.systemCode=error.systemCode;
