@@ -6,7 +6,16 @@ const base={sourceRevision:'a'.repeat(40),evidence:'/state/evidence.json',stateD
 const ids={old:'sha256:'+'b'.repeat(64),next:'sha256:'+'c'.repeat(64)};
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
 (async()=>{try{
-  assert.equal(release.toVersion,'19.5.3');assert.equal(release.fromVersion,'19.4.3');
+  assert.equal(release.toVersion,'19.6.1');assert.equal(release.fromVersion,'19.5.3');
+  assert.equal(release.runner.fromVersion,'19.5.1');assert.equal(release.runner.toVersion,'19.6.0');
+  assert.equal(release.requiredUpgradeStop,'19.5');
+  assert.match(release.runner.helperImage,/:x86_64-v19\.6\.0@sha256:[a-f0-9]{64}$/);
+  for(const file of ['system/.docker.env.example','system/docker-compose.yml','Prepare-Host.md']){
+    const text=fs.readFileSync(path.join(__dirname,'../..',file),'utf8');
+    assert(text.includes(release.toImage),file+' must select the reviewed GitLab target');
+    assert(text.includes(release.runner.toImage),file+' must select the reviewed Runner target');
+  }
+  assert(fs.readFileSync(path.join(__dirname,'../../gitlab-runner/docker-compose.yml'),'utf8').includes(release.runner.toImage));
   assert.equal(options(base),base);for(const patch of [{stateDir:'/tmp'},{checkpointDir:'/state/../private'},{sourceRevision:'main'},{readyTimeoutSeconds:30},{allowFailure:true}])assert.throws(()=>options({...base,...patch}));
   const updated=imageAssignment(example,release.toImage);assert.equal(updated.slice(0,1184),example.slice(0,1184));assert(updated.includes(release.toImage));assert.equal(imageAssignment(updated,release.toImage),updated);
   assert.throws(()=>imageAssignment(example+'\nGITLAB_IMAGE=one\nGITLAB_IMAGE=two\n',release.toImage),/duplicate/);assert.throws(()=>imageAssignment('badcube',release.toImage),/cube/);assert.throws(()=>imageAssignment(example,'gitlab/gitlab-ee:latest'),/approved/);

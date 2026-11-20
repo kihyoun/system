@@ -1883,11 +1883,14 @@ migration results for an upgrade.
 ### 5.4 Example: a GitLab security patch is a system evolution
 
 The committed [security release profile](../gitlab/security-release.json)
-declares a GitLab CE **19.4.3 → 19.5.3** transition and a GitLab Runner
-**19.4.0 → 19.5.1** transition with its matching helper. The linked upstream
-[patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-3-released/)
+declares a GitLab CE **19.5.3 → 19.6.1** transition and a GitLab Runner
+**19.5.1 → 19.6.0** transition with its matching helper. The linked upstream
+[patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-6-1-released/)
 and [Docker upgrade guidance](https://docs.gitlab.com/update/docker/) describe
-its prerequisites. Required database and post-deployment migrations must finish;
+its prerequisites. The already completed 19.5 upgrade stop permits this direct
+transition; see the
+[version-specific procedure](../gitlab/UPGRADE.md#supported-transition). Required
+database and post-deployment migrations must finish;
 check the source/target upgrade path rather than treating any newer image as an
 interchangeable patch.
 
@@ -1959,14 +1962,14 @@ candidate results and exact existing installation. Run it from the host or an
 independent management connection, rather than relying on a CI job to survive
 stopping the GitLab that coordinates it.
 
-For the declared CE 19.4.3 → 19.5.3 transition,
+For the declared CE 19.5.3 → 19.6.1 transition,
 [`gitlab/security-release.json`](../gitlab/security-release.json) contains the
 allowed image pins. Before planning or entering downtime, pull all six image
 references: `fromImage`, `toImage`, `runner.fromImage`, `runner.toImage`,
 `runner.fromHelperImage` and `runner.helperImage`. These include both GitLab
 versions and the previous and target Runner/Helper pairs. First deploy the
 **exact tested full controller image** containing the
-accepted tools, while preserving the saved 19.4.3 GitLab selection. Do not rebuild
+accepted tools, while preserving the saved 19.5.3 GitLab selection. Do not rebuild
 another image from the same tag and assume it has the tested identity. The helper
 requires the running controller to match the image recorded by the accepted
 candidate evidence; publishing a runtime base alone does not meet this condition.

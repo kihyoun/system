@@ -3,19 +3,23 @@
 require 'json'
 require 'stringio'
 module Gitlab
-  VERSION = '19.4.3'
+  VERSION = JSON.parse(File.read(File.expand_path('../../gitlab/security-release.json', __dir__))).fetch('fromVersion')
   def self.ee? = false
   class Database
-    def self.database_base_models = { 'main' => FixtureDatabase }
+    def self.database_base_models = { 'main' => FixtureDatabase, 'ci' => FixtureCiDatabase }
   end
 end
 class FixtureDatabase
   def self.connection = self
   def self.select_value(sql)
     raise 'unexpected background migration query' unless sql.include?('status NOT IN (3, 6)')
-    0
+    @unfinished || 0
+  end
+  def self.unfinished=(value)
+    @unfinished = value
   end
 end
+class FixtureCiDatabase < FixtureDatabase; end
 module Ci
   class Build
     class << self
@@ -42,5 +46,15 @@ adapter = File.expand_path('../../gitlab/upgrade-preflight.rb', __dir__)
   ensure
     $stdout = previous
   end
+end
+# An unfinished migration in the separate CI database must not disappear behind
+# a clean main database; failed/paused work is counted by the same query.
+FixtureCiDatabase.unfinished = 2
+previous, $stdout = $stdout, StringIO.new
+begin
+  load adapter
+  raise 'CI migrations missed' unless JSON.parse($stdout.string)['unfinishedBackgroundMigrations'] == 2
+ensure
+  $stdout = previous
 end
 puts 'PASS: preparing, running and canceling jobs block maintenance; unclaimed/terminal states remain untouched.'

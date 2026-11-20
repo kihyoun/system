@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// A deliberately approved CE transition to the next required upgrade stop.
+// A deliberately approved CE transition after the required upgrade stop.
 // Run from the tested System
 // controller, detached from GitLab CI: promotion stops its own GitLab server.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');

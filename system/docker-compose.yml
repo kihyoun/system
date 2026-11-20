@@ -27,8 +27,8 @@ services:
       SYSTEM_LOG_MAX_SIZE: ${SYSTEM_LOG_MAX_SIZE:-10m}
       SYSTEM_LOG_MAX_FILES: ${SYSTEM_LOG_MAX_FILES:-3}
       COMPOSE_COMPATIBILITY: "1"
-      GITLAB_IMAGE: ${GITLAB_IMAGE:-gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c}
-      GITLAB_RUNNER_IMAGE: ${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd}
+      GITLAB_IMAGE: ${GITLAB_IMAGE:-gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056}
+      GITLAB_RUNNER_IMAGE: ${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:v19.6.0@sha256:fb454a097fd26ea329b0234d6d82b53ae25f672bd625c278eaaee683a00f2507}
       GITLAB_SSH_BIND: ${GITLAB_SSH_BIND:-22}
       GITLAB_REGISTRY_BIND: ${GITLAB_REGISTRY_BIND:-5050}
     volumes:
@@ -84,7 +84,7 @@ services:
 
   gitlab:
     logging: *bounded-logging
-    image: '${GITLAB_IMAGE:-gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c}'
+    image: '${GITLAB_IMAGE:-gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056}'
     shm_size: '256m'
     restart: always
     hostname: '$GITLAB_HOST'

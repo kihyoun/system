@@ -108,7 +108,7 @@ contract and verification after deliberate container recreation.
 ## Local integration test
 
 Select compatible GitLab and Runner releases explicitly. The example below uses
-GitLab CE 19.5.3 and Runner 19.5.1, pinned by the security release profile and
+GitLab CE 19.6.1 and Runner 19.6.0, pinned by the security release profile and
 disposable integration suite. Do not point a new major version at existing GitLab data without following
 GitLab's supported upgrade path.
 
@@ -120,8 +120,8 @@ link to the saved configuration; the persistent copy takes precedence over
 configuration embedded in an image:
 
 ```bash
-export GITLAB_IMAGE=gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c
-export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd
+export GITLAB_IMAGE=gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056
+export GITLAB_RUNNER_IMAGE=gitlab/gitlab-runner:v19.6.0@sha256:fb454a097fd26ea329b0234d6d82b53ae25f672bd625c278eaaee683a00f2507
 export GITLAB_SSH_BIND=127.0.0.1:2222
 export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 ```

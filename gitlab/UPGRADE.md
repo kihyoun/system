@@ -13,6 +13,51 @@ pre-upgrade registry blob on the new version. Finally, the candidate restores it
 verified cold checkpoint and the previous image; reverting an image alone is
 not a database rollback. These are disposable tests, not a live-data migration.
 
+## Supported transition
+
+The profile selects **GitLab CE 19.5.3 → 19.6.1** and **Runner/Helper
+19.5.1 → 19.6.0**. GitLab published the stable CE patch on November 20, 2026;
+its official container includes the Ruby fix for CVE-2026-132825. The Runner
+release cycle is separate: the matching stable 19.6 Runner and x86_64 Helper
+are both 19.6.0. All six references include registry-verified immutable digests.
+
+The [required 19.5 stop](https://docs.gitlab.com/update/upgrade_paths/)
+is already satisfied by the supported baseline. No intermediate minor version
+is required. Earlier installations must first complete their own accepted
+upgrade path to 19.5.3; this profile does not skip older required stops.
+The native preflight refuses unfinished background migrations in **every
+configured database**, including failed or paused work, before stopping writers.
+After startup it also requires ordinary and post-deployment migrations to be up.
+Resolve pending work on the current version; do not bypass these checks. See
+[background migrations](https://docs.gitlab.com/update/background_migrations/).
+Although the 19.6.1 patch adds no migrations to 19.6.0, this transition crosses
+from 19.5 and retains all migration checks.
+
+Review [19.6 upgrade notes](https://docs.gitlab.com/update/versions/gitlab_19_changes/#upgrade-to-196)
+for operator customizations: bundled NGINX rejects zero-size buffers and applies
+stricter IP certificate checks; new API and pipeline limits can affect workloads.
+The repository's GitLab configuration uses generated NGINX configuration without
+custom server snippets. Test any operator additions separately before promotion.
+Do not disable security limits to make migration checks pass.
+
+[Runner compatibility](https://docs.gitlab.com/runner/#gitlab-runner-versions)
+requires matching major/minor versions; the
+[Helper must match its Runner](https://docs.gitlab.com/runner/configuration/advanced-configuration/#helper-image).
+The existing candidate migration checks all four managers, their identities,
+Helper images and a job reading a pre-upgrade registry blob. It then restores
+the old checkpoint and Runner/Helper pair within the same platform run.
+A passing unit test is not evidence that this real migration ran.
+
+Before maintenance, retain a current matching configuration backup and completed
+Seed, plus the cold checkpoint made by this procedure. Installing the new
+controller or opening the Wizard must preserve saved image selections; only an
+explicitly confirmed upgrade changes them. Keep the old accepted controller and
+its tools for older checkpoint formats and release-specific recovery.
+Downtime includes clean shutdown, checkpoint copying, migrations and service
+verification; its duration depends on data size and pending work. No fixed
+completion time is promised. Rollback loses writes after the checkpoint and
+requires restoring data, secrets, configuration and matching images together.
+
 ## Manual production operation
 
 Run the host-side controller-promotion workflow first to stage the exact tested
