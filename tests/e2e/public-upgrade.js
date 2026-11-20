@@ -8,6 +8,7 @@ const {execFileSync} = require('node:child_process');
 const graph = require('../../bootstrapper/upgrade-paths.json');
 const {manifest} = require('../../gitlab/publish-dockerhub');
 const recovery = require('./recovery');
+const {terminalContainerState} = require('../../gitlab/upgrade');
 const diagnostics = require('./public-upgrade-diagnostics.json');
 const hash = raw => crypto.createHash('sha256').update(raw).digest('hex');
 const required = (value, code) => { if (!value) throw Error(code); };
@@ -157,8 +158,11 @@ async function waitForServices(candidate, milliseconds = 600000) {
   const names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'];
   await candidate.wait(async () => {
     const rows = JSON.parse(await candidate.inner(['inspect', ...names]));
-    if (rows.some(row => row.State?.OOMKilled === true))
-      throw Object.assign(Error('public-upgrade-service-oom'), {noRetry: true});
+    for (const row of rows) {
+      const terminal = terminalContainerState(row);
+      if (terminal) throw Object.assign(Error('public-upgrade-service-' + terminal), {noRetry: true,
+        ...(Number.isInteger(row.State.ExitCode) && row.State.ExitCode >= 0 && row.State.ExitCode <= 255 ? {exitCode: row.State.ExitCode} : {})});
+    }
     return rows.length === names.length && new Set(rows.map(row => row.Name)).size === names.length &&
       rows.every(row => names.includes(row.Name?.replace(/^\//, '')) && row.State?.Running === true &&
         !['Paused', 'Restarting', 'Dead'].some(key => row.State[key]) &&
@@ -249,7 +253,7 @@ class NativeCLI {
         this.fixture + '/source/tests/e2e/public-upgrade-host.py', ...args], {timeout: 1200000, failureCodes});
       return JSON.parse(raw.split('\n').at(-1));
     } catch (error) {
-      if (['canceled-or-overall-timeout', 'readiness-timeout'].includes(error.message)) throw error;
+      if (['canceled-or-overall-timeout', 'readiness-timeout', 'candidate-overall-timeout', 'candidate-cleanup-timeout'].includes(error.message)) throw error;
       if (Object.values(failureCodes).includes(error.message)) throw error;
       const failure = Error('public-upgrade-native-' + operation + '-failed');
       if (Number.isInteger(error.exitCode)) failure.exitCode = error.exitCode;

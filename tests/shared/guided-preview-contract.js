@@ -395,6 +395,104 @@ test('new native failure classifications remain fixed and do not copy test or pa
     assert(!JSON.stringify(classified).includes(marker));
   }
 });
+test('native failure details recognize only exact source-owned phases, files and suites',()=>{
+  const diagnostics=require('./job-diagnostics');
+  const file='wizard-src-components-docs-docs';
+  const trace=[
+    '2026-11-20T12:00:00.123456Z 00O \x1b[32m> vitest run\x1b[0m\x1b[0K',
+    '2026-11-20T12:00:01.000Z 00E FAIL  src/components/docs/Docs.test.tsx > Docs reader > searches all chapters and lets readers clear or open a result',
+    'FAIL src/components/docs/Docs.test.tsx',
+    'FAIL src/components/docs/Docs.test.tsx > Docs reader',
+    '#17 12.340 > node scripts/compile-docs-locales.mjs --check && node --test tests/offline/docs-locales.test.cjs',
+    'not ok 1 - German docs compiler rejects stale, missing, summarized or technically changed translations',
+    '> npm run build:config-export && node --test tests/offline/export-configuration.test.cjs',
+    '✖ offline adapter executes actual Wizard models and writes a signed private backup without browser or network (246.738ms)',
+    '> node --test tests/offline/delivery-recipe.test.cjs',
+    '✖ failed owned-resource cleanup fails the otherwise successful build (1.2s)',
+    'ERROR: Job failed: exit code 1'
+  ].join('\n');
+  const classified=diagnostics.classify(trace);
+  assert.deepEqual(classified,{commands:[],codes:['javascript-test-failed'],
+    phases:['unit-tests','docs-check','configuration-export','delivery-tests'],
+    testFiles:[file],testSuites:['wizard-suite-offline-docs-locales',
+      'wizard-suite-offline-export-configuration','wizard-suite-offline-delivery-recipe'],exitCode:1});
+  assert.deepEqual(diagnostics.sanitize(classified),classified);
+  for(const duration of ['0ms','246ms','12.125ms','2s'])
+    assert.deepEqual(diagnostics.classify('✖ German docs compiler rejects stale, missing, summarized or technically changed translations ('+duration+')').testSuites,
+      ['wizard-suite-offline-docs-locales']);
+});
+test('unknown files and commands are ignored while known file suffixes never enter retained IDs',()=>{
+  const diagnostics=require('./job-diagnostics'),marker='private-fixture-token',url='https://'+marker+'@example.test';
+  const lines=[marker,url,'> vitest run '+marker,'> vitest run && curl '+url,
+    '$ echo "FAIL src/components/docs/Docs.test.tsx"',
+    'PASS src/components/docs/Docs.test.tsx',
+    'FAIL src/private.test.tsx > '+marker,
+    'FAIL src/components/docs/Docs.test.tsx.private > '+marker,
+    'FAIL src/components/docs/Docs.test.tsx '+marker,
+    'not ok 1 - '+marker,
+    'not ok 1 - German docs compiler rejects stale, missing, summarized or technically changed translations '+marker,
+    'ok 1 - German docs compiler rejects stale, missing, summarized or technically changed translations',
+    '✔ German docs compiler rejects stale, missing, summarized or technically changed translations (1ms)',
+    '✖ '+marker+' (246ms)',
+    '✖ offline adapter executes actual Wizard models and writes a signed private backup without browser or network (246ms) '+url];
+  for(const line of lines) {
+    const classified=diagnostics.classify(line);
+    assert.equal(classified.phases,undefined);assert.equal(classified.testFiles,undefined);assert.equal(classified.testSuites,undefined);
+    assert(!JSON.stringify(classified).includes(marker));assert(!JSON.stringify(classified).includes(url));
+  }
+  for(const suffix of [marker,url,'parameterized test case 42 > '+marker]) {
+    const classified=diagnostics.classify('FAIL src/components/docs/Docs.test.tsx > '+suffix);
+    assert.deepEqual(classified,{commands:[],codes:['javascript-test-failed'],testFiles:['wizard-src-components-docs-docs']});
+    assert(!JSON.stringify(classified).includes(marker));assert(!JSON.stringify(classified).includes(url));
+  }
+  assert.deepEqual(diagnostics.sanitize({phases:['unit-tests',marker,url],testFiles:['wizard-src-docs-model',marker,url],
+    testSuites:['wizard-suite-offline-docs-locales',marker,url],trace:marker}),
+    {phases:['unit-tests'],testFiles:['wizard-src-docs-model'],testSuites:['wizard-suite-offline-docs-locales']});
+});
+test('test timeout classifications require an exact known failed test block and never retain durations',()=>{
+  const diagnostics=require('./job-diagnostics');
+  const fail='FAIL src/components/form-wizard/I18n.test.tsx > language changes preserve edited configuration, token visibility and generated output';
+  for(const detail of ['Error: Test timed out in 5000ms.','Error: Hook timed out in 10000ms.']) {
+    const classified=diagnostics.classify(fail+'\n'+detail);
+    assert(classified.codes.includes('javascript-test-timeout'));
+    assert.deepEqual(diagnostics.sanitize(classified),classified);
+    assert(!JSON.stringify(classified).includes('5000'));assert(!JSON.stringify(classified).includes('10000'));
+  }
+  const tap="not ok 1 - coordinated export binds completed generation to exact ENV bytes through ordinary ZIP exporter\n  ---\n  failureType: 'testTimeoutFailure'\n  error: 'test timed out after 5000ms'";
+  assert(diagnostics.classify(tap).codes.includes('javascript-test-timeout'));
+  for(const trace of ['Error: Test timed out in 5000ms.',fail+'\nAssertionError: mismatch',
+    'FAIL src/private.test.tsx > unknown\nError: Test timed out in 5000ms.',
+    fail+'\nError: Test timed out in 5000ms. private-fixture-token',
+    fail+'\n'+Array(12).fill('unrelated').join('\n')+'\nError: Test timed out in 5000ms.'])
+    assert(!diagnostics.classify(trace).codes.includes('javascript-test-timeout'));
+});
+test('fixed native source failure details survive the checkpoint and independent cleanup roundtrip',async()=>{
+  const marker='private-fixture-token',trace=[
+    '> vitest run',
+    'FAIL src/components/docs/Docs.test.tsx > Docs reader > uses the shared app drawer for wider, collapsible chapter navigation',
+    'Error: Test timed out in 5000ms.',
+    '> npm run build:config-export && node --test tests/offline/export-configuration.test.cjs',
+    '✖ coordinated export binds completed generation to exact ENV bytes through ordinary ZIP exporter (246ms)',
+    'AssertionError: '+marker,'ERROR: Job failed: exit code 1'].join('\n');
+  const current=nativeLifecycle({failedContext:'source',failedJobs:'build:source',secret:marker,trace});
+  await assert.rejects(()=>adapter.run(current.candidate),/^Error: guided-preview-native-check-failed$/);
+  const row=structuredClone(current.candidate.evidence.guidedPreview.source);
+  const diagnostic=row.jobs.find(job=>job.name==='build:source').diagnostics;
+  assert.deepEqual(diagnostic.phases,['unit-tests','configuration-export']);
+  assert.deepEqual(diagnostic.testFiles,['wizard-src-components-docs-docs']);
+  assert(diagnostic.codes.includes('javascript-test-timeout'));
+  assert.deepEqual(diagnostic.testSuites,['wizard-suite-offline-export-configuration']);
+  const captured=JSON.parse(current.stages.find(stage=>stage.status==='failed').captured);
+  assert.deepEqual(captured.guidedPreview.source,row);
+  const recover=require('./disposable-candidate').recover;
+  const report={runId:current.candidate.id,resources:[],results:current.stages,evidence:current.candidate.evidence};
+  report.evidence.guidedPreview.source.jobs.find(job=>job.name==='build:source').diagnostics.trace=marker;
+  for(let round=0;round<2;round++) {
+    const recovered=recover(report);report.evidence=recovered.evidence;
+    assert.deepEqual(recovered.evidence.guidedPreview.source,row);
+    assert(!JSON.stringify(recovered.evidence).includes(marker));
+  }
+});
 test('actual trace transports stream a bounded suffix from long jobs while other response limits stay enforced',async()=>{
   const {EventEmitter}=require('node:events'),vm=require('node:vm');
   const {Candidate}=require('./disposable-candidate'),recovery=require('../e2e/recovery');

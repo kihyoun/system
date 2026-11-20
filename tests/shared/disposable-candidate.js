@@ -15,7 +15,7 @@ function ciIdentity(value) {
 }
 function exitDetails(error) {
   return {
-    ...(Number.isInteger(error.exitCode)&&error.exitCode>=0&&error.exitCode<=255?{exitCode:error.exitCode}:{}),
+    ...(Number.isInteger(error.exitCode)&&error.exitCode>0&&error.exitCode<=255?{exitCode:error.exitCode}:{}),
     ...(['ETIMEDOUT','ENOBUFS','ENOENT','EACCES'].includes(error.systemCode)?{systemCode:error.systemCode}:{})
   };
 }
@@ -62,7 +62,10 @@ function docker(args, options={}) {
       }
     }
     const error=new Error(reason);
-    error.exitCode=result.status;error.systemCode=result.error?.code;
+    // A timed-out client can finish with status 0 during termination. That is
+    // not the exit status of a successfully completed remote operation.
+    if(!result.error)error.exitCode=result.status;
+    error.systemCode=result.error?.code;
     throw error;
   }
   return (result.stdout||'').trim();
@@ -135,7 +138,7 @@ class Candidate {
     this.now=options.now || Date.now;
     this.id=crypto.randomBytes(12).toString('hex'); this.name='system-candidate-'+this.id;
     this.resources=[]; this.canceled=false; this.startedAt=this.now();
-    const guidedBudget=spec.publicUpgrade?5400000:4500000;
+    const guidedBudget=spec.publicUpgrade?6600000:4500000;
     const budget=spec.gitlabUpgradeAcceptance===true?
       (spec.guidedPreviewAcceptance===true?guidedBudget:3600000):spec.acmeRenewalAcceptance===true?1500000:1200000;
     this.deadline=this.startedAt+budget;
@@ -150,7 +153,18 @@ class Candidate {
     await new Promise(resolve=>setImmediate(resolve));
     const deadline=this.cleanupDeadline||this.deadline;
     if((this.canceled&&!this.cleanupDeadline) || this.now()>deadline) throw new Error('canceled-or-overall-timeout');
-    return this.exec(args,{...options,timeout:Math.max(1,Math.min(options?.timeout || 120000,deadline-this.now()))});
+    const remaining=deadline-this.now(),requested=options?.timeout || 120000;
+    try {
+      return await this.exec(args,{...options,timeout:Math.max(1,Math.min(requested,remaining))});
+    } catch(error) {
+      if(error.systemCode==='ETIMEDOUT'&&remaining<=requested) {
+        const failure=new Error(this.cleanupDeadline?'candidate-cleanup-timeout':'candidate-overall-timeout');
+        failure.systemCode='ETIMEDOUT';
+        failure.noRetry=true;
+        throw failure;
+      }
+      throw error;
+    }
   }
   inner(args, options) { return this.call(['exec','-i',this.daemon,'docker',...args],options); }
   async stage(name, action) {

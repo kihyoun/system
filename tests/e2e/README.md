@@ -117,7 +117,7 @@ readiness gate). Ordinary smoke has a twenty-minute budget; ACME without a GitLa
 upgrade shares one twenty-five-minute budget across all owners. A GitLab upgrade
 without guided previews has sixty minutes. `guidedPreviewAcceptance === true`
 and `gitlabUpgradeAcceptance === true` together select seventy-five minutes;
-adding a prepared `publicUpgrade` fixture selects ninety minutes for its
+adding a prepared `publicUpgrade` fixture selects 110 minutes for its
 additional native public CLI, backup and recovery coverage.
 Each scenario uses one absolute deadline, checked between bounded Docker/HTTP
 operations. Each streamed archive load is capped at
@@ -222,11 +222,11 @@ pinned CLI utilities as System, builds the full System context and the Wizard
 from the validated pinned snapshot, and preloads the pinned service images.
 The job is serialized with a GitLab resource group. Image preparation has a
 separate bounded budget. The combined guided-preview/GitLab-upgrade execution
-with a public-release upgrade fixture has one fixed ninety-minute limit, shared
+with a public-release upgrade fixture has one fixed 110-minute limit, shared
 by the original host, restored host, ACME authority and side owners. Without that
 additional fixture the combined scenario retains seventy-five minutes. The runner
-script allows ninety-five minutes, the separate cleanup allows two minutes and
-the job limit is one hundred minutes.
+script allows 115 minutes, the separate cleanup allows two minutes and
+the job limit is 120 minutes.
 The runner host needs twelve GiB candidate RAM plus its existing platform/job
 headroom and enough free disk for image archives, extraction and GitLab state.
 
@@ -370,7 +370,7 @@ inherits the original candidate's absolute deadline and cancellation. An
 1,500-second lifecycle budget, including both platform hosts and these fixture
 owners. GitLab upgrades use the sixty-minute budget, or seventy-five minutes
 when guided previews are also enabled. Adding the public-release upgrade fixture
-to that combined scenario selects ninety minutes. Ordinary smoke retains 1,200 seconds.
+to that combined scenario selects 110 minutes. Ordinary smoke retains 1,200 seconds.
 Starting a stage or replacing a host never resets the deadline or extends it
 automatically.
 The outer script and CI-job limits must also retain preparation, publication
@@ -440,7 +440,7 @@ The outer receipt copies the bounded migration proof; the detailed migration
 stages belong to the restored candidate receipt. Raw private checkpoints,
 configuration, credentials and database logs are never public CI artifacts.
 
-The successor scenario uses one fixed 90-minute overall candidate budget only
+The successor scenario uses one fixed 110-minute overall candidate budget only
 when both `guidedPreviewAcceptance === true` and `gitlabUpgradeAcceptance === true`
 and a prepared `publicUpgrade` fixture are present. The combined scenario without
 that fixture retains 75 minutes. Both include the three actual native Wizard
@@ -457,11 +457,16 @@ a 1,200-second invocation limit and the same absolute candidate deadline. Readin
 still requires completed background migrations; a successful migration batch alone
 does not satisfy that condition. The scenario uses the existing serialized resource
 group and 12-GiB/four-CPU private daemon ceiling; check actual host headroom before
-starting it. The platform job allows a 95-minute script and a separate two-minute cleanup
-within a 100-minute job limit, leaving time for preparation, publication and artifact
+starting it. The platform job allows a 115-minute script and a separate two-minute cleanup
+within a 120-minute job limit, leaving time for preparation, publication and artifact
 collection. Ordinary smoke and ACME-only lifecycle budgets remain unchanged. A
 passing mocked adapter contract is not a successful real migration; use the
-complete platform CI gate for that proof.
+complete platform CI gate for that proof. Completed subprocess errors and confirmed
+terminal container/identity failures abort immediately. Temporary startup states
+may be polled within their existing operation limits. Reports distinguish process
+exit failures, operation timeouts and an exhausted overall candidate or cleanup
+deadline; a client exiting with status zero after a timeout is not proof that its
+remote operation completed successfully.
 
 ## Public release CLI upgrade acceptance
 

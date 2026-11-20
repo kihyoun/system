@@ -1823,7 +1823,7 @@ reviewed promotion/migration procedure instead.
 
 For combined guided previews and GitLab migration, `guidedPreviewAcceptance === true`
 and `gitlabUpgradeAcceptance === true` select one fixed 75-minute execution budget.
-Adding a prepared `publicUpgrade` fixture selects one fixed 90-minute budget for
+Adding a prepared `publicUpgrade` fixture selects one fixed 110-minute budget for
 the additional real public CLI plan/apply, fresh matching cold Seed/configuration
 backup, interrupted offline image recovery and separate controller restart with
 durable recovery selectors. Without that fixture the combined scenario retains 75 minutes.
@@ -1833,15 +1833,20 @@ restored candidate, ACME authority and all side owners share the original absolu
 deadline. Starting a phase or replacing a host never resets it; a timeout fails
 acceptance without an automatic extension.
 
-The full platform CI job allows a 95-minute runner script, a separate two-minute
-`after_script` and a 100-minute job limit for preparation, execution, publication
+The full platform CI job allows a 115-minute runner script, a separate two-minute
+`after_script` and a 120-minute job limit for preparation, execution, publication
 and artifact collection. Both combined-scenario ceilings include three actual native Wizard
 pipelines (imported default branch, merge request and merged default branch), each
 with four required jobs, plus manual Review/Beta Deploy and Stop. This ceiling is
 an upper bound, not a runtime guarantee. The candidate remains limited to 12 GiB
 RAM and four CPUs. Only the original guided platform's single managed Docker
 runner allows two concurrent jobs, each capped at 2 GiB RAM and one CPU; all nested
-work shares the candidate ceiling. Documentation-only changes retain their short
+work shares the candidate ceiling. Completed subprocess failures abort their step
+immediately. Readiness polling retries temporary startup conditions; confirmed
+terminal container or identity failures abort immediately. Per-operation deadlines
+remain in force, and reports distinguish a timed-out invocation from a process
+exit. The overall ceiling is an additional safeguard, not a required wait.
+Documentation-only changes retain their short
 lane. No earlier passing fixture or MR run replaces the required acceptance for
 the exact merged source being promoted.
 

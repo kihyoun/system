@@ -70,7 +70,7 @@ test('failed original-host removal prevents a second daemon',async t=>{
   assert(!first.events.includes('new-host-created'));
 });
 
-for(const [budget,guided,publicUpgrade]of [[3600000,false],[4500000,true],[5400000,true,{}]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
+for(const [budget,guided,publicUpgrade]of [[3600000,false],[4500000,true],[6600000,true,{}]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
   const {Candidate}=require('./disposable-candidate');
   const input=fixture(t),first=original(),deps=dependencies(first,input),calls=[];
   first.startedAt=1000;first.deadline=first.startedAt+budget;
@@ -674,7 +674,7 @@ test('restored configuration failures have distinct safe checkpoints without lea
   }
 });
 test('restored TLS readiness retains explicit global budget and stage timeout reasons',async()=>{
-  for(const reason of ['canceled-or-overall-timeout','readiness-timeout']){
+  for(const reason of ['canceled-or-overall-timeout','candidate-overall-timeout','candidate-cleanup-timeout','readiness-timeout']){
     const f=restoredConfigurationFixture();f.candidate.wait=async()=>{throw Error(reason);};
     await assert.rejects(()=>recovery.verifyConfiguration(f.candidate,f.input,f.dependencies),{message:reason});
     assert.equal(f.stages.at(-1).reason,reason);assert.equal(f.stages.at(-1).name,'recovery-restored-wizard-tls');
