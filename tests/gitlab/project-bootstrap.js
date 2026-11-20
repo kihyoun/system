@@ -12,7 +12,8 @@ const sync = path.resolve(__dirname, '../../sync/dist');
 fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'bin'));
 fs.mkdirSync(path.join(root, 'project-bootstrap'));
-fs.writeFileSync(path.join(root, 'project-bootstrap/apply.sh'), 'exit 0\n');
+fs.mkdirSync(path.join(root,'operations/dist/projects-routing'),{recursive:true});
+fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), 'process.exit(0)\n');
 const mock = `#!${process.execPath}
 let text = ''; process.stdin.on('data', chunk => text += chunk);
 process.stdin.on('end', () => {
@@ -110,7 +111,7 @@ let child;
   assert.equal((await wait(bootstrap.createProject(input('race')))).state, 'failed');
   assert(!fs.existsSync(path.join(root, 'system/.projects.env/.race.env')), 'collision does not claim foreign repository locally');
   assert.equal((await wait(bootstrap.queryGitlab({action: 'availability', projectKey: 'occupied', namespaceId: 1}))).availability, 'occupied');
-  fs.writeFileSync(path.join(root, 'project-bootstrap/apply.sh'), 'exit 1\n');
+  fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), 'process.exit(1)\n');
   const model = new WizardProject(new WizardMain(), {projectKey: 'resume', namespaceId: '1', template: 'angular',
     useProdHost: 'false', useBetaHost: 'false', useReviewHost: 'false', prodDomainMode: 0, betaDomainMode: 0,
     reviewDomainMode: 1, prodDeployMode: 1, betaDeployMode: 1, reviewDeployMode: 1, gitlabRunnerToken: 'fixture', gitlabRunnerScale: 1});
@@ -127,7 +128,8 @@ let child;
   assert.throws(() => bootstrap.createProject({...saved, namespaceId: '2'}), /already exists locally/);
   assert.throws(() => bootstrap.createProject({...saved, data: saved.data.replace('GITLAB_RUNNER_SCALE="1"', 'GITLAB_RUNNER_SCALE="2"')}), /already exists locally/);
   assert.throws(() => bootstrap.createProject({...saved, template: 'react', data: saved.data.replace('PROJECT_TEMPLATE="angular"', 'PROJECT_TEMPLATE="react"')}), /already exists locally/);
-  fs.writeFileSync(path.join(root, 'project-bootstrap/apply.sh'), 'exit 0\n');
+  fs.mkdirSync(path.join(root,'operations/dist/projects-routing'),{recursive:true});
+fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), 'process.exit(0)\n');
   delete require.cache[require.resolve(path.join(sync, 'ProjectBootstrap'))];
   const restarted = require(path.join(sync, 'ProjectBootstrap'));
   const resumed = restarted.createProject({...saved, resumeRepository: {id: 999}});

@@ -416,8 +416,14 @@ export function createProject(input: any, defaultProject = false) {
       writeReceipt(file, input.data, receipt);
       await new Promise<void>((resolve, reject) =>
         execFile(
-          'bash',
-          ['apply.sh'],
+          process.execPath,
+          [
+            path.resolve('../operations/dist/projects-routing/entry.js'),
+            'routing',
+            'apply',
+            path.resolve('..'),
+            '/templates',
+          ],
           { cwd: path.resolve('../project-bootstrap'), timeout: 180000 },
           (error) =>
             error ? reject(new Error('Repository ready; routing failed. Retry Save.')) : resolve(),

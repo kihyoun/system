@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { fileLock } from '../runtime/file-lock';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as wizard from './wizard-aliases';
@@ -54,7 +55,10 @@ export async function main(tool: string, args: string[]): Promise<void> {
     const app = await NestFactory.createApplicationContext(ProjectsRoutingModule, {
       logger: false,
     });
+    let unlock: (() => void) | undefined;
     try {
+      if (action === 'apply' && process.env.SYSTEM_ROUTING_LOCK_HELD !== 'true')
+        unlock = fileLock('/tmp/system-bootstrapper-project-routing.lock', false);
       app.get(ProjectsRoutingService).run({
         action: action as RoutingCommand['action'],
         root,
@@ -62,6 +66,7 @@ export async function main(tool: string, args: string[]): Promise<void> {
         projects,
       });
     } finally {
+      unlock?.();
       await app.close();
     }
   } else throw Error('Unknown routing tool.');

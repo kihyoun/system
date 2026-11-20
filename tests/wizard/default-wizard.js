@@ -6,7 +6,8 @@ const crypto = require('crypto');
 const source = path.resolve(__dirname, '../..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'default-wizard-'));
 for (const name of ['sync', 'system', 'project-bootstrap', 'bin']) fs.mkdirSync(path.join(root, name));
-fs.writeFileSync(path.join(root, 'project-bootstrap/apply.sh'), 'exit 0\n');
+fs.mkdirSync(path.join(root,'operations/dist/projects-routing'),{recursive:true});
+fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), 'process.exit(0)\n');
 const trace = path.join(root, 'trace');
 fs.writeFileSync(path.join(root, 'bin/docker'), `#!${process.execPath}
 let text=''; process.stdin.on('data', c=>text+=c); process.stdin.on('end',()=>{
