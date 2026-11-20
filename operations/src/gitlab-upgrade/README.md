@@ -26,7 +26,7 @@ uncertain migration, adopt a live owner, or remove another operation's barriers.
 The native `gitlab/upgrade-child.js` watchdog remains a separate process so it
 can finish or terminate an owned process group even if the invoking controller
 helper dies. Process arguments, environment and output are never included in
-public errors. The shared `GitlabPreflightService` reads package identity and generated database topology, then uses native `gitlab-psql` read-only transactions for every configured primary database and CI jobs;
+public errors. The shared `GitlabPreflightService` reads package identity and generated database topology, then uses native embedded `psql` read-only transactions for every configured primary database and CI jobs;
 shell configuration loading and in-container service commands retain their
 external format boundaries.
 
@@ -61,9 +61,16 @@ The probe parses GitLab's generated `database.yml` with bounded YAML aliases;
 it requires explicit PostgreSQL `main` and `ci` entries and queries each distinct
 primary database. `database_tasks: false` does not exclude a live CI connection.
 Dynamic configuration commands, ERB, unsupported topology, missing tables,
-authentication failures and malformed counts fail closed. Native `gitlab-psql`
-must reach the selected databases without an interactive password prompt; the
-probe does not export database passwords or mint API credentials. It counts
+authentication failures and malformed counts fail closed. The probe copies configured
+connection user, password and TLS parameters into an exclusive container-local
+0700 temporary directory using stdin, with 0600 libpq service/password files.
+The embedded `psql` uses those settings without an interactive password prompt;
+credentials never enter command arguments or public results. The exact temporary
+directory is removed after the probe, including failures. Password files preserve
+spaces and escape colons/backslashes; CR/LF/NUL in credentials and service values
+that cannot be represented exactly in libpq's line-based format are rejected.
+Each SQL transaction is read-only with a 45-second server statement timeout.
+The probe does not mint API credentials. It counts
 `Ci::Build` rows in `p_ci_builds` with preparing, running or canceling status;
 unclaimed and completed jobs are excluded. Migration status follows GitLab's
 [documented unfinished migration query](https://docs.gitlab.com/update/background_migrations/).

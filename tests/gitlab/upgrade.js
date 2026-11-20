@@ -5,12 +5,15 @@ const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.exam
 const base={sourceRevision:'a'.repeat(40),evidence:'/state/evidence.json',stateDir:'/state',persistentDir:'/operator/platform',checkpointDir:'/state/gitlab-upgrades/test',readyTimeoutSeconds:600};
 const ids={old:'sha256:'+'b'.repeat(64),next:'sha256:'+'c'.repeat(64)};
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
+const isNativeProbe = args => ['dpkg-query','cat','mktemp','install','dd','env','rm'].some(binary=>args.includes(binary));
 function nativeProof(args, proof={}) {
   const value={version:release.toVersion,edition:'CE',runningJobs:0,unfinishedBackgroundMigrations:0,...proof};
   if(args.includes('dpkg-query'))return `gitlab-${value.edition.toLowerCase()}\t${value.version}-${value.edition.toLowerCase()}.0\tinstalled\n`;
   if(args.includes('/opt/gitlab/embedded/service/gitlab-rails/VERSION'))return value.version;
-  if(args.includes('/var/opt/gitlab/gitlab-rails/etc/database.yml'))return value.topology??'production:\n  main: &db\n    adapter: postgresql\n    database: gitlabhq_production\n    host: /var/opt/gitlab/postgresql\n  ci:\n    <<: *db\n    database_tasks: false\n';
-  if(args.includes('gitlab-psql'))return String(args.some(arg=>arg.includes('p_ci_builds'))?value.runningJobs:value.unfinishedBackgroundMigrations);
+  if(args.includes('/var/opt/gitlab/gitlab-rails/etc/database.yml'))return value.topology??'production:\n  main: &db\n    adapter: postgresql\n    username: gitlab\n    database: gitlabhq_production\n    host: /var/opt/gitlab/postgresql\n  ci:\n    <<: *db\n    database_tasks: false\n';
+  if(args.includes('mktemp'))return '/tmp/system-bootstrapper-gitlab-probe.abcdefghij';
+  if(['install','dd','rm'].some(binary=>args.includes(binary)))return '';
+  if(args.includes('/opt/gitlab/embedded/bin/psql'))return String(args.some(arg=>arg.includes('p_ci_builds'))?value.runningJobs:value.unfinishedBackgroundMigrations);
   throw Error('Unexpected native probe command');
 }
 (async()=>{try{
@@ -90,7 +93,7 @@ function nativeProof(args, proof={}) {
         if(scenario==='probe-error')throw failure;
         return scenario==='probe-output'?'unexpected-output':'';
       }
-      if(['dpkg-query','cat','gitlab-psql'].some(binary=>args.includes(binary)))return nativeProof(args,scenario==='preflight-json'?{topology:'production: ['}:{runningJobs:'invalid'});
+      if(isNativeProbe(args))return nativeProof(args,scenario==='preflight-json'?{topology:'production: ['}:{runningJobs:'invalid'});
       assert(args.includes('db:migrate:status'));
       if(scenario==='rake-error')throw failure;
       return scenario==='rake-output'?'invalid status output':'up 123 fixture';
@@ -108,7 +111,7 @@ function nativeProof(args, proof={}) {
     ready.inspect=()=>running;ready.verifyMounts=()=>{};
     ready.docker=args=>{
       if(args.includes('curl')){if(scenario==='http-pending'&&sleeps===0)throw Object.assign(Error('curl-not-ready'),{exitCode:22});return '';}
-      if(['dpkg-query','cat','gitlab-psql'].some(binary=>args.includes(binary))){if(args.includes('dpkg-query'))preflights++;return nativeProof(args,{
+      if(isNativeProbe(args)){if(args.includes('dpkg-query'))preflights++;return nativeProof(args,{
         runningJobs:scenario==='jobs-active'&&preflights===1?1:0,unfinishedBackgroundMigrations:scenario==='background-migrations'&&preflights===1?1:0});}
       assert(args.includes('db:migrate:status'));rakes++;
       return scenario==='database-migrations'&&rakes===1?'down 123 fixture':'up 123 fixture';
@@ -116,21 +119,36 @@ function nativeProof(args, proof={}) {
     await ready.ready(release.toVersion,ids.next);assert.equal(sleeps,1,'Explicit startup/migration states remain retryable.');
   }
   const {GitlabPreflightService}=require('../../operations/dist/gitlab-preflight/gitlab-preflight.service');
-  const probe=new GitlabPreflightService(), probeCommands=[];
-  const topology='production:\n  main: &db\n    adapter: postgresql\n    database: main_data\n    host: /var/opt/gitlab/postgresql\n  ci:\n    <<: *db\n    database: ci_data\n    database_tasks: false\n';
-  const proof=await probe.probe(running.Id,{command(args,timeout){
-    assert.equal(args[1],running.Id);assert.equal(timeout,60);assert(!args.includes('gitlab-rails')&&!args.includes('/bin/sh'));
-    if(args.includes('gitlab-psql')){probeCommands.push(args);assert(args.includes('--no-password'));assert(args.includes('--set=ON_ERROR_STOP=1'));assert.match(args[args.indexOf('--command')+1],/^BEGIN READ ONLY; SELECT COUNT\(\*\)/);return args.some(value=>value.includes('p_ci_builds'))?'3':args.includes('main_data')?'2':'4';}
+  const probe=new GitlabPreflightService(), probeCommands=[], probeInputs=[];
+  const topology='production:\n  main: &db\n    adapter: postgresql\n    username: gitlab\n    database: main_data\n    host: /var/opt/gitlab/postgresql\n  ci:\n    <<: *db\n    database: ci_data\n    database_tasks: false\n';
+  const proof=await probe.probe(running.Id,{command(args,timeout,input){
+    if(input!==undefined)probeInputs.push(input);
+    assert(args.includes(running.Id));assert.equal(timeout,60);assert(!args.includes('gitlab-rails')&&!args.includes('/bin/sh'));
+    if(args.includes('/opt/gitlab/embedded/bin/psql')){probeCommands.push(args);assert(args.includes('--no-password'));assert(args.includes('--set=ON_ERROR_STOP=1'));assert.match(args[args.indexOf('--command')+1],/^BEGIN READ ONLY; SELECT COUNT\(\*\)/);return args.some(value=>value.includes('p_ci_builds'))?'3':args.includes('service=database0')?'2':'4';}
     return nativeProof(args,{topology});
   }});
   assert.equal(proof.runningJobs,3);assert.equal(proof.unfinishedBackgroundMigrations,6);assert.equal(probeCommands.length,3);
   for(const args of probeCommands.filter(args=>!args.some(value=>value.includes('p_ci_builds'))))assert(args.some(value=>value.includes('status NOT IN (3, 6)')));
-  const jobsQuery=probeCommands.find(args=>args.some(value=>value.includes('p_ci_builds')));assert(jobsQuery.includes('ci_data'));
+  const jobsQuery=probeCommands.find(args=>args.some(value=>value.includes('p_ci_builds')));assert(jobsQuery.includes('service=database1'));assert(probeInputs.some(value=>value.includes('dbname=main_data')&&value.includes('dbname=ci_data')&&value.includes('user=gitlab')));
   for(const term of ["type = 'Ci::Build'","'preparing'","'running'","'canceling'"])assert(jobsQuery.some(value=>value.includes(term)));
   for(const malformed of ['production: {}','production: <%= secret %>',topology.replace('adapter: postgresql','adapter: mysql'),topology.replace('database: ci_data','database: "x; SELECT secret"'),topology.replace('host: /var/opt/gitlab/postgresql','host: --option'),topology.replace('database: ci_data','database: ci_data\n    replica: true')]){
     await assert.rejects(()=>probe.probe(running.Id,{command:args=>nativeProof(args,{topology:malformed})}),/gitlab-database-topology-invalid/);
   }
   for(const invalid of ['-1','1.5','NaN','9007199254740992','0\nsecret'])await assert.rejects(()=>probe.probe(running.Id,{command:args=>nativeProof(args,{runningJobs:invalid})}),/upgrade-preflight-refused/);
+  const secret=' private:token\\with-space ', tlsTopology=topology.replace('username: gitlab',`username: remote_user\n    password: ${JSON.stringify(secret)}\n    sslmode: verify-full\n    sslrootcert: /private/root.crt\n    sslcert: /private/client.crt\n    sslkey: /private/client.key`).replace('/var/opt/gitlab/postgresql','db.example.test');
+  const privateInputs=[], privateCommands=[];
+  await probe.probe(running.Id,{command(args,timeout,input){privateCommands.push(args);if(input!==undefined)privateInputs.push(input);return nativeProof(args,{topology:tlsTopology});}});
+  assert(privateInputs.some(value=>value.includes('sslmode=verify-full')&&value.includes('user=remote_user')&&value.includes('sslrootcert=/private/root.crt')&&value.includes('sslkey=/private/client.key')));
+  assert(privateInputs.some(value=>value.includes(' private\\:token\\\\with-space ')));
+  assert(!JSON.stringify(privateCommands).includes('private:token'));assert(privateCommands.at(-1).includes('rm'));
+  let cleanedAfterFailure=false;await assert.rejects(()=>probe.probe(running.Id,{command(args){if(args.includes('rm'))cleanedAfterFailure=true;if(args.includes('/opt/gitlab/embedded/bin/psql'))throw Error('database-unavailable');return nativeProof(args,{topology:tlsTopology});}}),/database-unavailable/);assert(cleanedAfterFailure);
+  const nativeProcess=require('../../operations/dist/runtime/process').nativeProcess, oldNativeRun=nativeProcess.run, oldStdout=process.stdout.write;let cliProof='';
+  try {
+    nativeProcess.run=(binary,args,options)=>{assert.equal(binary,'docker');if(args.includes('dd'))assert.equal(typeof options.input,'string','Public CLI must forward private stdin');return {stdout:nativeProof(args),stderr:'',status:0};};
+    process.stdout.write=value=>{cliProof+=value;return true;};
+    await require('../../operations/dist/gitlab-preflight/entry').main([running.Id]);
+  } finally {nativeProcess.run=oldNativeRun;process.stdout.write=oldStdout;}
+  assert.equal(JSON.parse(cliProof).version,release.toVersion);
   await assert.rejects(()=>probe.probe('system_gitlab_1',{command(){assert.fail('Mutable name must not execute');}}),/container-identity/);
   const planEngine=new Upgrade(base);let entered=false,unlocked=false;
   planEngine.lock=()=>{};planEngine.unlock=()=>{unlocked=true;};planEngine.syncIdle=()=>{};planEngine.plan=async()=>({planSha256:'d'.repeat(64)});planEngine.migrate=async()=>{entered=true;};

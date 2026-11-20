@@ -85,7 +85,7 @@ export class UpgradeRuntimeService {
     if (!gitlab.State?.Running || gitlab.State?.OOMKilled)
       throw Error('upgrade-running-gitlab-required');
     const proof = await this.gitlabPreflight.probe(gitlab.Id!, {
-      command: (args, timeout) => session.docker(args, { timeout: timeout * 1000 }),
+      command: (args, timeout, input) => session.docker(args, { timeout: timeout * 1000, input }),
     });
     if (proof.version !== version || proof.edition !== 'CE')
       throw Object.assign(Error('upgrade-preflight-identity-mismatch'), { noRetry: true });

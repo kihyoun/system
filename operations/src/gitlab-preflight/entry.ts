@@ -9,10 +9,11 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   const app = await NestFactory.createApplicationContext(GitlabPreflightModule, { logger: false });
   try {
     const proof = await app.get(GitlabPreflightService).probe(args[0], {
-      command: (command, timeout) =>
+      command: (command, timeout, input) =>
         nativeProcess.run('docker', ['--host=unix:///var/run/docker.sock', ...command], {
           timeout: timeout * 1000,
           maxBuffer: 1024 * 1024,
+          input,
         }).stdout,
     });
     process.stdout.write(JSON.stringify(proof) + '\n');
