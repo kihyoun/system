@@ -147,8 +147,9 @@ beta_jobs.each do |name|
     job['stage'] == 'deploy' && job['services'] == [] && job['tags'] == ['docker'] && job['rules'].first['when'] == 'manual' &&
     job['rules'].last == {'when' => 'never'} && !job['needs']
   raise 'Beta must prepare operations with a finite cleanup reserve' unless job['before_script'] == [
-    'timeout -k 5 110 sh bootstrapper/install-runtime.sh',
-    'npm --prefix operations ci --ignore-scripts --no-audit --no-fund', 'npm --prefix operations run build'] &&
+    'node bootstrapper/ca/check.js --bundle',
+    'npm --prefix operations ci --ignore-scripts --no-audit --no-fund', 'npm --prefix operations run build',
+    'timeout -k 5 110 node operations/dist/host-bootstrap/entry.js install-runtime --checkout "$CI_PROJECT_DIR"'] &&
     job.dig('variables', 'RUNNER_SCRIPT_TIMEOUT') == '12m' && job['timeout'] == '14m'
   raise 'Beta URL must come from verified binding output' unless job.dig('artifacts', 'reports', 'dotenv') == 'test-results/system-beta/environment.env'
 end
@@ -168,8 +169,8 @@ mirror_job = jobs.fetch('deploy:github')
 raise 'Wizard dependency publication evidence must remain available' unless mirror_job.dig('artifacts', 'paths') == ['test-results/github/'] &&
   mirror_job.dig('artifacts', 'when') == 'always' && mirror_job['script'] == ['node operations/dist/mirror/entry.js ci']
 browser_job = jobs.fetch('test:wizard-browser')
-raise 'Full native Wizard browser coverage must use an isolated required child' unless browser_job['script'] == ['sh tests/ci-wizard-browser.sh'] &&
-  browser_job['after_script'] == ['sh tests/ci-wizard-browser.sh cleanup'] && browser_job['services'] == [] &&
+raise 'Full native Wizard browser coverage must use an isolated required child' unless browser_job['script'] == ['node operations/dist/ci/entry.js wizard-browser "$CI_PROJECT_DIR"'] &&
+  browser_job['after_script'] == ['node operations/dist/ci/entry.js wizard-browser "$CI_PROJECT_DIR" cleanup'] && browser_job['services'] == [] &&
   browser_job['tags'] == ['docker'] && browser_job.dig('artifacts', 'reports', 'junit') == 'test-results/wizard-browser/junit.xml'
 raise 'Public release must consume the accepted full candidate without rebuilding' unless hub_job['script'] == ['node gitlab/publish-dockerhub.js'] &&
   hub_job['dependencies'] == ['test:platform-candidate'] && !hub_job['needs'] && hub_job['stage'] == 'deploy'
@@ -182,14 +183,12 @@ raise 'Public publisher must retain required protected and serialized execution'
 raise 'Public release must not upload credentials or broad candidate output' unless hub_job.dig('artifacts', 'paths') == ['test-results/dockerhub/']
 build = jobs.fetch('build')
 raise 'Private registry base publication changed' unless build['script'] == [
-  'docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper',
+  'echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY',
+  'docker build --provenance=false --sbom=false -f bootstrapper/Dockerfile -t $IMAGE_TAG .',
   'docker push $IMAGE_TAG'
-] && build['before_script'] == [
-  'sh bootstrapper/refresh-ca.sh',
-  'echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY'
-] && config.dig('variables', 'IMAGE_TAG') == '$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG'
-raise 'Pinned Docker job/service images required' unless config['image'].start_with?('docker:29.9.2-cli@sha256:') && config['services'].first.start_with?('docker:29.9.2-dind@sha256:')
-raise 'Every native CI parent must refresh public CA trust' unless config.dig('default','before_script') == ['sh bootstrapper/refresh-ca.sh'] && config.dig('variables','NODE_OPTIONS') == '--use-openssl-ca'
+] && build['before_script'] == config.fetch('.operations-runtime').fetch('before_script') && config.dig('variables', 'IMAGE_TAG') == '$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG'
+raise 'Pinned Docker job/service images required' unless config['image'].start_with?('node:24.22.0-alpine3.24@sha256:') && config['services'].first.start_with?('docker:29.9.2-dind@sha256:')
+raise 'Every native CI parent must refresh public CA trust' unless config.dig('default','before_script') == ['node bootstrapper/ca/check.js --bundle'] && config.dig('variables','NODE_OPTIONS') == '--use-openssl-ca'
 raise 'Unexpected mirror dependencies' unless jobs.fetch('deploy:github')['dependencies'] == []
 raise 'Mirror context was weakened' unless jobs.fetch('deploy:github')['script'] == ['node operations/dist/mirror/entry.js ci'] &&
   jobs.fetch('deploy:github').fetch('rules').first.fetch('if') == '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'

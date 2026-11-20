@@ -1,3 +1,4 @@
+import { ProcessFailure } from '../runtime/process';
 import { ContainerCheckService } from './container-check.service';
 import { CodeqlParentService } from './codeql-parent.service';
 import 'reflect-metadata';
@@ -44,5 +45,11 @@ export async function ciMain(args = process.argv.slice(2)) {
 if (require.main === module)
   void ciMain().catch((error) => {
     console.error(error instanceof Error ? error.message : 'ci-platform-failed');
-    process.exitCode = 1;
+    process.exitCode =
+      error instanceof ProcessFailure &&
+      error.status !== null &&
+      error.status > 0 &&
+      error.status < 256
+        ? error.status
+        : 1;
   });

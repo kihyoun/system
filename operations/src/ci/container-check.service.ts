@@ -1,3 +1,4 @@
+import { ProcessFailure } from '../runtime/process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -174,8 +175,11 @@ export class ContainerCheckService {
       ]);
       await run(['start', resource]);
       try {
-        if ((await run(['wait', resource], browser ? 240000 : null)).trim() !== '0')
-          primary = Error('container-check-child-failed');
+        const status = (await run(['wait', resource], browser ? 240000 : null)).trim();
+        if (status !== '0')
+          primary = /^\d+$/.test(status)
+            ? new ProcessFailure('container-check', Number(status), null, false)
+            : Error('container-check-invalid-exit-status');
       } catch (error) {
         primary = error;
       }

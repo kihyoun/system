@@ -1,3 +1,4 @@
+import { ProcessFailure } from '../runtime/process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -168,7 +169,11 @@ export class CodeqlParentService {
         }
       }
       fs.copyFileSync(path.join(context, 'manifest.json'), path.join(report, 'source.json'));
-      if (status !== '0') primary ??= Error('codeql-scanner-failed');
+      if (status !== '0')
+        primary ??=
+          status && /^\d+$/.test(status)
+            ? new ProcessFailure('codeql-scanner', Number(status), null, false)
+            : Error('codeql-scanner-invalid-exit-status');
     } catch (error) {
       primary ??= error;
     }
