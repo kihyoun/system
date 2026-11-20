@@ -50,3 +50,42 @@ test('interrupted apply retains durable inspection state and cannot overwrite co
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('native callback worker handles separate attempts without retaining request identity', async () => {
+  const { spawn } = require('node:child_process');
+  const readline = require('node:readline');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'upgrade-worker-'));
+  const child = spawn(
+    process.execPath,
+    [path.resolve(__dirname, '../dist/host/public-upgrade-plan-entry.js'), '--worker'],
+    { stdio: ['pipe', 'pipe', 'ignore'] },
+  );
+  const lines = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+  const closed = new Promise((resolve) => child.on('close', resolve));
+  try {
+    const file = path.join(directory, 'preflight.json');
+    for (const attemptId of ['a'.repeat(32), 'b'.repeat(32)]) {
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          format: 'system-public-upgrade-preflight-v1',
+          phase: 'checking',
+          attemptId,
+        }),
+        { mode: 0o600 },
+      );
+      child.stdin.write(JSON.stringify({ operation: 'interrupt', directory, attemptId }) + '\n');
+      const line = await Promise.race([
+        lines.next(),
+        new Promise((_, reject) => setTimeout(() => reject(Error('worker timeout')), 5000).unref()),
+      ]);
+      assert.equal(JSON.parse(line.value).complete, true);
+      assert.equal(JSON.parse(fs.readFileSync(file)).phase, 'failed');
+      assert.equal(child.exitCode, null);
+    }
+  } finally {
+    child.stdin.end();
+    await closed;
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

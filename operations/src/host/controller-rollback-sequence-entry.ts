@@ -2,14 +2,15 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { record } from '../release/source-identity';
 import { HostModule } from './host.module';
-import { NativePortChannel } from './native-port-channel';
+import { NativeEntryRuntime } from './native-entry-runtime';
 import {
   ControllerRollbackSequenceService,
   type ControllerRollbackPort,
   type ControllerRollbackInput,
 } from './controller-rollback-sequence.service';
+const runtime = new NativeEntryRuntime();
 export async function controllerRollbackSequenceMain(): Promise<void> {
-  const channel = new NativePortChannel();
+  const channel = runtime.channel;
   let app: Awaited<ReturnType<typeof NestFactory.createApplicationContext>> | undefined;
   try {
     const input = record(record(channel.read()).input) as unknown as ControllerRollbackInput;
@@ -58,10 +59,7 @@ export async function controllerRollbackSequenceMain(): Promise<void> {
         channel.call('verification', [value]);
       },
     };
-    app = await NestFactory.createApplicationContext(
-      HostModule.register({ controllerRollbackPort: port }),
-      { logger: false },
-    );
+    app = await runtime.application(HostModule.register({ controllerRollbackPort: port }));
     channel.write({ complete: true, value: app.get(ControllerRollbackSequenceService).run(input) });
   } catch (error) {
     channel.write({
@@ -70,7 +68,7 @@ export async function controllerRollbackSequenceMain(): Promise<void> {
     });
     process.exitCode = 1;
   } finally {
-    await app?.close();
+    await runtime.settled();
   }
 }
-if (require.main === module) void controllerRollbackSequenceMain();
+if (require.main === module) void runtime.run(controllerRollbackSequenceMain);

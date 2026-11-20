@@ -2,14 +2,15 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { record } from '../release/source-identity';
 import { HostModule } from './host.module';
-import { NativePortChannel } from './native-port-channel';
+import { NativeEntryRuntime } from './native-entry-runtime';
 import {
   ControllerUpdateSequenceService,
   type ControllerUpdateSequencePort,
   type ControllerUpdateSequenceInput,
 } from './controller-update-sequence.service';
+const runtime = new NativeEntryRuntime();
 export async function controllerUpdateSequenceMain(): Promise<void> {
-  const channel = new NativePortChannel();
+  const channel = runtime.channel;
   let app: Awaited<ReturnType<typeof NestFactory.createApplicationContext>> | undefined;
   try {
     const input = record(record(channel.read()).input) as unknown as ControllerUpdateSequenceInput;
@@ -61,10 +62,7 @@ export async function controllerUpdateSequenceMain(): Promise<void> {
         channel.call('saveVerification', [value]);
       },
     };
-    app = await NestFactory.createApplicationContext(
-      HostModule.register({ controllerUpdateSequencePort: port }),
-      { logger: false },
-    );
+    app = await runtime.application(HostModule.register({ controllerUpdateSequencePort: port }));
     channel.write({ complete: true, value: app.get(ControllerUpdateSequenceService).run(input) });
   } catch (error) {
     channel.write({
@@ -73,7 +71,7 @@ export async function controllerUpdateSequenceMain(): Promise<void> {
     });
     process.exitCode = 1;
   } finally {
-    await app?.close();
+    await runtime.settled();
   }
 }
-if (require.main === module) void controllerUpdateSequenceMain();
+if (require.main === module) void runtime.run(controllerUpdateSequenceMain);

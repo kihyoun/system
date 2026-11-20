@@ -2,13 +2,14 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { record } from '../release/source-identity';
 import { HostModule } from './host.module';
-import { NativePortChannel } from './native-port-channel';
+import { NativeEntryRuntime } from './native-entry-runtime';
 import {
   PublicUpgradeApplyService,
   type PublicUpgradeApplyPort,
 } from './public-upgrade-apply.service';
+const runtime = new NativeEntryRuntime();
 export async function publicUpgradeApplyMain(): Promise<void> {
-  const channel = new NativePortChannel();
+  const channel = runtime.channel;
   let app: Awaited<ReturnType<typeof NestFactory.createApplicationContext>> | undefined;
   try {
     const input = record(channel.read());
@@ -40,10 +41,7 @@ export async function publicUpgradeApplyMain(): Promise<void> {
       },
       waitReady: (baseline) => channel.call('waitReady', [baseline]),
     };
-    app = await NestFactory.createApplicationContext(
-      HostModule.register({ publicUpgradeApplyPort: port }),
-      { logger: false },
-    );
+    app = await runtime.application(HostModule.register({ publicUpgradeApplyPort: port }));
     channel.write({
       complete: true,
       value: app.get(PublicUpgradeApplyService).apply(String(input.directory), input.confirmation),
@@ -55,7 +53,7 @@ export async function publicUpgradeApplyMain(): Promise<void> {
     });
     process.exitCode = 1;
   } finally {
-    await app?.close();
+    await runtime.settled();
   }
 }
-if (require.main === module) void publicUpgradeApplyMain();
+if (require.main === module) void runtime.run(publicUpgradeApplyMain);

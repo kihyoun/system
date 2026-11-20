@@ -2,15 +2,16 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { record } from '../release/source-identity';
 import { HostModule } from './host.module';
-import { NativePortChannel } from './native-port-channel';
+import { NativeEntryRuntime } from './native-entry-runtime';
 import { ActiveMaintenanceJobs } from './cold-maintenance.service';
 import {
   PromotionSequenceService,
   type PromotionSequencePort,
   type PromotionSequenceInput,
 } from './promotion-sequence.service';
+const runtime = new NativeEntryRuntime();
 export async function promotionSequenceMain(): Promise<void> {
-  const channel = new NativePortChannel();
+  const channel = runtime.channel;
   let app: Awaited<ReturnType<typeof NestFactory.createApplicationContext>> | undefined;
   try {
     const input = record(record(channel.read()).input) as unknown as PromotionSequenceInput;
@@ -53,10 +54,7 @@ export async function promotionSequenceMain(): Promise<void> {
       },
       now: () => String(channel.call('now')),
     };
-    app = await NestFactory.createApplicationContext(
-      HostModule.register({ promotionSequencePort: port }),
-      { logger: false },
-    );
+    app = await runtime.application(HostModule.register({ promotionSequencePort: port }));
     const value = app.get(PromotionSequenceService).run(input);
     channel.write({ complete: true, value });
   } catch (error) {
@@ -67,7 +65,7 @@ export async function promotionSequenceMain(): Promise<void> {
     });
     process.exitCode = 1;
   } finally {
-    await app?.close();
+    await runtime.settled();
   }
 }
-if (require.main === module) void promotionSequenceMain();
+if (require.main === module) void runtime.run(promotionSequenceMain);

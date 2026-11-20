@@ -2,14 +2,15 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { record } from '../release/source-identity';
 import { HostModule } from './host.module';
-import { NativePortChannel } from './native-port-channel';
+import { NativeEntryRuntime } from './native-entry-runtime';
 import {
   PublicUpgradePlanService,
   type PublicUpgradePlanPort,
   type PublicUpgradePlanInput,
 } from './public-upgrade-plan.service';
+const runtime = new NativeEntryRuntime();
 export async function publicUpgradePlanMain(): Promise<void> {
-  const channel = new NativePortChannel();
+  const channel = runtime.channel;
   let app: Awaited<ReturnType<typeof NestFactory.createApplicationContext>> | undefined;
   try {
     const input = record(channel.read());
@@ -39,10 +40,7 @@ export async function publicUpgradePlanMain(): Promise<void> {
       dataSample: () => channel.call('dataSample'),
       now: () => String(channel.call('now')),
     };
-    app = await NestFactory.createApplicationContext(
-      HostModule.register({ publicUpgradePlanPort: port }),
-      { logger: false },
-    );
+    app = await runtime.application(HostModule.register({ publicUpgradePlanPort: port }));
     channel.write({
       complete: true,
       value:
@@ -57,7 +55,7 @@ export async function publicUpgradePlanMain(): Promise<void> {
     });
     process.exitCode = 1;
   } finally {
-    await app?.close();
+    await runtime.settled();
   }
 }
-if (require.main === module) void publicUpgradePlanMain();
+if (require.main === module) void runtime.run(publicUpgradePlanMain);

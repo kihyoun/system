@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { NativePortChannel } from './native-port-channel';
+import { NativeEntryRuntime } from './native-entry-runtime';
 import { NestFactory } from '@nestjs/core';
 import { record } from '../release/source-identity';
 import { HostModule } from './host.module';
@@ -10,8 +10,9 @@ import {
   type ColdMaintenanceInput,
 } from './cold-maintenance.service';
 /** Fixed native compatibility ports, not a Python coordinator invocation. */
+const runtime = new NativeEntryRuntime();
 export async function coldMaintenanceMain(): Promise<void> {
-  const channel = new NativePortChannel();
+  const channel = runtime.channel;
   let app: Awaited<ReturnType<typeof NestFactory.createApplicationContext>> | undefined;
   try {
     const initial = record(channel.read()),
@@ -36,10 +37,7 @@ export async function coldMaintenanceMain(): Promise<void> {
         return value === null ? null : String(value);
       },
     };
-    app = await NestFactory.createApplicationContext(
-      HostModule.register({ coldMaintenancePort: port }),
-      { logger: false },
-    );
+    app = await runtime.application(HostModule.register({ coldMaintenancePort: port }));
     const service = app.get(ColdMaintenanceService);
     if (initial.operation !== 'run' && initial.operation !== 'drain')
       throw Error('invalid-cold-maintenance-operation');
@@ -53,7 +51,7 @@ export async function coldMaintenanceMain(): Promise<void> {
     });
     process.exitCode = 1;
   } finally {
-    await app?.close();
+    await runtime.settled();
   }
 }
-if (require.main === module) void coldMaintenanceMain();
+if (require.main === module) void runtime.run(coldMaintenanceMain);
