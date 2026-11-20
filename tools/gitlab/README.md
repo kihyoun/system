@@ -72,3 +72,22 @@ already expired or been revoked, the same method accepts a separately supplied
 administrator credential for explicit recovery; that recovery secret is neither
 stored in the journal nor returned. It never creates a new root token to work
 around expiry.
+
+Source-primary environment activation uses the historical project PostgreSQL
+advisory key through `GitlabActivationSessionService`. A private
+`project-<id>.json` journal binds the operation, exact GitLab container, detached
+Docker execution ID, command/user digest and PostgreSQL backend identity. The
+native `psql` holder runs independently of the controller process; losing an HTTP
+mutation response retains the lock and pending variable write. Retrying the same
+operation checks the exact variable value and flags before continuing. A different
+operation cannot take over that journal. PostgreSQL ownership is checked using
+the nonce, database/user, advisory key, PID and backend start time before any
+write or cancellation. No timeout releases an uncertain mutation barrier.
+
+The holder is created without starting it, then its exact execution ID is saved
+before starting. Retrying that ID cannot launch a second process. Release records
+intent before cancelling the verified backend and confirms both that the lock is
+gone and that its Docker execution has stopped (or has been garbage-collected).
+Interrupted release is reconciled on the next same-operation attempt. A pending
+write whose expected value cannot be verified remains blocked; deleting the
+journal or cancelling an unrelated database session is not a recovery procedure.

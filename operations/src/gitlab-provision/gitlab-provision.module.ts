@@ -1,3 +1,10 @@
+import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
+import { GitlabActivationSessionService } from './activation-session.service';
+import {
+  GitlabLockExecService,
+  GitlabLockExecHttpTransport,
+  GITLAB_LOCK_EXEC_HTTP,
+} from './lock-exec.service';
 import { GitlabControllerCredentialService } from './controller-credential.service';
 import { GitlabAuthJournalService } from './auth-journal.service';
 import { GitlabAuthBootstrapService } from './auth-bootstrap.service';
@@ -6,7 +13,11 @@ import { GitlabNativeApiService, GITLAB_PROVISION_PROCESS } from './native-api.s
 import { Module } from '@nestjs/common';
 import { SourcePrimaryActivationService } from './source-primary-activation.service';
 @Module({
+  imports: [GitlabPreflightModule],
   providers: [
+    GitlabActivationSessionService,
+    GitlabLockExecService,
+    { provide: GITLAB_LOCK_EXEC_HTTP, useClass: GitlabLockExecHttpTransport },
     GitlabControllerCredentialService,
     GitlabAuthJournalService,
     GitlabAuthBootstrapService,
@@ -15,6 +26,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     { provide: GITLAB_PROVISION_PROCESS, useClass: ManagedChildProcess },
   ],
   exports: [
+    GitlabActivationSessionService,
     SourcePrimaryActivationService,
     GitlabNativeApiService,
     GitlabAuthBootstrapService,

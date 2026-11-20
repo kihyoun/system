@@ -96,10 +96,11 @@ export function validateAuthJournal(value: unknown): GitlabAuthJournal {
   if (state.phase === 'ready' && state.bootstrap) throw Error('gitlab-auth-journal-invalid');
   return state as unknown as GitlabAuthJournal;
 }
-export interface GitlabAuthJournalSession {
-  read(): GitlabAuthJournal | undefined;
-  save(value: GitlabAuthJournal): void;
+export interface GitlabPrivateJournalSession<Value> {
+  read(): Value | undefined;
+  save(value: Value): void;
 }
+export type GitlabAuthJournalSession = GitlabPrivateJournalSession<GitlabAuthJournal>;
 /** Private state shares the GitLab configuration volume and its Harvest/Seed lifecycle. */
 @Injectable()
 export class GitlabAuthJournalService {
@@ -107,6 +108,16 @@ export class GitlabAuthJournalService {
     configDirectory: string,
     operation: (journal: GitlabAuthJournalSession) => Promise<T>,
   ): Promise<T> {
+    return this.withFile(configDirectory, 'journal', validateAuthJournal, operation);
+  }
+  async withFile<Value, T>(
+    configDirectory: string,
+    name: string,
+    validate: (value: unknown) => Value,
+    operation: (journal: GitlabPrivateJournalSession<Value>) => Promise<T>,
+  ): Promise<T> {
+    if (!/^(?:journal|project-[1-9][0-9]*)$/.test(name))
+      throw Error('gitlab-auth-journal-name-invalid');
     if (
       !path.isAbsolute(configDirectory) ||
       fs.realpathSync(configDirectory) !== configDirectory ||
@@ -143,7 +154,7 @@ export class GitlabAuthJournalService {
       checkStat(fs.lstatSync(filename), directoryExpected);
     checked(directory, true);
     syncDirectory(configDirectory);
-    const lock = path.join(directory, 'journal.lock');
+    const lock = path.join(directory, name + '.lock');
     try {
       const fd = fs.openSync(
         lock,
@@ -156,7 +167,7 @@ export class GitlabAuthJournalService {
     }
     checked(lock);
     const release = fileLock(lock);
-    const filename = path.join(directory, 'journal.json');
+    const filename = path.join(directory, name + '.json');
     try {
       return await operation({
         read: () => {
@@ -171,7 +182,7 @@ export class GitlabAuthJournalService {
             const stat = fs.fstatSync(fd);
             checkStat(stat);
             if (stat.size > 65536) throw Error('gitlab-auth-journal-invalid');
-            return validateAuthJournal(JSON.parse(fs.readFileSync(fd, 'utf8')));
+            return validate(JSON.parse(fs.readFileSync(fd, 'utf8')));
           } catch {
             throw Error('gitlab-auth-journal-invalid');
           } finally {
@@ -179,7 +190,7 @@ export class GitlabAuthJournalService {
           }
         },
         save: (value) => {
-          validateAuthJournal(value);
+          validate(value);
           try {
             checked(filename);
           } catch (error) {

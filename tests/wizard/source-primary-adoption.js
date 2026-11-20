@@ -573,6 +573,40 @@ async function bindingRefresh(f) {
     const renewed=await service.current(nativeApiContext,controllerAuthDirectory,renewalDate);assert.equal(renewed.id,43);assert.equal(tokenCreations,3);
     await journals.withJournal(controllerAuthDirectory,async journal=>{assert(!journal.read().retiring);assert(!journal.read().renewal);});
   } finally {fs.rmSync(controllerAuthDirectory,{recursive:true,force:true});}
+  const {GitlabActivationSessionService}=require('../../operations/dist/gitlab-provision/activation-session.service');
+  const {GitlabLockExecService}=require('../../operations/dist/gitlab-provision/lock-exec.service');
+  const lockDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-activation-lock-'));
+  try {
+    const journals=new GitlabAuthJournalService(), commands=[], executions=new Map();let nextExec=0, launches=0, cancels=0, lostStart=true, lostWrite=true, lostCancel=false, variable, backend;
+    const transport={async request(method,route,body){
+      if(route.endsWith('/exec')){const id=(++nextExec).toString(16).padStart(64,'0');executions.set(id,{command:body,running:false,exitCode:null});commands.push(body.Cmd);return {status:201,value:{Id:id}};}
+      const id=route.split('/')[2], execution=executions.get(id);if(!execution)return {status:404,value:{message:'No such exec'}};
+      if(route.endsWith('/json'))return {status:200,value:{ID:id,ContainerID:nativeApiContext.containerId,Running:execution.running,ExitCode:execution.exitCode,OpenStdin:false,OpenStdout:false,OpenStderr:false,ProcessConfig:{entrypoint:execution.command.Cmd[0],arguments:execution.command.Cmd.slice(1),user:execution.command.User,tty:false,privileged:false}}};
+      assert(route.endsWith('/start'));assert.deepEqual(body,{Detach:true,Tty:false});
+      if(execution.running||execution.exitCode!==null)return {status:409,value:{message:'already running or already run'}};
+      execution.running=true;launches++;backend={pid:1234,started:'1763668800.123456'};
+      if(lostStart){lostStart=false;throw Object.assign(Error('lost detached start response'),{uncertain:true});}
+      return {status:200,value:null};
+    }};
+    const database={async open(){return {main:0,ci:1,databases:[0,1],command(index,options){assert.equal(index,0);return ['exec','--user','998:998',nativeApiContext.containerId,'env','-i','PATH=/usr/bin:/bin','HOME=/tmp/owned','/opt/gitlab/embedded/bin/psql','--dbname','service=database0 application_name='+options.applicationName];},async query(index,sql){assert.equal(index,0);if(sql.includes('pg_cancel_backend')){cancels++;assert(sql.includes("EXTRACT(EPOCH FROM backend_start)::text='1763668800.123456'"));backend=undefined;for(const execution of executions.values())if(execution.running){execution.running=false;execution.exitCode=3;}if(lostCancel){lostCancel=false;throw Error('lost cancellation response');}return 't';}assert(sql.includes("l.locktype='advisory'"));assert(sql.includes('l.classid=0::oid AND l.objid=42::oid AND l.objsubid=1'));return JSON.stringify(backend?[backend]:[]);},async close(){}};}};
+    const api={async request(context,token,method,route,body){assert.equal(token,'project-private-token');if(method==='GET')return {status:variable?200:404,value:variable||{message:'not found'}};
+      const journal=JSON.parse(fs.readFileSync(path.join(lockDirectory,'system-bootstrapper-auth/project-7.json')));assert.equal(journal.phase,'held');assert.equal(journal.backend.pid,1234);assert(journal.pending);
+      variable={...body};if(lostWrite){lostWrite=false;throw Object.assign(Error('lost variable response'),{uncertain:true});}return {status:200,value:variable};}};
+    const service=()=>new GitlabActivationSessionService(journals,database,api,new GitlabLockExecService(transport),{async run(){throw Error('unexpected process');}});
+    const session=()=>service().create(nativeApiContext,lockDirectory,7,'a'.repeat(64),'project-private-token');
+    let current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/lost detached start response/);assert.equal(launches,1);assert.equal(nextExec,1);
+    const body={key:'WIZARD_REVIEW_HOST',value:'review.example.test',environment_scope:'*',variable_type:'env_var',protected:false,masked:false,raw:true};
+    current=session();await assert.rejects(()=>current.withAdvisoryLock('42',()=>current.request('PUT','projects/7/variables/WIZARD_REVIEW_HOST',body)),/lost variable response/);
+    assert.equal(launches,1,'same Exec ID must not execute twice');assert.equal(nextExec,1);assert.equal(cancels,0,'uncertain write retains database barrier');
+    const recorded=JSON.parse(fs.readFileSync(path.join(lockDirectory,'system-bootstrapper-auth/project-7.json')));assert.equal(recorded.pending.body.value,body.value);assert(commands[0].at(-1).includes('pg_try_advisory_lock(42::bigint)'));
+    backend={pid:9999,started:'1763668800.123456'};current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/backend-ownership-lost/);assert.equal(cancels,0);backend={pid:1234,started:'1763668800.123456'};
+    variable={...body,value:'foreign'};current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/write-reconciliation-required/);assert.equal(cancels,0);
+    variable={...body};current=session();await current.withAdvisoryLock('42',async()=>{});assert.equal(cancels,1);assert.equal(launches,1);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(lockDirectory,'system-bootstrapper-auth/project-7.json'))).phase,'idle');
+    current=session();lostCancel=true;await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/lost cancellation response/);
+    executions.clear(); // Docker may garbage-collect completed execs before the controller retries.
+    current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/release-reconciled-retry/);assert.equal(launches,2);assert.equal(cancels,2);
+  } finally {fs.rmSync(lockDirectory,{recursive:true,force:true});}
   // Shared typed activation: the same reservation survives uncertain writes.
   const {SourcePrimaryActivationService} = require('../../operations/dist/gitlab-provision/source-primary-activation.service');
   const activationService = new SourcePrimaryActivationService();
