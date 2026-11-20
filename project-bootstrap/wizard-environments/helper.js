@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const {spawn} = require('child_process');
 const state = require('./state');
+const lifecycle = require('../../operations/dist/project-lifecycle/entry');
 const ROOT = '/templates/wizard-environments';
 const canonicalCode = fs.readFileSync(path.join(__dirname, 'canonical.js'), 'utf8')
   .replace("if (require.main === module)", 'if (true)');
@@ -162,80 +163,11 @@ class Runtime {
     await this.command(['exec', 'system_web_1', 'nginx', '-t'], '', {cleanup, timeout: 15000});
     await this.command(['exec', 'system_web_1', 'nginx', '-s', 'reload'], '', {cleanup, timeout: 15000});
   }
-  checkFragment(text, allowed) {
-    if (text !== null && !allowed.filter(Boolean).some(value => text.startsWith(state.marker(value) + '\n') && value.routeHash === state.hash(text)))
-      throw new Error('Candidate route is not owned by this reservation.');
-  }
-  async reconcile(slot) {
-    if (!slot.pending) return slot;
-    const pending = slot.pending;
-    const fragment = this.readFragment(pending.kind);
-    this.checkFragment(fragment, [pending, slot.active]);
-    if (fragment?.startsWith(state.marker(pending) + '\n') && state.hash(fragment) === pending.routeHash) {
-      if (!await this.health(pending, {once: true})) throw new Error('Pending routed candidate is unhealthy; explicit recovery is required.');
-      await this.reload();
-      const next = {...slot, active: {...pending, state: 'active'}, pending: null, tombstone: null,
-        retired: [...(slot.retired || []), ...(slot.active && slot.active.containerName !== pending.containerName ? [slot.active] : [])]};
-      await this.save({...this.environment.deployments, [pending.kind]: next});
-      return next;
-    }
-    if (pending.containerName !== slot.active?.containerName) { await this.remove(pending); await this.removeNetwork(pending); }
-    const next = {...slot, pending: null};
-    await this.save({...this.environment.deployments, [pending.kind]: next});
-    return next;
-  }
-  async cleanupRetired(slot) {
-    if (!slot.retired?.length) return slot;
-    for (const value of slot.retired) { await this.remove(value); await this.removeNetwork(value); }
-    const next = {...slot, retired: []};
-    await this.save({...this.environment.deployments, [this.request.kind]: next});
-    return next;
-  }
-  async cleanupTombstone(slot) {
-    if (!slot.tombstone || slot.active || slot.pending) return slot;
-    const stopped = slot.tombstone;
-    await this.remove(stopped); await this.removeNetwork(stopped);
-    if (await this.inspected(stopped.networkName, 'network')) throw new Error('Stopped owned network is still in use; reconcile it before reusing the host.');
-    const next = {...slot, tombstone: {...stopped, cleanupComplete: true}};
-    await this.save({...this.environment.deployments, [this.request.kind]: next});
-    return next;
-  }
-  async cleanupStoppedRoute(slot) {
-    if (slot.active || slot.pending) throw new Error('Stop active and reconcile pending deployments before route cleanup.');
-    if (!slot.tombstone) return slot;
-    slot = await this.cleanupTombstone(slot);
-    const previous = this.readFragment(this.request.kind);
-    this.checkFragment(previous, [slot.tombstone]);
-    if (previous === null) return slot;
-    this.writeFragment(this.request.kind, null);
-    try {
-      await this.reload();
-      const next = {...slot, tombstone: {...slot.tombstone, routeRemoved: true}};
-      await this.save({...this.environment.deployments, [this.request.kind]: next});
-      return next;
-    } catch (error) { this.writeFragment(this.request.kind, previous); await this.reload(true); throw error; }
-  }
-  async refreshActive(slot) {
-    const active = slot.active;
-    const previous = this.readFragment(active.kind);
-    this.checkFragment(previous, [active]);
-    if (!await this.health(active, {once: true})) throw new Error('Existing candidate is unhealthy.');
-    const inspected = await this.owned(active);
-    const route = state.route(active, this.setting, inspected.networks?.[active.networkName]?.IPAddress);
-    if (route === previous) return {state: 'active', unchanged: true};
-    const pending = {...active, state: 'pending', routeHash: state.hash(route)};
-    await this.save({...this.environment.deployments, [active.kind]: {...slot, pending}});
-    try {
-      this.writeFragment(active.kind, route); await this.reload();
-      await this.save({...this.environment.deployments, [active.kind]: {...slot, active: {...pending, state: 'active'}, pending: null}});
-      return {state: 'active', reconciled: true};
-    } catch (error) {
-      this.cleanupDeadline ||= Date.now() + 90000;
-      this.writeFragment(active.kind, previous); await this.reload(true);
-      await this.save({...this.environment.deployments, [active.kind]: {...slot, pending: null}}, true);
-      throw error;
-    }
-  }
+  async reconcile(slot) { return lifecycle.execute(this, 'reconcile', slot); }
+  async cleanupRetired(slot) { return lifecycle.execute(this, 'cleanupRetired', slot); }
+  async cleanupTombstone(slot) { return lifecycle.execute(this, 'cleanupTombstone', slot); }
+  async cleanupStoppedRoute(slot) { return lifecycle.execute(this, 'cleanupStoppedRoute', slot); }
+  async refreshActive(slot) { return lifecycle.execute(this, 'refreshActive', slot); }
   async readiness() {
     await this.canonical('dns');
     const production = this.context.publicSettings.WIZARD_HOST;
@@ -315,76 +247,8 @@ class Runtime {
     if (!result.ok) throw new Error('Canonical GitLab job, source, or candidate checks failed.');
     return result;
   }
-  async deploy(slot, imageRef) {
-    const value = state.record(this.request, this.setting.host, imageRef);
-    let plan = state.deployPlan(slot, value);
-    if (plan.noop) return this.refreshActive(slot);
-    const previous = this.readFragment(this.request.kind);
-    this.checkFragment(previous, [slot.active, slot.pending, slot.tombstone]);
-    slot = await this.cleanupTombstone(slot);
-    plan = state.deployPlan(slot, value);
-    await this.save({...this.environment.deployments, [this.request.kind]: plan.slot});
-    let routed = false, committed = false;
-    try {
-      await this.network(value);
-      const existing = await this.owned(value);
-      if (!existing) {
-        // CI preloads using its ordinary job-scoped registry credential. No
-        // credential crosses into the helper or canonical controller.
-        await this.command(['image', 'inspect', '--format', '{{.Id}}', imageRef]);
-        const args = ['run', '-d', '--restart', 'unless-stopped', '--log-driver', 'json-file', '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3', '--memory', '512m', '--cpus', '1', '--pids-limit', '128',
-          '--network', value.networkName, '--name', value.containerName];
-        for (const [key, val] of Object.entries(state.labels(value))) args.push('--label', key + '=' + val);
-        args.push(imageRef); await this.command(args);
-      }
-      if (!await this.health(value)) throw new Error('Candidate did not become healthy.');
-      const inspected = await this.owned(value);
-      const address = inspected.networks?.[value.networkName]?.IPAddress;
-      const route = state.route(value, this.setting, address);
-      value.routeHash = state.hash(route);
-      await this.save({...this.environment.deployments, [this.request.kind]: {...plan.slot, pending: value}});
-      this.writeFragment(this.request.kind, route); routed = true;
-      await this.reload();
-      const next = {...plan.slot, active: {...value, state: 'active'}, pending: null, tombstone: null,
-        retired: [...(slot.retired || []), ...(slot.active && slot.active.containerName !== value.containerName ? [slot.active] : [])]};
-      await this.save({...this.environment.deployments, [this.request.kind]: next});
-      committed = true;
-      await this.cleanupRetired(next);
-      return {state: 'active', host: value.host, sourceCommit: value.sourceCommit, pipelineId: value.pipelineId};
-    } catch (error) {
-      if (committed) throw new Error('Candidate is active; retired resource cleanup requires reconciliation.');
-      this.cleanupDeadline ||= Date.now() + 90000;
-      try {
-        if (routed) { this.writeFragment(this.request.kind, previous); await this.reload(true); }
-        await this.remove(value, true); await this.removeNetwork(value, true);
-        await this.save({...this.environment.deployments, [this.request.kind]: {...plan.slot, pending: null}}, true);
-      } catch (_) { throw new Error('Environment recovery is incomplete; inspect its pending receipt before retrying.'); }
-      throw error;
-    }
-  }
-  async stop(slot) {
-    const plan = state.stopPlan(slot, this.request);
-    if (plan.noop) return {state: 'stopped', unchanged: true};
-    const previous = this.readFragment(this.request.kind);
-    this.checkFragment(previous, [plan.active]);
-    const tombstoneRoute = state.route(plan.slot.tombstone, this.setting);
-    plan.slot.tombstone.routeHash = state.hash(tombstoneRoute);
-    this.writeFragment(this.request.kind, tombstoneRoute);
-    try { await this.reload(); }
-    catch (_) {
-      this.writeFragment(this.request.kind, previous); await this.reload(true);
-      throw new Error('Stop route change failed; previous route restored.');
-    }
-    // Receipt tombstone is durable before deleting resources; retries may only
-    // clean that exact tombstone, never a newer active generation.
-    try { await this.save({...this.environment.deployments, [this.request.kind]: plan.slot}); }
-    catch (_) {
-      this.writeFragment(this.request.kind, previous); await this.reload(true);
-      throw new Error('Stop receipt changed; previous route restored.');
-    }
-    await this.remove(plan.active); await this.removeNetwork(plan.active);
-    return {state: 'stopped', host: plan.active.host};
-  }
+  async deploy(slot, imageRef) { return lifecycle.execute(this, 'deploy', slot, imageRef); }
+  async stop(slot) { return lifecycle.execute(this, 'stop', slot); }
   async run() {
     if (this.request.action === 'deploy' && (this.request.kind === 'review' || this.request.delivery !== 'system')) throw Error('System Wizard Review is retired. Use optional Beta from an accepted System candidate.');
     let locked = false, lockAttempted = false;

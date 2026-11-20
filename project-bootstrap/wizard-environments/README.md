@@ -103,3 +103,25 @@ preservation and owned cleanup run natively. Its authorization verifier uses
 authorize itself as a completed pipeline. Positive and negative contracts exercise
 the production verifier separately. Production launchers have no fixture switch.
 Offline tests or check-only preflight do not establish a completed native run.
+
+## Deployment service boundary
+
+The compiled operations `ProjectLifecycleModule` owns deployment transitions,
+route rendering, reconciliation, rollback, retirement and stopped-resource
+cleanup. Its typed port supplies receipt compare-and-swap, owned Docker access,
+health checks and route I/O. The compatible environment helper supplies that
+port and retains its canonical-controller lock and bounded cancellation budget.
+Each invocation creates and closes a standalone Nest context without an HTTP
+listener. Build operations before using the compatible helper or state imports.
+
+The state policy preserves pipeline floors and stopped tombstones. A failed
+cutover restores the previous route before removing owned candidate resources;
+a committed cutover retains retirement work for reconciliation. Stop persists
+its tombstone before deleting resources. Historical recipe bytes and the GitLab
+Ruby verification format remain unchanged.
+
+After building operations and Sync, run `node tests/wizard/environment-helper.js`
+for injected health, ownership, CAS, reload, stale-generation and interrupted
+cutover failures. `node tests/wizard/environment-canonical.js` checks the retained
+canonical lock and receipt adapter. These local checks do not establish live
+candidate acceptance.

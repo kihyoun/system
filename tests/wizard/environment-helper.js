@@ -62,6 +62,9 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   const args = ['--action', 'deploy', '--kind', 'review', '--project', '1', '--pipeline', '10', '--job', '20', '--sha', sha,
     '--mr', '1', '--operation', op, '--controller', 'system_bootstrapper_1'];
   assert.deepStrictEqual(parse(args), request());
+  for (const invalid of [null, [], {}, {...request(), action: ['deploy']}, {...request(), sourceCommit: [sha]}]) {
+    assert.throws(() => state.validRequest(invalid), /Invalid environment job identity/);
+  }
   assert.throws(() => parse([...args, '--image', digest]));
   assert.throws(() => parse(args.map(value => value === 'system_bootstrapper_1' ? 'test-controller' : value)));
   assert.throws(() => state.validRequest({...request(), mrIid: 0}));
