@@ -75,7 +75,7 @@ unabhängigen Erneuerung veralten; aktualisiere oder entferne sie bewusst.
 
 Verwende den Erneuerungslink zum betroffenen Zweck und folge dem zugehörigen
 repositoryeigenen Verfahren. Für Renovate unterstützt der vorhandene Ablauf
-`gitlab/renovate/setup.py` die Optionen `--apply --rotate --enable` mit der privaten
+`gitlab/renovate/setup.js` die Optionen `--apply --rotate --enable` mit der privaten
 Konfiguration des Betreibers.
 Erstelle für den Zugriff auf Release-Metadaten einen projektgebundenen
 GitLab-Ersatztoken mit der Reporter-Rolle, dem Geltungsbereich `read_api` und einem

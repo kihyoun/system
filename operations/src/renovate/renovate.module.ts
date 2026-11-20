@@ -1,4 +1,8 @@
 import { Module } from '@nestjs/common';
 import { RenovateVerificationService } from './verification.service';
-@Module({ providers: [RenovateVerificationService], exports: [RenovateVerificationService] })
+import { RenovateSetupService } from './setup.service';
+@Module({
+  providers: [RenovateVerificationService, RenovateSetupService],
+  exports: [RenovateVerificationService, RenovateSetupService],
+})
 export class RenovateModule {}

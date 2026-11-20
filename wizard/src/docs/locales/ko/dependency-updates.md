@@ -49,8 +49,8 @@ Wizard 프로젝트 선택을 유지할 수 있습니다. 원래의 비공개 �
 아닙니다.
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply
 ```
 
 첫 호출은 API 변경 없이 비공개 파일 처리를 검증합니다. 두 번째는 계정, Developer 멤버십,
@@ -72,7 +72,7 @@ node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
 선택한 저장소 구성을 검토한 뒤 활성화하세요.
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply --enable
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --enable
 ```
 
 명령은 반복 실행할 수 있습니다. 0600 권한 상태 파일에는 중단 후 안전한 조정을 위한 봇
@@ -128,7 +128,7 @@ gitlink는 없습니다.
 15일 미만이면 토큰을 교체하며, 명시적으로 다음과 같이 실행할 수도 있습니다.
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply --rotate --enable
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --rotate --enable
 ```
 
 새 토큰을 비공개로 저장하고 보호 변수를 갱신한 다음, 이 도구가 소유한 오래된 토큰을
@@ -149,7 +149,7 @@ GitLab 구성과 비밀 정보를 복원하세요. 새 Runner 관리자/캐시/�
 비공개 이메일, 제한된 계정을 검증한 뒤 명시적으로 복구해야 합니다.
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json \
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json \
   --apply --recover-user-id 123 --rotate
 ```
 

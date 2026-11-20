@@ -53,8 +53,8 @@ MRs and dashboard issues. Project membership limits that token's project access;
 it is not an administrator token.
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply
 ```
 
 The first invocation validates private file handling without API mutations. The
@@ -77,7 +77,7 @@ node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
 After reviewing the selected repository configuration, activate it:
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply --enable
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --enable
 ```
 
 The command is repeatable. Keep its mode-0600 state file private: it contains the
@@ -137,7 +137,7 @@ Tokens expire after 90 days. Arrange an operator reminder before expiry; the set
 command rotates when fewer than 15 days remain, or explicitly:
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply --rotate --enable
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --rotate --enable
 ```
 
 It saves the new token privately, updates the protected variable, then revokes
@@ -160,7 +160,7 @@ journal when possible. Otherwise an administrator must verify the intended bot
 user ID, configured private email and restricted account, then explicitly recover:
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json \
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json \
   --apply --recover-user-id 123 --rotate
 ```
 

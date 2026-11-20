@@ -59,6 +59,7 @@ console.log('PASS: explicit repository allowlist, approval safety policy and sup
 
 // Consolidated former Python discovery checks use the same native service as CLI.
 (async () => {
+  await require('./renovate-setup-fixture')();
   const {RenovateVerificationService} = require('../../operations/dist/renovate/verification.service');
   const {RenovateModule} = require('../../operations/dist/renovate/renovate.module');
   const {NestFactory} = require('../../operations/node_modules/@nestjs/core');

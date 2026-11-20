@@ -58,8 +58,8 @@ Repository-Branches, MRs und Dashboard-Issues. Projektmitgliedschaft begrenzt de
 Projektzugriff; es ist kein Administratortoken.
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply
 ```
 
 Der erste Aufruf prüft private Dateibehandlung ohne API-Änderungen. Der zweite gleicht
@@ -82,7 +82,7 @@ node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
 Aktivieren Sie den Zeitplan nach Prüfung der ausgewählten Repository-Konfiguration:
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply --enable
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --enable
 ```
 
 Der Befehl ist wiederholbar. Halten Sie seine Zustandsdatei mit Modus 0600 privat:
@@ -145,7 +145,7 @@ Tokens laufen nach 90 Tagen ab. Planen Sie vorher eine Betreibererinnerung; der
 Einrichtungsbefehl rotiert bei weniger als 15 verbleibenden Tagen oder ausdrücklich mit:
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply --rotate --enable
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --rotate --enable
 ```
 
 Er speichert das neue Token privat, aktualisiert die geschützte Variable und widerruft
@@ -171,7 +171,7 @@ Andernfalls muss ein Administrator die vorgesehene Bot-Benutzer-ID, konfiguriert
 E-Mail-Adresse und Kontoeinschränkungen prüfen und dann ausdrücklich wiederherstellen:
 
 ```sh
-python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json \
+node gitlab/renovate/setup.js --config /secure/operator/renovate.json \
   --apply --recover-user-id 123 --rotate
 ```
 
