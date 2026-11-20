@@ -1,3 +1,4 @@
+import { CandidateRuntimeService } from './candidate-runtime.service';
 import { ProcessFailure } from '../runtime/process';
 import { ContainerCheckService } from './container-check.service';
 import { CodeqlParentService } from './codeql-parent.service';
@@ -9,11 +10,19 @@ import { CiModule } from './ci.module';
 import { PlatformCheckService } from './platform.service';
 export async function ciMain(args = process.argv.slice(2)) {
   if (
-    !['platform', 'codeql', 'codeql-parent', 'isolated', 'wizard-browser'].includes(args[0]) ||
+    ![
+      'platform',
+      'codeql',
+      'codeql-parent',
+      'isolated',
+      'wizard-browser',
+      'candidate-image',
+      'candidate-runtime',
+    ].includes(args[0]) ||
     !args[1]?.startsWith('/') ||
     args.length > 3 ||
     (args[2] &&
-      !['isolated', 'wizard-browser'].includes(args[0]) &&
+      !['isolated', 'wizard-browser', 'candidate-image', 'candidate-runtime'].includes(args[0]) &&
       (args[0] !== 'codeql' ? args[2] !== 'cleanup' : !args[2].startsWith('/')))
   )
     throw new Error('usage-ci-platform-absolute-checkout-cleanup');
@@ -23,7 +32,11 @@ export async function ciMain(args = process.argv.slice(2)) {
   process.on('SIGINT', cancel);
   process.on('SIGTERM', cancel);
   try {
-    if (args[0] === 'isolated' || args[0] === 'wizard-browser') {
+    if (args[0] === 'candidate-runtime') {
+      await app.get(CandidateRuntimeService).check(args[1], process.env, abort.signal);
+      return;
+    }
+    if (args[0] === 'isolated' || args[0] === 'wizard-browser' || args[0] === 'candidate-image') {
       await app
         .get(ContainerCheckService)
         .execute(args[0], args[1], process.env, args[2] || 'run', abort.signal);

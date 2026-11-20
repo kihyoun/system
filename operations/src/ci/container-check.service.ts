@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ManagedChildProcess, type LifecycleProcess } from '../runtime/managed-child';
 
-type Check = 'isolated' | 'wizard-browser';
+type Check = 'isolated' | 'wizard-browser' | 'candidate-image';
 const components = [
   'all',
   'gitlab',
@@ -31,7 +31,8 @@ export class ContainerCheckService {
     selection: string,
     signal?: AbortSignal,
   ) {
-    if (!['isolated', 'wizard-browser'].includes(kind)) throw Error('unknown-container-check');
+    if (!['isolated', 'wizard-browser', 'candidate-image'].includes(kind))
+      throw Error('unknown-container-check');
     if (![env.CI_PROJECT_ID, env.CI_JOB_ID].every((value) => /^\d+$/.test(value || '')))
       throw Error('numeric-ci-identities-required');
     const cleanupOnly = selection === 'cleanup';
@@ -41,9 +42,14 @@ export class ContainerCheckService {
     )
       throw Error('invalid-container-check-selection');
     const browser = kind === 'wizard-browser';
-    const resource = `system-${browser ? 'wizard-browser' : 'tests'}-${env.CI_PROJECT_ID}-${env.CI_JOB_ID}`;
-    const image = `system-${browser ? 'wizard-browser' : 'component-tests'}:ci-${env.CI_PROJECT_ID}-${env.CI_JOB_ID}`;
-    const report = path.join(root, 'test-results', browser ? 'wizard-browser' : 'cleanup');
+    const candidate = kind === 'candidate-image';
+    const resource = `system-${browser ? 'wizard-browser' : candidate ? 'candidate-check' : 'tests'}-${env.CI_PROJECT_ID}-${env.CI_JOB_ID}`;
+    const image = `system-${browser ? 'wizard-browser' : candidate ? 'candidate' : 'component-tests'}:ci-${env.CI_PROJECT_ID}-${env.CI_JOB_ID}`;
+    const report = path.join(
+      root,
+      'test-results',
+      browser ? 'wizard-browser' : candidate ? 'candidate-image' : 'cleanup',
+    );
     const labels: Record<string, string> = {
       'org.system-bootstrapper.test-project': env.CI_PROJECT_ID!,
       'org.system-bootstrapper.test-job': env.CI_JOB_ID!,
@@ -115,14 +121,17 @@ export class ContainerCheckService {
         }
       }
       fs.writeFileSync(
-        path.join(report, `${browser ? 'cleanup-' : ''}${phase}.json`),
+        path.join(report, `${browser || candidate ? 'cleanup-' : ''}${phase}.json`),
         JSON.stringify({ container: resource, image, status: failure ? 'failed' : 'passed' }) +
           '\n',
       );
       if (failure) throw failure;
     };
     if (cleanupOnly) return cleanup('after-script');
-    const context = path.join(root, browser ? '.wizard-browser-context' : '.test-context');
+    const context = path.join(
+      root,
+      browser ? '.wizard-browser-context' : candidate ? '.candidate-context' : '.test-context',
+    );
     if (
       !/^[0-9a-f]{40}$/.test(env.CI_COMMIT_SHA || '') ||
       fs.readFileSync(path.join(context, 'revision'), 'utf8').trim() !== env.CI_COMMIT_SHA
@@ -146,7 +155,11 @@ export class ContainerCheckService {
           'build',
           ...labelArgs,
           '-f',
-          browser ? 'tests/wizard-browser.Dockerfile' : 'tests/Dockerfile',
+          browser
+            ? 'tests/wizard-browser.Dockerfile'
+            : candidate
+              ? 'system/Dockerfile'
+              : 'tests/Dockerfile',
           '-t',
           image,
           '-',
@@ -154,6 +167,14 @@ export class ContainerCheckService {
         browser ? 480000 : null,
         archive,
       );
+      if (candidate) {
+        const imageId = (await run(['image', 'inspect', '--format', '{{.Id}}', image])).trim();
+        if (!/^sha256:[0-9a-f]{64}$/.test(imageId)) throw Error('candidate-image-id-invalid');
+        fs.writeFileSync(
+          path.join(report, 'image.json'),
+          JSON.stringify({ revision: env.CI_COMMIT_SHA, imageId }) + '\n',
+        );
+      }
       await run([
         '--config',
         config,
@@ -165,13 +186,18 @@ export class ContainerCheckService {
         '--network',
         'none',
         '--memory',
-        '2g',
+        candidate ? '1g' : '2g',
         '--cpus',
         '2',
         '--pids-limit',
-        '512',
+        candidate ? '128' : '512',
+        ...(candidate ? ['--entrypoint', 'node'] : []),
         image,
-        ...(browser ? [] : [selection]),
+        ...(candidate
+          ? ['/system/operations/dist/ci/entry.js', 'candidate-runtime', '/system']
+          : browser
+            ? []
+            : [selection]),
       ]);
       await run(['start', resource]);
       try {
@@ -188,20 +214,21 @@ export class ContainerCheckService {
       } catch (error) {
         primary ??= error;
       }
-      try {
-        await run(
-          [
-            'cp',
-            `${resource}:/candidate/test-results/${browser ? 'wizard-browser/.' : '.'}`,
-            browser ? report : path.join(root, 'test-results/'),
-          ],
-          20000,
-          undefined,
-          true,
-        );
-      } catch (error) {
-        primary ??= error;
-      }
+      if (!candidate)
+        try {
+          await run(
+            [
+              'cp',
+              `${resource}:/candidate/test-results/${browser ? 'wizard-browser/.' : '.'}`,
+              browser ? report : path.join(root, 'test-results/'),
+            ],
+            20000,
+            undefined,
+            true,
+          );
+        } catch (error) {
+          primary ??= error;
+        }
     } catch (error) {
       primary ??= error;
     }
@@ -222,6 +249,11 @@ export class ContainerCheckService {
       );
       primary ??= Error('browser-check-missing-junit');
     }
+    if (candidate)
+      fs.writeFileSync(
+        path.join(report, 'junit.xml'),
+        `<?xml version="1.0"?><testsuite name="candidate-image" tests="1" failures="${primary ? 1 : 0}"><testcase name="full-system-build-and-runtime">${primary ? '<failure message="Candidate build or runtime validation failed; see job log"/>' : ''}</testcase></testsuite>\n`,
+      );
     if (primary) throw primary;
   }
 }

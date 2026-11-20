@@ -90,3 +90,20 @@ test('browser image retains reviewed trust and the full native browser suite',()
  assert.ok(dockerfile.includes('"test:ci"')&&dockerfile.includes('--reporter=list,html,junit'));
  assert.equal(dockerfile.includes('--grep'),false);
 });
+test('candidate image uses the same lifecycle and invokes typed runtime validation',async t=>{
+ const {root,env}=fixture(t);fs.renameSync(path.join(root,'.test-context'),path.join(root,'.candidate-context'));
+ const calls=[];
+ const adapter={async run(binary,args,options){calls.push({args,options});
+  if(args[0]==='wait')return '0';
+  if(args[0]==='image'&&args[1]==='inspect')return 'sha256:'+'c'.repeat(64);
+  return '';
+ }};
+ await new ContainerCheckService(adapter).execute('candidate-image',root,env,'run');
+ const create=calls.find(c=>c.args.includes('create')).args;
+ assert.equal(create[create.indexOf('--entrypoint')+1],'node');
+ assert.equal(create[create.indexOf('--memory')+1],'1g');
+ assert.equal(create.at(-2),'candidate-runtime');
+ assert.equal(calls.some(c=>c.args[0]==='cp'),false);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(root,'test-results/candidate-image/image.json'))).revision,env.CI_COMMIT_SHA);
+ assert.match(fs.readFileSync(path.join(root,'test-results/candidate-image/junit.xml'),'utf8'),/failures="0"/);
+});

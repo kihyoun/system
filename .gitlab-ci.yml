@@ -246,9 +246,9 @@ test:candidate-image:
   timeout: 15m
   allow_failure: false
   script:
-    - sh tests/ci-candidate-image.sh
+    - node operations/dist/ci/entry.js candidate-image "$CI_PROJECT_DIR"
   after_script:
-    - sh tests/ci-candidate-image.sh cleanup
+    - node operations/dist/ci/entry.js candidate-image "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
