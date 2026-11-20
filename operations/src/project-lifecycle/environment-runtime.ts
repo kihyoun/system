@@ -30,7 +30,6 @@ const sourceRoot = path.resolve(__dirname, '../../../project-bootstrap');
 const ROOT = '/templates/wizard-environments';
 const canonicalCode =
   "require('/system/operations/dist/project-lifecycle/canonical-entry').canonicalStdin();";
-const verifier = fs.readFileSync(path.join(sourceRoot, 'wizard-environments/verify.rb'), 'utf8');
 function canonicalLogo() {
   const source = fs.readFileSync(path.join(sourceRoot, '../sync/src/Helper.ts'), 'utf8');
   const logo = source.match(/return `([\s\S]*?)`;/)?.[1];
@@ -448,33 +447,25 @@ export class Runtime extends EnvironmentProcess {
     return this.verifyInput(input);
   }
   async verifyInput(input: unknown): Promise<{ ok: boolean; imageRef: string }> {
-    const system = this.request.delivery === 'system';
-    const code = system
-      ? fs.readFileSync(
-          path.join(
-            sourceRoot,
-            this.request.kind === 'beta' ? 'system-beta/verify.rb' : 'system-review/verify.rb',
-          ),
-          'utf8',
-        )
-      : verifier;
-    const script =
-      (system
-        ? this.request.kind === 'beta'
-          ? 'BOOTSTRAPPER_SYSTEM_BETA_INPUT'
-          : 'BOOTSTRAPPER_SYSTEM_REVIEW_INPUT'
-        : 'BOOTSTRAPPER_ENVIRONMENT_INPUT') +
-      " = '" +
-      Buffer.from(JSON.stringify(input)).toString('base64') +
-      "'\n" +
-      code;
-    const result = await this.json<{ ok: boolean; imageRef: string }>(
-      ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'],
-      script,
+    const kind = this.request.delivery === 'system' ? this.request.kind : 'environment';
+    // The helper has no GitLab configuration mount. Verification runs in the
+    // original controller's shared service; credentials never leave that owner.
+    const result = await this.json<{ ok: boolean; imageRef?: string }>(
+      [
+        'exec',
+        '-i',
+        'system_bootstrapper_1',
+        'node',
+        '/system/operations/dist/project-lifecycle/deployment-evidence-entry.js',
+        kind,
+      ],
+      JSON.stringify({ input }),
       { timeout: 180000 },
     );
     if (!result.ok) throw new Error('Canonical GitLab job, source, or candidate checks failed.');
-    return result;
+    if (this.request.action === 'deploy' && !('imageRef' in result))
+      throw Error('Verified deployment image required.');
+    return result as { ok: boolean; imageRef: string };
   }
   async deploy(slot: DeploymentSlot, imageRef: string) {
     return lifecycle.execute(this, 'deploy', slot, imageRef);

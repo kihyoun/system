@@ -24,8 +24,8 @@ helper receives only the operation's required state, registry and Docker access;
 private credentials and complete configuration are never public plan output.
 Production image changes remain separate from source-primary binding changes.
 
-Native boundaries include Git, Docker, TLS/DNS and GitLab API reads. The external
-Ruby GitLab verifier retains its wire format. Historical recipe generators and
+Native boundaries include Git, Docker, TLS/DNS and GitLab API reads. Shared native
+evidence services replace the external Ruby GitLab verifiers. Historical recipe generators and
 reserved `wizard-build` shell/smoke artifacts remain format adapters: their exact
 bytes identify installed recipes, including the historical cleanup-v2 recipe.
 They are not replaced in place by runtime-dependent scripts. The committed-source
@@ -54,3 +54,26 @@ ports and temporary state, including refusal and recovery paths:
   the actual typed producers against the committed Wizard catalogue.
 
 These tests do not constitute live GitLab or deployment acceptance evidence.
+
+## Deployment evidence
+
+`DeploymentEvidenceModule` provides the same `DeploymentEvidenceService` to
+Production promotion and the controller-side evidence CLI. It uses the shared
+private GitLab credential lifecycle and bounded, local, read-only API requests;
+artifact hashes are checked against their original bytes. Verification checks
+canonical project/source ownership, the exact pipeline and manual job, required
+native jobs, immutable image evidence and owned cleanup results. Historical System
+Review remains limited to Stop of its exact existing binding. Stop does not depend
+on expired build artifacts or a still-open merge request.
+
+Environment helpers do not receive GitLab credentials or mount its configuration.
+They send bounded JSON to the original controller's compiled evidence entry using
+their existing Docker transport. The entry invokes this shared service, closes
+its Nest context and exposes only a validated result. It does not deploy a
+container. No verifier loads a separate Rails program or creates a per-check token.
+
+The existing `node tests/gitlab/system-beta.js` contract entry consolidates System
+Beta, historical Stop, Wizard Production and ordinary environment evidence checks.
+The disposable platform also calls that same contract fixture on its harness;
+native source/setup/deploy/stop/TLS observations remain separate evidence. A
+successful fixture is not represented as a real GitLab pipeline execution.

@@ -253,8 +253,8 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   let proofRequests = 0;
   proof.json = async (_args, script) => {
     proofRequests++;
-    const encoded = script.match(/^BOOTSTRAPPER_ENVIRONMENT_INPUT = '([A-Za-z0-9+/=]+)'/)[1];
-    const input = JSON.parse(Buffer.from(encoded, 'base64'));
+    assert(_args.includes('/system/operations/dist/project-lifecycle/deployment-evidence-entry.js'));
+    const {input} = JSON.parse(script);
     assert.deepStrictEqual(input.legacyFiles, legacy.files, 'runtime omitted or altered an immutable managed build file');
     assert.strictEqual(input.buildActivationCommit, '6'.repeat(40));
     assert.deepStrictEqual(JSON.parse(input.legacyMarker.content), {version: 1, operation: '5'.repeat(48),
@@ -291,7 +291,7 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   proof.context.receipt.sourcePrimary = {version: 1, adoptionCommit: '9'.repeat(40), ciFiles};
   proof.context.receipt.wizardWorkflow.build = {version: 1, mode: 'source-primary', phase: 'candidate-verified'};
   proof.json = async (_args, script) => {
-    const input = JSON.parse(Buffer.from(script.match(/^BOOTSTRAPPER_ENVIRONMENT_INPUT = '([A-Za-z0-9+/=]+)'/)[1], 'base64'));
+    const {input} = JSON.parse(script);
     assert.deepStrictEqual(input.sourcePrimary.ciFiles, ciFiles);
     assert.strictEqual(input.repository.id, 5);
     assert.strictEqual(input.legacyFiles, undefined, 'Native proof must not depend on old instance markers');

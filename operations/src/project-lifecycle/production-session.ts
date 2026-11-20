@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { productionDocker } from './production-process';
 import os from 'node:os';
+import type { DeploymentEvidenceService } from './deployment-evidence.service';
 import {
   ProductionOptions,
   ProductionProof,
@@ -128,7 +129,10 @@ export class Promotion {
   token: string;
   recovering: boolean;
 
-  constructor(options: ProductionOptions = {}) {
+  constructor(
+    options: ProductionOptions = {},
+    private readonly evidence?: Pick<DeploymentEvidenceService, 'verify'>,
+  ) {
     this.config = options.config || '/state/.docker.env';
     this.projectConfig =
       options.projectConfig || path.join(path.dirname(this.config), '.projects.env/.wizard.env');
@@ -432,7 +436,6 @@ export class Promotion {
     checkpoint.candidateId = null;
   }
   async verify(proof: ProductionProof) {
-    const ruby = fs.readFileSync(path.join(sourceRoot, 'wizard-production/verify.rb'), 'utf8');
     let binding = null;
     if (fs.existsSync(this.projectConfig)) {
       const sourcePrimary = require(
@@ -448,24 +451,12 @@ export class Promotion {
         };
       }
     }
-    const script =
-      "WIZARD_PRODUCTION_PROOF = '" +
-      Buffer.from(JSON.stringify(proof)).toString('base64') +
-      "'\n" +
-      "WIZARD_PRODUCTION_BINDING = '" +
-      Buffer.from(JSON.stringify(binding)).toString('base64') +
-      "'\n" +
-      ruby;
-    const result = JSON.parse(
-      (
-        await this.command(
-          ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'],
-          script,
-          180000,
-        )
-      )
-        .split('\n')
-        .pop() || 'null',
+    if (!this.evidence) throw Error('Native deployment evidence provider required.');
+    const result = await this.evidence.verify(
+      path.dirname(sourceRoot),
+      'production',
+      proof,
+      binding,
     );
     if (!result.ok)
       throw new Error(

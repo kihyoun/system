@@ -49,16 +49,12 @@ function syncSession(candidate) {
     try{return JSON.parse(response.body);}catch{throw Error('guided-preview-sync-result-invalid');}
   };
 }
-async function verifierContract(candidate){
-  const root=path.resolve(__dirname,'../..');
-  const verifier=fs.readFileSync(path.join(root,'project-bootstrap/system-beta/verify.rb'),'utf8');
-  let tests=fs.readFileSync(path.join(root,'tests/gitlab/system-beta.rb'),'utf8');
-  tests=tests.replace("require_relative '../../project-bootstrap/system-beta/verify'",verifier)
-    .replace("JSON.parse(File.read(File.expand_path('../../gitlab/security-release.json', __dir__)))",'JSON.parse(Base64.strict_decode64('+JSON.stringify(Buffer.from(JSON.stringify(require('../../gitlab/security-release.json'))).toString('base64'))+'))')
-    .replace("load File.expand_path('../../project-bootstrap/system-beta/verify.rb', __dir__)",'eval(Base64.strict_decode64('+JSON.stringify(Buffer.from(verifier).toString('base64'))+'))');
-  const result=await candidate.rails(tests+'\nputs JSON.generate(mode:"contract-fixture",passed:true,negativeGatesPassed:true)');
-  requireValue(result.mode==='contract-fixture'&&result.passed===true&&result.negativeGatesPassed===true,'system-beta-verifier-contract-failed');return result;
+async function verifierContract(){
+  // A contract fixture deliberately runs outside GitLab; only native lifecycle
+  // observations below establish deployment and TLS behavior.
+  return require('../gitlab/system-beta')();
 }
+
 async function helper(candidate,binding,action,jobId,verifier){
   const request={action,kind:'beta',delivery:'system',projectId:binding.projectId,pipelineId:binding.pipelineId,jobId,
     sourceCommit:binding.sourceCommit,mrIid:0,operation:binding.operation};

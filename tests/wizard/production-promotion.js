@@ -27,7 +27,9 @@ class Fixture {
     this.originalConfig = logo + "\nexport WIZARD_ENABLE='true'\nexport WIZARD_HOST='system-bootstrapper.com'\nexport WIZARD_IMAGE='old-tag'\n";
     this.originalTemplate = '# Preserve all other services\nupstream gitlab { server 172.18.0.3:80; }\nupstream wizard {\n    server 172.18.0.2:80;\n}\ninclude /etc/nginx/templates/wizard-environments/*.conf;\n';
     fs.writeFileSync(this.config, this.originalConfig); fs.writeFileSync(this.template, this.originalTemplate); fs.writeFileSync(this.wizardEnv, 'WIZARD_IP=172.18.0.2\n');
-    this.promotion = new Promotion({...this, command: this.command.bind(this), pause: async () => undefined, ownerAlive: () => false});
+    this.promotion = new Promotion({...this, command: this.command.bind(this), pause: async () => undefined, ownerAlive: () => false}, {
+      verify: async (_checkout, kind, received) => {assert.equal(kind,'production');assert.deepEqual(received,proof);this.events.push('proof');if(this.afterProof)this.afterProof();return {ok:!this.badProof};}
+    });
   }
   container(id, imageId, address, labels) { return {id, imageId, labels, networks: {system_default: {IPAddress: address}}}; }
   async command(args) {
@@ -180,4 +182,10 @@ async function test(name, callback) { const fixture = new Fixture(); try { await
     await assert.rejects(f.apply(), /EEXIST/); assert.equal(f.containers.size, 1);
     assert.equal(hash(f.originalConfig), hash(fs.readFileSync(f.config)));
   });
+  const {NestFactory}=require('../../operations/node_modules/@nestjs/core');
+  const {ProductionModule}=require('../../operations/dist/project-lifecycle/production.module');
+  const {DeploymentEvidenceService}=require('../../operations/dist/project-lifecycle/deployment-evidence.service');
+  const app=await NestFactory.createApplicationContext(ProductionModule.register(),{logger:false,abortOnError:false});
+  try {assert.strictEqual(app.get(Promotion).evidence,app.get(DeploymentEvidenceService));}
+  finally {await app.close();}
 })().catch(error => { console.error(error); process.exitCode = 1; });

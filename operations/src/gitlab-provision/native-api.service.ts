@@ -21,7 +21,13 @@ function context(value: GitlabNativeContext): void {
 @Injectable()
 export class GitlabNativeApiService {
   constructor(@Inject(GITLAB_PROVISION_PROCESS) private readonly child: LifecycleProcess) {}
-  private run(value: GitlabNativeContext, args: string[], input?: string, timeout = 65000) {
+  private run(
+    value: GitlabNativeContext,
+    args: string[],
+    input?: string,
+    timeout = 65000,
+    maxBytes = 2 * 1024 * 1024,
+  ) {
     context(value);
     return this.child.run(
       'docker',
@@ -38,7 +44,7 @@ export class GitlabNativeApiService {
         signal: value.signal,
         input,
         timeout,
-        maxBuffer: 2 * 1024 * 1024,
+        maxBuffer: maxBytes,
       },
     );
   }
@@ -69,6 +75,28 @@ export class GitlabNativeApiService {
     route: string,
     body?: unknown,
   ): Promise<GitlabApiResult> {
+    const response = await this.exchange(value, token, method, route, body);
+    try {
+      return {
+        status: response.status,
+        value: response.bytes.length ? JSON.parse(response.bytes.toString('utf8')) : null,
+      };
+    } catch {
+      throw Object.assign(Error('gitlab-native-response-invalid'), { uncertain: method !== 'GET' });
+    }
+  }
+  /** Read-only artifact bytes retain the hash identity emitted by the CI job. */
+  async readBytes(value: GitlabNativeContext, token: string, route: string) {
+    return this.exchange(value, token, 'GET', route, undefined, 8 * 1024 * 1024);
+  }
+  private async exchange(
+    value: GitlabNativeContext,
+    token: string,
+    method: GitlabMethod,
+    route: string,
+    body?: unknown,
+    maxBytes = 2 * 1024 * 1024,
+  ): Promise<{ status: number; bytes: Buffer }> {
     context(value);
     if (
       !token ||
@@ -98,7 +126,7 @@ export class GitlabNativeApiService {
           '--max-time',
           '60',
           '--max-filesize',
-          String(2 * 1024 * 1024),
+          String(maxBytes),
           '--request',
           method,
           '--config',
@@ -109,6 +137,8 @@ export class GitlabNativeApiService {
           'http://127.0.0.1/api/v4/' + route,
         ],
         configuration,
+        65000,
+        maxBytes + 128,
       );
     } catch {
       throw Object.assign(Error('gitlab-native-request-incomplete'), {
@@ -118,11 +148,8 @@ export class GitlabNativeApiService {
     const match = /\nBOOTSTRAPPER_HTTP_STATUS:([1-5][0-9]{2})$/.exec(output);
     if (!match || (Number(match[1]) >= 300 && Number(match[1]) < 400))
       throw Object.assign(Error('gitlab-native-response-invalid'), { uncertain: method !== 'GET' });
-    try {
-      const bytes = output.slice(0, match.index);
-      return { status: Number(match[1]), value: bytes ? JSON.parse(bytes) : null };
-    } catch {
-      throw Object.assign(Error('gitlab-native-response-invalid'), { uncertain: method !== 'GET' });
-    }
+    const bytes = Buffer.from(output.slice(0, match.index));
+    if (bytes.length > maxBytes) throw Error('gitlab-native-response-too-large');
+    return { status: Number(match[1]), bytes };
   }
 }

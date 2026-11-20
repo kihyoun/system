@@ -1,0 +1,848 @@
+{
+  "beta": {
+    "input": {
+      "binding": {
+        "version": 2,
+        "sourceLayout": "system-monorepo-v1",
+        "operation": "ffffffffffffffffffffffffffffffffffffffffffffffff",
+        "projectId": 4,
+        "projectPath": "team/system",
+        "namespaceId": 9,
+        "defaultBranch": "main",
+        "mrIid": 0,
+        "pipelineId": 10,
+        "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "helperImage": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "wizardImageId": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "wizardImageRef": "registry.example.test/team/system/successor-wizard@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "wizardSourceTree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "candidateJobId": 24,
+        "wizardProjectId": 7,
+        "wizardProjectPath": "team/wizard",
+        "wizardDefaultBranch": "master",
+        "environmentHash": "49ca80f1b46591e301d4b4357118d5ed7725c383f764a9bcd88d126692c78542"
+      },
+      "request": {
+        "action": "deploy",
+        "kind": "beta",
+        "projectId": 4,
+        "pipelineId": 10,
+        "jobId": 90,
+        "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mrIid": 0,
+        "operation": "ffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "environments": {
+        "version": 1,
+        "managementMode": "source-primary",
+        "phase": "ready",
+        "operation": "ffffffffffffffffffffffffffffffffffffffffffffffff",
+        "helperImage": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "controller": "system_bootstrapper_1",
+        "activationCommit": "cccccccccccccccccccccccccccccccccccccccc",
+        "settings": {
+          "beta": {
+            "enabled": true,
+            "host": "beta.example.test",
+            "domainMode": 2
+          }
+        },
+        "settingsHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "recipeHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "ciFiles": [
+
+        ],
+        "deployments": {
+        }
+      },
+      "repository": {
+        "id": 7,
+        "path": "team/wizard",
+        "namespaceId": 9,
+        "defaultBranch": "master"
+      },
+      "securityRelease": {
+        "format": "system-gitlab-security-release-v1",
+        "edition": "CE",
+        "fromVersion": "19.5.3",
+        "toVersion": "19.6.1",
+        "fromImage": "gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c",
+        "toImage": "gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056",
+        "published": "2026-11-20",
+        "advisory": "https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-6-1-released/",
+        "upgradeDocumentation": "https://docs.gitlab.com/update/docker/",
+        "criticalCve": "CVE-2026-132825",
+        "databaseMigrations": true,
+        "postDeploymentMigrations": true,
+        "singleNodeDowntime": true,
+        "rollbackRequiresColdCheckpoint": true,
+        "runner": {
+          "fromVersion": "19.5.1",
+          "toVersion": "19.6.0",
+          "fromImage": "gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd",
+          "toImage": "gitlab/gitlab-runner:v19.6.0@sha256:fb454a097fd26ea329b0234d6d82b53ae25f672bd625c278eaaee683a00f2507",
+          "helperImage": "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v19.6.0@sha256:41cd8d2b71d8bd25bb4e3ecd05d866da987cd2c969107a18b48538d697e6356a",
+          "fromHelperImage": "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v19.5.1@sha256:d8617651f40c9e28ec5e3bf289a0ec77ea1da6b15d53accc26d4e860d934fb5f"
+        },
+        "jobCaBundleSha256": "796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe",
+        "upgradePathDocumentation": "https://docs.gitlab.com/update/upgrade_paths/",
+        "requiredUpgradeStop": "19.5"
+      }
+    },
+    "baseline": {
+      "projects/4": {
+        "id": 4,
+        "path_with_namespace": "team/system",
+        "namespace": {
+          "id": 9
+        },
+        "default_branch": "main",
+        "visibility": "private",
+        "ci_config_path": null,
+        "only_allow_merge_if_pipeline_succeeds": true,
+        "only_allow_merge_if_all_discussions_are_resolved": true,
+        "container_registry_image_prefix": "registry.example.test/team/system"
+      },
+      "projects/4/repository/branches/main": {
+        "protected": true
+      },
+      "projects/4/pipelines/10": {
+        "id": 10,
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source": "merge_request_event",
+        "status": "running",
+        "project_id": 4
+      },
+      "projects/4/jobs/90": {
+        "id": 90,
+        "name": "deploy:wizard-beta",
+        "status": "running",
+        "allow_failure": true,
+        "pipeline": {
+          "id": 10
+        },
+        "commit": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "project_id": 4
+      },
+      "projects/4/pipelines/10/jobs?per_page=100&include_retried=false": [
+        {
+          "id": 20,
+          "name": "check:documentation",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 21,
+          "name": "prepare:wizard-source",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 22,
+          "name": "test:candidate-image",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 23,
+          "name": "test:wizard-browser",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 24,
+          "name": "test:platform-candidate",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 25,
+          "name": "build",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 26,
+          "name": "test:isolated: [gitlab]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 27,
+          "name": "test:isolated: [sync]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 28,
+          "name": "test:isolated: [gitlab-runner]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 29,
+          "name": "test:isolated: [bootstrapper]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 30,
+          "name": "test:isolated: [nginx]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 31,
+          "name": "test:isolated: [wizard]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 32,
+          "name": "test:isolated: [shared]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 33,
+          "name": "test:isolated: [performance]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 90,
+          "name": "deploy:wizard-beta",
+          "status": "running",
+          "allow_failure": true,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        }
+      ],
+      "projects/4/merge_requests/2": {
+        "iid": 2,
+        "source_project_id": 4,
+        "target_project_id": 4,
+        "target_branch": "main",
+        "state": "opened",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "projects/4/merge_requests/2/pipelines?per_page=100": [
+        {
+          "id": 10,
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source": "merge_request_event",
+          "status": "running",
+          "project_id": 4
+        }
+      ],
+      "projects/4/repository/tree?ref=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&per_page=100": [
+        {
+          "path": "wizard",
+          "type": "tree",
+          "mode": "040000",
+          "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "projects/7": {
+        "id": 7,
+        "path_with_namespace": "team/wizard",
+        "namespace": {
+          "id": 9
+        },
+        "default_branch": "master",
+        "visibility": "private"
+      },
+      "projects/7/repository/commits/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+        "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "projects/4/jobs/24/artifacts/test-results/successor/candidate-results.json": "{\"runId\":\"ffffffffffffffffffffffff\",\"sourceRevision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"fullAcceptance\":true,\"images\":{\"candidate\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"wizard\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"gitlab\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"runner\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\"},\"results\":[{\"name\":\"gitlab-upgrade-migrated-data\",\"status\":\"passed\"},{\"name\":\"gitlab-upgrade-registry-ci\",\"status\":\"passed\"},{\"name\":\"gitlab-upgrade-restored-checkpoint\",\"status\":\"passed\"},{\"name\":\"gitlab-upgrade-security-trust\",\"status\":\"passed\"},{\"name\":\"storage-global-live-lease\",\"status\":\"passed\"},{\"name\":\"storage-refuse-nonempty-and-corrupt-restore\",\"status\":\"passed\"},{\"name\":\"storage-detached-backup-normal-operation\",\"status\":\"passed\"},{\"name\":\"cleanup\",\"status\":\"passed\"}],\"evidence\":{\"storage\":{\"localLiveVerified\":true,\"externalSeedRestored\":true,\"backupDetached\":true,\"missingBackupGuardVerified\":true,\"globalLeaseVerified\":true,\"invalidRestoreGuardVerified\":true},\"gitlabUpgrade\":{\"fromImage\":\"gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c\",\"toImage\":\"gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056\",\"fromImageId\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"toImageId\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"migrationVerified\":true,\"rollbackVerified\":true,\"registryVerified\":true,\"checkpointVerified\":true,\"runnerImage\":\"gitlab/gitlab-runner:v19.6.0@sha256:fb454a097fd26ea329b0234d6d82b53ae25f672bd625c278eaaee683a00f2507\",\"runnerVersion\":\"19.6.0\",\"runnerImageId\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"fromRunnerImageId\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"helperImage\":\"registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v19.6.0@sha256:41cd8d2b71d8bd25bb4e3ecd05d866da987cd2c969107a18b48538d697e6356a\",\"helperImageId\":\"sha256:8888888888888888888888888888888888888888888888888888888888888888\",\"fromHelperImageId\":\"sha256:9999999999999999999999999999999999999999999999999999999999999999\",\"securityTrustVerified\":true,\"runnerUpgradeVerified\":true,\"runnerManagerIdentityPreserved\":true,\"jobCaBundleSha256\":\"796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe\"}}}",
+      "projects/4/jobs/24/artifacts/test-results/successor/release.json": {
+        "format": "system-successor-release-v1",
+        "sourceLayout": "system-monorepo-v1",
+        "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sourceTree": "cccccccccccccccccccccccccccccccccccccccc",
+        "wizardSourceTree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "projectId": 4,
+        "pipelineId": 10,
+        "candidateJobId": 24,
+        "imageId": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "wizardImageId": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "registryRepository": "registry.example.test/team/system/successor",
+        "registryReference": "registry.example.test/team/system/successor@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "wizardRegistryReference": "registry.example.test/team/system/successor-wizard@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "candidateEvidencePath": "test-results/successor/candidate-results.json",
+        "candidateEvidenceSha256": "7b486285eeae87fa856f3886cfc9f2537f151daf34cca0f3784ae45ca30419b7"
+      },
+      "projects/4/jobs/23/artifacts/test-results/wizard-browser/cleanup-on-exit.json": {
+        "container": "system-wizard-browser-4-23",
+        "image": "system-wizard-browser:ci-4-23",
+        "status": "passed"
+      },
+      "projects/4/jobs/23/artifacts/test-results/wizard-browser/cleanup-after-script.json": {
+        "container": "system-wizard-browser-4-23",
+        "image": "system-wizard-browser:ci-4-23",
+        "status": "passed"
+      }
+    }
+  },
+  "review": {
+    "input": {
+      "binding": {
+        "version": 1,
+        "operation": "ffffffffffffffffffffffffffffffffffffffffffffffff",
+        "projectId": 4,
+        "projectPath": "team/system",
+        "namespaceId": 9,
+        "defaultBranch": "main",
+        "mrIid": 2,
+        "pipelineId": 10,
+        "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "helperImage": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "wizardImageId": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "wizardImageRef": "registry.example.test/team/system/successor-wizard@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "wizardRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "candidateJobId": 24,
+        "wizardProjectId": 7,
+        "wizardProjectPath": "team/wizard",
+        "wizardDefaultBranch": "master",
+        "environmentHash": "0fe5556d4bf905f9597abdfb6d76b3d6651d894db97c8a3d7fdd52d338dfccd7"
+      },
+      "request": {
+        "action": "deploy",
+        "kind": "review",
+        "projectId": 4,
+        "pipelineId": 10,
+        "jobId": 90,
+        "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mrIid": 2,
+        "operation": "ffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "environments": {
+        "version": 1,
+        "managementMode": "source-primary",
+        "phase": "ready",
+        "operation": "ffffffffffffffffffffffffffffffffffffffffffffffff",
+        "helperImage": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "controller": "system_bootstrapper_1",
+        "activationCommit": "cccccccccccccccccccccccccccccccccccccccc",
+        "settings": {
+          "review": {
+            "enabled": true,
+            "host": "review.example.test",
+            "domainMode": 2
+          }
+        },
+        "settingsHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "recipeHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "ciFiles": [
+
+        ],
+        "deployments": {
+        }
+      },
+      "repository": {
+        "id": 7,
+        "path": "team/wizard",
+        "namespaceId": 9,
+        "defaultBranch": "master"
+      },
+      "securityRelease": {
+        "format": "system-gitlab-security-release-v1",
+        "edition": "CE",
+        "fromVersion": "19.5.3",
+        "toVersion": "19.6.1",
+        "fromImage": "gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c",
+        "toImage": "gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056",
+        "published": "2026-11-20",
+        "advisory": "https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-6-1-released/",
+        "upgradeDocumentation": "https://docs.gitlab.com/update/docker/",
+        "criticalCve": "CVE-2026-132825",
+        "databaseMigrations": true,
+        "postDeploymentMigrations": true,
+        "singleNodeDowntime": true,
+        "rollbackRequiresColdCheckpoint": true,
+        "runner": {
+          "fromVersion": "19.5.1",
+          "toVersion": "19.6.0",
+          "fromImage": "gitlab/gitlab-runner:v19.5.1@sha256:8e049fb719162488893a9eccc48f3a05259d02f2386dfbb20f3e379a50575afd",
+          "toImage": "gitlab/gitlab-runner:v19.6.0@sha256:fb454a097fd26ea329b0234d6d82b53ae25f672bd625c278eaaee683a00f2507",
+          "helperImage": "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v19.6.0@sha256:41cd8d2b71d8bd25bb4e3ecd05d866da987cd2c969107a18b48538d697e6356a",
+          "fromHelperImage": "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v19.5.1@sha256:d8617651f40c9e28ec5e3bf289a0ec77ea1da6b15d53accc26d4e860d934fb5f"
+        },
+        "jobCaBundleSha256": "796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe",
+        "upgradePathDocumentation": "https://docs.gitlab.com/update/upgrade_paths/",
+        "requiredUpgradeStop": "19.5"
+      }
+    },
+    "baseline": {
+      "projects/4": {
+        "id": 4,
+        "path_with_namespace": "team/system",
+        "namespace": {
+          "id": 9
+        },
+        "default_branch": "main",
+        "visibility": "private",
+        "ci_config_path": null,
+        "only_allow_merge_if_pipeline_succeeds": true,
+        "only_allow_merge_if_all_discussions_are_resolved": true,
+        "container_registry_image_prefix": "registry.example.test/team/system"
+      },
+      "projects/4/repository/branches/main": {
+        "protected": true
+      },
+      "projects/4/pipelines/10": {
+        "id": 10,
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source": "merge_request_event",
+        "status": "running",
+        "project_id": 4
+      },
+      "projects/4/jobs/90": {
+        "id": 90,
+        "name": "deploy:wizard-review",
+        "status": "running",
+        "allow_failure": true,
+        "pipeline": {
+          "id": 10
+        },
+        "commit": {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "project_id": 4
+      },
+      "projects/4/pipelines/10/jobs?per_page=100&include_retried=false": [
+        {
+          "id": 20,
+          "name": "check:documentation",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 21,
+          "name": "prepare:wizard-source",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 22,
+          "name": "test:candidate-image",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 23,
+          "name": "test:wizard-browser",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 24,
+          "name": "test:platform-candidate",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 25,
+          "name": "build",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 26,
+          "name": "test:isolated: [gitlab]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 27,
+          "name": "test:isolated: [sync]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 28,
+          "name": "test:isolated: [gitlab-runner]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 29,
+          "name": "test:isolated: [bootstrapper]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 30,
+          "name": "test:isolated: [nginx]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 31,
+          "name": "test:isolated: [wizard]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 32,
+          "name": "test:isolated: [shared]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 33,
+          "name": "test:isolated: [performance]",
+          "status": "success",
+          "allow_failure": false,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        },
+        {
+          "id": 90,
+          "name": "deploy:wizard-review",
+          "status": "running",
+          "allow_failure": true,
+          "pipeline": {
+            "id": 10
+          },
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "project_id": 4
+        }
+      ],
+      "projects/4/merge_requests/2": {
+        "iid": 2,
+        "source_project_id": 4,
+        "target_project_id": 4,
+        "target_branch": "main",
+        "state": "opened",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "projects/4/merge_requests/2/pipelines?per_page=100": [
+        {
+          "id": 10,
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source": "merge_request_event",
+          "status": "running",
+          "project_id": 4
+        }
+      ],
+      "projects/4/repository/tree?ref=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&per_page=100": [
+        {
+          "path": "wizard",
+          "type": "commit",
+          "mode": "160000",
+          "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "projects/7": {
+        "id": 7,
+        "path_with_namespace": "team/wizard",
+        "namespace": {
+          "id": 9
+        },
+        "default_branch": "master",
+        "visibility": "private"
+      },
+      "projects/7/repository/commits/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+        "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "projects/4/jobs/24/artifacts/test-results/successor/candidate-results.json": "{\"runId\":\"ffffffffffffffffffffffff\",\"sourceRevision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"fullAcceptance\":true,\"images\":{\"candidate\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"wizard\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"gitlab\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"runner\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\"},\"results\":[{\"name\":\"gitlab-upgrade-migrated-data\",\"status\":\"passed\"},{\"name\":\"gitlab-upgrade-registry-ci\",\"status\":\"passed\"},{\"name\":\"gitlab-upgrade-restored-checkpoint\",\"status\":\"passed\"},{\"name\":\"gitlab-upgrade-security-trust\",\"status\":\"passed\"},{\"name\":\"storage-global-live-lease\",\"status\":\"passed\"},{\"name\":\"storage-refuse-nonempty-and-corrupt-restore\",\"status\":\"passed\"},{\"name\":\"storage-detached-backup-normal-operation\",\"status\":\"passed\"},{\"name\":\"cleanup\",\"status\":\"passed\"}],\"evidence\":{\"storage\":{\"localLiveVerified\":true,\"externalSeedRestored\":true,\"backupDetached\":true,\"missingBackupGuardVerified\":true,\"globalLeaseVerified\":true,\"invalidRestoreGuardVerified\":true},\"gitlabUpgrade\":{\"fromImage\":\"gitlab/gitlab-ce:19.5.3-ce.0@sha256:6863d156a1a477bd6f69fc674b671d0163cd8b06bf63bb17cc4a4a803b78b27c\",\"toImage\":\"gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056\",\"fromImageId\":\"sha256:6666666666666666666666666666666666666666666666666666666666666666\",\"toImageId\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"migrationVerified\":true,\"rollbackVerified\":true,\"registryVerified\":true,\"checkpointVerified\":true,\"runnerImage\":\"gitlab/gitlab-runner:v19.6.0@sha256:fb454a097fd26ea329b0234d6d82b53ae25f672bd625c278eaaee683a00f2507\",\"runnerVersion\":\"19.6.0\",\"runnerImageId\":\"sha256:5555555555555555555555555555555555555555555555555555555555555555\",\"fromRunnerImageId\":\"sha256:7777777777777777777777777777777777777777777777777777777777777777\",\"helperImage\":\"registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v19.6.0@sha256:41cd8d2b71d8bd25bb4e3ecd05d866da987cd2c969107a18b48538d697e6356a\",\"helperImageId\":\"sha256:8888888888888888888888888888888888888888888888888888888888888888\",\"fromHelperImageId\":\"sha256:9999999999999999999999999999999999999999999999999999999999999999\",\"securityTrustVerified\":true,\"runnerUpgradeVerified\":true,\"runnerManagerIdentityPreserved\":true,\"jobCaBundleSha256\":\"796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe\"}}}",
+      "projects/4/jobs/24/artifacts/test-results/successor/release.json": {
+        "format": "system-successor-release-v1",
+        "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sourceTree": "cccccccccccccccccccccccccccccccccccccccc",
+        "wizardRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "projectId": 4,
+        "pipelineId": 10,
+        "candidateJobId": 24,
+        "imageId": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "wizardImageId": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "registryRepository": "registry.example.test/team/system/successor",
+        "registryReference": "registry.example.test/team/system/successor@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "wizardRegistryReference": "registry.example.test/team/system/successor-wizard@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "candidateEvidencePath": "test-results/successor/candidate-results.json",
+        "candidateEvidenceSha256": "7b486285eeae87fa856f3886cfc9f2537f151daf34cca0f3784ae45ca30419b7"
+      },
+      "projects/4/jobs/23/artifacts/test-results/wizard-browser/cleanup-on-exit.json": {
+        "container": "system-wizard-browser-4-23",
+        "image": "system-wizard-browser:ci-4-23",
+        "status": "passed"
+      },
+      "projects/4/jobs/23/artifacts/test-results/wizard-browser/cleanup-after-script.json": {
+        "container": "system-wizard-browser-4-23",
+        "image": "system-wizard-browser:ci-4-23",
+        "status": "passed"
+      }
+    }
+  },
+  "production": {
+    "input": {
+      "version": 1,
+      "projectId": 3,
+      "projectPath": "root/wizard",
+      "pipelineId": 21,
+      "sourceCommit": "dddddddddddddddddddddddddddddddddddddddd",
+      "imageRef": "registry.example.test/root/wizard@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "productionHost": "system-bootstrapper.com"
+    },
+    "baseline": {
+      "projects/3": {
+        "visibility": "private",
+        "path_with_namespace": "root/wizard",
+        "ci_config_path": ".system-bootstrapper/ci.yml"
+      },
+      "projects/3/pipelines/21": {
+        "id": 21,
+        "sha": "dddddddddddddddddddddddddddddddddddddddd",
+        "status": "success"
+      },
+      "projects/3/pipelines/21/jobs?per_page=100&include_retried=false": [
+        {
+          "id": 41,
+          "name": "build:wizard",
+          "status": "success",
+          "allow_failure": false,
+          "commit": {
+            "id": "dddddddddddddddddddddddddddddddddddddddd"
+          }
+        },
+        {
+          "id": 42,
+          "name": "test:wizard",
+          "status": "success",
+          "allow_failure": false,
+          "commit": {
+            "id": "dddddddddddddddddddddddddddddddddddddddd"
+          }
+        }
+      ],
+      "projects/3/jobs/41/artifacts/build-evidence.json": {
+        "version": 1,
+        "sourceCommit": "dddddddddddddddddddddddddddddddddddddddd",
+        "pipelineId": 21,
+        "imageRef": "registry.example.test/root/wizard@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "unitTests": true,
+        "testRunner": "vitest",
+        "lint": true,
+        "typecheck": true,
+        "productionBuild": true
+      },
+      "projects/3/jobs/42/artifacts/wizard-evidence.json": {
+        "version": 1,
+        "sourceCommit": "dddddddddddddddddddddddddddddddddddddddd",
+        "pipelineId": 21,
+        "imageRef": "registry.example.test/root/wizard@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "http": true,
+        "renderedUI": true,
+        "projects": true,
+        "spa": true,
+        "configurationBackup": true,
+        "cubeSignature": true
+      }
+    }
+  }
+}

@@ -50,8 +50,8 @@ export class ManagedChildProcess implements LifecycleProcess {
       } finally {
         if (inputFd !== undefined) fs.closeSync(inputFd);
       }
-      let output = '',
-        bytes = 0,
+      const output: Buffer[] = [];
+      let bytes = 0,
         uncertain = false,
         spawnError = false;
       let forced: NodeJS.Timeout | undefined;
@@ -74,7 +74,7 @@ export class ManagedChildProcess implements LifecycleProcess {
         bytes += value.length;
         if (bytes > (options.maxBuffer ?? 1024 * 1024)) cancel();
         else {
-          output += value.toString();
+          output.push(value);
           try {
             options.output?.(value);
           } catch {
@@ -114,7 +114,7 @@ export class ManagedChildProcess implements LifecycleProcess {
               uncertain || spawnError || signal !== null || status === null,
             ),
           );
-        else resolve(output);
+        else resolve(Buffer.concat(output).toString('utf8'));
       });
     });
   }

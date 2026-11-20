@@ -13,6 +13,9 @@ test('managed process passes exact binary file through stdin and refuses links',
  const options={cwd:root,env:process.env,timeout:5000,inputFile:input};
  const result=await child.run(process.execPath,['-e','process.stdout.write(require("node:fs").readFileSync(0).toString("hex"))'],options);
  assert.equal(result,data.toString('hex'));
+ const unicode='한글 — Grüße 🧊\n', chunks=[];
+ const streamed=await child.run(process.execPath,['-e',"(async()=>{for(const byte of Buffer.from(process.argv[1])){process.stdout.write(Buffer.from([byte]));await new Promise(resolve=>setTimeout(resolve,3));}})()",unicode],{cwd:root,env:process.env,timeout:5000,output:chunk=>chunks.push(chunk)});
+ assert.equal(streamed,unicode);assert(Buffer.concat(chunks).equals(Buffer.from(unicode)));
  fs.symlinkSync(input,path.join(root,'link'));
  await assert.rejects(child.run(process.execPath,['-e','process.exit(0)'],{...options,inputFile:path.join(root,'link')}));
  await assert.rejects(child.run(process.execPath,['-e','process.exit(0)'],{...options,input:'ambiguous'}),/ambiguous-process-input/);
