@@ -41,6 +41,9 @@ try {
 // Keep the former authoring checks in the existing component entry: no extra gate.
 const {DocumentationExportService,documentationHeadings}=require('../../operations/dist/documentation/documentation-export.service');
 const service=new DocumentationExportService(),checkout=path.resolve(__dirname,'../..'),bundle=service.build(checkout);
+const {included}=require('../prepare-context');
+for(const filename of [...Object.keys(bundle.sources),...Object.keys(bundle.images),'docs/wizard-docs-catalog.json'])assert(included(filename),filename);
+assert(!included('docs/private.env'));assert(!included('docs/credentials.json'));
 for(const filename of Object.keys(bundle.sources)){
   const chapters=bundle.chapters.filter(chapter=>chapter.source===filename&&Number.isInteger(chapter.sourceStart)).sort((a,b)=>a.sourceStart-b.sourceStart);
   assert.equal(chapters.map(chapter=>chapter.markdown).join(''),fs.readFileSync(path.join(checkout,filename),'utf8'),filename);

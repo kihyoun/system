@@ -28,8 +28,8 @@ hosts use `tools/quickstart/quickstart.sh --runtime-only vMAJOR.MINOR.PATCH`; th
 and copied package support recovery without npm or network access. Developers
 can build from `operations/` and run
 `node --test operations/tests/host-install.test.cjs` from the repository root.
-The historical `python3 tests/bootstrapper/public-release.py` test entry runs that
-same suite. Tests use temporary files, real Git objects and real local flock
+The existing operations component entry runs this suite once. Tests use temporary
+files, real Git objects and real local flock
 exclusion, with Docker and service startup supplied by synthetic process ports.
 
 `guardian.ts` owns a host command group independently of its coordinator. It

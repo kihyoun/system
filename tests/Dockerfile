@@ -29,6 +29,7 @@ COPY operations/tests ./operations/tests
 COPY operations/tsconfig.json ./operations/tsconfig.json
 COPY operations/README.md ./operations/README.md
 COPY operations/scripts ./operations/scripts
+COPY gitlab/guided-preview-evidence.js gitlab/guided-preview-evidence-v1.js gitlab/job-diagnostics.js ./gitlab/
 COPY LICENSE .prettierrc .prettierignore ./
 COPY project-bootstrap ./project-bootstrap
 RUN cd operations && npm run build
@@ -44,7 +45,9 @@ COPY system/ ./system/
 COPY bootstrapper/ ./bootstrapper/
 COPY tools/ ./tools/
 COPY tests ./tests
-COPY docs/check-wizard-docs.js ./docs/check-wizard-docs.js
+COPY docs ./docs
+COPY Prepare-Host.md overview.png ./
+COPY gitlab-runner/README.md ./gitlab-runner/README.md
 COPY .gitlab-ci.yml ./
 COPY VERSION ./
 RUN node project-bootstrap/wizard-source/package.js --verify \

@@ -28,6 +28,7 @@ export interface RecoveryExportInput {
   gitlabUrl: string;
   tokenFile: string;
   output: string;
+  signal?: AbortSignal;
 }
 type Row = Record<string, unknown>;
 /** Retain an accepted running controller without changing saved service selections. */
@@ -72,7 +73,7 @@ export class RecoveryExportService {
       releaseBytes,
       evidenceBytes,
     );
-    return this.record(config, release, evidence, checkout, input.output);
+    return this.record(config, release, evidence, checkout, input.output, input.signal);
   }
   private container(name: string): Row {
     const rows: unknown = JSON.parse(
@@ -117,6 +118,7 @@ export class RecoveryExportService {
     evidence: Row,
     checkout: string,
     output: string,
+    signal?: AbortSignal,
   ): Promise<Row> {
     this.source.verifyCheckout(release, checkout);
     const source = this.host.source(checkout),
@@ -184,6 +186,7 @@ export class RecoveryExportService {
         reference,
         String(controller.Image),
         source,
+        signal,
       );
       const value = this.publication.refresh(
         previous,

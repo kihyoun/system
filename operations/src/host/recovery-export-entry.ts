@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { lifecyclePolicy } from '../release/lifecycle-policy';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { NestFactory } from '@nestjs/core';
@@ -33,9 +34,13 @@ export async function recoveryExportMain(args = process.argv.slice(2)): Promise<
     ensure(values[name], 'missing-' + name);
   const checkout = path.resolve(values.checkout!);
   const app = await NestFactory.createApplicationContext(
-    HostModule.register({ lifecycleEvidence: require('../../../gitlab/guided-preview-evidence') }),
+    HostModule.register({ lifecycleEvidence: lifecyclePolicy() }),
     { logger: false },
   );
+  const cancellation = new AbortController(),
+    cancel = () => cancellation.abort();
+  process.once('SIGINT', cancel);
+  process.once('SIGTERM', cancel);
   try {
     await app.get(RecoveryExportService).execute({
       checkout,
@@ -45,9 +50,12 @@ export async function recoveryExportMain(args = process.argv.slice(2)): Promise<
       gitlabUrl: values['gitlab-url']!,
       tokenFile: values['token-file']!,
       output: values.output!,
+      signal: cancellation.signal,
     });
     process.stdout.write('Accepted successor recovery images and source identities recorded.\n');
   } finally {
+    process.removeListener('SIGINT', cancel);
+    process.removeListener('SIGTERM', cancel);
     await app.close();
   }
 }

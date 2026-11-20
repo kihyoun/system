@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { lifecyclePolicy } from '../release/lifecycle-policy';
 import { NativeEntryRuntime } from './native-entry-runtime';
 import { HostModule } from './host.module';
 import { CandidateAuthorityService, type CandidateGitLabApi } from './candidate-authority.service';
@@ -31,7 +32,7 @@ export async function candidateAuthorityMain(): Promise<void> {
     };
     const app = await runtime.application(
         HostModule.register({
-          lifecycleEvidence: require('../../../gitlab/guided-preview-evidence'),
+          lifecycleEvidence: lifecyclePolicy(),
         }),
       ),
       service = app.get(CandidateAuthorityService);

@@ -69,6 +69,17 @@ operation keeps its leases and checkpoint for reconciliation; do not delete
 those files to force a retry. This command does not reverse a GitLab database
 migration.
 
+`system-bootstrapper recovery-export` invokes the same shared host service as the
+repository recovery-export entry. Supply the reviewed absolute checkout, private
+release/evidence inputs, configured GitLab URL, token file and output path described
+in the controller reference. The command retains accepted image bytes and source
+identities; it does not perform a Harvest. `system-bootstrapper gitlab-credentials
+--help` describes the private automation credential lifecycle in the controller
+mount namespace. Its successful output contains account/token metadata only.
+The CLI and controller ship the same source-owned lifecycle evidence validators
+as explicit package assets, so offline recovery does not load missing code from
+outside the installed package. Packaging checks compare those bytes with source.
+
 The [operation architecture and entry-point inventory](ARCHITECTURE.md) maps
 API/CLI compatibility paths, privileges, durable ownership, native boundaries,
 focused tests and failure/recovery responsibilities across the platform.

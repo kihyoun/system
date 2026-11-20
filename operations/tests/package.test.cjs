@@ -17,6 +17,10 @@ test('public tarball carries compiled CLI and offline validation assets without 
     assert(!files.some(file=>/(?:^|\/)(?:\.env|\.npmrc|private)(?:\/|$)/.test(file)));
     execFileSync('tar',['-xzf',path.join(temporary,record.filename),'-C',temporary]);
     const unpacked=path.join(temporary,'package');
+    for(const file of ['guided-preview-evidence.js','guided-preview-evidence-v1.js','job-diagnostics.js'])
+      assert(fs.readFileSync(path.join(unpacked,'assets/gitlab',file)).equals(fs.readFileSync(path.join(root,'../gitlab',file))),file);
+    const policy=require(path.join(unpacked,'dist/release/lifecycle-policy')).lifecyclePolicy();
+    assert.equal(typeof policy.validateAuthority,'function');assert(policy.stagesV2.includes('system-beta-native-deploy'));
     const metadata=JSON.parse(fs.readFileSync(path.join(unpacked,'package.json')));
     for(const script of ['preinstall','install','postinstall','prepare'])assert.equal(metadata.scripts[script],undefined);
     assert.equal(metadata.bin['system-bootstrapper'],'dist/cli.js');

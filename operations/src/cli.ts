@@ -78,10 +78,25 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
         '  start / stop        Start or stop the host platform\n' +
         '  persistence         Verify and prepare selected persistent storage\n\n' +
         '  promotion-abort     Recover an interrupted promotion from its retained checkpoint\n\n' +
+        '  recovery-export     Retain the accepted running controller image and source\n' +
+        '  gitlab-credentials  Initialize or recover the private automation credential\n\n' +
         'Host commands require --checkout /absolute/reviewed/source.\n' +
         'Storage: --image IMAGE --persistence-env FILE [--check-only] [--configuration-backup ZIP]\n' +
         'Install: --controller IMAGE@sha256:DIGEST --wizard IMAGE@sha256:DIGEST [--release-metadata FILE] [--install-host]\n',
     );
+    return;
+  }
+  if (args[0] === 'recovery-export') {
+    const checkout = args.indexOf('--checkout');
+    if (checkout < 1 || !args[checkout + 1]?.startsWith('/'))
+      throw new Error('explicit-host-checkout-required');
+    const { recoveryExportMain } = await import('./host/recovery-export-entry.js');
+    await recoveryExportMain([...args.slice(1)]);
+    return;
+  }
+  if (args[0] === 'gitlab-credentials') {
+    const { main: credentials } = await import('./gitlab-provision/entry.js');
+    await credentials([...args.slice(1)]);
     return;
   }
   if (args[0] === 'promotion-abort') {

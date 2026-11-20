@@ -1,5 +1,6 @@
 import { RecoveryArchiveService } from './recovery-archive.service';
 import { PublicReleaseAssetsService } from './public-release-assets.service';
+import { lifecyclePolicy } from '../release/lifecycle-policy';
 import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
 import {
   RuntimeVerificationService,
@@ -122,7 +123,7 @@ export async function compatibility(
     const { HostModule } = await import('./host.module.js');
     return NestFactory.createApplicationContext(
       HostModule.register({
-        lifecycleEvidence: require('../../../gitlab/guided-preview-evidence'),
+        lifecycleEvidence: lifecyclePolicy(),
       }),
       { logger: false },
     );

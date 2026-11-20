@@ -21,6 +21,10 @@ function included(name) {
   // exact allowlist separate from private/operator certificate material.
   if (['bootstrapper/ca/cacert-2026-10-20.crt','bootstrapper/ca/provenance.json','bootstrapper/ca/check.js'].includes(name)) return true;
   if (['docs/check-wizard-docs.js', 'renovate.json', 'gitlab/renovate/config.cjs', 'gitlab/renovate/setup.js', 'gitlab/renovate/verify.js'].includes(name)) return true;
+  // The native Docs authoring contract checks the exact public guides and local
+  // screenshots; arbitrary operator files under docs/ remain excluded.
+  if (/^docs\/[A-Za-z0-9_.\/-]+\.(?:md|png|jpg|jpeg|svg)$/.test(name) ||
+      ['docs/wizard-docs-catalog.json','Prepare-Host.md','overview.png','gitlab-runner/README.md','bootstrapper/README.md'].includes(name)) return true;
   return /^sync\/src\//.test(name) || name.startsWith('operations/') || ['LICENSE','.prettierrc','.prettierignore'].includes(name) ||
     ['sync/package.json','sync/package-lock.json','sync/tsconfig.json','sync/eslint.config.mjs'].includes(name) ||
     name.startsWith('project-bootstrap/') || name.startsWith('tests/') ||
