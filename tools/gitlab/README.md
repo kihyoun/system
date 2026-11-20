@@ -61,3 +61,14 @@ verifies an exactly observed token before creating a replacement. If the
 pending token is absent from the API, it retains the intent and refuses another
 creation: absence alone does not establish that the original request cannot
 still commit. Do not delete the private journal to bypass this barrier.
+
+`GitlabControllerCredentialService.current()` verifies the saved account and
+active credential on use. Within 14 days of expiry it creates a replacement
+with the same 90-day policy, verifies its identity and scope, persists it, then
+revokes and verifies the previous token. The private journal retains both token
+identities while retirement is incomplete, so a lost revocation response can
+resume without another issuance. If the saved administrator credential has
+already expired or been revoked, the same method accepts a separately supplied
+administrator credential for explicit recovery; that recovery secret is neither
+stored in the journal nor returned. It never creates a new root token to work
+around expiry.

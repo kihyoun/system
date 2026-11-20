@@ -14,6 +14,11 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     GitlabNativeApiService,
     { provide: GITLAB_PROVISION_PROCESS, useClass: ManagedChildProcess },
   ],
-  exports: [SourcePrimaryActivationService, GitlabNativeApiService, GitlabAuthBootstrapService],
+  exports: [
+    SourcePrimaryActivationService,
+    GitlabNativeApiService,
+    GitlabAuthBootstrapService,
+    GitlabControllerCredentialService,
+  ],
 })
 export class GitlabProvisionModule {}

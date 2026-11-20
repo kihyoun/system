@@ -12,6 +12,8 @@ export interface GitlabAuthJournal {
   pendingToken?: { name: string; expiresAt: string };
   bootstrap?: { id: number; userId: number; token: string; name: string; expiresAt: string };
   replacement?: { id: number; userId: number; token: string; expiresAt: string };
+  renewal?: { id: number; userId: number; token: string; expiresAt: string };
+  retiring?: { id: number; userId: number; token: string; expiresAt: string };
 }
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -79,6 +81,11 @@ export function validateAuthJournal(value: unknown): GitlabAuthJournal {
   )
     throw Error('gitlab-auth-journal-invalid');
   if (state.replacement !== undefined) credential(state.replacement);
+  for (const field of ['renewal', 'retiring'])
+    if (state[field] !== undefined) {
+      credential(state[field]);
+      if (state.phase !== 'ready' || !state.account) throw Error('gitlab-auth-journal-invalid');
+    }
   if (
     (state.phase === 'bootstrap-received' || state.phase === 'replacement-verified') &&
     !state.bootstrap

@@ -538,21 +538,22 @@ async function bindingRefresh(f) {
   try {
     const journals=new GitlabAuthJournalService(), operation='d'.repeat(48);
     await journals.withJournal(controllerAuthDirectory,async journal=>journal.save({version:1,operation,phase:'bootstrap-received',bootstrap:{id:1,userId:1,token:'temporary-controller-admin',name:'system-bootstrapper-initial-'+operation,expiresAt:'2026-11-21'}}));
-    let account, token, tokenCreations=0, hidePending=false, userCreations=0;
+    let account, token, tokenCreations=0, hidePending=false, userCreations=0, loseRetirement=false;const controllerTokens=new Map();
     const api={async request(context,secret,method,route,body){
-      assert.equal(secret,'temporary-controller-admin');
-      if(route==='user')return {status:200,value:{id:1,is_admin:true,state:'active'}};
-      if(route==='personal_access_tokens/self')return {status:200,value:{id:1,user_id:1,active:true,revoked:false}};
+      const authenticated=[...controllerTokens.values()].find(value=>value.token===secret);
+      assert(secret==='temporary-controller-admin'||authenticated&&!authenticated.revoked);
+      if(route==='user')return {status:200,value:{id:authenticated?7:1,is_admin:true,state:'active'}};
+      if(route==='personal_access_tokens/self')return {status:200,value:authenticated||{id:1,user_id:1,active:true,revoked:false}};
       if(route.startsWith('users?username='))return {status:200,value:account?[{id:7}]:[]};
       if(route==='users'&&method==='POST'){userCreations++;account={...body,id:7,is_admin:body.admin,state:'active'};return {status:201,value:account};}
       if(route==='users/7')return {status:200,value:account};
       if(route==='users/7/personal_access_tokens'){
-        tokenCreations++;token={...body,id:40+tokenCreations,user_id:7,revoked:false,active:true,token:'new-controller-private-'+tokenCreations};
+        tokenCreations++;token={...body,id:40+tokenCreations,user_id:7,revoked:false,active:true,token:'new-controller-private-'+tokenCreations};controllerTokens.set(token.id,token);
         if(tokenCreations===1)throw Object.assign(Error('lost controller token response'),{uncertain:true});
         return {status:201,value:token};
       }
       if(route.startsWith('personal_access_tokens?'))return {status:200,value:hidePending?[]:[token]};
-      if(route==='personal_access_tokens/'+token.id){if(method==='DELETE'){token.revoked=true;return {status:204,value:null};}return {status:200,value:token};}
+      if(/^personal_access_tokens\/\d+$/.test(route)){const selected=controllerTokens.get(Number(route.split('/')[1]));assert(selected);if(method==='DELETE'){selected.revoked=true;if(loseRetirement){loseRetirement=false;throw Object.assign(Error('lost retirement response'),{uncertain:true});}return {status:204,value:null};}return {status:200,value:selected};}
       throw Error('Unexpected credential request '+method+' '+route);
     }};
     const service=new GitlabControllerCredentialService(journals,api), identity={username:'system-bootstrapper-controller',email:'controller@example.test'}, now=new Date('2026-11-20T00:00:00Z');
@@ -561,8 +562,16 @@ async function bindingRefresh(f) {
     hidePending=false;const prepared=await service.prepare(nativeApiContext,controllerAuthDirectory,identity,now);
     assert.equal(prepared.id,42);assert.equal(prepared.userId,7);assert.equal(tokenCreations,2);assert.equal(userCreations,1);
     assert.deepEqual(await service.prepare(nativeApiContext,controllerAuthDirectory,identity,now),prepared);assert.equal(tokenCreations,2);
-    account.note='foreign';await assert.rejects(()=>service.prepare(nativeApiContext,controllerAuthDirectory,identity,now),/owned-account-mismatch/);
+    const savedNote=account.note;account.note='foreign';await assert.rejects(()=>service.prepare(nativeApiContext,controllerAuthDirectory,identity,now),/owned-account-mismatch/);
     await assert.rejects(()=>service.prepare(nativeApiContext,controllerAuthDirectory,{...identity,email:'different@example.test'},now),/binding-mismatch/);
+    account.note=savedNote;
+    await journals.withJournal(controllerAuthDirectory,async journal=>{const state=journal.read();delete state.bootstrap;state.phase='ready';journal.save(state);});
+    assert.deepEqual(await service.current(nativeApiContext,controllerAuthDirectory,now),prepared);assert.equal(tokenCreations,2);
+    const renewalDate=new Date('2027-02-10T00:00:00Z');loseRetirement=true;
+    await assert.rejects(()=>service.current(nativeApiContext,controllerAuthDirectory,renewalDate),/lost retirement response/);
+    await journals.withJournal(controllerAuthDirectory,async journal=>{const state=journal.read();assert.equal(state.replacement.id,43);assert.equal(state.retiring.id,42);});
+    const renewed=await service.current(nativeApiContext,controllerAuthDirectory,renewalDate);assert.equal(renewed.id,43);assert.equal(tokenCreations,3);
+    await journals.withJournal(controllerAuthDirectory,async journal=>{assert(!journal.read().retiring);assert(!journal.read().renewal);});
   } finally {fs.rmSync(controllerAuthDirectory,{recursive:true,force:true});}
   // Shared typed activation: the same reservation survives uncertain writes.
   const {SourcePrimaryActivationService} = require('../../operations/dist/gitlab-provision/source-primary-activation.service');
