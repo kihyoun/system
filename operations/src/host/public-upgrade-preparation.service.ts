@@ -1,3 +1,4 @@
+import { readPrivateInput } from './private-input';
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -7,17 +8,13 @@ import {
   RuntimeVerificationService,
   serviceOrigin,
 } from '../host-bootstrap/runtime-verification.service';
-import { HostInstallService, privateFile, reference, requireValue as ensure } from './install';
+import { HostInstallService, reference, requireValue as ensure } from './install';
 import { RuntimeInspectionService, type RuntimeConfig } from './runtime-inspection';
 import { HostSourceService } from './source';
 import { HostReleaseAuthorityService } from './release-authority.service';
 import { PublicReleaseAssetsService } from './public-release-assets.service';
 import { semver, upgradePath, validateUpgradeGraph } from './upgrade-graph';
 type Row = Record<string, unknown>;
-const privateBytes = (filename: string) => {
-  privateFile(filename);
-  return fs.readFileSync(filename);
-};
 export interface PublicHostFacts {
   release: Record<string, string>;
   architecture: string;
@@ -77,7 +74,9 @@ export class PublicUpgradePreparationService {
     );
     const selected = record(
         JSON.parse(
-          privateBytes(path.join(config._root, 'configuration/.release-images.json')).toString(),
+          readPrivateInput(
+            path.join(config._root, 'configuration/.release-images.json'),
+          ).toString(),
         ),
       ),
       version = record(selected.productRelease).version;
@@ -128,7 +127,7 @@ export class PublicUpgradePreparationService {
       },
       checkout,
     );
-    const profile = privateBytes(path.join(config._root, 'configuration/.release-images.env'));
+    const profile = readPrivateInput(path.join(config._root, 'configuration/.release-images.env'));
     ensure(
       profile.equals(
         Buffer.from(
