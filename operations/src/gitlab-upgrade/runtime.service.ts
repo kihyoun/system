@@ -1,3 +1,4 @@
+import { environmentAssignments } from '../runtime/environment-assignments';
 import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
 import {
   controlGitLabServices,
@@ -226,16 +227,18 @@ export class UpgradeRuntimeService {
   syncIdle(session: UpgradeSession): void {
     const value = parseRecord(
       session.run(
-        'bash',
-        [
-          '-ec',
-          'set -a; source "$1"; source "$2"; node "$3" sync-status',
-          'bash',
-          path.join(session.state, 'sync-auth.env'),
-          session.config,
-          path.join(GITLAB, 'upgrade.js'),
-        ],
-        { timeout: 15000 },
+        process.execPath,
+        [path.join(GITLAB, 'upgrade.js'), 'sync-status'],
+        {
+          timeout: 15000,
+          env: {
+            ...process.env,
+            ...environmentAssignments(
+              fs.readFileSync(path.join(session.state, 'sync-auth.env'), 'utf8'),
+            ),
+            ...environmentAssignments(fs.readFileSync(session.config, 'utf8')),
+          },
+        },
       ),
     );
     if (value.idle !== true) throw Error('upgrade-sync-operation-running');
