@@ -12,6 +12,13 @@ oder der Firmware reservierten Speicher (7,5 GiB gemeldeter Speicher).
 curl -fsSL https://github.com/kihyoun/system/releases/latest/download/quickstart.sh | sudo bash
 ```
 
+Quickstart bereitet auch die festgelegte Host-Node-Laufzeit vor und kopiert passende
+kompilierte Operationen und Abhängigkeiten aus dem akzeptierten Controller, bevor
+Host-Lebenszykluswerkzeuge aufgerufen werden. Ein vorhandenes Benutzer-Node/nvm ist
+weder erforderlich noch wird es ersetzt. Manuelle Installation und Ersatzhost-Recovery
+müssen diese [Host-Laufzeiteingaben](../Prepare-Host.md#prepare-the-host-operations-runtime)
+gesondert vorbereiten oder wiederherstellen.
+
 Der Befehl lädt das repositoryeigene Installationsprogramm herunter und führt es als root aus.
 Sie können die `quickstart.sh` des Releases vor dem Ausführen prüfen. Das veröffentlichte
 Skript ist an sein eigenes Release-Tag gebunden, auch wenn sich `latest` während der

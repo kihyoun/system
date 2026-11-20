@@ -10,7 +10,6 @@ or starts a platform automatically.
 From a clean committed checkout, with Node, Git, tar and Docker available:
 
 ```sh
-git submodule update --init --recursive
 node project-bootstrap/wizard-source/package.js
 node tests/prepare-context.js
 docker build -f tests/Dockerfile -t system-component-tests - < .test-context/context.tar
@@ -22,7 +21,10 @@ Do not mount the Docker socket, private configuration, host network or platform
 volumes into this child. When Node is absent from the trusted host,
 `bash project-bootstrap/wizard-source/prepare.sh` provides the source-packaging
 fallback. The context contains only allowlisted blobs from the current committed
-Git tree plus the validated Wizard snapshot matching its gitlink. It excludes
+Git tree, including the ordinary `wizard/` tree for `system-monorepo-v1`.
+Historical gitlink sources additionally require the validated separate Wizard
+snapshot and exact recursive submodules (`git submodule update --init --recursive`).
+It excludes
 Git metadata, private/ignored/untracked files and working-copy edits. Commit the
 intended code before packaging; no fallback sends the entire checkout.
 
@@ -37,8 +39,8 @@ Candidate image preparation also runs
 configuration exporter before starting the full platform. It verifies the first
 Save/Fetch/Backup round trip, exact server receipt preservation and selective
 routing when Fetch fills the derived repository annotation. To run it separately,
-build the Wizard exporter with `npm run build:config-export` in the initialized
-`wizard` checkout, then run:
+build the Wizard exporter with `npm run build:config-export` in the committed
+`wizard/` directory, then run:
 
 ```sh
 node tests/wizard/configuration-routing-export.js --exporter wizard/build-tools/export-configuration.cjs
@@ -100,7 +102,8 @@ a successful response finishes before Sync exits to trigger the controller
 restart, while a failed import leaves services available.
 
 The source-context contracts verify binary contents/executable modes, committed
-inputs, snapshot hashes/gitlinks and dirty/private-file exclusion. Parent
+inputs, snapshot hashes, monorepo tree identities, historical gitlinks and
+dirty/private-file exclusion. Parent
 contracts cover checksum/revision checks before Docker, exact owned cleanup,
 primary failure preservation and unreachable-daemon diagnostics. Recovery
 contracts cover full-payload validation before destructive copies, GitLab image
@@ -117,7 +120,7 @@ The root pipeline uses two categories on merge requests and the default branch:
   submodules, install packages, publish runtime images or start a test platform.
 - **Runtime:** every other path, mixed documentation/code changes and unknown
   paths retain the complete component, image and cold-recovery checks below.
-  CI configuration and helpers, infrastructure, tests and the Wizard gitlink
+  CI configuration and helpers, infrastructure, tests and Wizard source
   belong to this category. Renames include the old and new paths; deleting
   runtime files also retains full coverage.
 
@@ -165,8 +168,9 @@ they do not substitute for GitLab CI Lint or the required runtime pipeline when
 CI itself changes. MR and merged default-branch commits receive their own checks;
 the pipeline does not reuse an earlier cold-recovery result based on tree identity.
 
-The runtime lane prepares the exact recursive Wizard gitlink and both minimal
-build contexts in `prepare:wizard-source`. Downstream jobs require the archive
+The runtime lane prepares the exact shared Wizard tree (or recursive Wizard
+gitlink for historical source) and the minimal build contexts in
+`prepare:wizard-source`. Downstream jobs require the archive
 checksum and recorded revision to match `CI_COMMIT_SHA`; missing, damaged or
 stale artifacts fail before Docker execution.
 
@@ -185,18 +189,19 @@ is provisioned by the tests.
 `prepare:wizard-source` also checks the bundled Docs against the complete public
 guide sources before packaging. To update the reader, edit the original guides,
 run `python3 docs/export-wizard-docs.py`, and commit the generated Wizard catalog
-with its System gitlink. `node docs/check-wizard-docs.js` checks source drift and
+in the same System commit. `node docs/check-wizard-docs.js` checks source drift and
 full-text preservation; `python3 docs/test-export-wizard-docs.py` exercises chapter,
 link and offline image coverage during authoring.
 
 The required `test:wizard-browser` job consumes a separately checksummed context
-from that same committed Wizard gitlink. Its trusted parent builds the browser
+from that same committed Wizard source tree; historical gitlink inputs retain
+their separate identity. Its trusted parent builds the browser
 tools and runs the full native Playwright suite in a network-disabled child
 with no host socket, private configuration or job credentials. The child has
 2 GiB memory, two CPUs and a 512-process limit. Reports and JUnit leave through
 `docker cp`; identity-checked cleanup removes only that job's child and image.
-This keeps browser coverage in the same System pipeline when a combined release
-does not use a separate Wizard source pipeline.
+This keeps browser coverage in the shared System candidate pipeline; no separate
+Wizard source pipeline is required for the monorepo.
 
 Names include numeric project/job IDs. Traps and `after_script` remove only the
 exact job-owned containers/images. The eight-minute script budget leaves cleanup
@@ -246,7 +251,8 @@ unchanged.
 
 Runtime merge requests and default-branch builds run the required `test:codeql`
 job alongside the component checks. It scans the committed System source and
-exact Wizard gitlink using CodeQL 2.27.4 and its official default JavaScript/
+exact embedded Wizard tree (or the historical gitlink snapshot) using CodeQL
+2.27.4 and its official default JavaScript/
 TypeScript code-scanning suite. No rules, paths or old findings are suppressed.
 The pinned public CLI bundle is checksum-verified before use. The scan child has
 no network, Docker socket or credentials and cannot run application builds.

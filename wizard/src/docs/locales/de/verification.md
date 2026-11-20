@@ -10,7 +10,6 @@ und startet keine Plattform automatisch.
 Aus einem sauberen versionierten Checkout mit verfügbarem Node, Git, tar und Docker:
 
 ```sh
-git submodule update --init --recursive
 node project-bootstrap/wizard-source/package.js
 node tests/prepare-context.js
 docker build -f tests/Dockerfile -t system-component-tests - < .test-context/context.tar
@@ -22,7 +21,9 @@ Binden Sie weder Docker-Socket noch private Konfiguration, Host-Netzwerk oder Pl
 Volumes in dieses Kind ein. Fehlt Node auf dem vertrauenswürdigen Host,
 bietet `bash project-bootstrap/wizard-source/prepare.sh` den Ersatzweg zur Quellcode-
 paketierung. Der Kontext enthält nur erlaubte Blobs aus dem aktuellen versionierten
-Git-Baum plus den validierten Wizard-Snapshot passend zu dessen Gitlink. Er schließt
+Git-Baum einschließlich des regulären `wizard/`-Baums bei `system-monorepo-v1`.
+Historische Gitlink-Quellen benötigen zusätzlich den validierten separaten Wizard-Snapshot
+und exakte rekursive Submodule (`git submodule update --init --recursive`). Er schließt
 Git-Metadaten, private/ignorierte/unversionierte Dateien und Arbeitskopieänderungen aus. Committen Sie den
 beabsichtigten Code vor der Paketierung; kein Ersatzweg sendet den gesamten Checkout.
 
@@ -102,7 +103,7 @@ Eine erfolgreiche Antwort endet, bevor Sync sich beendet, um den Controller-
 Neustart auszulösen, während ein fehlgeschlagener Import Dienste verfügbar lässt.
 
 Die Quellkontextverträge prüfen Binärinhalte/Ausführungsmodi, versionierte
-Parameter, Snapshot-Hashes/-Gitlinks und den Ausschluss geänderter/privater Dateien. Übergeordnete
+Parameter, Snapshot-Hashes, Monorepo-Baumidentitäten und historische Gitlinks und den Ausschluss geänderter/privater Dateien. Übergeordnete
 Verträge decken Prüfsummen-/Versionsprüfungen vor Docker, exakte zugehörige Bereinigung,
 Erhalt des Hauptfehlers und Diagnose nicht erreichbarer Daemons ab. Wiederherstellungs-
 verträge decken vollständige Nutzdatenprüfung vor destruktivem Kopieren, GitLab-Image-
@@ -119,7 +120,7 @@ Die Root-Pipeline verwendet bei Merge Requests und auf dem Standardbranch zwei K
   Submodule, installiert keine Pakete, veröffentlicht keine Laufzeit-Images und startet keine Testplattform.
 - **Laufzeit:** Jeder andere Pfad, gemischte Dokumentations-/Codeänderungen und unbekannte
   Pfade behalten die vollständigen nachfolgenden Komponenten-, Image- und Kaltwiederherstellungsprüfungen.
-  CI-Konfiguration und Helfer, Infrastruktur, Tests und der Wizard-Gitlink
+  CI-Konfiguration und Helfer, Infrastruktur, Tests und Wizard-Quellen
   gehören zu dieser Kategorie. Umbenennungen berücksichtigen alten und neuen Pfad; auch das Löschen
   von Laufzeitdateien erhält die vollständige Abdeckung.
 
@@ -167,8 +168,8 @@ sie ersetzen weder GitLab CI Lint noch die erforderliche Laufzeitpipeline, wenn
 CI selbst geändert wird. MR-Commits und zusammengeführte Standardbranch-Commits erhalten eigene Prüfungen;
 die Pipeline verwendet kein früheres Kaltwiederherstellungsergebnis anhand gleicher Baumidentität wieder.
 
-Der Laufzeitpfad bereitet den exakten rekursiven Wizard-Gitlink und beide minimalen
-Build-Kontexte in `prepare:wizard-source` vor. Nachgelagerte Jobs verlangen, dass Archiv-
+Der Laufzeitpfad bereitet den exakten gemeinsamen Wizard-Baum (bei historischen Quellen den
+rekursiven Wizard-Gitlink) und die minimalen Build-Kontexte in `prepare:wizard-source` vor. Nachgelagerte Jobs verlangen, dass Archiv-
 prüfsumme und aufgezeichnete Version zu `CI_COMMIT_SHA` passen; fehlende, beschädigte oder
 veraltete Artefakte führen vor der Docker-Ausführung zum Fehler.
 
@@ -187,12 +188,12 @@ stellen keinen zusätzlichen Runner bereit.
 `prepare:wizard-source` prüft vor der Paketierung auch die gebündelten Docs gegen die vollständigen öffentlichen
 Anleitungsquellen. Bearbeiten Sie zur Aktualisierung des Readers die Originalanleitungen,
 führen Sie `python3 docs/export-wizard-docs.py` aus und committen Sie den erzeugten Wizard-Katalog
-mit seinem System-Gitlink. `node docs/check-wizard-docs.js` prüft Quellabweichung und
+im selben System-Commit. `node docs/check-wizard-docs.js` prüft Quellabweichung und
 Volltexterhalt; `python3 docs/test-export-wizard-docs.py` prüft Kapitel-,
 Link- und Offline-Bildabdeckung während der Bearbeitung.
 
 Der erforderliche Job `test:wizard-browser` verarbeitet einen separat prüfsummengesicherten Kontext
-aus demselben versionierten Wizard-Gitlink. Sein vertrauenswürdiger Elternprozess baut die Browser-
+aus demselben versionierten Wizard-Baum; historische Gitlink-Eingaben behalten ihre getrennte Identität. Sein vertrauenswürdiger Elternprozess baut die Browser-
 Werkzeuge und führt die vollständige native Playwright-Suite in einem netzwerkdeaktivierten Kind
 ohne Host-Socket, private Konfiguration oder Job-Zugangsdaten aus. Das Kind hat
 2 GiB Arbeitsspeicher, zwei CPUs und ein Limit von 512 Prozessen. Berichte und JUnit verlassen es über
@@ -248,7 +249,7 @@ unverändert.
 
 Merge Requests mit Laufzeitänderungen und Builds des Standardbranches führen den
 erforderlichen Job `test:codeql` parallel zu den Komponentenprüfungen aus. Er prüft
-den versionierten System-Quellcode und den exakten Wizard-Gitlink mit CodeQL 2.27.4
+den versionierten System-Quellcode und den exakten eingebetteten Wizard-Baum (oder historischen Gitlink-Snapshot) mit CodeQL 2.27.4
 und dessen offizieller Standard-Code-Scanning-Suite für JavaScript/TypeScript.
 Keine Regeln, Pfade oder alten Befunde werden unterdrückt. Das festgelegte
 öffentliche CLI-Bundle wird vor der Verwendung anhand seiner Prüfsumme geprüft.

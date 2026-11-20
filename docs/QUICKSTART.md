@@ -11,6 +11,12 @@ up to 512 MiB reserved by the kernel/firmware on an 8 GiB host (7.5 GiB reported
 curl -fsSL https://github.com/kihyoun/system/releases/latest/download/quickstart.sh | sudo bash
 ```
 
+Quickstart also prepares the pinned host Node runtime and copies the matching
+compiled operations and dependencies from the accepted controller before invoking
+host lifecycle tools. A preinstalled user Node/nvm is not required or replaced.
+Manual installation and replacement-host recovery must prepare or restore those
+[host runtime inputs](../Prepare-Host.md#prepare-the-host-operations-runtime) separately.
+
 The command downloads and runs the repository-owned installer as root. You can
 inspect the release's `quickstart.sh` before running it. The published script is
 bound to its own release tag even if `latest` changes during installation. It

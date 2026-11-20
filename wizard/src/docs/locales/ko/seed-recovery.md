@@ -1,7 +1,15 @@
 # 구성과 Seed 복구
 
-복구 입력은 별도로 유지됩니다. Wizard 구성 백업, 완료된 Harvest Seed 및 고정된
-Wizard 하위 모듈을 포함하여 새로 가져온 System 소스가 필요합니다. 구성은 Harvest에
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+
+복구 입력은 별도로 유지됩니다. Wizard 구성 백업, 완료된 Harvest Seed 및 기록된
+Wizard 트리가 포함된 System 소스가 필요합니다. 새 모노레포 릴리스는 일반 `wizard/`
+디렉터리를 사용합니다. 과거 gitlink 릴리스는 정확한 별도 Wizard 커밋도 필요합니다. 구성은 Harvest에
 복사되지 않으며 Wizard는 서비스 데이터 다운로드를 제공하지 않습니다.
 
 Wizard는 작은따옴표/큰따옴표, 이스케이프된 메타 문자 및 등호를 포함하는 리터럴 셸
@@ -57,7 +65,7 @@ Seed를 명시적으로 지원하는 승인된 복구 도구 컨트롤러를 사
 입증하거나 복구를 승인하지 않습니다.
 
 기록된 승인 제품 릴리스의 경우 [공개 릴리스 메타데이터](RELEASES.md)를 가져오고
-고정된 Wizard 하위 모듈과 함께 정확한 소스 커밋을 가져오세요. 소스 빌드/비공개
+기록된 Wizard 트리와 함께 정확한 소스 커밋을 가져오세요. 과거 gitlink 릴리스는 정확한 별도 Wizard 커밋을 유지하세요. 소스 빌드/비공개
 런타임은 소스와 검증된 이미지 페이로드를 독립적으로 보존하세요. 복구 전에 정확한
 불변 참조를 가져오거나 검증된 아카이브를 로드하세요. 참조는 저장된 이미지가 아닙니다.
 아래 네이티브 비공개 Wizard 복구는 복원된 레지스트리에서 일치하는 이미지를 가져올 수
@@ -153,12 +161,19 @@ Seed에 추가하지 않습니다.
 
 ## 외부 Seed를 새 로컬 설치에 복원하기
 
-입력은 완료 Seed, 일치하는 Wizard `bootstrapper.zip`, 고정 하위 모듈이 있는 기록된
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+
+입력은 완료 Seed, 일치하는 Wizard `bootstrapper.zip`, 기록된 Wizard 레이아웃을 포함한
 System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브입니다. 이전 라이브
 데이터 디렉터리는 입력이 아닙니다.
 
-1. 교체 Ubuntu 호스트에 Docker를 설치하고 의도한 소스 리비전과 고정 하위 모듈을
-   체크아웃하세요. `PERSISTENCE_MODE=local`과 새 로컬 `PERSISTENT_DIR`을 선택하거나
+1. 교체 Ubuntu 호스트에 Docker를 설치하고 의도한 소스 리비전과 기록된 Wizard 트리를
+   체크아웃하세요. 과거 gitlink 릴리스에만 정확한 서브모듈 초기화가 필요합니다. `PERSISTENCE_MODE=local`과 새 로컬 `PERSISTENT_DIR`을 선택하거나
    마운트된 라이브 볼륨을 명시적으로 선택하세요. 보존한 백업 파일시스템을 마운트하고
    비공개 호스트 선택자에 `SEED_MOUNT`, `SEED_DIR` 및 예상 UUID를 설정하세요.
    아직 GitLab을 시작하지 마세요. 이 선택자로 라이브 디렉터리와 영구 저장 마커만 준비하세요.

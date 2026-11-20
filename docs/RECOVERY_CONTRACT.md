@@ -1,8 +1,17 @@
 # Configuration and Seed recovery
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `operations/dist` and `operations/node_modules`
+available offline before maintenance.
+
 The recovery inputs remain separate: a Wizard configuration backup, a completed
-Harvest Seed, and freshly fetched System source including its pinned Wizard
-submodule. Configuration is not copied into Harvest, and no service-data download
+Harvest Seed, and the recorded System source with its Wizard tree. New monorepo
+releases use the ordinary `wizard/` directory; historical gitlink releases also
+require their exact separate Wizard commit. Configuration is not copied into Harvest, and no service-data download
 is provided by the Wizard.
 
 The Wizard imports literal shell assignments, including single/double
@@ -63,7 +72,7 @@ Seed match or authorize recovery.
 
 For a recorded accepted product release, retrieve its
 [public release metadata](RELEASES.md) and fetch that exact source commit with the
-pinned Wizard submodule. For a source-built/private runtime, retain its source
+recorded Wizard tree, or exact separate Wizard commit for a historical gitlink release. For a source-built/private runtime, retain its source
 and verified image payloads independently. Pull exact immutable references or load
 verified archives before recovery; a reference is not a saved image. The native
 private-Wizard recovery path below can pull a matching image from the restored
@@ -162,12 +171,20 @@ Harvest does not add that configuration to the Seed.
 
 ## Restore an external Seed into a fresh local installation
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `operations/dist` and `operations/node_modules`
+available offline before maintenance.
+
 The inputs are the completed Seed, matching Wizard `bootstrapper.zip`, recorded
-System source with its pinned submodule, and declared image references or
+System source with its recorded Wizard layout, and declared image references or
 verified image archives. The former live data directory is not an input.
 
 1. Install Docker on the replacement Ubuntu host and check out the intended
-   source revision with pinned submodules. Select `PERSISTENCE_MODE=local` and
+   source revision with its recorded Wizard tree (initialize exact submodules only for historical gitlink releases). Select `PERSISTENCE_MODE=local` and
    a fresh local `PERSISTENT_DIR`, or explicitly select a mounted live volume.
    Mount the retained backup filesystem and set its `SEED_MOUNT`, `SEED_DIR`
    and expected UUID in the private host selector. Do not start GitLab yet.

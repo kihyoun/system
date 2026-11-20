@@ -1,5 +1,13 @@
 # Arbeitsdaten und unabhängige Seed-Sicherungen
 
+Bereiten Sie vor nativer Hostinstallation, Start/Stopp, Persistenzprüfung oder
+Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
+vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
+Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
+installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
+Halten Sie die geprüfte Node-Installation, `operations/dist` und
+`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+
 Die Plattform unterscheidet zwei Speicherrollen:
 
 | Rolle | Zweck | Verfügbarkeit |
@@ -193,12 +201,20 @@ Wiederherstellung aus einem externen Seed.
 
 ## Eine VM ersetzen und dabei produktive Daten behalten
 
+Bereiten Sie vor nativer Hostinstallation, Start/Stopp, Persistenzprüfung oder
+Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
+vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
+Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
+installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
+Halten Sie die geprüfte Node-Installation, `operations/dist` und
+`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+
 1. Stoppen Sie schreibende Prozesse sauber, bevor Sie Speicher abtrennen. Behalten
    Sie das Volume beim Löschen der VM ausdrücklich; formatieren Sie es nicht und
    initialisieren Sie kein anderes Dateisystem darüber.
 2. Stellen Sie einen kompatiblen Ubuntu-Host bereit, schließen Sie das Volume an
    und hängen Sie sein vorhandenes Dateisystem ein. Laden Sie die vorgesehene
-   Systemrevision mit festgelegten Submodulen. Installieren Sie Docker mit
+   Systemrevision mit aufgezeichnetem Wizard-Baum; nur historische Gitlink-Releases benötigen exakt initialisierte Submodule. Installieren Sie Docker mit
    `sudo bash bootstrapper/install.sh`; installieren Sie Certbot gesondert.
 3. Erstellen Sie `/etc/system-bootstrapper/persistence.env` mit
    `PERSISTENCE_MODE=volume` und den aufbewahrten Mount-/Verzeichnis-/UUID-Angaben

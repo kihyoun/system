@@ -65,6 +65,89 @@ It uses `docker compose --compatibility` to preserve their expected
 underscore-separated container names. Service configuration, persistence and
 platform acceptance are separate steps.
 
+## Prepare the host operations runtime
+
+Host `start.sh`, `stop.sh`, `bootstrapper/persistence.sh`, the release installer
+and replacement/restore tools require Node and compiled `operations` **before**
+their first call. Installing Docker alone, or passing `--install-host` to an
+initializer, does not prepare this runtime. Choose one preparation path below;
+complete it before the Boot section or a recovery procedure.
+
+Fresh Quickstart installs nvm **0.41.0** from the pinned upstream commit and
+verifies its script checksum, then uses nvm to install Node **24.22.0**. It keeps
+this dedicated root-owned installation under `/opt/system-bootstrapper-runtime`;
+existing user nvm installations, default versions and shell profiles are preserved.
+The exact Node archive checksum is verified after nvm's download verification.
+Compiled operations and dependencies are copied from the accepted controller image
+using an owned container that is never started. No host-side npm install is needed.
+
+For the explicit installation path, first install the native host dependencies,
+check out the reviewed release, and verify its public metadata through the [release guide](docs/RELEASES.md).
+Then prepare the runtime before invoking any host lifecycle, persistence or installation entry:
+
+```sh
+sudo python3 bootstrapper/prepare-host-runtime.py \
+  --checkout "$PWD" --release-metadata /absolute/path/release.json
+```
+
+The preparation refuses an existing runtime directory instead of overwriting it.
+Keep that directory and the checkout's `operations/dist` and
+`operations/node_modules` for offline recovery. Compatibility tools select the
+saved absolute Node executable directly; they do not source a shell profile,
+invoke nvm or contact npm during recovery. The file
+`/opt/system-bootstrapper-runtime/node-executable` records the executable path.
+
+### Source development without a prebuilt controller runtime
+
+For a reviewed source checkout, prepare the pinned host runtime and compile
+operations before the first source-built startup. This is an online build step,
+not recovery of an accepted image. From the repository root, the following uses
+a dedicated nvm checkout without changing shell profiles or another nvm install.
+Choose a new directory if that path already exists; do not overwrite a retained
+runtime. Native Docker/Compose and the host dependencies above must already exist.
+
+```bash
+SYSTEM_NVM_DIR="$HOME/.local/share/system-bootstrapper-nvm"
+mkdir -p "$(dirname "$SYSTEM_NVM_DIR")"
+git clone https://github.com/nvm-sh/nvm.git "$SYSTEM_NVM_DIR"
+git -C "$SYSTEM_NVM_DIR" checkout --detach 4e8758a801eea9479b32a904f31093e410ddaba4
+(cd "$SYSTEM_NVM_DIR" && printf '%s  nvm.sh\n' e7ffd3d192735da61e5eb04e68f1aca4a293af4cd0000864568d6de7aa8f6fc4 | sha256sum --check)
+export NVM_DIR="$SYSTEM_NVM_DIR"
+. "$NVM_DIR/nvm.sh" --no-use
+test "$(nvm --version)" = 0.41.0
+NVM_NODEJS_ORG_MIRROR=https://nodejs.org/dist nvm install --no-progress -b 24.22.0
+nvm use 24.22.0
+printf '%s  %s\n' cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008 "$NVM_DIR/.cache/bin/node-v24.22.0-linux-x64/node-v24.22.0-linux-x64.tar.xz" | sha256sum --check
+test "$(node --version)" = v24.22.0
+test "$(npm --version)" = 11.19.1
+npm ci --prefix operations --ignore-scripts
+npm run build --prefix operations
+SYSTEM_NODE_BIN="$(dirname "$(command -v node)")"
+test -f operations/dist/host-lifecycle/entry.js
+```
+
+After selecting working storage as described under Boot, use this source-build
+startup instead of the public-image installer:
+
+```bash
+sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  bash start.sh
+```
+
+Keep `SYSTEM_NODE_BIN` for subsequent `sudo env "PATH=..."` calls to `stop.sh`,
+`bootstrapper/persistence.sh` and Python host tools: sudo normally discards the
+interactive nvm PATH. Alternatively use the retained dedicated runtime prepared
+by the accepted-image path. A source build still constructs controller/Wizard
+images during startup unless an existing accepted release profile disables builds;
+it is not permission to rebuild an image required by a recovery receipt.
+
+For offline recovery retain the Node installation and matching checkout with
+`operations/dist` and `operations/node_modules` before losing the original host.
+Restore those verified tools before `initialize.sh` or `recover-volume.sh` checks
+storage. If they are absent, prepare compatible reviewed tools separately before
+maintenance; neither the stopped platform nor npm availability is a recovery
+prerequisite. Preserve the recorded service images and source identities.
+
 ## Publish your own public releases
 
 Keep source development, merge review and required candidate checks in GitLab.
@@ -156,6 +239,8 @@ acceptance rather than running fixture projects against retained user data.
 
 ## Boot
 
+Complete [host runtime preparation](#prepare-the-host-operations-runtime) first.
+
 A fresh installation uses local working data at
 `/var/lib/system-bootstrapper/platform` on the Ubuntu/WSL system disk. No attached
 volume or Seed is required. To choose the layout explicitly, create a private
@@ -188,7 +273,7 @@ Install Certbot separately on hosts using HTTPS, then run
 renewal integration. Local mode needs no extra mount dependency. Neither Docker,
 normal service startup nor certificate renewal depends on an external Seed target.
 
-`install-release.py` verifies the clean checkout and pinned Wizard revision
+`install-release.py` verifies the clean checkout and recorded Wizard source identity
 against the pulled public-image identities. It refuses an existing main
 configuration or GitLab data rather than treating a reinstall as an upgrade.
 It records only the two release image selectors in the private
@@ -301,33 +386,10 @@ Run the [full disposable acceptance suite](tests/e2e/README.md) to exercise real
 GitLab, registry, runner CI, configuration export and TLS renewal together.
 
 ## Shutdown
+
+Use the already prepared host runtime; source-development installs must pass the
+explicit Node PATH shown above.
+
 ```bash
-bash stop.sh
+sudo bash stop.sh
 ```
-
-## Prepare the host operations runtime
-
-Fresh Quickstart installs nvm **0.41.0** from the pinned upstream commit and
-verifies its script checksum, then uses nvm to install Node **24.22.0**. It keeps
-this dedicated root-owned installation under `/opt/system-bootstrapper-runtime`;
-existing user nvm installations, default versions and shell profiles are preserved.
-The exact Node archive checksum is verified after nvm's download verification.
-Compiled operations and dependencies are copied from the accepted controller image
-using an owned container that is never started. No host-side npm install is needed.
-
-For the explicit installation path, first install the native host dependencies,
-check out the reviewed release, and verify its public metadata as described below.
-Then prepare the runtime before invoking the TypeScript-backed installer:
-
-```sh
-sudo python3 bootstrapper/prepare-host-runtime.py \
-  --checkout "$PWD" --release-metadata /absolute/path/release.json
-```
-
-The preparation refuses an existing runtime directory instead of overwriting it.
-Keep that directory and the checkout's `operations/dist` and
-`operations/node_modules` for offline recovery. Compatibility tools select the
-saved absolute Node executable directly; they do not source a shell profile,
-invoke nvm or contact npm during recovery. The file
-`/opt/system-bootstrapper-runtime/node-executable` records the executable path.
-

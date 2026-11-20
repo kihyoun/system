@@ -1,5 +1,12 @@
 ## 공개 서버: 자체 도메인 및 HTTPS
 
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+
 이 경로는 sudo 권한, 충분한 로컬 디스크 및 관리 권한이 있는 도메인을 갖춘
 Ubuntu 24.04 LTS 서버에 **새 플랫폼**을 설치합니다.
 명시적으로 마운트한 운영 볼륨은 선택 사항입니다.
@@ -76,6 +83,13 @@ Ubuntu 24.04 [패키지는 이 인터페이스를 제공합니다](https://packa
 공개 DNS와 신뢰할 수 있는 HTTPS 레지스트리가 로컬 hosts 파일과 비보안 레지스트리 변경을 대체합니다.
 
 ### 공개 2. 작업 저장소 선택 및 인증서 통합 설치
+
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
 
 이 새 설치는 서버 시스템 디스크에 운영 데이터를 저장합니다.
 인증서 통합과 수명 주기 도구가 같은 작업 디렉터리를 공유하도록 명시적인 선택자를 만드세요.

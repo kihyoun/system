@@ -58,6 +58,85 @@ sudo bash bootstrapper/install.sh
 예상되는 밑줄 구분 컨테이너 이름을 유지하도록 `docker compose --compatibility`를 사용합니다.
 서비스 구성, 영구 저장, 플랫폼 승인 검사는 별도 단계입니다.
 
+## 네이티브 호스트 런타임 준비
+
+호스트의 `start.sh`, `stop.sh`, `bootstrapper/persistence.sh`, 릴리스 설치 및 호스트 작업 진입점,
+교체/복원 도구는 첫 호출 **전에** Node와 컴파일된 `operations`가 필요합니다. Docker만
+설치하거나 초기화 도구에 `--install-host`를 전달해도 이 런타임은 준비되지 않습니다.
+아래 준비 경로 중 하나를 선택하여 시작 절차나 복구 절차 전에 완료하세요.
+
+Quickstart는 고정된 커밋과 스크립트 해시를 확인하여 nvm **0.41.0**을 설치한 뒤,
+nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
+`/opt/system-bootstrapper-runtime`이며 기존 사용자의 nvm 설치, 기본 버전과
+셸 프로필은 변경하지 않습니다. nvm이 내려받은 Node 압축 파일의 고정 해시도
+확인합니다. 컴파일된 Operations 파일과 의존성은 승인된 Controller 이미지에서
+복사하며, 추출용 컨테이너는 시작하지 않습니다. 호스트에서 npm 설치를 실행할
+필요가 없습니다.
+
+수동 설치에서는 먼저 네이티브 호스트 의존성을 설치하고, 검토된 릴리스의 소스를
+체크아웃한 다음 공개 메타데이터를 검증합니다. 릴리스 설치 도구를 실행하기 전에
+다음 명령으로 런타임을 준비하세요.
+
+```sh
+sudo python3 bootstrapper/prepare-host-runtime.py \
+  --checkout "$PWD" --release-metadata /absolute/path/release.json
+```
+
+기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
+런타임 디렉터리와 `operations/dist`, `operations/node_modules`를
+보존하세요. 도구는 저장된 Node 실행 파일의 절대 경로를 사용하므로 복구 중에는
+nvm, 셸 프로필이나 npm 네트워크 접근이 필요하지 않습니다. 실행 파일 경로는
+`/opt/system-bootstrapper-runtime/node-executable`에 기록됩니다.
+
+### 사전 빌드된 컨트롤러 런타임 없이 소스 개발하기
+
+검토된 소스 체크아웃에서는 소스로 처음 시작하기 전에 고정된 호스트 런타임을 준비하고
+operations를 컴파일하세요. 이는 온라인 빌드 단계이며 승인된 이미지 복구가 아닙니다.
+저장소 루트에서 실행하는 다음 명령은 별도의 nvm 체크아웃을 사용하며 셸 프로필이나
+다른 nvm 설치를 변경하지 않습니다. 경로가 이미 존재하면 새 디렉터리를 선택하고 보관된
+런타임을 덮어쓰지 마세요. 위에서 설명한 Docker/Compose와 호스트 의존성이 이미 필요합니다.
+
+```bash
+SYSTEM_NVM_DIR="$HOME/.local/share/system-bootstrapper-nvm"
+mkdir -p "$(dirname "$SYSTEM_NVM_DIR")"
+git clone https://github.com/nvm-sh/nvm.git "$SYSTEM_NVM_DIR"
+git -C "$SYSTEM_NVM_DIR" checkout --detach 4e8758a801eea9479b32a904f31093e410ddaba4
+(cd "$SYSTEM_NVM_DIR" && printf '%s  nvm.sh\n' e7ffd3d192735da61e5eb04e68f1aca4a293af4cd0000864568d6de7aa8f6fc4 | sha256sum --check)
+export NVM_DIR="$SYSTEM_NVM_DIR"
+. "$NVM_DIR/nvm.sh" --no-use
+test "$(nvm --version)" = 0.41.0
+NVM_NODEJS_ORG_MIRROR=https://nodejs.org/dist nvm install --no-progress -b 24.22.0
+nvm use 24.22.0
+printf '%s  %s\n' cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008 "$NVM_DIR/.cache/bin/node-v24.22.0-linux-x64/node-v24.22.0-linux-x64.tar.xz" | sha256sum --check
+test "$(node --version)" = v24.22.0
+test "$(npm --version)" = 11.19.1
+npm ci --prefix operations --ignore-scripts
+npm run build --prefix operations
+SYSTEM_NODE_BIN="$(dirname "$(command -v node)")"
+test -f operations/dist/host-lifecycle/entry.js
+```
+
+부팅 절차에 따라 운영 저장소를 선택한 다음 공개 이미지 설치 프로그램 대신
+다음 소스 빌드 시작 명령을 사용하세요:
+
+```bash
+sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  bash start.sh
+```
+
+이후 `stop.sh`, `bootstrapper/persistence.sh`, Python 호스트 도구의
+`sudo env "PATH=..."` 호출을 위해 `SYSTEM_NODE_BIN`을 유지하세요. sudo는 보통 대화형
+nvm PATH를 제거합니다. 또는 승인된 이미지 경로로 준비한 전용 런타임을 사용하세요.
+기존 승인 릴리스 프로필에서 빌드를 비활성화하지 않았다면 소스 시작은 여전히 컨트롤러와
+Wizard 이미지를 빌드합니다. 복구 기록에 필요한 이미지를 다시 빌드하여 대체해도 된다는
+뜻은 아닙니다.
+
+오프라인 복구를 위해 원래 호스트를 잃기 전에 Node 설치와 `operations/dist`,
+`operations/node_modules`를 포함한 일치하는 체크아웃을 보관하세요. `initialize.sh`나
+`recover-volume.sh`가 저장소를 확인하기 전에 검증된 도구를 복원하세요. 없다면 유지보수
+전에 호환되는 검토된 도구를 별도로 준비하세요. 중지된 플랫폼이나 npm 가용성은 복구의
+전제 조건이 아닙니다. 기록된 서비스 이미지와 소스 식별 정보를 유지하세요.
+
 ## 자체 공개 릴리스 게시
 
 소스 개발, 병합 검토, 필수 후보 검사는 GitLab에서 유지하세요. 공개 Docker Hub 게시는
@@ -138,6 +217,8 @@ Runner를 생성하고 해당 `glrt-` 인증 토큰을 `GITLAB_RUNNER_TOKEN`으�
 격리된 플랫폼 승인 검사를 수행하세요.
 
 ## 부팅
+
+먼저 [호스트 런타임 준비](#prepare-the-host-operations-runtime)를 완료하세요.
 
 새 설치는 Ubuntu/WSL 시스템 디스크의 `/var/lib/system-bootstrapper/platform`에 있는
 로컬 작업 데이터를 사용합니다. 연결된 볼륨이나 Seed는 필요하지 않습니다. 레이아웃을
@@ -274,31 +355,9 @@ python3 tests/seed/recovery-contract.py
 [전체 폐기 가능한 승인 테스트 모음](tests/e2e/README.md)을 실행하세요.
 
 ## 종료
+
+준비된 호스트 런타임을 사용하세요. 소스 개발 경로에서는 위의 명시적 Node PATH를 전달하세요.
+
 ```bash
-bash stop.sh
+sudo bash stop.sh
 ```
-
-## 네이티브 호스트 런타임 준비
-
-Quickstart는 고정된 커밋과 스크립트 해시를 확인하여 nvm **0.41.0**을 설치한 뒤,
-nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
-`/opt/system-bootstrapper-runtime`이며 기존 사용자의 nvm 설치, 기본 버전과
-셸 프로필은 변경하지 않습니다. nvm이 내려받은 Node 압축 파일의 고정 해시도
-확인합니다. 컴파일된 Operations 파일과 의존성은 승인된 Controller 이미지에서
-복사하며, 추출용 컨테이너는 시작하지 않습니다. 호스트에서 npm 설치를 실행할
-필요가 없습니다.
-
-수동 설치에서는 먼저 네이티브 호스트 의존성을 설치하고, 검토된 릴리스의 소스를
-체크아웃한 다음 공개 메타데이터를 검증합니다. 릴리스 설치 도구를 실행하기 전에
-다음 명령으로 런타임을 준비하세요.
-
-```sh
-sudo python3 bootstrapper/prepare-host-runtime.py \
-  --checkout "$PWD" --release-metadata /absolute/path/release.json
-```
-
-기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
-런타임 디렉터리와 `operations/dist`, `operations/node_modules`를
-보존하세요. 도구는 저장된 Node 실행 파일의 절대 경로를 사용하므로 복구 중에는
-nvm, 셸 프로필이나 npm 네트워크 접근이 필요하지 않습니다. 실행 파일 경로는
-`/opt/system-bootstrapper-runtime/node-executable`에 기록됩니다.

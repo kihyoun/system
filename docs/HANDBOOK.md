@@ -1,5 +1,13 @@
 # System Bootstrapper Handbook
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `operations/dist` and `operations/node_modules`
+available offline before maintenance.
+
 Choose the complete installation path for your environment:
 
 - [Quick Install](QUICKSTART.md): one command on a fresh supported Ubuntu host,
@@ -122,6 +130,14 @@ Building a changed version remains a separate reviewed development operation.
 
 ### 0.3 Start the Bootstrapper for the first time
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `operations/dist` and `operations/node_modules`
+available offline before maintenance.
+
 Fresh Ubuntu/WSL installations use local working data at
 `/var/lib/system-bootstrapper/platform` on the system disk. No second disk, USB
 stick, cloud volume or Seed backup is needed for first startup. Keep WSL data
@@ -159,7 +175,7 @@ sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
 ```
 
 The installer requires clean source matching the controller release and its
-pinned Wizard commit. It refuses existing GitLab data or saved main configuration;
+recorded Wizard tree (or separate commit in a historical gitlink release). It refuses existing GitLab data or saved main configuration;
 use the replacement/recovery procedure for an existing installation. It records
 the selected public images in the private working configuration directory and
 starts with builds disabled. Later normal startup reuses that release profile;
@@ -501,6 +517,14 @@ package, rather than a separate Snap installation. Do not run
 its local hosts-file and insecure-registry changes.
 
 ### Public 2. Select working storage and install certificate integration
+
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `operations/dist` and `operations/node_modules`
+available offline before maintenance.
 
 This fresh installation keeps live data on the server's system disk. Create an
 explicit selector so the certificate integration and lifecycle tools share the
@@ -1223,6 +1247,14 @@ Docker log retention. It covers Ubuntu upstream-kernel evidence, CPU/image failu
 diagnoses, size/count rotation, preserved configuration and deliberate recreation.
 
 ## Replace a host while retaining its data volume
+
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `operations/dist` and `operations/node_modules`
+available offline before maintenance.
 
 This section is the explicit volume-backed reuse path. For fresh local working
 storage populated from an external backup instead, use the

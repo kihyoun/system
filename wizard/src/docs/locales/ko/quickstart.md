@@ -11,6 +11,12 @@ SSH 세션이나 로컬 콘솔을 계속 사용할 수 있어야 합니다. 메�
 curl -fsSL https://github.com/kihyoun/system/releases/latest/download/quickstart.sh | sudo bash
 ```
 
+Quickstart는 호스트 수명 주기 도구를 호출하기 전에 고정된 호스트 Node 런타임을 준비하고
+승인된 컨트롤러에서 일치하는 컴파일된 운영 코드와 의존성을 복사합니다. 기존 사용자
+Node/nvm 설치는 필요하지 않으며 교체하지도 않습니다. 수동 설치와 교체 호스트 복구는
+이러한 [호스트 런타임 입력](../Prepare-Host.md#prepare-the-host-operations-runtime)을
+별도로 준비하거나 복원해야 합니다.
+
 이 명령은 저장소가 관리하는 설치 프로그램을 다운로드하여 root로 실행합니다. 실행 전
 릴리스의 `quickstart.sh`를 검토할 수 있습니다. 설치 중 `latest`가 바뀌어도 게시된
 스크립트는 자신의 릴리스 태그에 고정됩니다. 해당 릴리스의 공개 버전 메타데이터와

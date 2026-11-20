@@ -62,7 +62,8 @@ Wizard는 해당 커밋의 일반 디렉터리입니다. `git rev-parse HEAD:wiz
 Wizard 트리와 비교하세요. 이 레이아웃에는 별도 Wizard 복제, 소스 공개 또는
 서브모듈 초기화가 필요하지 않습니다.
 
-새 호스트는 [빠른 시작](QUICKSTART.md)으로 설치하거나, 매니페스트의
+새 호스트는 런타임을 준비하는 [빠른 시작](QUICKSTART.md)으로 설치하세요. 명시적 경로는
+먼저 [호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료한 뒤 매니페스트의
 `images.controller.reference`와 `images.wizard.reference`를
 `bootstrapper/install-release.py --controller ... --wizard ... --release-metadata ...`에 전달하세요.
 네이티브 설치 프로그램은 정확한 소스와 다운로드한 이미지 식별 정보를 검증합니다.

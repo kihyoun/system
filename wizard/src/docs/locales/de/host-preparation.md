@@ -65,6 +65,92 @@ Dieser verwendet `docker compose --compatibility`, um die erwarteten,
 durch Unterstriche getrennten Containernamen zu erhalten. Dienstkonfiguration, Persistenz und
 Plattformabnahme sind separate Schritte.
 
+## Native Host-Laufzeit vorbereiten
+
+Host-`start.sh`, `stop.sh`, `bootstrapper/persistence.sh`, der Release-Installer
+und Ersatz-/Wiederherstellungswerkzeuge benötigen Node und kompilierte `operations`
+**vor** ihrem ersten Aufruf. Docker-Installation allein oder `--install-host` am
+Initialisierer bereiten diese Laufzeit nicht vor. Wählen Sie einen der folgenden
+Wege und schließen Sie ihn vor dem Startabschnitt oder einem Recovery-Verfahren ab.
+
+Quickstart installiert nvm **0.41.0** aus dem festgelegten Commit mit geprüftem
+Skript-Hash und installiert darüber Node **24.22.0**. Die eigene Installation liegt
+unter `/opt/system-bootstrapper-runtime`; vorhandene nvm-Installationen,
+Standardversionen und Shell-Profile der Benutzer bleiben erhalten. Auch der Hash
+des von nvm geladenen Node-Archivs wird geprüft. Kompilierte Operations-Dateien
+und Abhängigkeiten stammen aus dem akzeptierten Controller-Image; der dafür
+angelegte Container wird nicht gestartet. Ein npm-Installationslauf auf dem Host
+ist nicht erforderlich.
+
+Beim manuellen Weg zuerst die nativen Host-Abhängigkeiten installieren, den
+geprüften Release-Checkout wählen und die öffentlichen Metadaten verifizieren.
+Danach vor jedem Host-Lebenszyklus-, Persistenz- oder Installationseinstieg ausführen:
+
+```sh
+sudo python3 bootstrapper/prepare-host-runtime.py \
+  --checkout "$PWD" --release-metadata /absolute/path/release.json
+```
+
+Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery
+müssen das Laufzeitverzeichnis sowie `operations/dist` und
+`operations/node_modules` erhalten bleiben. Die Werkzeuge nutzen den gespeicherten
+absoluten Node-Pfad ohne nvm, Shell-Profil oder npm-Zugriff. Die Datei
+`/opt/system-bootstrapper-runtime/node-executable` enthält diesen Pfad.
+
+### Quellcodeentwicklung ohne vorgebauten Controller-Laufzeitinhalt
+
+Bereiten Sie für einen geprüften Quellcheckout die festgelegte Host-Laufzeit vor
+und kompilieren Sie operations vor dem ersten quellbasierten Start. Dies ist ein
+Online-Buildschritt, keine Wiederherstellung eines akzeptierten Images. Die Befehle
+werden im Repository-Stamm ausgeführt und verwenden einen eigenen nvm-Checkout,
+ohne Shell-Profile oder andere nvm-Installationen zu ändern. Wählen Sie bei einem
+vorhandenen Pfad ein neues Verzeichnis; überschreiben Sie keine erhaltene Laufzeit.
+Docker/Compose und die oben beschriebenen Host-Abhängigkeiten müssen bereits vorhanden sein.
+
+```bash
+SYSTEM_NVM_DIR="$HOME/.local/share/system-bootstrapper-nvm"
+mkdir -p "$(dirname "$SYSTEM_NVM_DIR")"
+git clone https://github.com/nvm-sh/nvm.git "$SYSTEM_NVM_DIR"
+git -C "$SYSTEM_NVM_DIR" checkout --detach 4e8758a801eea9479b32a904f31093e410ddaba4
+(cd "$SYSTEM_NVM_DIR" && printf '%s  nvm.sh\n' e7ffd3d192735da61e5eb04e68f1aca4a293af4cd0000864568d6de7aa8f6fc4 | sha256sum --check)
+export NVM_DIR="$SYSTEM_NVM_DIR"
+. "$NVM_DIR/nvm.sh" --no-use
+test "$(nvm --version)" = 0.41.0
+NVM_NODEJS_ORG_MIRROR=https://nodejs.org/dist nvm install --no-progress -b 24.22.0
+nvm use 24.22.0
+printf '%s  %s\n' cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008 "$NVM_DIR/.cache/bin/node-v24.22.0-linux-x64/node-v24.22.0-linux-x64.tar.xz" | sha256sum --check
+test "$(node --version)" = v24.22.0
+test "$(npm --version)" = 11.19.1
+npm ci --prefix operations --ignore-scripts
+npm run build --prefix operations
+SYSTEM_NODE_BIN="$(dirname "$(command -v node)")"
+test -f operations/dist/host-lifecycle/entry.js
+```
+
+Wählen Sie den Arbeitsspeicher wie im Startabschnitt beschrieben. Verwenden Sie
+danach diesen Quellstart anstelle des Installers für öffentliche Images:
+
+```bash
+sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  bash start.sh
+```
+
+Behalten Sie `SYSTEM_NODE_BIN` für weitere `sudo env "PATH=..."`-Aufrufe von
+`stop.sh`, `bootstrapper/persistence.sh` und Python-Hostwerkzeugen: sudo verwirft
+normalerweise den interaktiven nvm-PATH. Alternativ nutzen Sie die beim Weg über
+akzeptierte Images vorbereitete eigene Laufzeit. Beim Quellstart werden weiterhin
+Controller-/Wizard-Images gebaut, sofern ein vorhandenes akzeptiertes Release-Profil
+dies nicht abschaltet. Ein Image aus einem Recovery-Nachweis darf dadurch nicht
+neu gebaut und ersetzt werden.
+
+Behalten Sie für Offline-Recovery die Node-Installation und den passenden Checkout
+mit `operations/dist` und `operations/node_modules`, bevor der ursprüngliche Host
+verloren geht. Stellen Sie diese geprüften Werkzeuge wieder her, bevor
+`initialize.sh` oder `recover-volume.sh` den Speicher prüft. Fehlen sie, bereiten
+Sie kompatible geprüfte Werkzeuge getrennt vor der Wartung vor. Weder die gestoppte
+Plattform noch npm-Verfügbarkeit ist eine Recovery-Voraussetzung. Erhalten Sie die
+aufgezeichneten Dienst-Images und Quellidentitäten.
+
 ## Eigene öffentliche Releases veröffentlichen
 
 Belassen Sie Quellcodeentwicklung, Merge-Prüfung und erforderliche Kandidatenprüfungen in GitLab.
@@ -155,6 +241,8 @@ Halten Sie Token und erzeugte `.docker.env`-Dateien aus Git heraus. Nutzen Sie d
 abnahme, statt Testprojekte gegen erhaltene Benutzerdaten auszuführen.
 
 ## Start
+
+Schließen Sie zuerst die [Host-Laufzeitvorbereitung](#prepare-the-host-operations-runtime) ab.
 
 Eine Neuinstallation verwendet lokale Arbeitsdaten unter
 `/var/lib/system-bootstrapper/platform` auf dem Ubuntu-/WSL-Systemlaufwerk. Weder ein angeschlossenes
@@ -303,32 +391,10 @@ Führen Sie die [vollständige verwerfbare Abnahmesuite](tests/e2e/README.md) au
 GitLab, Registry, Runner-CI, Konfigurationsexport und TLS-Erneuerung gemeinsam zu prüfen.
 
 ## Herunterfahren
+
+Verwenden Sie die vorbereitete Host-Laufzeit; geben Sie beim Quellentwicklungsweg
+den oben gezeigten ausdrücklichen Node-PATH an.
+
 ```bash
-bash stop.sh
+sudo bash stop.sh
 ```
-
-## Native Host-Laufzeit vorbereiten
-
-Quickstart installiert nvm **0.41.0** aus dem festgelegten Commit mit geprüftem
-Skript-Hash und installiert darüber Node **24.22.0**. Die eigene Installation liegt
-unter `/opt/system-bootstrapper-runtime`; vorhandene nvm-Installationen,
-Standardversionen und Shell-Profile der Benutzer bleiben erhalten. Auch der Hash
-des von nvm geladenen Node-Archivs wird geprüft. Kompilierte Operations-Dateien
-und Abhängigkeiten stammen aus dem akzeptierten Controller-Image; der dafür
-angelegte Container wird nicht gestartet. Ein npm-Installationslauf auf dem Host
-ist nicht erforderlich.
-
-Beim manuellen Weg zuerst die nativen Host-Abhängigkeiten installieren, den
-geprüften Release-Checkout wählen und die öffentlichen Metadaten verifizieren.
-Danach vor dem Release-Installer ausführen:
-
-```sh
-sudo python3 bootstrapper/prepare-host-runtime.py \
-  --checkout "$PWD" --release-metadata /absolute/path/release.json
-```
-
-Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery
-müssen das Laufzeitverzeichnis sowie `operations/dist` und
-`operations/node_modules` erhalten bleiben. Die Werkzeuge nutzen den gespeicherten
-absoluten Node-Pfad ohne nvm, Shell-Profil oder npm-Zugriff. Die Datei
-`/opt/system-bootstrapper-runtime/node-executable` enthält diesen Pfad.

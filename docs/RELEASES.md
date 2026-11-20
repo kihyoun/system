@@ -69,7 +69,9 @@ revision. Wizard is an ordinary directory in that commit: compare
 `git rev-parse HEAD:wizard` with the recorded Wizard tree. No separate Wizard clone, source
 publication or submodule initialization is needed for this layout.
 
-Install a fresh host using [Quickstart](QUICKSTART.md), or pass the manifest's
+Install a fresh host using [Quickstart](QUICKSTART.md), which prepares its runtime.
+For the explicit path, complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime)
+first, then pass the manifest's
 `images.controller.reference` and `images.wizard.reference` to
 `bootstrapper/install-release.py --controller ... --wizard ... --release-metadata ...`.
 The native installer verifies exact source and pulled image identity. References

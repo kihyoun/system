@@ -1,5 +1,12 @@
 ## 0. 시작하기
 
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+
 ### 새 Ubuntu 호스트에 빠르게 설치
 
 sudo 권한, curl, Python 3, 인터넷, RAM 8 GiB 이상,
@@ -98,6 +105,13 @@ HTTP 예외는 로컬 테스트로 제한됩니다.
 수정 버전의 빌드는 검토가 필요한 별도의 개발 작업입니다.
 
 ### 0.3 Bootstrapper 최초 시작
+
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
 
 새 Ubuntu/WSL 설치는 시스템 디스크의 `/var/lib/system-bootstrapper/platform`에
 로컬 작업 데이터를 저장합니다. 최초 시작에 두 번째 디스크, USB,

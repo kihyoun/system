@@ -1,11 +1,19 @@
 # System controller releases and runtime base
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `operations/dist` and `operations/node_modules`
+available offline before maintenance.
+
 A public **controller release** is the complete image built from
 `system/Dockerfile`: the orchestration code, Sync service, packaged Wizard source
 and runtime tools. It is accompanied by a separately built Wizard web image.
 A fresh host can pull these accepted images without building controller or
-Wizard images or resolving their Alpine build packages. The existing Sync
-startup still runs its prestart TypeScript build inside the controller. See
+Wizard images or resolving their Alpine build packages. The accepted controller contains prebuilt Sync and operations; startup does not
+install npm dependencies or compile TypeScript. See
 [release installation](../Prepare-Host.md#install-a-tested-public-release).
 
 The standalone **runtime base** built from `bootstrapper/Dockerfile` contains the

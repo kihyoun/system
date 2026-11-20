@@ -70,8 +70,10 @@ Vergleichen Sie `git rev-parse HEAD:wizard` mit dem aufgezeichneten Wizard-Baum.
 Dieses Layout benötigt keinen separaten Wizard-Klon, keine eigene
 Quellveröffentlichung und keine Submodulinitialisierung.
 
-Installieren Sie einen frischen Host mit der [Schnellinstallation](QUICKSTART.md), oder
-übergeben Sie `images.controller.reference` und `images.wizard.reference` aus dem Manifest an
+Installieren Sie einen frischen Host mit der [Schnellinstallation](QUICKSTART.md), die
+ihre Laufzeit vorbereitet. Schließen Sie beim ausdrücklichen Weg zuerst die
+[Host-Laufzeitvorbereitung](../Prepare-Host.md#prepare-the-host-operations-runtime) ab und
+übergeben Sie dann `images.controller.reference` und `images.wizard.reference` aus dem Manifest an
 `bootstrapper/install-release.py --controller ... --wizard ... --release-metadata ...`.
 Das native Installationsprogramm prüft exakte Quellcode- und geladene Image-Identitäten.
 Referenzen allein bewahren keine Image-Inhalte: Halten Sie geprüfte Image-Archive vor

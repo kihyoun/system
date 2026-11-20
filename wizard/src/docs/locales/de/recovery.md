@@ -1,5 +1,13 @@
 ## Einen Host ersetzen und dabei sein Datenvolume behalten
 
+Bereiten Sie vor nativer Hostinstallation, Start/Stopp, Persistenzprüfung oder
+Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
+vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
+Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
+installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
+Halten Sie die geprüfte Node-Installation, `operations/dist` und
+`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+
 Dieser Abschnitt beschreibt ausdrücklich die Wiederverwendung eines vorhandenen
 Datenvolumes. Wenn Sie stattdessen einen frischen lokalen Arbeitsspeicher aus einer
 externen Sicherung befüllen möchten, verwenden Sie das

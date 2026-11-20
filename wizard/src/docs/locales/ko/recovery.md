@@ -1,5 +1,12 @@
 ## 데이터 볼륨을 유지하면서 호스트 교체하기
 
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+
 이 절은 명시적으로 볼륨을 사용하는 재사용 절차입니다. 외부 백업에서 데이터를 채운
 새 로컬 작업 저장소를 사용하려면
 [구성과 Seed를 함께 복원하는 절차](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation)를

@@ -9,7 +9,6 @@ Python 및 Ruby를 유지합니다. 격리된 실행기는 명시적 [매니페�
 Node, Git, tar 및 Docker를 사용할 수 있는 깨끗한 커밋 체크아웃에서 실행하세요.
 
 ```sh
-git submodule update --init --recursive
 node project-bootstrap/wizard-source/package.js
 node tests/prepare-context.js
 docker build -f tests/Dockerfile -t system-component-tests - < .test-context/context.tar
@@ -20,8 +19,9 @@ docker run --rm --network none system-component-tests sync
 이 자식 컨테이너에 Docker 소켓, 비공개 구성, 호스트 네트워크 또는 플랫폼 볼륨을
 마운트하지 마세요. 신뢰된 호스트에 Node가 없으면
 `bash project-bootstrap/wizard-source/prepare.sh`가 소스 패키징 대안을 제공합니다.
-컨텍스트에는 현재 커밋된 Git 트리에서 허용 목록에 있는 blob과 해당 gitlink에 맞는
-검증된 Wizard 스냅샷만 포함됩니다. Git 메타데이터, 비공개/무시/미추적 파일 및 작업
+컨텍스트에는 현재 커밋된 Git 트리의 허용된 blob과 `system-monorepo-v1`의 일반
+`wizard/` 트리가 포함됩니다. 과거 gitlink 소스는 별도의 검증된 Wizard 스냅샷과
+정확한 재귀 서브모듈이 필요합니다(`git submodule update --init --recursive`). Git 메타데이터, 비공개/무시/미추적 파일 및 작업
 사본 편집은 제외합니다. 패키징 전에 의도한 코드를 커밋하세요. 전체 체크아웃을 보내는
 대체 동작은 없습니다.
 
@@ -95,7 +95,7 @@ docker run --rm --network none \
 컨트롤러 재시작을 유발하는 Sync 종료 전에 완료되며, 가져오기 실패 시 서비스는
 계속 사용 가능합니다.
 
-소스 컨텍스트 계약은 바이너리 내용/실행 모드, 커밋 입력, 스냅샷 해시/gitlink 및
+소스 컨텍스트 계약은 바이너리 내용/실행 모드, 커밋 입력, 스냅샷 해시, 모노레포 트리 식별 정보와 과거 gitlink 및
 변경된 파일/비공개 파일 제외를 검증합니다. 부모 계약은 Docker 실행 전 체크섬/리비전
 검사, 정확한 소유 대상 정리, 주 실패 보존 및 접근 불가능한 데몬 진단을 검사합니다.
 복구 계약은 파괴적 복사 전 전체 페이로드 검증, GitLab 이미지 식별 정보, 정상 종료,
@@ -112,7 +112,7 @@ docker run --rm --network none \
   시작은 수행하지 않습니다.
 - **런타임:** 그 외 모든 경로, 문서/코드 혼합 변경 및 알 수 없는 경로는 아래의 전체
   구성 요소, 이미지 및 콜드 복구 검사를 유지합니다. CI 구성과 도우미, 인프라, 테스트 및
-  Wizard gitlink는 이 범주입니다. 이름 변경은 이전과 새 경로를 모두 포함하며 런타임
+  Wizard 소스는 이 범주입니다. 이름 변경은 이전과 새 경로를 모두 포함하며 런타임
   파일 삭제도 전체 검사를 유지합니다.
 
 네이티브 `rules:changes:regexp`에는 GitLab 19.2 이상이 필요합니다. 공유 규칙은 문서
@@ -155,7 +155,7 @@ CI 자체 변경 시 필수 런타임 파이프라인을 대체하지 않습니�
 커밋은 각각 자체 검사를 받습니다. 파이프라인은 트리 식별 정보를 근거로 이전 콜드
 복구 결과를 재사용하지 않습니다.
 
-런타임 경로는 `prepare:wizard-source`에서 정확한 재귀 Wizard gitlink와 두 최소 빌드
+런타임 경로는 `prepare:wizard-source`에서 정확한 공통 Wizard 트리(과거 소스는 재귀 Wizard gitlink)와 최소 빌드
 컨텍스트를 준비합니다. 후속 작업은 아카이브 체크섬과 기록된 리비전이 `CI_COMMIT_SHA`와
 일치해야 합니다. 누락, 손상 또는 오래된 아티팩트는 Docker 실행 전에 실패합니다.
 
@@ -172,12 +172,12 @@ Runner의 악의적인 Merge Request를 위한 것이 아닙니다. 테스트는
 
 `prepare:wizard-source`는 패키징 전에 번들 Docs와 전체 공개 가이드 소스도 대조합니다.
 리더를 갱신하려면 원본 가이드를 편집하고 `python3 docs/export-wizard-docs.py`를 실행한
-뒤 System gitlink와 함께 생성된 Wizard 카탈로그를 커밋하세요.
+뒤 생성된 Wizard 카탈로그를 동일한 System 커밋에 포함하세요.
 `node docs/check-wizard-docs.js`는 소스 불일치와 전체 텍스트 보존을 검사하며,
 `python3 docs/test-export-wizard-docs.py`는 작성 중 장, 링크 및 오프라인 이미지
 범위를 검사합니다.
 
-필수 `test:wizard-browser` 작업은 동일하게 커밋된 Wizard gitlink에서 별도로 체크섬을
+필수 `test:wizard-browser` 작업은 동일하게 커밋된 Wizard 소스 트리에서 별도로 체크섬을
 계산한 컨텍스트를 사용합니다. 신뢰된 부모는 브라우저 도구를 빌드하고 호스트 소켓,
 비공개 구성 또는 작업 자격 증명이 없는 네트워크 비활성 자식에서 전체 네이티브
 Playwright 테스트를 실행합니다. 자식 제한은 메모리 2 GiB, CPU 2개, 프로세스 512개입니다.
@@ -230,7 +230,7 @@ attestation 검증을 주장하지 않습니다. 다른 후보 이미지 메타�
 
 런타임 Merge Request와 기본 브랜치 빌드는 구성 요소 검사와 나란히 필수
 `test:codeql` 작업을 실행합니다. CodeQL 2.27.4와 공식 기본 JavaScript/TypeScript
-코드 스캐닝 모음으로 커밋된 System 소스와 정확한 Wizard gitlink를 검사합니다.
+코드 스캐닝 모음으로 커밋된 System 소스와 정확한 내장 Wizard 트리(또는 과거 gitlink 스냅샷)를 검사합니다.
 규칙, 경로 또는 이전 발견 사항을 억제하지 않습니다. 고정된 공개 CLI 번들은
 사용 전에 체크섬을 검증합니다. 검사 자식 컨테이너에는 네트워크, Docker 소켓
 또는 자격 증명이 없으며 애플리케이션 빌드를 실행할 수 없습니다.

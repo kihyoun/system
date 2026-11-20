@@ -1,11 +1,19 @@
 # System-Controller-Releases und Laufzeitbasis
 
+Bereiten Sie vor nativer Hostinstallation, Start/Stopp, Persistenzprüfung oder
+Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
+vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
+Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
+installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
+Halten Sie die geprüfte Node-Installation, `operations/dist` und
+`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+
 Ein öffentliches **Controller-Release** ist das vollständige Image aus
 `system/Dockerfile`: Orchestrierungscode, Sync-Dienst, paketierter Wizard-Quellcode
 und Laufzeitwerkzeuge. Dazu gehört ein separat gebautes Wizard-Web-Image.
 Ein neuer Host kann diese freigegebenen Images laden, ohne Controller- oder
-Wizard-Images zu bauen oder ihre Alpine-Build-Pakete aufzulösen. Der bestehende Sync-
-Start führt weiterhin seinen vorgeschalteten TypeScript-Build innerhalb des Controllers aus. Siehe
+Wizard-Images zu bauen oder ihre Alpine-Build-Pakete aufzulösen. Der akzeptierte Controller enthält vorgebautes Sync und operations; beim Start
+werden weder npm-Abhängigkeiten installiert noch TypeScript-Dateien kompiliert. Siehe
 [Release-Installation](../Prepare-Host.md#install-a-tested-public-release).
 
 Die eigenständige **Laufzeitbasis** aus `bootstrapper/Dockerfile` enthält nur die

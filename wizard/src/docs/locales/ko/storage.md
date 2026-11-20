@@ -1,5 +1,12 @@
 # 작업 데이터와 독립적인 Seed 백업
 
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+
 플랫폼의 저장소에는 두 가지 역할이 있습니다.
 
 | 역할 | 용도 | 필요 시점 |
@@ -158,10 +165,18 @@ Certbot 프로세스로 인증서 상태를 변경하지 마세요.
 
 ## 라이브 데이터를 보존하며 VM 교체하기
 
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+
 1. 저장소를 분리하기 전에 쓰기를 정상 중지하세요. VM 삭제 시 볼륨을 명시적으로
    보존하고 포맷하거나 그 위에 다른 파일시스템을 초기화하지 마세요.
 2. 호환되는 Ubuntu 호스트를 프로비저닝하고 볼륨을 연결하여 기존 파일시스템을
-   마운트하세요. 고정 하위 모듈을 포함한 의도한 System 리비전을 가져오세요.
+   마운트하세요. 기록된 Wizard 트리를 포함한 의도한 System 리비전을 가져오세요.
+   과거 gitlink 릴리스에만 정확한 서브모듈 초기화가 필요합니다.
    `sudo bash bootstrapper/install.sh`로 Docker를 설치하고 Certbot은 별도로 설치하세요.
 3. `/etc/system-bootstrapper/persistence.env`를 `PERSISTENCE_MODE=volume`과 보존된
    마운트/디렉터리/UUID 선택자로 다시 만드세요. 마운트/UUID 및 저장 구성을 확인하고

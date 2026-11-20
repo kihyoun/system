@@ -1,8 +1,18 @@
 # Konfiguration und Seed wiederherstellen
 
+Bereiten Sie vor nativer Hostinstallation, Start/Stopp, Persistenzprüfung oder
+Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
+vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
+Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
+installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
+Halten Sie die geprüfte Node-Installation, `operations/dist` und
+`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+
 Die Wiederherstellungseingaben bleiben getrennt: eine
 Wizard-Konfigurationssicherung, ein abgeschlossener Harvest-Seed und frisch
-geladener System-Quellcode einschließlich seines festgelegten Wizard-Submoduls.
+geladener aufgezeichneter System-Quellcode mit seinem Wizard-Baum. Neue Monorepo-
+Releases verwenden das reguläre Verzeichnis `wizard/`; historische Gitlink-Releases
+benötigen zusätzlich ihren exakten separaten Wizard-Commit.
 Konfiguration wird nicht in Harvest kopiert, und der Wizard bietet keinen
 Download von Dienstdaten an.
 
@@ -69,7 +79,7 @@ Seed-Übereinstimmung und autorisieren keine Wiederherstellung.
 
 Für ein dokumentiertes akzeptiertes Produkt-Release rufen Sie dessen
 [öffentliche Release-Metadaten](RELEASES.md) ab und laden den exakten Quellcode-Commit mit
-festgelegtem Wizard-Submodul. Für eine aus Quellcode gebaute/private Laufzeit bewahren Sie
+aufgezeichnetem Wizard-Baum; historische Gitlink-Releases benötigen den exakten separaten Wizard-Commit. Für eine aus Quellcode gebaute/private Laufzeit bewahren Sie
 Quellcode und geprüfte Image-Inhalte unabhängig auf. Laden Sie vor der Wiederherstellung
 exakte unveränderliche Referenzen oder geprüfte Archive; eine Referenz ist kein gesichertes
 Image. Der nachfolgende native Wiederherstellungsweg für private Wizard-Images kann ein
@@ -186,13 +196,22 @@ Konfiguration dem Seed nicht hinzu.
 
 ## Einen externen Seed in einer frischen lokalen Installation wiederherstellen
 
+Bereiten Sie vor nativer Hostinstallation, Start/Stopp, Persistenzprüfung oder
+Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
+vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
+Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
+installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
+Halten Sie die geprüfte Node-Installation, `operations/dist` und
+`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+
 Die Eingaben sind der abgeschlossene Seed, das passende Wizard-`bootstrapper.zip`,
-der aufgezeichnete System-Quellcode mit seinem festgelegten Submodul sowie
+der aufgezeichnete System-Quellcode mit seinem aufgezeichneten Wizard-Layout sowie
 deklarierte Image-Referenzen oder geprüfte Image-Archive. Das frühere produktive
 Datenverzeichnis ist keine Eingabe.
 
 1. Installieren Sie Docker auf dem neuen Ubuntu-Host und checken Sie die
-   vorgesehene Quellcoderevision mit festgelegten Submodulen aus. Wählen Sie
+   vorgesehene Quellcoderevision mit ihrem aufgezeichneten Wizard-Baum aus. Nur
+   historische Gitlink-Releases benötigen exakt initialisierte Submodule. Wählen Sie
    `PERSISTENCE_MODE=local` und ein frisches lokales `PERSISTENT_DIR` oder wählen
    Sie ausdrücklich ein eingehängtes Datenvolume. Hängen Sie das aufbewahrte
    Sicherungsdateisystem ein und setzen Sie dessen `SEED_MOUNT`, `SEED_DIR`

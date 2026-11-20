@@ -1,5 +1,13 @@
 ## 0. Erste Schritte
 
+Bereiten Sie vor nativer Hostinstallation, Start/Stopp, Persistenzprüfung oder
+Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
+vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
+Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
+installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
+Halten Sie die geprüfte Node-Installation, `operations/dist` und
+`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+
 ### Schnellinstallation auf einem frischen Ubuntu-Host
 
 Führen Sie auf Ubuntu 24.04 / 26.04 LTS x86_64 mit sudo-Zugriff, curl, Python 3, Internet,
@@ -102,6 +110,14 @@ die Erstinstallation führt weder ihre Dockerfiles aus noch löst sie Alpine-APK
 Der Build einer geänderten Version bleibt ein separater, geprüfter Entwicklungsvorgang.
 
 ### 0.3 Bootstrapper erstmals starten
+
+Bereiten Sie vor nativer Hostinstallation, Start/Stopp, Persistenzprüfung oder
+Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
+vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
+Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
+installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
+Halten Sie die geprüfte Node-Installation, `operations/dist` und
+`operations/node_modules` vor Wartungsbeginn offline verfügbar.
 
 Neue Ubuntu-/WSL-Installationen verwenden lokale Arbeitsdaten unter
 `/var/lib/system-bootstrapper/platform` auf dem Systemlaufwerk. Für den ersten Start sind weder eine zweite Festplatte, ein USB-

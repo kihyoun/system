@@ -1,5 +1,13 @@
 # Working data and independent Seed backups
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `operations/dist` and `operations/node_modules`
+available offline before maintenance.
+
 The platform has two storage roles:
 
 | Role | Purpose | Availability |
@@ -164,10 +172,19 @@ convenience path, described below. It does not prove external-Seed recovery.
 
 ## Replacing a VM while retaining live data
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `operations/dist` and `operations/node_modules`
+available offline before maintenance.
+
 1. Stop writers cleanly before detaching storage. Retain the volume explicitly
    when deleting the VM; do not format it or initialize another filesystem over it.
 2. Provision a compatible Ubuntu host, attach the volume and mount its existing
-   filesystem. Fetch the intended System revision with pinned submodules. Install
+   filesystem. Fetch the intended System revision and its recorded Wizard tree;
+   initialize exact submodules only for a historical gitlink release. Install
    Docker using `sudo bash bootstrapper/install.sh`; install Certbot separately.
 3. Recreate `/etc/system-bootstrapper/persistence.env` with
    `PERSISTENCE_MODE=volume` and the retained mount/directory/UUID selectors.

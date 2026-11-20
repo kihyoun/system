@@ -1,10 +1,17 @@
 # System 컨트롤러 릴리스와 런타임 베이스
 
+네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
+[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
+Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
+먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
+설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
+`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+
 공개 **컨트롤러 릴리스**는 `system/Dockerfile`에서 빌드한 전체 이미지로, 오케스트레이션
 코드, Sync 서비스, 패키징된 Wizard 소스 및 런타임 도구를 포함합니다. 별도로 빌드한
 Wizard 웹 이미지가 함께 제공됩니다. 새 호스트는 컨트롤러나 Wizard 이미지를 빌드하거나
-Alpine 빌드 패키지를 해석하지 않고 승인된 이미지를 가져올 수 있습니다. 기존 Sync
-시작 과정은 여전히 컨트롤러 안에서 시작 전 TypeScript 빌드를 실행합니다.
+Alpine 빌드 패키지를 해석하지 않고 승인된 이미지를 가져올 수 있습니다. 승인된 컨트롤러에는
+사전 빌드된 Sync와 operations가 포함되며 시작 시 npm 설치나 TypeScript 컴파일을 하지 않습니다.
 [릴리스 설치](../Prepare-Host.md#install-a-tested-public-release)를 확인하세요.
 
 `bootstrapper/Dockerfile`에서 빌드하는 독립 실행형 **런타임 베이스**에는 공유 도구만
