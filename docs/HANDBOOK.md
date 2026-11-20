@@ -1823,15 +1823,19 @@ reviewed promotion/migration procedure instead.
 
 For combined guided previews and GitLab migration, `guidedPreviewAcceptance === true`
 and `gitlabUpgradeAcceptance === true` select one fixed 75-minute execution budget.
+Adding a prepared `publicUpgrade` fixture selects one fixed 90-minute budget for
+the additional real public CLI plan/apply, fresh matching cold Seed/configuration
+backup, interrupted offline image recovery and separate controller restart with
+durable recovery selectors. Without that fixture the combined scenario retains 75 minutes.
 An upgrade without guided previews retains 60 minutes; ACME without an upgrade
 retains 25 minutes; ordinary smoke retains 20 minutes. The original candidate,
 restored candidate, ACME authority and all side owners share the original absolute
 deadline. Starting a phase or replacing a host never resets it; a timeout fails
 acceptance without an automatic extension.
 
-The full platform CI job allows an 80-minute runner script, a separate two-minute
-`after_script` and an 85-minute job limit for preparation, execution, publication
-and artifact collection. The 75-minute ceiling includes three actual native Wizard
+The full platform CI job allows a 95-minute runner script, a separate two-minute
+`after_script` and a 100-minute job limit for preparation, execution, publication
+and artifact collection. Both combined-scenario ceilings include three actual native Wizard
 pipelines (imported default branch, merge request and merged default branch), each
 with four required jobs, plus manual Review/Beta Deploy and Stop. This ceiling is
 an upper bound, not a runtime guarantee. The candidate remains limited to 12 GiB

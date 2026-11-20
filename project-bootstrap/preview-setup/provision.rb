@@ -1,5 +1,6 @@
 # Native GitLab adapter. The outer provisioner creates and revokes its temporary
 # administrator credential; source transfer receives only an expiring project PAT.
+require 'digest'
 class BootstrapperPreviewSetup
   def initialize(api, input)
     @api, @input = api, input
@@ -49,24 +50,27 @@ class BootstrapperPreviewSetup
     end
     routes
   end
-  def source_context
-    id = @input.fetch('projectId')
-    ids = @input['projectIds']
-    raise BootstrapError, 'Invalid preview evidence route.' unless id.is_a?(Integer) && id > 0 && ids.is_a?(Array) && ids.include?(id)
+  def evidence_reader(recorded = nil)
     reads, bytes = 0, 32
-    read = lambda do |route|
+    lambda do |route|
       evidence_routes([route])
       reads += 1
       raise BootstrapError, 'Invalid preview evidence route.' if reads > 32
       value = get(route)
       bytes += JSON.generate(value).bytesize + 1
       raise BootstrapError, 'Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.' if bytes > 1500000
+      recorded << {route: route, value: value} if recorded
       value
     end
-    finish = lambda do |value|
-      raise BootstrapError, 'Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.' if JSON.generate(value).bytesize > 1500000
-      value
-    end
+  end
+  def evidence_result(value)
+    raise BootstrapError, 'Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.' if JSON.generate(value).bytesize > 1500000
+    value
+  end
+  def source_context(read = evidence_reader)
+    id = @input.fetch('projectId')
+    ids = @input['projectIds']
+    raise BootstrapError, 'Invalid preview evidence route.' unless id.is_a?(Integer) && id > 0 && ids.is_a?(Array) && ids.include?(id)
     prefix = "projects/#{id}"
     project = read.call(prefix)
     branch_name = project.fetch('default_branch')
@@ -77,7 +81,7 @@ class BootstrapperPreviewSetup
     pipelines = read.call(prefix + '/pipelines?sha=' + sha + '&ref=' + URI.encode_www_form_component(branch_name) + '&source=push&per_page=100')
     pipeline = pipelines.find { |row| row['sha'] == sha && row['source'] == 'push' }
     result = {project: project, branch: branch, pipeline: pipeline}
-    return finish.call(result) unless pipeline && ['success', 'failed'].include?(pipeline['status'])
+    return evidence_result(result) unless pipeline && ['success', 'failed'].include?(pipeline['status'])
     pipeline_id = pipeline.fetch('id')
     raise BootstrapError, 'Selected preview source identity is invalid.' unless pipeline_id.is_a?(Integer) && pipeline_id > 0
     result[:jobs] = read.call(prefix + "/pipelines/#{pipeline_id}/jobs?per_page=100&include_retried=false")
@@ -86,7 +90,89 @@ class BootstrapperPreviewSetup
       raise BootstrapError, 'The approved CI manifest is too large. Review it through the native source-primary tool.' if rows.length >= 100
       rows
     end
-    finish.call(result)
+    evidence_result(result)
+  end
+  # Mirror the native binding gate before reading any artifact. JavaScript
+  # independently repeats these checks on the returned fresh phase response.
+  def pipeline_checks(pipeline, jobs)
+    states = ['created', 'pending', 'running', 'success', 'failed', 'canceled', 'manual', 'scheduled', 'waiting_for_resource', 'preparing']
+    raise BootstrapError, 'Native Wizard pipeline state is invalid.' unless states.include?(pipeline['status']) && jobs.is_a?(Array)
+    ['build:source', 'test:browser', 'build:wizard', 'test:wizard'].each do |name|
+      found = jobs.select { |job| job['name'] == name }
+      raise BootstrapError, 'All required native source and delivery checks must succeed.' unless found.length == 1 &&
+        found[0]['status'] == 'success' && found[0]['allow_failure'] == false &&
+        found[0].dig('commit', 'id') == pipeline['sha'] && found[0].dig('pipeline', 'id') == pipeline['id']
+    end
+    publishers = jobs.select { |job| job['name'] == 'deploy:github' }
+    publisher = publishers.first
+    raise BootstrapError, 'Public mirror job identity changed.' if publishers.length > 1 || publisher &&
+      (publisher['allow_failure'] != false || publisher.dig('commit', 'id') != pipeline['sha'] || publisher.dig('pipeline', 'id') != pipeline['id'])
+    failures = jobs.select { |job| job['allow_failure'] == false && job['name'] != 'deploy:github' && job['status'] != 'success' }
+    raise BootstrapError, 'Native Wizard pipeline failed outside the optional public mirror.' unless failures.empty? &&
+      (pipeline['status'] == 'success' || publisher && publisher['status'] != 'success')
+  end
+  def source_evidence
+    read = evidence_reader
+    result = source_context(read)
+    pipeline = result[:pipeline]
+    return result unless pipeline && ['success', 'failed'].include?(pipeline['status'])
+    pipeline_checks(pipeline, result.fetch(:jobs))
+    blobs = result.fetch(:trees).flatten.select { |row| row['type'] == 'blob' }
+    # Larger valid manifests keep the existing bounded multi-process path.
+    return result if blobs.length + 7 > 32
+    prefix = "projects/#{@input.fetch('projectId')}"
+    sha = result.fetch(:branch).fetch('commit').fetch('id')
+    jobs = result.fetch(:jobs)
+    artifact = prefix + "/jobs/#{jobs.find { |job| job['name'] == 'build:wizard' }.fetch('id')}/artifacts/build-evidence.json"
+    routes = blobs.map { |row| prefix + '/repository/files/' + URI.encode_www_form_component(row.fetch('path')) + '?ref=' + sha }
+    evidence_routes([artifact, *routes])
+    result[:artifact] = read.call(artifact)
+    result[:files] = blobs.zip(routes).map { |row, route| {path: row.fetch('path'), value: read.call(route)} }
+    evidence_result(result)
+  end
+  def adoption_evidence
+    receipt = @input.fetch('receipt')
+    repository, binding = receipt.fetch('repository'), receipt.fetch('sourcePrimary')
+    id, previous = repository.fetch('id'), @input.fetch('previousProjectId')
+    pipeline_id, sha = @input.fetch('pipelineId'), @input.fetch('sourceCommit')
+    files = binding.fetch('ciFiles')
+    raise BootstrapError, 'Invalid preview evidence route.' unless [id, previous, pipeline_id, receipt['namespaceId']].all? { |value| value.is_a?(Integer) && value > 0 } &&
+      repository['namespaceId'] == receipt['namespaceId'] && repository['managementMode'] == 'source-primary' && repository['ciPath'] == '.gitlab/primary.yml' &&
+      repository['path'].is_a?(String) && repository['defaultBranch'].is_a?(String) && sha.is_a?(String) && sha.match?(/\A[a-f0-9]{40}\z/) &&
+      files.is_a?(Array) && files.length.between?(1, 25) && files.map { |file| file['path'] }.uniq.length == files.length &&
+      files.any? { |file| file['path'] == '.gitlab/primary.yml' } && files.all? { |file| file['path'].is_a?(String) &&
+        file['path'].match?(%r{\A(?:\.gitlab|\.system-bootstrapper)/[A-Za-z0-9_./-]+\z}) && !file['path'].split('/').include?('..') &&
+        file['sha256'].is_a?(String) && file['sha256'].match?(/\A[a-f0-9]{64}\z/) }
+    prefix = "projects/#{id}"
+    routes = ["projects/#{previous}", prefix + '/repository/branches/' + URI.encode_www_form_component(repository.fetch('defaultBranch')),
+      prefix, prefix + "/pipelines/#{pipeline_id}", prefix + "/pipelines/#{pipeline_id}/jobs?per_page=100&include_retried=false",
+      *files.map { |file| prefix + '/repository/files/' + URI.encode_www_form_component(file.fetch('path')) + '?ref=' + sha }]
+    evidence_routes(routes)
+    recorded = []
+    read = evidence_reader(recorded)
+    read.call(routes[0])
+    branch = read.call(routes[1])
+    project = read.call(routes[2])
+    pipeline = read.call(routes[3])
+    jobs = read.call(routes[4])
+    raise BootstrapError, 'Canonical source-primary project identity or merge gates changed.' unless project['id'] == id &&
+      project['path_with_namespace'] == repository['path'] && project.dig('namespace', 'id') == receipt['namespaceId'] &&
+      project['default_branch'] == repository['defaultBranch'] && project['visibility'] == 'private' && project['ci_config_path'] == '.gitlab/primary.yml' &&
+      project['only_allow_merge_if_pipeline_succeeds'] == true && project['only_allow_merge_if_all_discussions_are_resolved'] == true
+    raise BootstrapError, 'Require the exact successful native default-branch push pipeline.' unless branch.dig('commit', 'id') == sha &&
+      pipeline['id'] == pipeline_id && pipeline['sha'] == sha && pipeline['ref'] == repository['defaultBranch'] &&
+      pipeline['source'] == 'push' && [nil, false, '', 0].include?(pipeline['yaml_errors'])
+    pipeline_checks(pipeline, jobs)
+    files.zip(routes.drop(5)).each do |file, route|
+      value = read.call(route)
+      content = Base64.strict_decode64(value.fetch('content').delete("\n"))
+      raise BootstrapError, 'Approved native Wizard CI changed.' unless Digest::SHA256.hexdigest(content) == file.fetch('sha256')
+    end
+    ['build:wizard', 'test:wizard'].zip(['build-evidence.json', 'wizard-evidence.json']).each do |name, filename|
+      job = jobs.find { |value| value['name'] == name }
+      read.call(prefix + "/jobs/#{job.fetch('id')}/artifacts/#{filename}")
+    end
+    evidence_result({reads: recorded})
   end
   def call
     case @input.fetch('action')
@@ -138,6 +224,10 @@ class BootstrapperPreviewSetup
       {value: get(evidence_routes([@input.fetch('route')]).first)}
     when 'preview-setup-source-context'
       source_context
+    when 'preview-setup-source-evidence'
+      source_evidence
+    when 'preview-setup-adoption-evidence'
+      adoption_evidence
     when 'preview-setup-read-many'
       routes = evidence_routes(@input.fetch('routes'))
       bytes = 32

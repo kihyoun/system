@@ -51,6 +51,21 @@ function fixture(profile = 'node24-vite8-overview-v3') {
   return {root, config, mainConfig, directory, receipt, text, input, rows, calls, adoption: new Adoption({config, mainConfig, directory, request, environments: env.sourcePrimaryEnvironment})};
 }
 async function use(run, profile) { const f = fixture(profile); try {await run(f);} finally {fs.rmSync(f.root, {recursive: true, force: true});} }
+function nativeCollector(f) {
+  const {collectedReads} = require('../../project-bootstrap/preview-setup/reads');
+  const phases = [];
+  f.adoption.collectEvidence = async phase => {
+    phases.push({locked: fs.existsSync(f.config + '.environments.lock')});
+    const raw = require('child_process').execFileSync('ruby', [path.resolve(__dirname, '../gitlab/preview-evidence.rb'), '--collect'],
+      {input: JSON.stringify({input: {...phase, action: 'preview-setup-adoption-evidence', projectIds: [1, 7]}, rows: f.rows}),
+        encoding: 'utf8', maxBuffer: 1500000, timeout: 10000, stdio: ['pipe', 'pipe', 'pipe']});
+    const result = JSON.parse(raw);
+    phases.at(-1).reads = result.reads.length;
+    f.calls.push(...result.reads.map(row => row.route));
+    return collectedReads(result);
+  };
+  return phases;
+}
 async function buildUpdate(f, profile = 'node24-vite8-ca-v4') {
   const initial = await f.adoption.plan(f.input);
   await f.adoption.apply(f.input, initial.planHash);
@@ -110,6 +125,37 @@ async function bindingRefresh(f) {
       assert.equal(f.calls.filter(actual => actual === route).length, 2, 'Each plan must read every manifest blob exactly once');
     }
     console.log('Native adoption batching (' + manifestSize + ' files): ' + f.calls.length + ' evidence GETs in ' + batches.length + ' sequential process batches across plan/apply.');
+  }, 'node24-vite8-quickstart-v5');
+  await use(async f => {
+    while (f.input.ciFiles.length < 23) {
+      const file = '.gitlab/proof-' + f.input.ciFiles.length + '.sh', content = '# retained native proof\n';
+      f.input.ciFiles.push({path: file, sha256: b.hash(content)});
+      f.rows['projects/7/repository/files/' + encodeURIComponent(file) + '?ref=' + sha] = {content: Buffer.from(content).toString('base64')};
+    }
+    const phases = nativeCollector(f);
+    const plan = await f.adoption.plan(f.input);
+    await f.adoption.apply(f.input, plan.planHash);
+    assert.deepEqual(phases, [{locked: false, reads: 30}, {locked: true, reads: 30}]);
+    assert.equal(f.calls.length, 60, 'Collector dropped independent plan/apply proof reads');
+    for (const file of f.input.ciFiles) {
+      const route = 'projects/7/repository/files/' + encodeURIComponent(file.path) + '?ref=' + sha;
+      assert.equal(f.calls.filter(actual => actual === route).length, 2, 'Apply reused a plan blob');
+    }
+    console.log('Native adoption collector: unchanged 60 GETs in two fresh 30-GET processes, with apply revalidation under the ownership lock.');
+  }, 'node24-vite8-quickstart-v5');
+  for (const change of [
+    f => { f.rows['projects/7'].visibility = 'public'; },
+    f => { f.rows['projects/7/pipelines/31/jobs?per_page=100&include_retried=false'][0].status = 'failed'; },
+    f => { f.rows['projects/7/jobs/41/artifacts/wizard-evidence.json'].cubeSignature = false; },
+    f => { f.rows['projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + sha].content = Buffer.from('changed bytes').toString('base64'); }
+  ]) await use(async f => {
+    const phases = nativeCollector(f), plan = await f.adoption.plan(f.input);
+    change(f);
+    await assert.rejects(f.adoption.apply(f.input, plan.planHash));
+    assert.equal(phases.length, 2); assert.equal(phases[1].locked, true);
+    assert.equal(fs.readFileSync(f.config, 'utf8'), f.text);
+    assert(!fs.existsSync(f.directory), 'Refused collector evidence created an adoption archive');
+    assert(!fs.existsSync(f.config + '.environments.lock'), 'Refused collector retained its owned lock');
   }, 'node24-vite8-quickstart-v5');
   for (const change of [
     f => {f.rows['projects/1'].description = 'Unrelated project';},

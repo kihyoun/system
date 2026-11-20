@@ -28,4 +28,22 @@ function batchedReads(send) {
     if (!running) { running = true; queueMicrotask(drain); }
   });
 }
-module.exports = {batchedReads, MAX_ROUTES, MAX_OUTPUT_BYTES};
+// One native collector's response belongs to one plan invocation only. Keep
+// duplicate GETs distinct and refuse requests not performed by that collector.
+function collectedReads(result) {
+  if (!Array.isArray(result?.reads) || !result.reads.length || result.reads.length > MAX_ROUTES ||
+      Buffer.byteLength(JSON.stringify(result)) > MAX_OUTPUT_BYTES || result.reads.some(row =>
+        !row || typeof row.route !== 'string' || row.route.length > 2048 || !Object.hasOwn(row, 'value')))
+    throw Error('Preview setup GitLab request failed; verify readiness, permissions and the recorded operation.');
+  const pending = new Map();
+  for (const {route, value} of result.reads) {
+    if (!pending.has(route)) pending.set(route, []);
+    pending.get(route).push(value);
+  }
+  return async route => {
+    const values = pending.get(route);
+    if (!values?.length) throw Error('Invalid preview evidence route.');
+    return values.shift();
+  };
+}
+module.exports = {batchedReads, collectedReads, MAX_ROUTES, MAX_OUTPUT_BYTES};

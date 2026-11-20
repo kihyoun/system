@@ -2,6 +2,15 @@
 // Only committed, source-owned diagnostic codes may reach receipts. A regex
 // alone would also admit a credential shaped like a hyphenated error string.
 const REASONS = new Set([
+  'public-upgrade-data-inventory-invalid',
+  'public-upgrade-data-inventory-limit',
+  'public-upgrade-native-operation-invalid',
+  'public-upgrade-native-initialize-failed',
+  'public-upgrade-native-restore-original-failed',
+  'public-upgrade-native-plan-failed',
+  'public-upgrade-native-apply-failed',
+  'public-upgrade-native-status-failed',
+  'public-upgrade-native-recover-failed',
   'seed-target-unavailable',
   'storage-operation-busy',
   'restore-target-not-empty',

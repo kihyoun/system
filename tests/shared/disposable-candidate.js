@@ -135,8 +135,9 @@ class Candidate {
     this.now=options.now || Date.now;
     this.id=crypto.randomBytes(12).toString('hex'); this.name='system-candidate-'+this.id;
     this.resources=[]; this.canceled=false; this.startedAt=this.now();
+    const guidedBudget=spec.publicUpgrade?5400000:4500000;
     const budget=spec.gitlabUpgradeAcceptance===true?
-      (spec.guidedPreviewAcceptance===true?4500000:3600000):spec.acmeRenewalAcceptance===true?1500000:1200000;
+      (spec.guidedPreviewAcceptance===true?guidedBudget:3600000):spec.acmeRenewalAcceptance===true?1500000:1200000;
     this.deadline=this.startedAt+budget;
     this.checkpoint=options.checkpoint || (()=>{});
     this.secrets={user:'test'+crypto.randomBytes(8).toString('hex'),

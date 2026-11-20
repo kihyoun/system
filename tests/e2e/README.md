@@ -115,8 +115,10 @@ For example, the shape of one role is:
 `readinessMilliseconds` is optional (1,000–1,200,000; default 1,200,000 per smoke
 readiness gate). Ordinary smoke has a twenty-minute budget; ACME without a GitLab
 upgrade shares one twenty-five-minute budget across all owners. A GitLab upgrade
-without guided previews has sixty minutes. Only `guidedPreviewAcceptance === true`
-and `gitlabUpgradeAcceptance === true` together select seventy-five minutes.
+without guided previews has sixty minutes. `guidedPreviewAcceptance === true`
+and `gitlabUpgradeAcceptance === true` together select seventy-five minutes;
+adding a prepared `publicUpgrade` fixture selects ninety minutes for its
+additional native public CLI, backup and recovery coverage.
 Each scenario uses one absolute deadline, checked between bounded Docker/HTTP
 operations. Each streamed archive load is capped at
 ten minutes;
@@ -219,10 +221,12 @@ existing publishing stage. Its trusted Node 24 / Alpine parent installs the same
 pinned CLI utilities as System, builds the full System context and the Wizard
 from the validated pinned snapshot, and preloads the pinned service images.
 The job is serialized with a GitLab resource group. Image preparation has a
-separate bounded budget. The combined guided-preview/GitLab-upgrade execution has
-one fixed seventy-five-minute limit, shared by the original host, restored host,
-ACME authority and side owners. The runner script allows eighty minutes, the
-separate cleanup allows two minutes and the job limit is eighty-five minutes.
+separate bounded budget. The combined guided-preview/GitLab-upgrade execution
+with a public-release upgrade fixture has one fixed ninety-minute limit, shared
+by the original host, restored host, ACME authority and side owners. Without that
+additional fixture the combined scenario retains seventy-five minutes. The runner
+script allows ninety-five minutes, the separate cleanup allows two minutes and
+the job limit is one hundred minutes.
 The runner host needs twelve GiB candidate RAM plus its existing platform/job
 headroom and enough free disk for image archives, extraction and GitLab state.
 
@@ -365,7 +369,8 @@ inherits the original candidate's absolute deadline and cancellation. An
 `acmeRenewalAcceptance: true` scenario without a GitLab upgrade has one shared
 1,500-second lifecycle budget, including both platform hosts and these fixture
 owners. GitLab upgrades use the sixty-minute budget, or seventy-five minutes
-when guided previews are also enabled. Ordinary smoke retains 1,200 seconds.
+when guided previews are also enabled. Adding the public-release upgrade fixture
+to that combined scenario selects ninety minutes. Ordinary smoke retains 1,200 seconds.
 Starting a stage or replacing a host never resets the deadline or extends it
 automatically.
 The outer script and CI-job limits must also retain preparation, publication
@@ -435,12 +440,16 @@ The outer receipt copies the bounded migration proof; the detailed migration
 stages belong to the restored candidate receipt. Raw private checkpoints,
 configuration, credentials and database logs are never public CI artifacts.
 
-The successor scenario uses one fixed 75-minute overall candidate budget only
-when both `guidedPreviewAcceptance === true` and `gitlabUpgradeAcceptance === true`.
-The budget includes the three actual native Wizard push/MR/push pipelines with
-four required jobs each, manual Review/Beta Deploy and Stop, cold recovery and
-both GitLab version transitions. It is an upper bound, not a runtime guarantee.
-An upgrade without guided previews retains its 60-minute budget. Original and
+The successor scenario uses one fixed 90-minute overall candidate budget only
+when both `guidedPreviewAcceptance === true` and `gitlabUpgradeAcceptance === true`
+and a prepared `publicUpgrade` fixture are present. The combined scenario without
+that fixture retains 75 minutes. Both include the three actual native Wizard
+push/MR/push pipelines with four required jobs each, manual Review/Beta Deploy and
+Stop, cold recovery and both GitLab version transitions. The public-release fixture
+additionally executes the real public CLI plan and apply, a fresh matching cold
+Seed/configuration backup, interrupted offline image recovery and a separate
+controller restart with durable recovery selectors. These are fixed upper bounds,
+not runtime guarantees. An upgrade without guided previews retains its 60-minute budget. Original and
 restored candidates, the ACME authority and all side owners share the original
 absolute deadline; no phase or host switch resets it, and no timeout extends it
 automatically. Native upgrade and rollback readiness each allow 900 seconds, within
@@ -448,8 +457,8 @@ a 1,200-second invocation limit and the same absolute candidate deadline. Readin
 still requires completed background migrations; a successful migration batch alone
 does not satisfy that condition. The scenario uses the existing serialized resource
 group and 12-GiB/four-CPU private daemon ceiling; check actual host headroom before
-starting it. The platform job allows an 80-minute script and a separate two-minute cleanup
-within an 85-minute job limit, leaving time for preparation, publication and artifact
+starting it. The platform job allows a 95-minute script and a separate two-minute cleanup
+within a 100-minute job limit, leaving time for preparation, publication and artifact
 collection. Ordinary smoke and ACME-only lifecycle budgets remain unchanged. A
 passing mocked adapter contract is not a successful real migration; use the
 complete platform CI gate for that proof.
@@ -472,6 +481,15 @@ cannot be that matching pair. The stage reattaches the same owned backup device,
 then fully detaches it before recovery. It reuses the preceding registry CI job;
 read-only identity, registry-tag, data-sample and runner checks create no extra
 jobs or repository commits.
+Identity checks reuse the fixture's private API credential while it is valid,
+including the final restored-configuration check, then revoke it through the
+existing authenticated API. The independent broad fixture oracle uses bounded
+REST reads to compare the first ten IDs of each sampled kind and project heads
+before replacement, after upgrade, after offline recovery and after restart.
+It requires administrator visibility, complete bounded pagination and at most
+40 fixture projects; incomplete inventories fail closed. This avoids repeated
+Rails startup for credentials and duplicate sampling. The production CLI's
+separate Rails samples and all detailed identity assertions remain unchanged.
 
 Before `recover`, both previous image IDs are removed and their original digest
 transport is disabled. A one-shot Compose failure interrupts the first native

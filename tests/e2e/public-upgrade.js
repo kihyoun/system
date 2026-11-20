@@ -142,6 +142,9 @@ class NativeCLI {
     await this.candidate.call(['exec', '-i', this.candidate.daemon, 'sh', '-ec',
       'umask 077; cat > "$1"', 'sh', filename], {input});
   }
+  async createCredential() {
+    if (!this.token) this.token = await this.candidate.rails("require 'json';u=User.find_by_username('root');t=u.personal_access_tokens.create!(name:'disposable-public-upgrade',scopes:['api'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token,root_id:u.id)");
+  }
   async initialize(baseline, expected) {
     const candidate = this.candidate, storage = require('./local-storage'), prepared = candidate.spec.publicUpgrade.source;
     required(candidate.evidence.gitlabUpgrade?.registryVerified === true, 'existing-candidate-registry-ci-proof-required');
@@ -178,7 +181,7 @@ class NativeCLI {
     await this.write(this.storage, "export PERSISTENCE_MODE='local'\nexport PERSISTENT_MOUNT='/'\nexport PERSISTENT_DIR='" + this.live +
       "'\nexport PERSISTENT_UUID=''\nexport SEED_DIR='" + storage.SEED + "'\nexport SEED_MOUNT='" + storage.MOUNT + "'\nexport SEED_UUID=''\n");
     await candidate.call(['exec', candidate.daemon, 'cp', '/run/system-bootstrapper/guided-preview-ca.pem', this.fixture + '/ca.pem']);
-    this.token = await candidate.rails("require 'json';u=User.find_by_username('root');t=u.personal_access_tokens.create!(name:'disposable-public-upgrade',scopes:['api'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token)");
+    await this.createCredential();
     // The preceding registry-CI stage deliberately committed its verification
     // job. Freeze that current head before this read-only upgrade data oracle.
     const branch = await candidate.api('/projects/' + expected.projectId + '/repository/branches/' + encodeURIComponent(expected.branch), this.token.token);
@@ -204,9 +207,20 @@ class NativeCLI {
     if (args[0] === '--operation' && ['plan', 'apply'].includes(args[1])) command.push('--mount',
       'type=bind,src=' + storage.MOUNT + ',dst=' + storage.MOUNT);
     for (const host of ['gitlab', 'registry', 'sync', 'wizard']) command.push('--add-host', host + '.candidate.test:127.0.0.1');
-    const raw = await candidate.inner([...command, candidate.spec.images.gitlab.id,
-      this.fixture + '/source/tests/e2e/public-upgrade-host.py', ...args], {timeout: 1200000});
-    return JSON.parse(raw.split('\n').at(-1));
+    const operation = args[0] === '--operation' ? args[1] : args[0];
+    required(['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover'].includes(operation),
+      'public-upgrade-native-operation-invalid');
+    try {
+      const raw = await candidate.inner([...command, candidate.spec.images.gitlab.id,
+        this.fixture + '/source/tests/e2e/public-upgrade-host.py', ...args], {timeout: 1200000});
+      return JSON.parse(raw.split('\n').at(-1));
+    } catch (error) {
+      if (['canceled-or-overall-timeout', 'readiness-timeout'].includes(error.message)) throw error;
+      const failure = Error('public-upgrade-native-' + operation + '-failed');
+      if (Number.isInteger(error.exitCode)) failure.exitCode = error.exitCode;
+      if (['ETIMEDOUT', 'ENOBUFS', 'ENOENT', 'EACCES'].includes(error.systemCode)) failure.systemCode = error.systemCode;
+      throw failure;
+    }
   }
   cli(operation, confirmation) {
     const repository = this.candidate.spec.publicUpgrade.metadata.source.repository.replace(/^https:\/\/github.com\//, '').replace(/\.git$/, '');
@@ -233,7 +247,10 @@ class NativeCLI {
   }
   async finish(_files, baseline) {
     await replaceController(this.candidate, baseline, baseline.Image);
-    await this.candidate.rails("User.find_by_username('root').personal_access_tokens.where(name:'disposable-public-upgrade',revoked:false).find_each(&:revoke!);puts '{}'");
+  }
+  async revokeCredential() {
+    try {await this.candidate.api('/personal_access_tokens/self', this.token.token, 'DELETE');}
+    catch {await this.candidate.rails("User.find_by_username('root').personal_access_tokens.where(name:'disposable-public-upgrade',revoked:false).find_each(&:revoke!);puts '{}'");}
   }
 }
 async function run(candidate, expected, dependencies = {}) {
@@ -242,24 +259,28 @@ async function run(candidate, expected, dependencies = {}) {
     fixture.metadata.version === fixture.edge.from, 'prepared-public-upgrade-required');
   const read = dependencies.configuration || configuration;
   let currentExpected = expected;
+  let verificationAuth;
   const verify = dependencies.verify || (async () => {
     await candidate.wait(async () => { const value = await recovery.syncFetch(candidate); return !!value.main?.data; }, 600000);
     // This includes the exact existing registry tag/digest. Reuse the native
     // registry job immediately before this stage; do not create more commits
     // or jobs while checking a frozen data sample.
-    await recovery.verifyServiceIdentity(candidate, currentExpected);
+    await recovery.verifyServiceIdentity(candidate, currentExpected, verificationAuth);
     await candidate.inner(['exec', 'runner_docker_1', 'gitlab-runner', 'verify']);
   });
   await candidate.stage(fixture.edge.requiredStage, async () => {
     const files = await read(candidate), before = preserved(files);
-    const sample = dependencies.dataSample || (() => candidate.rails(fs.readFileSync(path.join(root, 'gitlab/verify-upgrade-data.rb'), 'utf8')));
+    const native = dependencies.native || new NativeCLI(candidate), storage = dependencies.storage || require('./local-storage');
+    await native.createCredential();
+    verificationAuth = native.token;
+    const sample = dependencies.dataSample || (() => require('./public-upgrade-data').sample(candidate, verificationAuth));
     const dataBefore = await sample();
     const baseline = dependencies.baseline || JSON.parse(await candidate.inner(['inspect', 'system_bootstrapper_1']))[0];
     const oldController = fixture.metadata.images.controller.imageId, oldWizard = fixture.metadata.images.wizard.imageId;
     const targetController = candidate.spec.images.candidate.id, targetWizard = candidate.spec.images.wizard.id;
-    const native = dependencies.native || new NativeCLI(candidate), storage = dependencies.storage || require('./local-storage');
     await storage.attach(candidate);
     await native.initialize(baseline, expected);
+    verificationAuth = native.token;
     currentExpected = {...expected, head: native.baselineHead || expected.head};
     const check = async (controller, wizard) => {
       await verify();
@@ -301,9 +322,11 @@ async function run(candidate, expected, dependencies = {}) {
     await native.restoreOriginal(files);
     // The final normal controller starts after physical backup detachment,
     // preserving the existing no-backup startup/Fetch acceptance boundary.
-    await native.finish(files, baseline);
-    await verify();
-    required(JSON.stringify(await read(candidate)) === JSON.stringify(files), 'public-upgrade-original-configuration-not-restored');
+    try {
+      await native.finish(files, baseline);
+      await verify();
+      required(JSON.stringify(await read(candidate)) === JSON.stringify(files), 'public-upgrade-original-configuration-not-restored');
+    } finally {await native.revokeCredential();}
     candidate.evidence.publicUpgrade = {fromVersion: fixture.edge.from, toVersion: fixture.edge.to,
       fromSourceRevision: fixture.metadata.source.revision, fromControllerImageId: oldController, fromWizardImageId: oldWizard,
       configurationPreserved: true, dataPreserved: true, runnerRegistryVerified: true, rollbackVerified: true};

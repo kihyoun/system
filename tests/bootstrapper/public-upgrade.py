@@ -5,6 +5,7 @@ import base64
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -75,6 +76,48 @@ def authority(metadata, proof, security):
     metadata['publicUpgrade'] = {'file': 'system-upgrade-v' + metadata['version'] + '.json',
         'format': proof['format'], 'sha256': hashlib.sha256(raw).hexdigest()}
     return PublicReleaseAuthority(metadata, raw, 'https://operator-gitlab.example.invalid', security)
+
+
+class NativeFixtureInitialization(unittest.TestCase):
+    def test_real_initializer_translates_only_the_prepared_candidate_and_restores_selection(self):
+        adapter = load('native_public_fixture_initializer', ROOT / 'tests/e2e/public-upgrade-host.py')
+        previous = fixture()[0]
+        candidate = 'sha256:' + '5' * 64
+        raw = (ROOT / 'system/.docker.env.example').read_bytes() + (
+            "\nexport BOOTSTRAPPER_IMAGE='" + candidate + "'\nexport WIZARD_IMAGE='sha256:" + '6' * 64 + "'\n").encode()
+        # This is the native failure the test fixture must adapt; production's
+        # refusal of a bare current controller ID remains intact.
+        with self.assertRaisesRegex(tool.updater.installer.ReleaseError, 'public-dockerhub-digest-required'):
+            tool.updater.assignment(raw, previous['images']['controller']['reference'])
+        with tempfile.TemporaryDirectory() as temporary:
+            live = Path(temporary) / 'live'
+            configuration = live / 'configuration'
+            configuration.mkdir(parents=True)
+            main = configuration / '.docker.env'
+            successor.atomic_bytes(main, raw)
+            original_profile = b'fixture-original-selection\n'
+            successor.atomic_bytes(configuration / '.release-images.env', original_profile)
+            inputs = {'live': str(live), 'previous': previous, 'spec': {'images': {'candidate': {'id': candidate}}}}
+            successor.atomic_json(Path(temporary) / 'fixture.json', inputs)
+            with patch.dict(os.environ, SYSTEM_PUBLIC_UPGRADE_FIXTURE=temporary), patch.object(sys, 'argv', ['host.py', 'initialize']), patch('sys.stdout', new=io.StringIO()) as output:
+                adapter.main()
+                self.assertTrue(json.loads(output.getvalue())['initialized'])
+            initialized = main.read_bytes()
+            successor.runtime.cube(initialized)
+            self.assertEqual(initialized[:1184], raw[:1184])
+            self.assertIn(tool.updater.installer.reference(previous['images']['controller']['reference']).encode(), initialized)
+            self.assertIn(tool.updater.installer.reference(previous['images']['wizard']['reference']).encode(), initialized)
+            self.assertEqual(json.loads((configuration / '.release-images.json').read_bytes())['images'], previous['images'])
+            with patch.dict(os.environ, SYSTEM_PUBLIC_UPGRADE_FIXTURE=temporary), patch.object(sys, 'argv', ['host.py', 'restore-original']), patch('sys.stdout', new=io.StringIO()):
+                adapter.main()
+            self.assertEqual((configuration / '.release-images.env').read_bytes(), original_profile)
+            self.assertFalse((configuration / '.release-images.json').exists())
+            for invalid in [raw.replace(candidate.encode(), ('sha256:' + '7' * 64).encode()),
+                            raw + ("export BOOTSTRAPPER_IMAGE='" + candidate + "'\n").encode()]:
+                successor.atomic_bytes(main, invalid)
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'candidate-controller-'):
+                    adapter.previous_configuration(main.read_bytes(), inputs)
+                self.assertEqual(main.read_bytes(), invalid)
 
 
 class Authority(unittest.TestCase):

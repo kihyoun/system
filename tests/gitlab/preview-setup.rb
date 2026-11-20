@@ -289,3 +289,4 @@ variables.delete('WIZARD_REVIEW_HOST')
 ordinary = WizardSourcePrimaryEnvironments.new(api, initial.merge('sourcePrimary' => {'bootstrap' => false}), {'id' => 7})
 raise 'ordinary binding recreated missing variables' unless ordinary.send(:synchronize).dig(:environments, 'phase') == 'requires-reconciliation'
 puts 'Preview setup native adapter: read-only preflight, detailed runner access, owned private import, merge/publication guards, scoped credentials and initial-only resumable environment variables passed.'
+load File.expand_path('preview-evidence.rb', __dir__)

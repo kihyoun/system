@@ -34,7 +34,11 @@ for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},120000
   [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:false},3600000],
   [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:'true'},3600000],
   [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true},4500000],
-  [{gitlabUpgradeAcceptance:true,acmeRenewalAcceptance:true,guidedPreviewAcceptance:true},4500000]]) {
+  [{gitlabUpgradeAcceptance:true,acmeRenewalAcceptance:true,guidedPreviewAcceptance:true},4500000],
+  [{publicUpgrade:{}},1200000],
+  [{gitlabUpgradeAcceptance:true,publicUpgrade:{}},3600000],
+  [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:null},4500000],
+  [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:{}},5400000]]) {
   const bounded=new Candidate({...spec,...options},{now:()=>123});
   assert.equal(bounded.deadline,123+budget);
 }

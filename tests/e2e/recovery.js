@@ -543,9 +543,10 @@ async function verifyRestore(candidate,input) {
     await verifyServiceIdentity(candidate,input.expected);
   });
 }
-async function verifyServiceIdentity(candidate,expected){
+async function verifyServiceIdentity(candidate,expected,authentication){
   candidate.mergeRequestRecoveryVerified=false;
-  const auth=await rootToken(candidate);
+  const auth=authentication||await rootToken(candidate);
+  if(typeof auth.token!=='string'||!auth.token||!Number.isInteger(auth.root_id))throw Error('recovery-test-credential-failed');
   try {
     const project=await candidate.api('/projects/'+expected.projectId,auth.token);
     const branch=await candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),auth.token);
@@ -565,7 +566,7 @@ async function verifyServiceIdentity(candidate,expected){
       if(JSON.stringify(reviewIdentity(review))!==JSON.stringify(expectedReview.review)||
         JSON.stringify(discussionIdentity(discussion))!==JSON.stringify(expectedReview.discussion)||source.commit.id!==expectedReview.review.sha)throw Error('restored-review-identity-mismatch');
     });
-  } finally {await revoke(candidate,auth.token);}
+  } finally {if(!authentication)await revoke(candidate,auth.token);}
   candidate.mergeRequestRecoveryVerified=true;
 }
 async function verifyPrivateWizard(candidate,expected){

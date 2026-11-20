@@ -40,7 +40,7 @@ const {rails, startJob} = require('../../sync/dist/ProjectBootstrap');
   assert.equal((await rails({action: 'preview-setup-project'})).state, 'failed');
   scenario = 'timeout';
   await assert.rejects(rails({action: 'preview-setup-read'}), error => error.uncertain === false);
-  for (const action of ['preview-setup-read-many', 'preview-setup-source-context'])
+  for (const action of ['preview-setup-read-many', 'preview-setup-source-context', 'preview-setup-source-evidence', 'preview-setup-adoption-evidence'])
     for (scenario of ['timeout', 'transport-loss', 'oversized-output'])
       await assert.rejects(rails({action}), error => error.uncertain === false && error.action === action);
   const job = startJob('nested-uncertainty-fixture', async () => {throw Object.assign(Error('Fixture uncertain mutation.'), {uncertain: true, action: 'wizard-environments-primary'});});

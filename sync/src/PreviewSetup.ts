@@ -11,7 +11,7 @@ const {Adoption} = require('../../project-bootstrap/wizard-source-primary/run');
 const {StorageLease} = require('../../system/seed-operation');
 const {validateProducers, approvedProducers} = require('../../project-bootstrap/preview-setup/producers');
 const binding = require('../../project-bootstrap/wizard-source-primary/binding');
-const {batchedReads} = require('../../project-bootstrap/preview-setup/reads');
+const {batchedReads, collectedReads, MAX_ROUTES} = require('../../project-bootstrap/preview-setup/reads');
 const stateFile = () => path.join(configDirectory(), 'preview-setup.json');
 const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
 const environments = (settings: any) => Object.fromEntries(['review', 'beta'].map(name => [name, {enabled: settings[name].enabled, host: settings[name].host, domainMode: 2, ssl: settings[name].ssl, sslKey: settings[name].sslKey}]));
@@ -151,8 +151,9 @@ export function applyPreviewSetup(input: any) {
       const selected = current.projects.wizard;
       // Resolve dependent native reads in one bounded, read-only Rails call.
       // This context belongs only to this apply; adoption still reads afresh.
-      const {project, branch, pipeline: nativePipeline, jobs, trees} = await checked({action: 'preview-setup-source-context',
+      const discovery = await checked({action: 'preview-setup-source-evidence',
         projectId: selected.id, projectIds: [...projects.map(project => project.id), value.receipt.repository.id]});
+      const {project, branch, pipeline: nativePipeline, jobs, trees} = discovery;
       const pipeline = nativePipeline ?? undefined;
       const commit = branch.commit.id;
       if (!pipeline || !['success', 'failed'].includes(pipeline.status)) {
@@ -165,7 +166,11 @@ export function applyPreviewSetup(input: any) {
         throw Error('The approved CI manifest is too large. Review it through the native source-primary tool.');
       const blobs = trees.flat().filter((row: any) => row.type === 'blob');
       // Job validation above must finish before any artifact is requested.
-      const [artifact, ciFiles]: [any, any[]] = await Promise.all([
+      if (discovery.files && (!Array.isArray(discovery.files) || discovery.files.length !== blobs.length ||
+          discovery.files.some((row: any, index: number) => row.path !== blobs[index].path)))
+        throw Error('Invalid preview evidence route.');
+      const [artifact, ciFiles]: [any, any[]] = discovery.files ? [discovery.artifact, discovery.files.map((row: any) =>
+        ({path: row.path, sha256: hash(Buffer.from(row.value.content.replace(/\n/g, ''), 'base64').toString('utf8'))}))] : await Promise.all([
         request('projects/' + selected.id + '/jobs/' + buildJob.id + '/artifacts/build-evidence.json'),
         Promise.all(blobs.map(async (row: any) => {
           const file = await request('projects/' + selected.id + '/repository/files/' + encodeURIComponent(row.path) + '?ref=' + commit);
@@ -177,7 +182,10 @@ export function applyPreviewSetup(input: any) {
       const canonical = readReceipt(fs.readFileSync(wizardConfigPath(), 'utf8'));
       if (canonical.repository.managementMode !== 'source-primary') {
         if (hash(fs.readFileSync(wizardConfigPath(), 'utf8')) !== current.initialConfigHash) throw Error('Managed Wizard registration changed during setup. Preserve operator edits and inspect before repair.');
-        const adoption = new Adoption({config: wizardConfigPath(), mainConfig: mainConfigPath(), directory: path.join(configDirectory(), 'wizard-source-primary'), request});
+        const adoption = new Adoption({config: wizardConfigPath(), mainConfig: mainConfigPath(), directory: path.join(configDirectory(), 'wizard-source-primary'), request,
+          collectEvidence: async (phase: any) => phase.receipt.sourcePrimary.ciFiles.length + 7 > MAX_ROUTES ? request :
+            collectedReads(await checked({...phase, action: 'preview-setup-adoption-evidence',
+              projectIds: [...projects.map(project => project.id), value.receipt.repository.id]}))});
         const adoptionInput = {version: 1, action: 'bootstrap-previews', buildProfile: 'node24-vite8-quickstart-v5', projectId: selected.id, projectPath: selected.path,
           namespaceId: selected.namespaceId, defaultBranch: project.default_branch, pipelineId: pipeline.id, sourceCommit: commit, imageRef: artifact.imageRef, helperImage: value.helper, ciFiles};
         save({phase: 'binding', pipeline: {id: pipeline.id, status: pipeline.status, webUrl: pipeline.web_url}});

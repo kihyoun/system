@@ -258,11 +258,11 @@ test:platform-candidate:
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 80m
+    RUNNER_SCRIPT_TIMEOUT: 95m
     RUNNER_AFTER_SCRIPT_TIMEOUT: 2m
   cache: []
   dependencies: [prepare:wizard-source]
-  timeout: 85m
+  timeout: 100m
   allow_failure: false
   before_script:
     - sh bootstrapper/install-runtime.sh

@@ -70,12 +70,13 @@ test('failed original-host removal prevents a second daemon',async t=>{
   assert(!first.events.includes('new-host-created'));
 });
 
-for(const [budget,guided]of [[3600000,false],[4500000,true]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
+for(const [budget,guided,publicUpgrade]of [[3600000,false],[4500000,true],[5400000,true,{}]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
   const {Candidate}=require('./disposable-candidate');
   const input=fixture(t),first=original(),deps=dependencies(first,input),calls=[];
   first.startedAt=1000;first.deadline=first.startedAt+budget;
   first.spec.gitlabUpgradeAcceptance=true;
   first.spec.guidedPreviewAcceptance=guided;
+  first.spec.publicUpgrade=publicUpgrade;
   let now=first.deadline-25*60000;
   deps.Candidate.prototype.start=async function(){
     assert(first.removed);
@@ -548,6 +549,22 @@ test('restored service identity includes review branch, MR metadata and both att
   assert(f.stages.some(item=>item.name==='recovery-restored-merge-request'&&item.status==='passed'));
   assert.equal(f.requests.at(-1).route,'/personal_access_tokens/self');
   assert(!JSON.stringify(f.stages).includes(expected.nonce));
+});
+test('a caller-owned identity credential preserves all checks without minting or revoking it',async()=>{
+  const f=identityFixture(),expected=await recovery.recordIdentity(f.candidate);
+  f.requests.length=0;f.stages.length=0;
+  f.candidate.rails=async()=>{throw Error('unexpected Rails startup');};
+  const auth={token:'private-fixture-token',root_id:expected.rootId};
+  await recovery.verifyServiceIdentity(f.candidate,expected,auth);
+  assert.equal(f.candidate.mergeRequestRecoveryVerified,true);
+  assert(f.requests.some(item=>item.route==='/projects/12/variables/RECOVERY_ENCRYPTED_PROOF'));
+  assert(f.requests.some(item=>item.route==='/projects/12/registry/repositories/14/tags/'+f.sha));
+  assert(f.stages.some(item=>item.name==='recovery-restored-merge-request'&&item.status==='passed'));
+  assert(!f.requests.some(item=>item.route==='/personal_access_tokens/self'));
+  f.state.discussion.notes[0].body='changed';
+  await assert.rejects(()=>recovery.verifyServiceIdentity(f.candidate,expected,auth),/recovery-restored-merge-request-failed/);
+  assert.equal(f.candidate.mergeRequestRecoveryVerified,false);
+  assert(!f.requests.some(item=>item.route==='/personal_access_tokens/self'));
 });
 test('missing or changed MR state, source commit, author, timestamp and discussion fail recovery and revoke the credential',async()=>{
   const {failureReason}=require('./stage-diagnostics');

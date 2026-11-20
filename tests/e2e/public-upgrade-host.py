@@ -15,6 +15,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import sys
 
 sys.dont_write_bytecode = True
@@ -32,6 +33,33 @@ def load(name, filename):
 
 
 tool = load('candidate_public_upgrade_cli', 'bootstrapper/upgrade-release.py')
+
+
+def previous_configuration(raw, fixture):
+    """Translate only this harness's exact candidate selector into its baseline.
+
+    The public updater deliberately rejects an existing bare image ID. The
+    disposable platform starts with precisely that selector, before this fixture
+    installs the previous official pair. Keep that exception test-only.
+    """
+    expected = fixture['spec']['images']['candidate']['id']
+    successor.require(re.fullmatch(r'sha256:[a-f0-9]{64}', expected), 'candidate-controller-image-id-required')
+    matches = list(re.finditer(rb'(?m)^(?:export )?BOOTSTRAPPER_IMAGE=.*(?:\n|$)', raw))
+    successor.require(len(matches) == 1 and matches[0].start() >= 1184,
+                      'candidate-controller-assignment-required')
+    record = matches[0]
+    selected = record.group().removesuffix(b'\n').split(b'=', 1)[1]
+    successor.require(selected in (expected.encode(), ("'" + expected + "'").encode(),
+                                  ('"' + expected + '"').encode()), 'candidate-controller-selector-mismatch')
+    reference = tool.updater.installer.reference(fixture['previous']['images']['controller']['reference'])
+    successor.runtime.cube(raw)
+    raw = raw[:record.start()] + ("export BOOTSTRAPPER_IMAGE='" + reference + "'").encode() + (
+        b'\n' if record.group().endswith(b'\n') else b'') + raw[record.end():]
+    # The production parser validates the entire resulting configuration and
+    # performs both public selections without relaxing its existing contract.
+    for role, key in [('controller', 'BOOTSTRAPPER_IMAGE'), ('wizard', 'WIZARD_IMAGE')]:
+        raw = tool.updater.assignment(raw, fixture['previous']['images'][role]['reference'], key)
+    return raw
 
 
 def publication(fixture):
@@ -80,7 +108,6 @@ def publication(fixture):
 def main():
     fixture_dir = Path(os.environ['SYSTEM_PUBLIC_UPGRADE_FIXTURE'])
     fixture = json.loads((fixture_dir / 'fixture.json').read_bytes())
-    target, proof, _ = publication(fixture)
     previous = fixture['previous']
     selection_files = ['.release-images.json', '.release-images.env', '.release-images.recovered.json']
     if sys.argv[1:2] == ['restore-original']:
@@ -99,9 +126,7 @@ def main():
         successor.atomic_json(fixture_dir / 'original-selection.json', {name:
             base64.b64encode(successor.private_input(main_file.parent / name)).decode() if (main_file.parent / name).exists() else None
             for name in selection_files})
-        raw = main_file.read_bytes()
-        for role, key in [('controller', 'BOOTSTRAPPER_IMAGE'), ('wizard', 'WIZARD_IMAGE')]:
-            raw = tool.updater.assignment(raw, previous['images'][role]['reference'], key)
+        raw = previous_configuration(main_file.read_bytes(), fixture)
         successor.atomic_bytes(main_file, raw)
         successor.atomic_json(main_file.parent / '.release-images.json', {
             'schemaVersion': 1, 'sourceCommit': previous['source']['revision'], 'sourceTree': previous['source']['tree'],
@@ -112,6 +137,7 @@ def main():
             [('controller', 'BOOTSTRAPPER_IMAGE'), ('wizard', 'WIZARD_IMAGE')]).encode())
         print(json.dumps({'initialized': True}))
         return
+    target, proof, _ = publication(fixture)
     def fetch(repository, tag, filename):
         successor.require(repository == previous['source']['repository'].removeprefix('https://github.com/').removesuffix('.git'),
                           'candidate-public-repository-mismatch')

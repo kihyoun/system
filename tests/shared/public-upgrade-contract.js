@@ -135,7 +135,7 @@ test('same candidate drives real CLI operations, interrupted offline recovery an
   let selected = [id('5'), id('6')], working = {...files}, phase = 'planned', controller = 'not-started', interrupt = false;
   const candidate = {spec: {restore: {base: '/recovered-data/platform'}, publicUpgrade: {metadata, edge}, images: {candidate: {id: id('5')}, wizard: {id: id('6')}}},
     evidence: {}, stage: async (_name, action) => action(), call: async () => {}, inner: async () => ''};
-  const native = {initialize: async () => { events.push('initialize'); selected = [id('3'), id('4')]; },
+  const native = {createCredential: async () => {}, initialize: async () => { events.push('initialize'); selected = [id('3'), id('4')]; },
     cli: async (operation, confirmation) => {
       events.push(operation);
       if (operation === 'plan') return {installedVersion: edge.from, targetVersion: edge.to, confirmPlanSha256: 'a'.repeat(64)};
@@ -152,16 +152,22 @@ test('same candidate drives real CLI operations, interrupted offline recovery an
       return {operation: {phase, recoveryImageSelectors: phase === 'rolled-back'}, controller};
     }, offline: async () => events.push('old-images-removed'), interruptRecovery: async () => { interrupt = true; },
     restoreOriginal: async () => { events.push('restore-original'); working = {...files}; },
-    finish: async () => { events.push('finish'); selected = [id('5'), id('6')]; }};
+    finish: async () => { events.push('finish'); selected = [id('5'), id('6')]; },
+    revokeCredential: async () => events.push('revoke')};
   const dependencies = {configuration: async () => working, native,
     storage: {attach: async () => events.push('backup-attached'), detach: async () => events.push('backup-detached')}, baseline: {Image: id('5')},
     verify: async () => {}, dataSample: async () => ({sha256: 'a'.repeat(64), sampledProjects: 1}), imageIds: async () => selected};
   await run(candidate, {}, dependencies);
   assert.deepEqual(events, ['backup-attached', 'initialize', 'plan', 'apply', 'apply', 'status', 'backup-detached', 'old-images-removed',
-    'recover', 'status', 'recover', 'status', 'restore-original', 'finish']);
+    'recover', 'status', 'recover', 'status', 'restore-original', 'finish', 'revoke']);
   assert.equal(candidate.evidence.publicUpgrade.rollbackVerified, true);
   assert.equal(candidate.evidence.publicUpgrade.fromSourceRevision, metadata.source.revision);
   delete candidate.evidence.publicUpgrade;
+  let verifications=0;
+  dependencies.verify=async()=>{if(++verifications===5)throw Error('final-proof-failed');};
+  await assert.rejects(run(candidate,{},dependencies),/final-proof-failed/);
+  assert.equal(events.at(-1),'revoke','the caller-owned credential must be revoked when final verification fails');
+  assert.equal(candidate.evidence.publicUpgrade,undefined);
   dependencies.verify = async () => { throw Error('registry-or-data-failed'); };
   await assert.rejects(run(candidate, {}, dependencies), /registry-or-data-failed/);
   assert.equal(candidate.evidence.publicUpgrade, undefined);
@@ -224,4 +230,32 @@ test('native host helper mounts backup strictly for plan/apply and performs reco
     assert(calls.at(-1).includes('/var/run/docker.sock:/var/run/docker.sock'));
     assert(calls.at(-1).includes('--entrypoint'));
   }
+});
+
+test('native helper diagnostics identify only the declared phase and preserve bounded exit facts', async () => {
+  const {failureReason}=require('./stage-diagnostics');
+  const candidate={id:'a'.repeat(24),spec:{restore:{base:'/recovered-data/platform'},images:{gitlab:{id:id('7')}}},
+    inner:async()=>{throw Object.assign(Error('private credential and upstream stderr'),{exitCode:1,systemCode:'ENOENT'});}};
+  const native=new NativeCLI(candidate);
+  for(const operation of ['initialize','restore-original','plan','apply','status','recover']){
+    await assert.rejects(()=>native.invoke(['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation]),error=>{
+      assert.equal(error.message,'public-upgrade-native-'+operation+'-failed');
+      assert.equal(failureReason(error.message),error.message);
+      assert.equal(error.exitCode,1);assert.equal(error.systemCode,'ENOENT');
+      assert(!JSON.stringify(error).includes('credential'));return true;
+    });
+  }
+  candidate.inner=async()=>{throw Error('canceled-or-overall-timeout');};
+  await assert.rejects(()=>native.invoke(['initialize']),/^Error: canceled-or-overall-timeout$/);
+});
+
+test('fixture credential revocation uses the authenticated API before any Rails fallback',async()=>{
+  let rails=0;
+  const candidate={id:'a'.repeat(24),spec:{restore:{base:'/recovered-data/platform'}},
+    api:async(route,token,method)=>{assert.equal(route,'/personal_access_tokens/self');assert.equal(token,'fixture-token');assert.equal(method,'DELETE');},
+    rails:async()=>{rails++;}};
+  const native=new NativeCLI(candidate);native.token={token:'fixture-token',root_id:1};
+  await native.revokeCredential();assert.equal(rails,0);
+  candidate.api=async()=>{throw Error('unavailable');};
+  await native.revokeCredential();assert.equal(rails,1);
 });
