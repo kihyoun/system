@@ -274,7 +274,7 @@ not point it at an unrelated existing key. Template live checks are in
 `tests/gitlab/live/application-templates-audit.rb`.
 
 `tests/wizard/default-wizard.js` and
-`tests/nginx/default-wizard-routing.sh` cover managed registration and single-route
+`tests/nginx/typed-routing.js` cover managed registration and single-route
 behavior; `tests/wizard/live/default-wizard.js` is its authenticated live check.
 Local HTTP fixtures do not demonstrate real DNS, certificate issuance/renewal,
 GitLab job execution or a successful Production rollout. Exercise those gates

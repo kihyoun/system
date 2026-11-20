@@ -32,7 +32,7 @@ are service decisions. Registration sends credentials through standard input, ne
 argv or captured diagnostic output. The original token replacement preserves every
 Cube byte; project Review/Beta/Production behavior is unchanged.
 
-`bash tests/bootstrapper/runner-startup.sh` runs injected orchestration tests and a
+`node --test tests/bootstrapper/lifecycle.js` runs injected orchestration tests and a
 native child/process-group cancellation check. Existing storage-operation tests
 also exercise the native controller entry point while a lease is held and after
 settled startup failure. These checks do not start Docker or register live runners.

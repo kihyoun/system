@@ -65,6 +65,8 @@ test('runner lifecycle preserves registrations on stop, isolates pool definition
  const service=new RunnerLifecycleService(f.children,f.configuration);
  await service.runPools(f.context,'start');assert(f.calls.some(call=>call.args?.includes('verify')));assert(!JSON.stringify(f.calls.map(call=>call.args)).includes('glrt-fixture'));
  f.calls.length=0;await service.runPools(f.context,'stop');assert(f.calls.some(call=>call.args?.includes('down')));assert(!f.calls.some(call=>call.args?.includes('unregister')||call.args?.includes('verify')));
+ fs.writeFileSync(path.join(f.root,'system/.projects.env/.wizard.env'),'PROJECT_NAME=wizard\nPROJECT_TEMPLATE=wizard\nGITLAB_RUNNER_SCALE=1\n');
+ for(const action of ['start','stop','register','unregister']){f.calls.length=0;await service.runPools(f.context,action,'projects');assert.equal(f.calls.length,0,'managed Wizard never gets a second project runner pool');}
 });
 test('managed foreground child has no time limit and cancellation kills only its owned process group',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'managed-child-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
