@@ -414,12 +414,14 @@ deploy:github:
     paths: [test-results/github/]
   before_script:
     - sh bootstrapper/refresh-ca.sh
+    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+    - npm --prefix operations run build
   rules:
     - if: '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       when: on_success
     - when: never
   script:
-    - sh gitlab/github-backup-ci.sh
+    - node operations/dist/mirror/entry.js ci
 
 
 
