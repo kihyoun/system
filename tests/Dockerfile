@@ -11,10 +11,12 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 RUN apt-get update && apt-get install -y --no-install-recommends python3 rsync unzip zip openssl \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /candidate
-COPY bootstrapper/refresh-ca.sh ./bootstrapper/
 COPY bootstrapper/ca ./bootstrapper/ca
-ENV NODE_OPTIONS=--use-openssl-ca
-RUN sh bootstrapper/refresh-ca.sh && node bootstrapper/ca/check.js
+ENV NODE_OPTIONS=--use-openssl-ca \
+    SSL_CERT_FILE=/candidate/bootstrapper/ca/cacert-2026-10-20.crt \
+    SSL_CERT_DIR=/candidate/bootstrapper/ca/empty \
+    npm_config_cafile=/candidate/bootstrapper/ca/cacert-2026-10-20.crt
+RUN mkdir -p /candidate/bootstrapper/ca/empty && node /candidate/bootstrapper/ca/check.js --bundle
 COPY sync/package.json sync/package-lock.json ./sync/
 RUN cd sync && npm ci --ignore-scripts --no-audit --no-fund
 COPY sync/src ./sync/src
@@ -30,6 +32,7 @@ COPY operations/scripts ./operations/scripts
 COPY LICENSE .prettierrc .prettierignore ./
 COPY project-bootstrap ./project-bootstrap
 RUN cd operations && npm run build
+RUN node operations/dist/host-bootstrap/entry.js refresh-ca --checkout /candidate && node bootstrapper/ca/check.js
 COPY gitlab/*.js gitlab/*.sh gitlab/*.rb gitlab/*.json gitlab/docker-compose.omnibus.yml ./gitlab/
 COPY gitlab/renovate ./gitlab/renovate
 COPY renovate.json ./

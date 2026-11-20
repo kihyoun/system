@@ -8,7 +8,7 @@ const {execFileSync} = require('child_process');
 const {validate, verifyCommitted} = require('../project-bootstrap/wizard-source/package');
 const recipe = 'tests/wizard-browser.Dockerfile';
 // Exact public build inputs only; never copy a host trust store or private CAs.
-const systemInputs = [recipe, '.prettierrc', '.prettierignore', 'bootstrapper/refresh-ca.sh', 'bootstrapper/ca/cacert-2026-10-20.crt',
+const systemInputs = [recipe, '.prettierrc', '.prettierignore', 'bootstrapper/ca/cacert-2026-10-20.crt',
   'bootstrapper/ca/provenance.json', 'bootstrapper/ca/check.js'];
 function prepareWizardBrowser(root) {
   root = path.resolve(root);
@@ -21,7 +21,9 @@ function prepareWizardBrowser(root) {
   if (snapshot.version === 2 ? !tree || tree[1] !== snapshot.wizardSourceTree || revision !== snapshot.sourceRevision : !pin || pin[1] !== snapshot.sourceRevision) throw Error('Browser snapshot must match the committed Wizard source layout.');
   verifyCommitted(root, snapshot);
   const provenance = snapshot.version === 2 ? {sourceLayout: snapshot.sourceLayout, sourceRevision: snapshot.sourceRevision, wizardSourceTree: snapshot.wizardSourceTree} : {wizardRevision: snapshot.sourceRevision};
-  const committed = systemInputs.map(name => {
+  const operationInputs = git('ls-tree','-r','--name-only','HEAD','operations').toString().split('\n').filter(name => /^(?:operations\/src\/.*\.ts|operations\/(?:package(?:-lock)?\.json|tsconfig\.json))$/.test(name));
+  const inputs = [...systemInputs,...operationInputs];
+  const committed = inputs.map(name => {
     const entry = git('ls-tree', 'HEAD', name).toString().trim();
     if (!/^100(?:644|755) blob [a-f0-9]{40}\t/.test(entry)) throw Error('Browser build input must be a committed regular file: '+name);
     return {name, mode:entry.slice(0, 6), content:git('show', 'HEAD:'+name)};
@@ -42,7 +44,7 @@ function prepareWizardBrowser(root) {
     };
     for (const file of committed) write(file.name, file.content, file.mode);
     for (const file of snapshot.files) write('wizard/'+file.path, Buffer.from(file.content, 'base64'), file.mode);
-    const files = [...systemInputs, ...snapshot.files.map(file => 'wizard/'+file.path)].sort();
+    const files = [...inputs, ...snapshot.files.map(file => 'wizard/'+file.path)].sort();
     const archive = path.join(temporary, 'context.tar');
     execFileSync('tar', ['-cf', archive, '-C', temporary, ...files]);
     const actual = execFileSync('tar', ['-tf', archive], {encoding:'utf8', maxBuffer:2*1024*1024}).split('\n').filter(Boolean).sort();

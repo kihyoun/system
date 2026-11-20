@@ -18,5 +18,6 @@ function system(){
   if(extra.length)check(extra);
   return {systemCertificates:check(certificates(fs.readFileSync(file,'utf8'))),nodeCertificates:check(anchors),nodeCaMode:'openssl',bundleSha256:crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')};
 }
-module.exports={certificates,check,system,provenance};
-if(require.main===module){try{console.log(JSON.stringify(system()));}catch(error){console.error(error.message);process.exitCode=1;}}
+function bundle(){const bytes=fs.readFileSync(require('node:path').join(__dirname,provenance.bundle));if(crypto.createHash('sha256').update(bytes).digest('hex')!==provenance.sha256)throw Error('ca-bundle-sha256-mismatch');return {certificates:check(certificates(bytes.toString('utf8'))),bundleSha256:provenance.sha256};}
+module.exports={certificates,check,system,bundle,provenance};
+if(require.main===module){try{console.log(JSON.stringify(process.argv[2]==='--bundle'?bundle():system()));}catch(error){console.error(error.message);process.exitCode=1;}}
