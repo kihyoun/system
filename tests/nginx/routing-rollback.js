@@ -9,6 +9,7 @@ const source = path.resolve(__dirname, '../..');
 test('nginx validation and reload failures restore templates and the previous active proxy configuration', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'routing-rollback-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  fs.symlinkSync(path.resolve(__dirname,'../../operations'),path.join(root,'operations'),'dir');
   for (const directory of ['nginx', 'system/.projects.env', 'gitlab', 'wizard', 'nginx-proxy/.projects', 'project-bootstrap', 'bin', 'templates', 'active'])
     fs.mkdirSync(path.join(root, directory), {recursive: true});
   fs.cpSync(path.join(source, 'nginx/.templates'), path.join(root, 'nginx/.templates'), {recursive: true});

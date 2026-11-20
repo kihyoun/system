@@ -1,7 +1,4 @@
-#! /bin/bash
-for i in $(find -H ../system/.projects.env ../system/projects.env -type f -name "*.env" 2>/dev/null); do
-    source $i
-    if [ "${PROJECT_TEMPLATE:-}" = wizard ] && [ "$PROJECT_NAME" = wizard ]; then continue; fi
-    docker-compose -p ${PROJECT_NAME} down
-done
-
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+exec node "$root/operations/dist/projects-routing/entry.js" routing stop-proxies "$root" ""

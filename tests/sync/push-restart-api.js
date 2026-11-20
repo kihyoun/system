@@ -11,6 +11,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function scenario(validArchive) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'push-restart-'));
+  fs.symlinkSync(path.resolve(__dirname,'../../operations'),path.join(root,'operations'),'dir');
   for (const dir of ['sync', 'system', 'state', 'archive']) fs.mkdirSync(path.join(root, dir));
   fs.mkdirSync(path.join(root, 'nginx'));
   fs.mkdirSync(path.join(root, 'project-bootstrap'));

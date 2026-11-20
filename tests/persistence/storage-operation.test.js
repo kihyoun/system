@@ -156,7 +156,7 @@ test('unchanged Wizard JSZip DOS backups and mixed Unix entries retain strict me
 });
 test('a real configuration import preserves the acquired server-owned environment mutex',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',system=f.root+'/source/system';
-  fs.mkdirSync(system,{recursive:true});fs.mkdirSync(f.root+'/source/project-bootstrap');fs.mkdirSync(f.root+'/source/nginx');
+  fs.mkdirSync(system,{recursive:true});fs.symlinkSync(path.resolve(__dirname,'../../operations'),f.root+'/source/operations','dir');fs.mkdirSync(f.root+'/source/project-bootstrap');fs.mkdirSync(f.root+'/source/nginx');
   for(const relative of ['system/push.sh','nginx/wizard-aliases.js','nginx/application-aliases.js','project-bootstrap/routing-impact.js','project-bootstrap/configuration-archive.js','project-bootstrap/preserve-system-project.js'])
     fs.copyFileSync(path.join(__dirname,'../..',relative),f.root+'/source/'+relative);
   execFileSync('python3',['-c',

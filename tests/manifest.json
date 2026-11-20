@@ -130,6 +130,7 @@
   {"component":"wizard","file":"wizard/rails-completion.js","timeoutSeconds":20},
   {"component":"wizard","file":"wizard/native-locale-messages.js","timeoutSeconds":20},
   {"component":"shared","file":"shared/guided-preview-orchestration-contract.js","timeoutSeconds":20},
+  {"component":"nginx","file":"nginx/typed-routing.js","timeoutSeconds":20},
   {"component":"nginx","file":"nginx/project-proxy-scope.js","timeoutSeconds":20},
   {"component":"nginx","file":"nginx/routing-rollback.js","timeoutSeconds":20},
   {"component":"nginx","file":"nginx/application-aliases.js","timeoutSeconds":20},

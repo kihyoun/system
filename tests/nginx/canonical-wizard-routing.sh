@@ -3,6 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 fixture=$(mktemp -d)
+ln -s "$root/operations" "$fixture/operations"
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture"/{system/.projects.env,gitlab,nginx,nginx-proxy/.projects,wizard,project-bootstrap,bin} /templates
 cp -a "$root/nginx/.templates" "$fixture/nginx/"

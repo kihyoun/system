@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const child = require('node:child_process');
 const source = path.resolve(__dirname, '../..'), root = fs.mkdtempSync(path.join(os.tmpdir(), 'routing-push-api-'));
+fs.symlinkSync(path.join(source,'operations'),path.join(root,'operations'),'dir');
 for (const folder of ['sync', 'system', 'state/.projects.env', 'nginx', 'project-bootstrap']) fs.mkdirSync(path.join(root, folder), {recursive: true});
 for (const name of ['system/push.sh', 'nginx/wizard-aliases.js', 'nginx/application-aliases.js',
   'project-bootstrap/preserve-system-project.js', 'project-bootstrap/routing-impact.js', 'project-bootstrap/configuration-archive.js'])

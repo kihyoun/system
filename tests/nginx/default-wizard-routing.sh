@@ -3,6 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 fixture=$(mktemp -d)
+ln -s "$root/operations" "$fixture/operations"
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture"/{system/.projects.env,gitlab,nginx,nginx-proxy/.projects,wizard,gitlab-runner,bin} /templates
 cp -a "$root/nginx/.templates" "$fixture/nginx/"
@@ -82,33 +83,24 @@ EOF
 done
 echo 'PASS: all eight application environment combinations start and reload under errexit.'
 # A disabled environment must succeed without hiding a real rendering failure
-# in any enabled environment. Fail the application substitution, not GitLab's
+# in any enabled environment. Remove the application TLS template, not GitLab's
 # earlier route, and require exit before any Docker start/reload operation.
-export REAL_SED
-REAL_SED=$(command -v sed)
-cat > "$fixture/bin/sed" <<'SH'
-#!/usr/bin/env bash
-for argument in "$@"; do
-  if [[ "$argument" == *application_* ]]; then exit 43; fi
-done
-exec "$REAL_SED" "$@"
-SH
-chmod +x "$fixture/bin/sed"
+mv "$fixture/nginx/.templates/default.ssl.conf.template" "$fixture/nginx/.templates/default.ssl.conf.saved"
 for environment in PROD BETA REVIEW; do
   printf 'PROJECT_NAME=application\nUSE_PROD_HOST=false\nUSE_BETA_HOST=false\nUSE_REVIEW_HOST=false\nUSE_%s_HOST=true\n' "$environment" > "$fixture/system/.projects.env/.application.env"
   cp "$fixture/system/.projects.env/.application.env" "$fixture/nginx-proxy/.projects/.application.env"
   for env in PROD BETA REVIEW; do
-    printf '%s_DOMAIN_MODE=0\n%s_PROXY=127.0.0.1\n%s_HOST=%s.localhost\n' "$env" "$env" "$env" "$env" >> "$fixture/nginx-proxy/.projects/.application.env"
+    printf '%s_DOMAIN_MODE=2\n%s_PROXY=127.0.0.1\n%s_HOST=%s.localhost\n' "$env" "$env" "$env" "$env" >> "$fixture/nginx-proxy/.projects/.application.env"
   done
   for mode in start reload; do
     : > "$TRACE"
     result=0
     if [ "$mode" = start ]; then bash -e start.sh || result=$?; else bash -e start.sh reload || result=$?; fi
-    test "$result" -eq 43
+    test "$result" -ne 0
     test ! -s "$TRACE"
   done
 done
-rm "$fixture/bin/sed"
+mv "$fixture/nginx/.templates/default.ssl.conf.saved" "$fixture/nginx/.templates/default.ssl.conf.template"
 echo 'PASS: enabled application rendering failures stop start/reload before Docker.'
 bash -e start.sh recovery
 grep -q 'server_name gitlab.localhost;' /templates/default.conf.template
