@@ -208,8 +208,7 @@ test('controller restart refuses running, uncertain, or unowned storage operatio
   operation.startupAllowed(state,true);
   fs.writeFileSync(path.join(upgrade,'upgrade-owner.json'),'{}');
   assert.throws(()=>operation.startupAllowed(state,true),/storage-operation-busy/);
-  const start=fs.readFileSync(path.join(__dirname,'../../operations/src/lifecycle/lifecycle.service.ts'),'utf8');
-  assert(start.indexOf('startupBegin(context.state') < start.indexOf('system/persistence-init.js'));
+
 });
 test('startup and cold backup take the same atomic barrier across the writer-start interval',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',spec={operation:'harvest',helperName:'helper',imageId:'sha256:'+'a'.repeat(64)};

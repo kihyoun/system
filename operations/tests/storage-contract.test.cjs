@@ -175,7 +175,7 @@ test('a dangling persistence marker cannot make local preparation write outside 
   assert.throws(()=>operation.prepareLocal(f.spec,f.root,mounts),/unrecognized-live-storage/);
   assert(!fs.existsSync(outside));
 });
-test('controller restart refuses running, uncertain, or unowned storage operations before service writes',t=>{
+test('controller restart refuses running, uncertain, or unowned storage operations before service writes',async t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration';
   operation.startupAllowed(state);
   const held=new operation.StorageLease(state,{operation:'harvest',helperName:'owned-helper',imageId:'sha256:'+'a'.repeat(64)});
@@ -190,8 +190,15 @@ test('controller restart refuses running, uncertain, or unowned storage operatio
   operation.startupAllowed(state,true);
   fs.writeFileSync(path.join(upgrade,'upgrade-owner.json'),'{}');
   assert.throws(()=>operation.startupAllowed(state,true),/storage-operation-busy/);
-  const start=fs.readFileSync(path.join(__dirname,'../../system/start.sh'),'utf8');
-  assert(start.indexOf('startup-begin') < start.indexOf('node ./persistence-init.js'));
+  const {LifecycleService}=require('../dist/lifecycle/lifecycle.service');
+  const controller=new AbortController(), writes=[];
+  const children={async run(...args){writes.push(args);throw Error('unexpected writer');}};
+  const service=new LifecycleService(children,{}, {}, {}, {gitlabData:f.root+'/data/platform/gitlab/data'});
+  const paused=service.run('start',{root:f.root,state,environment:{},signal:controller.signal});
+  queueMicrotask(()=>controller.abort());
+  await assert.rejects(paused,{name:'AbortError'});
+  assert.deepEqual(writes,[]);
+  assert(fs.existsSync(held.directory));assert(fs.existsSync(upgrade));
 });
 test('startup and cold backup take the same atomic barrier across the writer-start interval',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',spec={operation:'harvest',helperName:'helper',imageId:'sha256:'+'a'.repeat(64)};
