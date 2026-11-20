@@ -64,6 +64,19 @@ test('runner lifecycle preserves registrations on stop, isolates pool definition
  };
  const service=new RunnerLifecycleService(f.children,f.configuration);
  await service.runPools(f.context,'start');assert(f.calls.some(call=>call.args?.includes('verify')));assert(!JSON.stringify(f.calls.map(call=>call.args)).includes('glrt-fixture'));
+ for(const token of ['glrt-fixture','legacy-fixture']){
+  f.calls.length=0;
+  f.children.run=async(binary,args,options)=>{if(args.includes('grep'))throw new ProcessFailure('docker',1,null,false);return native(binary,args,options);};
+  await service.register({...f.context,environment:{...f.context.environment,GITLAB_RUNNER_TOKEN:token,GITLAB_HOST:'gitlab.example.test',GITLAB_REGISTRY_HOST:'registry.example.test'}},'runner_docker_1','runner-docker');
+  const registration=f.calls.find(call=>call.args.includes('register'));
+  const variable=token.startsWith('glrt-')?'CI_SERVER_TOKEN':'REGISTRATION_TOKEN';
+  assert.deepEqual(registration.args.slice(0,6),['exec','--env',variable,'runner_docker_1','gitlab-runner','register']);
+  assert.equal(registration.options.env[variable],token);assert.equal(registration.options.input,undefined);
+  assert.equal(registration.args.includes('--tag-list'),!token.startsWith('glrt-'));
+  assert(!JSON.stringify(f.calls.map(call=>call.args)).includes(token));
+  assert.equal(f.context.environment[variable],undefined,'private registration env must not mutate the caller');
+ }
+ f.children.run=native;
  f.calls.length=0;await service.runPools(f.context,'stop');assert(f.calls.some(call=>call.args?.includes('down')));assert(!f.calls.some(call=>call.args?.includes('unregister')||call.args?.includes('verify')));
  fs.writeFileSync(path.join(f.root,'system/.projects.env/.wizard.env'),'PROJECT_NAME=wizard\nPROJECT_TEMPLATE=wizard\nGITLAB_RUNNER_SCALE=1\n');
  for(const action of ['start','stop','register','unregister']){f.calls.length=0;await service.runPools(f.context,action,'projects');assert.equal(f.calls.length,0,'managed Wizard never gets a second project runner pool');}

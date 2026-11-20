@@ -2,6 +2,8 @@ import { Injectable, Inject } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { randomUUID } from 'node:crypto';
+import { ProcessFailure } from '../runtime/process';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { LifecycleProcess } from '../runtime/managed-child';
 import type { ConfigurationPort } from '../projects-routing/ports';
@@ -119,18 +121,17 @@ export class RunnerLifecycleService {
     const policy = JSON.parse(
       fs.readFileSync(path.join(context.root, 'gitlab/security-release.json'), 'utf8'),
     );
+    const variable = modern ? 'CI_SERVER_TOKEN' : 'REGISTRATION_TOKEN';
     await this.run(
-      context,
+      { ...context, environment: { ...context.environment, [variable]: token } },
       'docker',
       [
         'exec',
-        '-i',
+        '--env',
+        variable,
         container,
-        'sh',
-        '-c',
-        'variable=$1; shift; export "$variable=$(cat)"; exec gitlab-runner register "$@"',
-        'sh',
-        modern ? 'CI_SERVER_TOKEN' : 'REGISTRATION_TOKEN',
+        'gitlab-runner',
+        'register',
         '--non-interactive',
         ...(modern
           ? []
@@ -157,7 +158,6 @@ export class RunnerLifecycleService {
         '/var/run/docker.sock:/var/run/docker.sock',
         '--docker-privileged=true',
       ],
-      token,
     );
   }
   async refreshEndpoint(context: LifecycleContext, container: string): Promise<void> {
@@ -169,20 +169,36 @@ export class RunnerLifecycleService {
       '/etc/gitlab-runner/config.toml',
     ]);
     const updated = stableEndpoint(previous);
-    if (previous !== updated)
-      await this.run(
-        context,
-        'docker',
-        [
-          'exec',
-          '-i',
-          container,
-          'sh',
-          '-c',
-          'umask 077; cat > /etc/gitlab-runner/config.toml.endpoint-tmp && mv /etc/gitlab-runner/config.toml.endpoint-tmp /etc/gitlab-runner/config.toml',
-        ],
-        updated,
-      );
+    if (previous === updated) return;
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'system-runner-endpoint-')),
+      local = path.join(directory, 'config.toml'),
+      remote = '/etc/gitlab-runner/config.toml.endpoint-' + randomUUID();
+    let copied = false,
+      uncertain = false;
+    try {
+      fs.writeFileSync(local, updated, { mode: 0o600, flag: 'wx' });
+      copied = true;
+      await this.run(context, 'docker', ['cp', local, container + ':' + remote]);
+      await this.run(context, 'docker', [
+        'exec',
+        container,
+        'mv',
+        '-f',
+        '--',
+        remote,
+        '/etc/gitlab-runner/config.toml',
+      ]);
+      copied = false;
+    } catch (error) {
+      uncertain = error instanceof ProcessFailure && error.uncertain;
+      throw error;
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+      // An interrupted remote copy/rename may still own its private temporary file.
+      // Its startup lease remains held; do not race that worker during cleanup.
+      if (copied && !uncertain)
+        await this.run(context, 'docker', ['exec', container, 'rm', '-f', '--', remote]);
+    }
   }
   async runPool(context: LifecycleContext, action: 'up' | 'down', pool: string): Promise<void> {
     if (!['up', 'down'].includes(action) || !/^[a-z0-9][a-z0-9_-]*$/.test(pool))
