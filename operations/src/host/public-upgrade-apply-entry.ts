@@ -44,7 +44,9 @@ export async function publicUpgradeApplyMain(): Promise<void> {
     app = await runtime.application(HostModule.register({ publicUpgradeApplyPort: port }));
     channel.write({
       complete: true,
-      value: app.get(PublicUpgradeApplyService).apply(String(input.directory), input.confirmation),
+      value: await app
+        .get(PublicUpgradeApplyService)
+        .apply(String(input.directory), input.confirmation),
     });
   } catch (error) {
     channel.write({

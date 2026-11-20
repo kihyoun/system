@@ -60,7 +60,10 @@ export async function controllerRollbackSequenceMain(): Promise<void> {
       },
     };
     app = await runtime.application(HostModule.register({ controllerRollbackPort: port }));
-    channel.write({ complete: true, value: app.get(ControllerRollbackSequenceService).run(input) });
+    channel.write({
+      complete: true,
+      value: await app.get(ControllerRollbackSequenceService).run(input),
+    });
   } catch (error) {
     channel.write({
       complete: true,

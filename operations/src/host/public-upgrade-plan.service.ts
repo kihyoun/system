@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { record } from '../release/source-identity';
 import { requireValue as ensure, privateFile, writePrivate } from './install';
 import { upgradePath } from './upgrade-graph';
+type NativeResult<T> = T | Promise<T>;
 type Row = Record<string, unknown>;
 export interface PublicUpgradePlanInput {
   attemptId: string;
@@ -20,19 +21,26 @@ export interface PublicUpgradePlanPort {
   publicInputs(
     repository: string,
     target: string,
-  ): { raw: string; proof: string; release: Row; metadata: Row; evidence: Row; graph: unknown };
-  verifyCheckout(): void;
-  installed(repository: string, target: string): Row;
-  prerequisite(checkpoint: string): unknown;
-  host(): void;
-  syncIdle(): void;
-  freeBytes(): number[];
-  backupTarget(filename: string): string;
-  selection(): { json: string; environment: string; configurationSha256: string };
-  capture(): unknown;
-  invoke(checkpoint: string, metadataFile: string): void;
-  dataSample(): unknown;
-  now(): string;
+  ): NativeResult<{
+    raw: string;
+    proof: string;
+    release: Row;
+    metadata: Row;
+    evidence: Row;
+    graph: unknown;
+  }>;
+  verifyCheckout(): NativeResult<void>;
+  installed(repository: string, target: string): NativeResult<Row>;
+  prerequisite(checkpoint: string): NativeResult<unknown>;
+  host(): NativeResult<void>;
+  syncIdle(): NativeResult<void>;
+  freeBytes(): NativeResult<number[]>;
+  backupTarget(filename: string): NativeResult<string>;
+  selection(): NativeResult<{ json: string; environment: string; configurationSha256: string }>;
+  capture(): NativeResult<unknown>;
+  invoke(checkpoint: string, metadataFile: string): NativeResult<void>;
+  dataSample(): NativeResult<unknown>;
+  now(): NativeResult<string>;
 }
 const sha = (bytes: Buffer) => crypto.createHash('sha256').update(bytes).digest('hex');
 export class PublicUpgradePlanService {
@@ -61,15 +69,15 @@ export class PublicUpgradePlanService {
       );
   }
 
-  plan(input: PublicUpgradePlanInput): { value: Row; sha256: string } {
+  async plan(input: PublicUpgradePlanInput): Promise<{ value: Row; sha256: string }> {
     ensure(/^[a-f0-9]{32}$/.test(input.attemptId), 'public-upgrade-attempt-identity-required');
-    const authority = this.port.publicInputs(input.repository, input.target);
+    const authority = await this.port.publicInputs(input.repository, input.target);
     ensure(
       input.target === fs.readFileSync(path.join(input.checkout, 'VERSION'), 'utf8').trim(),
       'run-the-selected-target-release-checkout',
     );
-    this.port.verifyCheckout();
-    const previous = this.port.installed(input.repository, input.target),
+    await this.port.verifyCheckout();
+    const previous = await this.port.installed(input.repository, input.target),
       route = upgradePath(authority.graph, String(previous.version), input.target);
     ensure(
       route.status === 'supported',
@@ -92,17 +100,17 @@ export class PublicUpgradePlanService {
         route.transitions.length === 1 && input.gitlabCheckpoint,
         'complete-native-gitlab-upgrade-first-and-select-retained-checkpoint',
       );
-      prerequisite = this.port.prerequisite(input.gitlabCheckpoint);
+      prerequisite = await this.port.prerequisite(input.gitlabCheckpoint);
     }
-    this.port.host();
-    this.port.syncIdle();
+    await this.port.host();
+    await this.port.syncIdle();
     const required = Math.max(...route.transitions.map((edge) => edge.minimumFreeGiB)) * 1024 ** 3;
-    const free = this.port.freeBytes();
+    const free = await this.port.freeBytes();
     ensure(
       free.length === 2 && free.every((bytes) => Number.isFinite(bytes) && bytes >= required),
       'insufficient-upgrade-checkpoint-or-image-storage',
     );
-    const backup = this.port.backupTarget(input.backupFile);
+    const backup = await this.port.backupTarget(input.backupFile);
     const directory = input.directory,
       boundary = path.join(input.root, 'recovery/public-upgrades');
     let ancestor = directory;
@@ -155,7 +163,7 @@ export class PublicUpgradePlanService {
       phase: 'checking',
       attemptId: input.attemptId,
       targetVersion: input.target,
-      at: this.port.now(),
+      at: await this.port.now(),
     };
     json('preflight.json', attempt);
     try {
@@ -164,13 +172,13 @@ export class PublicUpgradePlanService {
       save('target.json', raw);
       save('provenance.json', proof);
       json('previous-release.json', previous);
-      const selected = this.port.selection();
+      const selected = await this.port.selection();
       save('previous-selection.json', Buffer.from(selected.json, 'base64'));
       save('previous-selection.env', Buffer.from(selected.environment, 'base64'));
-      json('baseline.json', this.port.capture());
+      json('baseline.json', await this.port.capture());
       if (route.transitions.length === 1)
-        this.port.invoke(checkpoint, path.join(directory, 'target.json'));
-      const current = this.port.selection();
+        await this.port.invoke(checkpoint, path.join(directory, 'target.json'));
+      const current = await this.port.selection();
       const value: Row = {
         format: 'system-public-upgrade-plan-v1',
         installedVersion: previous.version,
@@ -183,7 +191,7 @@ export class PublicUpgradePlanService {
         provenanceSha256: sha(proof),
         selectionSha256: sha(Buffer.from(current.json, 'base64')),
         configurationSha256: current.configurationSha256,
-        dataSample: this.port.dataSample(),
+        dataSample: await this.port.dataSample(),
         baselineSha256: sha(fs.readFileSync(path.join(directory, 'baseline.json'))),
         checkpoint,
         backupDestination: input.backupDestination,

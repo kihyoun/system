@@ -46,7 +46,9 @@ export async function publicUpgradePlanMain(): Promise<void> {
       value:
         input.operation === 'interrupt'
           ? app.get(PublicUpgradePlanService).interrupt(String(input.directory), input.attemptId)
-          : app.get(PublicUpgradePlanService).plan(input as unknown as PublicUpgradePlanInput),
+          : await app
+              .get(PublicUpgradePlanService)
+              .plan(input as unknown as PublicUpgradePlanInput),
     });
   } catch (error) {
     channel.write({

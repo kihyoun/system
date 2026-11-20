@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { record } from '../release/source-identity';
 import { requireValue as ensure } from './install';
+type NativeResult<T> = T | Promise<T>;
 type Row = Record<string, unknown>;
 export interface ControllerUpdateSequenceInput {
   record: Row;
@@ -19,26 +20,26 @@ export interface ControllerUpdateSequenceInput {
   checkout: string;
 }
 export interface ControllerUpdateSequencePort {
-  journal(value: Row): void;
-  assertBaseline(value: Row): void;
-  verifySelection(checkpoint: boolean): void;
-  publicImages(): unknown;
-  pipeline(): void;
-  publicPair(): unknown;
-  syncIdle(): void;
-  currentServices(): Row;
-  repairBaseline(current: Row): void;
-  critical(): void;
-  command(args: string[], reference?: string): void;
-  inspect(id: string): Row;
-  writeConfiguration(bytes: string, metadata: Row): void;
-  writeSelection(): void;
-  now(): string;
-  reload(): void;
-  saveBaseline(value: Row): void;
-  waitReady(value: Row): unknown;
-  services(): Row;
-  saveVerification(value: unknown): void;
+  journal(value: Row): NativeResult<void>;
+  assertBaseline(value: Row): NativeResult<void>;
+  verifySelection(checkpoint: boolean): NativeResult<void>;
+  publicImages(): NativeResult<unknown>;
+  pipeline(): NativeResult<void>;
+  publicPair(): NativeResult<unknown>;
+  syncIdle(): NativeResult<void>;
+  currentServices(): NativeResult<Row>;
+  repairBaseline(current: Row): NativeResult<void>;
+  critical(): NativeResult<void>;
+  command(args: string[], reference?: string): NativeResult<void>;
+  inspect(id: string): NativeResult<Row>;
+  writeConfiguration(bytes: string, metadata: Row): NativeResult<void>;
+  writeSelection(): NativeResult<void>;
+  now(): NativeResult<string>;
+  reload(): NativeResult<void>;
+  saveBaseline(value: Row): NativeResult<void>;
+  waitReady(value: Row): NativeResult<unknown>;
+  services(): NativeResult<Row>;
+  saveVerification(value: unknown): NativeResult<void>;
 }
 function runnerContainers(services: Row, expected: unknown): void {
   ensure(
@@ -71,7 +72,7 @@ function unchangedServices(services: Row, baseline: Row, wizard: boolean): void 
 /** Paired update order, repair gates and completion claims, while native owner holds leases. */
 export class ControllerUpdateSequenceService {
   constructor(readonly port: ControllerUpdateSequencePort) {}
-  run(input: ControllerUpdateSequenceInput): Row {
+  async run(input: ControllerUpdateSequenceInput): Promise<Row> {
     ensure(
       input.record.format === 'system-public-controller-update-v1' &&
         input.record.phase === 'inputs-verified' &&
@@ -83,43 +84,43 @@ export class ControllerUpdateSequenceService {
       leaseOperation: input.leaseOperation,
       phase: 'lease-acquired',
     };
-    const journal = (phase?: string) => {
+    const journal = async (phase?: string) => {
       if (phase) state.phase = phase;
-      this.port.journal(state);
+      await this.port.journal(state);
     };
-    journal();
-    this.port.assertBaseline(input.baseline);
-    if (input.expectedBaseline) this.port.assertBaseline(input.expectedBaseline);
-    if (input.selection) this.port.verifySelection(false);
+    await journal();
+    await this.port.assertBaseline(input.baseline);
+    if (input.expectedBaseline) await this.port.assertBaseline(input.expectedBaseline);
+    if (input.selection) await this.port.verifySelection(false);
     if (!input.stoppedId)
       ensure(
-        isDeepStrictEqual(this.port.publicImages(), input.baseline.selectedImages),
+        isDeepStrictEqual(await this.port.publicImages(), input.baseline.selectedImages),
         'controller-update-images-changed-before-stop',
       );
-    this.port.pipeline();
+    await this.port.pipeline();
     if (input.wizard)
       ensure(
-        isDeepStrictEqual(this.port.publicPair(), input.publication),
+        isDeepStrictEqual(await this.port.publicPair(), input.publication),
         'paired-publication-changed-before-stop',
       );
     if (!input.stoppedId) {
-      this.port.syncIdle();
-      this.port.currentServices();
+      await this.port.syncIdle();
+      await this.port.currentServices();
     } else {
-      const current = this.port.currentServices();
+      const current = await this.port.currentServices();
       ensure(
         isDeepStrictEqual(current.system_bootstrapper_1, input.original.system_bootstrapper_1),
         'stopped-controller-changed-before-repair',
       );
       runnerContainers(current, state.previousRunnerContainerIds);
-      this.port.repairBaseline(current);
+      await this.port.repairBaseline(current);
     }
     if (input.selection) {
-      this.port.verifySelection(false);
-      this.port.verifySelection(true);
+      await this.port.verifySelection(false);
+      await this.port.verifySelection(true);
     }
-    this.port.critical();
-    journal('controller-stop-started');
+    await this.port.critical();
+    await journal('controller-stop-started');
     const controller = record(input.original.system_bootstrapper_1),
       labels = record(record(controller.Config).Labels),
       controllerState = record(controller.State);
@@ -128,21 +129,21 @@ export class ControllerUpdateSequenceService {
         labels['com.docker.compose.service'] === 'bootstrapper',
       'owned-core-container-required',
     );
-    this.port.command(['update', '--restart=no', String(controller.Id)]);
+    await this.port.command(['update', '--restart=no', String(controller.Id)]);
     if (controllerState.Running) {
       ensure(!controllerState.Paused, 'controller-update-refuses-paused-controller');
-      this.port.command(['stop', '--time', '30', String(controller.Id)]);
+      await this.port.command(['stop', '--time', '30', String(controller.Id)]);
     }
     ensure(
-      !record(this.port.inspect(String(controller.Id)).State).Running,
+      !record((await this.port.inspect(String(controller.Id))).State).Running,
       'previous-controller-did-not-stop',
     );
-    this.port.assertBaseline(input.baseline);
-    this.port.writeConfiguration(input.updated, input.metadata);
-    if (input.selection) this.port.writeSelection();
-    journal('controller-start-started');
-    const restartedAt = this.port.now();
-    this.port.command(
+    await this.port.assertBaseline(input.baseline);
+    await this.port.writeConfiguration(input.updated, input.metadata);
+    if (input.selection) await this.port.writeSelection();
+    await journal('controller-start-started');
+    const restartedAt = await this.port.now();
+    await this.port.command(
       [
         'compose',
         '--compatibility',
@@ -160,7 +161,7 @@ export class ControllerUpdateSequenceService {
       ],
       String(input.pulled.reference),
     );
-    this.port.reload();
+    await this.port.reload();
     const after = structuredClone(input.baseline);
     record(after.configurationFiles)['configuration/.docker.env'] = state.configurationAfterSha256;
     const images = record(after.selectedImages);
@@ -178,16 +179,16 @@ export class ControllerUpdateSequenceService {
       sourceTree: input.release.sourceTree,
       startedAt: restartedAt,
     });
-    this.port.saveBaseline(after);
-    const receipt = this.port.waitReady(after),
-      services = this.port.services();
+    await this.port.saveBaseline(after);
+    const receipt = await this.port.waitReady(after),
+      services = await this.port.services();
     unchangedServices(services, input.baseline, !!input.wizard);
     if (input.stoppedId) runnerContainers(services, state.previousRunnerContainerIds);
-    this.port.saveVerification(receipt);
+    await this.port.saveVerification(receipt);
     state = {
       ...state,
       phase: 'completed',
-      completedAt: this.port.now(),
+      completedAt: await this.port.now(),
       serviceImagesPreserved: !input.wizard,
       configurationChangedOnlyControllerImage: !input.wizard,
       databaseRewound: false,
@@ -195,7 +196,7 @@ export class ControllerUpdateSequenceService {
         ? { otherServiceImagesPreserved: true, configurationChangedOnlyReleaseImages: true }
         : {}),
     };
-    journal();
+    await journal();
     return state;
   }
 }

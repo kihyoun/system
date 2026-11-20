@@ -53,7 +53,7 @@ async function main() {
           ? ControllerUpdateSequenceService
           : ControllerRollbackSequenceService,
       );
-      channel.write({ complete: true, value: { result: sequence.run(...request.arguments) } });
+      channel.write({ complete: true, value: { result: await sequence.run(...request.arguments) } });
       return;
     }
     const service = app.get(RuntimeVerificationService);

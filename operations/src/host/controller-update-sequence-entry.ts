@@ -63,7 +63,10 @@ export async function controllerUpdateSequenceMain(): Promise<void> {
       },
     };
     app = await runtime.application(HostModule.register({ controllerUpdateSequencePort: port }));
-    channel.write({ complete: true, value: app.get(ControllerUpdateSequenceService).run(input) });
+    channel.write({
+      complete: true,
+      value: await app.get(ControllerUpdateSequenceService).run(input),
+    });
   } catch (error) {
     channel.write({
       complete: true,

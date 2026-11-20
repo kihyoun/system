@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { record } from '../release/source-identity';
 import { requireValue as ensure } from './install';
+type NativeResult<T> = T | Promise<T>;
 type Row = Record<string, unknown>;
 export interface ControllerRollbackInput {
   record: Row;
@@ -12,25 +13,25 @@ export interface ControllerRollbackInput {
   checkout: string;
 }
 export interface ControllerRollbackPort {
-  journal(value: Row): void;
-  mainSha(): string;
-  pairedBaseline(baseline: Row): void;
-  verifySelection(checkpoint: boolean): void;
-  services(): Row;
-  stoppedIdle(): void;
-  repairPeers(services: Row): void;
-  critical(): void;
-  command(args: string[], reference?: string): void;
-  inspect(id: string): Row;
-  writeConfiguration(bytes: string, metadata: Row): void;
-  recoveredReceipt(value: Row): void;
-  writeSelection(): void;
-  reload(): void;
-  restoreStopped(baseline: Row): unknown;
-  waitReady(baseline: Row): unknown;
-  inspectServices(): Row;
-  now(): string;
-  verification(value: unknown): void;
+  journal(value: Row): NativeResult<void>;
+  mainSha(): NativeResult<string>;
+  pairedBaseline(baseline: Row): NativeResult<void>;
+  verifySelection(checkpoint: boolean): NativeResult<void>;
+  services(): NativeResult<Row>;
+  stoppedIdle(): NativeResult<void>;
+  repairPeers(services: Row): NativeResult<void>;
+  critical(): NativeResult<void>;
+  command(args: string[], reference?: string): NativeResult<void>;
+  inspect(id: string): NativeResult<Row>;
+  writeConfiguration(bytes: string, metadata: Row): NativeResult<void>;
+  recoveredReceipt(value: Row): NativeResult<void>;
+  writeSelection(): NativeResult<void>;
+  reload(): NativeResult<void>;
+  restoreStopped(baseline: Row): NativeResult<unknown>;
+  waitReady(baseline: Row): NativeResult<unknown>;
+  inspectServices(): NativeResult<Row>;
+  now(): NativeResult<string>;
+  verification(value: unknown): NativeResult<void>;
 }
 function runners(services: Row, expected: unknown) {
   ensure(
@@ -47,36 +48,36 @@ function runners(services: Row, expected: unknown) {
 }
 export class ControllerRollbackSequenceService {
   constructor(readonly port: ControllerRollbackPort) {}
-  run(input: ControllerRollbackInput): Row {
+  async run(input: ControllerRollbackInput): Promise<Row> {
     let state: Row = { ...input.record, leaseOperation: input.leaseOperation };
-    const journal = (phase?: string) => {
+    const journal = async (phase?: string) => {
       if (phase) state.phase = phase;
-      this.port.journal(state);
+      await this.port.journal(state);
     };
-    journal();
+    await journal();
     ensure(
       [
         state.configurationBeforeSha256,
         state.configurationAfterSha256,
         state.recoveredConfigurationSha256,
-      ].includes(this.port.mainSha()),
+      ].includes(await this.port.mainSha()),
       'controller-rollback-configuration-changed',
     );
     const baseline = structuredClone(input.baseline);
-    this.port.pairedBaseline(baseline);
+    await this.port.pairedBaseline(baseline);
     if (input.selection) {
-      this.port.verifySelection(false);
-      this.port.verifySelection(true);
+      await this.port.verifySelection(false);
+      await this.port.verifySelection(true);
     }
-    const services = this.port.services(),
+    const services = await this.port.services(),
       repair = state.repairStoppedController === true;
-    const repairCheck = (rows: Row) => {
-      this.port.stoppedIdle();
-      this.port.repairPeers(rows);
+    const repairCheck = async (rows: Row) => {
+      await this.port.stoppedIdle();
+      await this.port.repairPeers(rows);
       runners(rows, state.previousRunnerContainerIds);
     };
     if (repair) {
-      repairCheck(services);
+      await repairCheck(services);
       const controller = services.system_bootstrapper_1;
       ensure(
         !controller ||
@@ -87,8 +88,8 @@ export class ControllerRollbackSequenceService {
         'repair-controller-active-or-unknown-execs',
       );
     }
-    journal('rollback-started');
-    this.port.critical();
+    await journal('rollback-started');
+    await this.port.critical();
     if (services.system_bootstrapper_1) {
       const controller = record(services.system_bootstrapper_1),
         labels = record(record(controller.Config).Labels),
@@ -98,25 +99,25 @@ export class ControllerRollbackSequenceService {
           labels['com.docker.compose.service'] === 'bootstrapper',
         'owned-core-container-required',
       );
-      this.port.command(['update', '--restart=no', String(controller.Id)]);
+      await this.port.command(['update', '--restart=no', String(controller.Id)]);
       if (current.Running) {
         ensure(!current.Paused, 'controller-update-refuses-paused-controller');
-        this.port.command(['stop', '--time', '30', String(controller.Id)]);
+        await this.port.command(['stop', '--time', '30', String(controller.Id)]);
       }
       ensure(
-        !record(this.port.inspect(String(controller.Id)).State).Running,
+        !record((await this.port.inspect(String(controller.Id))).State).Running,
         'previous-controller-did-not-stop',
       );
     }
     if (repair) {
-      this.port.stoppedIdle();
-      const stopped = this.port.services();
-      this.port.repairPeers(stopped);
+      await this.port.stoppedIdle();
+      const stopped = await this.port.services();
+      await this.port.repairPeers(stopped);
       runners(stopped, state.previousRunnerContainerIds);
     }
-    this.port.writeConfiguration(input.before, record(state.configurationMetadata));
+    await this.port.writeConfiguration(input.before, record(state.configurationMetadata));
     if (state.recoveredImages) {
-      this.port.recoveredReceipt({
+      await this.port.recoveredReceipt({
         format: 'system-public-recovered-images-v1',
         checkpoint: input.checkpoint,
         configurationSha256: state.recoveredConfigurationSha256,
@@ -125,13 +126,13 @@ export class ControllerRollbackSequenceService {
       record(baseline.configurationFiles)['configuration/.docker.env'] =
         state.recoveredConfigurationSha256;
     }
-    if (input.selection) this.port.writeSelection();
-    this.port.reload();
+    if (input.selection) await this.port.writeSelection();
+    await this.port.reload();
     let receipt: unknown;
-    if (repair) receipt = this.port.restoreStopped(baseline);
+    if (repair) receipt = await this.port.restoreStopped(baseline);
     else {
       const previous = record(state.previousController);
-      this.port.command(
+      await this.port.command(
         [
           'compose',
           '--compatibility',
@@ -149,9 +150,9 @@ export class ControllerRollbackSequenceService {
         ],
         String(previous.reference),
       );
-      baseline.startedAt = this.port.now();
-      receipt = this.port.waitReady(baseline);
-      const current = this.port.inspectServices(),
+      baseline.startedAt = await this.port.now();
+      receipt = await this.port.waitReady(baseline);
+      const current = await this.port.inspectServices(),
         expected = record(baseline.selectedImages);
       ensure(
         isDeepStrictEqual(Object.keys(current).sort(), Object.keys(expected).sort()),
@@ -177,20 +178,20 @@ export class ControllerRollbackSequenceService {
         );
         restart += ':' + String(policy.MaximumRetryCount);
       }
-      this.port.command([
+      await this.port.command([
         'update',
         '--restart=' + restart,
-        String(this.port.inspect('system_bootstrapper_1').Id),
+        String((await this.port.inspect('system_bootstrapper_1')).Id),
       ]);
     }
-    this.port.verification(receipt);
+    await this.port.verification(receipt);
     state = {
       ...state,
       phase: repair ? 'rolled-back-stopped' : 'rolled-back',
-      rolledBackAt: this.port.now(),
+      rolledBackAt: await this.port.now(),
       databaseRewound: false,
     };
-    journal();
+    await journal();
     return state;
   }
 }
