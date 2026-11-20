@@ -499,7 +499,16 @@ passes authenticated Fetch after full physical backup detachment. Failed steps
 publish no upgrade success.
 
 A bounded 512-MiB/one-CPU helper reuses the declared GitLab image's embedded
-Python and the prepared controller's Docker/Compose binaries and musl loader.
+Python while the host upgrade fixture is migrated. Its Docker/Compose transports
+are thin Node adapters backed by a test-only Nest module. Preparation copies the
+exact candidate's Node binary, bundled operations, Docker/Compose binaries, musl
+loader and declared C++/GCC libraries with native filesystem APIs. Read-only mounts
+supply that runtime at an explicit path in both the helper and historical
+controller; no Node installation in the old image is assumed. Runtime probes load
+the copied interpreter and Nest module in both images before controller replacement.
+An unexpected candidate Node library dependency fails preparation. Offline tests
+cover transport behavior; successful runtime probes and the full candidate gate
+are still required to establish that this runtime closure works in those images.
 Its mounts belong only to the private daemon. Committed test adapters model
 Ubuntu/systemd and the host mount view, plus the not-yet-published target's
 public metadata and exact digest-to-prepared-image transport. Target config

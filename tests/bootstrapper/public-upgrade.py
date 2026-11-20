@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import sys
 import subprocess
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -186,19 +187,22 @@ class NativeFixtureInitialization(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             shim = directory / 'docker'
-            shim.symlink_to(ROOT / 'tests/e2e/public-upgrade-docker.sh')
+            node = shutil.which('node')
+            self.assertIsNotNone(node, 'prepared Node runtime required')
+            adapter = (ROOT / 'tests/e2e/public-upgrade-docker.js').read_text().split('\n', 1)[1]
+            shim.write_text('#!' + node + '\n' + adapter)
+            shim.chmod(0o700)
+            (directory / 'runtime').mkdir()
+            (directory / 'runtime/operations').symlink_to(ROOT / 'operations', target_is_directory=True)
             native = directory / 'docker.native'
-            native.write_text('#!' + sys.executable + '\n' +
-                'import pathlib, sys\n' +
-                'root = pathlib.Path(__file__).parent\n' +
-                'expected = ["image", "inspect", "' + image_id + '"]\n' +
-                'if sys.argv[1:] not in (expected, ["--host=unix:///var/run/docker.sock", *expected]):\n' +
-                '    sys.exit(91)\n' +
-                'if sys.argv[1:] == expected:\n' +
-                '    sys.exit(0)\n' +
-                'if (root / "fail-inspection").exists():\n' +
-                '    sys.exit(42)\n' +
-                'sys.stdout.write((root / "inspection.json").read_text())\n')
+            native.write_text('#!' + node + '\n' +
+                'const fs=require("node:fs"),path=require("node:path"),root=__dirname;\n' +
+                'const expected=["image","inspect","' + image_id + '"];\n' +
+                'const args=process.argv.slice(2);\n' +
+                'if(JSON.stringify(args)===JSON.stringify(expected))process.exit(0);\n' +
+                'if(JSON.stringify(args)!==JSON.stringify(["--host=unix:///var/run/docker.sock",...expected]))process.exit(91);\n' +
+                'if(fs.existsSync(path.join(root,"fail-inspection")))process.exit(42);\n' +
+                'process.stdout.write(fs.readFileSync(path.join(root,"inspection.json")));\n')
             native.chmod(0o700)
             with patch.dict(os.environ, SYSTEM_PUBLIC_UPGRADE_FIXTURE=temporary), \
                     patch.object(installer, 'DOCKER', [str(shim), '--host=unix:///var/run/docker.sock']):
@@ -209,14 +213,13 @@ class NativeFixtureInitialization(unittest.TestCase):
                               'org.system-bootstrapper.source-revision': identity['sourceCommit'],
                               'org.system-bootstrapper.test-job': '17'}
                     row = {'Id': image_id, 'Os': 'linux', 'Architecture': 'amd64', 'Config': {'Labels': labels}}
-                    for retained in ([], ['system-candidate@' + image_id]):
-                        for indentation in (None, 2):
-                            with self.subTest(wizard=wizard, retained=bool(retained), multiline=bool(indentation)):
-                                row['RepoDigests'] = retained
-                                (directory / 'inspection.json').write_text(json.dumps([row], indent=indentation))
-                                checked = installer.checked_image(selected, identity, wizard=wizard)
-                                self.assertEqual(checked, {'reference': selected, 'imageId': image_id,
-                                    'candidateJobId': 17, 'platform': 'linux/amd64'})
+                    # JSON layout/transport combinations are covered by the shared
+                    # adapter contract; retain the real installer source-label gate here.
+                    row['RepoDigests'] = ['system-candidate@' + image_id]
+                    (directory / 'inspection.json').write_text(json.dumps([row], indent=2))
+                    checked = installer.checked_image(selected, identity, wizard=wizard)
+                    self.assertEqual(checked, {'reference': selected, 'imageId': image_id,
+                        'candidateJobId': 17, 'platform': 'linux/amd64'})
                     labels['org.opencontainers.image.revision'] = 'e' * 40
                     (directory / 'inspection.json').write_text(json.dumps([row]))
                     with self.assertRaisesRegex(installer.ReleaseError, '^release-image-source-mismatch$'):

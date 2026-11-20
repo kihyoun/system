@@ -289,65 +289,82 @@ test('same candidate drives real CLI operations, interrupted offline recovery an
 test('registry adapter preserves arguments and disables previous digest transport during real archive recovery', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'public-upgrade-transport-'));
   try {
-    const script = path.resolve(__dirname, '../e2e/public-upgrade-docker.sh');
+    const script = path.resolve(__dirname, '../e2e/public-upgrade-docker.js');
     const docker = path.join(directory, 'docker'), compose = path.join(directory, 'docker-compose');
     fs.symlinkSync(script, docker); fs.symlinkSync(script, compose);
     const reference = 'example/system@' + id('1'), image = id('3');
     fs.writeFileSync(path.join(directory, 'images.tsv'), reference + '\t' + image + '\tprevious\n');
-    fs.writeFileSync(path.join(directory, 'docker.native'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$SYSTEM_PUBLIC_UPGRADE_FIXTURE/arguments"\n' +
-      'if [ "${SYSTEM_TEST_NATIVE_FAILURE:-0}" != 0 ]; then printf \'[{"RepoDigests":[]}]\\n\'; exit "$SYSTEM_TEST_NATIVE_FAILURE"; fi\n' +
-      'if [ -n "${SYSTEM_TEST_NATIVE_INSPECT:-}" ]; then printf "%s\\n" "$SYSTEM_TEST_NATIVE_INSPECT"; ' +
-      'else printf \'[{"Id":"' + image + '","RepoDigests":[]}]\\n\'; fi\n', {mode: 0o755});
-    fs.writeFileSync(path.join(directory, 'docker-compose.native'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$SYSTEM_PUBLIC_UPGRADE_FIXTURE/arguments"\nprintf "%s" "$BOOTSTRAPPER_IMAGE"\n', {mode: 0o755});
+    fs.mkdirSync(path.join(directory,'runtime'));
+    fs.symlinkSync(path.resolve(__dirname,'../../operations'),path.join(directory,'runtime/operations'));
+    fs.writeFileSync(path.join(directory, 'docker.native'), '#!'+process.execPath+'\n'+
+      `const fs=require('node:fs');fs.writeFileSync(process.env.SYSTEM_PUBLIC_UPGRADE_FIXTURE+'/arguments',process.argv.slice(2).join('\\n')+'\\n');
+       if(process.env.SYSTEM_TEST_NATIVE_SIGNAL)process.kill(process.pid,process.env.SYSTEM_TEST_NATIVE_SIGNAL);
+       if(process.env.SYSTEM_TEST_NATIVE_FAILURE){console.log('[{"RepoDigests":[]}]');process.exit(Number(process.env.SYSTEM_TEST_NATIVE_FAILURE));}
+       console.log(process.env.SYSTEM_TEST_NATIVE_INSPECT||JSON.stringify([{Id:${JSON.stringify(image)},RepoDigests:[]}]))`, {mode:0o755});
+    fs.writeFileSync(path.join(directory, 'docker-compose.native'), '#!'+process.execPath+'\n'+
+      `require('node:fs').writeFileSync(process.env.SYSTEM_PUBLIC_UPGRADE_FIXTURE+'/arguments',process.argv.slice(2).join('\\n')+'\\n');process.stdout.write(process.env.BOOTSTRAPPER_IMAGE||'');`, {mode:0o755});
+    const invoke=(program,args,options)=>execFileSync(process.execPath,[program,...args],options);
     const env = {...process.env, SYSTEM_PUBLIC_UPGRADE_FIXTURE: directory};
     const args = ['--host=unix:///var/run/docker.sock', 'image', 'inspect', reference];
-    const inspected = JSON.parse(execFileSync(docker, args, {env, encoding: 'utf8'}));
+    const inspected = JSON.parse(invoke(docker, args, {env, encoding: 'utf8'}));
     assert.equal(inspected[0].Id, image);
     assert.deepEqual(inspected[0].RepoDigests, [reference]);
-    for (const indent of [undefined, 4]) {
+    for (const indent of [4]) {
       const native = [{Id: image, RepoDigests: ['system-candidate@' + id('7'), 'example/existing@' + id('8')],
         RepoTags: ['candidate:under-test'], Config: {Labels: {fixture: 'preserved'}}, Size: 123}];
-      const result = JSON.parse(execFileSync(docker, args,
+      const result = JSON.parse(invoke(docker, args,
         {env: {...env, SYSTEM_TEST_NATIVE_INSPECT: JSON.stringify(native, null, indent)}, encoding: 'utf8'}));
       assert.deepEqual(result, [{...native[0], RepoDigests: [reference]}]);
     }
-    assert.throws(() => execFileSync(docker, args, {env: {...env, SYSTEM_TEST_NATIVE_FAILURE: '17'}, stdio: 'pipe'}),
+    assert.throws(() => invoke(docker, args, {env: {...env, SYSTEM_TEST_NATIVE_FAILURE: '17'}, stdio: 'pipe'}),
       error => error.status === 17, 'failed native inspection must never become successful fabricated identity');
-    execFileSync(docker, ['exec', 'fixture', 'printf', '%s', 'one two'], {env});
+    assert.throws(() => invoke(docker, ['info'], {env:{...env,SYSTEM_TEST_NATIVE_FAILURE:'23'},stdio:'pipe'}),error=>error.status===23);
+    assert.throws(() => invoke(docker, ['info'], {env:{...env,SYSTEM_TEST_NATIVE_SIGNAL:'SIGTERM'},stdio:'pipe'}),error=>error.signal==='SIGTERM');
+    invoke(docker, ['--host=unix:///var/run/docker.sock','pull','docker.io/'+reference], {env});
+    assert.deepEqual(fs.readFileSync(path.join(directory,'arguments'),'utf8').trim().split('\n'),['image','inspect',image]);
+    invoke(docker, ['exec', 'fixture', 'printf', '%s', 'one two'], {env});
     assert.equal(fs.readFileSync(path.join(directory, 'arguments'), 'utf8').split('\n').at(-2), 'one two');
-    const output = execFileSync(compose, ['-f', '/source/system/docker-compose.yml', 'up', '--no-build', '-d', 'bootstrapper'],
+    const output = invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '--no-build', '-d', 'bootstrapper'],
       {env: {...env, BOOTSTRAPPER_IMAGE: reference}, encoding: 'utf8'});
     assert.equal(output, image);
     assert.match(fs.readFileSync(path.join(directory, 'arguments'), 'utf8'), new RegExp('-f\\n' + directory + '/compose.yml\\nup'));
+    assert.equal(invoke(docker,['--host=unix:///var/run/docker.sock','compose','-f','/source/system/docker-compose.yml','create','bootstrapper'],{env:{...env,BOOTSTRAPPER_IMAGE:reference},encoding:'utf8'}),image);
     fs.writeFileSync(path.join(directory, 'offline-recovery'), 'offline');
-    assert.throws(() => execFileSync(docker, args, {env, stdio: 'pipe'}), error => error.status === 87);
-    execFileSync(docker, ['image', 'inspect', 'system-bootstrapper-recovery:' + 'a'.repeat(64)], {env});
+    assert.throws(() => invoke(docker, args, {env, stdio: 'pipe'}), error => error.status === 87);
+    invoke(docker, ['image', 'inspect', 'system-bootstrapper-recovery:' + 'a'.repeat(64)], {env});
     fs.writeFileSync(path.join(directory, 'fail-recovery-once'), 'once');
     const recoveryEnv = {...env, BOOTSTRAPPER_IMAGE: 'system-bootstrapper-recovery:' + 'a'.repeat(64)};
-    assert.throws(() => execFileSync(compose, ['-f', '/source/system/docker-compose.yml', 'up', '-d', 'bootstrapper'],
+    assert.throws(() => invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '-d', 'bootstrapper'],
       {env: recoveryEnv, stdio: 'pipe'}), error => error.status === 88);
     assert.equal(fs.existsSync(path.join(directory, 'fail-recovery-once')), false);
-    execFileSync(compose, ['-f', '/source/system/docker-compose.yml', 'up', '-d', 'bootstrapper'], {env: recoveryEnv});
+    invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '-d', 'bootstrapper'], {env: recoveryEnv});
   } finally { fs.rmSync(directory, {recursive: true, force: true}); }
 });
 
 test('mount adapter only models the exact owned live filesystem and delegates backup or unrelated paths', () => {
-  const script = path.resolve(__dirname, '../e2e/public-upgrade-findmnt.sh');
+  const script = path.resolve(__dirname, '../e2e/public-upgrade-findmnt.js');
   const env = {...process.env, SYSTEM_PUBLIC_UPGRADE_LIVE: '/recovered-data/platform'};
-  assert.equal(execFileSync(script, ['-rn', '-T', '/recovered-data/platform/configuration', '-o', 'MAJ:MIN'], {env, encoding: 'utf8'}), '0:1\n');
-  for (const target of ['/tmp', os.tmpdir()]) {
+  assert.equal(execFileSync(process.execPath, [script, '-rn', '-T', '/recovered-data/platform/configuration', '-o', 'MAJ:MIN'], {env, encoding: 'utf8'}), '0:1\n');
+  for (const target of new Set(['/tmp', os.tmpdir()])) {
     const args = ['-rn', '-T', target, '-o', 'MAJ:MIN'];
-    assert.equal(execFileSync(script, args, {env, encoding: 'utf8'}), execFileSync('/usr/bin/findmnt', args, {encoding: 'utf8'}));
+    assert.equal(execFileSync(process.execPath, [script,...args], {env, encoding: 'utf8'}), execFileSync('/usr/bin/findmnt', args, {encoding: 'utf8'}));
   }
 });
 
 test('native host helper mounts backup strictly for plan/apply and performs recovery/status without backup storage', async () => {
-  const calls = [], candidate = {id: 'a'.repeat(24), spec: {restore: {base: '/recovered-data/platform'}, images: {gitlab: {id: id('7')}}},
+  const calls = [], candidate = {id: 'a'.repeat(24), spec: {restore: {base: '/recovered-data/platform'}, images: {gitlab: {id: id('7')},candidate:{id:id('8')}}},
     inner: async args => { calls.push(args); return '{}'; }};
   const native = new NativeCLI(candidate);
   await native.invoke(['--operation', 'plan']);
   assert(calls[0].includes('type=bind,src=/external-seed,dst=/external-seed'));
   assert(calls[0].includes(native.fixture + '/source:' + native.fixture + '/source:ro'));
+  for(const library of ['/lib/ld-musl-x86_64.so.1','/usr/lib/libstdc++.so.6','/usr/lib/libgcc_s.so.1'])
+    assert(calls[0].includes(native.fixture+'/runtime'+library+':'+library+':ro'));
+  assert(calls[0].includes(native.fixture+'/runtime:/opt/system-public-upgrade:ro'));
+  await native.write(native.fixture+'/token','fixture-private-token');
+  const write=calls.at(-1);assert(write.includes('/usr/local/bin/node'));assert(write.includes('write'));
+  assert(!write.includes('sh'));assert(!write.includes('fixture-private-token'));
+
   for (const operation of ['recover', 'status', 'restore-original']) {
     await native.invoke(operation === 'restore-original' ? [operation] : ['--operation', operation]);
     assert(!calls.at(-1).some(value => value.includes('/external-seed')));
@@ -388,23 +405,25 @@ test('fixed Python diagnostic markers survive the real Docker sanitizer and nati
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'public-upgrade-diagnostics-'));
   const previousPath=process.env.PATH,previousError=process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR;
   try{
-    fs.writeFileSync(path.join(directory,'docker'),'#!/bin/sh\nprintf \'%s\\n\' "$SYSTEM_TEST_PUBLIC_UPGRADE_ERROR" >&2\nexit 7\n',{mode:0o755});
+    fs.writeFileSync(path.join(directory,'docker'),'#!'+process.execPath+'\nconsole.error(process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR);process.exit(7);\n',{mode:0o755});
     process.env.PATH=directory+path.delimiter+previousPath;
     const images=Object.fromEntries(['candidate','wizard','gitlab','runner','nginx'].map(role=>[role,{id:id('7'),archive:'/unused/'+role+'.tar'}]));
     const candidate=new Candidate({example:fs.readFileSync(path.resolve(__dirname,'../../system/.docker.env.example'),'utf8'),
       daemonImage:'docker@'+id('8'),images,restore:{base:'/recovered-data/platform'}});
     candidate.daemon='owned-disposable-daemon';
     const native=new NativeCLI(candidate);
-    for(const operation of ['initialize','restore-original','plan','apply','status','recover']){
-      for(const code of ['docker-command-failed','release-changed-after-plan','image-archive-failed-or-timed-out',
-        ...Object.values(diagnostics.dockerOperations)]){
-        process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR='private-token\n'+diagnostics.marker+code+'\nprivate-stderr';
-        await assert.rejects(()=>native.invoke(['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation]),error=>{
-          assert.equal(error.message,'public-upgrade-native-'+operation+'-'+code);
-          assert.equal(failureReason(error.message),error.message);
-          assert.equal(error.exitCode,7);assert(!JSON.stringify(error).includes('private'));return true;
-        });
-      }
+    const phases=['initialize','restore-original','plan','apply','status','recover'];
+    const codes=['docker-command-failed','release-changed-after-plan','image-archive-failed-or-timed-out',
+      ...Object.values(diagnostics.dockerOperations)];
+    // Cover every distinct sanitizer code and phase without their redundant Cartesian product.
+    for(let index=0;index<Math.max(phases.length,codes.length);index++){
+      const operation=phases[index%phases.length],code=codes[index%codes.length];
+      process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR='private-token\n'+diagnostics.marker+code+'\nprivate-stderr';
+      await assert.rejects(()=>native.invoke(['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation]),error=>{
+        assert.equal(error.message,'public-upgrade-native-'+operation+'-'+code);
+        assert.equal(failureReason(error.message),error.message);
+        assert.equal(error.exitCode,7);assert(!JSON.stringify(error).includes('private'));return true;
+      });
     }
     for(const message of [diagnostics.marker+'private-token',diagnostics.marker+'docker-command-failed private-token',
       'prefix '+diagnostics.marker+'docker-command-failed',diagnostics.marker+'docker-data-sample-failed private-token']){

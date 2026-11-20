@@ -113,6 +113,13 @@ function prepareSource(output, previous, env = process.env, execute = execFileSy
     return {archive, sha256: recovery.hashFile(archive)};
   } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
 }
+const fixtureRuntime = '/opt/system-public-upgrade';
+function runtimeVolumes(fixture) {
+  return [fixture + '/runtime:' + fixtureRuntime + ':ro',
+    ...['/lib/ld-musl-x86_64.so.1', '/usr/lib/libstdc++.so.6', '/usr/lib/libgcc_s.so.1']
+      .map(file => fixture + '/runtime' + file + ':' + file + ':ro'),
+    fixture + '/runtime/lib/ld-musl-x86_64.so.1:/lib/libc.musl-x86_64.so.1:ro'];
+}
 async function replaceController(candidate, baseline, image, fixture) {
   const labels = Object.fromEntries(Object.entries(baseline.Config.Labels || {})
     .filter(([key]) => key.startsWith('com.docker.compose.') && key !== 'com.docker.compose.image'));
@@ -132,8 +139,9 @@ async function replaceController(candidate, baseline, image, fixture) {
   }
   if (fixture) args.push('--env', 'SYSTEM_PUBLIC_UPGRADE_FIXTURE=' + fixture,
     '--volume', fixture + ':' + fixture + ':ro',
-    '--volume', fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker:ro',
-    '--volume', fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker-compose:ro');
+    '--volume', fixture + '/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker:ro',
+    '--volume', fixture + '/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker-compose:ro',
+    ...runtimeVolumes(fixture).flatMap(value => ['--volume', value]));
   await candidate.inner(['stop', '--time', '30', 'system_bootstrapper_1']);
   await candidate.inner(['rm', 'system_bootstrapper_1']);
   await candidate.inner([...args, image]);
@@ -148,8 +156,8 @@ function controllerFixture(baseline, fixture) {
     'SYSTEM_WIZARD_ENVIRONMENT_IMAGE'].filter(key => Object.hasOwn(inherited, key)).map(key => [key, inherited[key]]));
   environment.SYSTEM_PUBLIC_UPGRADE_FIXTURE = fixture;
   const volumes = [fixture + ':' + fixture + ':ro',
-    fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker:ro',
-    fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker-compose:ro'];
+    fixture + '/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker:ro',
+    fixture + '/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker-compose:ro', ...runtimeVolumes(fixture)];
   return {services: {bootstrapper: {environment, volumes, network_mode: 'bridge',
     extra_hosts: baseline.HostConfig.ExtraHosts || []}}};
 }
@@ -179,8 +187,10 @@ class NativeCLI {
     this.storage = this.live + '/public-upgrade-storage.env';
   }
   async write(filename, input) {
-    await this.candidate.call(['exec', '-i', this.candidate.daemon, 'sh', '-ec',
-      'umask 077; cat > "$1"', 'sh', filename], {input});
+    await this.candidate.inner(['run', '--rm', '-i', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
+      '--entrypoint', '/usr/local/bin/node', '--volume', this.live + ':' + this.live,
+      this.candidate.spec.images.candidate.id, '/system/operations/dist/testing/public-upgrade-entry.js',
+      'write', filename], {input});
   }
   async createCredential() {
     if (!this.token) this.token = await this.candidate.rails("require 'json';u=User.find_by_username('root');t=u.personal_access_tokens.create!(name:'disposable-public-upgrade',scopes:['api'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token,root_id:u.id)");
@@ -191,15 +201,21 @@ class NativeCLI {
     required(prepared && recovery.hashFile(prepared.archive) === prepared.sha256, 'public-upgrade-source-archive-required');
     await candidate.call(['exec', candidate.daemon, 'mkdir', '-p', this.fixture + '/source', this.fixture + '/bin']);
     await candidate.call(['exec', '-i', candidate.daemon, 'tar', '-xzf', '-', '-C', this.fixture + '/source'], {inputFile: prepared.archive});
-    await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25', '--entrypoint', '/bin/sh',
-      '--volume', this.fixture + ':' + this.fixture, candidate.spec.images.candidate.id, '-ec',
-      'cp /usr/bin/docker "$1/docker.native"; cp -L /usr/bin/docker-compose "$1/docker-compose.native"; '+
-      'cp /lib/ld-musl-x86_64.so.1 "$1/ld-musl-x86_64.so.1"; chmod 755 "$1"/*.native; '+
-      'chmod 755 "$1/source/tests/e2e/public-upgrade-docker.sh" "$1/source/tests/e2e/public-upgrade-findmnt.sh"; '+
-      'ln -s ../source/tests/e2e/public-upgrade-docker.sh "$1/bin/docker"; '+
-      'ln -s ../source/tests/e2e/public-upgrade-docker.sh "$1/bin/docker-compose"; '+
-      'ln -s ../source/tests/e2e/public-upgrade-findmnt.sh "$1/bin/findmnt"', 'sh', this.fixture]);
+    await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '256m', '--cpus', '0.25',
+      '--entrypoint', '/usr/local/bin/node', '--volume', this.fixture + ':' + this.fixture,
+      candidate.spec.images.candidate.id, '/system/operations/dist/testing/public-upgrade-entry.js',
+      'prepare', this.fixture]);
     const previous = candidate.spec.publicUpgrade.metadata;
+    // Prove the copied interpreter and bundled modules load in both foreign
+    // images before changing the running controller. Offline tests cannot prove
+    // this Alpine/glibc boundary; these probes belong to the real candidate gate.
+    for (const image of [candidate.spec.images.gitlab.id, previous.images.controller.imageId]) {
+      const output = await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
+        '--entrypoint', fixtureRuntime + '/node', ...runtimeVolumes(this.fixture).flatMap(value => ['--volume', value]),
+        image, '-e', "require('/opt/system-public-upgrade/operations/dist/testing/public-upgrade.module.js');process.stdout.write('runtime-ready')"]);
+      required(output.trim() === 'runtime-ready', 'public-upgrade-runtime-unavailable');
+    }
+
     await this.write(this.fixture + '/fixture.json', JSON.stringify({runId: candidate.id, live: this.live, previous, edge:candidate.spec.publicUpgrade.edge,
       spec: {sourceRevision: candidate.spec.sourceRevision, sourceTree: candidate.spec.sourceTree,
         sourceLayout:candidate.spec.sourceLayout,wizardSourceTree:candidate.spec.wizardSourceTree,
@@ -231,14 +247,13 @@ class NativeCLI {
     const command = ['run', '--rm', '-i', '--network', 'host', '--memory', '512m', '--cpus', '1',
       '--entrypoint', '/opt/gitlab/embedded/bin/python3',
       '--env', 'SYSTEM_PUBLIC_UPGRADE_FIXTURE=' + this.fixture, '--env', 'SYSTEM_PUBLIC_UPGRADE_LIVE=' + this.live,
-      '--env', 'PATH=' + this.fixture + '/bin:/opt/gitlab/embedded/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      '--env', 'PATH=' + this.fixture + '/bin:' + fixtureRuntime + ':/opt/gitlab/embedded/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
       '--env', 'GIT_OPTIONAL_LOCKS=0',
       '--env', 'SSL_CERT_FILE=' + this.fixture + '/ca.pem', '--env', 'DOCKER_CONFIG=/tmp/public-upgrade-docker',
       '--volume', this.live + ':' + this.live,
       '--volume', this.fixture + '/source:' + this.fixture + '/source:ro',
       '--volume', '/var/lib/docker:/var/lib/docker:ro', '--volume', '/var/run/docker.sock:/var/run/docker.sock',
-      '--volume', this.fixture + '/ld-musl-x86_64.so.1:/lib/ld-musl-x86_64.so.1:ro',
-      '--volume', this.fixture + '/ld-musl-x86_64.so.1:/lib/libc.musl-x86_64.so.1:ro'];
+      ...runtimeVolumes(this.fixture).flatMap(value => ['--volume', value])];
     if (args[0] === '--operation' && ['plan', 'apply'].includes(args[1])) command.push('--mount',
       'type=bind,src=' + storage.MOUNT + ',dst=' + storage.MOUNT);
     for (const host of ['gitlab', 'registry', 'sync', 'wizard']) command.push('--add-host', host + '.candidate.test:127.0.0.1');
