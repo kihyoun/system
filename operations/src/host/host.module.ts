@@ -1,3 +1,4 @@
+import { NativeHostAttachedProcess, type HostAttachedProcess } from './attached-process';
 import type { LifecycleEvidencePort } from '../release/types';
 import { HostReleaseAuthorityService } from './release-authority.service';
 import { Module, type DynamicModule } from '@nestjs/common';
@@ -9,12 +10,14 @@ import { HostSourceService } from './source';
 import { RecoveryImageService } from './recovery-images';
 import { RecoveryManifestService } from './recovery-manifest';
 import { RuntimeInspectionService } from './runtime-inspection';
+export const HOST_ATTACHED_PROCESS = Symbol('HOST_ATTACHED_PROCESS');
 export const HOST_PROCESS_RUNNER = Symbol('HOST_PROCESS_RUNNER');
 export const HOST_LIFECYCLE_EVIDENCE = Symbol('HOST_LIFECYCLE_EVIDENCE');
 export const HOST_ENVIRONMENT = Symbol('HOST_ENVIRONMENT');
 export interface HostModuleOptions {
   lifecycleEvidence?: LifecycleEvidencePort;
   runner?: ProcessRunner;
+  attachedProcess?: HostAttachedProcess;
   environment?: NodeJS.ProcessEnv;
   initializationGuard?: () => () => void;
   rootUser?: () => boolean;
@@ -28,7 +31,6 @@ export class HostModule {
     };
     const consumers = [
       UpgradePrerequisiteService,
-      HostStorageService,
       HostSourceService,
       RecoveryImageService,
       RecoveryManifestService,
@@ -37,6 +39,16 @@ export class HostModule {
     return {
       module: HostModule,
       providers: [
+        {
+          provide: HOST_ATTACHED_PROCESS,
+          useValue: options.attachedProcess ?? new NativeHostAttachedProcess(),
+        },
+        {
+          provide: HostStorageService,
+          inject: [HostInstallService, HOST_ATTACHED_PROCESS],
+          useFactory: (host: HostInstallService, attached: HostAttachedProcess) =>
+            new HostStorageService(host, attached),
+        },
         {
           provide: HOST_LIFECYCLE_EVIDENCE,
           useValue: options.lifecycleEvidence ?? {
@@ -72,7 +84,13 @@ export class HostModule {
           useFactory: (host: HostInstallService) => new service(host),
         })),
       ],
-      exports: [HostReleaseAuthorityService, HostInstallService, ...consumers, HOST_PROCESS_RUNNER],
+      exports: [
+        HostStorageService,
+        HostReleaseAuthorityService,
+        HostInstallService,
+        ...consumers,
+        HOST_PROCESS_RUNNER,
+      ],
     };
   }
 }

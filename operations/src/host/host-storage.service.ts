@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { NativeHostAttachedProcess, type HostAttachedProcess } from './attached-process';
 import path from 'node:path';
 import { HostInstallService, privateFile, requireValue } from './install';
 export interface HostStorageCommand {
@@ -11,8 +13,11 @@ export interface HostStorageCommand {
 }
 /** Host launch boundary: the accepted image owns leases and storage mutations. */
 export class HostStorageService {
-  constructor(readonly host: HostInstallService) {}
-  execute(command: HostStorageCommand): string {
+  constructor(
+    readonly host: HostInstallService,
+    readonly attached: HostAttachedProcess = new NativeHostAttachedProcess(),
+  ) {}
+  async execute(command: HostStorageCommand): Promise<void> {
     requireValue(this.host.rootUser(), 'host-storage-requires-root');
     requireValue(
       command.operation === 'harvest' || command.operation === 'restore',
@@ -55,29 +60,66 @@ export class HostStorageService {
         'invalid-configuration-backup',
       );
     }
-    return this.host.run('docker', [
-      '--host=unix:///var/run/docker.sock',
-      'run',
-      '--rm',
-      '--network',
-      'none',
-      '--entrypoint',
-      'node',
-      '--mount',
-      'type=bind,src=/,dst=/host,readonly',
-      '--mount',
-      'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock',
-      '--env',
-      `PERSISTENCE_ENV_FILE=${command.persistenceEnv}`,
-      '--env',
-      `SYSTEM_SEED_CONTROLLER_IMAGE=${id}`,
-      '--env',
-      `SYSTEM_SEED_CONFIGURATION_BACKUP=${backup}`,
-      id,
-      '/system/system/seed-operation.js',
-      'host',
-      command.operation,
-      ...(command.checkOnly ? ['--check-only'] : []),
-    ]);
+    const name = 'system-storage-launcher-' + randomBytes(12).toString('hex');
+    const container = this.host
+      .run('docker', [
+        '--host=unix:///var/run/docker.sock',
+        'create',
+        '--interactive',
+        '--name',
+        name,
+        '--label',
+        `system.storage.launcher=${name}`,
+        '--network',
+        'none',
+        '--entrypoint',
+        'node',
+        '--mount',
+        'type=bind,src=/,dst=/host,readonly',
+        '--mount',
+        'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock',
+        '--env',
+        `PERSISTENCE_ENV_FILE=${command.persistenceEnv}`,
+        '--env',
+        `SYSTEM_SEED_CONTROLLER_IMAGE=${id}`,
+        '--env',
+        `SYSTEM_SEED_CONFIGURATION_BACKUP=${backup}`,
+        id,
+        '/system/system/seed-operation.js',
+        'host',
+        command.operation,
+        ...(command.checkOnly ? ['--check-only'] : []),
+      ])
+      .trim();
+    requireValue(/^[a-f0-9]{64}$/.test(container), 'host-storage-launch-outcome-uncertain');
+    const env = { ...this.host.environment, DOCKER_HOST: 'unix:///var/run/docker.sock' };
+    for (const key of ['DOCKER_CONTEXT', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH'])
+      delete (env as NodeJS.ProcessEnv)[key];
+    // On interruption/disconnection retain the exact owned container and inner durable lease.
+    // Never claim cancellation completed or remove a possibly running storage operation.
+    await this.attached.run(
+      'docker',
+      ['--host=unix:///var/run/docker.sock', 'start', '--attach', '--interactive', container],
+      env,
+    );
+    const observed = JSON.parse(
+      this.host.run('docker', [
+        '--host=unix:///var/run/docker.sock',
+        'container',
+        'inspect',
+        container,
+      ]),
+    );
+    const row = Array.isArray(observed) && observed.length === 1 ? observed[0] : null;
+    requireValue(
+      row?.Id === container &&
+        row?.Image === id &&
+        row?.Config?.Labels?.['system.storage.launcher'] === name &&
+        row?.State?.Status === 'exited' &&
+        row.State.Running === false &&
+        row.State.ExitCode === 0,
+      'host-storage-launch-outcome-uncertain',
+    );
+    this.host.run('docker', ['--host=unix:///var/run/docker.sock', 'rm', container]);
   }
 }

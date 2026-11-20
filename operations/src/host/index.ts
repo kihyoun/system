@@ -10,3 +10,5 @@ export * from './host.module';
 export * from './host-storage.service';
 export * from './release-authority.service';
 export * from './upgrade-prerequisite.service';
+export * from './attached-process';
+export * from './storage-entry';
