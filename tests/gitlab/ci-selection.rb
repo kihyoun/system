@@ -134,8 +134,8 @@ full.each do |name|
 end
 documentation = jobs.fetch('check:documentation')
 raise 'Documentation lane must reuse the native trusted Docker pool without DinD' unless documentation['services'] == [] && documentation['tags'] == ['docker']
-raise 'Documentation checker must run through its isolated child launcher' unless documentation['script'] == ['sh tests/ci-documentation.sh'] &&
-  documentation['after_script'] == ['sh tests/ci-documentation.sh cleanup']
+raise 'Documentation checker must run through its isolated child launcher' unless documentation['script'] == ['node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR"'] &&
+  documentation['after_script'] == ['node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR" cleanup']
 raise 'Documentation lane must retain its short bounded budget' unless documentation['timeout'] == '3m' &&
   documentation.dig('variables', 'RUNNER_SCRIPT_TIMEOUT') == '2m' && documentation.dig('variables', 'RUNNER_AFTER_SCRIPT_TIMEOUT') == '30s'
 raise 'Documentation lane must not require runtime artifacts' if documentation['needs'] || documentation['dependencies']

@@ -87,9 +87,9 @@ check:documentation:
   timeout: 3m
   allow_failure: false
   script:
-    - sh tests/ci-documentation.sh
+    - node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR"
   after_script:
-    - sh tests/ci-documentation.sh cleanup
+    - node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days

@@ -1,3 +1,4 @@
+import { DocumentationCheckService } from './documentation.service';
 import { CandidateRuntimeService } from './candidate-runtime.service';
 import { ProcessFailure } from '../runtime/process';
 import { ContainerCheckService } from './container-check.service';
@@ -12,6 +13,7 @@ export async function ciMain(args = process.argv.slice(2)) {
   if (
     ![
       'platform',
+      'documentation',
       'codeql',
       'codeql-parent',
       'isolated',
@@ -32,6 +34,12 @@ export async function ciMain(args = process.argv.slice(2)) {
   process.on('SIGINT', cancel);
   process.on('SIGTERM', cancel);
   try {
+    if (args[0] === 'documentation') {
+      await app
+        .get(DocumentationCheckService)
+        .execute(args[1], process.env, args[2] === 'cleanup', abort.signal);
+      return;
+    }
     if (args[0] === 'candidate-runtime') {
       await app.get(CandidateRuntimeService).check(args[1], process.env, abort.signal);
       return;

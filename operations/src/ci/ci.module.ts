@@ -1,3 +1,4 @@
+import { DocumentationCheckService } from './documentation.service';
 import { CandidateRuntimeService } from './candidate-runtime.service';
 import { ContainerCheckService } from './container-check.service';
 import { CodeqlParentService } from './codeql-parent.service';
@@ -6,6 +7,7 @@ import { Module } from '@nestjs/common';
 import { PlatformCheckService } from './platform.service';
 @Module({
   providers: [
+    { provide: DocumentationCheckService, useFactory: () => new DocumentationCheckService() },
     { provide: CandidateRuntimeService, useFactory: () => new CandidateRuntimeService() },
     { provide: ContainerCheckService, useFactory: () => new ContainerCheckService() },
     { provide: CodeqlParentService, useFactory: () => new CodeqlParentService() },
@@ -13,6 +15,7 @@ import { PlatformCheckService } from './platform.service';
     { provide: PlatformCheckService, useFactory: () => new PlatformCheckService() },
   ],
   exports: [
+    DocumentationCheckService,
     CandidateRuntimeService,
     ContainerCheckService,
     PlatformCheckService,
