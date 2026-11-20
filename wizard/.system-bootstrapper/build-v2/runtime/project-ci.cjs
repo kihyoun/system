@@ -12720,8 +12720,8 @@ var require_arrRemove = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/Subscription.js
-var require_Subscription = /* @__PURE__ */ __commonJSMin(((exports, module, this$65) => {
-	var __values = this$65 && this$65.__values || function(o) {
+var require_Subscription = /* @__PURE__ */ __commonJSMin(((exports, module, this$66) => {
+	var __values = this$66 && this$66.__values || function(o) {
 		var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
 		if (m) return m.call(o);
 		if (o && typeof o.length === "number") return { next: function() {
@@ -12733,7 +12733,7 @@ var require_Subscription = /* @__PURE__ */ __commonJSMin(((exports, module, this
 		} };
 		throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
 	};
-	var __read = this$65 && this$65.__read || function(o, n) {
+	var __read = this$66 && this$66.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -12750,7 +12750,7 @@ var require_Subscription = /* @__PURE__ */ __commonJSMin(((exports, module, this
 		}
 		return ar;
 	};
-	var __spreadArray = this$65 && this$65.__spreadArray || function(to, from) {
+	var __spreadArray = this$66 && this$66.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -12886,8 +12886,8 @@ var require_config = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/timeoutProvider.js
-var require_timeoutProvider = /* @__PURE__ */ __commonJSMin(((exports, module, this$64) => {
-	var __read = this$64 && this$64.__read || function(o, n) {
+var require_timeoutProvider = /* @__PURE__ */ __commonJSMin(((exports, module, this$65) => {
+	var __read = this$65 && this$65.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -12904,7 +12904,7 @@ var require_timeoutProvider = /* @__PURE__ */ __commonJSMin(((exports, module, t
 		}
 		return ar;
 	};
-	var __spreadArray = this$64 && this$64.__spreadArray || function(to, from) {
+	var __spreadArray = this$65 && this$65.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -13012,8 +13012,8 @@ var require_errorContext = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/Subscriber.js
-var require_Subscriber = /* @__PURE__ */ __commonJSMin(((exports, module, this$63) => {
-	var __extends = this$63 && this$63.__extends || (function() {
+var require_Subscriber = /* @__PURE__ */ __commonJSMin(((exports, module, this$64) => {
+	var __extends = this$64 && this$64.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -13396,8 +13396,8 @@ var require_isIterable = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/util/isReadableStreamLike.js
-var require_isReadableStreamLike = /* @__PURE__ */ __commonJSMin(((exports, module, this$62) => {
-	var __generator = this$62 && this$62.__generator || function(thisArg, body) {
+var require_isReadableStreamLike = /* @__PURE__ */ __commonJSMin(((exports, module, this$63) => {
+	var __generator = this$63 && this$63.__generator || function(thisArg, body) {
 		var _ = {
 			label: 0,
 			sent: function() {
@@ -13481,10 +13481,10 @@ var require_isReadableStreamLike = /* @__PURE__ */ __commonJSMin(((exports, modu
 			};
 		}
 	};
-	var __await = this$62 && this$62.__await || function(v) {
+	var __await = this$63 && this$63.__await || function(v) {
 		return this instanceof __await ? (this.v = v, this) : new __await(v);
 	};
-	var __asyncGenerator = this$62 && this$62.__asyncGenerator || function(thisArg, _arguments, generator) {
+	var __asyncGenerator = this$63 && this$63.__asyncGenerator || function(thisArg, _arguments, generator) {
 		if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
 		var g = generator.apply(thisArg, _arguments || []), i, q = [];
 		return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function() {
@@ -13570,8 +13570,8 @@ var require_isReadableStreamLike = /* @__PURE__ */ __commonJSMin(((exports, modu
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/observable/innerFrom.js
-var require_innerFrom = /* @__PURE__ */ __commonJSMin(((exports, module, this$61) => {
-	var __awaiter = this$61 && this$61.__awaiter || function(thisArg, _arguments, P, generator) {
+var require_innerFrom = /* @__PURE__ */ __commonJSMin(((exports, module, this$62) => {
+	var __awaiter = this$62 && this$62.__awaiter || function(thisArg, _arguments, P, generator) {
 		function adopt(value) {
 			return value instanceof P ? value : new P(function(resolve) {
 				resolve(value);
@@ -13598,7 +13598,7 @@ var require_innerFrom = /* @__PURE__ */ __commonJSMin(((exports, module, this$61
 			step((generator = generator.apply(thisArg, _arguments || [])).next());
 		});
 	};
-	var __generator = this$61 && this$61.__generator || function(thisArg, body) {
+	var __generator = this$62 && this$62.__generator || function(thisArg, body) {
 		var _ = {
 			label: 0,
 			sent: function() {
@@ -13682,7 +13682,7 @@ var require_innerFrom = /* @__PURE__ */ __commonJSMin(((exports, module, this$61
 			};
 		}
 	};
-	var __asyncValues = this$61 && this$61.__asyncValues || function(o) {
+	var __asyncValues = this$62 && this$62.__asyncValues || function(o) {
 		if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
 		var m = o[Symbol.asyncIterator], i;
 		return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function() {
@@ -13704,7 +13704,7 @@ var require_innerFrom = /* @__PURE__ */ __commonJSMin(((exports, module, this$61
 			}, reject);
 		}
 	};
-	var __values = this$61 && this$61.__values || function(o) {
+	var __values = this$62 && this$62.__values || function(o) {
 		var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
 		if (m) return m.call(o);
 		if (o && typeof o.length === "number") return { next: function() {
@@ -13861,8 +13861,8 @@ var require_innerFrom = /* @__PURE__ */ __commonJSMin(((exports, module, this$61
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/OperatorSubscriber.js
-var require_OperatorSubscriber = /* @__PURE__ */ __commonJSMin(((exports, module, this$60) => {
-	var __extends = this$60 && this$60.__extends || (function() {
+var require_OperatorSubscriber = /* @__PURE__ */ __commonJSMin(((exports, module, this$61) => {
+	var __extends = this$61 && this$61.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -13977,8 +13977,8 @@ var require_audit = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/Action.js
-var require_Action = /* @__PURE__ */ __commonJSMin(((exports, module, this$59) => {
-	var __extends = this$59 && this$59.__extends || (function() {
+var require_Action = /* @__PURE__ */ __commonJSMin(((exports, module, this$60) => {
+	var __extends = this$60 && this$60.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -14014,8 +14014,8 @@ var require_Action = /* @__PURE__ */ __commonJSMin(((exports, module, this$59) =
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/intervalProvider.js
-var require_intervalProvider = /* @__PURE__ */ __commonJSMin(((exports, module, this$58) => {
-	var __read = this$58 && this$58.__read || function(o, n) {
+var require_intervalProvider = /* @__PURE__ */ __commonJSMin(((exports, module, this$59) => {
+	var __read = this$59 && this$59.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -14032,7 +14032,7 @@ var require_intervalProvider = /* @__PURE__ */ __commonJSMin(((exports, module, 
 		}
 		return ar;
 	};
-	var __spreadArray = this$58 && this$58.__spreadArray || function(to, from) {
+	var __spreadArray = this$59 && this$59.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -14056,8 +14056,8 @@ var require_intervalProvider = /* @__PURE__ */ __commonJSMin(((exports, module, 
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/AsyncAction.js
-var require_AsyncAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$57) => {
-	var __extends = this$57 && this$57.__extends || (function() {
+var require_AsyncAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$58) => {
+	var __extends = this$58 && this$58.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -14186,8 +14186,8 @@ var require_Scheduler = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/AsyncScheduler.js
-var require_AsyncScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$56) => {
-	var __extends = this$56 && this$56.__extends || (function() {
+var require_AsyncScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$57) => {
+	var __extends = this$57 && this$57.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -14356,8 +14356,8 @@ var require_buffer = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/bufferCount.js
-var require_bufferCount = /* @__PURE__ */ __commonJSMin(((exports, module, this$55) => {
-	var __values = this$55 && this$55.__values || function(o) {
+var require_bufferCount = /* @__PURE__ */ __commonJSMin(((exports, module, this$56) => {
+	var __values = this$56 && this$56.__values || function(o) {
 		var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
 		if (m) return m.call(o);
 		if (o && typeof o.length === "number") return { next: function() {
@@ -14487,8 +14487,8 @@ var require_executeSchedule = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/bufferTime.js
-var require_bufferTime = /* @__PURE__ */ __commonJSMin(((exports, module, this$54) => {
-	var __values = this$54 && this$54.__values || function(o) {
+var require_bufferTime = /* @__PURE__ */ __commonJSMin(((exports, module, this$55) => {
+	var __values = this$55 && this$55.__values || function(o) {
 		var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
 		if (m) return m.call(o);
 		if (o && typeof o.length === "number") return { next: function() {
@@ -14578,8 +14578,8 @@ var require_bufferTime = /* @__PURE__ */ __commonJSMin(((exports, module, this$5
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/bufferToggle.js
-var require_bufferToggle = /* @__PURE__ */ __commonJSMin(((exports, module, this$53) => {
-	var __values = this$53 && this$53.__values || function(o) {
+var require_bufferToggle = /* @__PURE__ */ __commonJSMin(((exports, module, this$54) => {
+	var __values = this$54 && this$54.__values || function(o) {
 		var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
 		if (m) return m.call(o);
 		if (o && typeof o.length === "number") return { next: function() {
@@ -14970,8 +14970,8 @@ var require_map = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/util/mapOneOrManyArgs.js
-var require_mapOneOrManyArgs = /* @__PURE__ */ __commonJSMin(((exports, module, this$52) => {
-	var __read = this$52 && this$52.__read || function(o, n) {
+var require_mapOneOrManyArgs = /* @__PURE__ */ __commonJSMin(((exports, module, this$53) => {
+	var __read = this$53 && this$53.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -14988,7 +14988,7 @@ var require_mapOneOrManyArgs = /* @__PURE__ */ __commonJSMin(((exports, module, 
 		}
 		return ar;
 	};
-	var __spreadArray = this$52 && this$52.__spreadArray || function(to, from) {
+	var __spreadArray = this$53 && this$53.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -15273,8 +15273,8 @@ var require_argsOrArgArray = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/combineLatest.js
-var require_combineLatest = /* @__PURE__ */ __commonJSMin(((exports, module, this$51) => {
-	var __read = this$51 && this$51.__read || function(o, n) {
+var require_combineLatest = /* @__PURE__ */ __commonJSMin(((exports, module, this$52) => {
+	var __read = this$52 && this$52.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -15291,7 +15291,7 @@ var require_combineLatest = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 		}
 		return ar;
 	};
-	var __spreadArray = this$51 && this$51.__spreadArray || function(to, from) {
+	var __spreadArray = this$52 && this$52.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -15316,8 +15316,8 @@ var require_combineLatest = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/combineLatestWith.js
-var require_combineLatestWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$50) => {
-	var __read = this$50 && this$50.__read || function(o, n) {
+var require_combineLatestWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$51) => {
+	var __read = this$51 && this$51.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -15334,7 +15334,7 @@ var require_combineLatestWith = /* @__PURE__ */ __commonJSMin(((exports, module,
 		}
 		return ar;
 	};
-	var __spreadArray = this$50 && this$50.__spreadArray || function(to, from) {
+	var __spreadArray = this$51 && this$51.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -15377,8 +15377,8 @@ var require_concatAll = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/concat.js
-var require_concat$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$49) => {
-	var __read = this$49 && this$49.__read || function(o, n) {
+var require_concat$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$50) => {
+	var __read = this$50 && this$50.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -15395,7 +15395,7 @@ var require_concat$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$49)
 		}
 		return ar;
 	};
-	var __spreadArray = this$49 && this$49.__spreadArray || function(to, from) {
+	var __spreadArray = this$50 && this$50.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -15448,8 +15448,8 @@ var require_concatMapTo = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/concatWith.js
-var require_concatWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$48) => {
-	var __read = this$48 && this$48.__read || function(o, n) {
+var require_concatWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$49) => {
+	var __read = this$49 && this$49.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -15466,7 +15466,7 @@ var require_concatWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$4
 		}
 		return ar;
 	};
-	var __spreadArray = this$48 && this$48.__spreadArray || function(to, from) {
+	var __spreadArray = this$49 && this$49.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -15498,8 +15498,8 @@ var require_ObjectUnsubscribedError = /* @__PURE__ */ __commonJSMin(((exports) =
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/Subject.js
-var require_Subject = /* @__PURE__ */ __commonJSMin(((exports, module, this$47) => {
-	var __extends = this$47 && this$47.__extends || (function() {
+var require_Subject = /* @__PURE__ */ __commonJSMin(((exports, module, this$48) => {
+	var __extends = this$48 && this$48.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -15517,7 +15517,7 @@ var require_Subject = /* @__PURE__ */ __commonJSMin(((exports, module, this$47) 
 			d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 		};
 	})();
-	var __values = this$47 && this$47.__values || function(o) {
+	var __values = this$48 && this$48.__values || function(o) {
 		var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
 		if (m) return m.call(o);
 		if (o && typeof o.length === "number") return { next: function() {
@@ -16263,8 +16263,8 @@ var require_elementAt = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/endWith.js
-var require_endWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$46) => {
-	var __read = this$46 && this$46.__read || function(o, n) {
+var require_endWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$47) => {
+	var __read = this$47 && this$47.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -16281,7 +16281,7 @@ var require_endWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$46) 
 		}
 		return ar;
 	};
-	var __spreadArray = this$46 && this$46.__spreadArray || function(to, from) {
+	var __spreadArray = this$47 && this$47.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -16585,8 +16585,8 @@ var require_isEmpty = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/takeLast.js
-var require_takeLast = /* @__PURE__ */ __commonJSMin(((exports, module, this$45) => {
-	var __values = this$45 && this$45.__values || function(o) {
+var require_takeLast = /* @__PURE__ */ __commonJSMin(((exports, module, this$46) => {
+	var __values = this$46 && this$46.__values || function(o) {
 		var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
 		if (m) return m.call(o);
 		if (o && typeof o.length === "number") return { next: function() {
@@ -16703,8 +16703,8 @@ var require_max = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/merge.js
-var require_merge$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$44) => {
-	var __read = this$44 && this$44.__read || function(o, n) {
+var require_merge$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$45) => {
+	var __read = this$45 && this$45.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -16721,7 +16721,7 @@ var require_merge$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$44) 
 		}
 		return ar;
 	};
-	var __spreadArray = this$44 && this$44.__spreadArray || function(to, from) {
+	var __spreadArray = this$45 && this$45.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -16797,8 +16797,8 @@ var require_mergeScan = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/mergeWith.js
-var require_mergeWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$43) => {
-	var __read = this$43 && this$43.__read || function(o, n) {
+var require_mergeWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$44) => {
+	var __read = this$44 && this$44.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -16815,7 +16815,7 @@ var require_mergeWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$43
 		}
 		return ar;
 	};
-	var __spreadArray = this$43 && this$43.__spreadArray || function(to, from) {
+	var __spreadArray = this$44 && this$44.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -16878,8 +16878,8 @@ var require_refCount = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/observable/ConnectableObservable.js
-var require_ConnectableObservable = /* @__PURE__ */ __commonJSMin(((exports, module, this$42) => {
-	var __extends = this$42 && this$42.__extends || (function() {
+var require_ConnectableObservable = /* @__PURE__ */ __commonJSMin(((exports, module, this$43) => {
+	var __extends = this$43 && this$43.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -17018,8 +17018,8 @@ var require_onErrorResumeNext = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/onErrorResumeNextWith.js
-var require_onErrorResumeNextWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$41) => {
-	var __read = this$41 && this$41.__read || function(o, n) {
+var require_onErrorResumeNextWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$42) => {
+	var __read = this$42 && this$42.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -17036,7 +17036,7 @@ var require_onErrorResumeNextWith = /* @__PURE__ */ __commonJSMin(((exports, mod
 		}
 		return ar;
 	};
-	var __spreadArray = this$41 && this$41.__spreadArray || function(to, from) {
+	var __spreadArray = this$42 && this$42.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -17150,8 +17150,8 @@ var require_publish = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/BehaviorSubject.js
-var require_BehaviorSubject = /* @__PURE__ */ __commonJSMin(((exports, module, this$40) => {
-	var __extends = this$40 && this$40.__extends || (function() {
+var require_BehaviorSubject = /* @__PURE__ */ __commonJSMin(((exports, module, this$41) => {
+	var __extends = this$41 && this$41.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -17224,8 +17224,8 @@ var require_publishBehavior = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/AsyncSubject.js
-var require_AsyncSubject = /* @__PURE__ */ __commonJSMin(((exports, module, this$39) => {
-	var __extends = this$39 && this$39.__extends || (function() {
+var require_AsyncSubject = /* @__PURE__ */ __commonJSMin(((exports, module, this$40) => {
+	var __extends = this$40 && this$40.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -17301,8 +17301,8 @@ var require_publishLast = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/ReplaySubject.js
-var require_ReplaySubject = /* @__PURE__ */ __commonJSMin(((exports, module, this$38) => {
-	var __extends = this$38 && this$38.__extends || (function() {
+var require_ReplaySubject = /* @__PURE__ */ __commonJSMin(((exports, module, this$39) => {
+	var __extends = this$39 && this$39.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -17430,8 +17430,8 @@ var require_race$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/raceWith.js
-var require_raceWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$37) => {
-	var __read = this$37 && this$37.__read || function(o, n) {
+var require_raceWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$38) => {
+	var __read = this$38 && this$38.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -17448,7 +17448,7 @@ var require_raceWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$37)
 		}
 		return ar;
 	};
-	var __spreadArray = this$37 && this$37.__spreadArray || function(to, from) {
+	var __spreadArray = this$38 && this$38.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -17469,8 +17469,8 @@ var require_raceWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$37)
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/race.js
-var require_race = /* @__PURE__ */ __commonJSMin(((exports, module, this$36) => {
-	var __read = this$36 && this$36.__read || function(o, n) {
+var require_race = /* @__PURE__ */ __commonJSMin(((exports, module, this$37) => {
+	var __read = this$37 && this$37.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -17487,7 +17487,7 @@ var require_race = /* @__PURE__ */ __commonJSMin(((exports, module, this$36) => 
 		}
 		return ar;
 	};
-	var __spreadArray = this$36 && this$36.__spreadArray || function(to, from) {
+	var __spreadArray = this$37 && this$37.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -17820,8 +17820,8 @@ var require_sequenceEqual = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/share.js
-var require_share = /* @__PURE__ */ __commonJSMin(((exports, module, this$35) => {
-	var __read = this$35 && this$35.__read || function(o, n) {
+var require_share = /* @__PURE__ */ __commonJSMin(((exports, module, this$36) => {
+	var __read = this$36 && this$36.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -17838,7 +17838,7 @@ var require_share = /* @__PURE__ */ __commonJSMin(((exports, module, this$35) =>
 		}
 		return ar;
 	};
-	var __spreadArray = this$35 && this$35.__spreadArray || function(to, from) {
+	var __spreadArray = this$36 && this$36.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -18541,8 +18541,8 @@ var require_window = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/windowCount.js
-var require_windowCount = /* @__PURE__ */ __commonJSMin(((exports, module, this$34) => {
-	var __values = this$34 && this$34.__values || function(o) {
+var require_windowCount = /* @__PURE__ */ __commonJSMin(((exports, module, this$35) => {
+	var __values = this$35 && this$35.__values || function(o) {
 		var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
 		if (m) return m.call(o);
 		if (o && typeof o.length === "number") return { next: function() {
@@ -18685,8 +18685,8 @@ var require_windowTime = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/windowToggle.js
-var require_windowToggle = /* @__PURE__ */ __commonJSMin(((exports, module, this$33) => {
-	var __values = this$33 && this$33.__values || function(o) {
+var require_windowToggle = /* @__PURE__ */ __commonJSMin(((exports, module, this$34) => {
+	var __values = this$34 && this$34.__values || function(o) {
 		var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
 		if (m) return m.call(o);
 		if (o && typeof o.length === "number") return { next: function() {
@@ -18806,8 +18806,8 @@ var require_windowWhen = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/withLatestFrom.js
-var require_withLatestFrom = /* @__PURE__ */ __commonJSMin(((exports, module, this$32) => {
-	var __read = this$32 && this$32.__read || function(o, n) {
+var require_withLatestFrom = /* @__PURE__ */ __commonJSMin(((exports, module, this$33) => {
+	var __read = this$33 && this$33.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -18824,7 +18824,7 @@ var require_withLatestFrom = /* @__PURE__ */ __commonJSMin(((exports, module, th
 		}
 		return ar;
 	};
-	var __spreadArray = this$32 && this$32.__spreadArray || function(to, from) {
+	var __spreadArray = this$33 && this$33.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -18870,8 +18870,8 @@ var require_withLatestFrom = /* @__PURE__ */ __commonJSMin(((exports, module, th
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/observable/zip.js
-var require_zip$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$31) => {
-	var __read = this$31 && this$31.__read || function(o, n) {
+var require_zip$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$32) => {
+	var __read = this$32 && this$32.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -18888,7 +18888,7 @@ var require_zip$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$31) =>
 		}
 		return ar;
 	};
-	var __spreadArray = this$31 && this$31.__spreadArray || function(to, from) {
+	var __spreadArray = this$32 && this$32.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -18945,8 +18945,8 @@ var require_zip$1 = /* @__PURE__ */ __commonJSMin(((exports, module, this$31) =>
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/zip.js
-var require_zip = /* @__PURE__ */ __commonJSMin(((exports, module, this$30) => {
-	var __read = this$30 && this$30.__read || function(o, n) {
+var require_zip = /* @__PURE__ */ __commonJSMin(((exports, module, this$31) => {
+	var __read = this$31 && this$31.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -18963,7 +18963,7 @@ var require_zip = /* @__PURE__ */ __commonJSMin(((exports, module, this$30) => {
 		}
 		return ar;
 	};
-	var __spreadArray = this$30 && this$30.__spreadArray || function(to, from) {
+	var __spreadArray = this$31 && this$31.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -18996,8 +18996,8 @@ var require_zipAll = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/operators/zipWith.js
-var require_zipWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$29) => {
-	var __read = this$29 && this$29.__read || function(o, n) {
+var require_zipWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$30) => {
+	var __read = this$30 && this$30.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -19014,7 +19014,7 @@ var require_zipWith = /* @__PURE__ */ __commonJSMin(((exports, module, this$29) 
 		}
 		return ar;
 	};
-	var __spreadArray = this$29 && this$29.__spreadArray || function(to, from) {
+	var __spreadArray = this$30 && this$30.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -20027,8 +20027,8 @@ var require_performanceTimestampProvider = /* @__PURE__ */ __commonJSMin(((expor
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/animationFrameProvider.js
-var require_animationFrameProvider = /* @__PURE__ */ __commonJSMin(((exports, module, this$28) => {
-	var __read = this$28 && this$28.__read || function(o, n) {
+var require_animationFrameProvider = /* @__PURE__ */ __commonJSMin(((exports, module, this$29) => {
+	var __read = this$29 && this$29.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -20045,7 +20045,7 @@ var require_animationFrameProvider = /* @__PURE__ */ __commonJSMin(((exports, mo
 		}
 		return ar;
 	};
-	var __spreadArray = this$28 && this$28.__spreadArray || function(to, from) {
+	var __spreadArray = this$29 && this$29.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -20158,8 +20158,8 @@ var require_Immediate = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/immediateProvider.js
-var require_immediateProvider = /* @__PURE__ */ __commonJSMin(((exports, module, this$27) => {
-	var __read = this$27 && this$27.__read || function(o, n) {
+var require_immediateProvider = /* @__PURE__ */ __commonJSMin(((exports, module, this$28) => {
+	var __read = this$28 && this$28.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -20176,7 +20176,7 @@ var require_immediateProvider = /* @__PURE__ */ __commonJSMin(((exports, module,
 		}
 		return ar;
 	};
-	var __spreadArray = this$27 && this$27.__spreadArray || function(to, from) {
+	var __spreadArray = this$28 && this$28.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -20202,8 +20202,8 @@ var require_immediateProvider = /* @__PURE__ */ __commonJSMin(((exports, module,
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/AsapAction.js
-var require_AsapAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$26) => {
-	var __extends = this$26 && this$26.__extends || (function() {
+var require_AsapAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$27) => {
+	var __extends = this$27 && this$27.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -20256,8 +20256,8 @@ var require_AsapAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$2
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/AsapScheduler.js
-var require_AsapScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$25) => {
-	var __extends = this$25 && this$25.__extends || (function() {
+var require_AsapScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$26) => {
+	var __extends = this$26 && this$26.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -20316,8 +20316,8 @@ var require_asap = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/QueueAction.js
-var require_QueueAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$24) => {
-	var __extends = this$24 && this$24.__extends || (function() {
+var require_QueueAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$25) => {
+	var __extends = this$25 && this$25.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -20369,8 +20369,8 @@ var require_QueueAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/QueueScheduler.js
-var require_QueueScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$23) => {
-	var __extends = this$23 && this$23.__extends || (function() {
+var require_QueueScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$24) => {
+	var __extends = this$24 && this$24.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -20413,8 +20413,8 @@ var require_queue = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/AnimationFrameAction.js
-var require_AnimationFrameAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$22) => {
-	var __extends = this$22 && this$22.__extends || (function() {
+var require_AnimationFrameAction = /* @__PURE__ */ __commonJSMin(((exports, module, this$23) => {
+	var __extends = this$23 && this$23.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -20469,8 +20469,8 @@ var require_AnimationFrameAction = /* @__PURE__ */ __commonJSMin(((exports, modu
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/AnimationFrameScheduler.js
-var require_AnimationFrameScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$21) => {
-	var __extends = this$21 && this$21.__extends || (function() {
+var require_AnimationFrameScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$22) => {
+	var __extends = this$22 && this$22.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -20533,8 +20533,8 @@ var require_animationFrame = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/scheduler/VirtualTimeScheduler.js
-var require_VirtualTimeScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$20) => {
-	var __extends = this$20 && this$20.__extends || (function() {
+var require_VirtualTimeScheduler = /* @__PURE__ */ __commonJSMin(((exports, module, this$21) => {
+	var __extends = this$21 && this$21.__extends || (function() {
 		var extendStatics = function(d, b) {
 			extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d, b) {
 				d.__proto__ = b;
@@ -20706,8 +20706,8 @@ var require_firstValueFrom = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/observable/bindCallbackInternals.js
-var require_bindCallbackInternals = /* @__PURE__ */ __commonJSMin(((exports, module, this$19) => {
-	var __read = this$19 && this$19.__read || function(o, n) {
+var require_bindCallbackInternals = /* @__PURE__ */ __commonJSMin(((exports, module, this$20) => {
+	var __read = this$20 && this$20.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -20724,7 +20724,7 @@ var require_bindCallbackInternals = /* @__PURE__ */ __commonJSMin(((exports, mod
 		}
 		return ar;
 	};
-	var __spreadArray = this$19 && this$19.__spreadArray || function(to, from) {
+	var __spreadArray = this$20 && this$20.__spreadArray || function(to, from) {
 		for (var i = 0, il = from.length, j = to.length; i < il; i++, j++) to[j] = from[i];
 		return to;
 	};
@@ -20915,8 +20915,8 @@ var require_forkJoin = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/observable/fromEvent.js
-var require_fromEvent = /* @__PURE__ */ __commonJSMin(((exports, module, this$18) => {
-	var __read = this$18 && this$18.__read || function(o, n) {
+var require_fromEvent = /* @__PURE__ */ __commonJSMin(((exports, module, this$19) => {
+	var __read = this$19 && this$19.__read || function(o, n) {
 		var m = typeof Symbol === "function" && o[Symbol.iterator];
 		if (!m) return o;
 		var i = m.call(o), r, ar = [], e;
@@ -21019,8 +21019,8 @@ var require_fromEventPattern = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/internal/observable/generate.js
-var require_generate = /* @__PURE__ */ __commonJSMin(((exports, module, this$17) => {
-	var __generator = this$17 && this$17.__generator || function(thisArg, body) {
+var require_generate = /* @__PURE__ */ __commonJSMin(((exports, module, this$18) => {
+	var __generator = this$18 && this$18.__generator || function(thisArg, body) {
 		var _ = {
 			label: 0,
 			sent: function() {
@@ -21284,8 +21284,8 @@ var require_types = /* @__PURE__ */ __commonJSMin(((exports) => {
 
 //#endregion
 //#region operations/node_modules/rxjs/dist/cjs/index.js
-var require_cjs = /* @__PURE__ */ __commonJSMin(((exports, module, this$16) => {
-	var __createBinding = this$16 && this$16.__createBinding || (Object.create ? (function(o, m, k, k2) {
+var require_cjs = /* @__PURE__ */ __commonJSMin(((exports, module, this$17) => {
+	var __createBinding = this$17 && this$17.__createBinding || (Object.create ? (function(o, m, k, k2) {
 		if (k2 === void 0) k2 = k;
 		Object.defineProperty(o, k2, {
 			enumerable: true,
@@ -21297,7 +21297,7 @@ var require_cjs = /* @__PURE__ */ __commonJSMin(((exports, module, this$16) => {
 		if (k2 === void 0) k2 = k;
 		o[k2] = m[k];
 	}));
-	var __exportStar = this$16 && this$16.__exportStar || function(m, exports) {
+	var __exportStar = this$17 && this$17.__exportStar || function(m, exports) {
 		for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 	};
 	Object.defineProperty(exports, "__esModule", { value: true });
@@ -22778,230 +22778,43 @@ var init_common = __esmMin((() => {
 }));
 
 //#endregion
-//#region operations/dist/runtime/process.js
-var require_process = /* @__PURE__ */ __commonJSMin(((exports) => {
+//#region operations/dist/project-ci/delivery-policy.js
+var require_delivery_policy = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
-	exports.nativeProcess = exports.NativeProcessRunner = exports.ProcessFailure = void 0;
-	const node_child_process_1 = require("node:child_process");
-	var ProcessFailure = class extends Error {
-		binary;
-		status;
-		signal;
-		uncertain;
-		code = "external-command-failed";
-		constructor(binary, status, signal, uncertain) {
-			super("external-command-failed");
-			this.binary = binary;
-			this.status = status;
-			this.signal = signal;
-			this.uncertain = uncertain;
-			this.name = "ProcessFailure";
-		}
-	};
-	exports.ProcessFailure = ProcessFailure;
-	var NativeProcessRunner = class {
-		run(binary, args, options = {}) {
-			const result = (0, node_child_process_1.spawnSync)(binary, [...args], {
-				encoding: "utf8",
-				timeout: options.timeout ?? 18e4,
-				maxBuffer: options.maxBuffer ?? 1048576,
-				cwd: options.cwd,
-				env: options.env ?? process.env,
-				input: options.input,
-				shell: false
-			});
-			if (result.error || result.status !== 0 || result.signal !== null) throw new ProcessFailure(binary, result.status, result.signal, !!result.error || result.status === null || result.signal !== null);
-			return {
-				stdout: result.stdout,
-				stderr: result.stderr,
-				status: 0
-			};
-		}
-	};
-	exports.NativeProcessRunner = NativeProcessRunner;
-	exports.nativeProcess = new NativeProcessRunner();
-}));
-
-//#endregion
-//#region operations/dist/runtime/managed-child.js
-var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, this$15) => {
-	var __importDefault = this$15 && this$15.__importDefault || function(mod) {
-		return mod && mod.__esModule ? mod : { "default": mod };
-	};
-	Object.defineProperty(exports, "__esModule", { value: true });
-	exports.ManagedChildProcess = void 0;
-	const node_fs_1 = __importDefault(require("node:fs"));
-	const node_child_process_1 = require("node:child_process");
-	const process_1 = require_process();
-	/** Own a process group unless a verified external supervisor already journals it. */
-	var ManagedChildProcess = class {
-		run(binary, args, options) {
-			if (options.signal?.aborted) return Promise.reject(new process_1.ProcessFailure(binary, null, "SIGTERM", true));
-			return new Promise((resolve, reject) => {
-				if (options.inputFile && options.input !== void 0) throw Error("ambiguous-process-input");
-				const inputFd = options.inputFile ? node_fs_1.default.openSync(options.inputFile, node_fs_1.default.constants.O_RDONLY | node_fs_1.default.constants.O_NOFOLLOW) : void 0;
-				if (inputFd !== void 0 && !node_fs_1.default.fstatSync(inputFd).isFile()) {
-					node_fs_1.default.closeSync(inputFd);
-					throw Error("regular-process-input-required");
-				}
-				let child;
-				try {
-					child = (0, node_child_process_1.spawn)(binary, [...args], {
-						cwd: options.cwd,
-						env: options.env,
-						detached: !options.inheritGroup,
-						shell: false,
-						stdio: [
-							inputFd ?? "pipe",
-							options.inherit ? "inherit" : "pipe",
-							options.inherit ? "inherit" : "pipe"
-						]
-					});
-				} finally {
-					if (inputFd !== void 0) node_fs_1.default.closeSync(inputFd);
-				}
-				let output = "", bytes = 0, uncertain = false, spawnError = false;
-				let forced;
-				const kill = (signal) => {
-					if (child.pid) try {
-						process.kill(options.inheritGroup ? child.pid : -child.pid, signal);
-					} catch (error) {
-						if (error.code !== "ESRCH") uncertain = true;
-					}
-				};
-				const cancel = () => {
-					uncertain = true;
-					kill("SIGTERM");
-					forced ??= setTimeout(() => kill("SIGKILL"), 5e3);
-				};
-				const timer = options.timeout === null ? void 0 : setTimeout(cancel, options.timeout);
-				options.signal?.addEventListener("abort", cancel, { once: true });
-				child.stdout?.on("data", (value) => {
-					bytes += value.length;
-					if (bytes > (options.maxBuffer ?? 1048576)) cancel();
-					else {
-						output += value.toString();
-						try {
-							options.output?.(value);
-						} catch {
-							cancel();
-						}
-					}
-				});
-				child.stderr?.on("data", (value) => {
-					bytes += value.length;
-					if (bytes > (options.maxBuffer ?? 1048576)) cancel();
-					else try {
-						options.output?.(value);
-					} catch {
-						cancel();
-					}
-				});
-				child.on("error", () => {
-					spawnError = true;
-				});
-				child.stdin?.on("error", () => {});
-				child.stdin?.end(options.input);
-				child.on("close", (status, signal) => {
-					if (timer) clearTimeout(timer);
-					if (forced) clearTimeout(forced);
-					options.signal?.removeEventListener("abort", cancel);
-					if (uncertain) kill("SIGKILL");
-					if (spawnError || status !== 0 || signal || uncertain) reject(new process_1.ProcessFailure(binary, status, signal, uncertain || spawnError || signal !== null || status === null));
-					else resolve(output);
-				});
-			});
-		}
-	};
-	exports.ManagedChildProcess = ManagedChildProcess;
-}));
-
-//#endregion
-//#region operations/dist/host-bootstrap/build-tools.service.js
-var require_build_tools_service = /* @__PURE__ */ __commonJSMin(((exports, module, this$14) => {
-	var __decorate = this$14 && this$14.__decorate || function(decorators, target, key, desc) {
-		var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
-		if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
-		else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
-		return c > 3 && r && Object.defineProperty(target, key, r), r;
-	};
-	var __metadata = this$14 && this$14.__metadata || function(k, v) {
-		if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
-	};
-	var __importDefault = this$14 && this$14.__importDefault || function(mod) {
-		return mod && mod.__esModule ? mod : { "default": mod };
-	};
-	Object.defineProperty(exports, "__esModule", { value: true });
-	exports.BuildToolsService = exports.RUNTIME_PACKAGES = exports.PUBLIC_CA_SHA256 = void 0;
-	const common_1 = (init_common(), __toCommonJS(common_exports));
-	const node_fs_1 = __importDefault(require("node:fs"));
-	const node_path_1 = __importDefault(require("node:path"));
-	const node_crypto_1 = __importDefault(require("node:crypto"));
-	const managed_child_1 = require_managed_child();
-	exports.PUBLIC_CA_SHA256 = "796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe";
-	exports.RUNTIME_PACKAGES = [
-		"docker-cli=29.9.3-r1",
-		"docker-cli-compose=5.7.2-r0",
-		"docker-cli-buildx=0.38.1-r0",
-		"rsync=3.5.2-r1",
-		"bash=5.3.9-r1",
-		"git=2.54.1-r0",
-		"unzip=6.0-r16",
-		"curl=8.23.0-r0",
-		"zlib=1.4-r0"
-	];
-	/** Build image trust only: never implicitly modifies host trust during installation. */
-	let BuildToolsService = class BuildToolsService {
-		process;
-		systemRoot;
-		constructor(process = new managed_child_1.ManagedChildProcess(), systemRoot = "/") {
-			this.process = process;
-			this.systemRoot = systemRoot;
-		}
-		refreshCa(checkout) {
-			const bundle = node_fs_1.default.readFileSync(node_path_1.default.join(checkout, "bootstrapper/ca/cacert-2026-10-20.crt"));
-			if (node_crypto_1.default.createHash("sha256").update(bundle).digest("hex") !== exports.PUBLIC_CA_SHA256) throw Error("Reviewed public CA bundle hash mismatch.");
-			const certificates = node_path_1.default.join(this.systemRoot, "etc/ssl/certs");
-			const directory = node_fs_1.default.lstatSync(certificates);
-			if (!directory.isDirectory() || directory.isSymbolicLink()) throw Error("Public certificate directory required.");
-			for (const name of node_fs_1.default.readdirSync(certificates)) {
-				const filename = node_path_1.default.join(certificates, name), stat = node_fs_1.default.lstatSync(filename);
-				if (stat.isFile() || stat.isSymbolicLink()) node_fs_1.default.unlinkSync(filename);
-			}
-			node_fs_1.default.writeFileSync(node_path_1.default.join(certificates, "ca-certificates.crt"), bundle, { mode: 420 });
-			const link = node_path_1.default.join(this.systemRoot, "etc/ssl/cert.pem");
-			if (node_fs_1.default.lstatSync(link, { throwIfNoEntry: false })) node_fs_1.default.unlinkSync(link);
-			node_fs_1.default.symlinkSync("certs/ca-certificates.crt", link);
-		}
-		async installRuntime(checkout, env, signal) {
-			const run = (binary, args, timeout = 18e4) => this.process.run(binary, args, {
-				cwd: checkout,
-				env,
-				signal,
-				timeout
-			});
-			if ((await run(process.execPath, ["--version"])).trim() !== "v24.22.0" || (await run("npm", ["--version"])).trim() !== "11.19.1") throw Error("Pinned Node and npm runtime required.");
-			await run("apk", [
-				"add",
-				"--no-cache",
-				...exports.RUNTIME_PACKAGES
-			], 9e5);
-			this.refreshCa(checkout);
-			for (const args of [
-				["--version"],
-				["compose", "version"],
-				["buildx", "version"]
-			]) await run("docker", args);
-		}
-	};
-	exports.BuildToolsService = BuildToolsService;
-	exports.BuildToolsService = BuildToolsService = __decorate([(0, common_1.Injectable)(), __metadata("design:paramtypes", [Object, Object])], BuildToolsService);
+	exports.BUILDKIT_IMAGE = void 0;
+	exports.deliveryIdentity = deliveryIdentity;
+	exports.candidateReference = candidateReference;
+	function deliveryIdentity(env) {
+		const id = (name) => {
+			const value = env[name] || "";
+			if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value))) throw Error(`Positive safe ${name} required`);
+			return value;
+		};
+		const source = env.CI_COMMIT_SHA || "";
+		if (!/^[a-f0-9]{40}$/.test(source)) throw Error("Exact source commit required");
+		if (env.SYSTEM_WIZARD_EXPECTED_SHA && env.SYSTEM_WIZARD_EXPECTED_SHA !== source) throw Error("Source commit does not match binding");
+		const registryImage = env.CI_REGISTRY_IMAGE || "";
+		if (!/^[a-z0-9][a-z0-9.:-]*\/[a-z0-9][a-z0-9_./-]*$/.test(registryImage)) throw Error("Job registry image required");
+		return {
+			project: id("CI_PROJECT_ID"),
+			pipeline: id("CI_PIPELINE_ID"),
+			job: id("CI_JOB_ID"),
+			source,
+			registryImage
+		};
+	}
+	function candidateReference(value, identity) {
+		const prefix = identity.registryImage + "@sha256:";
+		if (!value.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(value.slice(prefix.length))) throw Error("Exact candidate digest from job registry required");
+		return value;
+	}
+	exports.BUILDKIT_IMAGE = "moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea";
 }));
 
 //#endregion
 //#region operations/dist/project-lifecycle/state.js
-var require_state = /* @__PURE__ */ __commonJSMin(((exports, module, this$13) => {
-	var __importDefault = this$13 && this$13.__importDefault || function(mod) {
+var require_state = /* @__PURE__ */ __commonJSMin(((exports, module, this$16) => {
+	var __importDefault = this$16 && this$16.__importDefault || function(mod) {
 		return mod && mod.__esModule ? mod : { "default": mod };
 	};
 	Object.defineProperty(exports, "__esModule", { value: true });
@@ -23164,22 +22977,22 @@ server {
 
 //#endregion
 //#region operations/dist/project-ci/environment-launcher.service.js
-var require_environment_launcher_service = /* @__PURE__ */ __commonJSMin(((exports, module, this$12) => {
-	var __decorate = this$12 && this$12.__decorate || function(decorators, target, key, desc) {
+var require_environment_launcher_service = /* @__PURE__ */ __commonJSMin(((exports, module, this$15) => {
+	var __decorate = this$15 && this$15.__decorate || function(decorators, target, key, desc) {
 		var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
 		if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
 		else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
 		return c > 3 && r && Object.defineProperty(target, key, r), r;
 	};
-	var __metadata = this$12 && this$12.__metadata || function(k, v) {
+	var __metadata = this$15 && this$15.__metadata || function(k, v) {
 		if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 	};
-	var __param = this$12 && this$12.__param || function(paramIndex, decorator) {
+	var __param = this$15 && this$15.__param || function(paramIndex, decorator) {
 		return function(target, key) {
 			decorator(target, key, paramIndex);
 		};
 	};
-	var __importDefault = this$12 && this$12.__importDefault || function(mod) {
+	var __importDefault = this$15 && this$15.__importDefault || function(mod) {
 		return mod && mod.__esModule ? mod : { "default": mod };
 	};
 	Object.defineProperty(exports, "__esModule", { value: true });
@@ -23342,57 +23155,23 @@ var require_environment_launcher_service = /* @__PURE__ */ __commonJSMin(((expor
 }));
 
 //#endregion
-//#region operations/dist/project-ci/delivery-policy.js
-var require_delivery_policy = /* @__PURE__ */ __commonJSMin(((exports) => {
-	Object.defineProperty(exports, "__esModule", { value: true });
-	exports.BUILDKIT_IMAGE = void 0;
-	exports.deliveryIdentity = deliveryIdentity;
-	exports.candidateReference = candidateReference;
-	function deliveryIdentity(env) {
-		const id = (name) => {
-			const value = env[name] || "";
-			if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value))) throw Error(`Positive safe ${name} required`);
-			return value;
-		};
-		const source = env.CI_COMMIT_SHA || "";
-		if (!/^[a-f0-9]{40}$/.test(source)) throw Error("Exact source commit required");
-		if (env.SYSTEM_WIZARD_EXPECTED_SHA && env.SYSTEM_WIZARD_EXPECTED_SHA !== source) throw Error("Source commit does not match binding");
-		const registryImage = env.CI_REGISTRY_IMAGE || "";
-		if (!/^[a-z0-9][a-z0-9.:-]*\/[a-z0-9][a-z0-9_./-]*$/.test(registryImage)) throw Error("Job registry image required");
-		return {
-			project: id("CI_PROJECT_ID"),
-			pipeline: id("CI_PIPELINE_ID"),
-			job: id("CI_JOB_ID"),
-			source,
-			registryImage
-		};
-	}
-	function candidateReference(value, identity) {
-		const prefix = identity.registryImage + "@sha256:";
-		if (!value.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(value.slice(prefix.length))) throw Error("Exact candidate digest from job registry required");
-		return value;
-	}
-	exports.BUILDKIT_IMAGE = "moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea";
-}));
-
-//#endregion
 //#region operations/dist/project-ci/delivery-session.service.js
-var require_delivery_session_service = /* @__PURE__ */ __commonJSMin(((exports, module, this$11) => {
-	var __decorate = this$11 && this$11.__decorate || function(decorators, target, key, desc) {
+var require_delivery_session_service = /* @__PURE__ */ __commonJSMin(((exports, module, this$14) => {
+	var __decorate = this$14 && this$14.__decorate || function(decorators, target, key, desc) {
 		var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
 		if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
 		else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
 		return c > 3 && r && Object.defineProperty(target, key, r), r;
 	};
-	var __metadata = this$11 && this$11.__metadata || function(k, v) {
+	var __metadata = this$14 && this$14.__metadata || function(k, v) {
 		if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 	};
-	var __param = this$11 && this$11.__param || function(paramIndex, decorator) {
+	var __param = this$14 && this$14.__param || function(paramIndex, decorator) {
 		return function(target, key) {
 			decorator(target, key, paramIndex);
 		};
 	};
-	var __importDefault = this$11 && this$11.__importDefault || function(mod) {
+	var __importDefault = this$14 && this$14.__importDefault || function(mod) {
 		return mod && mod.__esModule ? mod : { "default": mod };
 	};
 	Object.defineProperty(exports, "__esModule", { value: true });
@@ -23617,6 +23396,410 @@ var require_delivery_session_service = /* @__PURE__ */ __commonJSMin(((exports, 
 		__param(0, (0, common_1.Inject)(environment_launcher_service_1.PROJECT_CI_PROCESS)),
 		__metadata("design:paramtypes", [Object])
 	], DeliverySessionService);
+}));
+
+//#endregion
+//#region operations/dist/project-ci/application.service.js
+var require_application_service = /* @__PURE__ */ __commonJSMin(((exports, module, this$13) => {
+	var __decorate = this$13 && this$13.__decorate || function(decorators, target, key, desc) {
+		var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+		if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+		else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+		return c > 3 && r && Object.defineProperty(target, key, r), r;
+	};
+	var __metadata = this$13 && this$13.__metadata || function(k, v) {
+		if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+	};
+	var __importDefault = this$13 && this$13.__importDefault || function(mod) {
+		return mod && mod.__esModule ? mod : { "default": mod };
+	};
+	Object.defineProperty(exports, "__esModule", { value: true });
+	exports.ApplicationService = void 0;
+	const common_1 = (init_common(), __toCommonJS(common_exports));
+	const node_fs_1 = __importDefault(require("node:fs"));
+	const node_path_1 = __importDefault(require("node:path"));
+	const promises_1 = require("node:timers/promises");
+	const delivery_policy_1 = require_delivery_policy();
+	const delivery_session_service_1 = require_delivery_session_service();
+	function configuration(root) {
+		const record = JSON.parse(node_fs_1.default.readFileSync(node_path_1.default.join(root, ".system-bootstrapper/application-v2.json"), "utf8"));
+		if (!record || record.version !== 2 || typeof record.key !== "string" || !/^[a-z0-9]+$/.test(record.key) || !record.environments || typeof record.environments !== "object" || Array.isArray(record.environments)) throw Error("Versioned application configuration required");
+		for (const [kind, setting] of Object.entries(record.environments)) if (![
+			"review",
+			"beta",
+			"prod"
+		].includes(kind) || !setting || typeof setting.host !== "string" || !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(setting.host)) throw Error("Invalid application environment");
+		return record;
+	}
+	function logOptions(env) {
+		const size = env.APP_LOG_MAX_SIZE || "10m", files = env.APP_LOG_MAX_FILES || "3";
+		if (!/^[1-9][0-9]*[kKmMgG]$/.test(size) || !/^([1-9][0-9]?|100)$/.test(files)) throw Error("Invalid application log limits");
+		return [
+			"--log-driver",
+			"json-file",
+			"--log-opt",
+			"max-size=" + size,
+			"--log-opt",
+			"max-file=" + files
+		];
+	}
+	let ApplicationService = class ApplicationService {
+		sessions;
+		constructor(sessions) {
+			this.sessions = sessions;
+		}
+		async run(root, action, kind, env, signal) {
+			if (![
+				"build",
+				"verify",
+				"deploy",
+				"stop"
+			].includes(action) || kind !== void 0 && !["deploy", "stop"].includes(action)) throw Error("Use application build|verify|deploy ENVIRONMENT|stop review");
+			if (!node_path_1.default.isAbsolute(root)) throw Error("Absolute source directory required");
+			const app = configuration(root), identity = (0, delivery_policy_1.deliveryIdentity)(env), logs = logOptions(env);
+			if (["deploy", "stop"].includes(action) && (!kind || ![
+				"review",
+				"beta",
+				"prod"
+			].includes(kind) || !app.environments[kind] || action === "stop" && kind !== "review")) throw Error("Configured application environment required");
+			const slug = kind === "review" ? env.CI_COMMIT_REF_SLUG || "" : "";
+			if (kind === "review" && !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(slug)) throw Error("Exact Review branch slug required");
+			const ref = action === "build" || action === "stop" ? "" : (0, delivery_policy_1.candidateReference)(env.APPLICATION_IMAGE_REF || "", identity);
+			await this.sessions.use(root, env, identity, signal, async (session) => {
+				if (action !== "stop") await session.login();
+				if (action === "build") {
+					const image = `${identity.registryImage}:app-${identity.source}-${identity.pipeline}-${identity.job}-${session.operation}`;
+					await session.createBuilder();
+					await session.buildImage(image, [
+						"buildx",
+						"build",
+						"--builder",
+						session.builder,
+						"--load",
+						"--provenance=false",
+						"--label",
+						"org.opencontainers.image.revision=" + identity.source,
+						"-f",
+						"Dockerfile",
+						"-t",
+						image,
+						"."
+					]);
+					await session.run(["push", image], 3e5);
+					const rows = await session.run([
+						"image",
+						"inspect",
+						"--format",
+						"{{range .RepoDigests}}{{println .}}{{end}}",
+						image
+					]);
+					const digest = (0, delivery_policy_1.candidateReference)(rows.split(/\r?\n/).find((value) => value.startsWith(identity.registryImage + "@sha256:")) || "", identity);
+					node_fs_1.default.writeFileSync(node_path_1.default.join(root, "app-image.env"), "APPLICATION_IMAGE_REF=" + digest + "\n");
+					return;
+				}
+				if (action === "verify") {
+					await session.run(["pull", ref], 3e5);
+					const id = await session.createContainer(session.builder + "-smoke", [
+						...logs,
+						"--network",
+						"none",
+						ref
+					]);
+					await session.run(["start", id]);
+					let ready = false;
+					for (let attempt = 0; attempt < 30; attempt++) {
+						signal?.throwIfAborted();
+						try {
+							if (!(await session.run([
+								"exec",
+								id,
+								"wget",
+								"-q",
+								"-O",
+								"-",
+								"http://127.0.0.1/"
+							], 5e3)).includes(app.key)) throw Error("Application identity absent from page");
+							ready = true;
+							break;
+						} catch (error) {
+							if (signal?.aborted) throw error;
+						}
+						await (0, promises_1.setTimeout)(1e3, void 0, { signal });
+					}
+					if (!ready) throw Error("Application HTTP identity check failed");
+					return;
+				}
+				const name = app.key + "-" + kind + (kind === "review" ? "-" + slug : ""), owner = identity.project + ":" + name;
+				if (action === "deploy") await session.run(["pull", ref], 3e5);
+				await this.removePrevious(session, name, owner);
+				if (action === "stop") return;
+				const host = (kind === "review" ? slug + "." : "") + app.environments[kind].host;
+				const id = await session.createContainer(name, [
+					"--label",
+					"system-bootstrapper.application=" + owner,
+					"--restart",
+					"unless-stopped",
+					...logs,
+					"--network",
+					app.key + "_" + kind,
+					"-e",
+					"VIRTUAL_HOST=" + host,
+					ref
+				]);
+				await session.run(["start", id]);
+				session.resources.splice(session.resources.findIndex((resource) => resource.id === id), 1);
+			});
+		}
+		async removePrevious(session, name, owner) {
+			if (!(await session.run([
+				"container",
+				"ls",
+				"--all",
+				"--filter",
+				"name=^/" + name + "$",
+				"--format",
+				"{{.ID}}"
+			])).trim()) return;
+			const row = (await session.run([
+				"container",
+				"inspect",
+				"--format",
+				"{{.Id}} {{index .Config.Labels \"system-bootstrapper.application\"}}",
+				name
+			])).trim().split(" ");
+			if (!/^[a-f0-9]{64}$/.test(row[0]) || row[1] !== owner || row.length !== 2) throw Error("Existing application container lacks exact ownership; explicit migration required");
+			await session.run([
+				"stop",
+				"--time",
+				"10",
+				row[0]
+			], 2e4);
+			await session.run(["rm", row[0]], 15e3);
+		}
+	};
+	exports.ApplicationService = ApplicationService;
+	exports.ApplicationService = ApplicationService = __decorate([(0, common_1.Injectable)(), __metadata("design:paramtypes", [delivery_session_service_1.DeliverySessionService])], ApplicationService);
+}));
+
+//#endregion
+//#region operations/dist/runtime/process.js
+var require_process = /* @__PURE__ */ __commonJSMin(((exports) => {
+	Object.defineProperty(exports, "__esModule", { value: true });
+	exports.nativeProcess = exports.NativeProcessRunner = exports.ProcessFailure = void 0;
+	const node_child_process_1 = require("node:child_process");
+	var ProcessFailure = class extends Error {
+		binary;
+		status;
+		signal;
+		uncertain;
+		code = "external-command-failed";
+		constructor(binary, status, signal, uncertain) {
+			super("external-command-failed");
+			this.binary = binary;
+			this.status = status;
+			this.signal = signal;
+			this.uncertain = uncertain;
+			this.name = "ProcessFailure";
+		}
+	};
+	exports.ProcessFailure = ProcessFailure;
+	var NativeProcessRunner = class {
+		run(binary, args, options = {}) {
+			const result = (0, node_child_process_1.spawnSync)(binary, [...args], {
+				encoding: "utf8",
+				timeout: options.timeout ?? 18e4,
+				maxBuffer: options.maxBuffer ?? 1048576,
+				cwd: options.cwd,
+				env: options.env ?? process.env,
+				input: options.input,
+				shell: false
+			});
+			if (result.error || result.status !== 0 || result.signal !== null) throw new ProcessFailure(binary, result.status, result.signal, !!result.error || result.status === null || result.signal !== null);
+			return {
+				stdout: result.stdout,
+				stderr: result.stderr,
+				status: 0
+			};
+		}
+	};
+	exports.NativeProcessRunner = NativeProcessRunner;
+	exports.nativeProcess = new NativeProcessRunner();
+}));
+
+//#endregion
+//#region operations/dist/runtime/managed-child.js
+var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, this$12) => {
+	var __importDefault = this$12 && this$12.__importDefault || function(mod) {
+		return mod && mod.__esModule ? mod : { "default": mod };
+	};
+	Object.defineProperty(exports, "__esModule", { value: true });
+	exports.ManagedChildProcess = void 0;
+	const node_fs_1 = __importDefault(require("node:fs"));
+	const node_child_process_1 = require("node:child_process");
+	const process_1 = require_process();
+	/** Own a process group unless a verified external supervisor already journals it. */
+	var ManagedChildProcess = class {
+		run(binary, args, options) {
+			if (options.signal?.aborted) return Promise.reject(new process_1.ProcessFailure(binary, null, "SIGTERM", true));
+			return new Promise((resolve, reject) => {
+				if (options.inputFile && options.input !== void 0) throw Error("ambiguous-process-input");
+				const inputFd = options.inputFile ? node_fs_1.default.openSync(options.inputFile, node_fs_1.default.constants.O_RDONLY | node_fs_1.default.constants.O_NOFOLLOW) : void 0;
+				if (inputFd !== void 0 && !node_fs_1.default.fstatSync(inputFd).isFile()) {
+					node_fs_1.default.closeSync(inputFd);
+					throw Error("regular-process-input-required");
+				}
+				let child;
+				try {
+					child = (0, node_child_process_1.spawn)(binary, [...args], {
+						cwd: options.cwd,
+						env: options.env,
+						detached: !options.inheritGroup,
+						shell: false,
+						stdio: [
+							inputFd ?? "pipe",
+							options.inherit ? "inherit" : "pipe",
+							options.inherit ? "inherit" : "pipe"
+						]
+					});
+				} finally {
+					if (inputFd !== void 0) node_fs_1.default.closeSync(inputFd);
+				}
+				let output = "", bytes = 0, uncertain = false, spawnError = false;
+				let forced;
+				const kill = (signal) => {
+					if (child.pid) try {
+						process.kill(options.inheritGroup ? child.pid : -child.pid, signal);
+					} catch (error) {
+						if (error.code !== "ESRCH") uncertain = true;
+					}
+				};
+				const cancel = () => {
+					uncertain = true;
+					kill("SIGTERM");
+					forced ??= setTimeout(() => kill("SIGKILL"), 5e3);
+				};
+				const timer = options.timeout === null ? void 0 : setTimeout(cancel, options.timeout);
+				options.signal?.addEventListener("abort", cancel, { once: true });
+				child.stdout?.on("data", (value) => {
+					bytes += value.length;
+					if (bytes > (options.maxBuffer ?? 1048576)) cancel();
+					else {
+						output += value.toString();
+						try {
+							options.output?.(value);
+						} catch {
+							cancel();
+						}
+					}
+				});
+				child.stderr?.on("data", (value) => {
+					bytes += value.length;
+					if (bytes > (options.maxBuffer ?? 1048576)) cancel();
+					else try {
+						options.output?.(value);
+					} catch {
+						cancel();
+					}
+				});
+				child.on("error", () => {
+					spawnError = true;
+				});
+				child.stdin?.on("error", () => {});
+				child.stdin?.end(options.input);
+				child.on("close", (status, signal) => {
+					if (timer) clearTimeout(timer);
+					if (forced) clearTimeout(forced);
+					options.signal?.removeEventListener("abort", cancel);
+					if (uncertain) kill("SIGKILL");
+					if (spawnError || status !== 0 || signal || uncertain) reject(new process_1.ProcessFailure(binary, status, signal, uncertain || spawnError || signal !== null || status === null));
+					else resolve(output);
+				});
+			});
+		}
+	};
+	exports.ManagedChildProcess = ManagedChildProcess;
+}));
+
+//#endregion
+//#region operations/dist/host-bootstrap/build-tools.service.js
+var require_build_tools_service = /* @__PURE__ */ __commonJSMin(((exports, module, this$11) => {
+	var __decorate = this$11 && this$11.__decorate || function(decorators, target, key, desc) {
+		var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+		if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+		else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+		return c > 3 && r && Object.defineProperty(target, key, r), r;
+	};
+	var __metadata = this$11 && this$11.__metadata || function(k, v) {
+		if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+	};
+	var __importDefault = this$11 && this$11.__importDefault || function(mod) {
+		return mod && mod.__esModule ? mod : { "default": mod };
+	};
+	Object.defineProperty(exports, "__esModule", { value: true });
+	exports.BuildToolsService = exports.RUNTIME_PACKAGES = exports.PUBLIC_CA_SHA256 = void 0;
+	const common_1 = (init_common(), __toCommonJS(common_exports));
+	const node_fs_1 = __importDefault(require("node:fs"));
+	const node_path_1 = __importDefault(require("node:path"));
+	const node_crypto_1 = __importDefault(require("node:crypto"));
+	const managed_child_1 = require_managed_child();
+	exports.PUBLIC_CA_SHA256 = "796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe";
+	exports.RUNTIME_PACKAGES = [
+		"docker-cli=29.9.3-r1",
+		"docker-cli-compose=5.7.2-r0",
+		"docker-cli-buildx=0.38.1-r0",
+		"rsync=3.5.2-r1",
+		"bash=5.3.9-r1",
+		"git=2.54.1-r0",
+		"unzip=6.0-r16",
+		"curl=8.23.0-r0",
+		"zlib=1.4-r0"
+	];
+	/** Build image trust only: never implicitly modifies host trust during installation. */
+	let BuildToolsService = class BuildToolsService {
+		process;
+		systemRoot;
+		constructor(process = new managed_child_1.ManagedChildProcess(), systemRoot = "/") {
+			this.process = process;
+			this.systemRoot = systemRoot;
+		}
+		refreshCa(checkout) {
+			const bundle = node_fs_1.default.readFileSync(node_path_1.default.join(checkout, "bootstrapper/ca/cacert-2026-10-20.crt"));
+			if (node_crypto_1.default.createHash("sha256").update(bundle).digest("hex") !== exports.PUBLIC_CA_SHA256) throw Error("Reviewed public CA bundle hash mismatch.");
+			const certificates = node_path_1.default.join(this.systemRoot, "etc/ssl/certs");
+			const directory = node_fs_1.default.lstatSync(certificates);
+			if (!directory.isDirectory() || directory.isSymbolicLink()) throw Error("Public certificate directory required.");
+			for (const name of node_fs_1.default.readdirSync(certificates)) {
+				const filename = node_path_1.default.join(certificates, name), stat = node_fs_1.default.lstatSync(filename);
+				if (stat.isFile() || stat.isSymbolicLink()) node_fs_1.default.unlinkSync(filename);
+			}
+			node_fs_1.default.writeFileSync(node_path_1.default.join(certificates, "ca-certificates.crt"), bundle, { mode: 420 });
+			const link = node_path_1.default.join(this.systemRoot, "etc/ssl/cert.pem");
+			if (node_fs_1.default.lstatSync(link, { throwIfNoEntry: false })) node_fs_1.default.unlinkSync(link);
+			node_fs_1.default.symlinkSync("certs/ca-certificates.crt", link);
+		}
+		async installRuntime(checkout, env, signal) {
+			const run = (binary, args, timeout = 18e4) => this.process.run(binary, args, {
+				cwd: checkout,
+				env,
+				signal,
+				timeout
+			});
+			if ((await run(process.execPath, ["--version"])).trim() !== "v24.22.0" || (await run("npm", ["--version"])).trim() !== "11.19.1") throw Error("Pinned Node and npm runtime required.");
+			await run("apk", [
+				"add",
+				"--no-cache",
+				...exports.RUNTIME_PACKAGES
+			], 9e5);
+			this.refreshCa(checkout);
+			for (const args of [
+				["--version"],
+				["compose", "version"],
+				["buildx", "version"]
+			]) await run("docker", args);
+		}
+	};
+	exports.BuildToolsService = BuildToolsService;
+	exports.BuildToolsService = BuildToolsService = __decorate([(0, common_1.Injectable)(), __metadata("design:paramtypes", [Object, Object])], BuildToolsService);
 }));
 
 //#endregion
@@ -37190,6 +37373,7 @@ var require_project_ci_module = /* @__PURE__ */ __commonJSMin(((exports, module,
 	};
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.ProjectCiModule = void 0;
+	const application_service_1 = require_application_service();
 	const recipe_service_1 = require_recipe_service();
 	const build_tools_module_1 = require_build_tools_module();
 	const delivery_service_1 = require_delivery_service();
@@ -37212,6 +37396,7 @@ var require_project_ci_module = /* @__PURE__ */ __commonJSMin(((exports, module,
 				provide: browser_check_service_1.BROWSER_PROBE,
 				useClass: browser_check_service_1.NativeBrowserProbe
 			},
+			application_service_1.ApplicationService,
 			recipe_service_1.ProjectBuildRecipeService,
 			delivery_service_1.DeliveryService,
 			delivery_session_service_1.DeliverySessionService,
@@ -37219,6 +37404,7 @@ var require_project_ci_module = /* @__PURE__ */ __commonJSMin(((exports, module,
 			browser_check_service_1.BrowserCheckService
 		],
 		exports: [
+			application_service_1.ApplicationService,
 			recipe_service_1.ProjectBuildRecipeService,
 			delivery_service_1.DeliveryService,
 			environment_launcher_service_1.EnvironmentLauncherService,
@@ -37233,6 +37419,7 @@ var __importDefault = this && this.__importDefault || function(mod) {
 	return mod && mod.__esModule ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const application_service_1 = require_application_service();
 const build_tools_service_1 = require_build_tools_service();
 const node_path_1 = __importDefault(require("node:path"));
 const delivery_service_1 = require_delivery_service();
@@ -37246,7 +37433,8 @@ const ci_service_1 = require_ci_service();
 async function main(args, signal) {
 	const app = await core_1.NestFactory.createApplicationContext(project_ci_module_1.ProjectCiModule, { logger: false });
 	try {
-		if (args[0] === "prepare-runtime" && args.length === 2) await app.get(build_tools_service_1.BuildToolsService).installRuntime(node_path_1.default.resolve(args[1]), process.env, signal);
+		if (args[0] === "application" && (args.length === 2 || args.length === 3)) await app.get(application_service_1.ApplicationService).run(process.cwd(), args[1], args[2], process.env, signal);
+		else if (args[0] === "prepare-runtime" && args.length === 2) await app.get(build_tools_service_1.BuildToolsService).installRuntime(node_path_1.default.resolve(args[1]), process.env, signal);
 		else if (args[0] === "refresh-ca" && args.length === 2) app.get(build_tools_service_1.BuildToolsService).refreshCa(node_path_1.default.resolve(args[1]));
 		else if (args[0] === "build" && args.length === 1) await app.get(delivery_service_1.DeliveryService).build(process.cwd(), process.env, signal);
 		else if (args[0] === "verify" && args.length === 1) await app.get(delivery_service_1.DeliveryService).verify(process.cwd(), process.env, signal);

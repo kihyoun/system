@@ -110,3 +110,23 @@ test('candidate verification keeps diagnostics and drains exact resources on bro
   assert.equal(JSON.parse(fs.readFileSync(path.join(root,'cleanup.json'))).status,'passed');
  }
 });
+test('starter application deployment transfers only exact ownership and refuses foreign or invalid targets',async t=>{
+ const {ApplicationService}=require('../dist/project-ci/application.service');
+ for(const mode of ['success','foreign','failed','invalid-log']){
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'application-ci-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));fs.mkdirSync(path.join(root,'.system-bootstrapper'));fs.writeFileSync(path.join(root,'.system-bootstrapper/application-v2.json'),JSON.stringify({version:2,key:'app',environments:{review:{host:'review.example.test'},prod:{host:'app.example.test'}}}));
+  const calls=[];let owner='';const id='e'.repeat(64);
+  const port={run:async(binary,raw,options)=>{const args=raw.slice(2);calls.push(args);
+   if(args[0]==='container'&&args[1]==='ls')return mode==='foreign'?id:'';
+   if(args[0]==='container'&&args[1]==='inspect'){if(args[3].includes('system-bootstrapper.application'))return id+' someone-else';return args[3].includes('Labels')?owner:id;}
+   if(args[0]==='create'){owner=args[2].split('=')[1];assert(args.includes('app_review'));assert(args.includes('VIRTUAL_HOST=topic.review.example.test'));assert(args.includes('max-size=10m'));return id;}
+   if(args[0]==='start'&&mode==='failed')throw Error('native start failed');return '';
+  }};
+  const service=new ApplicationService(new DeliverySessionService(port));
+  const input={...deliveryEnv,CI_COMMIT_REF_SLUG:'topic',APPLICATION_IMAGE_REF:deliveryEnv.CI_REGISTRY_IMAGE+'@sha256:'+'f'.repeat(64),...(mode==='invalid-log'?{APP_LOG_MAX_SIZE:'bad'}:{})};
+  if(mode==='success')await service.run(root,'deploy','review',input);else await assert.rejects(service.run(root,'deploy','review',input),mode==='foreign'?/ownership/:mode==='failed'?/native start/:/log limits/);
+  if(mode==='success')assert(!calls.some(args=>args[0]==='rm'));
+  if(mode==='foreign')assert(!calls.some(args=>['rm','stop','create'].includes(args[0])));
+  if(mode==='failed')assert(calls.some(args=>args[0]==='rm'&&args[1]===id));
+  if(mode==='invalid-log')assert.equal(calls.length,0);
+ }
+});

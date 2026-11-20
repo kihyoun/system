@@ -1,3 +1,4 @@
+import { ApplicationService } from './application.service';
 import { BuildToolsService } from '../host-bootstrap/build-tools.service';
 import path from 'node:path';
 import { DeliveryService } from './delivery.service';
@@ -11,7 +12,9 @@ import { MirrorCiService } from '../mirror/ci.service';
 async function main(args: string[], signal: AbortSignal): Promise<void> {
   const app = await NestFactory.createApplicationContext(ProjectCiModule, { logger: false });
   try {
-    if (args[0] === 'prepare-runtime' && args.length === 2)
+    if (args[0] === 'application' && (args.length === 2 || args.length === 3))
+      await app.get(ApplicationService).run(process.cwd(), args[1], args[2], process.env, signal);
+    else if (args[0] === 'prepare-runtime' && args.length === 2)
       await app.get(BuildToolsService).installRuntime(path.resolve(args[1]), process.env, signal);
     else if (args[0] === 'refresh-ca' && args.length === 2)
       app.get(BuildToolsService).refreshCa(path.resolve(args[1]));

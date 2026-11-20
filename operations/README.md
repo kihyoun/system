@@ -78,3 +78,19 @@ node --test operations/tests/project-ci.test.cjs
 The check compares both runtime bytes and license notices. Source producers must
 include these exact committed files in their approved source manifest; copying a
 bundle from another candidate does not establish matching source provenance.
+
+Starter React, Angular and Web projects use the same portable runtime with
+`application build`, `application verify`, `application deploy review|beta|prod`
+and `application stop review`. The committed `.system-bootstrapper/application-v2.json`
+records the project key and enabled hosts. Build jobs pass an immutable registry
+digest through `app-image.env`; HTTP verification checks the project identity in
+the served page before deployment jobs can run. The application is a normal SPA,
+not a Nest application.
+
+Deployment requires the platform's existing project/environment network. A
+successful deployment transfers the exact container to its persistent application
+owner; failed starts clean only resources created by that job. Replacement and
+stop require the exact project/container owner label and full container ID.
+Unlabelled historical containers are refused and require an explicit migration;
+editing a starter does not authorize deleting unrelated resources or replacing
+an existing project's CI files.

@@ -1,3 +1,4 @@
+import { ApplicationService } from './application.service';
 import { DeliveryService } from './delivery.service';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
@@ -11,7 +12,9 @@ export async function main(
 ): Promise<void> {
   const app = await NestFactory.createApplicationContext(ProjectCiModule, { logger: false });
   try {
-    if (args[0] === 'build' && args.length === 2)
+    if (args[0] === 'application' && (args.length === 3 || args.length === 4))
+      await app.get(ApplicationService).run(args[1], args[2], args[3], env, signal);
+    else if (args[0] === 'build' && args.length === 2)
       await app.get(DeliveryService).build(args[1], env, signal);
     else if (args[0] === 'verify' && args.length === 2)
       await app.get(DeliveryService).verify(args[1], env, signal);

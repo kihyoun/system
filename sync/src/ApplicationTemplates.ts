@@ -45,6 +45,15 @@ export function prepareApplication(template: string, key: string, settings: any)
       content: fs.readFileSync(path.resolve(__dirname, '../..', source), 'utf8'),
     });
   }
+  const environments: Record<string, { host: string }> = {};
+  for (const kind of ['PROD', 'BETA', 'REVIEW'])
+    if (settings['USE_' + kind + '_HOST'] === 'true')
+      environments[kind.toLowerCase()] = { host: settings[kind + '_HOST'] };
+  files.push({
+    action: 'create',
+    file_path: '.system-bootstrapper/application-v2.json',
+    content: JSON.stringify({ version: 2, key, environments }, null, 2) + '\n',
+  });
   return { files, templateVersion: 2, ci: applicationCi(key, settings, template) };
 }
 
@@ -65,32 +74,30 @@ default:
   before_script:
     - node .system-bootstrapper/runtime/project-ci.cjs prepare-runtime .system-bootstrapper
 variables:
-  IMAGE_TAG: '$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA'
   APP_LOG_MAX_SIZE: '10m'
   APP_LOG_MAX_FILES: '3'
 stages: [build, test, deploy]
 build:
   stage: build
-  before_script:
-    - node .system-bootstrapper/runtime/project-ci.cjs prepare-runtime .system-bootstrapper
-    - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  timeout: 30 minutes
   script:
-    - docker build --provenance=false -t "$IMAGE_TAG" .
-    - docker push "$IMAGE_TAG"
+    - node .system-bootstrapper/runtime/project-ci.cjs application build
+  artifacts:
+    when: always
+    paths: [cleanup.json]
+    reports:
+      dotenv: app-image.env
 test:http:
   stage: test
-  before_script:
-    - node .system-bootstrapper/runtime/project-ci.cjs prepare-runtime .system-bootstrapper
-    - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  timeout: 10 minutes
+  needs:
+    - job: build
+      artifacts: true
   script:
-    - echo "$APP_LOG_MAX_SIZE" | grep -Eq '^[1-9][0-9]*[kKmMgG]$'
-    - echo "$APP_LOG_MAX_FILES" | grep -Eq '^([1-9][0-9]?|100)$'
-    - docker pull "$IMAGE_TAG"
-    - docker run -d --log-driver json-file --log-opt "max-size=$APP_LOG_MAX_SIZE" --log-opt "max-file=$APP_LOG_MAX_FILES" --name "smoke-$CI_PROJECT_ID-$CI_JOB_ID" "$IMAGE_TAG"
-    - for attempt in $(seq 1 30); do docker exec "smoke-$CI_PROJECT_ID-$CI_JOB_ID" wget -q -O /tmp/page http://127.0.0.1/ && break; sleep 1; done
-    - docker exec "smoke-$CI_PROJECT_ID-$CI_JOB_ID" grep -q '${key}' /tmp/page
-  after_script:
-    - docker rm -f "smoke-$CI_PROJECT_ID-$CI_JOB_ID" || true
+    - node .system-bootstrapper/runtime/project-ci.cjs application verify
+  artifacts:
+    when: always
+    paths: [cleanup.json]
 `;
   for (const environment of ['PROD', 'BETA', 'REVIEW']) {
     if (settings['USE_' + environment + '_HOST'] !== 'true') {
@@ -112,15 +119,17 @@ deploy:${kind}:
     url: '${url}'
 ${review ? '    on_stop: stop:review\n' : ''}  rules:
     - if: '${review ? '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH' : '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}'
-${settings[environment + '_DEPLOY_MODE'] === '0' ? '  when: manual\n' : ''}  before_script:
-    - node .system-bootstrapper/runtime/project-ci.cjs prepare-runtime .system-bootstrapper
-    - echo "$CI_REGISTRY_PASSWORD" | docker login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+${settings[environment + '_DEPLOY_MODE'] === '0' ? '  when: manual\n' : ''}  timeout: 10 minutes
+  needs:
+    - job: build
+      artifacts: true
+    - job: test:http
+      artifacts: false
   script:
-    - echo "$APP_LOG_MAX_SIZE" | grep -Eq '^[1-9][0-9]*[kKmMgG]$'
-    - echo "$APP_LOG_MAX_FILES" | grep -Eq '^([1-9][0-9]?|100)$'
-    - docker pull "$IMAGE_TAG"
-    - docker rm -f "${container}" || true
-    - docker run -d --restart unless-stopped --log-driver json-file --log-opt "max-size=$APP_LOG_MAX_SIZE" --log-opt "max-file=$APP_LOG_MAX_FILES" --network ${key}_${kind} --name "${container}" -e VIRTUAL_HOST="${host}" "$IMAGE_TAG"
+    - node .system-bootstrapper/runtime/project-ci.cjs application deploy ${kind}
+  artifacts:
+    when: always
+    paths: [cleanup.json]
 `;
     if (review) {
       ci += `
@@ -133,7 +142,7 @@ stop:review:
     name: '${name}'
     action: stop
   script:
-    - docker rm -f "${container}" || true
+    - node .system-bootstrapper/runtime/project-ci.cjs application stop review
 `;
     }
   }
