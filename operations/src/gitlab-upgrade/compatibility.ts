@@ -1,3 +1,4 @@
+import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
 import { NativeUpgradeProcess } from './native-process';
 import 'reflect-metadata';
 import { UpgradeSession } from './session';
@@ -12,7 +13,7 @@ export class Upgrade extends UpgradeSession {
   constructor(input: unknown, dependencies: UpgradeDependencies = {}) {
     super(input, dependencies, {
       guardian: new UpgradeGuardianService(new NativeUpgradeProcess()),
-      runtime: new UpgradeRuntimeService(),
+      runtime: new UpgradeRuntimeService(new GitlabPreflightService()),
       runner: new UpgradeRunnerService(),
       checkpoint: new UpgradeCheckpointService(),
       workflow: new UpgradeWorkflowService(),

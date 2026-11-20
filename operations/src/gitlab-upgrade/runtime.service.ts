@@ -1,3 +1,4 @@
+import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
 import {
   controlGitLabServices,
   requireGitLabServicesDown,
@@ -23,6 +24,7 @@ import { atomic, imageAssignment, terminalContainerState } from './policy';
 
 @Injectable()
 export class UpgradeRuntimeService {
+  constructor(private readonly gitlabPreflight: GitlabPreflightService) {}
   private control(session: UpgradeSession) {
     return {
       command: (args: string[], timeout: number) =>
@@ -82,10 +84,9 @@ export class UpgradeRuntimeService {
     session.verifyMounts(gitlab);
     if (!gitlab.State?.Running || gitlab.State?.OOMKilled)
       throw Error('upgrade-running-gitlab-required');
-    const raw = session.docker(['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-'], {
-      input: fs.readFileSync(path.join(GITLAB, 'upgrade-preflight.rb'), 'utf8'),
+    const proof = await this.gitlabPreflight.probe(gitlab.Id!, {
+      command: (args, timeout) => session.docker(args, { timeout: timeout * 1000 }),
     });
-    const proof = parseRecord(raw.split('\n').at(-1) || '');
     if (proof.version !== version || proof.edition !== 'CE')
       throw Object.assign(Error('upgrade-preflight-identity-mismatch'), { noRetry: true });
     if (

@@ -5,6 +5,14 @@ const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.exam
 const base={sourceRevision:'a'.repeat(40),evidence:'/state/evidence.json',stateDir:'/state',persistentDir:'/operator/platform',checkpointDir:'/state/gitlab-upgrades/test',readyTimeoutSeconds:600};
 const ids={old:'sha256:'+'b'.repeat(64),next:'sha256:'+'c'.repeat(64)};
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
+function nativeProof(args, proof={}) {
+  const value={version:release.toVersion,edition:'CE',runningJobs:0,unfinishedBackgroundMigrations:0,...proof};
+  if(args.includes('dpkg-query'))return `gitlab-${value.edition.toLowerCase()}\t${value.version}-${value.edition.toLowerCase()}.0\tinstalled\n`;
+  if(args.includes('/opt/gitlab/embedded/service/gitlab-rails/VERSION'))return value.version;
+  if(args.includes('/var/opt/gitlab/gitlab-rails/etc/database.yml'))return value.topology??'production:\n  main: &db\n    adapter: postgresql\n    database: gitlabhq_production\n    host: /var/opt/gitlab/postgresql\n  ci:\n    <<: *db\n    database_tasks: false\n';
+  if(args.includes('gitlab-psql'))return String(args.some(arg=>arg.includes('p_ci_builds'))?value.runningJobs:value.unfinishedBackgroundMigrations);
+  throw Error('Unexpected native probe command');
+}
 (async()=>{try{
   assert.equal(release.toVersion,'19.6.1');assert.equal(release.fromVersion,'19.5.3');
   assert.equal(release.runner.fromVersion,'19.5.1');assert.equal(release.runner.toVersion,'19.6.0');
@@ -30,7 +38,7 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
   const images=new Upgrade(base,{run:()=>JSON.stringify([{Id:ids.next,RepoDigests:[release.toImage]}])});assert.equal(images.image(release.toImage),ids.next);
   const wrong=new Upgrade(base,{run:()=>JSON.stringify([{Id:ids.next,RepoDigests:[]}])});assert.throws(()=>wrong.image(release.toImage),/pin-mismatch/);
   const candidate=new Upgrade(base,{run:()=>JSON.stringify([{Id:ids.next}]),imageIds:{[release.toImage]:ids.next}});assert.equal(candidate.image(release.toImage),ids.next,'Only the isolated adapter supplies archive-verified image IDs.');
-  const running={Image:ids.next,State:{Status:'running',Running:true,ExitCode:0}};
+  const running={Id:'a'.repeat(64),Image:ids.next,State:{Status:'running',Running:true,ExitCode:0}};
   for(const reason of ['upgrade-persistent-mount-mismatch','upgrade-owned-gitlab-required']){
     const ready=new Upgrade(base,{sleep:async()=>{assert.fail('Identity failures must not retry.');}});
     ready.inspect=()=>running;ready.docker=()=> '';ready.preflight=async()=>{throw Error(reason);};
@@ -38,7 +46,7 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
   }
   for(const patch of [{version:release.fromVersion},{edition:'EE'}]){
     const ready=new Upgrade(base);ready.inspect=()=>running;ready.verifyMounts=()=>{};
-    ready.docker=()=>JSON.stringify({version:release.toVersion,edition:'CE',runningJobs:0,unfinishedBackgroundMigrations:0,...patch});
+    ready.docker=args=>nativeProof(args,patch);
     await assert.rejects(()=>ready.preflight(release.toVersion),error=>error.message==='upgrade-preflight-identity-mismatch'&&error.noRetry===true);
   }
   for(const [container,reason]of [
@@ -82,14 +90,14 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
         if(scenario==='probe-error')throw failure;
         return scenario==='probe-output'?'unexpected-output':'';
       }
-      if(args.includes('gitlab-rails'))return scenario==='preflight-json'?'not-json':JSON.stringify({version:release.toVersion,edition:'CE',runningJobs:0,unfinishedBackgroundMigrations:'0'});
+      if(['dpkg-query','cat','gitlab-psql'].some(binary=>args.includes(binary)))return nativeProof(args,scenario==='preflight-json'?{topology:'production: ['}:{runningJobs:'invalid'});
       assert(args.includes('db:migrate:status'));
       if(scenario==='rake-error')throw failure;
       return scenario==='rake-output'?'invalid status output':'up 123 fixture';
     };
     await assert.rejects(()=>ready.ready(release.toVersion,ids.next),error=>{
       if(scenario.endsWith('-error'))assert.equal(error,failure);
-      else if(scenario==='preflight-json')assert(error instanceof SyntaxError);
+      else if(scenario==='preflight-json')assert.equal(error.message,'gitlab-database-topology-invalid');
       else assert.equal(error.message,{'preflight-counts':'upgrade-preflight-refused','rake-output':'upgrade-migration-status-invalid','probe-output':'upgrade-readiness-response-invalid'}[scenario]);
       return true;
     });assert.equal(sleeps,0);
@@ -100,13 +108,30 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
     ready.inspect=()=>running;ready.verifyMounts=()=>{};
     ready.docker=args=>{
       if(args.includes('curl')){if(scenario==='http-pending'&&sleeps===0)throw Object.assign(Error('curl-not-ready'),{exitCode:22});return '';}
-      if(args.includes('gitlab-rails')){preflights++;return JSON.stringify({version:release.toVersion,edition:'CE',
+      if(['dpkg-query','cat','gitlab-psql'].some(binary=>args.includes(binary))){if(args.includes('dpkg-query'))preflights++;return nativeProof(args,{
         runningJobs:scenario==='jobs-active'&&preflights===1?1:0,unfinishedBackgroundMigrations:scenario==='background-migrations'&&preflights===1?1:0});}
       assert(args.includes('db:migrate:status'));rakes++;
       return scenario==='database-migrations'&&rakes===1?'down 123 fixture':'up 123 fixture';
     };
     await ready.ready(release.toVersion,ids.next);assert.equal(sleeps,1,'Explicit startup/migration states remain retryable.');
   }
+  const {GitlabPreflightService}=require('../../operations/dist/gitlab-preflight/gitlab-preflight.service');
+  const probe=new GitlabPreflightService(), probeCommands=[];
+  const topology='production:\n  main: &db\n    adapter: postgresql\n    database: main_data\n    host: /var/opt/gitlab/postgresql\n  ci:\n    <<: *db\n    database: ci_data\n    database_tasks: false\n';
+  const proof=await probe.probe(running.Id,{command(args,timeout){
+    assert.equal(args[1],running.Id);assert.equal(timeout,60);assert(!args.includes('gitlab-rails')&&!args.includes('/bin/sh'));
+    if(args.includes('gitlab-psql')){probeCommands.push(args);assert(args.includes('--no-password'));assert(args.includes('--set=ON_ERROR_STOP=1'));assert.match(args[args.indexOf('--command')+1],/^BEGIN READ ONLY; SELECT COUNT\(\*\)/);return args.some(value=>value.includes('p_ci_builds'))?'3':args.includes('main_data')?'2':'4';}
+    return nativeProof(args,{topology});
+  }});
+  assert.equal(proof.runningJobs,3);assert.equal(proof.unfinishedBackgroundMigrations,6);assert.equal(probeCommands.length,3);
+  for(const args of probeCommands.filter(args=>!args.some(value=>value.includes('p_ci_builds'))))assert(args.some(value=>value.includes('status NOT IN (3, 6)')));
+  const jobsQuery=probeCommands.find(args=>args.some(value=>value.includes('p_ci_builds')));assert(jobsQuery.includes('ci_data'));
+  for(const term of ["type = 'Ci::Build'","'preparing'","'running'","'canceling'"])assert(jobsQuery.some(value=>value.includes(term)));
+  for(const malformed of ['production: {}','production: <%= secret %>',topology.replace('adapter: postgresql','adapter: mysql'),topology.replace('database: ci_data','database: "x; SELECT secret"'),topology.replace('host: /var/opt/gitlab/postgresql','host: --option'),topology.replace('database: ci_data','database: ci_data\n    replica: true')]){
+    await assert.rejects(()=>probe.probe(running.Id,{command:args=>nativeProof(args,{topology:malformed})}),/gitlab-database-topology-invalid/);
+  }
+  for(const invalid of ['-1','1.5','NaN','9007199254740992','0\nsecret'])await assert.rejects(()=>probe.probe(running.Id,{command:args=>nativeProof(args,{runningJobs:invalid})}),/upgrade-preflight-refused/);
+  await assert.rejects(()=>probe.probe('system_gitlab_1',{command(){assert.fail('Mutable name must not execute');}}),/container-identity/);
   const planEngine=new Upgrade(base);let entered=false,unlocked=false;
   planEngine.lock=()=>{};planEngine.unlock=()=>{unlocked=true;};planEngine.syncIdle=()=>{};planEngine.plan=async()=>({planSha256:'d'.repeat(64)});planEngine.migrate=async()=>{entered=true;};
   await assert.rejects(()=>planEngine.promote('e'.repeat(64)),/reviewed-plan/);assert(!entered);assert(unlocked);

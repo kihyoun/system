@@ -26,7 +26,7 @@ uncertain migration, adopt a live owner, or remove another operation's barriers.
 The native `gitlab/upgrade-child.js` watchdog remains a separate process so it
 can finish or terminate an owned process group even if the invoking controller
 helper dies. Process arguments, environment and output are never included in
-public errors. The Ruby preflight remains the GitLab-native database adapter;
+public errors. The shared `GitlabPreflightService` reads package identity and generated database topology, then uses native `gitlab-psql` read-only transactions for every configured primary database and CI jobs;
 shell configuration loading and in-container service commands retain their
 external format boundaries.
 
@@ -50,3 +50,22 @@ restore, bounded input handling, Nest wiring, ownership and native child-group
 recovery. They do not run a GitLab database migration. The existing disposable
 candidate migration/registry/cold-restore gate remains the end-to-end acceptance
 boundary described in `gitlab/UPGRADE.md`.
+
+The shared preflight is also available as
+`node operations/dist/gitlab-preflight/entry.js FULL_CONTAINER_ID` for read-only
+maintenance checks. Use the full inspected ID of the owned, running GitLab
+container. The result contains only version, edition and counts. It is evidence
+at that instant, not a lease or permission to mutate the platform.
+
+The probe parses GitLab's generated `database.yml` with bounded YAML aliases;
+it requires explicit PostgreSQL `main` and `ci` entries and queries each distinct
+primary database. `database_tasks: false` does not exclude a live CI connection.
+Dynamic configuration commands, ERB, unsupported topology, missing tables,
+authentication failures and malformed counts fail closed. Native `gitlab-psql`
+must reach the selected databases without an interactive password prompt; the
+probe does not export database passwords or mint API credentials. It counts
+`Ci::Build` rows in `p_ci_builds` with preparing, running or canceling status;
+unclaimed and completed jobs are excluded. Migration status follows GitLab's
+[documented unfinished migration query](https://docs.gitlab.com/update/background_migrations/).
+Upgrade and promotion callers supply their existing guarded command port, so
+preflight does not create a competing lease or process-ownership protocol.

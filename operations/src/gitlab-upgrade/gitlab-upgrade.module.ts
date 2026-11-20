@@ -1,3 +1,4 @@
+import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
 import { UPGRADE_PROCESS, NativeUpgradeProcess } from './native-process';
 import { Module } from '@nestjs/common';
 import { GitLabUpgradeService } from './gitlab-upgrade.service';
@@ -7,6 +8,7 @@ import { UpgradeRunnerService } from './runner.service';
 import { UpgradeCheckpointService } from './checkpoint.service';
 import { UpgradeWorkflowService } from './workflow.service';
 @Module({
+  imports: [GitlabPreflightModule],
   providers: [
     { provide: UPGRADE_PROCESS, useClass: NativeUpgradeProcess },
     GitLabUpgradeService,
