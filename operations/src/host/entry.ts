@@ -34,12 +34,24 @@ import {
   type InstallOptions,
 } from './install';
 
+let retainedContext:
+  | Promise<Awaited<ReturnType<typeof import('@nestjs/core').NestFactory.createApplicationContext>>>
+  | undefined;
+export async function closeCompatibilityContext() {
+  if (retainedContext) await (await retainedContext).close();
+  retainedContext = undefined;
+}
+
 /** Fixed compatibility RPC; pure decisions avoid unnecessary Nest startup. */
-export async function compatibility(input: {
-  operation: string;
-  arguments: unknown[];
-  deadline?: number;
-}) {
+export async function compatibility(
+  input: {
+    operation: string;
+    arguments: unknown[];
+    deadline?: number;
+    environment?: NodeJS.ProcessEnv;
+  },
+  retain = false,
+) {
   const args = input.arguments;
   switch (input.operation) {
     case 'releaseInstalledSource':
@@ -92,17 +104,21 @@ export async function compatibility(input: {
     case 'writePrivate':
       return writePrivate(String(args[0]), Buffer.from(String(args[1]), 'base64'));
   }
-  const { NestFactory } = await import('@nestjs/core');
-  const { HostModule } = await import('./host.module.js');
-  const app = await NestFactory.createApplicationContext(
-    HostModule.register({
-      deadline: input.deadline,
-      lifecycleEvidence: require('../../../gitlab/guided-preview-evidence'),
-    }),
-    { logger: false },
-  );
+  const create = async () => {
+    const { NestFactory } = await import('@nestjs/core');
+    const { HostModule } = await import('./host.module.js');
+    return NestFactory.createApplicationContext(
+      HostModule.register({
+        lifecycleEvidence: require('../../../gitlab/guided-preview-evidence'),
+      }),
+      { logger: false },
+    );
+  };
+  const app = await (retain ? (retainedContext ??= create()) : create());
   try {
     const host = app.get(HostInstallService);
+    host.deadline = input.deadline;
+    host.environment = input.environment ?? process.env;
     switch (input.operation) {
       case 'refreshRecoveryManifest':
         return app
@@ -181,7 +197,7 @@ export async function compatibility(input: {
         throw Error('unknown-host-operation');
     }
   } finally {
-    await app.close();
+    if (!retain) await app.close();
   }
 }
 export function installArguments(argv: string[]): InstallOptions {
@@ -212,7 +228,10 @@ export function installArguments(argv: string[]): InstallOptions {
 }
 export async function hostMain(): Promise<void> {
   try {
-    if (process.argv[2] === '--compatibility') {
+    if (process.argv[2] === '--worker') {
+      const { compatibilityWorker } = await import('./compatibility-worker.js');
+      await compatibilityWorker();
+    } else if (process.argv[2] === '--compatibility') {
       const result = await compatibility(JSON.parse(fs.readFileSync(0, 'utf8')));
       process.stdout.write(JSON.stringify({ value: result ?? null }) + '\n');
     } else if (process.argv.includes('--help')) {

@@ -25,15 +25,19 @@ class ReleaseError(RuntimeError):
 
 
 def invoke(operation, *arguments, deadline=None):
-    result = subprocess.run([NODE, str(ENTRY), '--compatibility'],
-                            input=json.dumps({'operation': operation, 'arguments': arguments, **({'deadline': deadline} if deadline is not None else {})}, default=str),
-                            capture_output=True, text=True)
+    import importlib.util
+    name = '_system_host_rpc'
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name('host_rpc.py'))
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
     try:
-        value = json.loads(result.stdout)
-    except ValueError:
+        value = sys.modules[name].invoke(NODE, ENTRY, operation, arguments, deadline)
+    except Exception:
         raise ReleaseError('compiled-host-operations-runtime-required') from None
-    if result.returncode or 'error' in value:
-        raise ReleaseError(value.get('error', 'host-operation-failed'))
+    if 'error' in value:
+        raise ReleaseError(value['error'])
     return value['value']
 
 

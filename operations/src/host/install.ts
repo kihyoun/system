@@ -281,10 +281,10 @@ export function initializationGuard(directory: string): () => void {
 export class HostInstallService {
   constructor(
     readonly runner: ProcessRunner = nativeProcess,
-    readonly environment: NodeJS.ProcessEnv = process.env,
+    public environment: NodeJS.ProcessEnv = process.env,
     readonly guard: () => () => void = () => initializationGuard('/run/system-bootstrapper'),
     readonly rootUser = () => process.geteuid?.() === 0,
-    readonly deadline?: number,
+    public deadline?: number,
   ) {}
   run(binary: string, args: string[], environment?: NodeJS.ProcessEnv, timeout = 300000): string {
     const env: NodeJS.ProcessEnv = {
