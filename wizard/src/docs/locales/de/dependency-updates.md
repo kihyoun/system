@@ -5,13 +5,13 @@ Docker-Runner-Pool. Sein geprüftes stabiles Image `44.222.5-full` ist per Diges
 in `.gitlab-ci.yml` festgelegt; aktualisieren Sie es wie andere Abhängigkeiten durch Review.
 Ein dauerhafter Botdienst besteht nicht. Die [Repository-Konfiguration](../renovate.json)
 und [Selbsthosting-Konfiguration](../gitlab/renovate/config.cjs) wählen ausschließlich die
-zwei vom Betreiber angegebenen System- und Wizard-Quellprojekte, niemals GitHub-Spiegel
-oder automatische Projektentdeckung.
+vom Betreiber angegebene System-Quellprojekt einschließlich des eingebetteten Wizards,
+niemals GitHub-Spiegel oder automatische Projektentdeckung.
 
 ## Einrichtung durch den Betreiber
 
-Verwenden Sie einen geprüften Checkout, nachdem die Konfiguration in die geschützten
-Standardbranches beider Projekte gemergt wurde. Python 3 mit normalem HTTPS-CA-Vertrauen
+Verwenden Sie einen geprüften Checkout, nachdem die Konfiguration in den geschützten
+Standardbranch des System-Projekts gemergt wurde. Python 3 mit normalem HTTPS-CA-Vertrauen
 genügt. Halten Sie ein GitLab-Administrator-API-Token in einer Datei mit Modus 0600
 außerhalb des Checkouts. Es wird nur durch den Provisionierungsbefehl des Betreibers
 verwendet und gelangt nie in CI. Nutzen Sie eine echte, vom Betreiber kontrollierte
@@ -25,17 +25,24 @@ Erstellen Sie außerhalb des Checkouts eine JSON-Eingabe mit Modus 0600, beispie
   "admin_token_file": "/secure/operator/gitlab-admin-token",
   "username": "dependency-bot",
   "email": "dependency-bot@example.com",
-  "project_ids": [10, 11],
+  "project_ids": [10],
   "state_file": "/secure/operator/renovate-state.json",
   "cron": "0 4 * * 1",
   "timezone": "UTC"
 }
 ```
 
-Ersetzen Sie alle Werte: System steht zuerst, Wizard an zweiter Stelle. Die Namespace-
-Pfade werden aus diesen IDs ermittelt. Das Werkzeug weist ein unbekanntes Konto,
+Ersetzen Sie alle Werte und wählen Sie die ID des System-Projekts. Sein Namespace-Pfad
+wird aus dieser ID ermittelt. Bestehende Installationen dürfen ein zweites, bisheriges
+Wizard-Projekt ausgewählt lassen, bis sie dieses getrennte Repository bewusst stilllegen.
+Bewahren Sie das ursprüngliche private Eigentumsjournal zusammen mit seiner Projektauswahl
+auf: Eine geänderte Auswahl bindet den Bot nicht stillschweigend neu und entfernt keine
+Mitgliedschaften. Ein neuer Bot ausschließlich für das Monorepo kann mit einem anderen
+Benutzernamen und einer eigenen privaten Zustandsdatei eingerichtet werden. Pausieren Sie
+zuerst den alten Zeitplan und prüfen Sie ausstehende Vorschläge, bevor Sie dessen Zugriff
+aufheben. Das Werkzeug weist ein unbekanntes Konto,
 Administratoridentität, fremde Mitgliedschaften/Tokens oder Developer-Push-Zugriff auf
-einen der beiden geschützten Standardbranches zurück. Ein privates Eigentumsjournal
+einen der ausgewählten geschützten Standardbranches zurück. Ein privates Eigentumsjournal
 bindet die Benutzer-ID des Bots an Endpunkt, Benutzername, private E-Mail-Adresse und
 Projektauswahl. Vor der Kontoerstellung speichert es eine zufällige Nonce, die auch in
 der ausschließlich für Administratoren sichtbaren Benutzernotiz hinterlegt wird,
@@ -44,8 +51,8 @@ damit eine unterbrochene Erstellung sicher fortgesetzt werden kann. Ein überein
 werden Identität, Einschränkungen, Mitgliedschaften und Tokens vor jeglichen schreibenden
 API-Zugriffen auf diesen Benutzer geprüft. Der Bot erhält ein zufälliges unbekanntes
 Passwort ohne E-Mail zum Zurücksetzen; für Vorgänge verwendet er sein PAT. Schützen Sie
-beide Standardbranches vor Developer-Pushes. Das dedizierte Konto hat nur Developer-
-Mitgliedschaften in diesen zwei Projekten, keine Gruppenmitgliedschaft, Gruppenerstellung oder Erlaubnis für persönliche
+die ausgewählten Standardbranches vor Developer-Pushes. Das dedizierte Konto hat nur Developer-
+Mitgliedschaften in den ausgewählten Projekten, keine Gruppenmitgliedschaft, Gruppenerstellung oder Erlaubnis für persönliche
 Projekte. Es verwendet ein persönliches Zugriffstoken mit `api`, erforderlich für private
 Repository-Branches, MRs und Dashboard-Issues. Projektmitgliedschaft begrenzt dessen
 Projektzugriff; es ist kein Administratortoken.
@@ -58,7 +65,7 @@ python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply
 Der erste Aufruf prüft private Dateibehandlung ohne API-Änderungen. Der zweite gleicht
 Konto, Developer-Mitgliedschaften, geschützte CI-Variablen und einen **pausierten**
 wöchentlichen Zeitplan ab. `RENOVATE_TOKEN` ist geschützt und maskiert;
-`RENOVATE_REPOSITORIES` ist geschützt und enthält nur die zwei expliziten Pfade.
+`RENOVATE_REPOSITORIES` ist geschützt und enthält nur die ausdrücklich ausgewählten Pfade.
 Der Zeitplan nutzt den geschützten System-Standardbranch mit `RENOVATE_ENABLED=true`.
 Der provisionierende Betreiber übernimmt den Zeitplan und muss Pipelines auf diesem
 Branch ausführen dürfen; ein Developer-Bot erhält keine Merge-/Push-Rechte auf geschützte
@@ -72,7 +79,7 @@ python3 gitlab/renovate/verify.py --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json
 ```
 
-Aktivieren Sie den Zeitplan nach Prüfung beider Repository-Konfigurationen:
+Aktivieren Sie den Zeitplan nach Prüfung der ausgewählten Repository-Konfiguration:
 
 ```sh
 python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply --enable
@@ -95,7 +102,7 @@ Der erste Lauf erstellt oder aktualisiert in jedem Quellprojekt ein Dependency D
 und Lockfilepflege: **Vor Dashboard-Freigabe entsteht kein Update-Branch oder MR**.
 Prüfen Sie, dass der erste Lauf nur diese Dashboards und keinen neuen Branch/MR unter
 `renovate/` erzeugt. Prüfen Sie nach dem ersten erfolgreichen eigenen Zeitplanlauf
-beide Dashboards, unveränderte Branch-/MR-Bestände und dass die geplante Pipeline
+die Dashboards der ausgewählten Projekte, unveränderte Branch-/MR-Bestände und dass die geplante Pipeline
 nur den erfolgreichen Botjob enthielt:
 
 ```sh
@@ -116,8 +123,10 @@ benötigt Freigabe. Native Dockerfile-, Compose- und GitLab-CI-Manager erfassen 
 Referenzen; eng begrenzte Regex-Manager erfassen den Pin `ARG IMAGE=node:...@sha256:...`
 in `system/Dockerfile`, den Docker-CLI-Standard für die Runner-Registrierung und die
 aktuellen BuildKit-Treiber-Pins für Wizard-Build/-Prüfung. Gruppierung erfolgt pro Repository,
-nicht als projektübergreifende Transaktion. Maintainer bündeln akzeptierte Wizard-
-Änderungen mit dem System-Gitlink und weiteren vereinbarten Änderungen in einem geprüften System-Kandidaten.
+nicht als projektübergreifende Transaktion. Die npm-Manifeste und Lockfiles des eingebetteten
+Wizards werden gemeinsam mit Sync und dem Operations-CLI erfasst. Maintainer bündeln
+freigegebene Aktualisierungen und weitere vereinbarte Änderungen in einem geprüften
+System-Kandidaten; ein separater Wizard-Gitlink muss nicht mehr aktualisiert werden.
 
 Updates bleiben auf stabile Versionen begrenzt; Node und Docker behalten geprüfte Hauptversionslinien.
 GitLab-, Runner- und Helper-Image-Updates sind in gewöhnlichen Botregeln bewusst deaktiviert.
@@ -143,7 +152,7 @@ Er speichert das neue Token privat, aktualisiert die geschützte Variable und wi
 anschließend veraltete, von diesem Werkzeug verwaltete Tokens. Wiederholen Sie ihn nach
 einer Unterbrechung; fremde Tokens werden nicht widerrufen. Bei Fehlern gibt er keine
 geheimnishaltigen API-Antworttexte aus. Prüfen Sie den nächsten Lauf des Zeitplans und
-bestätigen Sie, dass der nächste Lauf beide Dashboards aktualisiert.
+bestätigen Sie, dass der nächste Lauf die Dashboards der ausgewählten Projekte aktualisiert.
 
 Ein normaler Hostwechsel mit erhaltenen GitLab-Daten oder passendem vollständigem Seed
 stellt GitLabs datenbankgestützte Konten, Mitgliedschaften, geschützte Variablen,
@@ -172,7 +181,7 @@ Kontoeigenschaften werden vor schreibenden API-Zugriffen zurückgewiesen. Der Vo
 ein neues privates Eigentumsjournal an und rotiert das Token, bevor er veraltete eigene
 Tokens widerruft. Erfassen Sie einen neuen Ausgangsbestand für den ersten Lauf und
 aktivieren Sie nach Prüfung. Ein Konto wird niemals allein anhand seines Namens übernommen.
-Eine frische leere GitLab-Instanz benötigt ihre zwei Quellprojekte, geschützten
+Eine frische leere GitLab-Instanz benötigt ihre ausgewählten Quellprojekte, geschützten
 Branches, dedizierte Identität, Mitgliedschaften, Token-Variablen und den Zeitplan erneut;
 numerische IDs können sich ändern. Ein abgelaufenes/widerrufenes Token bleibt auch nach
 Datenbankwiederherstellung unbrauchbar. Verwenden Sie nie ein aktuelles Administratortoken
@@ -194,10 +203,12 @@ docker run --rm --network none --entrypoint node \
 Sie verwendet erfundene Abhängigkeiten und eine Plattform im Arbeitsspeicher, niemals
 echte Zugangsdaten oder Repositorys. Sie prüft Regelzuordnung, Gruppierung, die Sperre
 nicht genehmigter Branches und Dashboard-Ausgaben der echten Engine. Validieren Sie
-beide Konfigurationen außerdem mit
-`renovate-config-validator --strict --no-global renovate.json wizard/renovate.json` aus diesem Image.
-Nach dem Merge prüfen Betreiber die erste echte Erkennung getrennt: Nur
-`renovate:discover` wird gewählt, beide Dashboards existieren und Branch-/MR-Bestände
+die aktive Richtlinie im Repository-Stamm außerdem mit
+`renovate-config-validator --strict --no-global renovate.json` aus diesem Image. Die
+verschachtelte Wizard-Konfiguration bleibt für bisherige eigenständige Checkouts erhalten;
+das System-Monorepo verwendet seine Richtlinie im Stammverzeichnis. Nach dem Merge prüfen
+Betreiber die erste echte Erkennung getrennt: Nur `renovate:discover` wird gewählt, die
+Dashboards der ausgewählten Projekte existieren und Branch-/MR-Bestände
 bleiben bis zur ausdrücklichen Freigabe unverändert.
 
 Upstream-Referenzen: [GitLab-Plattform](https://docs.renovatebot.com/modules/platform/gitlab/),
