@@ -1,110 +1,77 @@
-# Review the bundled Wizard before System promotion
+# Optional Wizard Beta from the System candidate
 
-When a System change pins a new Wizard gitlink, the System pipeline can expose
-that exact Wizard on the existing managed Review HTTPS host. This is a UI
-acceptance step before Production promotion. It neither migrates Production nor
-proves the entire platform safe by displaying a working page.
+System and Wizard share one repository. The optional Wizard Beta uses a fixed
+HTTPS address and the exact Wizard image of an accepted System candidate. It
+starts no extra build or complete platform pipeline. Production promotion is a
+separate, deliberate operation. Ordinary application projects retain Review,
+Beta and Production; an isolated platform test is a disposable verification
+installation, not a permanent Beta platform.
 
-The optional `deploy:wizard-review` and `stop:wizard-review` jobs reuse the two
-immutable images already built and published by `test:platform-candidate`.
-No second Wizard pipeline or additional build is required. All required System
-checks remain required. The Review job runs from the proposed System checkout;
-the Production controller does not need to be upgraded first.
+## Configure and bind
 
-## Prerequisites
+Import or fork the complete System repository into your private GitLab namespace
+using GitLab's normal repository workflow. Keep the default branch protected,
+required pipeline and discussion gates enabled, and the root CI configuration.
+Configure a permitted Docker runner. In the Wizard choose Configure System Beta,
+select that existing shared source project and an optional exact HTTPS Beta host
+with certificate and key paths under /ssl. No Review host is required. Preflight
+checks the source tree, DNS and certificate; confirmation reserves settings only.
+It does not create projects, start pipelines or modify Production.
 
-Use a trusted same-project MR against the protected default branch, with the
-normal successful-pipeline and resolved-discussion merge gates enabled. The
-full candidate, browser and component checks must succeed before managed Deploy.
-Provision the existing [Wizard Review environment](../project-bootstrap/wizard-environments/README.md),
-including its exact host, DNS, certificate, templates and SSL volumes. Stop and
-reconcile any existing Review lease before assigning the shared host. Beta and
-the canonical native Wizard delivery reservation remain unchanged.
-
-Set these non-secret project variables, raw and unprotected with environment
-scope `*`, so same-project MR jobs can read them:
-
-| Variable | Value |
-| --- | --- |
-| `SYSTEM_REVIEW_ENABLED` | `true` |
-| `SYSTEM_REVIEW_OPERATION` | The existing server-owned environment reservation's 48 hex characters |
-| `WIZARD_REVIEW_HOST` | Its exact enabled Review HTTPS host |
-
-Fork pipelines, ordinary branch pushes and documentation-only changes do not
-create these jobs. The variables select jobs and display their URL; they do not
-authorize arbitrary projects or images.
-
-## Bind one candidate explicitly
-
-After the candidate job succeeds, read its `test-results/successor/release.json`.
-Prepare a private input file on the administration host. Replace every example
-with values from the actual project, MR and release artifact:
-
-```json
-{
-  "operation": "REPLACE_WITH_EXISTING_48_HEX_RESERVATION",
-  "projectId": 42,
-  "projectPath": "example/system",
-  "namespaceId": 7,
-  "defaultBranch": "master",
-  "mrIid": 12,
-  "pipelineId": 100,
-  "sourceCommit": "REPLACE_WITH_40_HEX_SYSTEM_REVISION",
-  "candidateJobId": 300,
-  "helperImage": "sha256:REPLACE_WITH_64_HEX_RELEASE_IMAGE_ID",
-  "wizardImageId": "sha256:REPLACE_WITH_64_HEX_WIZARD_IMAGE_ID",
-  "wizardImageRef": "registry.example.test/example/system/successor-wizard@sha256:REPLACE_WITH_64_HEX_DIGEST",
-  "wizardRevision": "REPLACE_WITH_40_HEX_WIZARD_GITLINK"
-}
-```
-
-Use `helperImage = release.imageId` and the matching Wizard fields. Pull the
-release's controller registry reference with separately managed operator access,
-then verify its local image ID. Retain this image while the environment exists,
-including for Stop after artifact expiry. Keep credentials outside the checkout
-and do not pass them to the helper.
-
-With the input saved mode `0600` at an absolute operator-supplied path:
+After the System candidate has passed all required checks, use the repository
+operator tool with a private JSON input file. The input supplies operation,
+projectId, projectPath, namespaceId, defaultBranch, pipelineId, candidateJobId,
+sourceCommit, wizardSourceTree, helperImage, wizardImageId and wizardImageRef.
+Use exact values from the accepted candidate release metadata and the configured
+reservation. The source commit identifies the shared repository; the Wizard tree
+identifies its committed subdirectory. Retain the helper image for Stop.
 
 ```sh
-docker run --rm --network none --read-only --memory 256m --cpus 1 --pids-limit 128 \
-  --tmpfs /tmp:rw,nosuid,noexec,size=16m \
-  --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
-  --mount type=bind,source=/PRIVATE/ABSOLUTE/candidate.json,target=/input.json,readonly \
-  --entrypoint node sha256:EXACT_RELEASE_IMAGE_ID \
-  /system/project-bootstrap/system-review/bind.js plan /input.json
+node project-bootstrap/system-beta/bind.js plan /state/beta-input.json
+node project-bootstrap/system-beta/bind.js apply /state/beta-input.json PLAN_HASH
 ```
 
-Review the returned plan, including project/MR/pipeline/source, both images and
-the existing reservation. Repeat the command with `apply /input.json PLAN_HASH`
-to store the exact selection under the canonical controller's configuration
-directory. The tool uses the existing environment mutex and rejects changed
-plans, occupied leases or configuration races. It retains previous binding
-records privately. It does not change routes, the source-primary CI manifest,
-Production image selectors or service data.
+Inspect the plan before applying its exact hash. Set the native project variables
+SYSTEM_BETA_OPERATION and WIZARD_BETA_HOST to the reservation's operation and
+exact host. Deploy and Stop are explicit manual System pipeline jobs. They reuse
+the existing release artifact and immutable images; verification checks project,
+job, candidate pipeline, shared source tree, image identities, storage/upgrade
+acceptance and browser cleanup before routing. No arbitrary image endpoint is
+provided. Stop remains available when build artifacts expire.
 
-## Deploy, inspect and stop
+## Existing installations and recovery
 
-Run the manual `deploy:wizard-review` job in that same MR pipeline and open its
-GitLab Environment URL. The helper verifies the actual running job, current MR
-head and newest MR pipeline, required successful jobs, frozen candidate evidence,
-System gitlink and exact local source/job/image labels independently through
-canonical GitLab. Job-scoped registry credentials only preload the two images;
-they never enter the helper, configuration receipt or candidate container.
+Old configuration JSON/ZIP files remain readable and inert. Opening or fetching
+a backup never creates projects or deployments. Old desired preview settings
+remain version 1 until the user explicitly selects Configure System Beta. Review
+values are not repurposed as Beta hosts. Existing repository identities, managed
+source receipts, user edits and import history remain retained.
 
-The existing managed environment lifecycle handles health, DNS and certificate
-checks, an internal network, the shared Review lease, route cutover, rollback,
-generation floors, ownership and stopped-host tombstones. The candidate has no
-configuration or service-data mount. Production remains running throughout.
+New System Review deployment and binding are retired. Stop an old active Review
+with its retained original job/binding using the historical launcher in stop
+mode, then use the owned stopped-route cleanup. Inspect pending and retired
+resources before migration. Cleanup validates exact operation, project,
+generation and labels; it cannot remove Production or another project's resources.
+Do not delete bindings, receipts, generation floors or tombstones to bypass a
+conflict. Beta setup refuses active, pending, retired or uncleared stopped routes.
 
-Stop with `stop:wizard-review` from the same originating pipeline. Stop verifies
-its running job and exact retained binding, but does not require current MR
-head, downloadable candidate artifacts or registry access. A closed or merged
-MR can therefore still be cleaned up. Retain the helper image until Stop and
-owned cleanup finish. Another project, MR or pipeline cannot replace or stop
-the selected lease. Remove any separately provisioned temporary preview route
-and its exactly owned resources before managed deployment on the same host.
+```sh
+node project-bootstrap/system-review/run.js stop
+node project-bootstrap/wizard-environments/cleanup-stopped.js OPERATION
+```
 
-After personal UI acceptance, complete all required System checks and review,
-merge normally, verify the merged pipeline, and use the existing deliberate
-Production promotion procedure. Review deployment grants no Production approval.
+The Stop launcher requires the original job identity and retained helper image.
+Run it from the original authorized job; do not fabricate CI evidence. If its job
+cannot run, recover with the retained historical release tools and owned receipt.
+Bindings and histories belong to persistent controller state and must accompany
+the matching Harvest/Seed recovery. Configuration backup remains separate from
+service-data backup. Historical releases without a source layout field keep their
+separate Wizard gitlink identity; never reinterpret that commit as a shared tree.
+
+## Verification and capacity
+
+Component and candidate gates remain required. Beta binding, launcher and verifier
+fixtures cover foreign ownership, stale jobs, image/source mismatches, credential
+cleanup and expiring-artifact Stop. Compare durations and resource use from
+comparable accepted candidate runs. Removing optional Review jobs does not by
+itself shorten the isolated full platform test; no measured saving is implied.

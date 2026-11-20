@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const {execFileSync} = require('child_process');
-const {validate, safePath} = require('../wizard-source/package');
+const {validate, safePath, sourceMetadata} = require('../wizard-source/package');
 const builds = require('../wizard-build/recipe');
 const environments = require('../wizard-environments/recipe');
 const {atomic, hash, signature} = require('../wizard-production/run');
@@ -36,7 +36,7 @@ function readConfiguration(file) {
   return {text, receipt};
 }
 function sourceMarker(receipt, snapshot) {
-  return JSON.stringify({version: 1, operation: receipt.operation, sourceRevision: snapshot.sourceRevision, manifestHash: snapshot.manifestHash});
+  return JSON.stringify({version: 1, operation: receipt.operation, sourceRevision: snapshot.sourceRevision, manifestHash: snapshot.manifestHash, ...sourceMetadata(snapshot)});
 }
 function buildMarker(build, workflow) {
   return JSON.stringify({version: 1, operation: build.operation, recipeHash: build.recipeHash,
@@ -152,7 +152,7 @@ class Upgrade {
       files.push({path: entry.path, mode: row.execute_filemode ? '100755' : '100644', sha256: hash(content), content: content.toString('base64')});
     }
     files.sort((a, b) => a.path.localeCompare(b.path, 'en'));
-    return validate({version: 1, sourceRevision: workflow.sourceRevision, manifestHash: workflow.manifestHash, files});
+    return validate({version: workflow.sourceLayout ? 2 : 1, sourceRevision: workflow.sourceRevision, ...sourceMetadata(workflow), manifestHash: workflow.manifestHash, files});
   }
   operation(receipt, logo, buildOnly = false) {
     return hash(JSON.stringify(buildOnly ? {version: 1, scope: 'build-environment', registration: receipt.operation,
@@ -348,7 +348,7 @@ class Upgrade {
       const imported = buildOnly ? value.receipt.wizardWorkflow.importCommit :
         await this.exactCommit(checkpoint, 'source', prepared, actions, {path: SOURCE, content: source});
       const workflow = buildOnly ? value.receipt.wizardWorkflow :
-        {...value.receipt.wizardWorkflow, sourceRevision: this.snapshot.sourceRevision, manifestHash: this.snapshot.manifestHash, importCommit: imported};
+        {...value.receipt.wizardWorkflow, ...sourceMetadata(this.snapshot), sourceRevision: this.snapshot.sourceRevision, manifestHash: this.snapshot.manifestHash, importCommit: imported};
       const build = {version: 1, operation: value.publicPlan.operation, recipeHash: value.modern.recipeHash};
       const marker = buildMarker(build, workflow);
       const buildActions = [...value.modern.files, {path: CI, content: value.modern.ci}, {path: BUILD, content: marker}]
@@ -379,7 +379,7 @@ class Upgrade {
     const modern = builds.select(logo, checkpoint.plan.buildRecipeHash);
     const environment = {...copy(workflow.environments), helperImage: this.helperImage, buildRecipeHash: modern.recipeHash};
     const recipe = this.recipe(logo, environment); environment.recipeHash = recipe.recipeHash;
-    const importedWorkflow = buildOnly ? workflow : {...workflow, sourceRevision: this.snapshot.sourceRevision, manifestHash: this.snapshot.manifestHash, importCommit: checkpoint.commits.source};
+    const importedWorkflow = buildOnly ? workflow : {...workflow, ...sourceMetadata(this.snapshot), sourceRevision: this.snapshot.sourceRevision, manifestHash: this.snapshot.manifestHash, importCommit: checkpoint.commits.source};
     const build = {version: 1, operation, recipeHash: modern.recipeHash, activationCommit: checkpoint.commits.build};
     const head = await this.branch(receipt), prefix = this.prefix(receipt);
     const mr = await this.get(prefix + 'merge_requests/' + checkpoint.mr.iid);

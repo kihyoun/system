@@ -39,7 +39,7 @@ export function previewWizardSource() {
       message: 'The Wizard already uses its canonical source repository. Develop through native merge requests; source import is disabled.'};
   }
   const {receipt, snapshot} = context();
-  return {sourceRevision: snapshot.sourceRevision, manifestHash: snapshot.manifestHash,
+  return {...snapshotModule.sourceMetadata(snapshot), sourceRevision: snapshot.sourceRevision, manifestHash: snapshot.manifestHash,
     fileCount: snapshot.files.length, repository: receipt.repository,
     workflow: receipt.wizardWorkflow, message: 'Imports source only. Builds, Review and Production deployment remain disabled.'};
 }
@@ -55,7 +55,7 @@ export function initializeWizardSource(input: any) {
   };
   if (input?.manifestHash !== snapshot.manifestHash) { throw new Error('Preview the current Wizard source before initialization.'); }
   const workflow = receipt.wizardWorkflow || {version: 1, operation: crypto.randomBytes(24).toString('hex'),
-    sourceRevision: snapshot.sourceRevision, manifestHash: snapshot.manifestHash, phase: 'pending'};
+    ...snapshotModule.sourceMetadata(snapshot), sourceRevision: snapshot.sourceRevision, manifestHash: snapshot.manifestHash, phase: 'pending'};
   const previous = lookupJob(workflow.operation);
   if (previous?.state === 'running') { return previous; }
   return withProjectLock(workflow.operation, () => {

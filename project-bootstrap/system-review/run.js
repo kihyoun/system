@@ -6,7 +6,7 @@ const {Runtime} = require('../wizard-environments/helper');
 const {validate} = require('./binding');
 const WORK_BUDGET = 360000, CLEANUP_BUDGET = 220000;
 function request(action, env) {
-  if (!['deploy', 'stop'].includes(action)) throw new Error('Use deploy or stop.');
+  if (action !== 'stop') throw new Error('System Review was retired. Only owned legacy stop is supported.');
   return require('../wizard-environments/state').validRequest({action, kind: 'review', delivery: 'system',
     projectId: Number(env.CI_PROJECT_ID), pipelineId: Number(env.CI_PIPELINE_ID), jobId: Number(env.CI_JOB_ID),
     mrIid: Number(env.CI_MERGE_REQUEST_IID), sourceCommit: env.CI_COMMIT_SHA, operation: env.SYSTEM_REVIEW_OPERATION});
@@ -93,7 +93,7 @@ async function run(action, env = process.env, options = {}) {
   }
 }
 if (require.main === module) {
-  if (process.argv.length !== 3) { console.error('Use deploy or stop.'); process.exitCode = 2; }
+  if (process.argv.length !== 3) { console.error('System Review was retired. Only owned legacy stop is supported.'); process.exitCode = 2; }
   else run(process.argv[2]).catch(error => { console.error(error.message); process.exitCode = 1; });
 }
 module.exports = {request, run, WORK_BUDGET, CLEANUP_BUDGET};

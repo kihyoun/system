@@ -4,22 +4,8 @@ const fs = require('fs');
 const {Runtime} = require('../wizard-environments/helper');
 const {sha, environmentHash, validate} = require('./binding');
 async function plan(runtime, input) {
-  const context = await runtime.canonical('read');
-  const environment = context.receipt.wizardWorkflow.environments;
-  if (input.operation !== environment.operation) throw new Error('The selected environment reservation changed.');
-  const repository = context.receipt.repository;
-  const binding = {version: 1, ...input, operation: environment.operation,
-    wizardProjectId: repository.id, wizardProjectPath: repository.path, wizardDefaultBranch: repository.defaultBranch,
-    environmentHash: environmentHash(environment)};
-  validate(binding, context);
-  const slot = environment.deployments?.review || {};
-  if (slot.active || slot.pending || slot.retired?.length) throw new Error('Stop and reconcile the active Review before binding another candidate.');
-  const image = (await runtime.json(['image', 'inspect', binding.helperImage]))[0];
-  if (image.Id !== binding.helperImage || image.Config?.Labels?.['org.opencontainers.image.revision'] !== binding.sourceCommit ||
-      image.Config?.Labels?.['org.system-bootstrapper.test-job'] !== String(binding.candidateJobId))
-    throw new Error('The selected immutable helper is not the selected System candidate.');
-  const result = {binding, configurationHash: context.contentHash, previousBindingHash: context.systemReviewBindingHash};
-  return {...result, planHash: sha(JSON.stringify(result))};
+  throw new Error('System Review was retired. Stop owned legacy resources and select System Beta.');
+
 }
 async function main(args) {
   if (!['plan', 'apply'].includes(args[0]) || args.length !== (args[0] === 'plan' ? 2 : 3)) throw new Error('Use plan INPUT or apply INPUT PLAN_HASH.');

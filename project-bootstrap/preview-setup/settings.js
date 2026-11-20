@@ -2,7 +2,7 @@
 // Portable intent only. Instance IDs, credentials and evidence never belong here.
 function settings(input) {
   const object = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(key => keys.includes(key));
-  if (!object(input, ['version', 'namespace', 'wizard', 'system', 'review', 'beta']) || input.version !== 1 ||
+  if (!object(input, ['version', 'namespace', 'wizard', 'system', 'review', 'beta']) || ![1, 2].includes(input.version) ||
       !/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(input.namespace || '') || input.namespace.split('/').some(part => ['.', '..'].includes(part))) throw Error('Select a namespace and versioned desired preview settings.');
   const project = value => {
     if (!object(value, ['mode', 'project', 'origin']) || !['existing', 'import'].includes(value.mode) ||
@@ -24,7 +24,11 @@ function settings(input) {
         !['ssl', 'sslKey'].every(key => /^\/ssl\/[A-Za-z0-9_./-]+$/.test(value[key]) && !value[key].split('/').includes('..')))) throw Error('Use exact HTTPS hosts and certificate/key paths within /ssl.');
     return {enabled: value.enabled, host, ssl: value.ssl, sslKey: value.sslKey};
   };
-  const result = {version: 1, namespace: input.namespace, wizard: project(input.wizard), ...(input.system ? {system: project(input.system)} : {}), review: environment(input.review), beta: environment(input.beta)};
+  const result = {version: input.version, namespace: input.namespace, wizard: project(input.wizard), ...(input.system ? {system: project(input.system)} : {}), review: environment(input.review), beta: environment(input.beta)};
+  if (result.version === 2) {
+    if (result.review.enabled || result.system || result.wizard.mode !== 'existing') throw Error('Select the existing shared System project. System Review is retired; retained old settings require explicit migration.');
+    return result;
+  }
   if (!result.review.enabled || result.beta.enabled && result.review.host === result.beta.host || result.system?.project === result.wizard.project) throw Error('Enable a unique Review host and select distinct source projects. Beta is optional.');
   return result;
 }

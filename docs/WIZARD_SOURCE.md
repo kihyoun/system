@@ -1,5 +1,19 @@
 # Initialize the Wizard repository from pinned source
 
+System now includes regular Wizard sources under `wizard/`. A fresh checkout
+needs no submodule download. Wizard and Sync keep separate dependencies, tests
+and Docker images. Change both components in one System commit and merge request.
+The import commit retains the original Wizard repository as a merge parent;
+original commits, authors and historical gitlinks remain reachable. Keep the
+historical source repository and published tags available for older releases.
+
+New source snapshots use version 2 and `sourceLayout=system-monorepo-v1`, with
+`sourceRevision` identifying the System commit and `wizardSourceTree` identifying
+its Wizard tree. Historical version 1 snapshots preserve their original separate
+Wizard commit and exact manifest hashing. Packaging reads committed Git objects,
+never dirty or untracked files. Source-only legacy imports remain explicit;
+new optional Beta uses the shared System candidate instead of a separate build.
+
 This is the legacy managed-source workflow. An explicitly adopted
 [source-primary repository](../project-bootstrap/wizard-source-primary/README.md)
 develops directly through its own merge requests and does not import source.
@@ -44,10 +58,11 @@ separate explicit operations. Importing source does not promote an image.
 
 ## Build the immutable source package
 
-Initialize the pinned Wizard submodule before building the System image:
+Verify the committed source layout before building the System image. Historical
+gitlinks are initialized only when the selected commit requires them:
 
 ```sh
-git submodule update --init wizard
+node gitlab/prepare-wizard-source.js
 bash project-bootstrap/wizard-source/prepare.sh
 ```
 
@@ -56,8 +71,8 @@ image. Manual System image builds must run the same command first. The image
 build validates the generated manifest and file hashes; it fails if preparation
 was omitted. Do not commit the generated `snapshot.json`.
 
-Preparation reads Git objects at the Wizard gitlink committed in the System's
-HEAD. Dirty checkout files, untracked files and a different checked-out Wizard
+Preparation reads the regular Wizard tree or historical Wizard gitlink committed
+in the selected System HEAD. Dirty checkout files, untracked files and a different checked-out Wizard
 branch cannot change the snapshot. It preserves binary bytes and executable
 modes, rejects symlinks and nested submodules, and excludes dotenv files,
 credential file conventions, seeds, dependency directories and build outputs.

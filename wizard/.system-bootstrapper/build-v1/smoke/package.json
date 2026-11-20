@@ -1,0 +1,9 @@
+{
+  "name": "wizard-managed-browser-check",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "playwright": "1.64.1",
+    "jszip": "3.10.2"
+  }
+}

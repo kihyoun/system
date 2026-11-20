@@ -9,7 +9,9 @@ const safePath = value => typeof value === 'string' && /^[A-Za-z0-9_.@+/-]+$/.te
 const excluded = value => value.startsWith('.system-bootstrapper/build-v1/') || value !== '.system-bootstrapper/preflight.env' && value.split('/').some(part =>
   /(?:^|\.)env(?:\.|$)/i.test(part) || /^(?:node_modules|build|dist|coverage|seed|seeds|\.npmrc|\.netrc|credentials(?:\..*)?|id_rsa|id_ed25519)$/i.test(part) || /\.(?:key|pem|p12|pfx)$/i.test(part));
 function validate(snapshot) {
-  if (snapshot.version !== 1 || !/^[a-f0-9]{40}$/.test(snapshot.sourceRevision) || !Array.isArray(snapshot.files)) throw Error('Invalid Wizard source manifest.');
+  if (![1, 2].includes(snapshot.version) || !/^[a-f0-9]{40}$/.test(snapshot.sourceRevision) || !Array.isArray(snapshot.files)) throw Error('Invalid Wizard source manifest.');
+  if (snapshot.version === 1 ? snapshot.sourceLayout !== undefined || snapshot.wizardSourceTree !== undefined :
+      snapshot.sourceLayout !== 'system-monorepo-v1' || !/^[a-f0-9]{40}$/.test(snapshot.wizardSourceTree || '')) throw Error('Invalid Wizard source layout.');
   const paths = new Set();
   for (const file of snapshot.files) {
     if (!safePath(file.path) || excluded(file.path) || paths.has(file.path) || !['100644', '100755'].includes(file.mode) ||
@@ -18,6 +20,7 @@ function validate(snapshot) {
   }
   if (!paths.has('package.json') || !paths.has('src/api/Helper.tsx') || !paths.has('.gitlab-ci.yml')) throw Error('Incomplete Wizard source.');
   const manifest = {version: snapshot.version, sourceRevision: snapshot.sourceRevision,
+    ...(snapshot.version === 2 ? {sourceLayout: snapshot.sourceLayout, wizardSourceTree: snapshot.wizardSourceTree} : {}),
     files: snapshot.files.map(({path, mode, sha256}) => ({path, mode, sha256}))};
   if (hash(JSON.stringify(manifest)) !== snapshot.manifestHash) throw Error('Wizard source manifest hash mismatch.');
   return snapshot;
@@ -30,11 +33,13 @@ function pack(root) {
   };
   const entry = git(root, ['ls-tree', 'HEAD', 'wizard']).toString().trim();
   const match = /^160000 commit ([a-f0-9]{40})\twizard$/.exec(entry);
-  if (!match) throw Error('System must pin a Wizard gitlink.');
-  const sourceRevision = match[1];
-  const wizard = path.join(root, 'wizard');
+  const tree = /^040000 tree ([a-f0-9]{40})\twizard$/.exec(entry);
+  if (!match && !tree) throw Error('System must contain a committed Wizard tree or historical gitlink.');
+  const sourceRevision = tree ? git(root, ['rev-parse', 'HEAD']).toString().trim() : match[1];
+  const wizard = tree ? root : path.join(root, 'wizard');
+  const identity = tree ? {version: 2, sourceRevision, sourceLayout: 'system-monorepo-v1', wizardSourceTree: tree[1]} : {version: 1, sourceRevision};
   const files = [];
-  for (const entry of git(wizard, ['ls-tree', '-rz', sourceRevision]).toString().split('\0').filter(Boolean)) {
+  for (const entry of git(wizard, ['ls-tree', '-rz', tree ? tree[1] : sourceRevision]).toString().split('\0').filter(Boolean)) {
     const match = /^(\d+) (\w+) ([a-f0-9]{40})\t(.+)$/.exec(entry);
     if (!match || !safePath(match[4])) throw Error('Unsafe Wizard source path.');
     const [, mode, type, oid, filename] = match;
@@ -48,7 +53,7 @@ function pack(root) {
   const content = Buffer.from('SKIP_PREFLIGHT_CHECK=true\n');
   files.push({path: '.system-bootstrapper/preflight.env', mode: '100644', sha256: hash(content), content: content.toString('base64')});
   files.sort((a, b) => a.path.localeCompare(b.path, 'en'));
-  const manifest = {version: 1, sourceRevision, files: files.map(({path, mode, sha256}) => ({path, mode, sha256}))};
+  const manifest = {...identity, files: files.map(({path, mode, sha256}) => ({path, mode, sha256}))};
   return validate({...manifest, manifestHash: hash(JSON.stringify(manifest)), files});
 }
 function verifyCommitted(root, snapshot) {
@@ -61,7 +66,10 @@ function verifyCommitted(root, snapshot) {
   }
   return snapshot;
 }
-module.exports = {pack, validate, verifyCommitted, safePath, excluded};
+function sourceMetadata(snapshot) {
+  return snapshot.sourceLayout === 'system-monorepo-v1' ? {sourceLayout: snapshot.sourceLayout, wizardSourceTree: snapshot.wizardSourceTree} : {};
+}
+module.exports = {sourceMetadata, pack, validate, verifyCommitted, safePath, excluded};
 if (require.main === module) {
   const root = path.resolve(__dirname, '../..');
   const output = path.join(__dirname, 'snapshot.json');

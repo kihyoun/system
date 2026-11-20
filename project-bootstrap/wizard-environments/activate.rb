@@ -70,7 +70,7 @@ class WizardEnvironmentsAdapter
       @environment['settingsHash'] == @recipe['settingsHash'] && @environment['helperImage'] == @recipe['helperImage'] &&
       @environment['controller'] == 'system_bootstrapper_1' && @input['controller'] == 'system_bootstrapper_1'
     workflow = @input.fetch('workflow')
-    expected = JSON.generate({version: 1, operation: @input.fetch('operation'), sourceRevision: workflow.fetch('sourceRevision'), manifestHash: workflow.fetch('manifestHash')})
+    expected = JSON.generate({version: 1, operation: @input.fetch('operation'), sourceRevision: workflow.fetch('sourceRevision'), manifestHash: workflow.fetch('manifestHash')}.merge(workflow['sourceLayout'] ? {sourceLayout: workflow.fetch('sourceLayout'), wizardSourceTree: workflow.fetch('wizardSourceTree')} : {}))
     matching!('.system-bootstrapper/wizard-source.json', expected)
     build = @input.fetch('build')
     legacy = @input.fetch('legacyRecipe')
