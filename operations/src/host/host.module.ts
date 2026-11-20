@@ -1,4 +1,5 @@
 import { RuntimeVerificationService } from '../host-bootstrap/runtime-verification.service';
+import { PromotionAbortService, type PromotionAbortPort } from './promotion-abort.service';
 import {
   PublicUpgradePlanService,
   type PublicUpgradePlanPort,
@@ -34,6 +35,7 @@ import { RuntimeInspectionService } from './runtime-inspection';
 export const HOST_PUBLIC_UPGRADE_APPLY_PORT = Symbol('HOST_PUBLIC_UPGRADE_APPLY_PORT');
 export const HOST_CONTROLLER_ROLLBACK_PORT = Symbol('HOST_CONTROLLER_ROLLBACK_PORT');
 export const HOST_CONTROLLER_UPDATE_SEQUENCE_PORT = Symbol('HOST_CONTROLLER_UPDATE_SEQUENCE_PORT');
+export const HOST_PROMOTION_ABORT_PORT = Symbol('HOST_PROMOTION_ABORT_PORT');
 export const HOST_PROMOTION_SEQUENCE_PORT = Symbol('HOST_PROMOTION_SEQUENCE_PORT');
 export const HOST_COLD_MAINTENANCE_PORT = Symbol('HOST_COLD_MAINTENANCE_PORT');
 export const HOST_ATTACHED_PROCESS = Symbol('HOST_ATTACHED_PROCESS');
@@ -46,6 +48,7 @@ export interface HostModuleOptions {
   controllerRollbackPort?: ControllerRollbackPort;
   controllerUpdateSequencePort?: ControllerUpdateSequencePort;
   lifecycleEvidence?: LifecycleEvidencePort;
+  promotionAbortPort?: PromotionAbortPort;
   promotionSequencePort?: PromotionSequencePort;
   coldMaintenancePort?: ColdMaintenancePort;
   runner?: ProcessRunner;
@@ -195,6 +198,49 @@ export class HostModule {
             new ControllerUpdateSequenceService(port),
         },
         {
+          provide: HOST_PROMOTION_ABORT_PORT,
+          useValue:
+            options.promotionAbortPort ??
+            Object.fromEntries(
+              [
+                'main',
+                'checkout',
+                'image',
+                'adopt',
+                'helper',
+                'inspectOptional',
+                'inspect',
+                'command',
+                'verifyCheckpoint',
+                'bootId',
+                'runners',
+                'writeConfiguration',
+                'reload',
+                'services',
+                'mounts',
+                'routes',
+                'sync',
+                'journal',
+                'timestamp',
+                'release',
+                'compose',
+                'phase',
+                'probe',
+                'checkpoint',
+                'now',
+                'sleep',
+                'uptime',
+                'mainHash',
+              ].map((key) => [key, nativePortRequired]),
+            ),
+        },
+        {
+          provide: PromotionAbortService,
+          inject: [HOST_PROMOTION_ABORT_PORT, ColdMaintenanceService],
+          useFactory: (port: PromotionAbortPort, cold: ColdMaintenanceService) =>
+            new PromotionAbortService(port, cold),
+        },
+        {
           provide: HOST_PROMOTION_SEQUENCE_PORT,
           useValue:
             options.promotionSequencePort ??
@@ -292,6 +338,7 @@ export class HostModule {
         })),
       ],
       exports: [
+        PromotionAbortService,
         PublicUpgradePlanService,
         PublicUpgradeApplyService,
         ControllerRollbackSequenceService,

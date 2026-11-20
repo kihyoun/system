@@ -777,7 +777,8 @@ class ColdMaintenanceContracts(unittest.TestCase):
     def test_unfinished_remote_execs_fail_with_bounded_drain(self):
         self.gitlab['ExecIDs'] = ['pending-exec']
         with patch.object(promoter, 'inspect', return_value=self.gitlab), \
-             patch.object(promoter.time, 'monotonic', side_effect=[0, 1, 1000]), patch.object(promoter.time, 'sleep'):
+             patch.object(promoter, 'time') as clock:
+            clock.monotonic.side_effect = [0, 1, 1000]
             with self.assertRaisesRegex(successor.recovery.RecoveryError, 'exec-drain-timeout'):
                 self.maintenance.drain()
     def test_old_GitLab_forced_stop_is_not_a_completed_checkpoint(self):
@@ -815,6 +816,68 @@ class ColdMaintenanceContracts(unittest.TestCase):
                 with self.assertRaisesRegex(successor.recovery.RecoveryError, 'still-running'):
                     promoter.abort_promotion({'_main': main}, root)
                 mutations.assert_not_called()
+
+    def test_abort_shared_cold_paths_resume_without_database_rewind_and_retain_uncertain_lease(self):
+        from unittest.mock import Mock
+        for early, failure in ((True, None), (False, None), (False, 'compose'), (True, 'jobs')):
+            with self.subTest(early=early, failure=failure), tempfile.TemporaryDirectory() as directory:
+                self.setUp()
+                if failure == 'jobs':
+                    self.proof['runningJobs'] = 1
+                root = Path(directory)
+                raw = (ROOT / 'system/.docker.env.example').read_bytes()
+                main = root / 'main.env'
+                main.write_bytes(raw)
+                main.chmod(0o600)
+                successor.atomic_bytes(root / 'main-before.env', raw)
+                record = {'format': 'system-controller-promotion-v1', 'phase': 'cold-maintenance-started',
+                          'coldPhase': 'old-controller-freeze-started' if early else 'GitLab-services-stop-started',
+                          'leaseOperation': 'fixture', 'release': fixture()[0],
+                          'configurationBeforeSha256': hashlib.sha256(raw).hexdigest(),
+                          'configurationAfterSha256': 'f' * 64, 'oldGitLab': {'imageId': 'old-image'},
+                          'previousController': {'imageId': 'old-image', 'restartPolicy': {'Name': 'always'}}}
+                successor.atomic_json(root / 'operation.json', record)
+                config = {'_main': main, '_persistence_env': root / 'settings.env'}
+                self.rows.update(system_bootstrapper_1=self.controller, system_gitlab_1=self.gitlab, system_web_1=self.web)
+                lease = Mock()
+                def command(args, **kwargs):
+                    if args[2] == 'compose':
+                        self.commands.append(['compose'])
+                        if failure == 'compose':
+                            raise successor.recovery.RecoveryError('native-compose-uncertain')
+                        self.controller['State'].update(Running=True, Paused=False)
+                        self.gitlab['State'].update(Running=True)
+                        return b''
+                    return self.run_command(args, **kwargs)
+                with patch.object(successor, 'verify_checkout'), \
+                     patch.object(promoter, 'inspect', side_effect=lambda name: self.rows[name]), \
+                     patch.object(successor.recovery, 'inspect_image', return_value={'Id': 'old-image'}), \
+                     patch.object(successor.Lease, 'adopt', return_value=lease), \
+                     patch.object(promoter, 'run', side_effect=command), \
+                     patch.object(promoter, 'main_runner_rows', return_value=[self.runner]), \
+                     patch.object(successor, 'environment', return_value={}), \
+                     patch.object(promoter.runtime, 'settings', return_value=config), \
+                     patch.object(promoter.runtime, 'inspect_services', return_value=self.rows), \
+                     patch.object(promoter.runtime, 'verify_mounts'), \
+                     patch.object(promoter.runtime, 'verify_routes'), \
+                     patch.object(promoter.runtime, 'verify_sync'):
+                    if failure:
+                        message = 'native-compose-uncertain' if failure == 'compose' else 'new-running-jobs-refused'
+                        with self.assertRaisesRegex(successor.recovery.RecoveryError, message):
+                            promoter.abort_promotion(config, root)
+                        lease.release.assert_not_called()
+                        self.assertEqual(json.loads((root / 'operation.json').read_bytes()), record)
+                    else:
+                        promoter.abort_promotion(config, root)
+                        lease.release.assert_called_once()
+                        saved = json.loads((root / 'operation.json').read_bytes())
+                        self.assertEqual(saved['phase'], 'aborted')
+                        self.assertFalse(saved['databaseRewound'])
+                        self.assertEqual(main.read_bytes(), raw)
+                        self.assertEqual(self.controller['HostConfig']['RestartPolicy']['Name'], 'always')
+                        self.assertEqual(any(row[0] == 'compose' for row in self.commands), not early)
+                        if early:
+                            self.assertFalse(any(row[0] == 'kill' for row in self.commands))
 
     def test_abort_refuses_a_changed_GitLab_image_even_when_controller_can_be_reverted(self):
         with tempfile.TemporaryDirectory() as directory:

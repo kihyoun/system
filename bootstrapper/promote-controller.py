@@ -452,114 +452,49 @@ def controller_status(config, checkpoint):
 def abort_promotion(config, checkpoint, timeout=1200):
     checkpoint = Path(checkpoint)
     record = json.loads(successor.private_input(checkpoint / 'operation.json'))
-    require(record.get('format') == 'system-controller-promotion-v1' and
-            record.get('phase') not in ('controller-promoted-old-GitLab-preserved', 'aborted', 'deferred-active-jobs-old-generation-resumed') and
-            bool(record.get('leaseOperation')), 'only-interrupted-controller-promotion-can-be-aborted')
-    successor.verify_checkout(record['release'], successor.HERE.parent)
     before = successor.private_input(checkpoint / 'main-before.env')
-    require(hashlib.sha256(before).hexdigest() == record['configurationBeforeSha256'] and
-            hashlib.sha256(config['_main'].read_bytes()).hexdigest() in
-            (record['configurationBeforeSha256'], record['configurationAfterSha256']),
-            'controller-abort-configuration-hash-mismatch')
-    runtime.cube(before)
-    gitlab = inspect('system_gitlab_1')
-    owned(gitlab, 'gitlab')
-    require(gitlab['Image'] == record['oldGitLab']['imageId'],
-            'controller-abort-refuses-GitLab-image-change-use-database-checkpoint-recovery')
-    old = recovery.inspect_image(record['previousController']['imageId'])
-    require(old['Id'] == record['previousController']['imageId'], 'previous-controller-image-is-unavailable')
-    lease = successor.Lease.adopt(config, record['leaseOperation'])
-    try:
-        helper_receipt = checkpoint / 'copy-helper.json'
-        if helper_receipt.exists():
-            helper = json.loads(successor.private_input(helper_receipt))
-            try:
-                remaining = inspect(helper['name'])
-            except recovery.RecoveryError:
-                remaining = None
-            if remaining:
-                require(remaining['Config']['Labels'].get('org.system-bootstrapper.controller-copy') == helper['owner'],
-                        'checkpoint-helper-ownership-changed')
-                run([*DOCKER, 'rm', '--force', remaining['Id']])
-        if record.get('coldCheckpointSha256'):
-            verify_cold_checkpoint(checkpoint, record['coldCheckpointSha256'])
-        deadline = record.get('remoteCommandDeadlineUptime')
-        boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-        if deadline and boot == record.get('remoteCommandBootId'):
-            remaining = deadline - float(Path('/proc/uptime').read_text().split()[0])
-            require(remaining < 180, 'controller-abort-remote-deadline-invalid')
-            if remaining > 0:
-                time.sleep(remaining + 2)
-        current = inspect('system_bootstrapper_1')
-        web = inspect('system_web_1')
-        owned(current, 'bootstrapper')
-        if web['State']['Running']:
-            run([*DOCKER, 'stop', '--time', '30', web['Id']])
-        if current['State']['Running']:
-            run([*DOCKER, 'update', '--restart=no', current['Id']])
-            if not current['State'].get('Paused'):
-                run([*DOCKER, 'pause', current['Id']])
-        if gitlab['State']['Running']:
+    lease = None
+    def dispatch(method, args):
+        nonlocal config, lease
+        if method == 'main': return base64.b64encode(config['_main'].read_bytes()).decode()
+        if method == 'checkout':
+            successor.verify_checkout(args[0], successor.HERE.parent)
+            return None
+        if method == 'image': return recovery.inspect_image(args[0])
+        if method == 'adopt': lease = successor.Lease.adopt(config, args[0])
+        elif method == 'helper':
+            filename = checkpoint / 'copy-helper.json'
+            return json.loads(successor.private_input(filename)) if filename.exists() else None
+        elif method == 'inspectOptional':
+            try: return inspect(args[0])
+            except recovery.RecoveryError: return None
+        elif method == 'inspect': return inspect(args[0])
+        elif method == 'command': run([*DOCKER, *args[0]], **({'timeout': args[1]} if args[1] is not None else {}))
+        elif method == 'verifyCheckpoint': verify_cold_checkpoint(checkpoint, args[0])
+        elif method == 'bootId': return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        elif method == 'uptime': return float(Path('/proc/uptime').read_text().split()[0])
+        elif method == 'now': return time.monotonic()
+        elif method == 'sleep': time.sleep(args[0])
+        elif method == 'mainHash': return recovery.sha(config['_main'])
+        elif method == 'runners': return main_runner_rows(config)
+        elif method == 'phase': pass
+        elif method == 'probe':
             security = json.loads((successor.HERE.parent / 'gitlab/security-release.json').read_bytes())
-            maintenance = ColdMaintenance(config, current, gitlab, web, [], checkpoint, old['Id'], security=security)
-            maintenance.drain()
-            maintenance.quiesce_ingress()
-            early = record.get('coldPhase') in ('public-web-stop-started', 'old-controller-freeze-started',
-                'scheduling-ingress-stop-started', 'scheduling-ingress-stopped-final-jobs-zero',
-                'old-ingress-resume-started', 'old-generation-resumed-without-database-stop')
-            if early and config['_main'].read_bytes() == before:
-                maintenance.policy = record['previousController']['restartPolicy']
-                maintenance.resume_unmodified()
-                record.update(phase='aborted', abortedAt=runtime.now(), databaseRewound=False)
-                successor.atomic_json(checkpoint / 'operation.json', record)
-                lease.release()
-                return
-            for row in main_runner_rows(config):
-                run([*DOCKER, 'stop', '--time', '30', row['Id']])
-            maintenance.clean_gitlab_stop()
-        else:
-            require(gitlab['State']['ExitCode'] == 0 and not gitlab['State'].get('OOMKilled'),
-                    'controller-abort-requires-clean-old-GitLab-state')
-        if current['State']['Running']:
-            run([*DOCKER, 'kill', current['Id']])
-            require(not inspect(current['Id'])['State']['Running'], 'controller-abort-stop-uncertain')
-        # The native lease proves no coordinated GitLab migration could enter.
-        # No database is rewound here: only the previous controller/configuration
-        # is resumed on the same old GitLab image. A changed GitLab image refuses.
-        successor.atomic_bytes(config['_main'], before)
-        run([*DOCKER, 'compose', '--compatibility', '-p', 'system', '-f',
-             str(successor.HERE.parent / 'system/docker-compose.yml'), 'up', '--no-build', '--no-deps',
-             '--pull', 'never', '-d', 'bootstrapper'],
-            env=successor.environment(config, record['previousController']['imageId']))
-        config = runtime.settings(config['_persistence_env'])
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                rows = runtime.inspect_services(config)
-                require(rows['system_bootstrapper_1']['Image'] == old['Id'] and
-                        rows['system_gitlab_1']['Image'] == record['oldGitLab']['imageId'], 'controller-abort-image-mismatch')
-                runtime.verify_mounts(config, rows)
-                runtime.verify_routes(config, rows)
-                runtime.verify_sync(config)
-                require(config['_main'].read_bytes() == before, 'controller-abort-config-changed')
-                break
-            except Exception:
-                if time.monotonic() >= deadline:
-                    raise recovery.RecoveryError('controller-abort-acceptance-timeout') from None
-                time.sleep(3)
-        policy = record['previousController']['restartPolicy']['Name']
-        require(policy in ('no', 'always', 'unless-stopped', 'on-failure'), 'invalid-original-restart-policy')
-        retries = record['previousController']['restartPolicy'].get('MaximumRetryCount', 0)
-        if policy == 'on-failure' and retries:
-            policy += ':' + str(int(retries))
-        run([*DOCKER, 'update', '--restart=' + policy, rows['system_bootstrapper_1']['Id']])
-        record.update(phase='aborted', abortedAt=runtime.now(), databaseRewound=False)
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        lease.release()
-    except Exception:
-        # Keep the exact lease on any uncertain recovery; the same committed
-        # abort action can be retried after the interrupted process has ended.
-        raise
+            return gitlab_probe(security, inspect('system_gitlab_1'))
+        elif method == 'writeConfiguration': successor.atomic_bytes(config['_main'], base64.b64decode(args[0], validate=True))
+        elif method == 'compose': run([*DOCKER, *args[0]], env=successor.environment(config, args[1]))
+        elif method == 'reload': config = runtime.settings(config['_persistence_env'])
+        elif method == 'services': return runtime.inspect_services(config)
+        elif method == 'mounts': runtime.verify_mounts(config, args[0])
+        elif method == 'routes': runtime.verify_routes(config, args[0])
+        elif method == 'sync': runtime.verify_sync(config)
+        elif method == 'journal': successor.atomic_json(checkpoint / 'operation.json', args[0])
+        elif method == 'timestamp': return runtime.now()
+        elif method == 'release': lease.release()
+        else: raise recovery.RecoveryError('unknown-promotion-abort-native-port')
+    return host_service.invoke('promotion-abort-entry.js', {'input': {
+        'record': record, 'before': base64.b64encode(before).decode(),
+        'checkout': str(successor.HERE.parent), 'timeout': timeout}}, dispatch, recovery.RecoveryError)
 
 
 def main():

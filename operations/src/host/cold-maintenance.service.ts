@@ -90,7 +90,7 @@ export class ColdMaintenanceService {
       seconds + 15,
     );
   }
-  private resume(input: ColdMaintenanceInput): void {
+  resume(input: ColdMaintenanceInput): void {
     const gitlab = record(input.gitlab),
       controller = record(input.controller),
       web = record(input.web),
@@ -158,6 +158,42 @@ export class ColdMaintenanceService {
     );
     this.port.phase('old-generation-resumed-without-database-stop');
   }
+  quiesce(input: ColdMaintenanceInput): void {
+    this.remote(input, coldMaintenanceScripts.stop, 110, 'scheduling-ingress-stop-started');
+    if (this.port.probe().runningJobs !== 0) {
+      this.resume(input);
+      throw new ActiveMaintenanceJobs(
+        'new-running-jobs-refused-maintenance-old-generation-resumed',
+      );
+    }
+    this.port.phase('scheduling-ingress-stopped-final-jobs-zero');
+  }
+  cleanStop(input: ColdMaintenanceInput): void {
+    const gitlab = record(input.gitlab);
+    this.remote(input, coldMaintenanceScripts.allStop, 110, 'GitLab-services-stop-started');
+    this.port.command(
+      [
+        'exec',
+        this.id(gitlab),
+        'timeout',
+        '-k',
+        '1',
+        '20',
+        '/bin/sh',
+        '-ec',
+        coldMaintenanceScripts.allDown,
+      ],
+      25,
+    );
+    this.drain(input);
+    this.port.command(['stop', '--time', '60', this.id(gitlab)], 70);
+    const stoppedGitlab = this.state(this.port.inspect(this.id(gitlab)));
+    ensure(
+      !stoppedGitlab.Running && stoppedGitlab.ExitCode === 0 && !stoppedGitlab.OOMKilled,
+      'GitLab-stop-was-not-clean',
+    );
+    this.port.phase('GitLab-container-cleanly-stopped');
+  }
   run(input: ColdMaintenanceInput): string {
     ensure(
       Number.isFinite(input.deadline) && input.deadline > 0 && input.deadline <= 180,
@@ -184,43 +220,14 @@ export class ColdMaintenanceService {
       'old-controller-was-not-frozen-with-restart-disabled',
     );
     this.drain(input);
-    this.remote(input, coldMaintenanceScripts.stop, 110, 'scheduling-ingress-stop-started');
-    if (this.port.probe().runningJobs !== 0) {
-      this.resume(input);
-      throw new ActiveMaintenanceJobs(
-        'new-running-jobs-refused-maintenance-old-generation-resumed',
-      );
-    }
-    this.port.phase('scheduling-ingress-stopped-final-jobs-zero');
+    this.quiesce(input);
     this.port.phase('owned-runners-stop-started');
     for (const inputRow of input.runners) {
       const runner = record(inputRow);
       this.port.command(['stop', '--time', '30', this.id(runner)]);
       ensure(!this.state(this.port.inspect(this.id(runner))).Running, 'owned-runner-stop-failed');
     }
-    this.remote(input, coldMaintenanceScripts.allStop, 110, 'GitLab-services-stop-started');
-    this.port.command(
-      [
-        'exec',
-        this.id(gitlab),
-        'timeout',
-        '-k',
-        '1',
-        '20',
-        '/bin/sh',
-        '-ec',
-        coldMaintenanceScripts.allDown,
-      ],
-      25,
-    );
-    this.drain(input);
-    this.port.command(['stop', '--time', '60', this.id(gitlab)], 70);
-    const stoppedGitlab = this.state(this.port.inspect(this.id(gitlab)));
-    ensure(
-      !stoppedGitlab.Running && stoppedGitlab.ExitCode === 0 && !stoppedGitlab.OOMKilled,
-      'GitLab-stop-was-not-clean',
-    );
-    this.port.phase('GitLab-container-cleanly-stopped');
+    this.cleanStop(input);
     this.port.command(['kill', this.id(controller)]);
     const stopped = this.port.inspect(this.id(controller)),
       state = this.state(stopped);
