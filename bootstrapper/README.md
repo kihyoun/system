@@ -754,7 +754,7 @@ An interrupted export leaves prior inputs selected and any completed extra archi
 retained. A retry creates another operation archive instead of overwriting or deleting
 it. Do not delete the host until the exporter and `recover-volume.sh --verify` pass.
 
-Isolated contracts run with `python3 tests/bootstrapper/native-initialization.py` and
+Isolated contracts run with `node --test tests/bootstrapper/native-initialization.js` and
 `python3 tests/bootstrapper/successor-host-tools.py`. The explicit tiny Docker
 primitive test is separate from the socket-free component suite:
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`.

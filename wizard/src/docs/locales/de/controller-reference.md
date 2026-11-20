@@ -766,7 +766,7 @@ Ein unterbrochener Export lässt vorherige Daten ausgewählt und erhält jedes a
 Ein erneuter Versuch erzeugt ein weiteres Vorgangsarchiv, statt es zu überschreiben oder zu löschen.
 Löschen Sie den Host erst, wenn Exporter und `recover-volume.sh --verify` erfolgreich sind.
 
-Isolierte Vertragsprüfungen laufen mit `python3 tests/bootstrapper/native-initialization.py` und
+Isolierte Vertragsprüfungen laufen mit `node --test tests/bootstrapper/native-initialization.js` und
 `python3 tests/bootstrapper/successor-host-tools.py`. Der ausdrückliche kleine Docker-
 Grundmechanismustest ist von der socketfreien Komponentensuite getrennt:
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`.

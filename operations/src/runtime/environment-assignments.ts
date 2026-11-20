@@ -10,6 +10,17 @@ export function environmentAssignments(text: string): Record<string, string> {
       while (index < text.length && text[index] !== '\n') index++;
       continue;
     }
+    const unset =
+      /^unset[ \t]+([A-Za-z_][A-Za-z0-9_]*(?:[ \t]+[A-Za-z_][A-Za-z0-9_]*)*)[ \t]*(?:#[^\n]*)?(?:\r?\n|$)/.exec(
+        text.slice(index),
+      );
+    if (unset) {
+      // An explicit empty value also clears inherited values when callers merge
+      // declarative configuration layers; downstream defaults remain available.
+      for (const name of unset[1].split(/[ \t]+/)) values[name] = '';
+      index += unset[0].length;
+      continue;
+    }
     const key = /^(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=/.exec(text.slice(index));
     if (!key) throw Error('environment-literal-assignment-required');
     index += key[0].length;

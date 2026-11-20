@@ -695,7 +695,7 @@ sudo python3 bootstrapper/record-recovery-images.py \
 재시도는 이를 덮어쓰거나 삭제하는 대신 다른 작업 아카이브를 만듭니다. 내보내기 도구와
 `recover-volume.sh --verify`가 통과할 때까지 호스트를 삭제하지 마세요.
 
-격리 계약은 `python3 tests/bootstrapper/native-initialization.py`와
+격리 계약은 `node --test tests/bootstrapper/native-initialization.js`와
 `python3 tests/bootstrapper/successor-host-tools.py`로 실행합니다. 명시적인 작은
 Docker 기본 동작 테스트는 소켓 없는 구성 요소 테스트와 별도입니다.
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`을 사용합니다.
