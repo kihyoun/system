@@ -102,7 +102,7 @@ export class UpgradeSession {
   preflight(version: string): Promise<Container> {
     return this.capabilities.runtime.preflight(this, version);
   }
-  stop(): void {
+  stop(): Promise<void> {
     return this.capabilities.runtime.stop(this);
   }
   ready(version: string, image: string): Promise<void> {

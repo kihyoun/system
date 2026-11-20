@@ -13,7 +13,7 @@ function stat(pid){try{const raw=fs.readFileSync('/proc/'+pid+'/stat','utf8'),fi
 function activeGroup(group){return fs.readdirSync('/proc').filter(name=>/^\d+$/.test(name)).some(name=>{const row=stat(Number(name));return row&&row.group===group&&row.state!=='Z';});}
 function record(filename,value){const temporary=filename+'.'+process.pid+'.tmp';let fd;try{fd=fs.openSync(temporary,'wx',0o600);fs.writeFileSync(fd,JSON.stringify(value));fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;fs.renameSync(temporary,filename);fd=fs.openSync(path.dirname(filename),'r');fs.fsyncSync(fd);}finally{if(fd!==undefined)fs.closeSync(fd);if(fs.existsSync(temporary))fs.unlinkSync(temporary);}}
 function input(){return new Promise((resolve,reject)=>{let raw='';process.stdin.on('data',chunk=>{raw+=chunk;if(raw.length>12*1024*1024)reject(Error('operation-payload-too-large'));});process.stdin.on('end',()=>{try{resolve(JSON.parse(raw));}catch{reject(Error('operation-payload-invalid'));}});});}
-async function worker(read=input,execute=spawnSync){const job=await read();const result=execute(job.binary,job.args,{cwd:job.cwd,env:job.env,input:job.input,encoding:'utf8',maxBuffer:8*1024*1024});if(result.stdout)process.stdout.write(result.stdout);if(result.stderr)process.stderr.write(result.stderr);process.exitCode=!result.error&&result.status===0?0:1;}
+async function worker(read=input,execute=spawnSync){const job=await read();const result=execute(job.binary,job.args,{cwd:job.cwd,env:job.env,input:job.input,encoding:'utf8',maxBuffer:8*1024*1024});if(result.stdout)process.stdout.write(result.stdout);if(result.stderr)process.stderr.write(result.stderr);process.exitCode=!result.error&&Number.isInteger(result.status)?result.status:1;}
 async function watchdog(directory){
   const job=await input(),owner=JSON.parse(fs.readFileSync(path.join(directory,'upgrade-owner.json'),'utf8'));
   if(owner.format!=='system-gitlab-upgrade-lock-v1'||!/^[a-f0-9]{32}$/.test(owner.operation||'')||typeof job.binary!=='string'||!Array.isArray(job.args)||job.args.some(a=>typeof a!=='string')||!Number.isInteger(job.timeout)||job.timeout<1||job.timeout>1800000)throw Error('operation-owner-invalid');
@@ -30,7 +30,7 @@ async function watchdog(directory){
   child.stdin.end(JSON.stringify(job));
   const code=await completion;clearTimeout(timeout);if(hardKillTimer)clearTimeout(hardKillTimer);
   if(activeGroup(child.pid)){kill('SIGTERM');await new Promise(resolve=>setTimeout(resolve,100));if(activeGroup(child.pid))kill('SIGKILL');}
-  witness.phase='completed';witness.exitCode=code===0&&!expired?0:1;record(filename,witness);process.exitCode=witness.exitCode;
+  witness.phase='completed';witness.exitCode=expired?124:Number.isInteger(code)?code:1;record(filename,witness);process.exitCode=witness.exitCode;
 }
 module.exports={uptime,stat,activeGroup,worker};
 if(require.main===module){const [mode,directory]=process.argv.slice(2);(mode==='worker'&&!directory?worker():mode==='watchdog'&&path.isAbsolute(directory||'')?watchdog(directory):Promise.reject(Error('operation-mode-invalid'))).catch(()=>{process.exitCode=1;});}

@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {Upgrade,release,QUIESCE_SCRIPT,SCHEDULING_QUIESCE_SCRIPT,READINESS_SCRIPT,options,imageAssignment,inventory,hash,atomic,run}=require('../../gitlab/upgrade');
+const {Upgrade,release,options,imageAssignment,inventory,hash,atomic,run}=require('../../gitlab/upgrade');
 const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
 const base={sourceRevision:'a'.repeat(40),evidence:'/state/evidence.json',stateDir:'/state',persistentDir:'/operator/platform',checkpointDir:'/state/gitlab-upgrades/test',readyTimeoutSeconds:600};
 const ids={old:'sha256:'+'b'.repeat(64),next:'sha256:'+'c'.repeat(64)};
@@ -22,18 +22,18 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
   assert.equal(run(process.execPath,['-p','process.cwd()'],{cwd:root}),root,'All lifecycle subprocesses must use the intended component working directory.');
   for(const name of ['gitlab','configuration'])fs.mkdirSync(path.join(root,name));fs.writeFileSync(path.join(root,'gitlab/value'),'original');const expected=inventory(root);fs.writeFileSync(path.join(root,'gitlab/value'),'changed');assert.notDeepEqual(inventory(root),expected);fs.writeFileSync(path.join(root,'gitlab/value'),'original');fs.symlinkSync('value',path.join(root,'gitlab/link'));assert(inventory(root).some(e=>e.type==='link'&&e.target==='value'));
   atomic(path.join(root,'private.json'),'data');assert.equal(fs.statSync(path.join(root,'private.json')).mode&0o777,0o600);assert.equal(hash('data').length,64);
-  const calls=[];let state={Running:false,ExitCode:0,OOMKilled:false};const engine=new Upgrade(base,{run(binary,args,opts){calls.push({binary,args,opts});if(args[0]==='inspect')return JSON.stringify([{State:state}]);return '';}});
-  engine.stop();assert(calls.find(c=>c.args.some(value=>value.includes('gitlab-ctl'))).args.some(value=>value.includes('gitlab-ctl stop')));assert(calls.find(c=>c.args[0]==='stop').args.includes('60'));
-  for(const call of calls){const index=call.args.indexOf('-ec');if(index>=0){const syntax=require('child_process').spawnSync('sh',['-n','-c',call.args[index+1]],{encoding:'utf8'});assert.equal(syntax.status,0,'Every generated remote lifecycle script must parse as actual POSIX shell.');}}
+  const calls=[];let state={Running:false,ExitCode:0,OOMKilled:false};const engine=new Upgrade(base,{run(binary,args,opts){calls.push({binary,args,opts});if(args[0]==='inspect')return JSON.stringify([{State:state}]);if(args.includes('status'))return 'down: native-service: 0s';return '';}});
+  await engine.stop();assert(calls.find(c=>c.args.includes('gitlab-ctl')).args.includes('stop'));assert(calls.find(c=>c.args[0]==='stop').args.includes('60'));
+  assert(calls.every(call=>!call.args.includes('/bin/sh')));
   const stopping=calls.findIndex(c=>c.args[0]==='stop'),quiesce=calls.findIndex(c=>c.args.some(value=>value.includes('gitlab-ctl')));assert(quiesce<stopping);
-  state={Running:false,ExitCode:137,OOMKilled:false};assert.throws(()=>engine.stop(),/clean-stop/);
+  state={Running:false,ExitCode:137,OOMKilled:false};await assert.rejects(()=>engine.stop(),/clean-stop/);
   const images=new Upgrade(base,{run:()=>JSON.stringify([{Id:ids.next,RepoDigests:[release.toImage]}])});assert.equal(images.image(release.toImage),ids.next);
   const wrong=new Upgrade(base,{run:()=>JSON.stringify([{Id:ids.next,RepoDigests:[]}])});assert.throws(()=>wrong.image(release.toImage),/pin-mismatch/);
   const candidate=new Upgrade(base,{run:()=>JSON.stringify([{Id:ids.next}]),imageIds:{[release.toImage]:ids.next}});assert.equal(candidate.image(release.toImage),ids.next,'Only the isolated adapter supplies archive-verified image IDs.');
   const running={Image:ids.next,State:{Status:'running',Running:true,ExitCode:0}};
   for(const reason of ['upgrade-persistent-mount-mismatch','upgrade-owned-gitlab-required']){
     const ready=new Upgrade(base,{sleep:async()=>{assert.fail('Identity failures must not retry.');}});
-    ready.inspect=()=>running;ready.docker=()=> 'ready';ready.preflight=async()=>{throw Error(reason);};
+    ready.inspect=()=>running;ready.docker=()=> '';ready.preflight=async()=>{throw Error(reason);};
     await assert.rejects(()=>ready.ready(release.toVersion,ids.next),error=>error.message===reason);
   }
   for(const patch of [{version:release.fromVersion},{edition:'EE'}]){
@@ -67,7 +67,7 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
     let time=0,inspections=0,sleeps=0,current;
     const ready=new Upgrade(base,{now:()=>time,sleep:async ms=>{sleeps++;time+=ms;},run:(_binary,args)=>{
       if(!current.State.Running)throw Error('service-not-ready');
-      return args.includes('db:migrate:status')?'up 123 fixture':'ready';
+      return args.includes('db:migrate:status')?'up 123 fixture':'';
     }});
     ready.inspect=()=>{inspections++;current=inspections===1?container:running;return current;};ready.preflight=async()=>{};
     await ready.ready(release.toVersion,ids.next);assert.equal(inspections,2);assert.equal(sleeps,1);
@@ -78,9 +78,9 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
     ready.inspect=()=>{if(scenario==='inspect-error')throw failure;return running;};ready.verifyMounts=()=>{};
     if(!['preflight-json','preflight-counts'].includes(scenario))ready.preflight=async()=>{if(scenario==='preflight-error')throw failure;};
     ready.docker=args=>{
-      if(args.includes(READINESS_SCRIPT)){
+      if(args.includes('curl')){
         if(scenario==='probe-error')throw failure;
-        return scenario==='probe-output'?'unexpected-output':'ready';
+        return scenario==='probe-output'?'unexpected-output':'';
       }
       if(args.includes('gitlab-rails'))return scenario==='preflight-json'?'not-json':JSON.stringify({version:release.toVersion,edition:'CE',runningJobs:0,unfinishedBackgroundMigrations:'0'});
       assert(args.includes('db:migrate:status'));
@@ -99,7 +99,7 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
     const ready=new Upgrade(base,{now:()=>time,sleep:async ms=>{sleeps++;time+=ms;}});
     ready.inspect=()=>running;ready.verifyMounts=()=>{};
     ready.docker=args=>{
-      if(args.includes(READINESS_SCRIPT))return scenario==='http-pending'&&sleeps===0?'pending':'ready';
+      if(args.includes('curl')){if(scenario==='http-pending'&&sleeps===0)throw Object.assign(Error('curl-not-ready'),{exitCode:22});return '';}
       if(args.includes('gitlab-rails')){preflights++;return JSON.stringify({version:release.toVersion,edition:'CE',
         runningJobs:scenario==='jobs-active'&&preflights===1?1:0,unfinishedBackgroundMigrations:scenario==='background-migrations'&&preflights===1?1:0});}
       assert(args.includes('db:migrate:status'));rakes++;
@@ -110,21 +110,14 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
   const planEngine=new Upgrade(base);let entered=false,unlocked=false;
   planEngine.lock=()=>{};planEngine.unlock=()=>{unlocked=true;};planEngine.syncIdle=()=>{};planEngine.plan=async()=>({planSha256:'d'.repeat(64)});planEngine.migrate=async()=>{entered=true;};
   await assert.rejects(()=>planEngine.promote('e'.repeat(64)),/reviewed-plan/);assert(!entered);assert(unlocked);
-  const timerDirectory=path.join(root,'bin');fs.mkdirSync(timerDirectory);const reached=path.join(root,'timeout-invoked');
-  fs.writeFileSync(path.join(timerDirectory,'timeout'),'#!/bin/sh\ntouch '+reached+'\n',{mode:0o755});
-  fs.writeFileSync(path.join(timerDirectory,'curl'),'#!/bin/sh\n[ "$4" = "http://127.0.0.1/-/readiness?all=1" ] || exit 99\nexit "$SYSTEM_TEST_CURL_STATUS"\n',{mode:0o755});
+  const {gitLabReadiness,controlGitLabServices}=require('../../operations/dist/gitlab-upgrade/service-control');
   for(const code of [0,7,22,28,52,56,2,127]){
-    const result=require('child_process').spawnSync('sh',['-ec',READINESS_SCRIPT],{env:{...process.env,
-      PATH:timerDirectory+path.delimiter+process.env.PATH,SYSTEM_TEST_CURL_STATUS:String(code)},encoding:'utf8'});
-    if([0,7,22,28,52,56].includes(code)){assert.equal(result.status,0);assert.equal(result.stdout,code===0?'ready':'pending');}
-    else assert.equal(result.status,code,'Unexpected curl failures must retain a nonzero exit.');
+    const port={command(args){assert(args.includes('curl')&&args.includes('--output')&&!args.includes('/bin/sh'));return run(process.execPath,['-e','process.exit('+code+')']);}};
+    if([0,7,22,28,52,56].includes(code))assert.equal(await gitLabReadiness(port,'fixture'),code===0);
+    else await assert.rejects(()=>gitLabReadiness(port,'fixture'),error=>error.exitCode===code);
   }
   for(const remaining of [0,-1,111]){
-    for(const source of [QUIESCE_SCRIPT,SCHEDULING_QUIESCE_SCRIPT]){
-    const script=source.replaceAll('read -r uptime rest </proc/uptime','uptime=100');
-    const result=require('child_process').spawnSync('sh',['-ec',script,'sh',String(100+remaining)],{env:{...process.env,PATH:timerDirectory+path.delimiter+process.env.PATH},encoding:'utf8'});
-    assert.equal(result.status,124,'An expired/out-of-budget remote quiesce must not invoke timeout, including timeout0.');assert(!fs.existsSync(reached));
-    }
+    await assert.rejects(()=>controlGitLabServices({uptime:()=>100,command(){assert.fail('Expired budget must never invoke timeout zero');}},'fixture','stop',110,['nginx'],{deadline:100+remaining}),/deadline-expired/);
   }
   console.log('PASS: approved CE pins, exact Cube/config edits, component cwd, private/checksummed checkpoints, clean-stop requirement and review-plan gate.');
 }finally{fs.rmSync(root,{recursive:true,force:true});}})().catch(error=>{console.error(error);process.exitCode=1;});

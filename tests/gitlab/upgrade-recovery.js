@@ -16,7 +16,7 @@ function fixture(t){
       if(args[0]==='stop'){if(!refuseStop)current.State.Running=false;return '';}
       throw Error('unexpected Docker fixture operation');
     }
-    if(binary==='bash')return '';
+    if(binary===process.execPath&&args[0]===path.resolve(__dirname,'../../operations/dist/projects-routing/entry.js'))return '';
     if(binary==='rsync'&&failRestore&&args.includes('--delete'))throw Error('injected-restore-copy-failure');
     return run(binary,args,options);
   }});
@@ -130,7 +130,7 @@ test('a completed worker group does not permit adoption while its journal-writin
 test('API scheduling quiescence and final job check precede full GitLab stop and cold checkpoint',async t=>{
   const f=fixture(t);f.engine.lock('a'.repeat(64));
   f.engine.quiesceScheduling=require('../../gitlab/upgrade').Upgrade.prototype.quiesceScheduling.bind(f.engine);
-  f.engine.docker=args=>{assert(args.includes(require('../../gitlab/upgrade').SCHEDULING_QUIESCE_SCRIPT));f.events.push(['ingress-services-down']);return '';};
+  f.engine.docker=args=>{assert(args.includes('gitlab-ctl')||args.includes('status'));assert(!args.includes('/bin/sh'));f.events.push(['ingress-services-down']);return args.includes('status')?'down: native-service: 0s':'';};
   f.engine.preflight=async()=>{assert.equal(f.events.at(-1)[0],'ingress-services-down');f.events.push(['final-job-check']);return {};};
   await f.engine.migrate(f.plan);
   const names=f.events.map(event=>event[0]);assert(names.indexOf('ingress-services-down')<names.indexOf('final-job-check'));assert(names.indexOf('final-job-check')<names.indexOf('cold-stop'));
@@ -139,7 +139,7 @@ test('API scheduling quiescence and final job check precede full GitLab stop and
 test('a job assigned before HTTP ingress drains resumes old API without stopping GitLab, backing up or cancelling jobs',async t=>{
   const f=fixture(t);f.engine.lock('a'.repeat(64));
   f.engine.quiesceScheduling=require('../../gitlab/upgrade').Upgrade.prototype.quiesceScheduling.bind(f.engine);
-  f.engine.docker=args=>{assert(args.includes(require('../../gitlab/upgrade').SCHEDULING_QUIESCE_SCRIPT));f.events.push(['ingress-services-down']);return '';};
+  f.engine.docker=args=>{assert(args.includes('gitlab-ctl')||args.includes('status'));assert(!args.includes('/bin/sh'));f.events.push(['ingress-services-down']);return args.includes('status')?'down: native-service: 0s':'';};
   f.engine.preflight=async()=>{f.events.push(['job-assignment-discovered']);throw Error('upgrade-jobs-active');};
   f.engine.resumeScheduling=async()=>{f.events.push(['previous-ingress-resumed']);};
   await assert.rejects(()=>f.engine.migrate(f.plan),/jobs-active/);

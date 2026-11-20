@@ -94,7 +94,7 @@ export class UpgradeWorkflowService {
       session.runnerPool('stop');
       session.runnersStopped(plan.runner);
     }
-    session.stop();
+    await session.stop();
     const receipt = session.snapshot(plan);
     session.checkpoint(receipt.checkpointSha256);
     session.updateOwner(receipt.checkpointSha256);

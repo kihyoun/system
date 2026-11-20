@@ -1,3 +1,7 @@
+import {
+  controlGitLabServices,
+  requireGitLabServicesDown,
+} from '../gitlab-upgrade/service-control';
 import { record } from '../release/source-identity';
 import { requireValue as ensure } from './install';
 type Row = Record<string, unknown>;
@@ -67,47 +71,16 @@ export class ColdMaintenanceService {
   ): Promise<void> {
     const deadline = Math.floor(await this.port.uptime()) + seconds;
     await this.port.phase(phase, deadline);
-    for (const service of services) {
-      const remaining = deadline - Math.floor(await this.port.uptime());
-      ensure(remaining > 0 && remaining <= seconds, 'remote-GitLab-service-deadline-expired');
-      await this.port.command(
-        [
-          'exec',
-          '--env',
-          'SVWAIT=90',
-          this.id(record(input.gitlab)),
-          'timeout',
-          '-k',
-          '2',
-          String(remaining),
-          'gitlab-ctl',
-          action,
-          ...(service ? [service] : []),
-        ],
-        remaining + 15,
-      );
-      if (action === 'stop' && service) {
-        const status = await this.port.command(
-          [
-            'exec',
-            this.id(record(input.gitlab)),
-            'timeout',
-            '-k',
-            '1',
-            '5',
-            '/opt/gitlab/embedded/bin/sv',
-            'status',
-            '/opt/gitlab/service/' + service,
-          ],
-          10,
-        );
-        ensure(
-          typeof status === 'string' && /^down:/.test(status),
-          'GitLab-service-stop-was-not-clean',
-        );
-      }
-    }
+    await controlGitLabServices(
+      this.port,
+      this.id(record(input.gitlab)),
+      action,
+      seconds,
+      services,
+      { deadline },
+    );
   }
+
   async resume(input: ColdMaintenanceInput): Promise<void> {
     const gitlab = record(input.gitlab),
       controller = record(input.controller),
@@ -198,39 +171,7 @@ export class ColdMaintenanceService {
   async cleanStop(input: ColdMaintenanceInput): Promise<void> {
     const gitlab = record(input.gitlab);
     await this.remote(input, 'stop', 110, 'GitLab-services-stop-started', ['']);
-    const statuses = await this.port.command(
-      [
-        'exec',
-        this.id(gitlab),
-        'timeout',
-        '-k',
-        '1',
-        '20',
-        'find',
-        '/opt/gitlab/service',
-        '-mindepth',
-        '1',
-        '-maxdepth',
-        '1',
-        '-type',
-        'l',
-        '-exec',
-        '/opt/gitlab/embedded/bin/sv',
-        'status',
-        '{}',
-        '+',
-      ],
-      25,
-    );
-    ensure(
-      typeof statuses === 'string' &&
-        statuses.trim().length > 0 &&
-        statuses
-          .trim()
-          .split('\n')
-          .every((line) => /^down:/.test(line)),
-      'GitLab-services-not-all-down',
-    );
+    await requireGitLabServicesDown(this.port, this.id(gitlab));
     await this.drain(input);
     await this.port.command(['stop', '--time', '60', this.id(gitlab)], 70);
     const stoppedGitlab = this.state(await this.port.inspect(this.id(gitlab)));

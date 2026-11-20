@@ -14,7 +14,8 @@ export function run(binary: string, args: string[], options: CommandOptions = {}
     env: options.env,
     ...{ detached: options.detached },
   });
-  if (r.error || r.status !== 0) throw Error('upgrade-operation-failed');
+  if (r.error || r.status !== 0)
+    throw Object.assign(Error('upgrade-operation-failed'), { exitCode: r.error ? null : r.status });
   return (r.stdout || '').trim();
 }
 

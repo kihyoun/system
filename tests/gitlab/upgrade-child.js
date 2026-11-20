@@ -8,7 +8,7 @@ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function fixture(t){const state=fs.mkdtempSync(path.join(os.tmpdir(),'upgrade-child-'));t.after(()=>fs.rmSync(state,{recursive:true,force:true}));const lease=path.join(state,'.gitlab-upgrade-lock');fs.mkdirSync(lease);const owner={format:'system-gitlab-upgrade-lock-v1',operation:'a'.repeat(32)};atomic(path.join(lease,'upgrade-owner.json'),JSON.stringify(owner));const engine=new Upgrade(options);engine.state=state;engine.owner=owner;return {state,lease,engine};}
 test('worker refuses a spawn failure even when the child reports status zero',async t=>{
   const previous=process.exitCode;t.after(()=>{process.exitCode=previous;});
-  for(const [result,expected]of [[{status:0},0],[{status:23},1],[{status:null,signal:'SIGTERM'},1],
+  for(const [result,expected]of [[{status:0},0],[{status:23},23],[{status:null,signal:'SIGTERM'},1],
     [{status:0,error:Object.assign(Error('private-command-data'),{code:'ENOBUFS'})},1]]){
     await worker(async()=>({binary:'fixture',args:[]}),()=>result);
     assert.equal(process.exitCode,expected);
@@ -37,8 +37,8 @@ test('process identity and group scans preserve unexpected stat errors',t=>{
   }
 });
 test('owned local subprocess timeout kills its complete group and suppresses private command output',t=>{
-  const f=fixture(t);assert.throws(()=>f.engine.ownedRun(process.execPath,['-e','console.log("never-publish-token");setInterval(()=>{},1000)'],{timeout:100}),error=>error.message==='upgrade-operation-failed');
-  const witness=JSON.parse(fs.readFileSync(path.join(f.lease,'child.json'),'utf8'));assert.equal(witness.phase,'completed');assert.equal(witness.exitCode,1);assert(!activeGroup(witness.group));assert(!JSON.stringify(witness).includes('never-publish-token'));
+  const f=fixture(t);assert.throws(()=>f.engine.ownedRun(process.execPath,['-e','process.exit(7)'],{timeout:1000}),error=>error.exitCode===7);assert.throws(()=>f.engine.ownedRun(process.execPath,['-e','console.log("never-publish-token");setInterval(()=>{},1000)'],{timeout:100}),error=>error.message==='upgrade-operation-failed');
+  const witness=JSON.parse(fs.readFileSync(path.join(f.lease,'child.json'),'utf8'));assert.equal(witness.phase,'completed');assert.equal(witness.exitCode,124);assert(!activeGroup(witness.group));assert(!JSON.stringify(witness).includes('never-publish-token'));
 });
 test('journaled watchdog finishes local copy work even when the invoking helper is killed',async t=>{
   const f=fixture(t),done=path.join(f.state,'copy-completed');

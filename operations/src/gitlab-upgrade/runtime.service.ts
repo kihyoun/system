@@ -1,3 +1,8 @@
+import {
+  controlGitLabServices,
+  requireGitLabServicesDown,
+  gitLabReadiness,
+} from './service-control';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Injectable } from '@nestjs/common';
@@ -14,17 +19,17 @@ import {
   type CommandOptions,
   type Container,
 } from './types';
-import {
-  atomic,
-  imageAssignment,
-  terminalContainerState,
-  QUIESCE_SCRIPT,
-  SCHEDULING_QUIESCE_SCRIPT,
-  READINESS_SCRIPT,
-} from './policy';
+import { atomic, imageAssignment, terminalContainerState } from './policy';
 
 @Injectable()
 export class UpgradeRuntimeService {
+  private control(session: UpgradeSession) {
+    return {
+      command: (args: string[], timeout: number) =>
+        session.docker(args, { timeout: timeout * 1000 }),
+      uptime: () => childJournal.uptime(),
+    };
+  }
   docker(session: UpgradeSession, args: string[], opts?: CommandOptions): string {
     return session.run('docker', args, opts);
   }
@@ -96,37 +101,18 @@ export class UpgradeRuntimeService {
     if (proof.runningJobs !== 0) throw Error('upgrade-jobs-active');
     return gitlab;
   }
-  stop(session: UpgradeSession): void {
+  async stop(session: UpgradeSession): Promise<void> {
     const deadline = Math.floor(childJournal.uptime()) + 200;
     if (session.owner) {
       session.owner.quiesceDeadline = deadline;
       session.updateOwner(session.owner.checkpointSha256);
     }
-    const quiesce = QUIESCE_SCRIPT;
-    session.docker(
-      [
-        'exec',
-        '--env',
-        'SVWAIT=90',
-        'system_gitlab_1',
-        '/bin/sh',
-        '-ec',
-        quiesce,
-        'sh',
-        String(deadline - 90),
-      ],
-      { timeout: 120000 },
-    );
-    session.docker(
-      [
-        'exec',
-        'system_gitlab_1',
-        '/bin/sh',
-        '-ec',
-        'found=false; for service in /opt/gitlab/service/*; do [ -L "$service" ] || continue; found=true; state=$(/opt/gitlab/embedded/bin/sv status "$service"); case "$state" in down:*) ;; *) exit 1 ;; esac; done; [ "$found" = true ]',
-      ],
-      { timeout: 10000 },
-    );
+    const port = this.control(session);
+    await controlGitLabServices(port, 'system_gitlab_1', 'stop', 110, [''], {
+      deadline: deadline - 90,
+      grace: 10,
+    });
+    await requireGitLabServicesDown(port, 'system_gitlab_1', 5);
     const remaining = Math.min(60, deadline - Math.floor(childJournal.uptime()));
     if (remaining < 1) throw Error('upgrade-quiesce-deadline-exceeded');
     session.docker(['stop', '--time', String(remaining), 'system_gitlab_1'], {
@@ -182,18 +168,10 @@ export class UpgradeRuntimeService {
         throw Object.assign(Error('upgrade-service-state-invalid'), { noRetry: true });
       // Only curl's explicit HTTP/connection startup states are retryable. A
       // failed Docker exec, missing executable or malformed response is fatal.
-      const readiness = session.docker([
-        'exec',
-        'system_gitlab_1',
-        '/bin/sh',
-        '-ec',
-        READINESS_SCRIPT,
-      ]);
-      if (readiness === 'pending') {
+      if (!(await gitLabReadiness(this.control(session), 'system_gitlab_1'))) {
         await session.sleep(3000);
         continue;
       }
-      if (readiness !== 'ready') throw Error('upgrade-readiness-response-invalid');
       try {
         await session.preflight(version);
       } catch (error) {
@@ -262,17 +240,13 @@ export class UpgradeRuntimeService {
     if (value.idle !== true) throw Error('upgrade-sync-operation-running');
   }
   async resumeScheduling(session: UpgradeSession): Promise<void> {
-    session.docker(
-      [
-        'exec',
-        '--env',
-        'SVWAIT=30',
-        'system_gitlab_1',
-        '/bin/sh',
-        '-ec',
-        'for service in nginx gitlab-workhorse puma; do timeout -k 2 45 gitlab-ctl start "$service"; done',
-      ],
-      { timeout: 150000 },
+    await controlGitLabServices(
+      this.control(session),
+      'system_gitlab_1',
+      'start',
+      150,
+      ['nginx', 'gitlab-workhorse', 'puma'],
+      { svWait: 30, perService: 45, grace: 5 },
     );
     const until = session.now() + Math.min(session.options.readyTimeoutSeconds, 300) * 1000;
     while (session.now() < until) {
@@ -303,19 +277,13 @@ export class UpgradeRuntimeService {
     // Once all three HTTP entry/handler services are down, native and external
     // managers cannot claim a new job or register a new runner. Existing runner
     // paused flags and manager containers are untouched.
-    session.docker(
-      [
-        'exec',
-        '--env',
-        'SVWAIT=90',
-        'system_gitlab_1',
-        '/bin/sh',
-        '-ec',
-        SCHEDULING_QUIESCE_SCRIPT,
-        'sh',
-        String(session.owner.quiesceDeadline),
-      ],
-      { timeout: 120000 },
+    await controlGitLabServices(
+      this.control(session),
+      'system_gitlab_1',
+      'stop',
+      110,
+      ['nginx', 'gitlab-workhorse', 'puma'],
+      { deadline: session.owner.quiesceDeadline, grace: 10 },
     );
     session.owner.phase = 'scheduling-quiesced';
     session.updateOwner(session.owner.checkpointSha256);

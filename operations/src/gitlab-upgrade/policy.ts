@@ -8,13 +8,6 @@ import {
   type UpgradeOptions,
   type Container,
 } from './types';
-export const QUIESCE_SCRIPT =
-  'read -r uptime rest </proc/uptime; remaining=$(($1 - ${uptime%%.*})); if [ "$remaining" -le 0 ] || [ "$remaining" -gt 110 ]; then exit 124; fi; timeout -k 2 "$remaining" gitlab-ctl stop';
-export const SCHEDULING_QUIESCE_SCRIPT =
-  'for service in nginx gitlab-workhorse puma; do read -r uptime rest </proc/uptime; remaining=$(($1 - ${uptime%%.*})); if [ "$remaining" -le 0 ] || [ "$remaining" -gt 110 ]; then exit 124; fi; timeout -k 2 "$remaining" gitlab-ctl stop "$service"; state=$(/opt/gitlab/embedded/bin/sv status "/opt/gitlab/service/$service"); case "$state" in down:*) ;; *) exit 1 ;; esac; done';
-export const READINESS_SCRIPT =
-  'if curl -fsS --max-time 5 "http://127.0.0.1/-/readiness?all=1" >/dev/null; then printf ready; else status=$?; case "$status" in 7|22|28|52|56) printf pending ;; *) exit "$status" ;; esac; fi';
-
 export const hash = (bytes: string | Buffer) =>
   crypto.createHash('sha256').update(bytes).digest('hex');
 export const cube = (text: string) => {
