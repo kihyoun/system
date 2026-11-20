@@ -108,6 +108,11 @@ def publication(fixture):
     contracts = load('candidate_future_publication', 'tests/bootstrapper/public-upgrade.py')
     metadata, proof, _ = contracts.fixture()
     spec, previous = fixture['spec'], fixture['previous']
+    if fixture.get('edge'):
+        metadata.update(version=fixture['edge']['to'], tag='v' + fixture['edge']['to'])
+        proof['version'] = metadata['version']
+        proof['evidence']['results'] = [row for row in proof['evidence']['results'] if not row['name'].startswith('public-release-upgrade-')]
+        proof['evidence']['results'].append({'name': fixture['edge']['requiredStage'], 'status': 'passed'})
     source = {'repository': previous['source']['repository'], 'revision': spec['sourceRevision'],
               'tree': spec['sourceTree']}
     shared = spec.get('sourceLayout') == 'system-monorepo-v1'
@@ -141,6 +146,13 @@ def publication(fixture):
     evidence['evidence']['publicUpgrade'].update(fromVersion=previous['version'], toVersion=metadata['version'],
         fromSourceRevision=previous['source']['revision'], fromControllerImageId=previous['images']['controller']['imageId'],
         fromWizardImageId=previous['images']['wizard']['imageId'])
+    if any(edge.get('databaseMigration') and edge['to'] == metadata['version'] for edge in proof['graph']['transitions']):
+        checkpoint = str(Path(fixture['live']) / 'configuration/gitlab-upgrades' / ('candidate-' + fixture['runId']))
+        prerequisite = successor.recovery.host_operation('gitlabUpgradePrerequisite', fixture['live'], checkpoint,
+            spec['sourceRevision'], security)
+        evidence['evidence']['publicUpgrade'].update(gitlabPrerequisiteVerified=True,
+            gitlabCheckpointSha256=prerequisite['checkpointSha256'],
+            gitlabFromVersion=prerequisite['fromVersion'], gitlabToVersion=prerequisite['toVersion'])
     if shared:
         origin = fixture['guidedOrigin']
         successor.require(origin['guidedPreview']['version'] == 2 and origin['runId'] != fixture['runId'], 'shared-beta-origin-required')

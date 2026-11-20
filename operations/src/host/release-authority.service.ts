@@ -30,6 +30,7 @@ export class HostReleaseAuthorityService {
   const results=(evidence.results as unknown[]).map(record),tested=record(record(evidence.evidence).publicUpgrade??{});
   for(const edge of graph.transitions??[]) {
    if(edge.to!==metadata.version)continue;
+   if(edge.databaseMigration)ensure(tested.gitlabPrerequisiteVerified===true&&typeof tested.gitlabCheckpointSha256==='string'&&/^[a-f0-9]{64}$/.test(tested.gitlabCheckpointSha256)&&tested.gitlabFromVersion==='19.5.3'&&tested.gitlabToVersion==='19.6.1','public-upgrade-GitLab-prerequisite-not-tested');
    const stages=results.filter(stage=>stage.name===edge.requiredStage);
    ensure(stages.length===1&&stages[0].status==='passed'&&tested.fromVersion===edge.from&&tested.toVersion===edge.to&&revision(tested.fromSourceRevision)&&['fromControllerImageId','fromWizardImageId'].every(key=>imageId(tested[key]))&&['dataPreserved','configurationPreserved','runnerRegistryVerified','rollbackVerified'].every(key=>tested[key]===true),'public-upgrade-transition-not-tested');
   }

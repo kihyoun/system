@@ -200,7 +200,7 @@ class NativeCLI {
       'ln -s ../source/tests/e2e/public-upgrade-docker.sh "$1/bin/docker-compose"; '+
       'ln -s ../source/tests/e2e/public-upgrade-findmnt.sh "$1/bin/findmnt"', 'sh', this.fixture]);
     const previous = candidate.spec.publicUpgrade.metadata;
-    await this.write(this.fixture + '/fixture.json', JSON.stringify({runId: candidate.id, live: this.live, previous,
+    await this.write(this.fixture + '/fixture.json', JSON.stringify({runId: candidate.id, live: this.live, previous, edge:candidate.spec.publicUpgrade.edge,
       spec: {sourceRevision: candidate.spec.sourceRevision, sourceTree: candidate.spec.sourceTree,
         sourceLayout:candidate.spec.sourceLayout,wizardSourceTree:candidate.spec.wizardSourceTree,
         wizardSourceRevision: candidate.spec.wizardSourceRevision, ciIdentity: candidate.spec.ciIdentity, images: candidate.spec.images},
@@ -267,6 +267,7 @@ class NativeCLI {
     return this.invoke(['--operation', operation, '--persistence-env', this.storage, '--plan-dir', this.planDir,
       '--repository', repository, '--target', this.candidate.spec.publicUpgrade.edge.to,
       '--backup-file', require('./local-storage').MOUNT + '/public-upgrade-' + this.candidate.id + '.zip',
+      ...(this.candidate.spec.publicUpgrade.edge.databaseMigration ? ['--gitlab-checkpoint', this.candidate.spec.restore.base + '/configuration/gitlab-upgrades/candidate-' + this.candidate.id] : []),
       '--token-file', this.fixture + '/token', '--timeout', '600', '--backup-timeout', '900',
       ...(confirmation ? ['--confirm-plan', confirmation] : [])]);
   }
@@ -334,6 +335,7 @@ async function run(candidate, expected, dependencies = {}) {
     const plan = await native.cli('plan');
     required(plan.installedVersion === fixture.edge.from && plan.targetVersion === fixture.edge.to &&
       /^[a-f0-9]{64}$/.test(plan.confirmPlanSha256 || ''), 'public-upgrade-native-plan-invalid');
+    if (fixture.edge.databaseMigration) required(plan.gitlabPrerequisite?.fromVersion === '19.5.3' && plan.gitlabPrerequisite?.toVersion === '19.6.1' && /^[a-f0-9]{64}$/.test(plan.gitlabPrerequisite?.checkpointSha256 || ''), 'public-upgrade-native-GitLab-prerequisite-missing');
     let refused = false;
     try { await native.cli('apply', '0'.repeat(64)); } catch { refused = true; }
     required(refused, 'public-upgrade-unconfirmed-plan-not-refused');
@@ -370,7 +372,8 @@ async function run(candidate, expected, dependencies = {}) {
     } finally {await native.revokeCredential();}
     candidate.evidence.publicUpgrade = {fromVersion: fixture.edge.from, toVersion: fixture.edge.to,
       fromSourceRevision: fixture.metadata.source.revision, fromControllerImageId: oldController, fromWizardImageId: oldWizard,
-      configurationPreserved: true, dataPreserved: true, runnerRegistryVerified: true, rollbackVerified: true};
+      configurationPreserved: true, dataPreserved: true, runnerRegistryVerified: true, rollbackVerified: true,
+      ...(fixture.edge.databaseMigration ? {gitlabPrerequisiteVerified:true,gitlabCheckpointSha256:plan.gitlabPrerequisite.checkpointSha256,gitlabFromVersion:plan.gitlabPrerequisite.fromVersion,gitlabToVersion:plan.gitlabPrerequisite.toVersion} : {})};
   });
 }
 module.exports = {download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, controllerFixture, waitForServices, NativeCLI, run};

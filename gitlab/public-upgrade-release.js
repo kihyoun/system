@@ -6,20 +6,11 @@ const bytes = value => Buffer.from(JSON.stringify(value, null, 2) + '\n');
 const pick = (value, keys) => Object.fromEntries(keys.map(key => [key, value[key]]));
 function publicUpgrade(metadata, released, proof, graph, jobs) {
   if (graph.format !== 'system-upgrade-paths-v1' || !graph.versions.includes(metadata.version)) throw Error('Reviewed upgrade graph required.');
-  const pairs = new Set();
-  for (const edge of graph.transitions) {
-    const pair = edge.from + '>' + edge.to;
-    const source = graph.versions.indexOf(edge.from), target = graph.versions.indexOf(edge.to);
-    if (pairs.has(pair) || source < 0 || target <= source || edge.kind !== 'controller-wizard' || edge.databaseMigration !== false ||
-      edge.serviceImagesPreserved !== true || JSON.stringify(edge.services) !== JSON.stringify(['controller', 'Wizard']) ||
-      !Number.isSafeInteger(edge.minimumFreeGiB) || edge.minimumFreeGiB < 8 ||
-      edge.requiredStage !== 'public-release-upgrade-' + edge.from.replaceAll('.', '-') + '-to-' + edge.to.replaceAll('.', '-') ||
-      JSON.stringify(edge.steps) !== JSON.stringify(['prerequisites', 'backup', 'preflight', 'apply', 'verify', 'recovery'])) throw Error('Invalid or unimplemented public transition.');
-    pairs.add(pair);
-  }
+  require('../operations/dist/host/upgrade-graph').validateUpgradeGraph(graph);
   for (const edge of graph.transitions.filter(row => row.to === metadata.version)) {
     const stage = proof.results.filter(row => row.name === edge.requiredStage);
     const tested = proof.evidence?.publicUpgrade;
+    if (edge.databaseMigration && (!tested?.gitlabPrerequisiteVerified || !/^[a-f0-9]{64}$/.test(tested.gitlabCheckpointSha256 || '') || tested.gitlabFromVersion !== '19.5.3' || tested.gitlabToVersion !== '19.6.1')) throw Error('Native GitLab prerequisite proof required.');
     if (stage.length !== 1 || stage[0].status !== 'passed' || tested?.fromVersion !== edge.from || tested.toVersion !== edge.to ||
       !/^[a-f0-9]{40}$/.test(tested.fromSourceRevision || '') ||
       ![tested.fromControllerImageId, tested.fromWizardImageId].every(value => /^sha256:[a-f0-9]{64}$/.test(value || '')) ||
@@ -44,7 +35,7 @@ function publicUpgrade(metadata, released, proof, graph, jobs) {
       ...(monorepo?(guidedReceipt?{recovery:pick(proof.evidence.recovery,['guidedBindingRestored'])}:{guidedPreview:require('./guided-preview-evidence').sanitize(proof.evidence.guidedPreview)}):{}),
       storage: pick(proof.evidence.storage, ['localLiveVerified', 'externalSeedRestored', 'backupDetached', 'missingBackupGuardVerified', 'globalLeaseVerified', 'invalidRestoreGuardVerified']),
       gitlabUpgrade: pick(proof.evidence.gitlabUpgrade, ['fromImage', 'toImage', 'fromImageId', 'toImageId', 'checkpointVerified', 'migrationVerified', 'registryVerified', 'rollbackVerified', 'runnerImage', 'runnerImageId', 'fromRunnerImageId', 'runnerVersion', 'helperImage', 'helperImageId', 'fromHelperImageId', 'jobCaBundleSha256', 'securityTrustVerified', 'runnerUpgradeVerified', 'runnerManagerIdentityPreserved']),
-      ...(proof.evidence.publicUpgrade ? {publicUpgrade: pick(proof.evidence.publicUpgrade, ['fromVersion', 'toVersion', 'fromSourceRevision', 'fromControllerImageId', 'fromWizardImageId', 'dataPreserved', 'configurationPreserved', 'runnerRegistryVerified', 'rollbackVerified'])} : {})}};
+      ...(proof.evidence.publicUpgrade ? {publicUpgrade: pick(proof.evidence.publicUpgrade, ['fromVersion', 'toVersion', 'fromSourceRevision', 'fromControllerImageId', 'fromWizardImageId', 'dataPreserved', 'configurationPreserved', 'runnerRegistryVerified', 'rollbackVerified', 'gitlabPrerequisiteVerified', 'gitlabCheckpointSha256', 'gitlabFromVersion', 'gitlabToVersion'])} : {})}};
   const evidenceBytes = bytes(evidence);
   const release = {...pick(released, ['format', 'sourceRevision', 'sourceTree', 'sourceLayout', 'wizardSourceTree', 'wizardRevision', 'projectId', 'pipelineId', 'candidateJobId', 'imageId', 'wizardImageId', 'candidateEvidencePath']),
     registryRepository: metadata.images.controller.reference.split('@')[0], registryReference: metadata.images.controller.reference,

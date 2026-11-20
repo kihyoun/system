@@ -567,6 +567,7 @@ class Paths(unittest.TestCase):
         self.assertEqual(upgrade_paths.path(graph, '1.2.0', '1.2.0')['status'], 'unnecessary')
         self.assertEqual(upgrade_paths.path(graph, '1.2.0', '1.1.3')['status'], 'unsupported')
         graph['versions'].append('1.3.0')
+        graph['versions'].sort(key=lambda value: tuple(map(int, value.split('.'))))
         graph['transitions'].append(dict(graph['transitions'][0], **{'from': '1.2.0', 'to': '1.3.0',
             'requiredStage': 'public-release-upgrade-1-2-0-to-1-3-0'}))
         self.assertEqual([row['to'] for row in upgrade_paths.path(graph, '1.1.3', '1.3.0')['transitions']], ['1.2.0', '1.3.0'])
@@ -720,7 +721,7 @@ class BackupAndApply(unittest.TestCase):
         successor.atomic_json(self.target / 'baseline.json', {})
         previous = copy.deepcopy(metadata)
         previous['version'] = '1.1.3'
-        value = {'format': 'system-public-upgrade-plan-v1', 'transitions': upgrade_paths.load()['transitions'],
+        value = {'format': 'system-public-upgrade-plan-v1', 'transitions': upgrade_paths.load()['transitions'][:1],
             'repository': 'example/system', 'installedVersion': '1.1.3', 'targetVersion': '1.2.0',
             'targetSha256': tool.digest(target_raw), 'provenanceSha256': tool.digest(proof_raw),
             'selectionSha256': tool.digest(selected), 'configurationSha256': tool.digest(self.main),

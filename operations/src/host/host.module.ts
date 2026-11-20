@@ -3,6 +3,7 @@ import {HostReleaseAuthorityService} from './release-authority.service';
 import {Module,type DynamicModule} from '@nestjs/common';
 import {nativeProcess,type ProcessRunner} from '../runtime/process';
 import {HostInstallService} from './install';
+import {UpgradePrerequisiteService} from './upgrade-prerequisite.service';
 import {HostStorageService} from './host-storage.service';
 import {HostSourceService} from './source';
 import {RecoveryImageService} from './recovery-images';
@@ -23,7 +24,7 @@ export interface HostModuleOptions {
 export class HostModule {
  static register(options:HostModuleOptions={}):DynamicModule {
   const unavailable=()=>{throw Error('host-lifecycle-evidence-policy-required');};
-  const consumers=[HostStorageService,HostSourceService,RecoveryImageService,RecoveryManifestService,RuntimeInspectionService];
+  const consumers=[UpgradePrerequisiteService,HostStorageService,HostSourceService,RecoveryImageService,RecoveryManifestService,RuntimeInspectionService];
   return {module:HostModule,providers:[
    {provide:HOST_LIFECYCLE_EVIDENCE,useValue:options.lifecycleEvidence??{stages:[],stagesV2:[],validateAuthority:unavailable,validate:unavailable,sanitize:unavailable}},
    {provide:HostReleaseAuthorityService,inject:[HOST_LIFECYCLE_EVIDENCE],useFactory:(policy:LifecycleEvidencePort)=>new HostReleaseAuthorityService(policy)},

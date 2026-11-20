@@ -93,3 +93,15 @@ lifecycle policy through `HostModule.register({lifecycleEvidence})`; omitting it
 fails closed for monorepo acceptance. Public provenance still requires native
 successful publication, browser, candidate and component jobs. Fixture lifecycle
 identifiers never replace those outer publication identities.
+
+The 1.2.0 → 2.0.0 graph explicitly includes the GitLab 19.5.3 → 19.6.1 database
+migration and Runner transition. Complete the native GitLab upgrade with its
+retained cold checkpoint before planning the paired Controller/Wizard phase, then
+pass `--gitlab-checkpoint` to `bootstrapper/upgrade-release.py --operation plan`.
+The plan and apply revalidate the checkpoint inventory, successful native receipt,
+source identity, running GitLab/Runner image IDs and GitLab version. The paired
+recovery command restores the application pair; it does not rewind GitLab. Keep
+both checkpoints and use the separate native database rollback only in the
+reviewed recovery sequence. The acceptance harness runs the native database
+migration first, tests paired apply/offline recovery, then tests the cold database
+rollback. Its future-publication envelope remains explicitly a fixture.

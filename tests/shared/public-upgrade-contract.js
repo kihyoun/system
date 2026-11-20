@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
 const {download, prepare, archiveConfigDigest, prepareSource, run, preserved, replaceController, controllerFixture, waitForServices, NativeCLI} = require('../e2e/public-upgrade');
 const {preparationFailure} = require('../e2e/prepare-images');
-const edge = require('../../bootstrapper/upgrade-paths.json').transitions[0];
+const edge = require('../../bootstrapper/upgrade-paths.json').transitions.find(row => row.to === fs.readFileSync(path.join(__dirname, '../../VERSION'), 'utf8').trim());
 const id = char => 'sha256:' + char.repeat(64);
 function fixture() {
   const metadata = {format: 'system-accepted-release-v1', version: edge.from, tag: 'v' + edge.from, platform: 'linux/amd64',
@@ -250,7 +250,7 @@ test('same candidate drives real CLI operations, interrupted offline recovery an
   const native = {createCredential: async () => {}, initialize: async () => { events.push('initialize'); selected = [id('3'), id('4')]; },
     cli: async (operation, confirmation) => {
       events.push(operation);
-      if (operation === 'plan') return {installedVersion: edge.from, targetVersion: edge.to, confirmPlanSha256: 'a'.repeat(64)};
+      if (operation === 'plan') return {installedVersion: edge.from, targetVersion: edge.to, confirmPlanSha256: 'a'.repeat(64), ...(edge.databaseMigration ? {gitlabPrerequisite:{fromVersion:'19.5.3',toVersion:'19.6.1',checkpointSha256:'b'.repeat(64)}} : {})};
       if (operation === 'apply') {
         if (confirmation !== 'a'.repeat(64)) throw Error('confirmation-refused');
         phase = controller = 'completed'; selected = [id('5'), id('6')];

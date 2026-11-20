@@ -166,6 +166,12 @@ def plan(args, config):
         require(tested['fromVersion'] == previous['version'] and tested['fromSourceRevision'] == previous['source']['revision'] and
                 tested['fromControllerImageId'] == previous['images']['controller']['imageId'] and
                 tested['fromWizardImageId'] == previous['images']['wizard']['imageId'], 'installed-release-not-the-tested-upgrade-baseline')
+    prerequisite = None
+    if any(edge.get('databaseMigration') for edge in route['transitions']):
+        require(len(route['transitions']) == 1 and getattr(args, 'gitlab_checkpoint', None),
+                'complete-native-gitlab-upgrade-first-and-select-retained-checkpoint')
+        prerequisite = recovery.host_operation('gitlabUpgradePrerequisite', config['_root'],
+            args.gitlab_checkpoint, authority.release['sourceRevision'], security)
     host(authority.metadata)
     successor.sync_idle(config)
     required = max(edge['minimumFreeGiB'] for edge in route['transitions']) * 1024 ** 3
@@ -198,6 +204,7 @@ def plan(args, config):
             invoke(config, authority, security, checkpoint, target / 'target.json', args.token_file, args.timeout, True)
         value = {'format': 'system-public-upgrade-plan-v1', 'installedVersion': previous['version'],
             'targetVersion': args.target, 'repository': args.repository, 'transitions': route['transitions'],
+            'gitlabPrerequisite': prerequisite,
             'requiredIntermediateReleases': [row['to'] for row in route['transitions'][:-1]],
             'targetSha256': digest(raw), 'provenanceSha256': digest(proof),
             'selectionSha256': digest(successor.private_input(config['_root'] / 'configuration/.release-images.json')),
@@ -207,8 +214,8 @@ def plan(args, config):
             'checkpoint': str(checkpoint), 'backupDestination': config['SEED_DIR'], 'configurationBackup': str(backup),
             'minimumFreeGiB': required // 1024 ** 3,
             'affectedServices': ['controller', 'Sync', 'Wizard', 'GitLab', 'core proxies', 'runner managers'],
-            'interruption': 'Cold matching backup pauses GitLab; controller/Sync and Wizard restart. Core containers, including GitLab, proxies and runner managers, may be recreated when target Compose policies change. Service/database image and data selections stay pinned. Wait for running CI jobs first.',
-            'recovery': 'Use this command with --operation recover and the same --plan-dir. Service/database images remain unchanged on these declared transitions.'}
+            'interruption': 'Cold matching backup pauses GitLab; controller/Sync and Wizard restart. Core containers, including GitLab, proxies and runner managers, may be recreated when target Compose policies change. This paired phase preserves the already-migrated service/database selections. Any declared GitLab prerequisite must be completed first with its separate cold checkpoint. Wait for running CI jobs first.',
+            'recovery': 'Use this command with --operation recover and the same --plan-dir. Paired recovery does not rewind GitLab. For a database-migration transition, use the separate native GitLab cold-checkpoint rollback only after restoring the paired release; never start the old database image on migrated data.'}
         successor.atomic_json(target / 'plan.json', value)
         attempt['phase'] = 'passed'
         successor.atomic_json(target / 'preflight.json', attempt)
@@ -310,6 +317,10 @@ def apply_locked(args, config, target):
     require(not (target / 'operation.json').exists(), 'upgrade-already-started-use-status-or-recover')
     raw, proof, authority, security = public_inputs(value['repository'], value['targetVersion'], config)
     require(digest(raw) == value['targetSha256'] and digest(proof) == value['provenanceSha256'], 'public-release-changed-after-plan')
+    if value.get('gitlabPrerequisite'):
+        current = recovery.host_operation('gitlabUpgradePrerequisite', config['_root'],
+            value['gitlabPrerequisite']['checkpoint'], authority.release['sourceRevision'], security)
+        require(current == value['gitlabPrerequisite'], 'gitlab-prerequisite-changed-after-plan')
     selection, previous = installed(config, value['repository'], value['targetVersion'])
     require(previous['version'] == value['installedVersion'] and
             digest(successor.private_input(config['_root'] / 'configuration/.release-images.json')) == value['selectionSha256'] and
@@ -369,6 +380,7 @@ def main():
     parser.add_argument('--target', help='Explicit product version; no latest or unattended upgrade.')
     parser.add_argument('--backup-file', help='New configuration ZIP on the selected backup filesystem.')
     parser.add_argument('--token-file', help='Private API token for this installation, never the publisher GitLab.')
+    parser.add_argument('--gitlab-checkpoint', help='Retained completed native GitLab cold checkpoint required by database-migration transitions.')
     parser.add_argument('--confirm-plan', help='Exact plan SHA-256 required for apply or recover.')
     parser.add_argument('--timeout', type=int, default=1200)
     parser.add_argument('--backup-timeout', type=int, default=3600)
