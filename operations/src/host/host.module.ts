@@ -1,3 +1,19 @@
+import {
+  PublicUpgradePlanService,
+  type PublicUpgradePlanPort,
+} from './public-upgrade-plan.service';
+import {
+  PublicUpgradeApplyService,
+  type PublicUpgradeApplyPort,
+} from './public-upgrade-apply.service';
+import {
+  ControllerRollbackSequenceService,
+  type ControllerRollbackPort,
+} from './controller-rollback-sequence.service';
+import {
+  ControllerUpdateSequenceService,
+  type ControllerUpdateSequencePort,
+} from './controller-update-sequence.service';
 import { PromotionSequenceService, type PromotionSequencePort } from './promotion-sequence.service';
 import { ColdMaintenanceService, type ColdMaintenancePort } from './cold-maintenance.service';
 import { RecoveryPublicationService } from './recovery-publication.service';
@@ -14,6 +30,9 @@ import { HostSourceService } from './source';
 import { RecoveryImageService } from './recovery-images';
 import { RecoveryManifestService } from './recovery-manifest';
 import { RuntimeInspectionService } from './runtime-inspection';
+export const HOST_PUBLIC_UPGRADE_APPLY_PORT = Symbol('HOST_PUBLIC_UPGRADE_APPLY_PORT');
+export const HOST_CONTROLLER_ROLLBACK_PORT = Symbol('HOST_CONTROLLER_ROLLBACK_PORT');
+export const HOST_CONTROLLER_UPDATE_SEQUENCE_PORT = Symbol('HOST_CONTROLLER_UPDATE_SEQUENCE_PORT');
 export const HOST_PROMOTION_SEQUENCE_PORT = Symbol('HOST_PROMOTION_SEQUENCE_PORT');
 export const HOST_COLD_MAINTENANCE_PORT = Symbol('HOST_COLD_MAINTENANCE_PORT');
 export const HOST_ATTACHED_PROCESS = Symbol('HOST_ATTACHED_PROCESS');
@@ -21,6 +40,10 @@ export const HOST_PROCESS_RUNNER = Symbol('HOST_PROCESS_RUNNER');
 export const HOST_LIFECYCLE_EVIDENCE = Symbol('HOST_LIFECYCLE_EVIDENCE');
 export const HOST_ENVIRONMENT = Symbol('HOST_ENVIRONMENT');
 export interface HostModuleOptions {
+  publicUpgradePlanPort?: PublicUpgradePlanPort;
+  publicUpgradeApplyPort?: PublicUpgradeApplyPort;
+  controllerRollbackPort?: ControllerRollbackPort;
+  controllerUpdateSequencePort?: ControllerUpdateSequencePort;
   lifecycleEvidence?: LifecycleEvidencePort;
   promotionSequencePort?: PromotionSequencePort;
   coldMaintenancePort?: ColdMaintenancePort;
@@ -50,6 +73,125 @@ export class HostModule {
     return {
       module: HostModule,
       providers: [
+        {
+          provide: PublicUpgradePlanService,
+          useFactory: () =>
+            new PublicUpgradePlanService(
+              options.publicUpgradePlanPort ??
+                (Object.fromEntries(
+                  [
+                    'publicInputs',
+                    'verifyCheckout',
+                    'installed',
+                    'prerequisite',
+                    'host',
+                    'syncIdle',
+                    'freeBytes',
+                    'backupTarget',
+                    'selection',
+                    'capture',
+                    'invoke',
+                    'dataSample',
+                    'now',
+                  ].map((key) => [key, nativePortRequired]),
+                ) as unknown as PublicUpgradePlanPort),
+            ),
+        },
+        {
+          provide: HOST_PUBLIC_UPGRADE_APPLY_PORT,
+          useValue:
+            options.publicUpgradeApplyPort ??
+            Object.fromEntries(
+              [
+                'publicInputs',
+                'prerequisite',
+                'installed',
+                'fingerprints',
+                'assertBaseline',
+                'dataSample',
+                'host',
+                'backupTarget',
+                'invoke',
+                'archive',
+                'matchingBackup',
+                'waitReady',
+              ].map((key) => [key, nativePortRequired]),
+            ),
+        },
+        {
+          provide: PublicUpgradeApplyService,
+          inject: [UpgradeLifecycleService, HOST_PUBLIC_UPGRADE_APPLY_PORT],
+          useFactory: (lifecycle: UpgradeLifecycleService, port: PublicUpgradeApplyPort) =>
+            new PublicUpgradeApplyService(lifecycle, port),
+        },
+        {
+          provide: HOST_CONTROLLER_ROLLBACK_PORT,
+          useValue:
+            options.controllerRollbackPort ??
+            Object.fromEntries(
+              [
+                'journal',
+                'mainSha',
+                'pairedBaseline',
+                'verifySelection',
+                'services',
+                'stoppedIdle',
+                'repairPeers',
+                'critical',
+                'command',
+                'inspect',
+                'writeConfiguration',
+                'recoveredReceipt',
+                'writeSelection',
+                'reload',
+                'restoreStopped',
+                'waitReady',
+                'inspectServices',
+                'now',
+                'verification',
+              ].map((key) => [key, nativePortRequired]),
+            ),
+        },
+        {
+          provide: ControllerRollbackSequenceService,
+          inject: [HOST_CONTROLLER_ROLLBACK_PORT],
+          useFactory: (port: ControllerRollbackPort) => new ControllerRollbackSequenceService(port),
+        },
+        {
+          provide: HOST_CONTROLLER_UPDATE_SEQUENCE_PORT,
+          useValue:
+            options.controllerUpdateSequencePort ??
+            Object.fromEntries(
+              [
+                'journal',
+                'assertBaseline',
+                'verifySelection',
+                'publicImages',
+                'pipeline',
+                'publicPair',
+                'syncIdle',
+                'currentServices',
+                'repairBaseline',
+                'critical',
+                'command',
+                'inspect',
+                'writeConfiguration',
+                'writeSelection',
+                'now',
+                'reload',
+                'saveBaseline',
+                'waitReady',
+                'services',
+                'saveVerification',
+              ].map((key) => [key, nativePortRequired]),
+            ),
+        },
+        {
+          provide: ControllerUpdateSequenceService,
+          inject: [HOST_CONTROLLER_UPDATE_SEQUENCE_PORT],
+          useFactory: (port: ControllerUpdateSequencePort) =>
+            new ControllerUpdateSequenceService(port),
+        },
         {
           provide: HOST_PROMOTION_SEQUENCE_PORT,
           useValue:
@@ -148,6 +290,10 @@ export class HostModule {
         })),
       ],
       exports: [
+        PublicUpgradePlanService,
+        PublicUpgradeApplyService,
+        ControllerRollbackSequenceService,
+        ControllerUpdateSequenceService,
         PromotionSequenceService,
         ColdMaintenanceService,
         RecoveryPublicationService,

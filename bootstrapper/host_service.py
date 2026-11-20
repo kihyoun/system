@@ -9,6 +9,7 @@ def invoke(entry, request, dispatch, error_type, active_error=None):
     node = str(retained.resolve()) if retained.is_file() else 'node'
     child = subprocess.Popen([node, str(Path(__file__).resolve().parent.parent / 'operations/dist/host' / entry)],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    native_error = None
     try:
         child.stdin.write(json.dumps(request) + '\n')
         child.stdin.flush()
@@ -20,6 +21,8 @@ def invoke(entry, request, dispatch, error_type, active_error=None):
             if message.get('complete'):
                 child.wait(timeout=10)
                 if message.get('error'):
+                    if native_error and message['error'] == native_error[0]:
+                        raise native_error[1]
                     raise (active_error if active_error and message.get('activeJobs') else error_type)(message['error'])
                 if child.returncode:
                     raise error_type('host-service-runtime-failed')
@@ -27,7 +30,9 @@ def invoke(entry, request, dispatch, error_type, active_error=None):
             try:
                 response = {'value': dispatch(message.get('method'), message.get('args', []))}
             except Exception as error:
-                response = {'error': str(error) if isinstance(error, error_type) else 'host-native-port-failed'}
+                code = str(error) if isinstance(error, error_type) else 'host-native-port-failed'
+                native_error = (code, error)
+                response = {'error': code}
             child.stdin.write(json.dumps(response) + '\n')
             child.stdin.flush()
     finally:

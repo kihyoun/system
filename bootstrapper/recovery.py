@@ -96,7 +96,7 @@ def host_operation(operation, *arguments):
     host = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(host)
     try:
-        return host.invoke(operation, *arguments, deadline=(time.time() + budget(float('inf'))) * 1000 if OPERATION_DEADLINE is not None and operation not in ('upgradePhase', 'failedStoppedController', 'inspectServiceRows', 'runtimeImageSelectors', 'verifyImageInspections', 'validateUpgradeGraph', 'upgradePath') else None)
+        return host.invoke(operation, *arguments, deadline=(time.time() + budget(float('inf'))) * 1000 if OPERATION_DEADLINE is not None and operation not in ('interruptUpgrade', 'upgradePhase', 'failedStoppedController', 'inspectServiceRows', 'runtimeImageSelectors', 'verifyImageInspections', 'validateUpgradeGraph', 'upgradePath') else None)
     except host.ReleaseError as error:
         raise RecoveryError(str(error)) from None
 

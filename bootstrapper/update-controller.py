@@ -6,6 +6,8 @@ one. Opt in to the accepted public Wizard with --wizard. Neither mode migrates
 GitLab or restores a Seed.
 """
 import argparse
+import base64
+import host_service
 import copy
 import fcntl
 import hashlib
@@ -481,65 +483,38 @@ def update(config, release, evidence, api, release_bytes, evidence_bytes, securi
         record['releaseSelection'] = selection
     successor.atomic_json(checkpoint / 'operation.json', record)
     with successor.Lease(config) as lease:
-        record.update(leaseOperation=lease.operation, phase='lease-acquired')
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        runtime.assert_baseline(config, baseline)
-        if expected_baseline is not None:
-            runtime.assert_baseline(config, expected_baseline)
-        if selection:
-            verify_release_selection(config, selection)
-        if stopped_id is None:
-            require(runtime.public_images(config, runtime.inspect_services(config)) == baseline['selectedImages'],
-                    'controller-update-images-changed-before-stop')
-        successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
-        if pulled_wizard:
-            require(successor.verify_public_pair(api, release, evidence, controller, wizard) == publication,
-                    'paired-publication-changed-before-stop')
-        if stopped_id is None:
-            successor.sync_idle(config)
-            current_services(config, release, evidence, security)
-        else:
-            current = current_services(config, release, evidence, security, stopped_id)
-            require(current['system_bootstrapper_1'] == original['system_bootstrapper_1'],
-                    'stopped-controller-changed-before-repair')
-            verify_runner_containers(current, record['previousRunnerContainerIds'])
-            repair_baseline(config, baseline, current, lease)
-        if selection:
-            verify_release_selection(config, selection)
-            verify_release_selection_checkpoint(checkpoint, selection)
-        lease.critical = True
-        record['phase'] = 'controller-stop-started'
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        stop_controller(original['system_bootstrapper_1'])
-        runtime.assert_baseline(config, baseline)
-        write_configuration(config, updated, metadata)
-        if selection:
-            write_release_selection(config, checkpoint, selection, 'after')
-        record['phase'] = 'controller-start-started'
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        restarted_at = runtime.now()
-        compose(config, pulled['reference'])
-        config = runtime.settings(config['_persistence_env'])
-        after = copy.deepcopy(baseline)
-        after['configurationFiles']['configuration/.docker.env'] = hashlib.sha256(updated).hexdigest()
-        after['selectedImages']['system_bootstrapper_1'].update(reference=pulled['reference'], imageId=pulled['imageId'])
-        if pulled_wizard:
-            after['selectedImages']['system_wizard_1'].update(reference=pulled_wizard['reference'], imageId=pulled_wizard['imageId'])
-        after.update(sourceCommit=release['sourceRevision'], sourceTree=release['sourceTree'])
-        after['startedAt'] = restarted_at
-        successor.atomic_json(checkpoint / 'baseline-after.json', after)
-        receipt = wait_ready(config, after, token_file, redirect_from, timeout)
-        services = runtime.inspect_services(config)
-        unchanged_services(services, baseline, wizard_optional=bool(pulled_wizard))
-        if stopped_id:
-            verify_runner_containers(services, record['previousRunnerContainerIds'])
-        successor.atomic_json(checkpoint / 'verification.json', receipt)
-        record.update(phase='completed', completedAt=runtime.now(), serviceImagesPreserved=not bool(pulled_wizard),
-                      configurationChangedOnlyControllerImage=not bool(pulled_wizard), databaseRewound=False)
-        if pulled_wizard:
-            record.update(otherServiceImagesPreserved=True, configurationChangedOnlyReleaseImages=True)
-        successor.atomic_json(checkpoint / 'operation.json', record)
-    return record
+        def dispatch(method, args):
+            nonlocal config
+            if method == 'journal': successor.atomic_json(checkpoint / 'operation.json', args[0])
+            elif method == 'assertBaseline': runtime.assert_baseline(config, args[0])
+            elif method == 'verifySelection':
+                if args[0]: verify_release_selection_checkpoint(checkpoint, selection)
+                else: verify_release_selection(config, selection)
+            elif method == 'publicImages': return runtime.public_images(config, runtime.inspect_services(config))
+            elif method == 'pipeline': successor.verify_pipeline(api, release, release_bytes, evidence_bytes)
+            elif method == 'publicPair': return successor.verify_public_pair(api, release, evidence, controller, wizard)
+            elif method == 'syncIdle': successor.sync_idle(config)
+            elif method == 'currentServices': return current_services(config, release, evidence, security, stopped_id)
+            elif method == 'repairBaseline': repair_baseline(config, baseline, args[0], lease)
+            elif method == 'critical': lease.critical = True
+            elif method == 'command': run([*DOCKER, *args[0]], **({'env': successor.environment(config, args[1], staged=True)} if args[1] else {}))
+            elif method == 'inspect': return promoter.inspect(args[0])
+            elif method == 'writeConfiguration': write_configuration(config, base64.b64decode(args[0], validate=True), args[1])
+            elif method == 'writeSelection': write_release_selection(config, checkpoint, selection, 'after')
+            elif method == 'now': return runtime.now()
+            elif method == 'reload': config = runtime.settings(config['_persistence_env'])
+            elif method == 'saveBaseline': successor.atomic_json(checkpoint / 'baseline-after.json', args[0])
+            elif method == 'waitReady': return wait_ready(config, args[0], token_file, redirect_from, timeout)
+            elif method == 'services': return runtime.inspect_services(config)
+            elif method == 'saveVerification': successor.atomic_json(checkpoint / 'verification.json', args[0])
+            else: raise recovery.RecoveryError('unknown-controller-update-native-port')
+        context = {'record': record, 'baseline': baseline, 'expectedBaseline': expected_baseline,
+                   'original': original, 'selection': selection, 'stoppedId': stopped_id, 'pulled': pulled,
+                   'wizard': pulled_wizard, 'publication': publication if pulled_wizard else None,
+                   'release': release, 'updated': base64.b64encode(updated).decode(), 'metadata': metadata,
+                   'leaseOperation': lease.operation, 'checkout': str(ROOT)}
+        return host_service.invoke('controller-update-sequence-entry.js', {'input': context}, dispatch,
+                                   recovery.RecoveryError)
 
 
 def load_operation(config, checkpoint):
@@ -633,59 +608,35 @@ def rollback(config, checkpoint, token_file, redirect_from=None, timeout=1200, r
     locked = (config['_root'] / 'configuration/.gitlab-upgrade-lock').exists()
     lease = successor.Lease.adopt(config, record['leaseOperation']) if locked else successor.Lease(config).__enter__()
     try:
-        record['leaseOperation'] = lease.operation
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        require(hashlib.sha256(config['_main'].read_bytes()).hexdigest() in
-                (record['configurationBeforeSha256'], record['configurationAfterSha256'], record.get('recoveredConfigurationSha256')),
-                'controller-rollback-configuration-changed')
-        paired_rollback_baseline(config, baseline, record)
-        if selection:
-            verify_release_selection(config, selection, rollback=True)
-            verify_release_selection_checkpoint(checkpoint, selection)
-        services = rollback_services(config, baseline, record)
-        if record.get('repairStoppedController'):
-            stopped_operations_idle(config, lease)
-            repair_peer_services(services)
-            verify_runner_containers(services, record['previousRunnerContainerIds'])
-            controller = services.get('system_bootstrapper_1')
-            require(controller is None or ('ExecIDs' in controller and controller['ExecIDs'] in (None, [])),
-                    'repair-controller-active-or-unknown-execs')
-        record['phase'] = 'rollback-started'
-        successor.atomic_json(checkpoint / 'operation.json', record)
-        lease.critical = True
-        if 'system_bootstrapper_1' in services:
-            stop_controller(services['system_bootstrapper_1'])
-        if record.get('repairStoppedController'):
-            stopped_operations_idle(config, lease)
-            stopped = rollback_services(config, baseline, record)
-            repair_peer_services(stopped)
-            verify_runner_containers(stopped, record['previousRunnerContainerIds'])
-        write_configuration(config, before, record['configurationMetadata'])
-        if record.get('recoveredImages'):
-            successor.atomic_json(config['_main'].parent / '.release-images.recovered.json', {
-                'format': 'system-public-recovered-images-v1', 'checkpoint': str(checkpoint),
-                'configurationSha256': record['recoveredConfigurationSha256'], 'images': record['recoveredImages']})
-            baseline['configurationFiles']['configuration/.docker.env'] = record['recoveredConfigurationSha256']
-        if selection:
-            write_release_selection(config, checkpoint, selection, 'before')
-        config = runtime.settings(config['_persistence_env'])
-        if record.get('repairStoppedController'):
-            receipt = restore_stopped_controller(config, baseline, record, lease)
-        else:
-            compose(config, previous['reference'])
-            baseline['startedAt'] = runtime.now()
-            receipt = wait_ready(config, baseline, token_file, redirect_from, timeout)
-            unchanged_services(runtime.inspect_services(config), baseline)
-            policy = previous['restartPolicy']['Name']
-            require(policy in ('no', 'always', 'unless-stopped', 'on-failure'), 'invalid-original-restart-policy')
-            retries = previous['restartPolicy'].get('MaximumRetryCount', 0)
-            if policy == 'on-failure' and retries:
-                policy += ':' + str(int(retries))
-            run([*DOCKER, 'update', '--restart=' + policy, promoter.inspect('system_bootstrapper_1')['Id']])
-        successor.atomic_json(checkpoint / 'rollback-verification.json', receipt)
-        record.update(phase='rolled-back-stopped' if record.get('repairStoppedController') else 'rolled-back',
-                      rolledBackAt=runtime.now(), databaseRewound=False)
-        successor.atomic_json(checkpoint / 'operation.json', record)
+        def dispatch(method, args):
+            nonlocal config
+            if method == 'journal': successor.atomic_json(checkpoint / 'operation.json', args[0])
+            elif method == 'mainSha': return recovery.sha(config['_main'])
+            elif method == 'pairedBaseline': paired_rollback_baseline(config, args[0], record)
+            elif method == 'verifySelection':
+                if args[0]: verify_release_selection_checkpoint(checkpoint, selection)
+                else: verify_release_selection(config, selection, rollback=True)
+            elif method == 'services': return rollback_services(config, baseline, record)
+            elif method == 'stoppedIdle': stopped_operations_idle(config, lease)
+            elif method == 'repairPeers': repair_peer_services(args[0])
+            elif method == 'critical': lease.critical = True
+            elif method == 'command': run([*DOCKER, *args[0]], **({'env': successor.environment(config, args[1], staged=True)} if args[1] else {}))
+            elif method == 'inspect': return promoter.inspect(args[0])
+            elif method == 'writeConfiguration': write_configuration(config, base64.b64decode(args[0], validate=True), args[1])
+            elif method == 'recoveredReceipt': successor.atomic_json(config['_main'].parent / '.release-images.recovered.json', args[0])
+            elif method == 'writeSelection': write_release_selection(config, checkpoint, selection, 'before')
+            elif method == 'reload': config = runtime.settings(config['_persistence_env'])
+            elif method == 'restoreStopped': return restore_stopped_controller(config, args[0], record, lease)
+            elif method == 'waitReady': return wait_ready(config, args[0], token_file, redirect_from, timeout)
+            elif method == 'inspectServices': return runtime.inspect_services(config)
+            elif method == 'now': return runtime.now()
+            elif method == 'verification': successor.atomic_json(checkpoint / 'rollback-verification.json', args[0])
+            else: raise recovery.RecoveryError('unknown-controller-rollback-native-port')
+        context = {'record': record, 'baseline': baseline, 'before': base64.b64encode(before).decode(),
+                   'selection': selection, 'leaseOperation': lease.operation, 'checkpoint': str(checkpoint),
+                   'checkout': str(ROOT)}
+        record = host_service.invoke('controller-rollback-sequence-entry.js', {'input': context}, dispatch,
+                                     recovery.RecoveryError)
     except BaseException:
         lease.__exit__(*sys.exc_info())
         raise

@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import {
   RecoveryPublicationService,
   recoverySource,
@@ -33,60 +34,18 @@ import {
   type InstallOptions,
 } from './install';
 
-/** Fixed compatibility RPC for remaining Python consumers; never evaluates code. */
-export function compatibility(input: {
+/** Fixed compatibility RPC; pure decisions avoid unnecessary Nest startup. */
+export async function compatibility(input: {
   operation: string;
   arguments: unknown[];
   deadline?: number;
 }) {
-  const args = input.arguments,
-    host = new HostInstallService(undefined, undefined, undefined, undefined, input.deadline);
+  const args = input.arguments;
   switch (input.operation) {
     case 'releaseInstalledSource':
       return releaseInstalledSource(args[0]);
     case 'recoverySource':
       return recoverySource(args[0]);
-    case 'refreshRecoveryManifest':
-      return new RecoveryPublicationService().refresh(
-        args[0],
-        args[1],
-        args[2],
-        String(args[3]),
-        String(args[4]),
-        String(args[5]),
-        String(args[6]),
-        String(args[7]),
-        args[8] === null ? undefined : String(args[8]),
-        args[9] === null ? undefined : String(args[9]),
-      );
-    case 'approvedUpgradePlan':
-      return new UpgradeLifecycleService().approvedPlan(String(args[0]), args[1]);
-    case 'upgradePhase':
-      return new UpgradeLifecycleService().transition(
-        String(args[0]),
-        args[1],
-        args[2],
-        args[3] ?? undefined,
-      );
-    case 'gitlabUpgradePrerequisite':
-      return new UpgradePrerequisiteService(host).verify(
-        String(args[0]),
-        String(args[1]),
-        String(args[2]),
-        args[3],
-      );
-    case 'publicReleaseInputs':
-      return new HostReleaseAuthorityService(
-        require('../../../gitlab/guided-preview-evidence'),
-      ).publicInputs(args[0], Buffer.from(String(args[1]), 'base64'), args[2]);
-    case 'releaseInputs':
-      return new HostReleaseAuthorityService(
-        require('../../../gitlab/guided-preview-evidence'),
-      ).inputs(
-        Buffer.from(String(args[0]), 'base64'),
-        Buffer.from(String(args[1]), 'base64'),
-        args[2],
-      );
     case 'runtimeImageSelectors':
       return runtimeImageSelectors(args[0] as RuntimeConfig);
     case 'verifyImageInspections':
@@ -104,36 +63,10 @@ export function compatibility(input: {
       );
     case 'failedStoppedController':
       return failedStoppedController(args[0] as ContainerRow, args[1]);
-    case 'verifyMounts':
-      return new RuntimeInspectionService(host).mounts(
-        args[0] as RuntimeConfig,
-        args[1] as Record<string, ContainerRow>,
-      );
-    case 'verifySourceObjects':
-      return new HostSourceService(host).verifyObjects(args[0], String(args[1]));
-    case 'verifyCheckout':
-      return new HostSourceService(host).verifyCheckout(args[0], String(args[1]));
-    case 'verifyAncestry':
-      return new HostSourceService(host).verifyAncestry(args[0], args[1], String(args[2]));
     case 'validateUpgradeGraph':
       return validateUpgradeGraph(args[0]);
     case 'upgradePath':
       return upgradePath(args[0], String(args[1]), String(args[2]));
-    case 'restoreImages':
-      return new RecoveryImageService(host).restore(String(args[0]), args[1] as RecoveryManifest);
-    case 'loadManifest':
-      return new RecoveryManifestService(host).load(
-        String(args[0]),
-        String(args[1]),
-        args[2] ? String(args[2]) : undefined,
-        args[3] === true,
-        args[4] === null || args[4] === undefined ? undefined : String(args[4]),
-      );
-    case 'validateSelected':
-      return new RecoveryManifestService(host).validateSelected(
-        args[0] as RecoveryManifest,
-        String(args[1]),
-      );
     case 'reference':
       return reference(args[0]);
     case 'sourceIdentity':
@@ -158,16 +91,97 @@ export function compatibility(input: {
       return privateFile(String(args[0]));
     case 'writePrivate':
       return writePrivate(String(args[0]), Buffer.from(String(args[1]), 'base64'));
-    case 'source':
-      return host.source(String(args[0]));
-    case 'storage':
-      return host.storage(String(args[0]), String(args[1]));
-    case 'noExistingServices':
-      return host.noExistingServices();
-    case 'install':
-      return host.install(args[0] as InstallOptions, String(args[1]));
-    default:
-      throw Error('unknown-host-operation');
+  }
+  const { NestFactory } = await import('@nestjs/core');
+  const { HostModule } = await import('./host.module.js');
+  const app = await NestFactory.createApplicationContext(
+    HostModule.register({
+      deadline: input.deadline,
+      lifecycleEvidence: require('../../../gitlab/guided-preview-evidence'),
+    }),
+    { logger: false },
+  );
+  try {
+    const host = app.get(HostInstallService);
+    switch (input.operation) {
+      case 'refreshRecoveryManifest':
+        return app
+          .get(RecoveryPublicationService)
+          .refresh(
+            args[0],
+            args[1],
+            args[2],
+            String(args[3]),
+            String(args[4]),
+            String(args[5]),
+            String(args[6]),
+            String(args[7]),
+            args[8] === null ? undefined : String(args[8]),
+            args[9] === null ? undefined : String(args[9]),
+          );
+      case 'interruptUpgrade':
+        return app.get(UpgradeLifecycleService).interrupt(String(args[0]));
+      case 'approvedUpgradePlan':
+        return app.get(UpgradeLifecycleService).approvedPlan(String(args[0]), args[1]);
+      case 'upgradePhase':
+        return app
+          .get(UpgradeLifecycleService)
+          .transition(String(args[0]), args[1], args[2], args[3] ?? undefined);
+      case 'gitlabUpgradePrerequisite':
+        return app
+          .get(UpgradePrerequisiteService)
+          .verify(String(args[0]), String(args[1]), String(args[2]), args[3]);
+      case 'publicReleaseInputs':
+        return app
+          .get(HostReleaseAuthorityService)
+          .publicInputs(args[0], Buffer.from(String(args[1]), 'base64'), args[2]);
+      case 'releaseInputs':
+        return app
+          .get(HostReleaseAuthorityService)
+          .inputs(
+            Buffer.from(String(args[0]), 'base64'),
+            Buffer.from(String(args[1]), 'base64'),
+            args[2],
+          );
+      case 'verifyMounts':
+        return app
+          .get(RuntimeInspectionService)
+          .mounts(args[0] as RuntimeConfig, args[1] as Record<string, ContainerRow>);
+      case 'verifySourceObjects':
+        return app.get(HostSourceService).verifyObjects(args[0], String(args[1]));
+      case 'verifyCheckout':
+        return app.get(HostSourceService).verifyCheckout(args[0], String(args[1]));
+      case 'verifyAncestry':
+        return app.get(HostSourceService).verifyAncestry(args[0], args[1], String(args[2]));
+      case 'restoreImages':
+        return app.get(RecoveryImageService).restore(String(args[0]), args[1] as RecoveryManifest);
+      case 'loadManifest':
+        return app
+          .get(RecoveryManifestService)
+          .load(
+            String(args[0]),
+            String(args[1]),
+            args[2] ? String(args[2]) : undefined,
+            args[3] === true,
+            args[4] === null || args[4] === undefined ? undefined : String(args[4]),
+          );
+      case 'validateSelected':
+        return app
+          .get(RecoveryManifestService)
+          .validateSelected(args[0] as RecoveryManifest, String(args[1]));
+      case 'source':
+        return host.source(String(args[0]));
+      case 'storage':
+        return host.storage(String(args[0]), String(args[1]));
+      case 'noExistingServices':
+        return host.noExistingServices();
+      case 'install':
+        return host.install(args[0] as InstallOptions, String(args[1]));
+      default:
+        throw Error('unknown-host-operation');
+    }
+  } finally {
+    await app.close();
   }
 }
 export function installArguments(argv: string[]): InstallOptions {
@@ -196,20 +210,28 @@ export function installArguments(argv: string[]): InstallOptions {
   reference(result.wizard);
   return result;
 }
-if (require.main === module) {
+export async function hostMain(): Promise<void> {
   try {
     if (process.argv[2] === '--compatibility') {
-      const result = compatibility(JSON.parse(fs.readFileSync(0, 'utf8')));
+      const result = await compatibility(JSON.parse(fs.readFileSync(0, 'utf8')));
       process.stdout.write(JSON.stringify({ value: result ?? null }) + '\n');
     } else if (process.argv.includes('--help')) {
       process.stdout.write(
         'install-release --controller IMAGE@sha256:DIGEST --wizard IMAGE@sha256:DIGEST [--persistence-env FILE] [--release-metadata FILE] [--install-host]\n',
       );
     } else {
-      new HostInstallService().install(
-        installArguments(process.argv.slice(2)),
-        path.resolve(__dirname, '../../..'),
-      );
+      const { NestFactory } = await import('@nestjs/core');
+      const { HostModule } = await import('./host.module.js');
+      const app = await NestFactory.createApplicationContext(HostModule.register(), {
+        logger: false,
+      });
+      try {
+        app
+          .get(HostInstallService)
+          .install(installArguments(process.argv.slice(2)), path.resolve(__dirname, '../../..'));
+      } finally {
+        await app.close();
+      }
       process.stdout.write(
         'Public release startup requested. Complete first setup in the Wizard; service readiness is separate.\n',
       );
@@ -225,3 +247,5 @@ if (require.main === module) {
     process.exitCode = 1;
   }
 }
+
+if (require.main === module) void hostMain();

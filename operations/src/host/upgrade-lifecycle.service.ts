@@ -24,6 +24,13 @@ export class UpgradeLifecycleService {
     ensure(fs.statSync(file).size <= 64 * 1024 ** 2, 'bounded-upgrade-journal-required');
     return fs.readFileSync(file);
   }
+  interrupt(directory: string): Record<string, unknown> | null {
+    if (!fs.existsSync(path.join(directory, 'operation.json'))) return null;
+    const previous = record(JSON.parse(this.read(directory, 'operation.json').toString()));
+    if (['completed', 'rolled-back', 'needs-inspection'].includes(String(previous.phase)))
+      return previous;
+    return this.transition(directory, 'needs-inspection', {}, previous.phase);
+  }
   approvedPlan(directory: string, confirmation: unknown): Record<string, unknown> {
     const bytes = this.read(directory, 'plan.json');
     ensure(confirmation === sha(bytes), 'explicit-matching-plan-SHA256-confirmation-required');

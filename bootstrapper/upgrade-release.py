@@ -5,6 +5,8 @@ Uses only public release inputs and this installation's own API credentials.
 Quickstart is for a fresh host; source pulls alone never upgrade an installation.
 """
 import argparse
+import base64
+import host_service
 import fcntl
 import hashlib
 import importlib.util
@@ -157,75 +159,36 @@ def data_sample():
 
 
 def plan(args, config):
-    raw, proof, authority, security = public_inputs(args.repository, args.target, config)
-    require(args.target == (ROOT / 'VERSION').read_text().strip(), 'run-the-selected-target-release-checkout')
-    successor.verify_checkout(authority.release, ROOT)
-    selection, previous = installed(config, args.repository, args.target)
-    route = upgrade_paths.path(authority.graph, previous['version'], args.target)
-    require(route['status'] == 'supported', 'upgrade-selection-' + route['status'] + '-see-public-upgrade-guide')
-    if len(route['transitions']) == 1:
-        tested = authority.evidence['evidence']['publicUpgrade']
-        require(tested['fromVersion'] == previous['version'] and tested['fromSourceRevision'] == previous['source']['revision'] and
-                tested['fromControllerImageId'] == previous['images']['controller']['imageId'] and
-                tested['fromWizardImageId'] == previous['images']['wizard']['imageId'], 'installed-release-not-the-tested-upgrade-baseline')
-    prerequisite = None
-    if any(edge.get('databaseMigration') for edge in route['transitions']):
-        require(len(route['transitions']) == 1 and getattr(args, 'gitlab_checkpoint', None),
-                'complete-native-gitlab-upgrade-first-and-select-retained-checkpoint')
-        prerequisite = recovery.host_operation('gitlabUpgradePrerequisite', config['_root'],
-            args.gitlab_checkpoint, authority.release['sourceRevision'], security)
-    host(authority.metadata)
-    successor.sync_idle(config)
-    required = max(edge['minimumFreeGiB'] for edge in route['transitions']) * 1024 ** 3
-    docker_root = run([*successor.DOCKER, 'info', '--format', '{{.DockerRootDir}}']).decode().strip()
-    for path in (config['_root'], Path(docker_root)):
-        require(shutil.disk_usage(path).free >= required, 'insufficient-upgrade-checkpoint-or-image-storage')
-    backup = backup_target(config, args.backup_file)
-    existing = Path(args.plan_dir).exists()
-    target = directory(config, args.plan_dir, new=not existing)
-    if existing:
-        attempt = json.loads(successor.private_input(target / 'preflight.json'))
-        require(attempt.get('format') == 'system-public-upgrade-preflight-v1' and attempt.get('phase') == 'failed' and
-                {file.name for file in target.iterdir()} <= {'preflight.json', 'target.json', 'provenance.json', 'previous-release.json', 'previous-selection.json', 'previous-selection.env', 'baseline.json'},
-                'existing-upgrade-directory-needs-status-inspection')
-    # Existing updater check-only verifies exact image labels, routes, Fetch,
-    # running jobs/migrations, manager identities and operator GitLab access.
-    checkpoint = config['_root'] / 'recovery/controller-updates' / target.name
-    require(not checkpoint.exists(), 'controller-update-checkpoint-already-exists')
-    target.mkdir(parents=True, mode=0o700, exist_ok=existing)
-    attempt = {'format': 'system-public-upgrade-preflight-v1', 'phase': 'checking', 'targetVersion': args.target, 'at': runtime.now()}
-    successor.atomic_json(target / 'preflight.json', attempt)
+    authority = security = None
+    def dispatch(method, arguments):
+        nonlocal authority, security
+        if method == 'publicInputs':
+            raw, proof, authority, security = public_inputs(*arguments, config)
+            return {'raw': base64.b64encode(raw).decode(), 'proof': base64.b64encode(proof).decode(),
+                    'release': authority.release, 'metadata': authority.metadata, 'evidence': authority.evidence, 'graph': authority.graph}
+        if method == 'verifyCheckout': successor.verify_checkout(authority.release, ROOT)
+        elif method == 'installed': return installed(config, *arguments)[1]
+        elif method == 'prerequisite': return recovery.host_operation('gitlabUpgradePrerequisite', config['_root'], arguments[0], authority.release['sourceRevision'], security)
+        elif method == 'host': host(authority.metadata)
+        elif method == 'syncIdle': successor.sync_idle(config)
+        elif method == 'freeBytes':
+            docker_root = run([*successor.DOCKER, 'info', '--format', '{{.DockerRootDir}}']).decode().strip()
+            return [shutil.disk_usage(item).free for item in (config['_root'], Path(docker_root))]
+        elif method == 'backupTarget': return str(backup_target(config, arguments[0]))
+        elif method == 'selection': return {'json': base64.b64encode(successor.private_input(config['_main'].parent / '.release-images.json')).decode(), 'environment': base64.b64encode(successor.private_input(config['_main'].parent / '.release-images.env')).decode(), 'configurationSha256': digest(config['_main'].read_bytes())}
+        elif method == 'capture': return runtime.capture(config, ROOT, public=True)
+        elif method == 'invoke': invoke(config, authority, security, Path(arguments[0]), Path(arguments[1]), args.token_file, args.timeout, True)
+        elif method == 'dataSample': return data_sample()
+        elif method == 'now': return runtime.now()
+        else: raise recovery.RecoveryError('unknown-public-upgrade-native-port')
     try:
-        successor.atomic_bytes(target / 'target.json', raw)
-        successor.atomic_bytes(target / 'provenance.json', proof)
-        successor.atomic_json(target / 'previous-release.json', previous)
-        successor.atomic_bytes(target / 'previous-selection.json', successor.private_input(config['_main'].parent / '.release-images.json'))
-        successor.atomic_bytes(target / 'previous-selection.env', successor.private_input(config['_main'].parent / '.release-images.env'))
-        successor.atomic_json(target / 'baseline.json', runtime.capture(config, ROOT, public=True))
-        if len(route['transitions']) == 1:
-            invoke(config, authority, security, checkpoint, target / 'target.json', args.token_file, args.timeout, True)
-        value = {'format': 'system-public-upgrade-plan-v1', 'installedVersion': previous['version'],
-            'targetVersion': args.target, 'repository': args.repository, 'transitions': route['transitions'],
-            'gitlabPrerequisite': prerequisite,
-            'requiredIntermediateReleases': [row['to'] for row in route['transitions'][:-1]],
-            'targetSha256': digest(raw), 'provenanceSha256': digest(proof),
-            'selectionSha256': digest(successor.private_input(config['_root'] / 'configuration/.release-images.json')),
-            'configurationSha256': digest(config['_main'].read_bytes()),
-            'dataSample': data_sample(),
-            'baselineSha256': digest(successor.private_input(target / 'baseline.json')),
-            'checkpoint': str(checkpoint), 'backupDestination': config['SEED_DIR'], 'configurationBackup': str(backup),
-            'minimumFreeGiB': required // 1024 ** 3,
-            'affectedServices': ['controller', 'Sync', 'Wizard', 'GitLab', 'core proxies', 'runner managers'],
-            'interruption': 'Cold matching backup pauses GitLab; controller/Sync and Wizard restart. Core containers, including GitLab, proxies and runner managers, may be recreated when target Compose policies change. This paired phase preserves the already-migrated service/database selections. Any declared GitLab prerequisite must be completed first with its separate cold checkpoint. Wait for running CI jobs first.',
-            'recovery': 'Use this command with --operation recover and the same --plan-dir. Paired recovery does not rewind GitLab. For a database-migration transition, use the separate native GitLab cold-checkpoint rollback only after restoring the paired release; never start the old database image on migrated data.'}
-        successor.atomic_json(target / 'plan.json', value)
-        attempt['phase'] = 'passed'
-        successor.atomic_json(target / 'preflight.json', attempt)
-        return value, digest(successor.private_input(target / 'plan.json'))
+        result = host_service.invoke('public-upgrade-plan-entry.js', {'target': args.target, 'repository': args.repository,
+            'directory': str(args.plan_dir), 'backupFile': str(args.backup_file), 'gitlabCheckpoint': getattr(args, 'gitlab_checkpoint', None),
+            'root': str(config['_root']), 'checkout': str(ROOT), 'backupDestination': config['SEED_DIR']}, dispatch, recovery.RecoveryError)
     except BaseException:
-        attempt['phase'] = 'failed'
-        successor.atomic_json(target / 'preflight.json', attempt)
+        host_service.invoke('public-upgrade-plan-entry.js', {'operation': 'interrupt', 'directory': str(args.plan_dir)}, dispatch, recovery.RecoveryError)
         raise
+    return result['value'], result['sha256']
 
 
 def sync_request(config, route, body=None):
@@ -311,58 +274,30 @@ def apply(args, config):
 
 
 def apply_locked(args, config, target):
-    value = recovery.host_operation('approvedUpgradePlan', target, args.confirm_plan)
-    raw, proof, authority, security = public_inputs(value['repository'], value['targetVersion'], config)
-    require(digest(raw) == value['targetSha256'] and digest(proof) == value['provenanceSha256'], 'public-release-changed-after-plan')
-    if value.get('gitlabPrerequisite'):
-        current = recovery.host_operation('gitlabUpgradePrerequisite', config['_root'],
-            value['gitlabPrerequisite']['checkpoint'], authority.release['sourceRevision'], security)
-        require(current == value['gitlabPrerequisite'], 'gitlab-prerequisite-changed-after-plan')
-    selection, previous = installed(config, value['repository'], value['targetVersion'])
-    require(previous['version'] == value['installedVersion'] and
-            digest(successor.private_input(config['_root'] / 'configuration/.release-images.json')) == value['selectionSha256'] and
-            digest(config['_main'].read_bytes()) == value['configurationSha256'] and
-            digest(successor.private_input(target / 'baseline.json')) == value['baselineSha256'], 'installation-changed-after-plan')
-    baseline = json.loads(successor.private_input(target / 'baseline.json'))
-    runtime.assert_baseline(config, baseline)
-    require(data_sample() == value['dataSample'], 'service-data-sample-changed-after-plan')
-    host(authority.metadata)
-    backup_target(config, value['configurationBackup'])
-    invoke(config, authority, security, value['checkpoint'], target / 'target.json', args.token_file, args.timeout, True)
-    state = recovery.host_operation('upgradePhase', target, 'retaining-previous-images', {})
+    authority = security = None
+    def dispatch(method, arguments):
+        nonlocal authority, security
+        if method == 'publicInputs':
+            raw, proof, authority, security = public_inputs(*arguments, config)
+            return {'targetSha256': digest(raw), 'provenanceSha256': digest(proof), 'release': authority.release}
+        if method == 'prerequisite': return recovery.host_operation('gitlabUpgradePrerequisite', config['_root'], arguments[0], authority.release['sourceRevision'], security)
+        if method == 'installed': return installed(config, *arguments)[1]
+        if method == 'fingerprints': return {'selectionSha256': digest(successor.private_input(config['_root'] / 'configuration/.release-images.json')), 'configurationSha256': digest(config['_main'].read_bytes())}
+        if method == 'assertBaseline': runtime.assert_baseline(config, arguments[0])
+        elif method == 'dataSample': return data_sample()
+        elif method == 'host': host(authority.metadata)
+        elif method == 'backupTarget': backup_target(config, arguments[0])
+        elif method == 'invoke': invoke(config, authority, security, arguments[1], target / 'target.json', args.token_file, args.timeout, arguments[0], *([arguments[2]] if arguments[2] is not None else []))
+        elif method == 'archive': return archives.save_archive(target, arguments[1]['reference'], arguments[1]['imageId'], arguments[2])
+        elif method == 'matchingBackup': matching_backup(config, target, arguments[0], args.backup_timeout)
+        elif method == 'waitReady': return updater.wait_ready(config, arguments[0], args.token_file, None, recovery.budget(args.timeout))
+        else: raise recovery.RecoveryError('unknown-public-upgrade-native-port')
     try:
-        # Independent recovery payloads are durable before the cold matching
-        # backup takes GitLab offline. Reuse the native recovery exporter.
-        (target / 'images').mkdir(mode=0o700)
-        retained = {}
-        source = {'sourceCommit': previous['source']['revision'], 'sourceTree': previous['source']['tree'],
-            **{key: previous['source'][key] for key in ('sourceLayout', 'wizardSourceTree') if key in previous['source']},
-            **({'wizardSourceRevision': previous['source']['wizardRevision']} if 'wizardRevision' in previous['source'] else {})}
-        for role in ('controller', 'wizard'):
-            image = previous['images'][role]
-            retained[role] = archives.save_archive(target, image['reference'], image['imageId'], source)
-        successor.atomic_json(target / 'previous-images.json', retained)
-        state = recovery.host_operation('upgradePhase', target, 'backup-starting', {}, state['phase'])
-        matching_backup(config, target, value, args.backup_timeout)
-        state = recovery.host_operation('upgradePhase', target, 'backup-services-resuming', {}, state['phase'])
-        runtime.assert_baseline(config, baseline)
-        # Harvest restarts GitLab before releasing its leases, but Docker health
-        # and application readiness can still be catching up. Use the native
-        # verifier before Rails sampling or the updater's strict preflight.
-        receipt = updater.wait_ready(config, baseline, args.token_file, None, recovery.budget(args.timeout))
-        successor.atomic_json(target / 'post-backup-verification.json', receipt)
-        require(data_sample() == value['dataSample'], 'service-data-sample-changed-during-backup')
-        state = recovery.host_operation('upgradePhase', target, 'paired-update-starting', {}, state['phase'])
-        invoke(config, authority, security, value['checkpoint'], target / 'target.json', args.token_file, args.timeout, False, baseline)
-        require(data_sample() == value['dataSample'], 'service-data-sample-changed-after-update-inspect-before-acceptance')
-        state = recovery.host_operation('upgradePhase', target, 'completed', {
-            'version': value['targetVersion'], 'sourceRevision': authority.release['sourceRevision'],
-            'dataSampleVerified': True, 'configurationPreserved': True,
-            'runnerRegistryOperationalChecks': True}, state['phase'])
+        return host_service.invoke('public-upgrade-apply-entry.js', {'directory': str(target), 'confirmation': args.confirm_plan},
+                                   dispatch, recovery.RecoveryError)
     except BaseException:
-        state = recovery.host_operation('upgradePhase', target, 'needs-inspection', {}, state['phase'])
+        recovery.host_operation('interruptUpgrade', target)
         raise
-    return state
 
 
 def main():

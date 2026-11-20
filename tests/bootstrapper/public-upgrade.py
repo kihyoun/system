@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from contextlib import ExitStack
+from types import SimpleNamespace
 import zipfile
 
 sys.dont_write_bytecode = True
@@ -803,8 +804,9 @@ class BackupAndApply(unittest.TestCase):
             events.append('post-backup-ready')
             return {'runnerManagers': {'checked': True}, 'checkedAt': clock[0]}
         stack = ExitStack()
-        stack.enter_context(patch.object(tool.updater.time, 'monotonic', side_effect=lambda: clock[0]))
-        stack.enter_context(patch.object(tool.updater.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
+        native_clock = SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+        stack.enter_context(patch.object(tool.updater, 'time', native_clock))
+        stack.enter_context(patch.object(successor.recovery, 'time', native_clock))
         stack.enter_context(patch.object(tool.runtime, 'run', side_effect=docker))
         stack.enter_context(patch.object(tool.runtime, 'verify', side_effect=verify))
         self.addCleanup(stack.close)

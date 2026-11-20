@@ -15,14 +15,18 @@ System commit and `wizardSourceTree` for the Wizard tree. Historical receipts ke
 The existing installation receipt schema and statuses are retained.
 
 `bootstrapper/install-release.py` is a transport compatibility entry for the same
-compiled implementation. Remaining Python update consumers use its fixed helper
-RPC; image inspection commands remain native adapters and all validation decisions
-are TypeScript. The documented CLI flags remain accepted. No arbitrary code or
+compiled implementation. Python update consumers use fixed helper RPC and typed native ports.
+Source/image acceptance and the destructive update sequence are TypeScript;
+remaining Python preflight and backup checks are described below. The documented CLI flags remain accepted. No arbitrary code or
 shell command is accepted by the compatibility RPC.
 
 Prepare the supported Node runtime and compiled operations package before offline
 maintenance. Neither compatibility entry installs packages or compiles sources.
-Run `npm run build` from `operations/` during preparation, then run
+Fresh Quickstart prepares pinned Node through its isolated nvm installation and
+copies the compiled package from the accepted controller image. Manual release
+hosts use `bootstrapper/prepare-host-runtime.py`; the retained absolute Node path
+and copied package support recovery without npm or network access. Developers
+can build from `operations/` and run
 `node --test operations/tests/host-install.test.cjs` from the repository root.
 The historical `python3 tests/bootstrapper/public-release.py` test entry runs that
 same suite. Tests use temporary files, real Git objects and real local flock
@@ -51,8 +55,9 @@ public digests from the accepted manifest. Docker's native compressed-archive
 reader streams `load --input` directly, avoiding an intermediate uncompressed
 file or a separate gzip child. Its 900-second load bound never exceeds a supplied
 remaining operation deadline. A failed load cannot proceed to tagging. Existing
-Python recovery callers forward to these services; retained paired-checkpoint
-rollback orchestration remains with its existing coordinator.
+Python recovery callers forward to these services.
+`ControllerRollbackSequenceService` owns the lease-held paired rollback sequence,
+including selector restoration, stopped-controller recovery and final receipt.
 
 `HostSourceService` validates recorded source objects separately from a clean
 current checkout, and checks allowed commit ancestry with Git replacement objects
@@ -60,8 +65,7 @@ disabled. `validateUpgradeGraph` and `upgradePath` share the reviewed ordered
 version graph and explicit prerequisite/backup/preflight/apply/verify/recovery
 steps. Unknown versions, reverse paths, duplicate edges, unsupported database
 migration claims and incomplete preservation promises are refused. The Python
-source/graph APIs forward to these implementations while their higher-level
-coordinators remain in use.
+source/graph APIs forward to these implementations.
 
 `RuntimeInspectionService` checks canonical container identities and health, with
 an explicit failed-controller exception restricted to a quiescent owned container
@@ -105,3 +109,30 @@ both checkpoints and use the separate native database rollback only in the
 reviewed recovery sequence. The acceptance harness runs the native database
 migration first, tests paired apply/offline recovery, then tests the cold database
 rollback. Its future-publication envelope remains explicitly a fixture.
+
+`ColdMaintenanceService` owns freeze, drain, ingress isolation, race checks,
+clean stop and cold checkpoint sequencing. `PromotionSequenceService` and
+`ControllerUpdateSequenceService` own the lease-held destructive transitions,
+last-moment receipt checks, configuration replacement, Compose startup and
+verification. `PublicUpgradePlanService` and `PublicUpgradeApplyService` own the
+reviewed plan, exact byte confirmation, preflight order, retained images before
+backup, paired apply and final data verification. `UpgradeLifecycleService`
+persists phase transitions and interruption state. These services resolve through
+`HostModule`, with explicit typed ports for native tools and installation context.
+
+The existing `promote.py`, `update-controller.py` and `upgrade-release.py` command
+interfaces remain compatible. Their private framed transport invokes only fixed
+native port methods; it does not accept arbitrary source code. Python retains
+host advisory-lock acquisition/adoption, pre-mutation authority setup, public
+installed-release inspection, OS/backup-mount preflight, coordinated backup
+polling and archive streaming, plus the public status/recover command wrapper.
+These retained checks remain part of the safety boundary. Critical interruptions
+retain checkpoints and owned leases for inspection or adoption; recovery never
+silently rewinds GitLab data. Native adapters retain their existing budgets.
+
+Regression coverage uses `tests/bootstrapper/public-controller-update.py`,
+`tests/bootstrapper/public-upgrade.py` and the cold-maintenance/staged-promotion
+cases in `tests/bootstrapper/successor-host-tools.py`. They exercise the compiled
+Nest services through the compatibility entries while replacing native external
+tools with controlled fixtures, including failed health checks, immutable image
+mismatches, interrupted updates and offline rollback.

@@ -18,3 +18,12 @@ export * from './cold-maintenance.service';
 export * from './cold-maintenance-entry';
 export * from './promotion-sequence.service';
 export * from './promotion-sequence-entry';
+export * from './controller-update-sequence.service';
+export * from './controller-update-sequence-entry';
+export * from './controller-rollback-sequence.service';
+export * from './controller-rollback-sequence-entry';
+export * from './public-upgrade-apply.service';
+export * from './public-upgrade-apply-entry';
+
+export * from './public-upgrade-plan.service';
+export * from './public-upgrade-plan-entry';
