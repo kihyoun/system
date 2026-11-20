@@ -45,6 +45,7 @@ export class LifecycleService {
       signal: context.signal,
       timeout: long ? null : 180000,
       inherit: long,
+      inheritGroup: context.supervisedGroup === true,
     });
   }
   private configured(context: LifecycleContext): boolean {

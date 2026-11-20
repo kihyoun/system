@@ -104,3 +104,14 @@ test('an independently killed native child is uncertain even without caller canc
  const runner=new ManagedChildProcess();
  await assert.rejects(runner.run(process.execPath,['-e','process.kill(process.pid,"SIGKILL")'],{cwd:process.cwd(),env:process.env,timeout:5000}),error=>error instanceof ProcessFailure&&error.uncertain&&error.signal==='SIGKILL');
 });
+
+test('GitLab startup preserves verified upgrade supervision and isolates ordinary commands', async t => {
+ for (const supervisedGroup of [undefined, false, true]) {
+  const f = fixture(t);
+  await f.service.gitlab({...f.context, supervisedGroup}, true);
+  const commands = f.calls.filter(call => call.binary);
+  assert(commands.some(call => call.binary === 'docker-compose'));
+  assert(commands.some(call => call.args[0]?.endsWith('prepare-root-password.js')));
+  for (const call of commands) assert.equal(call.options.inheritGroup, supervisedGroup === true);
+ }
+});
