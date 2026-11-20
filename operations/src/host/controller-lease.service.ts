@@ -136,7 +136,7 @@ export class ControllerLeaseService {
         stat.isFile() && stat.uid === process.geteuid?.() && !(stat.mode & 0o077),
         'private-controller-host-guard-required',
       );
-      const result = spawnSync('flock', ['--exclusive', '--nonblock', '3'], {
+      const result = spawnSync('flock', ['-x', '-n', '3'], {
         stdio: ['ignore', 'pipe', 'pipe', descriptor],
         timeout: 10000,
       });

@@ -275,7 +275,7 @@ export function initializationGuard(directory: string): () => void {
     0o600,
   );
   try {
-    const result = spawnSync('flock', ['--exclusive', '--nonblock', '3'], {
+    const result = spawnSync('flock', ['-x', '-n', '3'], {
       stdio: ['ignore', 'pipe', 'pipe', fd],
       timeout: 10000,
     });
