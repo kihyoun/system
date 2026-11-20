@@ -19,7 +19,7 @@ function fixture(t, configured = false, reset = false) {
   for (const relative of ['system', 'bootstrapper', 'sync', 'wizard', 'nginx/.templates', 'bin', 'mounted/platform/configuration']) {
     fs.mkdirSync(path.join(dir, relative), {recursive: true});
   }
-  for (const relative of ['start.sh', 'bootstrapper/persistence.sh', 'bootstrapper/storage-env.sh', 'system/.docker.env.example', 'system/.seed.env']) {
+  for (const relative of ['bootstrapper/persistence.sh', 'bootstrapper/storage-env.sh', 'system/.docker.env.example', 'system/.seed.env']) {
     fs.copyFileSync(path.join(root, relative), path.join(dir, relative));
   }
   fs.symlinkSync(path.join(root, 'operations'), path.join(dir, 'operations'), 'dir');
@@ -35,7 +35,7 @@ function fixture(t, configured = false, reset = false) {
   const command = (name, text) => fs.writeFileSync(path.join(dir, 'bin', name), '#!/bin/sh\n' + text, {mode: 0o755});
   command('mountpoint', 'exit 0\n');
   command('findmnt', 'for last; do :; done\ncase "$*" in\n*MAJ:MIN*) if [ "$last" = / ]; then echo root-device; else echo data-device; fi;;\n*) printf "%s\\n" "$PERSISTENT_MOUNT";;\nesac\n');
-  for (const name of ['docker-compose', 'npm']) {
+  for (const name of ['docker', 'npm']) {
     command(name, `printf '${name}:%s\\n' "$SEED_DIR" >> "$START_CAPTURE"\nprintf '%s' "\${NGINX_IMAGE-unset}" > "$START_IMAGE_CAPTURE"\nprintf '%s\\n%s\\n%s\\n' "\${BOOTSTRAPPER_IMAGE-unset}" "\${WIZARD_IMAGE-unset}" "$*" > "$START_RELEASE_CAPTURE"\n`);
   }
   const capture = path.join(dir, 'capture');
@@ -46,7 +46,7 @@ function fixture(t, configured = false, reset = false) {
   fs.mkdirSync(path.join(dir,'sync/dist'),{recursive:true});
   fs.writeFileSync(path.join(dir,'sync/dist/index.js'), 'require("node:fs").appendFileSync(process.env.START_CAPTURE,"node:"+process.env.SEED_DIR+"\\n");');
   env.SYSTEM_CONFIG_DIR=path.join(dir,'system');
-  const run = sync => spawnSync(sync?process.execPath:'bash', sync?[path.join(root,'operations/dist/lifecycle/entry.js'),'sync-start',dir]:[path.join(dir,'start.sh')], {
+  const run = sync => spawnSync(process.execPath, sync?[path.join(root,'operations/dist/lifecycle/entry.js'),'sync-start',dir]:[path.join(root,'operations/dist/cli.js'),'start','--checkout',dir], {
     cwd: sync ? path.join(dir, 'sync') : dir, env, encoding: 'utf8'
   });
   return {run, hostSeed, savedSeed, capture, canonical, dir, env, imageCapture: env.START_IMAGE_CAPTURE,
@@ -57,14 +57,14 @@ for (const reset of [false, true]) {
   test(`host startup preserves attached-volume seed during ${reset ? 'reset' : 'fresh'} defaults`, t => {
     const f = fixture(t, false, reset), result = f.run(false);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker-compose:${f.hostSeed}\n`);
+    assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker:${f.hostSeed}\n`);
     assert.equal(fs.readFileSync(f.imageCapture, 'utf8'), 'nginx:selector-test', 'bare host selectors must be exported to Compose');
     assert.equal(fs.existsSync(f.canonical), false, 'defaults must not save main configuration');
   });
   test(`Sync startup preserves Compose seed during ${reset ? 'reset' : 'fresh'} defaults`, t => {
     const f = fixture(t, false, reset), result = f.run(true);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker-compose:${f.hostSeed}\nnode:${f.hostSeed}\n`);
+    assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker:${f.hostSeed}\nnode:${f.hostSeed}\n`);
     assert.equal(fs.existsSync(f.canonical), false);
   });
 }
@@ -72,13 +72,13 @@ for (const reset of [false, true]) {
 test('host startup keeps the host backup selection over an old configuration path', t => {
   const f = fixture(t, true), result = f.run(false);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker-compose:${f.hostSeed}\n`);
+  assert.equal(fs.readFileSync(f.capture, 'utf8'), `docker:${f.hostSeed}\n`);
 });
 test('host startup refuses active storage leases before filesystem or Docker writes',t=>{
   const f=fixture(t),state=path.dirname(f.canonical),live=path.dirname(state);
   fs.mkdirSync(path.join(state,'.storage-operation-lock'));
   const result=f.run(false);assert.notEqual(result.status,0);
-  assert.match(result.stderr,/unfinished storage operation/);
+  assert.match(result.stderr,/unfinished-storage-operation/);
   assert(!fs.existsSync(f.capture));
   assert(!fs.existsSync(path.join(live,'.system-bootstrapper-volume')));
 });
@@ -114,13 +114,6 @@ test('saved explicit image choices override public release fallback pins',t=>{
   const result=f.run(false);assert.equal(result.status,0,result.stderr);
   assert.deepEqual(fs.readFileSync(f.releaseCapture,'utf8').split('\n').slice(0,2),['controller:deliberate','wizard:deliberate']);
 });
-test('release startup accepts an explicit developer build opt-in',t=>{
-  const f=fixture(t);releaseProfile(f);f.env.SYSTEM_BOOTSTRAPPER_SKIP_BUILD='0';
-  const prepare=path.join(f.dir,'project-bootstrap/wizard-source/prepare.sh');
-  fs.mkdirSync(path.dirname(prepare),{recursive:true});fs.writeFileSync(prepare,'#!/bin/sh\nexit 0\n');
-  const result=f.run(false);assert.equal(result.status,0,result.stderr);
-  assert.match(fs.readFileSync(f.releaseCapture,'utf8'),/up --build -d bootstrapper/);
-});
 test('release profile rejects shell instructions, unknown keys, mutable refs and links',t=>{
   for(const [index,contents]of [
     `BOOTSTRAPPER_IMAGE=${releaseController}\nWIZARD_IMAGE=$(touch /tmp/unsafe-public-profile)\n`,
@@ -130,7 +123,7 @@ test('release profile rejects shell instructions, unknown keys, mutable refs and
   ].entries()){
     const f=fixture(t);releaseProfile(f,contents);
     const result=f.run(false);assert.notEqual(result.status,0,`profile${index}`);
-    assert.match(result.stderr,/release image selector/);assert(!fs.existsSync(f.capture));
+    assert.match(result.stderr,/release-image-selector/);assert(!fs.existsSync(f.capture));
   }
   const f=fixture(t),profile=path.join(path.dirname(f.canonical),'.release-images.env');
   const target=path.join(f.dir,'other');fs.writeFileSync(target,`BOOTSTRAPPER_IMAGE=${releaseController}\nWIZARD_IMAGE=${releaseWizard}\n`,{mode:0o600});

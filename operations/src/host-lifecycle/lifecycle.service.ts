@@ -34,7 +34,7 @@ export function releaseFallback(filename: string, env: NodeJS.ProcessEnv): NodeJ
   const stat = fs.lstatSync(filename, { throwIfNoEntry: false });
   if (!stat) return env;
   if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o7777) !== 0o600 || stat.uid !== 0)
-    throw Error('Invalid private release image selectors.');
+    throw Error('invalid-private-release-image-selector');
   const values: Record<string, string> = {};
   const content = fs.readFileSync(filename, 'utf8').replace(/\n$/, '');
   for (const line of content.split('\n')) {
@@ -42,11 +42,11 @@ export function releaseFallback(filename: string, env: NodeJS.ProcessEnv): NodeJ
       /^(BOOTSTRAPPER_IMAGE|WIZARD_IMAGE)=(docker\.io\/[a-z0-9][a-z0-9_-]*\/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64})$/.exec(
         line,
       );
-    if (!match || values[match[1]]) throw Error('Unsupported release image selector.');
+    if (!match || values[match[1]]) throw Error('unsupported-release-image-selector');
     values[match[1]] = match[2];
   }
   if (!values.BOOTSTRAPPER_IMAGE || !values.WIZARD_IMAGE)
-    throw Error('Incomplete release image selection.');
+    throw Error('incomplete-release-image-selector');
   return {
     ...env,
     ...values,
@@ -74,7 +74,15 @@ export class HostLifecycleService {
   ): Promise<void> {
     const run = (binary: string, args: string[], env: NodeJS.ProcessEnv) =>
       this.child.run(binary, args, { cwd: root, env, signal, timeout: 1800000, inherit: true });
-    const compose = ['-p', 'system', '-f', path.join(root, 'system/docker-compose.yml')];
+    const compose = [
+      '--host=unix:///var/run/docker.sock',
+      'compose',
+      '--compatibility',
+      '-p',
+      'system',
+      '-f',
+      path.join(root, 'system/docker-compose.yml'),
+    ];
     if (action === 'stop') {
       const configuration = path.join(root, 'system/.docker.env');
       const files = fs.existsSync(configuration)
@@ -83,14 +91,14 @@ export class HostLifecycleService {
       const env = await readEnvironment(this.child, files, input, root, signal);
       const active = (
         await this.child.run(
-          'docker-compose',
+          'docker',
           [...compose, 'ps', '-q', '--status', 'running', 'bootstrapper'],
           { cwd: root, env, signal, timeout: 15000 },
         )
       ).trim();
       if (active) {
         const probe = await this.child.run(
-          'docker-compose',
+          'docker',
           [
             ...compose,
             'exec',
@@ -118,9 +126,9 @@ export class HostLifecycleService {
         else if (/^1\.\d+\.\d+$/.test(runtime.version))
           command = ['bash', '/system/system/stop.sh']; // Immutable pre-Nest release only.
         else throw new Error('controller-lifecycle-cli-missing');
-        await run('docker-compose', [...compose, 'exec', '-T', 'bootstrapper', ...command], env);
+        await run('docker', [...compose, 'exec', '-T', 'bootstrapper', ...command], env);
       }
-      await run('docker-compose', [...compose, 'down'], env);
+      await run('docker', [...compose, 'down'], env);
       return;
     }
     const selector = input.PERSISTENCE_ENV_FILE || '/etc/system-bootstrapper/persistence.env';
@@ -132,10 +140,10 @@ export class HostLifecycleService {
     );
     env = storageEnvironment(env);
     const data = env.PERSISTENT_DIR;
-    if (!data) throw Error('Persistent storage directory required.');
+    if (!data) throw Error('persistent-storage-directory-required');
     for (const lock of ['.storage-operation-lock', '.gitlab-upgrade-lock'])
       if (fs.lstatSync(path.join(data, 'configuration', lock), { throwIfNoEntry: false }))
-        throw Error('An unfinished storage operation blocks startup.');
+        throw Error('unfinished-storage-operation-blocks-startup');
     env = await this.persistence.prepare(env, undefined, signal);
     const selectedStorage = Object.fromEntries(storageKeys.map((key) => [key, env[key]]));
     env = releaseFallback(path.join(data, 'configuration/.release-images.env'), env);
@@ -158,9 +166,13 @@ export class HostLifecycleService {
     env = { ...env, ...selectedStorage, ...selectedSeed };
     await this.persistence.prepare(env, undefined, signal);
     if (env.SYSTEM_BOOTSTRAPPER_SKIP_BUILD !== '1')
-      await run('bash', [path.join(root, 'project-bootstrap/wizard-source/prepare.sh')], env);
+      await run(
+        process.execPath,
+        [path.resolve(__dirname, '../source-preparation/entry.js'), root],
+        env,
+      );
     await run(
-      'docker-compose',
+      'docker',
       [
         ...compose,
         'up',
