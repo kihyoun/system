@@ -139,3 +139,9 @@ retains a separate cleanup budget; cancellation never authorizes foreign cleanup
 The source-primary reservation policy preserves exact CI identities, prior
 receipt history, stopped tombstones and generation floors. Compatibility exports
 remain available for existing offline tests and disposable verifier fixtures.
+
+`SystemBetaModule` validates and persists explicit candidate bindings and runs the
+owned CI helper lifecycle with separate work and cleanup budgets. The legacy
+System Review entry accepts only Stop; attempts to create new Review bindings
+fail before taking a canonical lock. Retained Review binding and resource checks
+remain available solely for owned cleanup.

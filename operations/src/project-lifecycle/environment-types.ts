@@ -4,10 +4,17 @@ export interface RuntimeContext {
   contentHash: string;
   publicSettings: Record<string, string>;
   systemBetaBinding?: unknown;
+  systemBetaBindingHash?: string;
   systemReviewBinding?: unknown;
   receipt: {
     operation: string;
-    repository: { id: number; path: string; managementMode?: string };
+    repository: {
+      id: number;
+      path: string;
+      defaultBranch: string;
+      namespaceId: number;
+      managementMode?: string;
+    };
     sourcePrimary?: { version: number; ciFiles: unknown };
     wizardWorkflow: Omit<Workflow, 'build' | 'environments'> & {
       build: Workflow['build'] & { mode?: string };

@@ -28,6 +28,10 @@ export interface BuildReservation {
   activationCommit?: string;
 }
 export interface EnvironmentReservation {
+  version?: number;
+  managementMode?: string;
+  systemSource?: Record<string, unknown>;
+  historicalDeployments?: unknown;
   operation: string;
   controller: string;
   phase: string;
