@@ -25,14 +25,16 @@ Veröffentlichung. Jedes stabile Release liefert:
 - Ein nur neu anlegbares GitHub-Präsentationstag auf dem exakt gespiegelten akzeptierten
   System-Commit sowie benutzerbezogene Hinweise aus dem geprüften Änderungsprotokoll.
 - `system-release-vX.Y.Z.json` und eine SHA-256-Begleitdatei: exakter System-Commit,
-  Quellcodebaum und Wizard-Gitlink; passende öffentliche Controller-/Wizard-Referenzen,
+  Quellcodebaum und Wizard-Quellidentität; passende öffentliche Controller-/Wizard-Referenzen,
   unveränderliche Manifest-/Konfigurations-Digests und akzeptierte Image-IDs; Nachweishash
   desselben Versuchs und geprüfte Hostkompatibilität; Installations-/Upgrade-/Wiederherstellungslinks.
 - `quickstart.sh`, gebunden an das Release-Tag, und `release-notes.md`.
 
-Das öffentliche Manifestformat lautet `system-accepted-release-v1`. Alle Daten werden
-aus dem akzeptierten Kandidaten derselben Pipeline, der Docker-Hub-Veröffentlichung
-und den exakten Nachweisen der Wizard-Quellcodeveröffentlichung erzeugt. Interne
+Das öffentliche Manifestformat bleibt `system-accepted-release-v1`. Releases aus
+dem gemeinsamen Repository nennen ausdrücklich `sourceLayout: system-monorepo-v1`
+und den exakten `wizardSourceTree`. Historische Releases enthalten den separaten
+Wizard-Gitlink. Alle Daten stammen aus dem akzeptierten Kandidaten derselben
+Pipeline, der Docker-Hub-Veröffentlichung und passenden Quellveröffentlichungsnachweisen. Interne
 Rohnachweise, private Registry-URLs, Konfiguration, Seeds, Zugangsdaten und Betriebslogs
 sind keine Release-Artefakte. Metadaten und Prüfsumme stammen beide aus dem vertrauten
 GitHub-Release; die Prüfsumme erkennt inkonsistente Übertragung, ist aber keine unabhängige Signaturidentität.
@@ -45,7 +47,8 @@ curl -fLO https://github.com/kihyoun/system/releases/download/v1.0.0/system-rele
 sha256sum -c system-release-v1.0.0.json.sha256
 ```
 
-Checken Sie die `source.revision` des Manifests aus und initialisieren Sie das festgelegte Submodul:
+Checken Sie für das historische Release 1.0.0 die `source.revision` des Manifests aus
+und initialisieren Sie das festgelegte Submodul:
 
 ```bash
 git clone https://github.com/kihyoun/system.git
@@ -56,10 +59,16 @@ git rev-parse HEAD HEAD^{tree}
 git ls-tree HEAD wizard
 ```
 
-Vergleichen Sie die Ausgaben mit dem Manifest. GitHubs einfache Quellcodearchive enthalten
+Vergleichen Sie die Ausgaben mit dem Manifest. Historische GitHub-Quellcodearchive enthalten
 keine Wizard-Submodulinhalte und sind daher kein vollständiger rekursiver Checkout.
 Aufbewahrte Wizard-Release-Referenzen machen den festgelegten Gitlink öffentlich abrufbar,
 ohne den Wizard-Standardbranch zu ändern.
+
+Checken Sie für 2.0.0 und spätere Releases mit gemeinsamen Quellen die exakt
+aufgezeichnete System-Revision aus. Wizard ist darin ein reguläres Verzeichnis:
+Vergleichen Sie `git rev-parse HEAD:wizard` mit dem aufgezeichneten Wizard-Baum.
+Dieses Layout benötigt keinen separaten Wizard-Klon, keine eigene
+Quellveröffentlichung und keine Submodulinitialisierung.
 
 Installieren Sie einen frischen Host mit der [Schnellinstallation](QUICKSTART.md), oder
 übergeben Sie `images.controller.reference` und `images.wizard.reference` aus dem Manifest an
@@ -90,7 +99,8 @@ Schreibzugriffen außerhalb dieses Ablaufs.
 Konfigurieren Sie diese geschützten Variablen auf vertrauenswürdigen GitLab-Runnern:
 
 - `GITHUB_RELEASE_PUBLISH_ENABLED=true` sowie die vorhandenen Aktivierungsflags und
-  Zugangsdaten für Docker Hub, GitHub-Backup und Wizard-Quellcodeveröffentlichung.
+  Zugangsdaten für Docker Hub und GitHub-Backup. Eine separate Wizard-Quellcodeveröffentlichung
+  ist nur für historische Gitlink-Releases erforderlich.
 - `GITHUB_RELEASE_REPOSITORY=kihyoun/system` (oder den öffentlichen Spiegel des Betreibers).
 - `GITHUB_RELEASE_TOKEN_FILE`: externe Datei mit Modus 0600 und einem GitHub-Token mit
   auf das Release-Repository begrenztem Contents-Schreibzugriff. Ein geschütztes,

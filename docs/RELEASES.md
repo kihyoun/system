@@ -25,14 +25,16 @@ Each stable release provides:
 - A create-only GitHub presentation tag pointing at the exact mirrored accepted
   System commit, plus user-facing notes from the reviewed changelog.
 - `system-release-vX.Y.Z.json` and its SHA-256 sidecar: the exact System commit,
-  source tree and Wizard gitlink; matching public controller/Wizard references,
+  source tree and Wizard source identity; matching public controller/Wizard references,
   immutable manifest/config digests and accepted image IDs; same-attempt evidence
   hash and tested host compatibility; installation/upgrade/recovery links.
 - `quickstart.sh`, bound to that release tag, and `release-notes.md`.
 
-The public manifest format is `system-accepted-release-v1`. All data is generated
-from the accepted same-pipeline candidate, Docker Hub publication and exact Wizard
-source-publication receipts. Raw internal receipts, private registry URLs,
+The public manifest format remains `system-accepted-release-v1`. Releases from the
+shared repository explicitly declare `sourceLayout: system-monorepo-v1` and the
+exact `wizardSourceTree`. Historical releases record the separate Wizard gitlink.
+All data comes from the accepted same-pipeline candidate, Docker Hub publication
+and matching source-publication evidence. Raw internal receipts, private registry URLs,
 configuration, Seeds, credentials and operating logs are not release assets.
 Metadata and checksum are both obtained from the trusted GitHub release; their
 checksum detects inconsistent transfer, not an independent signing identity.
@@ -45,7 +47,8 @@ curl -fLO https://github.com/kihyoun/system/releases/download/v1.0.0/system-rele
 sha256sum -c system-release-v1.0.0.json.sha256
 ```
 
-Check out the manifest's `source.revision` and initialize its pinned submodule:
+For the historical 1.0.0 release, check out the manifest's `source.revision` and
+initialize its pinned submodule:
 
 ```bash
 git clone https://github.com/kihyoun/system.git
@@ -56,10 +59,15 @@ git rev-parse HEAD HEAD^{tree}
 git ls-tree HEAD wizard
 ```
 
-Compare these outputs with the manifest. GitHub's plain source archives omit
+Compare these outputs with the manifest. Historical GitHub source archives omit
 Wizard submodule contents; they are not a complete recursive checkout. Retained
 Wizard release refs make the pinned gitlink publicly retrievable without changing
 the Wizard default branch.
+
+For 2.0.0 and later shared-source releases, check out the exact recorded System
+revision. Wizard is an ordinary directory in that commit: compare
+`git rev-parse HEAD:wizard` with the recorded Wizard tree. No separate Wizard clone, source
+publication or submodule initialization is needed for this layout.
 
 Install a fresh host using [Quickstart](QUICKSTART.md), or pass the manifest's
 `images.controller.reference` and `images.wizard.reference` to
@@ -88,8 +96,9 @@ additional server-side protection against writers outside this workflow.
 
 Configure these protected variables on trusted GitLab runners:
 
-- `GITHUB_RELEASE_PUBLISH_ENABLED=true`, plus the existing Docker Hub, GitHub
-  backup and Wizard-source publication enable flags and credentials.
+- `GITHUB_RELEASE_PUBLISH_ENABLED=true`, plus the existing Docker Hub and GitHub
+  backup enable flags and credentials. Separate Wizard-source publication is
+  required only for historical gitlink releases.
 - `GITHUB_RELEASE_REPOSITORY=kihyoun/system` (or the operator's public mirror).
 - `GITHUB_RELEASE_TOKEN_FILE`: external mode-0600 file containing a scoped GitHub
   token with Contents write access to only the release repository. A protected

@@ -21,13 +21,15 @@ GitHub Actions는 공개 절차에 참여하지 않습니다. 각 안정 릴리�
 - 미러링된 정확한 승인 System 커밋을 가리키는, 생성만 가능한 GitHub 표시용 태그와
   검토된 변경 이력에서 가져온 사용자용 릴리스 노트.
 - `system-release-vX.Y.Z.json` 및 SHA-256 검증 파일: 정확한 System 커밋,
-  소스 트리와 Wizard gitlink, 일치하는 공개 컨트롤러/Wizard 참조,
+  소스 트리와 Wizard 소스 식별 정보, 일치하는 공개 컨트롤러/Wizard 참조,
   변경 불가능한 매니페스트/설정 다이제스트와 승인 이미지 ID,
   동일 시도의 증거 해시와 검증된 호스트 호환성, 설치/업그레이드/복구 링크.
 - 해당 릴리스 태그에 고정된 `quickstart.sh`와 `release-notes.md`.
 
-공개 매니페스트 형식은 `system-accepted-release-v1`입니다. 모든 데이터는 동일 파이프라인의
-승인된 후보, Docker Hub 공개 및 정확한 Wizard 소스 공개 기록으로부터 생성합니다.
+공개 매니페스트 형식은 `system-accepted-release-v1`로 유지됩니다. 공통 저장소 릴리스는
+`sourceLayout: system-monorepo-v1`과 정확한 `wizardSourceTree`를 명시합니다.
+과거 릴리스는 별도 Wizard gitlink를 기록합니다. 모든 데이터는 동일 파이프라인의
+승인된 후보, Docker Hub 공개 및 일치하는 소스 공개 증거로부터 생성합니다.
 내부 원본 기록, 비공개 레지스트리 URL, 설정, Seed, 인증 정보 및 운영 로그는 릴리스 자산에 포함하지 않습니다.
 메타데이터와 체크섬은 모두 신뢰할 수 있는 GitHub 릴리스에서 받습니다.
 체크섬은 전송 불일치를 탐지하며 독립적인 서명 신원을 증명하지 않습니다.
@@ -40,7 +42,7 @@ curl -fLO https://github.com/kihyoun/system/releases/download/v1.0.0/system-rele
 sha256sum -c system-release-v1.0.0.json.sha256
 ```
 
-매니페스트의 `source.revision`을 체크아웃하고 고정된 서브모듈을 초기화하세요.
+과거 1.0.0 릴리스에서는 매니페스트의 `source.revision`을 체크아웃하고 고정된 서브모듈을 초기화하세요.
 
 ```bash
 git clone https://github.com/kihyoun/system.git
@@ -51,9 +53,14 @@ git rev-parse HEAD HEAD^{tree}
 git ls-tree HEAD wizard
 ```
 
-출력을 매니페스트와 비교하세요. GitHub의 일반 소스 압축 파일에는 Wizard 서브모듈 내용이 없으므로
+출력을 매니페스트와 비교하세요. 과거 GitHub 소스 압축 파일에는 Wizard 서브모듈 내용이 없으므로
 완전한 재귀 체크아웃이 아닙니다. 보존된 Wizard 릴리스 참조를 통해
 Wizard 기본 브랜치를 변경하지 않고 고정된 gitlink를 공개적으로 가져올 수 있습니다.
+
+2.0.0 이후 공통 소스 릴리스에서는 기록된 정확한 System 리비전을 체크아웃하세요.
+Wizard는 해당 커밋의 일반 디렉터리입니다. `git rev-parse HEAD:wizard`를 기록된
+Wizard 트리와 비교하세요. 이 레이아웃에는 별도 Wizard 복제, 소스 공개 또는
+서브모듈 초기화가 필요하지 않습니다.
 
 새 호스트는 [빠른 시작](QUICKSTART.md)으로 설치하거나, 매니페스트의
 `images.controller.reference`와 `images.wizard.reference`를
@@ -82,8 +89,8 @@ GitHub 전용 표시 태그는 GitLab 태그 파이프라인을 만들지 않습
 
 신뢰할 수 있는 GitLab Runner에 다음 보호 변수를 설정하세요.
 
-- `GITHUB_RELEASE_PUBLISH_ENABLED=true`와 기존 Docker Hub, GitHub 백업 및
-  Wizard 소스 공개의 활성화 플래그와 인증 정보.
+- `GITHUB_RELEASE_PUBLISH_ENABLED=true`와 기존 Docker Hub 및 GitHub 백업의
+  활성화 플래그와 인증 정보. 별도 Wizard 소스 공개는 과거 gitlink 릴리스에만 필요합니다.
 - `GITHUB_RELEASE_REPOSITORY=kihyoun/system` 또는 운영자의 공개 미러.
 - `GITHUB_RELEASE_TOKEN_FILE`: 릴리스 저장소에만 Contents 쓰기 권한을 가진
   범위 제한 GitHub 토큰이 들어 있는 외부 mode-0600 파일.
