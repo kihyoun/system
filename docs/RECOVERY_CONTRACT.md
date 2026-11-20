@@ -244,7 +244,7 @@ verified image archives. The former live data directory is not an input.
    Install Certbot as needed and run
    `sudo bash bootstrapper/install-volume-host.sh`. This rebinds webroot renewal
    paths to the new live directory and installs the renewal/deploy integration.
-   Set the required image selectors, then start with `sudo bash start.sh`.
+   Set the required image selectors, then start with `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"`.
    Reprovision optional Review/Beta helpers explicitly if their old immutable
    image is absent; see the [environment procedure](../project-bootstrap/wizard-environments/README.md).
    Runner managers/workspaces are recreated from configuration and restored

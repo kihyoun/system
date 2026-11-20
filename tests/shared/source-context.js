@@ -42,7 +42,7 @@ try {
   const binary=Buffer.from([0,255,128,13,10]);
   write('tests/binary.png',binary);
   write('system/.docker.env.example','public example\n');
-  const runtimeInputs=['start.sh','bootstrapper/persistence.js','bootstrapper/seed-operation.js',
+  const runtimeInputs=['bootstrapper/persistence.js','bootstrapper/seed-operation.js',
     'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','gitlab-runner/provision.rb','system/.seed.env',
     'system/persistence-init.js','system/wizard-public.js','system/docker-compose.yml',
     'nginx/wizard-aliases.js',

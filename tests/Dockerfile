@@ -40,7 +40,6 @@ COPY gitlab-runner/*.js gitlab-runner/*.rb gitlab-runner/docker-compose.yml ./gi
 COPY nginx/*.js ./nginx/
 COPY nginx/.templates ./nginx/.templates
 COPY nginx-proxy/ ./nginx-proxy/
-COPY start.sh ./
 COPY system/ ./system/
 COPY bootstrapper/ ./bootstrapper/
 COPY tests ./tests

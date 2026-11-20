@@ -14,7 +14,7 @@ function included(name) {
   if(/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper\.zip|bootstrapper_initial_root_password)$/.test(name) || /\.(key|pem|p12|pfx)$/.test(name)) return false;
   // Only this isolated test transport runs inside the accepted controller image.
   if(name==='tests/e2e/acme-host-runtime.js') return true;
-  return allowed.includes(name.split('/')[0]) || ['start.sh','.dockerignore','LICENSE','.prettierrc','.prettierignore'].includes(name);
+  return allowed.includes(name.split('/')[0]) || ['.dockerignore','LICENSE','.prettierrc','.prettierignore'].includes(name);
 }
 function prepareCandidate(root) {
   root=path.resolve(root);

@@ -1,8 +1,9 @@
 # Operation boundaries and recovery
 
 The operations package is a shared TypeScript/Nest runtime, not another server.
-The public npm CLI exposes `install`, `harvest` and `restore`; the other entries
-below are repository/controller commands, not additional npm CLI subcommands.
+The public npm CLI exposes `install`, `harvest`, `restore`, `start`, `stop` and
+`persistence`; host commands require an explicit reviewed checkout. The other
+entries below are repository/controller commands.
 Sync authenticates its HTTP callers on port `8071` and delegates through services
 or compatibility entries. A standalone Nest context alone grants no authority
 and performs no deployment. Prepare the pinned Node runtime, compiled code and
@@ -18,7 +19,7 @@ explicit protected job identities and scoped publisher credentials.
 
 | Capability and service | Public or compatibility entries; callers | Authority and persistent ownership | Native work and failure/recovery boundary |
 | --- | --- | --- | --- |
-| Host startup: `HostLifecycleModule`, `HostLifecycleService`, `HostPersistenceService` | `start.sh`, `stop.sh`, `bootstrapper/persistence.js`; host operators and installation/recovery tools | Root on the selected host; private persistence/release selectors; live-data `configuration` directory and existing storage/upgrade startup barriers | Docker/Compose, `findmnt`, filesystem probes and shell-format configuration loading. Refuse missing/misdirected volumes and unfinished operations. Retained release selectors disable source builds. Stop requests controller shutdown before Compose teardown. |
+| Host startup: `HostLifecycleModule`, `HostLifecycleService`, `HostPersistenceService` | `operations/dist/cli.js start/stop --checkout PATH`, `bootstrapper/persistence.js`; host operators and installation/recovery tools | Root on the selected host; private persistence/release selectors; live-data `configuration` directory and existing storage/upgrade startup barriers | Docker/Compose, `findmnt`, filesystem probes and literal-assignment configuration loading. Refuse missing/misdirected volumes and unfinished operations. Retained release selectors disable source builds. Stop requests controller shutdown before Compose teardown. |
 | Accepted installation and host storage: `HostModule`, `HostInstallService`, `HostStorageService` | `system-bootstrapper install/harvest/restore`; `bootstrapper/install-release.py`, `bootstrapper/seed-operation.js`; native host operators | Root, explicit reviewed checkout, accepted image pair and private persistence selector; host initialization flock, installation receipt and `.release-images.env` | Git and Docker/image inspection; storage enters the accepted controller helper with an explicit host mount. Refuse existing data for fresh install and ambiguous source/image identities; check-only performs preflight, not a backup. |
 | Controller storage: `StorageModule`, `StorageService` | `system/harvest.sh`, `system/seed.sh`, `system/seed-operation.js`, `system/seed-manifest.js`, `system/coordinated-backup.js`; Sync `/command/harvest`, `/command/seed`, `/command/backup` and backup status/download routes, plus host dispatch | Controller/helper Docker access and explicit live/Seed mounts; shared `.storage-operation-lock`, environment/certificate exclusion, helper/image identity, completed Seed manifest and configuration association | Docker, rsync and filesystem checks. Harvest requires a clean stop, checksummed durable publication and a selected completed snapshot; restore checks fresh destinations and matching image/Seed. Uncertain copy/startup retains barriers and incomplete-restore evidence. Configuration ZIP remains a separate recovery input. |
 | Configuration Push: `ConfigurationModule`, `ConfigurationService` | `system/push.sh`; Sync `/config/zip`, with `/config/impact` review | Authenticated controller operation; routing flock, durable storage/startup and Wizard environment barriers; server-owned receipt and exact main/project bytes | Bounded unzip/rsync and direct routing service call. Validate archive, aliases and optional impact fingerprint before replacement. Failed apply restores saved inputs; uncertain completion or failed rollback keeps barriers. Parent restore reuse requires its exact existing owner. |
@@ -58,28 +59,27 @@ setup and status/recover wrappers still have Python responsibilities. Fixed
 are not arbitrary shell or code execution. Consult the [host component guide](src/host/README.md)
 and [controller guide](../bootstrapper/README.md) for command-specific inputs.
 
-## Boundaries deliberately outside operation services
+## Bootstrap, native dependencies and supervision boundaries
 
-- **Before Node/operations exists:** `tools/quickstart/quickstart.sh`,
-  `quickstart.sh --runtime-only vMAJOR.MINOR.PATCH`, `install.js` and image-build `install-runtime.js`
-  bootstrap the verified release/runtime or native packages. Quickstart verifies
-  pinned nvm/Node and copies compiled operations from the accepted controller;
-  it cannot depend on the runtime it is installing. Source developers prepare
-  dependencies/builds before lifecycle calls. Package/image construction is not
-  offline maintenance.
-- **Host OS and recovery entry orchestration:** `initialize.sh`,
-  `recover-volume.sh`, storage selectors and certificate installation/renewal
-  tools retain OS/package/mount/Certbot and native verification responsibilities.
-  They call prepared typed capabilities where applicable. `--install-host` does
-  not supply an absent operations runtime before their storage checks. Root,
-  private receipts, the initialization/certificate locks and explicit mounted
-  storage remain required. No fallback formats or moves a missing live volume.
-- **External service formats:** Ruby executes inside GitLab's Rails environment
-  for provisioning, authorization and database inspection. Shell adapters read
-  existing ENV files, retain shared `flock`/signal boundaries or execute bounded
-  commands inside NGINX/GitLab containers. The Compose JSON generator describes
-  runner mounts and services. Moving those formats would not remove their native
-  execution requirements.
+- **Before Node exists:** `tools/quickstart/quickstart.sh` prepares the pinned,
+  checksum-verified Node runtime and verifies the tested bundled npm CLI tarball.
+  It installs that artifact offline with lifecycle scripts disabled, then delegates
+  host setup to Nest. Source developers prepare dependencies/builds before
+  lifecycle calls. Package/image construction is not offline maintenance.
+- **Host OS and recovery:** `HostBootstrapModule` owns initialization, package
+  installation, volume recovery, certificate installation/renewal and runtime
+  verification through typed services. `bootstrapper/initialize.js`,
+  `recover-volume.js`, `install.js`, `install-runtime.js` and certificate entries
+  invoke those services using the prepared runtime. Root, private receipts,
+  initialization/certificate locks and explicitly selected mounted storage remain
+  required. No fallback formats or moves a missing live volume.
+- **GitLab authentication transition:** the initial temporary administrator token
+  requires a minimal Rails invocation inside GitLab. Native services own token
+  lifecycle and provisioning orchestration; any remaining Rails provisioning or
+  inspection adapter is a migration boundary, not an exemption for own scripts.
+  Literal configuration readers never execute shell expansions. Direct upstream
+  image entrypoints remain dependency interfaces, including NGINX template
+  rendering; owned routing reload and rollback are typed services.
 - **Independent guardians:** `gitlab/upgrade-child.js` and the typed host guardian
   must survive their invoking coordinator long enough to settle or terminate the
   journaled child group. They are process-supervision boundaries, not duplicate

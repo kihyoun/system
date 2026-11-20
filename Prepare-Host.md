@@ -44,7 +44,7 @@ See the complete [local](docs/HANDBOOK.md#0-getting-started) or
 
 ## Prepare host dependencies
 
-Run the host installer from a local checkout on Ubuntu (including Ubuntu in
+Prepare the runtime below, then run the native host installer from a local checkout on Ubuntu (including Ubuntu in
 WSL2 with systemd enabled). It installs Docker Engine from Docker's APT
 repository, Buildx and the Compose plugin, starts Docker and runs `hello-world`.
 It does not upgrade unrelated operating-system packages.
@@ -57,17 +57,18 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo bash bootstrapper/install.sh
+# After preparing the runtime below:
+sudo /opt/system-bootstrapper-runtime/bin/node bootstrapper/install.js
 ```
 
-The installer provides a `docker-compose` wrapper for the orchestration scripts.
+The installer provides a `docker-compose` adapter for native lifecycle services.
 It uses `docker compose --compatibility` to preserve their expected
 underscore-separated container names. Service configuration, persistence and
 platform acceptance are separate steps.
 
 ## Prepare the host operations runtime
 
-Host `start.sh`, `stop.sh`, `bootstrapper/persistence.js`, the release installer
+Host CLI `start` and `stop`, `bootstrapper/persistence.js`, the release installer
 and replacement/restore tools require Node and compiled `operations` **before**
 their first call. Installing Docker alone, or passing `--install-host` to an
 initializer, does not prepare this runtime. Choose one preparation path below;
@@ -78,24 +79,27 @@ verifies its script checksum, then uses nvm to install Node **24.22.0**. It keep
 this dedicated root-owned installation under `/opt/system-bootstrapper-runtime`;
 existing user nvm installations, default versions and shell profiles are preserved.
 The exact Node archive checksum is verified after nvm's download verification.
-Compiled operations and dependencies are copied from the accepted controller image
-using an owned container that is never started. No host-side npm install is needed.
+Quickstart verifies the accepted release's bundled npm CLI tarball and installs it
+offline with lifecycle scripts disabled. It copies those compiled operations and
+bundled dependencies into the accepted checkout without rebuilding them.
 
-For the explicit installation path, first install the native host dependencies,
-check out the reviewed release, and verify its public metadata through the [release guide](docs/RELEASES.md).
+For the explicit installation path, check out the reviewed release, and verify its public metadata through the [release guide](docs/RELEASES.md).
 Then prepare the runtime before invoking any host lifecycle, persistence or installation entry:
 
 ```sh
-sudo python3 bootstrapper/prepare-host-runtime.py \
-  --checkout "$PWD" --release-metadata /absolute/path/release.json
+SYSTEM_RELEASE_TAG='vMAJOR.MINOR.PATCH' # Exact reviewed public release
+sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
+# The checkout must match the source revision in that release's verified metadata.
+test ! -e operations/dist && test ! -e operations/node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules
 ```
 
 The preparation refuses an existing runtime directory instead of overwriting it.
 Keep that directory and the checkout's `operations/dist` and
 `operations/node_modules` for offline recovery. Compatibility tools select the
 saved absolute Node executable directly; they do not source a shell profile,
-invoke nvm or contact npm during recovery. The file
-`/opt/system-bootstrapper-runtime/node-executable` records the executable path.
+invoke nvm or contact npm during recovery. Use `/opt/system-bootstrapper-runtime/bin/node` for explicit native invocations.
 
 ### Source development without a prebuilt controller runtime
 
@@ -131,10 +135,10 @@ startup instead of the public-image installer:
 
 ```bash
 sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  bash start.sh
+  "$SYSTEM_NODE_BIN/node" operations/dist/cli.js start --checkout "$PWD"
 ```
 
-Keep `SYSTEM_NODE_BIN` for subsequent `sudo env "PATH=..."` calls to `stop.sh`,
+Keep `SYSTEM_NODE_BIN` for subsequent `sudo env "PATH=..."` calls to the CLI `stop` command,
 `bootstrapper/persistence.js` and Python host tools: sudo normally discards the
 interactive nvm PATH. Alternatively use the retained dedicated runtime prepared
 by the accepted-image path. A source build still constructs controller/Wizard
@@ -278,7 +282,7 @@ against the pulled public-image identities. It refuses an existing main
 configuration or GitLab data rather than treating a reinstall as an upgrade.
 It records only the two release image selectors in the private
 `configuration/.release-images.env` and invokes native startup with builds
-disabled. Ordinary subsequent `sudo bash start.sh` calls reuse that profile;
+disabled. Ordinary subsequent `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` calls reuse that profile;
 explicit saved main-configuration selectors still take precedence. `--install-host`
 can perform the Docker installation when it has not already been run. This
 installer does not restore a Seed, import a configuration ZIP or issue certificates.
@@ -391,5 +395,5 @@ Use the already prepared host runtime; source-development installs must pass the
 explicit Node PATH shown above.
 
 ```bash
-sudo bash stop.sh
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js stop --checkout "$PWD"
 ```

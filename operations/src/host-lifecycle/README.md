@@ -1,11 +1,12 @@
 # Host lifecycle and persistence
 
 `HostLifecycleModule` supplies the standalone host start/stop services and the
-persistence preflight. The public `start.sh`, `stop.sh` and
-`bootstrapper/persistence.js` entry points use the prepared Node runtime and
-invoke this module. They do not duplicate lifecycle or storage decisions. Prepare
-the supported runtime and compiled operations before using them, including during
-offline recovery; the wrappers do not install dependencies.
+persistence preflight. Use the prepared Node runtime with
+`operations/dist/cli.js start --checkout /absolute/reviewed/source` or `stop`.
+The CLI requires an explicit absolute checkout; `bootstrapper/persistence.js`
+also invokes this module. Prepare the supported runtime and compiled operations
+before use, including during offline recovery; these entries do not install
+dependencies.
 
 `HostPersistenceService` validates the explicitly selected local or volume-backed
 filesystem, mount identity, optional UUID, canonical paths, free space and POSIX

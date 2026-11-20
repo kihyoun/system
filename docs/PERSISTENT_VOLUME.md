@@ -195,7 +195,7 @@ available offline before maintenance.
    digests, and retain immutable private Wizard pins. Optional managed Review/Beta
    helpers require their own clean rebuild and explicit reprovisioning if their
    prior local image is absent; see the [managed environment guide](../project-bootstrap/wizard-environments/README.md).
-5. Run `sudo bash start.sh` from that checkout. It checks storage, builds the
+5. Run `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` from that checkout. It checks storage, builds the
    controller and starts services using retained configuration. Container IPs,
    networks and proxy configuration are regenerated. Change DNS if the host's
    address changed while preserving the configured domain names.

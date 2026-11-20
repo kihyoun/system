@@ -239,7 +239,7 @@ The container definitions can be reproduced; GitLab repositories, database conte
 
 | Path | Purpose in the existing implementation |
 | --- | --- |
-| `start.sh`, `stop.sh` | Thin host lifecycle entries to prepared operations. |
+| `operations/dist/cli.js start/stop --checkout PATH` | Prepared native host lifecycle entry with an explicit reviewed checkout. |
 | `bootstrapper/` | Base image, host initialization, recovery, runtime verification and accepted controller promotion/export tools. |
 | `system/` | Main Compose definition, controller compatibility entries and state initialization. |
 | `gitlab/` | GitLab configuration/Ruby adapters, typed upgrade and publication compatibility entries. |

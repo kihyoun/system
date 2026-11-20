@@ -66,7 +66,7 @@ node gitlab/prepare-wizard-source.js
 bash project-bootstrap/wizard-source/prepare.sh
 ```
 
-The normal root `start.sh` invokes preparation before Compose builds the System
+The host CLI `start --checkout /absolute/reviewed/source` invokes preparation before Compose builds the System
 image. Manual System image builds must run the same command first. The image
 build validates the generated manifest and file hashes; it fails if preparation
 was omitted. Do not commit the generated `snapshot.json`.
