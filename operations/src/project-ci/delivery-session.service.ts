@@ -145,7 +145,7 @@ export class DeliverySession {
           await this.run(['stop', '--time', '10', item.id], 20000, true);
           await this.run(['rm', item.id], 15000, true);
         } else if (item.kind === 'network') await this.run(['network', 'rm', item.id], 15000, true);
-        else await this.run(['image', 'rm', item.name], 30000, true);
+        else await this.run(['image', 'rm', item.id], 30000, true);
       } catch (error) {
         errors.push(error instanceof Error ? error.message : 'Native cleanup failed');
       }

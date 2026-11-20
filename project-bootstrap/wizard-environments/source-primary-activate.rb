@@ -41,13 +41,14 @@ class WizardSourcePrimaryEnvironments
     branch = read(prefix + 'repository/branches/' + URI.encode_www_form_component(@project.fetch('default_branch')))
     sha = branch.fetch('commit').fetch('id')
     files = binding.fetch('ciFiles')
+    required = files.is_a?(Array) && files.any? { |row| row['path'] == '.gitlab/producer-v2.json' } ? ['.gitlab/primary.yml', '.gitlab/producer-v2.json', '.gitlab/runtime/project-ci.cjs', '.gitlab/runtime/LICENSES.txt'] : ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh']
     raise BootstrapError, 'Source-primary CI manifest is incomplete' unless files.is_a?(Array) && !files.empty? && files.length <= 40 &&
       files.map { |row| row['path'] }.uniq.length == files.length &&
-      ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].all? { |name| files.any? { |row| row['path'] == name } }
+      required.all? { |name| files.any? { |row| row['path'] == name } }
     files.each do |row|
       name = row.fetch('path')
       raise BootstrapError, 'Source-primary CI manifest is invalid' unless row.keys.sort == ['path', 'sha256'] &&
-        name.match?(%r{\A(?:\.gitlab/|\.system-bootstrapper/build-v1/)[A-Za-z0-9_./-]+\z}) && !name.split('/').include?('..') &&
+        name.match?(%r{\A(?:\.gitlab/|\.system-bootstrapper/build-v[12]/)[A-Za-z0-9_./-]+\z}) && !name.split('/').include?('..') &&
         row.fetch('sha256').match?(/\A[a-f0-9]{64}\z/)
       file = read(prefix + 'repository/files/' + URI.encode_www_form_component(name) + '?ref=' + sha)
       raise BootstrapError, 'Source-primary CI changed; a reviewed adoption is required' unless

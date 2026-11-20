@@ -36,7 +36,7 @@ esac
   assert(calls.includes('stop --time 120 ' + 'd'.repeat(64)));
   assert(calls.includes('rm -f ' + 'd'.repeat(64)));
   assert(!calls.includes('rm -f wizard-environment-'));
-  fs.writeFileSync(script, fs.readFileSync(require.resolve('../../project-bootstrap/wizard-environments/source-primary.sh'), 'utf8'));
+  fs.writeFileSync(script, fs.readFileSync(require.resolve('../../project-bootstrap/wizard-environments/historical/source-primary-v1.sh'), 'utf8'));
   fs.writeFileSync(trace, '');
   const nativeEnvironment = {...environment, MODE: 'owned', SYSTEM_WIZARD_ENVIRONMENT_IMAGE: options.helperImage,
     SYSTEM_WIZARD_ENVIRONMENT_OPERATION: options.operation};

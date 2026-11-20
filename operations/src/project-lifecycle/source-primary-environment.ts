@@ -25,6 +25,16 @@ interface SourcePrimaryOptions {
 }
 const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+export function producerPaths(files: readonly CiFile[]): string[] {
+  return files.some((file) => file.path === '.gitlab/producer-v2.json')
+    ? [
+        '.gitlab/primary.yml',
+        '.gitlab/producer-v2.json',
+        '.gitlab/runtime/project-ci.cjs',
+        '.gitlab/runtime/LICENSES.txt',
+      ]
+    : ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'];
+}
 export function ciFiles(input: unknown): CiFile[] {
   if (
     !Array.isArray(input) ||
@@ -35,14 +45,12 @@ export function ciFiles(input: unknown): CiFile[] {
         !row ||
         Object.keys(row).sort().join(',') !== 'path,sha256' ||
         typeof row.path !== 'string' ||
-        !/^(?:\.gitlab\/|\.system-bootstrapper\/build-v1\/)[A-Za-z0-9_./-]+$/.test(row.path) ||
+        !/^(?:\.gitlab\/|\.system-bootstrapper\/build-v[12]\/)[A-Za-z0-9_./-]+$/.test(row.path) ||
         row.path.split('/').includes('..') ||
         !/^[a-f0-9]{64}$/.test(row.sha256 || ''),
     ) ||
     new Set(input.map((row) => row.path)).size !== input.length ||
-    !['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].every((name) =>
-      input.some((row) => row.path === name),
-    )
+    !producerPaths(input).every((name) => input.some((row) => row.path === name))
   )
     throw new Error('Source-primary CI requires an exact approved file manifest.');
   return copy(input as CiFile[]);

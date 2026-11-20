@@ -29,7 +29,7 @@ function fixture(profile = 'node24-vite8-overview-v3') {
   const text = logo + '\n# BOOTSTRAPPER_PROJECT=' + Buffer.from(JSON.stringify(receipt)).toString('base64') + '\n';
   fs.writeFileSync(config, text);
   fs.writeFileSync(mainConfig, logo + "\nexport GITLAB_HOST='gitlab.example.test'\nexport GITLAB_REGISTRY_URL='https://registry.example.test'\nexport GITLAB_REGISTRY_DOMAIN_MODE='2'\nexport WIZARD_IMAGE='" + oldImage + "'\n");
-  const scripts = [...recipe.files, {path: b.CI, content: '# native CI\n'}, {path: '.gitlab/delivery/environment.sh', content: fs.readFileSync(path.resolve(__dirname, '../../project-bootstrap/wizard-environments/source-primary.sh'), 'utf8')}];
+  const scripts = [...recipe.files, {path: b.CI, content: '# native CI\n'}, {path: '.gitlab/delivery/environment.sh', content: fs.readFileSync(path.resolve(__dirname, '../../project-bootstrap/wizard-environments/historical/source-primary-v1.sh'), 'utf8')}];
   const input = {version: 1, projectId: 7, projectPath: 'team/system-wizard', namespaceId: 9, defaultBranch: 'master', pipelineId: 31, sourceCommit: sha,
     imageRef: image, helperImage, ciFiles: scripts.map(file => ({path: file.path, sha256: b.hash(file.content)}))};
   const rows = {
@@ -73,7 +73,7 @@ async function buildUpdate(f, profile = 'node24-vite8-ca-v4') {
   const target = builds.generate(logo, profile), sourceCommit = 'e'.repeat(40), pipelineId = 32;
   const imageRef = image.replace('b'.repeat(64), 'f'.repeat(64));
   const scripts = [...target.files, {path: b.CI, content: '# reviewed native CI\n'},
-    {path: '.gitlab/delivery/environment.sh', content: fs.readFileSync(path.resolve(__dirname, '../../project-bootstrap/wizard-environments/source-primary.sh'), 'utf8')}];
+    {path: '.gitlab/delivery/environment.sh', content: fs.readFileSync(path.resolve(__dirname, '../../project-bootstrap/wizard-environments/historical/source-primary-v1.sh'), 'utf8')}];
   const input = {...f.input, sourceCommit, pipelineId, imageRef, buildProfile: target.profile,
     ciFiles: scripts.map(file => ({path: file.path, sha256: b.hash(file.content)}))};
   f.rows['projects/7/repository/branches/master'].commit.id = sourceCommit;

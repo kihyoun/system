@@ -9,10 +9,11 @@ function generate(logo, options) {
   if (!settings || !/^[a-f0-9]{64}$/.test(settingsHash || '') ||
       !/^sha256:[a-f0-9]{64}$/.test(helperImage || '') || !/^[a-f0-9]{48}$/.test(operation || '') ||
       controller !== 'system_bootstrapper_1') throw new Error('Invalid managed environment recipe reservation.');
-  const run = fs.readFileSync(path.join(__dirname, 'run.sh'), 'utf8')
+  const buildRecipe = options.buildRecipeHash ? legacy.select(logo, options.buildRecipeHash) : legacy.generate(logo);
+  if (buildRecipe.profile === 'node24-vite8-typed-v6') return require('../../operations/dist/project-ci/environment-recipe').generateTypedEnvironmentRecipe(options, buildRecipe);
+  const run = fs.readFileSync(path.join(__dirname, 'historical/run-v1.sh'), 'utf8')
     .replace(/__HELPER_IMAGE__/g, helperImage).replace(/__OPERATION__/g, operation);
   const files = [{path: '.system-bootstrapper/environments-v1/run.sh', content: run, sha256: hash(run)}];
-  const buildRecipe = options.buildRecipeHash ? legacy.select(logo, options.buildRecipeHash) : legacy.generate(logo);
   let ci = buildRecipe.ci.replace('stages: [build, test]', 'stages: [build, test, deploy]');
   ci += '\n# Managed Wizard environments v1; separate candidate hosts, manual jobs only.\n';
   for (const kind of ['review', 'beta']) {

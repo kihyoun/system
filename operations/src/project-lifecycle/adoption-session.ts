@@ -1,3 +1,4 @@
+import { producerPaths } from './source-primary-environment';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as b from './source-primary-binding';
@@ -186,7 +187,9 @@ export class Adoption {
       throw Error('A binding refresh requires an explicit reviewed build profile.');
     if (
       upgradeBuild &&
-      !['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(input.buildProfile || '')
+      !['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5', 'node24-vite8-typed-v6'].includes(
+        input.buildProfile || '',
+      )
     )
       throw Error('Select an explicit reviewed source-primary build profile.');
     const current = b.read(this.config),
@@ -386,13 +389,18 @@ export class Adoption {
         'node24-vite8-overview-v3',
         'node24-vite8-ca-v4',
         'node24-vite8-quickstart-v5',
+        'node24-vite8-typed-v6',
       ].includes(retainedRecipe.profile)
     )
       throw Error('The source-primary upgrade requires an existing reviewed modern build recipe.');
     if (
       upgradeBuild &&
-      retainedRecipe.profile === 'node24-vite8-quickstart-v5' &&
-      input.buildProfile !== retainedRecipe.profile
+      ((retainedRecipe.profile === 'node24-vite8-quickstart-v5' &&
+        !['node24-vite8-quickstart-v5', 'node24-vite8-typed-v6'].includes(
+          input.buildProfile || '',
+        )) ||
+        (retainedRecipe.profile === 'node24-vite8-typed-v6' &&
+          input.buildProfile !== retainedRecipe.profile))
     )
       throw Error('Retain the Quick Install-compatible Wizard build profile.');
     const recipe = upgradeBuild
@@ -417,7 +425,9 @@ export class Adoption {
             (source) => source.path === file.path && source.sha256 === b.hash(file.content),
           ),
       ) ||
-      !input.ciFiles.some((source) => source.path === '.gitlab/delivery/environment.sh')
+      !producerPaths(input.ciFiles).every((name) =>
+        input.ciFiles.some((source) => source.path === name),
+      )
     )
       throw Error('Approve the complete generic delivery and environment script manifest.');
     for (const file of recipe.files) {

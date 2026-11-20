@@ -85,3 +85,28 @@ test('failed registry push still cleans owned resources without publishing evide
 test('delivery cleanup refuses replaced image tag and fails the job',async t=>{
  const f=deliveryFixture(t,'replaced');await assert.rejects(f.service.build(f.root,deliveryEnv),/identity changed/);assert(!f.calls.some(call=>call.args[0]==='image'&&call.args[1]==='rm'));
 });
+test('candidate verification keeps diagnostics and drains exact resources on browser success or failure',async t=>{
+ for(const failBrowser of [false,true]){
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'delivery-verify-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const calls=[],identities=new Map();let builder='',owner='',browser='';
+  const port={run:async(binary,raw,options)=>{const args=raw.slice(2);calls.push({args,options});
+   if(args[0]==='buildx'&&args[1]==='create'){builder=args[3];return builder;}
+   if(args[0]==='buildx'&&args[1]==='inspect')return builder;
+   if(args[0]==='network'&&args[1]==='create'){owner=args[4].split('=')[1];identities.set(args.at(-1),'b'.repeat(64));return 'b'.repeat(64);}
+   if(args[0]==='create'){const name=args[args.indexOf('--name')+1];const id=(name.endsWith('-app')?'c':'d').repeat(64);identities.set(name,id);if(name.endsWith('-browser'))browser=id;return id;}
+   if(args[1]==='inspect'){if(args[3].includes('Labels'))return owner;return args[0]==='image'?'sha256:'+'a'.repeat(64):identities.get(args.at(-1));}
+   if(args[0]==='start'&&args[1]==='-a'&&failBrowser)throw Error('browser assertion failed');
+   if(args[0]==='cp')fs.writeFileSync(path.join(root,'browser-evidence/browser.json'),'{}');
+   return '';
+  }};
+  const service=new DeliveryService(new DeliverySessionService(port));
+  const input={...deliveryEnv,WIZARD_IMAGE_REF:deliveryEnv.CI_REGISTRY_IMAGE+'@sha256:'+'f'.repeat(64)};
+  if(failBrowser)await assert.rejects(service.verify(root,input),/browser assertion failed/);else await service.verify(root,input);
+  assert(fs.existsSync(path.join(root,'browser-evidence/browser.json')));
+  assert.equal(fs.existsSync(path.join(root,'wizard-evidence.json')),!failBrowser);
+  assert(calls.some(c=>c.args[0]==='cp'&&c.options.signal===undefined));
+  assert(calls.some(c=>c.args[0]==='rm'&&c.args[1]===browser));
+  assert(calls.some(c=>c.args[0]==='network'&&c.args[1]==='rm'&&c.args[2]==='b'.repeat(64)));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root,'cleanup.json'))).status,'passed');
+ }
+});

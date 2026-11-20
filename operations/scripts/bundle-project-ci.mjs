@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -28,6 +29,8 @@ try{
  const content='// Generated from compiled shared operations; run operations/scripts/bundle-project-ci.mjs.\n'+output[0].code;
  const file=path.join(root,'wizard/.gitlab/runtime/project-ci.cjs');
  const noticeFile=path.join(path.dirname(file),'LICENSES.txt');
- if(process.argv.includes('--check')){if(fs.readFileSync(file,'utf8')!==content||fs.readFileSync(noticeFile,'utf8')!==notices)throw Error('Portable project CI runtime differs from compiled operations');console.log('Portable project CI runtime matches compiled operations.');}
- else{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,content);fs.writeFileSync(noticeFile,notices);console.log('Bundled shared project CI runtime.');}
+ const producerFile=path.join(root,'wizard/.gitlab/producer-v2.json');
+ const producer=JSON.stringify({version:2,runtime:'.gitlab/runtime/project-ci.cjs',runtimeSha256:crypto.createHash('sha256').update(content).digest('hex'),buildProfile:'node24-vite8-typed-v6'},null,2)+'\n';
+ if(process.argv.includes('--check')){if(fs.readFileSync(file,'utf8')!==content||fs.readFileSync(noticeFile,'utf8')!==notices||fs.readFileSync(producerFile,'utf8')!==producer)throw Error('Portable project CI runtime differs from compiled operations');console.log('Portable project CI runtime matches compiled operations.');}
+ else{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,content);fs.writeFileSync(noticeFile,notices);fs.writeFileSync(producerFile,producer);console.log('Bundled shared project CI runtime.');}
 }finally{await bundle.close();}

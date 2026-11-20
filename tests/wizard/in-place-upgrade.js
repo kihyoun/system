@@ -287,8 +287,8 @@ async function test(name, run, modern = false) { const f = new Fixture(modern); 
     assert.deepEqual(await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths), preserved);
     assert.equal((await f.upgrade.adopt((await f.upgrade.adoptionPlan(true)).planHash, true)).unchanged, true);
   }, profile);
-  for (const targetProfile of ['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'])
-  for (const profile of ['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', ...(targetProfile.endsWith('-v5') ? ['node24-vite8-ca-v4', targetProfile] : [])]) await test('explicit ' + targetProfile + ' recipe upgrade from ' + profile + ' preserves source and stopped generations', async f => {
+  for (const targetProfile of ['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5', 'node24-vite8-typed-v6'])
+  for (const profile of targetProfile.endsWith('-v6') ? ['node24-vite8-quickstart-v5'] : ['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', ...(targetProfile.endsWith('-v5') ? ['node24-vite8-ca-v4', targetProfile] : [])]) await test('explicit ' + targetProfile + ' recipe upgrade from ' + profile + ' preserves source and stopped generations', async f => {
     const previous = JSON.parse(JSON.stringify(f.receipt.wizardWorkflow));
     const historicalOperation = f.upgrade.operation(f.receipt, logo, true);
     f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile: targetProfile, request: f.request.bind(f), checkHelper: async () => {}});

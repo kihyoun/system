@@ -8,6 +8,7 @@ const overviewProfile = 'node24-vite8-overview-v3';
 const caProfiles = {'legacy-ca-v4': 'legacy-cleanup-v2', 'node24-vite8-ca-v4': overviewProfile};
 const quickstartProfile = 'node24-vite8-quickstart-v5';
 function generate(logo, profile = 'legacy') {
+  if (profile === 'node24-vite8-typed-v6') return require('../../operations/dist/project-ci/recipe.service').generateTypedBuildRecipe(logo, path.resolve(__dirname, '../..'));
   if (profile === quickstartProfile) {
     const baseline = generate(logo, 'node24-vite8-ca-v4');
     const smoke = fs.readFileSync(path.join(__dirname, 'quickstart-v5', 'check.js'), 'utf8').replace(/\r\n/g, '\n');
@@ -66,7 +67,7 @@ function generate(logo, profile = 'legacy') {
   return {...manifest, profile, recipeHash: hash(JSON.stringify(manifest)), ci, files};
 }
 function select(logo, recipeHash) {
-  for (const profile of ['legacy', 'node24-vite8', ...Object.keys(cleanupProfiles), overviewProfile, ...Object.keys(caProfiles), quickstartProfile]) {
+  for (const profile of ['legacy', 'node24-vite8', ...Object.keys(cleanupProfiles), overviewProfile, ...Object.keys(caProfiles), quickstartProfile, 'node24-vite8-typed-v6']) {
     const recipe = generate(logo, profile);
     if (recipe.recipeHash === recipeHash) return recipe;
   }
@@ -78,6 +79,13 @@ function forSource(logo, sourceRevision) {
   if (snapshot.sourceRevision !== sourceRevision) return generate(logo, 'legacy-ca-v4'); // Existing hashes still select their original recipe.
   const file = snapshot.files.find(file => file.path === 'package.json');
   const packageJson = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'));
+  const runtime = snapshot.files.find(file => file.path === '.gitlab/runtime/project-ci.cjs');
+  if (runtime) {
+    const recipe = generate(logo, 'node24-vite8-typed-v6');
+    const pinned = recipe.files.find(file => file.path === '.system-bootstrapper/build-v2/runtime/project-ci.cjs');
+    if (runtime.sha256 !== pinned.sha256) throw new Error('Source runtime requires a reviewed versioned build recipe.');
+    return recipe;
+  }
   const profile = packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? quickstartProfile : 'legacy-ca-v4';
   return generate(logo, profile);
 }

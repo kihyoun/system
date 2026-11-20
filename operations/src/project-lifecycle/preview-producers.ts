@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { SourceAdapter } from './upgrade-types';
-import { CiFile } from './source-primary-environment';
+import { CiFile, producerPaths } from './source-primary-environment';
 const sourceRoot = path.resolve(__dirname, '../../../project-bootstrap');
 const source = require(path.join(sourceRoot, 'wizard-source/package')) as SourceAdapter;
 // Guided adoption must not approve whatever producer bytes an arbitrary fork
@@ -10,6 +10,20 @@ export function approvedProducers(
   snapshotFile = path.join(sourceRoot, 'wizard-source/snapshot.json'),
 ) {
   const snapshot = source.validate(JSON.parse(fs.readFileSync(snapshotFile, 'utf8')));
+  const producer = snapshot.files.find((file) => file.path === '.gitlab/producer-v2.json');
+  if (producer) {
+    const value: unknown = JSON.parse(Buffer.from(producer.content, 'base64').toString('utf8'));
+    const record = value as Record<string, unknown>;
+    const runtime = snapshot.files.find((file) => file.path === '.gitlab/runtime/project-ci.cjs');
+    if (
+      !record ||
+      record.version !== 2 ||
+      record.runtime !== '.gitlab/runtime/project-ci.cjs' ||
+      record.buildProfile !== 'node24-vite8-typed-v6' ||
+      record.runtimeSha256 !== runtime?.sha256
+    )
+      throw Error('Versioned source producer does not match its exact runtime.');
+  }
   return snapshot.files
     .filter((file) => file.path.startsWith('.gitlab/'))
     .map((file) => ({ path: file.path, sha256: file.sha256 }));
@@ -19,11 +33,10 @@ export function validateProducers(
   snapshotFile = path.join(sourceRoot, 'wizard-source/snapshot.json'),
 ) {
   const expected = approvedProducers(snapshotFile);
-  for (const name of [
-    '.gitlab/primary.yml',
-    '.gitlab/test-browser.sh',
-    '.gitlab/delivery/environment.sh',
-  ]) {
+  const required = producerPaths(expected);
+  if (!expected.some((file) => file.path === '.gitlab/producer-v2.json'))
+    required.push('.gitlab/test-browser.sh');
+  for (const name of required) {
     if (!expected.some((file) => file.path === name))
       throw Error(
         'The accepted controller source snapshot lacks the native Wizard delivery producers.',

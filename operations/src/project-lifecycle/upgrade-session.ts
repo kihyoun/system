@@ -148,6 +148,7 @@ export class Upgrade {
         'node24-vite8-overview-v3',
         'node24-vite8-ca-v4',
         'node24-vite8-quickstart-v5',
+        'node24-vite8-typed-v6',
       ].includes(this.buildProfile)
     )
       throw Error('Configure a known modern Wizard build upgrade profile.');
@@ -471,6 +472,7 @@ export class Upgrade {
         'node24-vite8-overview-v3',
         'node24-vite8-ca-v4',
         'node24-vite8-quickstart-v5',
+        'node24-vite8-typed-v6',
       ].includes(modern.profile) ||
       (buildOnly &&
         ![
@@ -479,18 +481,26 @@ export class Upgrade {
           'node24-vite8-overview-v3',
           'node24-vite8-ca-v4',
           'node24-vite8-quickstart-v5',
+          'node24-vite8-typed-v6',
         ].includes(oldBuild.profile))
     )
       throw Error('The reviewed upgrade requires the modern Wizard profile.');
     if (
       buildOnly &&
       ((oldBuild.profile === 'node24-vite8-overview-v3' &&
-        !['node24-vite8-overview-v3', 'node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(
-          modern.profile,
-        )) ||
+        ![
+          'node24-vite8-overview-v3',
+          'node24-vite8-ca-v4',
+          'node24-vite8-quickstart-v5',
+          'node24-vite8-typed-v6',
+        ].includes(modern.profile)) ||
         (oldBuild.profile === 'node24-vite8-ca-v4' &&
-          !['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5'].includes(modern.profile)) ||
-        (oldBuild.profile === 'node24-vite8-quickstart-v5' && modern.profile !== oldBuild.profile))
+          !['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5', 'node24-vite8-typed-v6'].includes(
+            modern.profile,
+          )) ||
+        (oldBuild.profile === 'node24-vite8-quickstart-v5' &&
+          !['node24-vite8-quickstart-v5', 'node24-vite8-typed-v6'].includes(modern.profile)) ||
+        (oldBuild.profile === 'node24-vite8-typed-v6' && modern.profile !== oldBuild.profile))
     )
       throw Error('Retain the overview-compatible Wizard build profile.');
     const operation = this.operation(receipt, logo, buildOnly);

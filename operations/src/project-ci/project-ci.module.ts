@@ -1,3 +1,4 @@
+import { ProjectBuildRecipeService } from './recipe.service';
 import { BuildToolsModule } from '../host-bootstrap/build-tools.module';
 import { DeliveryService } from './delivery.service';
 import { DeliverySessionService } from './delivery-session.service';
@@ -11,11 +12,17 @@ import { BrowserCheckService, BROWSER_PROBE, NativeBrowserProbe } from './browse
   providers: [
     { provide: PROJECT_CI_PROCESS, useClass: ManagedChildProcess },
     { provide: BROWSER_PROBE, useClass: NativeBrowserProbe },
+    ProjectBuildRecipeService,
     DeliveryService,
     DeliverySessionService,
     EnvironmentLauncherService,
     BrowserCheckService,
   ],
-  exports: [DeliveryService, EnvironmentLauncherService, BrowserCheckService],
+  exports: [
+    ProjectBuildRecipeService,
+    DeliveryService,
+    EnvironmentLauncherService,
+    BrowserCheckService,
+  ],
 })
 export class ProjectCiModule {}

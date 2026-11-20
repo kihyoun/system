@@ -5,7 +5,7 @@ default:
   tags: [docker]
   interruptible: true
   before_script:
-    - sh .system-bootstrapper/build-v1/refresh-ca.sh
+    - node .gitlab/runtime/project-ci.cjs refresh-ca .system-bootstrapper/build-v2
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -46,8 +46,8 @@ test:browser:
   script:
     - npm ci --no-audit --no-fund
     - npx playwright install --with-deps chromium
-    - sh .system-bootstrapper/build-v1/refresh-ca.sh
-    - sh .gitlab/test-browser.sh
+    - node .gitlab/runtime/project-ci.cjs refresh-ca .system-bootstrapper/build-v2
+    - node .gitlab/runtime/project-ci.cjs browser
   artifacts:
     when: always
     expire_in: 7 days
@@ -55,7 +55,9 @@ test:browser:
 # Enable in the same private source project when a Docker-socket runner and the
 # GitLab registry are configured. Without this opt-in, source checks still run.
 .wizard-delivery:
-  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+  image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+  before_script:
+    - node .gitlab/runtime/project-ci.cjs prepare-runtime .system-bootstrapper/build-v2
   cache: []
   timeout: 30 minutes
   allow_failure: false
@@ -69,7 +71,7 @@ build:wizard:
     - job: build:source
       artifacts: false
   script:
-    - sh .system-bootstrapper/build-v1/build.sh
+    - node .gitlab/runtime/project-ci.cjs build
   artifacts:
     expire_in: 7 days
     when: always
@@ -83,7 +85,7 @@ test:wizard:
     - job: build:wizard
       artifacts: true
   script:
-    - sh .system-bootstrapper/build-v1/verify.sh
+    - node .gitlab/runtime/project-ci.cjs verify
   artifacts:
     when: always
     expire_in: 7 days
@@ -109,7 +111,7 @@ deploy:github:
       when: on_success
     - when: never
   script:
-    - sh .gitlab/github-backup-ci.sh
+    - node .gitlab/runtime/project-ci.cjs mirror
 
 # Optional candidate environments. The Bootstrapper must explicitly adopt this
 # source project and provision the immutable helper before a job can deploy.
@@ -136,7 +138,7 @@ deploy:review:
       allow_failure: true
     - when: never
   script:
-    - sh .gitlab/delivery/environment.sh deploy review
+    - node .gitlab/runtime/project-ci.cjs environment deploy review
 stop:review:
   extends: .wizard-environment
   resource_group: 'wizard-review-host-$CI_PROJECT_ID'
@@ -149,7 +151,7 @@ stop:review:
       allow_failure: true
     - when: never
   script:
-    - sh .gitlab/delivery/environment.sh stop review
+    - node .gitlab/runtime/project-ci.cjs environment stop review
 deploy:beta:
   extends: .wizard-environment
   resource_group: 'wizard-beta-host-$CI_PROJECT_ID'
@@ -163,7 +165,7 @@ deploy:beta:
       allow_failure: true
     - when: never
   script:
-    - sh .gitlab/delivery/environment.sh deploy beta
+    - node .gitlab/runtime/project-ci.cjs environment deploy beta
 stop:beta:
   extends: .wizard-environment
   resource_group: 'wizard-beta-host-$CI_PROJECT_ID'
@@ -176,4 +178,4 @@ stop:beta:
       allow_failure: true
     - when: never
   script:
-    - sh .gitlab/delivery/environment.sh stop beta
+    - node .gitlab/runtime/project-ci.cjs environment stop beta

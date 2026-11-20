@@ -84,3 +84,15 @@ assert.throws(() => primary.sourcePrimaryEnvironment(stopped, {...selected, ciFi
 assert.throws(() => primary.reservation({...adopted, settingsHash: '0'.repeat(64)}), /reservation/);
 assert.deepStrictEqual(stopped.deployments.review.tombstone.projectId, 1, 'Migration mutated an old-project tombstone');
 console.log('Source-primary environments: strict CI binding, new ownership, exact historical tombstones and preserved generation floors passed.');
+const typedBuild=require('../../project-bootstrap/wizard-build/recipe').generate(logo,'node24-vite8-typed-v6');
+const typedEnvironment=generate(logo,{...options,buildRecipeHash:typedBuild.recipeHash});
+assert(typedEnvironment.files.every(file=>file.path.startsWith('.system-bootstrapper/environments-v2/')&&!file.path.endsWith('.sh')));
+assert.equal(generate(logo,{...options,buildRecipeHash:typedBuild.recipeHash}).recipeHash,typedEnvironment.recipeHash);
+for(const kind of ['review','beta']) for(const action of ['deploy','stop']) {
+ const job=typedEnvironment.ci.split('\n'+action+':'+kind+':\n')[1].split(/\n[^ \n]/)[0];
+ assert(job.includes('when: manual')&&job.includes('timeout: 10 minutes'));
+ assert(job.includes('project-ci.cjs environment '+action+' '+kind));
+ assert(job.includes('job: test:wizard'));
+}
+assert(!typedEnvironment.ci.includes('deploy:prod'));
+assert.equal(crypto.createHash('md5').update(typedEnvironment.ci.slice(0,1184)).digest('hex'),'bd4a8426355824593a5e21ad759830c1');

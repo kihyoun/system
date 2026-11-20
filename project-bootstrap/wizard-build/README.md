@@ -173,3 +173,19 @@ To run the exact smoke script against an isolated local build, set
 `WIZARD_BASE_URL` to its HTTP origin and `WIZARD_EVIDENCE_DIR` to a private output
 directory. The managed container defaults remain `http://wizard-candidate` and
 `/evidence`; all requests outside the selected origin are blocked.
+
+New Node 24 source snapshots with `.gitlab/producer-v2.json` select
+`node24-vite8-typed-v6`. Its `.system-bootstrapper/build-v2` files contain the
+reviewed portable runtime, Dockerfiles, browser checks and CA bundle. Jobs invoke
+shared Nest operation services with `node .../runtime/project-ci.cjs build` or
+`verify`; Node Alpine jobs first invoke `prepare-runtime` with the build-v2 directory.
+The application remains a static SPA served by Nginx.
+
+The versioned runtime in `typed-v6/runtime` is part of the reserved recipe hash.
+Keep these bytes when introducing a successor recipe; changing the current
+portable bundle does not authorize rewriting an existing reservation. A new source
+snapshot whose runtime differs from its versioned recipe fails selection until a
+reviewed successor profile is provided. Existing build-v1 recipe selections and
+hashes remain exact. Environment reservations bound to v6 produce manual Review
+and Beta jobs through the same runtime; historical environment-v1 selections read
+the archived scripts in `wizard-environments/historical`.
