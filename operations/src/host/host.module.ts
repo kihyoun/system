@@ -1,4 +1,5 @@
 import { RuntimeVerificationService } from '../host-bootstrap/runtime-verification.service';
+import { ControllerLeaseService } from './controller-lease.service';
 import { PromotionAbortService, type PromotionAbortPort } from './promotion-abort.service';
 import {
   PublicUpgradePlanService,
@@ -78,6 +79,7 @@ export class HostModule {
     return {
       module: HostModule,
       providers: [
+        { provide: ControllerLeaseService, useFactory: () => new ControllerLeaseService() },
         {
           provide: PublicUpgradePlanService,
           useFactory: () =>
@@ -338,6 +340,7 @@ export class HostModule {
         })),
       ],
       exports: [
+        ControllerLeaseService,
         PromotionAbortService,
         PublicUpgradePlanService,
         PublicUpgradeApplyService,
