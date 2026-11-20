@@ -96,6 +96,11 @@ def host_operation(operation, *arguments):
     host = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(host)
     try:
+        if operation == 'controllerLease':
+            # Cleanup must remain possible after the readiness deadline. Commands
+            # already carry its reduced budget plus the guardian drain allowance.
+            deadline = (time.time() + float(arguments[3]) + 30) * 1000 if arguments[0] == 'command' else None
+            return host.invoke(operation, *arguments, deadline=deadline)
         return host.invoke(operation, *arguments, deadline=(time.time() + budget(float('inf'))) * 1000 if OPERATION_DEADLINE is not None and operation not in ('interruptUpgrade', 'upgradePhase', 'failedStoppedController', 'inspectServiceRows', 'runtimeImageSelectors', 'verifyImageInspections', 'validateUpgradeGraph', 'upgradePath') else None)
     except host.ReleaseError as error:
         raise RecoveryError(str(error)) from None

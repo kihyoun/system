@@ -29,6 +29,13 @@ class HostRpc(unittest.TestCase):
         self.assertIn('value', invoke())
         self.assertEqual(worker.child.pid, pid)
         self.assertEqual(worker.sequence, 2)
+        lease_entry = entry.with_name('controller-lease-entry.js')
+        self.assertIn('error', host_rpc.invoke('node', lease_entry, 'invalid', []))
+        lease_worker = next(value for key, value in host_rpc._workers.items() if key[2] == str(lease_entry))
+        host_rpc.close(lease_entry.name)
+        self.assertIsNotNone(lease_worker.child.poll())
+        self.assertIsNone(worker.child.poll())
+        self.assertIn('value', invoke())
         with self.assertRaisesRegex(RuntimeError, 'transport-timeout'):
             invoke(time.time() * 1000 - 1)
         self.assertIsNotNone(worker.child.poll())

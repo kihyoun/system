@@ -212,18 +212,7 @@ def stopped_operations_idle(config, lease=None):
         locks.append(Path(config['SEED_DIR']) / '.operation-lock')
     for path in locks:
         if lease is not None and path in lease.held:
-            require(path.is_dir() and not path.is_symlink(), 'repair-operation-lease-changed')
-            owner = json.loads(successor.private_input(path / 'controller-owner.json'))
-            require(owner.get('operation') == lease.operation and owner.get('pid') == os.getpid() and
-                    owner.get('processStart') == successor.process_start(os.getpid()), 'repair-operation-lease-changed')
-            allowed = {'controller-owner.json'}
-            journal = path / 'host-child.json'
-            if journal.exists() or journal.is_symlink():
-                child = json.loads(successor.private_input(journal))
-                require(child.get('operation') == lease.operation and child.get('phase') == 'completed' and
-                        not successor.group_live(child.get('childPgid')), 'repair-host-child-is-still-running')
-                allowed.add('host-child.json')
-            require({entry.name for entry in path.iterdir()} <= allowed, 'repair-operation-lease-changed')
+            lease.assert_idle(path)
         else:
             require(not path.exists() and not path.is_symlink(), 'unfinished-operation-blocks-stopped-repair')
     for relative in ('gitlab/data/.system-bootstrapper-restore-incomplete',

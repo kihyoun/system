@@ -317,7 +317,7 @@ export async function hostMain(): Promise<void> {
   try {
     if (process.argv[2] === '--worker') {
       const { compatibilityWorker } = await import('./compatibility-worker.js');
-      await compatibilityWorker();
+      await compatibilityWorker(compatibility, closeCompatibilityContext);
     } else if (process.argv[2] === '--compatibility') {
       const result = await compatibility(JSON.parse(fs.readFileSync(0, 'utf8')));
       process.stdout.write(JSON.stringify({ value: result ?? null }) + '\n');

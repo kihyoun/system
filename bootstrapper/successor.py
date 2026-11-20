@@ -3,14 +3,12 @@
 import datetime
 import base64
 import host_service
-import fcntl
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -44,34 +42,8 @@ def run(arguments, **kwargs):
     if ACTIVE_LEASE is None:
         return recovery.run(arguments, **kwargs)
     timeout = recovery.budget(kwargs.pop('timeout', 300))
-    # The guardian survives this coordinator's session/process death and keeps
-    # its inherited flock until the specific command group has been reaped.
-    helper = subprocess.Popen([sys.executable, str(HERE / 'host-child.py'),
-        '--guard-fd', str(ACTIVE_LEASE.guard), '--journal', str(ACTIVE_LEASE.paths[0] / 'host-child.json'),
-        '--operation', ACTIVE_LEASE.operation, '--timeout', str(timeout), '--', *arguments],
-        pass_fds=(ACTIVE_LEASE.guard,), start_new_session=True,
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=kwargs.get('env'))
-    try:
-        output, error = helper.communicate(input=kwargs.get('input') or b'', timeout=timeout + 30)
-    except subprocess.TimeoutExpired:
-        # Do not terminate an uncertain guardian and release its inherited lock.
-        # It has its own finite child deadline; adoption remains blocked meanwhile.
-        raise recovery.RecoveryError('owned-host-command-is-still-draining') from None
-    require(helper.returncode == 0, 'command-failed:' + arguments[0])
-    return output
-
-
-def group_live(pgid):
-    if not isinstance(pgid, int) or pgid <= 0:
-        return False
-    for path in Path('/proc').glob('[0-9]*/stat'):
-        try:
-            fields = path.read_text().rpartition(')')[2].split()
-            if int(fields[2]) == pgid and fields[0] != 'Z':
-                return True
-        except (FileNotFoundError, PermissionError, ValueError, IndexError):
-            continue
-    return False
+    return base64.b64decode(ACTIVE_LEASE.call('command', list(arguments), timeout,
+        base64.b64encode(kwargs.get('input') or b'').decode(), kwargs.get('env')))
 
 
 def _private_bytes(path, maximum):
@@ -128,14 +100,6 @@ def directory_barrier(path):
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-
-
-def process_start(pid):
-    try:
-        fields = Path('/proc/' + str(pid) + '/stat').read_text().rpartition(')')[2].split()
-        return None if fields[0] == 'Z' else fields[19]
-    except (FileNotFoundError, IndexError):
-        return None
 
 
 def atomic_json(path, value):
@@ -300,151 +264,65 @@ def sync_idle(config):
 
 
 class Lease:
+    """Transitional argument adapter to the shared native durable lease provider."""
     def __init__(self, config, legacy_controller=None):
-        root = config['_root']
-        require(not (root / 'configuration/.gitlab-upgrade-lock').exists() and
-                not (root / 'gitlab/data/.system-bootstrapper-restore-incomplete').exists(),
-                'unfinished-GitLab-operation-blocks-controller-promotion')
-        self.paths = [root / 'configuration/.gitlab-upgrade-lock',
-                      root / 'configuration/.storage-operation-lock',
-                      root / 'host/letsencrypt/.system-bootstrapper-certificate-lock',
-                      root / 'configuration/.projects.env/.wizard.env.environments.lock']
-        self.legacy_seed = None
-        if legacy_controller is not None:
-            mounts = [row for row in legacy_controller.get('Mounts', []) if row.get('Destination') == '/seed']
-            require(len(mounts) <= 1, 'ambiguous-legacy-controller-seed-binding')
-            if mounts:
-                selected = Path(config.get('SEED_DIR', ''))
-                require(mounts[0].get('Type') == 'bind' and selected.is_absolute() and
-                        selected.is_dir() and not selected.is_symlink() and
-                        selected.resolve() == Path(mounts[0].get('Source', '')).resolve() and
-                        root not in selected.parents and selected not in root.parents and selected != root,
-                        'legacy-controller-seed-binding-mismatch')
-                self.legacy_seed = str(selected.resolve())
-                self.paths.append(selected / '.operation-lock')
-        self.operation = uuid.uuid4().hex
+        self.input = {'root': str(config['_root']), 'seedDirectory': config.get('SEED_DIR'),
+                      'legacyController': legacy_controller}
         self.held = []
-        self.critical = False
+        self._critical = False
 
-    def acquire_guard(self, root):
-        self.guard = os.open(root / 'configuration/.controller-host-guard.lock',
-                             os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-        require(os.fstat(self.guard).st_uid == os.geteuid() and not os.fstat(self.guard).st_mode & 0o077,
-                'private-controller-host-guard-required')
-        try:
-            fcntl.flock(self.guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            os.close(self.guard)
-            self.guard = None
-            raise recovery.RecoveryError('controller-host-command-or-coordinator-still-running') from None
+    def remember(self, value):
+        self.operation = value['operation']
+        self.paths = [Path(value) for value in value['paths']]
+        self.held = [Path(value) for value in value['held']]
+        self.legacy_seed = value['legacySeed']
+        self._critical = value['critical']
+        return self
+
+    def call(self, method, *arguments):
+        return recovery.host_operation('controllerLease', method, self.operation, *arguments)
+
+    @property
+    def critical(self):
+        return self._critical
+
+    @critical.setter
+    def critical(self, value):
+        self.call('critical', bool(value))
+        self._critical = bool(value)
 
     def __enter__(self):
         global ACTIVE_LEASE
-        self.acquire_guard(self.paths[0].parent.parent)
-        try:
-            for path in self.paths:
-                path.mkdir(mode=0o700)
-                self.held.append(path)
-                atomic_json(path / 'controller-owner.json', {'format': 'system-controller-operation-v1',
-                                                            'storageLease': 'live-v1', 'legacySeedDirectory': self.legacy_seed,
-                                                            'operation': self.operation, 'pid': os.getpid(),
-                                                            'processStart': process_start(os.getpid()),
-                                                            'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip()})
-        except Exception:
-            self.release()
-            raise recovery.RecoveryError('controller-operation-lease-unavailable') from None
+        self.remember(recovery.host_operation('controllerLease', 'acquire', self.input))
         ACTIVE_LEASE = self
         return self
 
     @classmethod
     def adopt(cls, config, operation):
-        value = object.__new__(cls)
-        root = config['_root']
-        value.paths = [root / 'configuration/.gitlab-upgrade-lock', root / 'configuration/.storage-operation-lock',
-                       root / 'host/letsencrypt/.system-bootstrapper-certificate-lock',
-                       root / 'configuration/.projects.env/.wizard.env.environments.lock']
-        value.operation, value.held, value.critical = operation, [], True
-        value.acquire_guard(root)
-        try:
-            primary = json.loads(private_input(value.paths[0] / 'controller-owner.json'))
-            value.legacy_seed = primary.get('legacySeedDirectory')
-            if primary.get('storageLease') != 'live-v1':
-                # Retain recovery of receipts made before the live-state lease.
-                old = Path(config.get('SEED_DIR', ''))
-                require(old.is_absolute() and old.is_dir(), 'legacy-controller-seed-lease-unavailable')
-                value.paths[1] = old / '.operation-lock'
-            elif value.legacy_seed:
-                old = Path(value.legacy_seed)
-                require(old.is_absolute() and old.is_dir() and not old.is_symlink() and
-                        old.resolve() == Path(config.get('SEED_DIR', '')).resolve() and
-                        root not in old.parents and old not in root.parents and old != root,
-                        'legacy-controller-seed-lease-mismatch')
-                value.paths.append(old / '.operation-lock')
-            journal = value.paths[0] / 'host-child.json'
-            if journal.exists():
-                child = json.loads(private_input(journal))
-                require(child.get('operation') == operation, 'controller-host-child-owner-mismatch')
-                same_boot = child.get('bootId') == Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-                guardian_ended = process_start(child.get('guardianPid')) != child.get('guardianStart')
-                worker_ended = ('childPid' not in child or
-                                process_start(child['childPid']) != child.get('childStart'))
-                require(not same_boot or (guardian_ended and worker_ended and not group_live(child.get('childPgid'))),
-                        'controller-host-child-is-still-running')
-                if child.get('phase') != 'completed':
-                    child.update(phase='completed', interrupted=True, exitCode=None)
-                    atomic_json(journal, child)
-            for path in value.paths:
-                owner = json.loads(private_input(path / 'controller-owner.json'))
-                require(owner.get('format') == 'system-controller-operation-v1' and
-                        owner.get('operation') == operation, 'controller-recovery-lease-ownership-mismatch')
-                require(type(owner.get('pid')) is int and owner['pid'] > 0 and
-                        isinstance(owner.get('processStart'), str) and owner['processStart'].isdigit(),
-                        'invalid-controller-lease-process-identity')
-                same_boot = owner.get('bootId') == Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-                require(not same_boot or process_start(owner['pid']) != owner['processStart'], 'controller-operation-is-still-running')
-                value.held.append(path)
-            for path in value.held:
-                atomic_json(path / 'controller-owner.json', {'format': 'system-controller-operation-v1',
-                             'storageLease': primary.get('storageLease'), 'legacySeedDirectory': value.legacy_seed,
-                             'operation': operation, 'pid': os.getpid(), 'processStart': process_start(os.getpid()),
-                                                                'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip()})
-        except BaseException:
-            os.close(value.guard)
-            value.guard = None
-            raise
         global ACTIVE_LEASE
+        value = cls(config)
+        value.remember(recovery.host_operation('controllerLease', 'adopt', value.input, operation))
         ACTIVE_LEASE = value
         return value
 
+    def assert_idle(self, directory):
+        self.call('idle', str(directory))
+
     def release(self):
         global ACTIVE_LEASE
-        journal = self.paths[0] / 'host-child.json'
-        if journal.exists():
-            child = json.loads(private_input(journal))
-            require(child.get('operation') == self.operation and child.get('phase') == 'completed',
-                    'controller-host-child-has-not-finished')
-            journal.unlink()
-        for path in reversed(self.held):
-            owner = path / 'controller-owner.json'
-            require(json.loads(private_input(owner)).get('operation') == self.operation,
-                    'controller-operation-lease-ownership-changed')
-            owner.unlink()
-            path.rmdir()
+        self.call('release')
         self.held = []
-        if getattr(self, 'guard', None) is not None:
-            os.close(self.guard)
-            self.guard = None
         if ACTIVE_LEASE is self:
             ACTIVE_LEASE = None
 
     def __exit__(self, kind, value, traceback):
-        if kind is None or not self.critical:
-            self.release()
-        else:
-            global ACTIVE_LEASE
-            if self.guard is not None:
-                os.close(self.guard)
-                self.guard = None
+        global ACTIVE_LEASE
+        try:
+            self.call('finish', kind is not None)
+        finally:
+            if kind is not None and self.critical:
+                # Receipt identity belongs to the native coordinator. Closing it
+                # makes adoption possible while a detached guardian retains flock.
+                sys.modules['_system_host_rpc'].close('controller-lease-entry.js')
             if ACTIVE_LEASE is self:
                 ACTIVE_LEASE = None
-        # A failed deployment retains the exact owned lease for investigation.

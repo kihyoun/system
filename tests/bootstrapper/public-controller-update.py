@@ -539,10 +539,9 @@ class PublicControllerUpdate(unittest.TestCase):
         def acquire_then_publish_child(lease):
             result = acquire(lease)
             successor.atomic_json(lease.paths[0] / 'host-child.json',
-                                  {'operation': lease.operation, 'phase': 'completed', 'childPgid': 123456})
+                                  {'operation': lease.operation, 'phase': 'completed', 'childPgid': os.getpgrp()})
             return result
-        with patch.object(successor.Lease, '__enter__', acquire_then_publish_child), \
-                patch.object(successor, 'group_live', return_value=True):
+        with patch.object(successor.Lease, '__enter__', acquire_then_publish_child):
             with self.assertRaisesRegex(recovery.RecoveryError, 'repair-host-child-is-still-running'):
                 self.repair()
         self.assertEqual(self.commands, [])
@@ -644,8 +643,7 @@ class PublicControllerUpdate(unittest.TestCase):
         with self.assertRaisesRegex(recovery.RecoveryError, 'compose-failure'): self.repair()
         self.compose_fail = False
         self.contacts.side_effect = AssertionError('Stopped fallback cannot require fresh runner API contacts')
-        with patch.object(successor, 'process_start', return_value='different-process'):
-            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(record['phase'], 'rolled-back-stopped')
         self.assertEqual(self.config['_main'].read_bytes(), self.raw)
         self.assertFalse(self.rows['system_bootstrapper_1']['State']['Running'])
@@ -764,8 +762,7 @@ class PublicControllerUpdate(unittest.TestCase):
         self.assertNotEqual(mixed['.release-images.json'], before[0]['.release-images.json'])
         self.assertEqual(mixed['.release-images.env'], before[0]['.release-images.env'])
         self.assertTrue((self.root / 'configuration/.storage-operation-lock').exists())
-        with patch.object(successor, 'process_start', return_value='different-process'):
-            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(tool.release_selection(self.config), before)
 
     def test_interrupted_selection_replacement_preserves_nonroot_owner_atomically(self):
@@ -784,8 +781,7 @@ class PublicControllerUpdate(unittest.TestCase):
         with patch.object(os, 'replace', interrupted):
             with self.assertRaisesRegex(recovery.RecoveryError, 'loss-after-selection-rename'):
                 self.update(wizard=self.wizard, release_metadata=self.metadata)
-        with patch.object(successor, 'process_start', return_value='different-process'):
-            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(tool.release_selection(self.config), before)
 
     def test_selection_owner_failure_does_not_publish_incomplete_metadata(self):
@@ -795,8 +791,7 @@ class PublicControllerUpdate(unittest.TestCase):
             with self.assertRaisesRegex(OSError, 'owner-failure'):
                 self.update(wizard=self.wizard, release_metadata=self.metadata)
         self.assertEqual(tool.release_selection(self.config), before)
-        with patch.object(successor, 'process_start', return_value='different-process'):
-            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(tool.release_selection(self.config), before)
 
     def test_partial_metadata_rollback_can_resume_and_removes_initially_absent_receipts(self):
@@ -810,8 +805,7 @@ class PublicControllerUpdate(unittest.TestCase):
         with patch.object(Path, 'unlink', fail_second_unlink):
             with self.assertRaisesRegex(recovery.RecoveryError, 'selection-unlink-failure'):
                 tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
-        with patch.object(successor, 'process_start', return_value='different-process'):
-            tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(tool.release_selection(self.config)[0], {name: None for name in tool.RELEASE_SELECTION})
         self.assertEqual(self.config['_main'].read_bytes(), self.raw)
 
@@ -933,8 +927,7 @@ class PublicControllerUpdate(unittest.TestCase):
         with self.assertRaisesRegex(recovery.RecoveryError, 'compose-failure'): self.update(wizard=self.wizard)
         del self.rows['system_bootstrapper_1']; del self.rows['system_wizard_1']
         self.compose_fail = False
-        with patch.object(successor, 'process_start', return_value='different-process'):
-            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(record['phase'], 'rolled-back')
         self.assertEqual(self.config['_main'].read_bytes(), self.raw)
         self.assertEqual(self.rows['system_wizard_1']['Image'], self.wizard_template['Image'])
@@ -1088,8 +1081,7 @@ class PublicControllerUpdate(unittest.TestCase):
         self.assertTrue((self.root / 'configuration/.storage-operation-lock').exists())
         self.assertEqual(self.config['_main'].read_bytes(), tool.assignment(self.raw, self.new))
         self.compose_fail = False
-        with patch.object(successor, 'process_start', return_value='different-process'):
-            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(record['phase'], 'rolled-back')
         self.assertEqual(self.config['_main'].read_bytes(), self.raw)
         self.assertFalse((self.root / 'configuration/.gitlab-upgrade-lock').exists())
@@ -1110,8 +1102,7 @@ class PublicControllerUpdate(unittest.TestCase):
         with self.assertRaisesRegex(recovery.RecoveryError, 'compose-failure'): self.update()
         del self.rows['system_bootstrapper_1']
         self.compose_fail = False
-        with patch.object(successor, 'process_start', return_value='different-process'):
-            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
         self.assertEqual(record['phase'], 'rolled-back')
         self.assertEqual(self.config['_main'].read_bytes(), self.raw)
         self.assertEqual(self.rows['system_bootstrapper_1']['Image'], self.images[self.old]['Id'])

@@ -86,9 +86,11 @@ def invoke(node, entry, operation, arguments, deadline=None):
             raise
 
 
-def close():
-    for worker in list(_workers.values()): worker.close()
-    _workers.clear()
+def close(entry_name=None):
+    for key, worker in list(_workers.items()):
+        if entry_name is None or os.path.basename(key[2]) == entry_name:
+            _workers.pop(key, None)
+            worker.close()
 
 
 atexit.register(close)

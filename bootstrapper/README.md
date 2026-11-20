@@ -718,7 +718,7 @@ previous controller and configuration on the same old GitLab data; it never rewi
 that database. A changed GitLab image or a completed migration refuses this path:
 use the GitLab upgrade helper's verified database checkpoint recovery instead.
 Completed controller promotions are not treated as interrupted operations.
-Host commands run through the committed `host-child.py` guardian: it inherits a
+Host commands run through the shared native `ControllerLeaseService` and its TypeScript guardian: it inherits a
 stable filesystem guard, records PID/start/process-group identity before releasing
 a worker start barrier, and bounds and reaps the entire owned command group.
 Adoption refuses a live coordinator, guardian or worker group, including after a

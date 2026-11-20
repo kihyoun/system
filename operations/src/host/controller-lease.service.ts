@@ -47,6 +47,51 @@ export class ControllerLeaseService {
     requireValue(this.paths.length, 'controller-lease-not-acquired');
     return path.join(this.paths[0], 'host-child.json');
   }
+  describe() {
+    this.guardFd;
+    return {
+      operation: this.operation,
+      held: [...this.held],
+      paths: [...this.paths],
+      legacySeed: this.legacySeed,
+      critical: this.critical,
+    };
+  }
+  assertOperation(operation: unknown): void {
+    this.guardFd;
+    requireValue(operation === this.operation, 'controller-operation-lease-ownership-changed');
+  }
+  assertIdle(directory: string): void {
+    this.guardFd;
+    requireValue(this.held.includes(directory), 'repair-operation-lease-changed');
+    const stat = fs.lstatSync(directory),
+      owner = read(path.join(directory, 'controller-owner.json'));
+    requireValue(
+      stat.isDirectory() &&
+        !stat.isSymbolicLink() &&
+        owner.operation === this.operation &&
+        owner.pid === process.pid &&
+        owner.processStart === processStart(process.pid) &&
+        owner.bootId === boot(),
+      'repair-operation-lease-changed',
+    );
+    const allowed = new Set(['controller-owner.json']);
+    const journal = path.join(directory, 'host-child.json');
+    if (fs.readdirSync(directory).includes('host-child.json')) {
+      const child = read(journal);
+      requireValue(
+        child.operation === this.operation &&
+          child.phase === 'completed' &&
+          !groupLive(Number(child.childPgid)),
+        'repair-host-child-is-still-running',
+      );
+      allowed.add('host-child.json');
+    }
+    requireValue(
+      fs.readdirSync(directory).every((name) => allowed.has(name)),
+      'repair-operation-lease-changed',
+    );
+  }
   private initialize(input: ControllerLeaseInput): void {
     requireValue(
       this.descriptor === undefined && !this.held.length && path.isAbsolute(input.root),
@@ -152,7 +197,7 @@ export class ControllerLeaseService {
       }
     } catch (error) {
       this.release();
-      throw error;
+      throw Error('controller-operation-lease-unavailable');
     }
   }
   adopt(input: ControllerLeaseInput, operation: string): void {

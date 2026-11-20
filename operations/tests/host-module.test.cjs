@@ -54,6 +54,12 @@ test('native controller lease preserves critical ownership, excludes contenders 
  const service=new ControllerLeaseService();service.acquire({root});
  const operation=service.operation,ownerPath=path.join(root,'configuration/.gitlab-upgrade-lock/controller-owner.json');
  assert.throws(()=>new ControllerLeaseService().adopt({root},operation),/still-running/);
+ const description=service.describe();assert.equal(description.operation,operation);
+ description.held.length=0;assert.equal(service.describe().held.length,4);
+ assert.throws(()=>service.assertOperation('foreign'),/ownership-changed/);
+ for(const directory of service.describe().held)service.assertIdle(directory);
+ const extra=path.join(service.describe().held[0],'foreign');fs.writeFileSync(extra,'');
+ assert.throws(()=>service.assertIdle(service.describe().held[0]),/lease-changed/);fs.unlinkSync(extra);
  const pending=service.command([process.execPath,'-e','process.stdout.write("guarded")']);
  assert.throws(()=>service.command([process.execPath,'-e','']),/has-not-finished/);assert.throws(()=>service.release(),/has-not-finished/);
  assert.equal((await pending).toString(),'guarded');

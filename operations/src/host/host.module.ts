@@ -1,3 +1,4 @@
+import { ControllerLeaseModule } from './controller-lease.module';
 import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
 import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
 import { CandidateAuthorityService } from './candidate-authority.service';
@@ -90,7 +91,7 @@ export class HostModule {
     };
     return {
       module: HostModule,
-      imports: [GitlabPreflightModule],
+      imports: [GitlabPreflightModule, ControllerLeaseModule],
       providers: [
         {
           provide: CandidateGitLabService,
@@ -147,7 +148,6 @@ export class HostModule {
           inject: [ControllerLeaseService],
           useFactory: (lease: ControllerLeaseService) => new ControllerCheckpointService(lease),
         },
-        { provide: ControllerLeaseService, useFactory: () => new ControllerLeaseService() },
         {
           provide: PublicUpgradePlanService,
           useFactory: () =>
@@ -372,7 +372,7 @@ export class HostModule {
         PromotionRecoveryService,
         PromotionNativePortService,
         ControllerCheckpointService,
-        ControllerLeaseService,
+        ControllerLeaseModule,
         PromotionAbortService,
         PublicUpgradePlanService,
         PublicUpgradeApplyService,

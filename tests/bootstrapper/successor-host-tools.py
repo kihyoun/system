@@ -23,6 +23,14 @@ sys.path.insert(0, str(ROOT / 'bootstrapper'))
 import successor
 
 
+def process_start(pid):
+    try:
+        fields = Path('/proc/' + str(pid) + '/stat').read_text().rpartition(')')[2].split()
+        return None if fields[0] == 'Z' else fields[19]
+    except (FileNotFoundError, IndexError):
+        return None
+
+
 def module(name, file):
     spec = importlib.util.spec_from_file_location(name, ROOT / 'bootstrapper' / file)
     result = importlib.util.module_from_spec(spec)
@@ -845,10 +853,9 @@ class HostChildInterruption(unittest.TestCase):
             lease.__exit__(RuntimeError, RuntimeError('fixture interruption'), None)
             # The replacement controller no longer has /seed. Recovery uses the
             # private owned receipt rather than rediscovering only current mounts.
-            with patch.object(successor, 'process_start', return_value='0'):
-                adopted = successor.Lease.adopt(config, lease.operation)
-                self.assertIn(root / 'seed/.operation-lock', adopted.held)
-                adopted.release()
+            adopted = successor.Lease.adopt(config, lease.operation)
+            self.assertIn(root / 'seed/.operation-lock', adopted.held)
+            adopted.release()
             self.assertFalse((root / 'seed/.operation-lock').exists())
             self.assertFalse((root / 'platform/configuration/.storage-operation-lock').exists())
 
@@ -875,7 +882,7 @@ class HostChildInterruption(unittest.TestCase):
                     'stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); print(child.pid,flush=True)')
             with successor.Lease(config):
                 pid = int(successor.run([sys.executable, '-c', code]).decode().strip())
-                self.assertIsNone(successor.process_start(pid))
+                self.assertIsNone(process_start(pid))
             self.assertIsNone(successor.ACTIVE_LEASE)
 
     def test_SIGKILL_parent_cannot_release_guard_while_owned_command_survives(self):
@@ -900,13 +907,13 @@ class HostChildInterruption(unittest.TestCase):
                 self.fail('Owned command never reached its journaled start barrier: ' + error.decode())
             os.kill(parent.pid, signal.SIGKILL)
             parent.communicate(timeout=5)
-            self.assertEqual(successor.process_start(child['childPid']), child['childStart'])
+            self.assertEqual(process_start(child['childPid']), child['childStart'])
             with self.assertRaisesRegex(successor.recovery.RecoveryError, 'still-running'):
                 successor.Lease.adopt(config, child['operation'])
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
                 final = json.loads(journal.read_bytes())
-                if final.get('phase') == 'completed' and successor.process_start(child['guardianPid']) != child['guardianStart']:
+                if final.get('phase') == 'completed' and process_start(child['guardianPid']) != child['guardianStart']:
                     break
                 time.sleep(0.05)
             else:

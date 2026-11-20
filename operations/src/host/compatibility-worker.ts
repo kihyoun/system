@@ -1,8 +1,13 @@
 import fs from 'node:fs';
-import { compatibility, closeCompatibilityContext } from './entry';
 const limit = 16 * 1024 * 1024;
 /** Sequential private channel: one request owns the mutable operation deadline. */
-export async function compatibilityWorker(): Promise<void> {
+export async function compatibilityWorker(
+  handle: (
+    request: { operation: string; arguments: unknown[]; deadline?: number },
+    retain: boolean,
+  ) => Promise<unknown>,
+  close: () => Promise<void>,
+): Promise<void> {
   let pending = Buffer.alloc(0);
   const chunk = Buffer.alloc(65536);
   try {
@@ -30,7 +35,7 @@ export async function compatibilityWorker(): Promise<void> {
         throw Error('invalid-host-request');
       let response: unknown;
       try {
-        response = { id: request.id, value: (await compatibility(request, true)) ?? null };
+        response = { id: request.id, value: (await handle(request, true)) ?? null };
       } catch (error) {
         response = {
           id: request.id,
@@ -46,6 +51,6 @@ export async function compatibilityWorker(): Promise<void> {
       while (offset < output.length) offset += fs.writeSync(1, output, offset);
     }
   } finally {
-    await closeCompatibilityContext();
+    await close();
   }
 }

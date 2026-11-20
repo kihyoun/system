@@ -33,7 +33,7 @@ def invoke(operation, *arguments, deadline=None):
         sys.modules[name] = module
         spec.loader.exec_module(module)
     try:
-        value = sys.modules[name].invoke(NODE, ENTRY, operation, arguments, deadline)
+        value = sys.modules[name].invoke(NODE, ENTRY.with_name('controller-lease-entry.js') if operation == 'controllerLease' else ENTRY, operation, arguments, deadline)
     except Exception:
         raise ReleaseError('compiled-host-operations-runtime-required') from None
     if 'error' in value:

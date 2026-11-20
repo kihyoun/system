@@ -40,8 +40,11 @@ the existing `system-host-child-v1` completion journal. The worker start permit 
 bounded at 15 seconds, command timeout at the existing maximum of 1800 seconds,
 and group cleanup at 10 seconds. Captured output is bounded to 4 MiB. A canceled
 or failed guardian leaves its journal for the existing adoption checks.
-`bootstrapper/host-child.py` only execs this precompiled guardian, preserving the
-inherited lock descriptor. Existing real process-interruption tests run with
+`ControllerLeaseModule` provides the same durable lease service to native host
+operations and the transitional release adapter. Its dedicated private worker
+retains the native coordinator identity; a critical failure detaches and closes
+that coordinator while an active guardian retains the inherited lock. Existing
+real process-interruption tests run with
 `python3 tests/bootstrapper/successor-host-tools.py HostChildInterruption`.
 
 `RecoveryManifestService` verifies retained archive checksums, unique aliases,
