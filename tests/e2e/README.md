@@ -518,3 +518,17 @@ The [operator preflight tool](GUIDED_PREVIEW_ACCEPTANCE.md) checks explicit priv
 System Beta settings against a selected local controller. It is read-only and
 rejects `--apply`. The disposable fixture seam never runs on a user installation.
 A successful plan does not establish native acceptance.
+
+### Fresh-host and restored-host coverage
+
+The original host runs runner registration idempotency, a new registry build/push/pull/run
+pipeline, and a deliberately failing pipeline whose delivery job must stay skipped.
+The restored host retains native GitLab readiness and runner verification, compares the
+saved runner database ID, manager identity hash and immutable image ID, and runs the
+original registry-blob pipeline. It does not repeat the original host's generic project
+creation and failure pipeline. The original successful pipeline identity remains the
+backup oracle; the restored blob job records its own actual pipeline and job IDs.
+
+Cold restore, GitLab migration, paired public upgrade and rollback keep their separate
+state-transition checks. Unit and component contracts cover rejection and cleanup paths;
+they do not replace native recovery, registry authentication or actual migration jobs.

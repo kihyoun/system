@@ -220,6 +220,14 @@ async function recordIdentity(original){
       issueIid:issue.iid,mergeRequest,nonce,userId:user.id,userName:user.username,registryId:repository.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
   }finally{await step('credential-revoked',()=>revoke(original,auth.token));}
 }
+async function runnerIdentity(candidate) {
+  const base=candidate.spec.restore?.base||'/candidate-data/platform';
+  const script="const fs=require('fs'),c=require('crypto');const base=process.argv[1];const text=fs.readFileSync(base+'/config.toml','utf8');const ids=[...text.matchAll(/^\\s*id\\s*=\\s*(\\d+)\\s*$/gm)];if(ids.length!==1)throw Error('runner-id-required');process.stdout.write(JSON.stringify({runnerId:Number(ids[0][1]),manager:c.createHash('sha256').update(fs.readFileSync(base+'/.runner_system_id')).digest('hex')}));";
+  const identity=JSON.parse(await candidate.inner(['exec','system_bootstrapper_1','node','-e',script,base+'/runners/runner/1/config']));
+  const container=JSON.parse(await candidate.inner(['inspect','runner_docker_1']))[0];
+  if(!Number.isSafeInteger(identity.runnerId)||identity.runnerId<1||!/^[a-f0-9]{64}$/.test(identity.manager||'')||!container.State?.Running||!/^sha256:[a-f0-9]{64}$/.test(container.Image||''))throw Error('recovery-runner-identity-required');
+  return {runnerId:identity.runnerId,manager:identity.manager,imageId:container.Image};
+}
 async function capture(original,dependencies={}) {
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'system-recovery-'));
   fs.chmodSync(directory,0o700);
@@ -227,6 +235,8 @@ async function capture(original,dependencies={}) {
   try {
     await original.stage('recovery-record-service-identity',async()=>{
       inputs.expected=await recordIdentity(original);
+      inputs.expected.runnerIdentity=await runnerIdentity(original);
+      inputs.expected.registryPipelineId=original.evidence.pipelineId;
       if(original.spec.guidedPreviewAcceptance===true)inputs.expected.guidedBinding=await require('./guided-preview-platform').bindingProof(original);
     });
     if(original.spec.privateWizardRecovery)await original.stage('recovery-publish-uncached-private-wizard',async()=>{
@@ -609,7 +619,7 @@ async function verifyRegistryBlob(candidate,input) {
       await candidate.wait(async()=>{const runs=await candidate.api('/projects/'+expected.projectId+'/pipelines',auth.token);pipeline=runs.find(run=>run.sha===commit.last_commit_id);return pipeline&&['success','failed','skipped','canceled'].includes(pipeline.status);},180000);
       if(pipeline.status!=='success')throw Error('restored-registry-ci-failed');
       const jobs=await candidate.api('/projects/'+expected.projectId+'/pipelines/'+pipeline.id+'/jobs',auth.token);
-      if(jobs.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id)throw Error('restored-registry-job-not-successful');
+      if(jobs.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id||(expected.runnerIdentity&&jobs[0].runner.id!==expected.runnerIdentity.runnerId))throw Error('restored-registry-job-not-successful');
       candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:!input.expected.acme,acmeRenewalVerified:false,privateWizardPinVerified:candidate.privateWizardPinVerified===true,mergeRequestRecoveryVerified:candidate.mergeRequestRecoveryVerified===true,guidedBindingRestored:candidate.guidedBindingRestored===true};
     } finally {await revoke(candidate,auth.token);}
   });
@@ -633,7 +643,6 @@ async function run(original,reportDirectory,dependencies={}) {
     second.secrets={...original.secrets};
     second.report(reportDirectory(second));
     await second.start();
-    if(original.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(second);
     await (dependencies.verifyRestore || verifyRestore)(second,input);
     if(!dependencies.Candidate)await second.stage('storage-detached-backup-normal-operation',async()=>{
       await storage.verifyLocalLive(second,BASE);await storage.assertAbsent(second);
@@ -671,4 +680,4 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!clean)throw Error('restored-host-cleanup-failed');
   }
 }
-module.exports={capture,bootstrapRestore,verifyRestore,verifyServiceIdentity,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,httpProbe,verifyAliasRouting,verifyAliasLifecycle,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,SEED_RESTORE_FAILURE_CODES,BASE,SEED,WIZARD_ALIAS,ALIAS_ROUTE};
+module.exports={runnerIdentity,capture,bootstrapRestore,verifyRestore,verifyServiceIdentity,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,httpProbe,verifyAliasRouting,verifyAliasLifecycle,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,SEED_RESTORE_FAILURE_CODES,BASE,SEED,WIZARD_ALIAS,ALIAS_ROUTE};

@@ -798,3 +798,27 @@ test('shared candidate registry recovery accepts exact candidate and forbids cac
   for(const change of [{jobId:31},{pipelineId:21},{sourceCommit:'a'.repeat(40)},{imageId:images.candidate.id},{projectPath:'root/../wizard'}])assert.throws(()=>recovery.privateWizardDescriptor({...value,...change},spec),/descriptor-invalid/);
   assert.throws(()=>recovery.privateWizardDescriptor(value,{...spec,supportImages:{helper:{id:value.imageId}}}),/descriptor-invalid/);
 });
+test('restored platform keeps readiness and exact runner ownership while omitting fresh-host generic pipelines',async t=>{
+  const {Candidate}=require('./disposable-candidate');
+  const manager='a'.repeat(64),imageId='sha256:'+'b'.repeat(64),stages=[],calls=[];
+  const candidate={spec:{recoveryAcceptance:true,supportImages:{helper:{}},restore:{base:'/restored',expected:{projectId:12,registryPipelineId:34,runnerIdentity:{runnerId:56,manager,imageId}}}},evidence:{},url:'https://candidate.test',
+    stage:async(name,action)=>{stages.push(name);return action();},wait:async action=>assert.equal(await action(),true),request:async()=>({status:200}),
+    inner:async args=>{calls.push(args);if(args[0]==='inspect')return JSON.stringify([{Image:imageId,State:{Running:true}}]);if(args.includes('-e'))return JSON.stringify({runnerId:56,manager});return '';},
+    rails:async()=>{throw Error('Fresh registration must not run on restored path');},api:async()=>{throw Error('Generic new project pipelines must not run on restored path');}};
+  await Candidate.prototype.platform.call(candidate);
+  assert.deepEqual(stages,['gitlab-and-runner-ready','recovery-retained-runner-identity']);
+  assert(calls.some(args=>args.includes('http://127.0.0.1/-/readiness')));
+  assert(calls.some(args=>args.includes('gitlab-runner')&&args.includes('verify')));
+  assert.deepEqual(candidate.evidence,{projectId:12,pipelineId:34});
+  candidate.spec.restore.expected.runnerIdentity.manager='c'.repeat(64);
+  await assert.rejects(()=>Candidate.prototype.platform.call(candidate),/recovery-runner-identity-changed/);
+  delete candidate.spec.restore.expected.runnerIdentity;
+  await assert.rejects(()=>Candidate.prototype.platform.call(candidate),/recovery-runner-identity-required/);
+});
+test('runner identity probe reads native manager identity without exporting authentication tokens',async t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'runner-identity-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  fs.writeFileSync(path.join(root,'config.toml'),'[[runners]]\n id = 42\n token = "private-token"\n');
+  fs.writeFileSync(path.join(root,'.runner_system_id'),'s_native');
+  const identity=await recovery.runnerIdentity({spec:{},inner:async args=>args[0]==='inspect'?JSON.stringify([{Image:'sha256:'+'a'.repeat(64),State:{Running:true}}]):require('node:child_process').execFileSync(process.execPath,['-e',args[4],root],{encoding:'utf8'})});
+  assert.equal(identity.runnerId,42);assert.match(identity.manager,/^[a-f0-9]{64}$/);assert(!JSON.stringify(identity).includes('private-token'));
+});
