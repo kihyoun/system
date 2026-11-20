@@ -1,0 +1,9 @@
+**
+!.system-bootstrapper
+!.system-bootstrapper/build-v1
+!.system-bootstrapper/build-v1/smoke
+!.system-bootstrapper/build-v1/smoke/**
+
+!.system-bootstrapper/build-v1/refresh-ca.sh
+!.system-bootstrapper/build-v1/ca
+!.system-bootstrapper/build-v1/ca/**

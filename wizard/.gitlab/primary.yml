@@ -1,0 +1,179 @@
+# Select this file for development, verification, optional image delivery and
+# an optional public mirror in the same source project. Production is deliberate.
+image: node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
+default:
+  tags: [docker]
+  interruptible: true
+  before_script:
+    - sh .system-bootstrapper/build-v1/refresh-ca.sh
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+    - when: never
+stages: [check, build, test, deploy, backup]
+variables:
+  NODE_OPTIONS: --use-openssl-ca
+  npm_config_cache: '$CI_PROJECT_DIR/.npm'
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+cache:
+  key:
+    files: [package-lock.json]
+  paths: [.npm/]
+build:source:
+  tags: [docker, wizard-source-primary]
+  stage: check
+  timeout: 15 minutes
+  allow_failure: false
+  script:
+    - npm ci --no-audit --no-fund
+    - npm run lint
+    - npm test
+    - npm run build
+    - npm run test:config-export
+    - npm run test:delivery
+  artifacts:
+    expire_in: 1 day
+    paths: [build/, build-tools/]
+test:browser:
+  tags: [docker, wizard-source-primary]
+  stage: test
+  timeout: 15 minutes
+  allow_failure: false
+  needs:
+    - job: build:source
+      artifacts: true
+  script:
+    - npm ci --no-audit --no-fund
+    - npx playwright install --with-deps chromium
+    - sh .system-bootstrapper/build-v1/refresh-ca.sh
+    - sh .gitlab/test-browser.sh
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths: [playwright-report/, test-results/]
+# Enable in the same private source project when a Docker-socket runner and the
+# GitLab registry are configured. Without this opt-in, source checks still run.
+.wizard-delivery:
+  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+  cache: []
+  timeout: 30 minutes
+  allow_failure: false
+  rules:
+    - if: '$WIZARD_DELIVERY_ENABLED == "true"'
+    - when: never
+build:wizard:
+  extends: .wizard-delivery
+  stage: build
+  needs:
+    - job: build:source
+      artifacts: false
+  script:
+    - sh .system-bootstrapper/build-v1/build.sh
+  artifacts:
+    expire_in: 7 days
+    when: always
+    paths: [build-evidence.json, cleanup.json]
+    reports:
+      dotenv: image.env
+test:wizard:
+  extends: .wizard-delivery
+  stage: test
+  needs:
+    - job: build:wizard
+      artifacts: true
+  script:
+    - sh .system-bootstrapper/build-v1/verify.sh
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths: [wizard-evidence.json, browser-evidence/, cleanup.json]
+deploy:github:
+  tags: [docker, wizard-source-primary]
+  stage: backup
+  timeout: 10 minutes
+  interruptible: false
+  allow_failure: false
+  cache: []
+  resource_group: 'github-backup-$CI_PROJECT_ID'
+  needs:
+    - job: build:source
+      artifacts: false
+    - job: test:browser
+      artifacts: false
+    - job: test:wizard
+      artifacts: false
+      optional: true
+  rules:
+    - if: '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+      when: on_success
+    - when: never
+  script:
+    - sh .gitlab/github-backup-ci.sh
+
+# Optional candidate environments. The Bootstrapper must explicitly adopt this
+# source project and provision the immutable helper before a job can deploy.
+.wizard-environment:
+  extends: .wizard-delivery
+  stage: deploy
+  timeout: 10 minutes
+  interruptible: false
+  needs:
+    - job: build:wizard
+      artifacts: true
+    - job: test:wizard
+      artifacts: false
+deploy:review:
+  extends: .wizard-environment
+  resource_group: 'wizard-review-host-$CI_PROJECT_ID'
+  environment:
+    name: 'review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'
+    url: 'https://$WIZARD_REVIEW_HOST'
+    on_stop: stop:review
+  rules:
+    - if: '$WIZARD_DELIVERY_ENABLED == "true" && $SYSTEM_WIZARD_ENVIRONMENT_IMAGE && $SYSTEM_WIZARD_ENVIRONMENT_OPERATION && $WIZARD_REVIEW_HOST && $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_IID && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID'
+      when: manual
+      allow_failure: true
+    - when: never
+  script:
+    - sh .gitlab/delivery/environment.sh deploy review
+stop:review:
+  extends: .wizard-environment
+  resource_group: 'wizard-review-host-$CI_PROJECT_ID'
+  environment:
+    name: 'review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'
+    action: stop
+  rules:
+    - if: '$WIZARD_DELIVERY_ENABLED == "true" && $SYSTEM_WIZARD_ENVIRONMENT_IMAGE && $SYSTEM_WIZARD_ENVIRONMENT_OPERATION && $WIZARD_REVIEW_HOST && $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_IID && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID'
+      when: manual
+      allow_failure: true
+    - when: never
+  script:
+    - sh .gitlab/delivery/environment.sh stop review
+deploy:beta:
+  extends: .wizard-environment
+  resource_group: 'wizard-beta-host-$CI_PROJECT_ID'
+  environment:
+    name: 'beta'
+    url: 'https://$WIZARD_BETA_HOST'
+    on_stop: stop:beta
+  rules:
+    - if: '$WIZARD_DELIVERY_ENABLED == "true" && $SYSTEM_WIZARD_ENVIRONMENT_IMAGE && $SYSTEM_WIZARD_ENVIRONMENT_OPERATION && $WIZARD_BETA_HOST && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
+    - when: never
+  script:
+    - sh .gitlab/delivery/environment.sh deploy beta
+stop:beta:
+  extends: .wizard-environment
+  resource_group: 'wizard-beta-host-$CI_PROJECT_ID'
+  environment:
+    name: 'beta'
+    action: stop
+  rules:
+    - if: '$WIZARD_DELIVERY_ENABLED == "true" && $SYSTEM_WIZARD_ENVIRONMENT_IMAGE && $SYSTEM_WIZARD_ENVIRONMENT_OPERATION && $WIZARD_BETA_HOST && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
+    - when: never
+  script:
+    - sh .gitlab/delivery/environment.sh stop beta
