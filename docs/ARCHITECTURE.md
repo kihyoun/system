@@ -12,7 +12,8 @@ persistent service data, including databases and repositories.
 
 The platform combines GitLab Community Edition, its container registry, GitLab
 Runner managers, NGINX routing, an authenticated Sync API and a React configuration
-Wizard. Shell scripts and Docker Compose coordinate their lifecycle.
+Wizard. Shared TypeScript/NestJS operation services coordinate storage, routing
+and host release operations; Docker Compose remains the native service runtime.
 
 ## Internal Sync API
 
@@ -24,8 +25,36 @@ HTTP requests and injected services coordinate the repository-owned tools.
 This structure keeps the public API on port `8071`, configuration and Seed formats,
 and operational workflows compatible. It adds no database or separate deployment
 service. Application starters remain Angular, React and general web projects;
-NestJS is used by the internal Sync service. The [test guide](../tests/README.md)
+NestJS is used by the internal Sync service and operations runtime. The [test guide](../tests/README.md)
 provides the isolated verification commands.
+
+## Shared operations runtime
+
+The `operations/` package supplies feature modules to the authenticated API and
+standalone CLI. Creating a Nest application context does not start a server or
+change infrastructure. Callers validate their inputs, resolve the appropriate
+service and close the context after completion. Shared services keep operational
+decisions separate from injected native process and configuration adapters.
+
+- `StorageModule` owns Harvest, Seed restore and coordinated configuration
+  backup, including the persistent operation lease and recovery receipts.
+- `HostModule` owns accepted-release installation, retained image and source
+  verification, host storage dispatch and upgrade prerequisite validation.
+- `ProjectsRoutingModule` owns alias validation, routing templates, application
+  proxy selection, configuration import checks and routing rollback.
+
+Compatibility entry paths remain available for existing callers. These adapters
+invoke compiled operations; they must not implement a second copy of their
+decision logic. Prepare the compiled runtime and its dependencies before
+maintenance. Offline recovery must not need a running Sync API or npm registry.
+Component guides under `operations/src/` describe the supported service boundaries
+and their reproducible tests.
+
+Native tools still perform their own work: Docker/Compose manage containers,
+NGINX reloads routing, Git handles source objects and `flock` serializes writers.
+Reserved historical build recipes and external GitLab format adapters retain
+their original contracts. These boundaries do not require changing Wizard HTTP
+endpoints, saved configuration or the Harvest/Seed concept.
 
 ## Operational guide map
 

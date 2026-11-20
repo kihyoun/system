@@ -13,7 +13,9 @@ Geheimnisse und persistente Dienstdaten einschließlich Datenbanken und Reposito
 
 Die Plattform verbindet GitLab Community Edition, dessen Container-Registry,
 GitLab-Runner-Manager, NGINX-Routing, eine authentifizierte Sync-API und einen
-React-Konfigurations-Wizard. Shell-Skripte und Docker Compose koordinieren ihren Lebenszyklus.
+React-Konfigurations-Wizard. Gemeinsame TypeScript-/NestJS-Dienste koordinieren
+Speicherung, Routing und Host-Release-Vorgänge; Docker Compose bleibt die native
+Dienstlaufzeit.
 
 ## Interne Sync-API
 
@@ -26,8 +28,37 @@ koordinieren die Werkzeuge des Repositorys.
 Die öffentliche API auf Port `8071`, Konfigurations- und Seed-Formate sowie
 Betriebsabläufe bleiben kompatibel. Es kommen weder eine Datenbank noch ein
 separater Deployment-Dienst hinzu. Anwendungsvorlagen bleiben Angular-, React-
-und allgemeine Webprojekte; NestJS wird im internen Sync-Dienst verwendet.
+und allgemeine Webprojekte; NestJS wird im internen Sync-Dienst und in der
+Betriebslaufzeit verwendet.
 Die [Testanleitung](../tests/README.md) beschreibt die isolierten Prüfbefehle.
+
+## Gemeinsame Betriebslaufzeit
+
+Das Paket `operations/` stellt Funktionsmodule für die authentifizierte API und
+die eigenständige CLI bereit. Ein Nest-Anwendungskontext startet keinen Server
+und verändert keine Infrastruktur. Aufrufer prüfen Eingaben, beziehen den
+passenden Dienst und schließen den Kontext nach Abschluss. Dienste trennen
+Betriebsentscheidungen von injizierten Prozess- und Konfigurationsadaptern.
+
+- `StorageModule` steuert Harvest, Seed-Wiederherstellung und gemeinsame
+  Konfigurationssicherung einschließlich dauerhafter Sperre und Wiederherstellungsnachweisen.
+- `HostModule` steuert die Installation akzeptierter Releases, die Prüfung
+  aufbewahrter Images und Quellen, Host-Speichervorgänge und Upgrade-Voraussetzungen.
+- `ProjectsRoutingModule` steuert Aliasprüfung, Routingvorlagen, Auswahl von
+  Anwendungsproxys, Konfigurationsimportprüfung und Routing-Rollback.
+
+Bestehende Einstiegspfade bleiben als Kompatibilitätsadapter erhalten. Sie rufen
+kompilierte Operationen auf und dürfen deren Entscheidungslogik nicht duplizieren.
+Die kompilierte Laufzeit und ihre Abhängigkeiten müssen vor Wartungsarbeiten
+bereitstehen. Offline-Wiederherstellung darf weder eine laufende Sync-API noch
+Zugriff auf die npm-Registry benötigen. Die Komponentenanleitungen unter
+`operations/src/` beschreiben Dienstgrenzen und reproduzierbare Tests.
+
+Native Werkzeuge übernehmen weiterhin ihre Aufgaben: Docker/Compose verwalten
+Container, NGINX lädt Routing, Git verarbeitet Quellobjekte und `flock` serialisiert
+Schreibvorgänge. Reservierte historische Build-Rezepte und externe GitLab-Formatadapter
+behalten ihre Verträge. Wizard-HTTP-Endpunkte, gespeicherte Konfiguration und das
+Harvest-/Seed-Konzept müssen dafür nicht geändert werden.
 
 ## Wegweiser für den Betrieb
 
