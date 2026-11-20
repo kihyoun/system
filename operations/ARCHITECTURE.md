@@ -91,6 +91,12 @@ and [controller guide](../bootstrapper/README.md) for command-specific inputs.
   their exact bytes with runtime-dependent wrappers would break adoption and
   compatibility. New monorepo source is ordinary `wizard/`; old gitlink receipts
   remain separate commit identities.
+- **Offline documentation:** `DocumentationModule` exports the shared
+  `DocumentationExportService`. The thin `node docs/export-wizard-docs.js [--check]`
+  authoring entry bundles complete Markdown and local images using
+  `docs/wizard-docs-catalog.json`. Build the pinned operations package first.
+  The independent source-packaging check needs no installed package dependencies;
+  existing Docs component acceptance checks the native exporter as well.
 
 ## Verification map
 

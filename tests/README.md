@@ -193,10 +193,11 @@ is provisioned by the tests.
 
 `prepare:wizard-source` also checks the bundled Docs against the complete public
 guide sources before packaging. To update the reader, edit the original guides,
-run `python3 docs/export-wizard-docs.py`, and commit the generated Wizard catalog
+build the pinned operations package, run `node docs/export-wizard-docs.js`, and commit the generated Wizard catalog
 in the same System commit. `node docs/check-wizard-docs.js` checks source drift and
-full-text preservation; `python3 docs/test-export-wizard-docs.py` exercises chapter,
-link and offline image coverage during authoring.
+full-text preservation; the existing `node tests/wizard/docs-source.js` check also
+exercises the shared native exporter, chapter/link coverage and offline images.
+`node docs/export-wizard-docs.js --check` compares the complete generated catalog.
 
 The required `test:wizard-browser` job consumes a separately checksummed context
 from that same committed Wizard source tree; historical gitlink inputs retain

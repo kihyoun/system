@@ -1,7 +1,7 @@
 'use strict';
 // CI uses Node already present in the source-packaging job. The authoring
-// generator remains docs/export-wizard-docs.py; this independently checks its
-// public inputs and full-text preservation before packaging the exact gitlink.
+// generator invokes the shared DocumentationModule; this independent source check
+// needs no installed dependencies before packaging an exact source snapshot.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');

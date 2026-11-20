@@ -12,3 +12,5 @@ export { ConfigurationService } from './configuration/configuration.service';
 export { LifecycleModule } from './lifecycle/lifecycle.module';
 export { LifecycleService } from './lifecycle/lifecycle.service';
 export { RunnerLifecycleService } from './lifecycle/runner.service';
+export { DocumentationModule } from './documentation/documentation.module';
+export { DocumentationExportService } from './documentation/documentation-export.service';

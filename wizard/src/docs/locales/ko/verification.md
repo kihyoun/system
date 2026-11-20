@@ -171,11 +171,12 @@ Runner의 악의적인 Merge Request를 위한 것이 아닙니다. 테스트는
 프로비저닝하지 않습니다.
 
 `prepare:wizard-source`는 패키징 전에 번들 Docs와 전체 공개 가이드 소스도 대조합니다.
-리더를 갱신하려면 원본 가이드를 편집하고 `python3 docs/export-wizard-docs.py`를 실행한
+리더를 갱신하려면 원본 가이드를 편집하고 고정된 operations 패키지를 빌드한 다음 `node docs/export-wizard-docs.js`를 실행한
 뒤 생성된 Wizard 카탈로그를 동일한 System 커밋에 포함하세요.
 `node docs/check-wizard-docs.js`는 소스 불일치와 전체 텍스트 보존을 검사하며,
-`python3 docs/test-export-wizard-docs.py`는 작성 중 장, 링크 및 오프라인 이미지
-범위를 검사합니다.
+`node tests/wizard/docs-source.js`는 공통 네이티브 내보내기 서비스와 장, 링크 및
+오프라인 이미지 범위도 검사합니다. `node docs/export-wizard-docs.js --check`는
+생성된 전체 카탈로그를 비교합니다.
 
 필수 `test:wizard-browser` 작업은 동일하게 커밋된 Wizard 소스 트리에서 별도로 체크섬을
 계산한 컨텍스트를 사용합니다. 신뢰된 부모는 브라우저 도구를 빌드하고 호스트 소켓,

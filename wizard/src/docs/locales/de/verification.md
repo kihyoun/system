@@ -187,10 +187,11 @@ stellen keinen zusätzlichen Runner bereit.
 
 `prepare:wizard-source` prüft vor der Paketierung auch die gebündelten Docs gegen die vollständigen öffentlichen
 Anleitungsquellen. Bearbeiten Sie zur Aktualisierung des Readers die Originalanleitungen,
-führen Sie `python3 docs/export-wizard-docs.py` aus und committen Sie den erzeugten Wizard-Katalog
+bauen Sie das festgelegte Operations-Paket, führen Sie `node docs/export-wizard-docs.js` aus und committen Sie den erzeugten Wizard-Katalog
 im selben System-Commit. `node docs/check-wizard-docs.js` prüft Quellabweichung und
-Volltexterhalt; `python3 docs/test-export-wizard-docs.py` prüft Kapitel-,
-Link- und Offline-Bildabdeckung während der Bearbeitung.
+Volltexterhalt; `node tests/wizard/docs-source.js` prüft auch den gemeinsamen nativen
+Exporter sowie Kapitel-, Link- und Offline-Bildabdeckung.
+`node docs/export-wizard-docs.js --check` vergleicht den vollständig erzeugten Katalog.
 
 Der erforderliche Job `test:wizard-browser` verarbeitet einen separat prüfsummengesicherten Kontext
 aus demselben versionierten Wizard-Baum; historische Gitlink-Eingaben behalten ihre getrennte Identität. Sein vertrauenswürdiger Elternprozess baut die Browser-
