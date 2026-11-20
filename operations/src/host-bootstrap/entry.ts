@@ -30,6 +30,7 @@ export async function main(input: string[], env = process.env): Promise<void> {
     throw Error('An explicit absolute --checkout is required.');
   if (
     ![
+      'rebind-renewal',
       'container-preflight',
       'log-policy',
       'initialize',
@@ -47,6 +48,7 @@ export async function main(input: string[], env = process.env): Promise<void> {
   )
     throw Error('Unsupported host bootstrap action.');
   if (
+    command !== 'rebind-renewal' &&
     command !== 'container-preflight' &&
     command !== 'log-policy' &&
     command !== 'certbot' &&
@@ -144,7 +146,11 @@ export async function main(input: string[], env = process.env): Promise<void> {
       await app.get(LocalHostService).prepare(env, abort.signal);
     else {
       const service = app.get(HostCertificateService);
-      if (command === 'install-volume-host') await service.install(checkout, env, abort.signal);
+      if (command === 'rebind-renewal') {
+        const values = parseArguments(args, [], ['--directory', '--webroot']);
+        service.rebind(absolute(values['--directory']), absolute(values['--webroot']));
+      } else if (command === 'install-volume-host')
+        await service.install(checkout, env, abort.signal);
       else if (command === 'install-certificate')
         await service.publish(checkout, env, abort.signal);
       else

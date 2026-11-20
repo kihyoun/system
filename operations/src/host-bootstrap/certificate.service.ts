@@ -182,6 +182,17 @@ export class HostCertificateService {
           signal,
         );
   }
+  rebind(renewal: string, webroot: string): void {
+    if (!path.isAbsolute(renewal)) throw Error('Absolute renewal directory required.');
+    rebindRenewal('', webroot);
+    if (fs.existsSync(renewal))
+      for (const name of fs.readdirSync(renewal).filter((name) => name.endsWith('.conf'))) {
+        const filename = path.join(renewal, name),
+          text = fs.readFileSync(filename, 'utf8'),
+          updated = rebindRenewal(text, webroot);
+        if (text !== updated) fs.writeFileSync(filename, updated);
+      }
+  }
   async install(checkout: string, input: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
     const env = await this.selection(checkout, input, signal);
     const selected = await new HostPersistenceService(this.process).prepare(
@@ -254,13 +265,7 @@ export class HostCertificateService {
     }
     const renewal = path.join(state, 'renewal'),
       webroot = path.join(data, 'ssl/acme-http01');
-    if (fs.existsSync(renewal))
-      for (const name of fs.readdirSync(renewal).filter((name) => name.endsWith('.conf'))) {
-        const filename = path.join(renewal, name),
-          text = fs.readFileSync(filename, 'utf8'),
-          updated = rebindRenewal(text, webroot);
-        if (text !== updated) fs.writeFileSync(filename, updated);
-      }
+    this.rebind(renewal, webroot);
     const hook = path.join(state, 'renewal-hooks/deploy/system-web');
     fs.mkdirSync(path.dirname(hook), { recursive: true, mode: 0o755 });
     if (fs.lstatSync(hook, { throwIfNoEntry: false })) fs.unlinkSync(hook);

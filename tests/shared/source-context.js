@@ -46,7 +46,7 @@ try {
     'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','gitlab-runner/provision.rb','system/.seed.env',
     'system/persistence-init.js','system/wizard-public.js','system/docker-compose.yml',
     'nginx/wizard-aliases.js',
-    'system/seed-manifest.js','system/seed-operation.js','system/coordinated-backup.js','bootstrapper/rebind-renewal.py',
+    'system/seed-manifest.js','system/seed-operation.js','system/coordinated-backup.js',
     'bootstrapper/record-source-installation.js'];
   for(const filename of runtimeInputs) write(filename,'committed runtime input\n');
   write('project-bootstrap/private.env','must not enter the context\n');

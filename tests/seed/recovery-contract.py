@@ -1,6 +1,5 @@
 """Cold-copy/restore regression cases using real rsync and an isolated Docker stub."""
 import json
-import runpy
 import os
 from pathlib import Path
 import shutil
@@ -416,16 +415,6 @@ class RecoveryContract(unittest.TestCase):
         self.assertTrue(marker.exists())
         self.run_script('seed')
         self.assertFalse(marker.exists())
-
-    def test_renewal_paths_rebind_without_changing_other_authenticators(self):
-        rebind = runpy.run_path(str(REPOSITORY/'bootstrapper/rebind-renewal.py'))['rebind']
-        source = '[renewalparams]\nauthenticator = webroot\nwebroot_path = /old/ssl/acme-http01,\n[[webroot_map]]\nexample.test = /old/ssl/acme-http01\n[next_section]\nother = /keep/path\n'
-        updated = rebind(source, '/new-volume/platform/ssl/acme-http01')
-        self.assertNotIn('/old/', updated)
-        self.assertEqual(updated.count('/new-volume/platform/ssl/acme-http01'), 2)
-        self.assertIn('other = /keep/path', updated)
-        dns = source.replace('authenticator = webroot', 'authenticator = dns-example')
-        self.assertEqual(rebind(dns, '/new-volume/ssl'), dns)
 
     def test_legacy_unmarked_seed_is_rejected_and_absent_seed_is_noop(self):
         self.run_script('seed')

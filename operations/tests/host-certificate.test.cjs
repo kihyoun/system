@@ -19,9 +19,18 @@ test('certificate publication retains private key mode and refuses destination e
   await assert.rejects(service.publish(f.root,f.env),/escape/);assert.deepEqual(fs.readdirSync(outside),[]);
  }finally{fs.rmSync(f.root,{recursive:true,force:true});}
 });
-test('renewal rebind changes only webroot authenticator mappings and leaves other sections',()=>{
+test('renewal rebind changes only webroot authenticator mappings and leaves other sections',t=>{
  const input='authenticator = webroot\nwebroot_path = /old,\n[[webroot_map]]\nexample.test = /old\n[other]\noption = /retain\n';
  assert.equal(rebindRenewal(input,'/new'),input.replaceAll('/old','/new'));
  assert.equal(rebindRenewal(input.replace('authenticator = webroot','authenticator = dns'),' /bad'.trim()),input.replace('authenticator = webroot','authenticator = dns'));
  assert.throws(()=>rebindRenewal(input,'/bad\npath'),/Invalid/);
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'renewal-files-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(directory,'web.conf'),input,{mode:0o600});
+ fs.writeFileSync(path.join(directory,'dns.conf'),input.replace('authenticator = webroot','authenticator = dns'));
+ fs.writeFileSync(path.join(directory,'ignore.txt'),input);
+ new HostCertificateService().rebind(directory,'/recovered/ssl/acme-http01');
+ assert.equal(fs.readFileSync(path.join(directory,'web.conf'),'utf8'),input.replaceAll('/old','/recovered/ssl/acme-http01'));
+ assert.equal(fs.statSync(path.join(directory,'web.conf')).mode&0o777,0o600);
+ assert.equal(fs.readFileSync(path.join(directory,'dns.conf'),'utf8'),input.replace('authenticator = webroot','authenticator = dns'));
+ assert.equal(fs.readFileSync(path.join(directory,'ignore.txt'),'utf8'),input);
 });

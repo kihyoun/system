@@ -30,7 +30,7 @@ function included(name) {
       'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','system/Dockerfile','system/.docker.env.example','system/.seed.env',
       'system/docker-compose.yml',
       'system/persistence-init.js','system/wizard-public.js',
-      'system/seed-manifest.js','system/seed-operation.js','system/coordinated-backup.js','bootstrapper/rebind-renewal.py'].includes(name);
+      'system/seed-manifest.js','system/seed-operation.js','system/coordinated-backup.js'].includes(name);
 }
 function prepareContext(root) {
   root = path.resolve(root);

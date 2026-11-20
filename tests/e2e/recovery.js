@@ -411,11 +411,11 @@ async function bootstrapRestore(candidate,dependencies={}) {
   if(candidate.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(candidate);
   await storageAdapter.detach(candidate,{retainDevice:!!candidate.spec.publicUpgrade});
   candidate.externalSeedRestored=true;
-  // Execute the actual fresh-source host rewriter, using the already declared
-  // GitLab image's embedded Python; never install/download an undeclared tool.
-  const rewriter=dependencies.rewriter || fs.readFileSync(path.join(__dirname,'../../bootstrapper/rebind-renewal.py'),'utf8');
-  await candidate.inner(['run','--rm','-i','--network','none','--entrypoint','/opt/gitlab/embedded/bin/python3','--volume',BASE+'/host/letsencrypt:/renewal-state',
-    'candidate-gitlab:under-test','-','/renewal-state/renewal',BASE+'/ssl/acme-http01'],{input:rewriter});
+  // Rebind retained renewal files through the same provider as host recovery.
+  await candidate.inner(['run','--rm','--network','none','--memory','128m','--cpus','0.25','--entrypoint','node',
+    '--volume',BASE+'/host/letsencrypt:/renewal-state','system-candidate:under-test',
+    '/system/operations/dist/host-bootstrap/entry.js','rebind-renewal','--checkout','/system',
+    '--directory','/renewal-state/renewal','--webroot',BASE+'/ssl/acme-http01']);
   await candidate.inner(['rm','--force','system_bootstrapper_1']);
   await candidate.inner([...args,'system-candidate:under-test']);
   await candidate.inner(['start','system_bootstrapper_1']);
