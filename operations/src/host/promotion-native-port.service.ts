@@ -128,9 +128,13 @@ export class PromotionNativePortService implements PromotionAbortPort {
     ensure(Array.isArray(rows) && rows.length === 1, 'exact-container-inspection-required');
     return record(rows[0]);
   }
-  async command(args: string[], timeout = 300): Promise<string> {
+  async command(args: string[], timeout = 300, input = ''): Promise<string> {
     return (
-      await this.lease.command(['docker', '--host=unix:///var/run/docker.sock', ...args], timeout)
+      await this.lease.command(
+        ['docker', '--host=unix:///var/run/docker.sock', ...args],
+        timeout,
+        Buffer.from(input),
+      )
     ).toString();
   }
   verifyCheckpoint(hash: string): void {
@@ -204,7 +208,8 @@ export class PromotionNativePortService implements PromotionAbortPort {
     const proof = this.gitlabProbe
       ? await this.gitlabProbe.probe(row, config)
       : await this.nativeGitlabProbe!.probe(String(row.Id), {
-          command: (args, timeout) => this.command(args, timeout),
+          command: (args: string[], timeout: number, input?: string) =>
+            this.command(args, timeout, input),
         });
     ensure(
       proof.version === security.fromVersion &&

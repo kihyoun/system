@@ -14,6 +14,10 @@ test('standalone Host module injects shared native adapter without running opera
   assert.equal(app.get(PromotionNativePortService).nativeGitlabProbe,app.get(GitlabPreflightService));
   const host=app.get(HostInstallService);assert.equal(app.get(HOST_PROCESS_RUNNER),runner);assert.equal(app.get(RuntimeInspectionService).host,host);assert.equal(calls,0);
   host.run('git',['--version']);assert.equal(calls,1);
+  const native=app.get(PromotionNativePortService),original=native.lease.command;let received;
+  native.lease.command=async(...args)=>{received=args;return Buffer.from('ok');};
+  try {assert.equal(await native.command(['exec','-i','a'.repeat(64),'dd','of=/private/credential'],30,'private-input'),'ok');assert(!received[0].some(arg=>arg.includes('private-input')));assert.equal(received[2].toString(),'private-input');}
+  finally {native.lease.command=original;}
  }finally{await app.close();}
 });
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
