@@ -447,7 +447,7 @@ deploy:github-release:
   variables:
     GIT_DEPTH: "0"
     GIT_SUBMODULE_STRATEGY: none
-  dependencies: [test:platform-candidate, deploy:dockerhub, deploy:github]
+  dependencies: [test:npm-package, test:platform-candidate, deploy:dockerhub, deploy:github]
   timeout: 10m
   interruptible: false
   resource_group: 'github-release-$CI_PROJECT_ID'
