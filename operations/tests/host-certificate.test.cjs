@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {HostCertificateService,rebindRenewal}=require('../dist/host-bootstrap/certificate.service');
-function fixture(){const root=fs.mkdtempSync(path.join(os.tmpdir(),'host-cert-'));const data=path.join(root,'data');fs.mkdirSync(path.join(data,'host/letsencrypt'),{recursive:true});fs.mkdirSync(path.join(data,'ssl'),{recursive:true});fs.writeFileSync(path.join(data,'.system-bootstrapper-volume'),'system-bootstrapper-persistence-v1\n');return {root,data,env:{PERSISTENCE_MODE:'local',PERSISTENT_MOUNT:'/',PERSISTENT_DIR:data}};}
-function runner(env,callback){return {async run(binary,args,options){if(binary==='bash')return Object.entries(env).map(([k,v])=>k+'='+v+'\0').join('');return callback(binary,args,options);}};}
+function fixture(){const root=fs.mkdtempSync(path.join(os.tmpdir(),'host-cert-'));const data=path.join(root,'data');fs.mkdirSync(path.join(data,'host/letsencrypt'),{recursive:true});fs.mkdirSync(path.join(data,'ssl'),{recursive:true});fs.writeFileSync(path.join(data,'.system-bootstrapper-volume'),'system-bootstrapper-persistence-v1\n');const env={PERSISTENCE_MODE:'local',PERSISTENT_MOUNT:'/',PERSISTENT_DIR:data};fs.mkdirSync(path.join(root,'etc/system-bootstrapper'),{recursive:true});fs.writeFileSync(path.join(root,'etc/system-bootstrapper/persistence.env'),Object.entries(env).map(([key,value])=>key+'='+value).join('\n')+'\n',{mode:0o600});return {root,data,env};}
+function runner(env,callback){return {async run(binary,args,options){assert.notEqual(binary,'bash');return callback(binary,args,options);}};}
 test('renewal holds shared lease during child, refuses concurrent owner and releases on failure',async()=>{
  const f=fixture(),lock=path.join(f.data,'host/letsencrypt/.system-bootstrapper-certificate-lock');
  try{
