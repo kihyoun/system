@@ -38,3 +38,5 @@ export * from './release-selection.service';
 
 export * from './public-upgrade.service';
 export * from './public-upgrade-backup.service';
+
+export * from './recovery-operation.service';

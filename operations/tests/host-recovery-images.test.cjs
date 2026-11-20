@@ -336,3 +336,33 @@ test('native recovery archive publishes complete private bytes and cleans failed
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('recovery operation shares offline authority and refuses legacy loading before I/O', async () => {
+  const { NestFactory } = require('@nestjs/core');
+  const { HostModule, RecoveryOperationService, RecoveryManifestService, RecoveryImageService } = require('../dist/host');
+  const { parseRecoveryInput } = require('../dist/host/recovery-entry');
+  const input = parseRecoveryInput(['load', '--directory', '/retained', '--checkout', '/source', '--configuration', '/saved/main.sh']);
+  const app = await NestFactory.createApplicationContext(HostModule.register(), { logger: false });
+  const calls = [], manifest = { archives: [] };
+  try {
+    const manifests = app.get(RecoveryManifestService), images = app.get(RecoveryImageService);
+    manifests.load = (...args) => { calls.push(['load', ...args]); return manifest; };
+    manifests.validateSelected = (value, filename) => { assert.equal(value, manifest); calls.push(['selected', filename]); };
+    images.restore = (directory, value) => { assert.equal(value, manifest); calls.push(['restore', directory]); };
+    const service = app.get(RecoveryOperationService);
+    assert.throws(() => service.execute({ ...input, checksumsOnly: true }), /legacy-checksums-cannot-load-images/);
+    assert.throws(() => service.execute({ ...input, operation: 'verify', checksumsOnly: true }), /legacy-checksums-cannot-validate-configuration/);
+    assert.deepEqual(calls, []);
+    assert.equal(service.execute(input), 'loaded');
+    assert.deepEqual(calls.map(row => row[0]), ['load', 'selected', 'restore']);
+    calls.length = 0;
+    manifests.validateSelected = () => { throw Error('selector-mismatch'); };
+    assert.throws(() => service.execute(input), /selector-mismatch/);
+    assert.deepEqual(calls.map(row => row[0]), ['load']);
+    calls.length = 0;
+    assert.equal(service.execute({ ...input, operation: 'verify', configuration: undefined, checksumsOnly: true }), 'verified');
+    assert.equal(calls[0][4], true);
+    assert.equal(calls.length, 1);
+    for (const args of [[], ['verify', 'load'], ['unknown'], ['verify', '--directory', '/retained']]) assert.throws(() => parseRecoveryInput(args));
+  } finally { await app.close(); }
+});

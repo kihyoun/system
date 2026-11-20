@@ -1,3 +1,4 @@
+import { RecoveryOperationService } from './recovery-operation.service';
 import { GitlabDataSampleService } from '../gitlab-preflight/gitlab-data-sample.service';
 import { PublicUpgradeService } from './public-upgrade.service';
 import { PublicUpgradeBackupService } from './public-upgrade-backup.service';
@@ -110,6 +111,12 @@ export class HostModule {
       module: HostModule,
       imports: [GitlabPreflightModule, ControllerLeaseModule],
       providers: [
+        {
+          provide: RecoveryOperationService,
+          inject: [RecoveryManifestService, RecoveryImageService],
+          useFactory: (manifests: RecoveryManifestService, images: RecoveryImageService) =>
+            new RecoveryOperationService(manifests, images),
+        },
         {
           provide: PublicUpgradeBackupService,
           inject: [HostStorageService, RuntimeVerificationService],
@@ -605,6 +612,7 @@ export class HostModule {
         })),
       ],
       exports: [
+        RecoveryOperationService,
         PublicUpgradeService,
         PublicUpgradeBackupService,
         ReleaseSelectionService,
