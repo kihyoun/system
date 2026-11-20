@@ -1,3 +1,4 @@
+import { DeliveryService } from './delivery.service';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ProjectCiModule } from './project-ci.module';
@@ -10,7 +11,11 @@ export async function main(
 ): Promise<void> {
   const app = await NestFactory.createApplicationContext(ProjectCiModule, { logger: false });
   try {
-    if (args[0] === 'environment' && args.length === 3)
+    if (args[0] === 'build' && args.length === 2)
+      await app.get(DeliveryService).build(args[1], env, signal);
+    else if (args[0] === 'verify' && args.length === 2)
+      await app.get(DeliveryService).verify(args[1], env, signal);
+    else if (args[0] === 'environment' && args.length === 3)
       await app.get(EnvironmentLauncherService).run(args[1], args[2], env, signal);
     else if (args[0] === 'browser' && args.length === 2)
       await app.get(BrowserCheckService).run(args[1], env, signal);

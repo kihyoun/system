@@ -1,3 +1,6 @@
+import { BuildToolsService } from '../host-bootstrap/build-tools.service';
+import path from 'node:path';
+import { DeliveryService } from './delivery.service';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ProjectCiModule } from './project-ci.module';
@@ -8,7 +11,15 @@ import { MirrorCiService } from '../mirror/ci.service';
 async function main(args: string[], signal: AbortSignal): Promise<void> {
   const app = await NestFactory.createApplicationContext(ProjectCiModule, { logger: false });
   try {
-    if (args[0] === 'browser' && args.length === 1)
+    if (args[0] === 'prepare-runtime' && args.length === 2)
+      await app.get(BuildToolsService).installRuntime(path.resolve(args[1]), process.env, signal);
+    else if (args[0] === 'refresh-ca' && args.length === 2)
+      app.get(BuildToolsService).refreshCa(path.resolve(args[1]));
+    else if (args[0] === 'build' && args.length === 1)
+      await app.get(DeliveryService).build(process.cwd(), process.env, signal);
+    else if (args[0] === 'verify' && args.length === 1)
+      await app.get(DeliveryService).verify(process.cwd(), process.env, signal);
+    else if (args[0] === 'browser' && args.length === 1)
       await app.get(BrowserCheckService).run(process.cwd(), process.env, signal);
     else if (args[0] === 'environment' && args.length === 3)
       await app.get(EnvironmentLauncherService).run(args[1], args[2], process.env, signal);

@@ -21,3 +21,67 @@ test('native diagnostic callback preserves bounded stdout and stderr',async()=>{
  await new ManagedChildProcess().run(process.execPath,['-e','process.stdout.write("out");process.stderr.write("err")'],{cwd:process.cwd(),env:process.env,timeout:5000,output:chunk=>chunks.push(chunk.toString())});
  assert.equal(chunks.join('').split('').sort().join(''),'eorrtu');
 });
+
+const {spawnSync}=require('node:child_process');
+const source=path.resolve(__dirname,'../../wizard/.gitlab/runtime/project-ci.cjs');
+function isolated(t,args,env={}) {
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'portable-project-ci-'));
+  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+  const script=path.join(directory,'project-ci.cjs');
+  fs.copyFileSync(source,script);
+  return spawnSync(process.execPath,[script,...args],{cwd:directory,env:{PATH:path.dirname(process.execPath),...env},encoding:'utf8',timeout:15000});
+}
+test('portable shared Nest runtime starts without source checkout or installed dependencies',t=>{
+ const result=isolated(t,['mirror']);
+ assert.equal(result.status,0,result.stderr);
+ assert.match(result.stdout,/skip/i);
+});
+test('portable environment boundary rejects mutable helper identity before native execution',t=>{
+ const result=isolated(t,['environment','deploy','review'],{SYSTEM_WIZARD_ENVIRONMENT_IMAGE:'latest'});
+ assert.equal(result.status,1);
+ assert.match(result.stderr,/Immutable/);
+ assert.doesNotMatch(result.stderr,/Cannot find module|ENOENT/);
+});
+test('portable browser boundary requires prepared source artifacts',t=>{
+ const result=isolated(t,['browser']);
+ assert.equal(result.status,1);
+ assert.doesNotMatch(result.stderr,/Cannot find module/);
+});
+test('portable artifact carries reproducible package notices without checkout paths',()=>{
+ const content=fs.readFileSync(source,'utf8');
+ assert.doesNotMatch(content,/\/home\/codex\//);
+ const licenses=fs.readFileSync(path.join(path.dirname(source),'LICENSES.txt'),'utf8');
+ for(const pkg of ['@nestjs/core@12.5.1','@nestjs/common@12.5.1','reflect-metadata@0.2.2','rxjs@7.8.2']) assert(licenses.includes(pkg),pkg);
+});
+const {DeliveryService}=require('../dist/project-ci/delivery.service');
+const {DeliverySessionService}=require('../dist/project-ci/delivery-session.service');
+const deliveryEnv={CI_PROJECT_ID:'1',CI_PIPELINE_ID:'2',CI_JOB_ID:'3',CI_COMMIT_SHA:'d'.repeat(40),CI_REGISTRY_IMAGE:'registry.example/group/project',CI_REGISTRY:'registry.example',CI_REGISTRY_USER:'job',CI_REGISTRY_PASSWORD:'private'};
+function deliveryFixture(t,mode='success'){
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'delivery-ci-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const calls=[];let builder='';
+ const port={run:async(binary,raw,options)=>{const args=raw.slice(2);calls.push({args,options});
+  if(args[0]==='login'){assert.equal(options.input,'private\n');assert.equal(fs.statSync(raw[1]).mode&0o777,0o700);return '';}
+  if(args[0]==='buildx'&&args[1]==='create'){builder=args[3];if(mode==='uncertain')throw Error('create uncertain');return builder;}
+  if(args[0]==='buildx'&&args[1]==='inspect')return builder;
+  if(args[0]==='image'&&args[1]==='inspect'){if(args[3].includes('RepoDigests'))return deliveryEnv.CI_REGISTRY_IMAGE+'@sha256:'+'f'.repeat(64);return 'sha256:'+(mode==='replaced'&&calls.filter(call=>call.args[0]==='image'&&call.args[1]==='inspect').length>2?'e':'a').repeat(64);}
+  if(args[0]==='push'&&mode==='push-failed')throw Error('push failed');
+  return '';
+ }};
+ return{root,calls,service:new DeliveryService(new DeliverySessionService(port))};
+}
+test('delivery preserves immutable evidence and exact owned cleanup',async t=>{
+ const f=deliveryFixture(t);await f.service.build(f.root,deliveryEnv);
+ const evidence=JSON.parse(fs.readFileSync(path.join(f.root,'build-evidence.json')));assert.equal(evidence.sourceCommit,deliveryEnv.CI_COMMIT_SHA);assert.equal(evidence.imageRef,deliveryEnv.CI_REGISTRY_IMAGE+'@sha256:'+'f'.repeat(64));assert.equal(evidence.testRunner,'vitest');
+ assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'cleanup.json'))).status,'passed');assert(f.calls.some(call=>call.args[0]==='image'&&call.args[1]==='rm'));assert(f.calls.some(call=>call.args[0]==='buildx'&&call.args[1]==='rm'&&call.options.signal===undefined));
+});
+test('delivery source mismatch rejects before native mutation',async t=>{
+ const f=deliveryFixture(t);await assert.rejects(f.service.build(f.root,{...deliveryEnv,SYSTEM_WIZARD_EXPECTED_SHA:'e'.repeat(40)}),/binding/);assert.equal(f.calls.length,0);
+});
+test('uncertain builder creation retains resource and fails cleanup evidence',async t=>{
+ const f=deliveryFixture(t,'uncertain');await assert.rejects(f.service.build(f.root,deliveryEnv),/create uncertain/);assert(!f.calls.some(call=>call.args.includes('rm')));const report=JSON.parse(fs.readFileSync(path.join(f.root,'cleanup.json')));assert.equal(report.status,'failed');assert.match(report.errors[0],/Uncertain/);
+});
+test('failed registry push still cleans owned resources without publishing evidence',async t=>{
+ const f=deliveryFixture(t,'push-failed');await assert.rejects(f.service.build(f.root,deliveryEnv),/push failed/);assert(f.calls.some(call=>call.args[0]==='image'&&call.args[1]==='rm'));assert(!fs.existsSync(path.join(f.root,'image.env')));
+});
+test('delivery cleanup refuses replaced image tag and fails the job',async t=>{
+ const f=deliveryFixture(t,'replaced');await assert.rejects(f.service.build(f.root,deliveryEnv),/identity changed/);assert(!f.calls.some(call=>call.args[0]==='image'&&call.args[1]==='rm'));
+});

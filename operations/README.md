@@ -72,7 +72,7 @@ this source artifact from the compiled operations runtime:
 npm --prefix operations run build
 node operations/scripts/bundle-project-ci.mjs
 node operations/scripts/bundle-project-ci.mjs --check
-node --test operations/tests/project-ci-portable.test.cjs
+node --test operations/tests/project-ci.test.cjs
 ```
 
 The check compares both runtime bytes and license notices. Source producers must
