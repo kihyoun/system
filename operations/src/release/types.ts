@@ -11,7 +11,10 @@ export interface CiIdentity {
   pipelineId?: number;
   candidateJobId?: number;
 }
-export interface PublicationContext extends Omit<CiIdentity, 'sourceLayout' | 'sourceTree' | 'wizardSourceTree'> {
+export interface PublicationContext extends Omit<
+  CiIdentity,
+  'sourceLayout' | 'sourceTree' | 'wizardSourceTree'
+> {
   projectId: number;
   pipelineId: number;
   candidateJobId: number;
@@ -23,7 +26,10 @@ export interface SecurityProfile {
   runner: { toImage: string; toVersion: string; helperImage: string };
   jobCaBundleSha256: string;
 }
-export interface Stage { name: string; status: string }
+export interface Stage {
+  name: string;
+  status: string;
+}
 export interface CandidateProof {
   format?: string;
   runId: string;
@@ -48,31 +54,40 @@ export interface CandidateProof {
 export interface LifecycleEvidencePort {
   stages: readonly string[];
   stagesV2: readonly string[];
-  validateAuthority(value: unknown, results: Stage[], context: CiIdentity & {
-    candidateImageId: string; wizardImageId: string; ciIdentity?: Omit<CiIdentity, 'sourceRevision'>
-  }): { productionImageId: string };
+  validateAuthority(
+    value: unknown,
+    results: Stage[],
+    context: CiIdentity & {
+      candidateImageId: string;
+      wizardImageId: string;
+      ciIdentity?: Omit<CiIdentity, 'sourceRevision'>;
+    },
+  ): { productionImageId: string };
   validate(value: unknown, results: Stage[]): { productionImageId: string };
   sanitize(value: unknown): unknown;
 }
-export type SourceIdentity = {
-  sourceLayout?: undefined;
-  sourceRevision: string;
-  sourceTree: string;
-  wizardRevision: string;
-  wizardSourceTree?: never;
-} | {
-  sourceLayout: 'system-monorepo-v1';
-  sourceRevision: string;
-  sourceTree: string;
-  wizardSourceTree: string;
-  wizardRevision?: never;
-};
-export type SuccessorRelease = SourceIdentity & PublicationContext & {
-  format: 'system-successor-release-v1';
-  imageId: string;
-  registryReference: string;
-  candidateEvidenceSha256: string;
-  wizardImageId: string;
-  wizardRegistryReference: string;
-  candidateEvidencePath: 'test-results/successor/candidate-results.json';
-};
+export type SourceIdentity =
+  | {
+      sourceLayout?: undefined;
+      sourceRevision: string;
+      sourceTree: string;
+      wizardRevision: string;
+      wizardSourceTree?: never;
+    }
+  | {
+      sourceLayout: 'system-monorepo-v1';
+      sourceRevision: string;
+      sourceTree: string;
+      wizardSourceTree: string;
+      wizardRevision?: never;
+    };
+export type SuccessorRelease = SourceIdentity &
+  PublicationContext & {
+    format: 'system-successor-release-v1';
+    imageId: string;
+    registryReference: string;
+    candidateEvidenceSha256: string;
+    wizardImageId: string;
+    wizardRegistryReference: string;
+    candidateEvidencePath: 'test-results/successor/candidate-results.json';
+  };

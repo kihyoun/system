@@ -1,5 +1,14 @@
-export type StorageAction = 'launch' | 'host' | 'inside' | 'validate' | 'prepare-local' |
-  'startup-check' | 'startup-begin' | 'startup-finish' | 'startup-settled' | 'sync-status';
+export type StorageAction =
+  | 'launch'
+  | 'host'
+  | 'inside'
+  | 'validate'
+  | 'prepare-local'
+  | 'startup-check'
+  | 'startup-begin'
+  | 'startup-finish'
+  | 'startup-settled'
+  | 'sync-status';
 export interface StorageCommandDto {
   action: StorageAction;
   operation?: 'harvest' | 'restore';

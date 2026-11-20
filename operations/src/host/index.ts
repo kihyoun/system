@@ -1,5 +1,5 @@
 export * from './install';
-export {installArguments} from './entry';
+export { installArguments } from './entry';
 export * from './guardian';
 export * from './recovery-manifest';
 export * from './recovery-images';
