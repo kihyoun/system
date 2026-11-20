@@ -170,7 +170,7 @@ class Candidate {
   async stage(name, action) {
     const start=this.now();
     const previousCleanup=this.cleanupDeadline;
-    if(['guided-preview-native-review-stop','guided-preview-native-beta-stop','guided-preview-production-retained','guided-preview-temporary-credential-revoked'].includes(name))this.cleanupDeadline=start+180000;
+    if(['system-beta-native-stop','guided-preview-native-review-stop','guided-preview-native-beta-stop','guided-preview-production-retained','guided-preview-temporary-credential-revoked'].includes(name))this.cleanupDeadline=start+180000;
     try { const value=await action(); this.results.push({name,status:'passed',milliseconds:this.now()-start}); this.checkpoint(this); return value; }
     catch(error) { this.results.push({name,status:'failed',milliseconds:this.now()-start,reason:stageDiagnostics.failureReason(error.message),...exitDetails(error)}); this.checkpoint(this); throw error; }
     finally {this.cleanupDeadline=previousCleanup;}
@@ -213,7 +213,12 @@ class Candidate {
     });
     await this.stage('candidate-images',async()=>{
       const tags={proxy:'candidate-proxy:under-test',candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous',previousRunner:'candidate-runner:previous',previousHelper:'candidate-helper:previous',previousController:'candidate-controller:previous-public',previousWizard:'candidate-wizard:previous-public'};
+      const privateWizard=this.spec.restore?.expected?.privateWizard;
+      if(privateWizard?.kind==='shared-candidate-registry-v2')require('../e2e/recovery').privateWizardDescriptor(privateWizard,this.spec);
       for (const [role,image] of Object.entries({...this.spec.images,...this.spec.supportImages})) {
+        // Prove restored private-registry recovery from an empty cache, even
+        // when the original lifecycle used this exact prebuilt candidate.
+        if(role==='wizard'&&privateWizard?.kind==='shared-candidate-registry-v2')continue;
         // Stream the explicit archive from an open descriptor. No buffering a
         // multi-gigabyte image in Node and no outer-host bind path assumptions.
         await this.inner(['load'],{inputFile:image.archive,timeout:600000});

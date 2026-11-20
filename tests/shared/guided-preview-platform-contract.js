@@ -13,11 +13,11 @@ function toml(text){
 }
 function platform(){
   const calls=[],stages=[];
-  const settings={version:1,namespace:'root',wizard:{mode:'import',project:'wizard-source',origin:'https://github.com/example/wizard.git'},
-    review:{enabled:true,host:fixture.HOSTS.review,ssl:fixture.LEAF,sslKey:fixture.KEY},
+  const settings={version:2,namespace:'root',wizard:{mode:'existing',project:'wizard',origin:''},
+    review:{enabled:false,host:'',ssl:'',sslKey:''},
     beta:{enabled:true,host:fixture.HOSTS.beta,ssl:fixture.LEAF,sslKey:fixture.KEY}};
   const candidate={id:'a'.repeat(24),daemon:'b'.repeat(64),spec:{fullAcceptance:true,guidedPreviewAcceptance:true,guidedPreviewSettings:settings,
-    sourceRevision:'c'.repeat(40),sourceTree:'d'.repeat(40),wizardSourceRevision:'e'.repeat(40),
+    sourceRevision:'c'.repeat(40),sourceTree:'d'.repeat(40),wizardSourceTree:'e'.repeat(40),sourceLayout:'system-monorepo-v1',
     images:{candidate:{id:'sha256:'+'1'.repeat(64)},wizard:{id:'sha256:'+'2'.repeat(64)}}},
     stage:async(name,action)=>{stages.push(name);return action();},
     wait:async action=>{assert(await action());},
@@ -43,7 +43,7 @@ function platform(){
 }
 test('fixture TLS uses one existing authority and extends its exact owned SANs',async()=>{
   const f=platform(),result=await fixture.prepare(f.candidate,f.authority,f.dependencies);
-  assert.deepEqual(result.domains,['wizard.candidate.test','sync.candidate.test','alias.candidate.test','app.candidate.test','oldapp.candidate.test','gitlab.candidate.test','review.candidate.test','beta.candidate.test']);
+  assert.deepEqual(result.domains,['wizard.candidate.test','sync.candidate.test','alias.candidate.test','app.candidate.test','oldapp.candidate.test','gitlab.candidate.test','beta.candidate.test']);
   assert.equal(f.calls.filter(call=>call.issue).length,1);
   assert.equal(f.candidate.guidedAcmeIdentity.serial,'AA');
   assert.equal(f.calls.filter(call=>call.probe).length,3);
@@ -55,7 +55,7 @@ test('fixture TLS uses one existing authority and extends its exact owned SANs',
   assert(!Object.hasOwn(tls.settings,'GITLAB_REGISTRY_URL'));
   assert(!Object.hasOwn(tls.settings,'WIZARD_IMAGE'));assert(!Object.hasOwn(tls.settings,'BOOTSTRAPPER_IMAGE'));
   const recording=f.calls.find(call=>call.inner?.includes('/system/bootstrapper/record-source-installation.js')).inner;
-  for(const value of [f.candidate.spec.sourceRevision,f.candidate.spec.sourceTree,f.candidate.spec.wizardSourceRevision,
+  for(const value of [f.candidate.spec.sourceRevision,f.candidate.spec.sourceTree,f.candidate.spec.sourceRevision,
     f.candidate.spec.images.candidate.id,f.candidate.spec.images.wizard.id])assert(recording.includes(value));
   assert.equal(f.stages.at(-1),'guided-preview-native-source-installation-record');
 });
@@ -219,7 +219,7 @@ test('invalid fixture ownership/settings fail before mutations and bootstrap pri
   for(const change of [
     f=>{f.candidate.spec.fullAcceptance=false;},
     f=>{f.candidate.spec.sourceTree='invalid';},
-    f=>{f.candidate.spec.guidedPreviewSettings.review.host='live.example.com';},
+    f=>{f.candidate.spec.guidedPreviewSettings.beta.host='live.example.com';},
     f=>{f.authority.original={};},
     f=>{f.authority.ready=false;},
   ]){
@@ -237,54 +237,23 @@ test('additional ACME SANs stay within the disposable DNS namespace',()=>{
   assert(acme.issuanceDomains(['gitlab.candidate.test','wizard.candidate.test']).includes('gitlab.candidate.test'));
   for(const domains of [['live.example.com'],['*.candidate.test'],['127.0.0.1'],['https://gitlab.candidate.test']])assert.throws(()=>acme.issuanceDomains(domains),/owned-certificate-domains/);
 });
-test('binding proof validates actual source-primary receipts and both stopped generations without returning configuration',async t=>{
-  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'guided-binding-'));
-  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
-  const binding=require('../../project-bootstrap/wizard-source-primary/binding');
-  const source=require('../../project-bootstrap/wizard-environments/source-primary');
-  const state=require('../../project-bootstrap/wizard-environments/state');
-  const sha=value=>require('node:crypto').createHash('sha256').update(value).digest('hex');
-  const operation='a'.repeat(48),settings={review:{enabled:true,host:fixture.HOSTS.review},beta:{enabled:true,host:fixture.HOSTS.beta}};
-  const ciFiles=[{path:'.gitlab/primary.yml',sha256:'b'.repeat(64)},{path:'.gitlab/delivery/environment.sh',sha256:'c'.repeat(64)}];
-  const environment={version:1,managementMode:'source-primary',phase:'ready',operation,settings,settingsHash:sha(JSON.stringify(settings)),
-    helperImage:'sha256:'+'d'.repeat(64),controller:'system_bootstrapper_1',activationCommit:'e'.repeat(40),ciFiles,deployments:{}};
-  environment.recipeHash=source.reservation(environment).recipeHash;
-  for(const [index,kind]of ['review','beta'].entries()){
-    const stopped={...state.record({action:'deploy',kind,projectId:7,pipelineId:20+index,jobId:40+index,
-      sourceCommit:'f'.repeat(40),mrIid:kind==='review'?3:0,operation},settings[kind].host,'registry.candidate.test/root/wizard@sha256:'+'1'.repeat(64)),state:'stopped'};
-    environment.deployments[kind]={tombstone:stopped,lastPipelineId:stopped.pipelineId,stoppedThroughPipelineId:stopped.pipelineId};
-  }
-  const receipt={defaultProject:true,template:'wizard',state:'complete',namespaceId:4,
-    repository:{id:7,namespaceId:4,path:'root/wizard',defaultBranch:'master',systemProject:true,managementMode:'source-primary',ciPath:'.gitlab/primary.yml'},
-    sourcePrimary:{version:1,operation,adoptionCommit:'e'.repeat(40),ciFiles},wizardWorkflow:{environments:environment}};
-  const filename=path.join(directory,'.wizard.env'),cube=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184);
-  let text;
-  const save=value=>{text=cube+'\n'+binding.PREFIX+Buffer.from(JSON.stringify(value)).toString('base64')+'\n';fs.writeFileSync(filename,text);};
-  save(receipt);
+test('binding proof validates shared source and stopped Beta identity without configuration disclosure',async t=>{
+  const state=require('../../project-bootstrap/wizard-environments/state'),binding=require('../../project-bootstrap/system-beta/binding');
+  const operation='a'.repeat(48),source='b'.repeat(40),image='sha256:'+'c'.repeat(64),hash=value=>require('crypto').createHash('sha256').update(value).digest('hex');
+  const settings={review:{enabled:false},beta:{enabled:true,host:'beta.candidate.test'}};
+  const stopped={...state.record({action:'deploy',kind:'beta',delivery:'system',projectId:7,pipelineId:20,jobId:40,sourceCommit:source,mrIid:0,operation},settings.beta.host,'registry.candidate.test/root/wizard@'+image),state:'stopped'};
+  const environment={phase:'ready',managementMode:'system-monorepo',operation,controller:'system_bootstrapper_1',settings,systemSource:{id:7,path:'root/wizard',namespaceId:4,defaultBranch:'main'},deployments:{beta:{tombstone:stopped,lastPipelineId:20,stoppedThroughPipelineId:20}}};
+  const receipt={repository:{id:7,namespaceId:4,path:'root/wizard',defaultBranch:'main'},wizardWorkflow:{environments:environment}};
+  const selected={version:2,sourceLayout:'system-monorepo-v1',mrIid:0,operation,projectId:7,projectPath:'root/wizard',namespaceId:4,defaultBranch:'main',pipelineId:20,candidateJobId:30,sourceCommit:source,wizardSourceTree:'d'.repeat(40),helperImage:image,wizardImageId:image,wizardImageRef:'registry.candidate.test/root/wizard@'+image,wizardProjectId:7,wizardProjectPath:'root/wizard',wizardDefaultBranch:'main',environmentHash:binding.environmentHash(environment)};
+  let current=receipt;
   const execute=async(_candidate,action,input)=>vm.runInNewContext('('+action.toString()+')',{require(name){
-    if(name==='/system/project-bootstrap/wizard-source-primary/binding')return {...binding,read:()=>binding.read(filename)};
-    if(name==='/system/project-bootstrap/wizard-environments/source-primary')return source;
+    if(name==='/system/sync/dist/ProjectBootstrap')return {readReceipt:()=>current};
+    if(name==='/system/project-bootstrap/system-beta/binding')return binding;
     if(name==='/system/project-bootstrap/wizard-environments/state')return state;
-    if(name==='fs')return {readFileSync:()=>fs.readFileSync(filename,'utf8')};return require(name);
+    if(name==='fs')return {readFileSync:file=>file.endsWith('.system-beta.json')?JSON.stringify(selected):'retained configuration'};return require(name);
   }})(input);
-  const result=await fixture.bindingProof({}, {node:execute});
-  assert.equal(result.projectId,7);assert.equal(result.operation,operation);assert.equal(result.receiptSha256,sha(JSON.stringify(receipt)));
-  fs.writeFileSync(filename,text+'\n# Retained configuration formatting\n');
-  assert.equal((await fixture.bindingProof({}, {node:execute})).receiptSha256,result.receiptSha256);
-  assert.equal(result.settingsSha256,sha(JSON.stringify(settings)));
-  assert.equal(Object.keys(result).sort().join(','),'operation,projectId,receiptSha256,settingsSha256');
-  for(const change of [
-    value=>{value.repository.managementMode='managed';},
-    value=>{value.sourcePrimary.adoptionCommit='invalid';},
-    value=>{value.wizardWorkflow.environments.deployments.review.active={};},
-    value=>{value.wizardWorkflow.environments.deployments.beta.pending={};},
-    value=>{delete value.wizardWorkflow.environments.deployments.beta.tombstone;},
-    value=>{value.wizardWorkflow.environments.deployments.review.stoppedThroughPipelineId=0;},
-    value=>{value.wizardWorkflow.environments.deployments.beta.lastPipelineId=0;},
-    value=>{value.wizardWorkflow.environments.deployments.review.tombstone.projectId=8;},
-    value=>{value.wizardWorkflow.environments.deployments.beta.tombstone.operation='2'.repeat(48);},
-  ]){
-    const changed=JSON.parse(JSON.stringify(receipt));change(changed);save(changed);
-    await assert.rejects(()=>fixture.bindingProof({}, {node:execute}));
+  const result=await fixture.bindingProof({}, {node:execute});assert.equal(result.projectId,7);assert.equal(result.receiptSha256,hash(JSON.stringify(receipt)));
+  for(const mutate of [r=>r.wizardWorkflow.environments.deployments.beta.pending={},r=>r.wizardWorkflow.environments.deployments.beta.tombstone.operation='f'.repeat(48),r=>r.wizardWorkflow.environments.settings.review.enabled=true,r=>r.wizardWorkflow.environments.deployments.beta.lastPipelineId=0]){
+    current=JSON.parse(JSON.stringify(receipt));mutate(current);await assert.rejects(()=>fixture.bindingProof({}, {node:execute}));
   }
 });

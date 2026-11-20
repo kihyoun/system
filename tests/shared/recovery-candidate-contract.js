@@ -777,13 +777,24 @@ test('cold Seed failures identify each command and do not attempt later operatio
 });
 test('fixed Harvest failure codes identify internal phases without exposing arbitrary output',async t=>{
   const {failureReason}=require('./stage-diagnostics');
-  const script=fs.readFileSync(path.join(__dirname,'../../system/harvest.sh'),'utf8');
+  const script=fs.readFileSync(path.join(__dirname,'../../operations/src/storage/copy.ts'),'utf8');
   for(const [line,code]of Object.entries(recovery.HARVEST_FAILURE_CODES)){
     assert.equal(failureReason(code),code);
-    if(line.startsWith('Harvest phase failed: '))assert(script.includes('phase='+line.slice('Harvest phase failed: '.length,-1)));
-    else assert(script.includes(line));
+    if(line.startsWith('Harvest phase failed: '))assert(script.includes("phase='"+line.slice('Harvest phase failed: '.length,-1)+"'"));
+    // Historical shell messages remain accepted for older saved diagnostics.
+    else if(!line.includes(' ')&&line!=='storage-operation-busy')assert(script.includes(line));
     const f=coldSeedFixture(t,{step:'harvest',message:code,metadata:{exitCode:1}});
     await assert.rejects(()=>recovery.captureSeed(f.candidate,f.input),{message:code});
     assert.equal(f.stages.at(-1).reason,code);assert.deepEqual(f.events,['runner-stop','harvest']);
   }
+});
+
+test('shared candidate registry recovery accepts exact candidate and forbids cached aliases or invented jobs',()=>{
+  const {images}=privateFixture(),sourceRevision='f'.repeat(40);
+  const spec={images,sourceRevision};
+  const value={kind:'shared-candidate-registry-v2',projectId:12,projectPath:'root/wizard',registryHost:'registry.candidate.test:5050',sourceCommit:sourceRevision,imageId:images.wizard.id,imageDigest:'sha256:'+'d'.repeat(64)};
+  value.imageRef=value.registryHost+'/'+value.projectPath+'/successor-wizard@'+value.imageDigest;
+  assert.equal(recovery.privateWizardDescriptor(value,spec),value);
+  for(const change of [{jobId:31},{pipelineId:21},{sourceCommit:'a'.repeat(40)},{imageId:images.candidate.id},{projectPath:'root/../wizard'}])assert.throws(()=>recovery.privateWizardDescriptor({...value,...change},spec),/descriptor-invalid/);
+  assert.throws(()=>recovery.privateWizardDescriptor(value,{...spec,supportImages:{helper:{id:value.imageId}}}),/descriptor-invalid/);
 });

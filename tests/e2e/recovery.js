@@ -24,6 +24,13 @@ const HARVEST_FAILURE_CODES={
   'GitLab restart failed after Harvest.':'harvest-gitlab-restart-failed',
   'GitLab did not shut down cleanly; no Seed published.':'harvest-gitlab-unclean'
 };
+Object.assign(HARVEST_FAILURE_CODES,{
+  'harvest-source-missing':'harvest-missing-source',
+  'restore-incomplete':'harvest-incomplete-restore',
+  'seed-operation-busy':'harvest-operation-locked',
+  'storage-operation-busy':'harvest-operation-locked',
+  'gitlab-restart-failed':'harvest-gitlab-restart-failed'
+});
 for(const phase of ['certificate-lock','gitlab-inspect','gitlab-quiesce','gitlab-services-down','gitlab-stop','gitlab-stopped-check','gitlab-clean-exit','stage-create','srv-copy','ssl-copy','certbot-copy','manifest-create','snapshot-publish']){
   HARVEST_FAILURE_CODES['Harvest phase failed: '+phase+'.']='harvest-phase-'+phase;
 }
@@ -33,6 +40,16 @@ const SEED_RESTORE_FAILURE_CODES=Object.fromEntries([
 ].map(code=>['Seed operation failed: '+code+'.',code]));
 
 function privateWizardDescriptor(value,spec) {
+  if(value?.kind==='shared-candidate-registry-v2') {
+    const other=Object.entries({...spec.images,...spec.supportImages,...spec.acmeImages}).filter(([role])=>role!=='wizard');
+    if(!Number.isSafeInteger(value.projectId)||value.projectId<1||
+      !/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+$/.test(value.projectPath||'')||value.projectPath.split('/').some(part=>['.','..'].includes(part))||
+      value.registryHost!=='registry.candidate.test:5050'||!/^sha256:[a-f0-9]{64}$/.test(value.imageDigest||'')||
+      value.sourceCommit!==spec.sourceRevision||value.imageId!==spec.images?.wizard?.id||other.some(([,image])=>image.id===value.imageId)||
+      value.imageRef!==value.registryHost+'/'+value.projectPath+'/successor-wizard@'+value.imageDigest||
+      ['pipelineId','jobId','runnerId','marker','markerPath','sourceImageId'].some(key=>Object.hasOwn(value,key)))throw Error('private-wizard-recovery-descriptor-invalid');
+    return value;
+  }
   if(value?.kind==='source-primary-native-v1') {
     const archives=Object.values({...spec.images,...spec.supportImages,...spec.acmeImages});
     if(!['projectId','pipelineId','jobId','runnerId'].every(key=>Number.isSafeInteger(value[key])&&value[key]>0)||
@@ -572,11 +589,11 @@ async function verifyServiceIdentity(candidate,expected,authentication){
 async function verifyPrivateWizard(candidate,expected){
   await candidate.stage('recovery-private-wizard-image-and-credential-cleanup',async()=>{
     const identity=await candidate.inner(['inspect','--format','{{.Image}}','system_wizard_1']);
-    const proof=expected.kind==='source-primary-native-v1'?
+    const proof=['source-primary-native-v1','shared-candidate-registry-v2'].includes(expected.kind)?
       await candidate.inner(['inspect','--format','{{index .Config.Labels "org.opencontainers.image.revision"}}','system_wizard_1']):
       await candidate.inner(['exec','system_wizard_1','cat',PRIVATE_MARKER]);
     const cleanup=await candidate.rails("require 'json';p=Project.find("+expected.projectId+");raise unless p.full_path=="+JSON.stringify(expected.projectPath)+";puts JSON.generate(active:p.deploy_tokens.where(name:'system-bootstrapper-wizard-image-recovery',revoked:false).count)");
-    if(identity!==expected.imageId||proof!==(expected.kind==='source-primary-native-v1'?expected.sourceCommit:expected.marker)||cleanup.active!==0)throw Error('private-wizard-restoration-or-credential-cleanup-failed');
+    if(identity!==expected.imageId||proof!==(['source-primary-native-v1','shared-candidate-registry-v2'].includes(expected.kind)?expected.sourceCommit:expected.marker)||cleanup.active!==0)throw Error('private-wizard-restoration-or-credential-cleanup-failed');
     candidate.privateWizardPinVerified=true;
   });
 }

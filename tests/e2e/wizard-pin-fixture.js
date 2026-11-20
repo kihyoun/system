@@ -75,8 +75,27 @@ async function nativeImage(candidate,owned,merge,token) {
   return {kind:'source-primary-native-v1',projectId,projectPath:receipt.repository.path,registryHost:owned.registryHost,
     sourceCommit:merge.sourceCommit,pipelineId:merge.pipelineId,jobId:build.id,runnerId:build.runnerId,imageRef,imageDigest:merge.imageDigest,imageId:image.Id};
 }
+async function sharedCandidate(candidate) {
+  const evidence=candidate.evidence.guidedPreview;
+  if(evidence.version!==2||evidence.sourceLayout!=='system-monorepo-v1'||evidence.setup?.native!==true||
+    evidence.beta?.containerRemoved!==true||evidence.beta?.leaseReleased!==true)throw Error('private-wizard-owned-project-required');
+  const owned=await require('./guided-preview-platform').node(candidate,function(){
+    const fs=require('fs');const {readReceipt}=require('/system/sync/dist/ProjectBootstrap');
+    const receipt=readReceipt(fs.readFileSync('/state/.projects.env/.wizard.env','utf8'));
+    const value=require('/system/project-bootstrap/system-beta/binding').validate(JSON.parse(fs.readFileSync('/state/.projects.env/.wizard.env.system-beta.json','utf8')),{receipt});
+    return {projectId:value.projectId,projectPath:value.projectPath,imageRef:value.wizardImageRef,imageId:value.wizardImageId,sourceCommit:value.sourceCommit};
+  },{});
+  const descriptor={kind:'shared-candidate-registry-v2',...owned,registryHost:'registry.candidate.test:5050',imageDigest:owned.imageRef.split('@')[1]};
+  require('./recovery').privateWizardDescriptor(descriptor,candidate.spec);
+  const image=JSON.parse(await candidate.inner(['image','inspect',descriptor.imageRef]))[0];
+  if(image?.Id!==descriptor.imageId||image.Config?.Labels?.['org.opencontainers.image.revision']!==descriptor.sourceCommit||
+    !image.RepoDigests?.includes(descriptor.imageRef)||evidence.candidate?.projectId!==descriptor.projectId||
+    evidence.candidate?.wizardRegistryDigest!==descriptor.imageDigest)throw Error('private-wizard-registry-identity-invalid');
+  return descriptor;
+}
 async function publish(candidate) {
   if(!/^[a-f0-9]{24}$/.test(candidate.id))throw Error('private-wizard-owner-invalid');
+  if(candidate.evidence?.guidedPreview?.version===2)return sharedCandidate(candidate);
   const native=candidate.spec.guidedPreviewAcceptance===true||candidate.evidence?.guidedPreview!==undefined;
   const owned=native?await readNativeProject(candidate):await readOwnedProject(candidate);
   let token;

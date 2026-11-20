@@ -120,6 +120,8 @@
   {"component":"wizard","file":"wizard/preview-producers.js","timeoutSeconds":20},
   {"component":"sync","file":"sync/operations-api.js","timeoutSeconds":30,"port":8071},
   {"component":"shared","file":"shared/system-beta-evidence-contract.js","timeoutSeconds":20},
+  {"component":"shared","file":"shared/system-beta-native-contract.js","timeoutSeconds":20},
+  {"component":"shared","file":"shared/shared-source-bundle-contract.js","timeoutSeconds":20},
   {"component":"shared","file":"shared/guided-preview-contract.js","timeoutSeconds":20},
   {"component":"shared","file":"shared/guided-preview-platform-contract.js","timeoutSeconds":20},
   {"component":"wizard","file":"wizard/rails-completion.js","timeoutSeconds":20},

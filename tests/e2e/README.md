@@ -3,7 +3,7 @@
 `candidate.js` runs an explicit private-daemon smoke or full-platform scenario.
 It is separate from the isolated manifest; offline transports verify its
 lifecycle contract without starting Docker. The required root CI platform gate
-runs the full scenario, including native guided source/adoption and Review/Beta
+runs the full scenario, including native shared System setup and Beta
 lifecycles, configuration-plus-Seed recovery, uncached private Wizard image
 retrieval and local ACME renewal.
 
@@ -32,38 +32,30 @@ limited to four CPUs and 12 GiB RAM. Budget additional headroom on the outer
 host, image archives, image extraction and GitLab's data volume; Docker's volume
 does not enforce a disk quota. Disk/RAM checks and a lease must happen outside
 this driver before invocation. Smoke scenarios use an internal outer network.
-The full guided scenario explicitly permits outbound access on its owned bridge
-for the public HTTPS Git origin and native package, browser and image downloads;
-it still publishes no outer ports. Service images remain declared and preloaded.
-The full runner/registry scenario also needs its declared helper and build inputs.
+The guided scenario uses the exact existing System candidate commit transported
+as a private Git bundle. It verifies the commit tree and native `wizard/` tree,
+pushes only into its existing owned disposable project with `ci.skip`, and uses
+the existing prebuilt helper and Wizard images. It creates no additional System
+build or candidate pipeline. Ordinary application Review/Beta tests remain.
 
-The guided scenario uses the pinned submodule's public origin from `.gitmodules`;
-an operator fork can set `SYSTEM_TEST_WIZARD_ORIGIN` to its public HTTPS Git URL.
-The native public-address and approved-producer checks remain active. A changed
-upstream producer is a failing input, not permission to copy different CI into
-the source project. Private origins are not supported by this import acceptance.
-GitLab, Sync, Wizard, Review and Beta use exact-host TLS through the existing
-local ACME authority. The registry remains the existing private HTTP endpoint
-on port 5050; this scenario does not claim HTTPS registry verification.
+GitLab, Sync, Wizard and System Beta use exact-host TLS through the existing
+local ACME authority. The registry retains the private HTTP endpoint on port
+5050; this scenario does not claim HTTPS registry verification.
 
-The full gate performs guided setup once on its fresh original platform, then
-uses the same platform's normal imported-default, merge-request and merged-default
-pipelines. It plays the real manual Review/Beta Deploy and Stop jobs, preserving
-the original main configuration and running Wizard image throughout setup.
-The publication gate requires those native stages and identities; passing offline
-fixtures cannot substitute for them. These stages share the scenario's fixed
-absolute deadline described below. Per-stage timings include the work, and a
-timeout fails acceptance without an automatic extension.
+The v2 evidence boundary is `native-lifecycle-with-contract-verifier`. Real native
+setup reserves Beta in the shared project; real binding, Docker deployment,
+image ownership, TLS, stop and cleanup run on the owned platform. Pipeline
+authorization is checked by the unchanged production verifier's positive and
+negative contract tests. The test-only helper selects `contract-fixture`
+explicitly; production Runtime has no fixture switch. Fixture pipeline/job
+identities are labeled as fixtures and never published as successful native CI.
+The parent candidate is still running, so its completion cannot authorize itself.
+Production configuration and running image must remain unchanged throughout.
 
-Only the original disposable guided platform's single managed Docker runner
-opts into two concurrent jobs, each limited to 2 GiB RAM and one CPU. This lets
-the native source pipeline schedule its browser checks alongside image delivery.
-The fixture refuses conflicting runner settings and preserves the registered
-identity, endpoints, public trust and source CI bytes. The existing 4-GiB/two-CPU
-delivery builder and 1-GiB/one-CPU verifier browser keep their own limits; all
-nested work still shares the candidate's hard 12-GiB/four-CPU ceiling. These are
-ceilings rather than reservations. Only the final full-platform CI run establishes
-acceptance and any elapsed-time improvement; offline contracts do not measure it.
+The publication validator accepts this explicit v2 schema and retains historical
+v1 validation. Neither offline harness tests nor check-only operator preflight
+establish a completed native disposable run. All native phases share the fixed
+absolute deadline, with bounded cleanup and no automatic extension.
 
 Disposable GitLab instances use `puma['worker_processes'] = 2` through the
 official `GITLAB_OMNIBUS_CONFIG` environment variable. Nested containers can
@@ -331,13 +323,13 @@ Without the explicit `privateWizardRecovery` scenario, a restored private Wizard
 registry pin fails with `wizard-pin-recovery-artifact-not-declared`; it is never
 silently changed to the local fixture image.
 
-In the full guided scenario, private-image recovery reuses the actual Wizard
-artifact from its verified merged-default pipeline. It independently checks the
-canonical source receipt, native required jobs and artifacts, registry digest,
-image ID and source label. No extra private-image build is needed. Its image must
-be absent from every prepared archive. The nonguided fixture instead publishes a
-derivative through its existing owned CI branch and unique marker layer.
-The actual exported configuration pins the CI-published registry digest.
+In the full guided scenario, private-image recovery uses the exact prebuilt
+Wizard candidate pushed to the owned shared project's private registry. It
+checks the canonical binding, registry digest, image ID and source label. No
+additional build or successful pipeline is claimed. The restored daemon omits
+that Wizard archive, and rejects any other archive role carrying the same ID.
+The nonguided fixture retains its existing owned CI branch and marker layer.
+The actual exported configuration pins the registry digest.
 The new daemon must have neither its digest reference nor its private image ID
 before startup. After Seed restoration, the fresh-source startup helper retrieves
 the exact image using a temporary project-scoped `read_registry` deploy token.
@@ -443,9 +435,8 @@ configuration, credentials and database logs are never public CI artifacts.
 The successor scenario uses one fixed 110-minute overall candidate budget only
 when both `guidedPreviewAcceptance === true` and `gitlabUpgradeAcceptance === true`
 and a prepared `publicUpgrade` fixture are present. The combined scenario without
-that fixture retains 75 minutes. Both include the three actual native Wizard
-push/MR/push pipelines with four required jobs each, manual Review/Beta Deploy and
-Stop, cold recovery and both GitLab version transitions. The public-release fixture
+that fixture retains 75 minutes. Both include native shared System setup and Beta deploy/stop with the explicit
+contract-verifier boundary, cold recovery and both GitLab version transitions. The public-release fixture
 additionally executes the real public CLI plan and apply, a fresh matching cold
 Seed/configuration backup, interrupted offline image recovery and a separate
 controller restart with durable recovery selectors. These are fixed upper bounds,
@@ -523,10 +514,7 @@ stage supplies upgrade acceptance evidence.
 
 ## Postdeployment guided preview acceptance
 
-The [native guided preview acceptance tool](GUIDED_PREVIEW_ACCEPTANCE.md) checks
-fresh source import, actual required Wizard push/MR pipelines, source-primary
-adoption and Review Deploy/Stop after deliberate deployment of an accepted
-controller. It uses explicit private operator input and the native local Docker
-socket. It is not activated by the disposable specification or an additional CI
-pipeline. A check-only plan or offline fixture pass does not establish that the
-real operator acceptance ran.
+The [operator preflight tool](GUIDED_PREVIEW_ACCEPTANCE.md) checks explicit private
+System Beta settings against a selected local controller. It is read-only and
+rejects `--apply`. The disposable fixture seam never runs on a user installation.
+A successful plan does not establish native acceptance.

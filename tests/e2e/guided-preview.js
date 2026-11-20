@@ -1,63 +1,30 @@
 'use strict';
-// Shared real-platform acceptance adapter. The reviewed native driver selects
-// the operator instance explicitly; isolated transports test its contracts only.
-const binding=require('../../project-bootstrap/wizard-source-primary/binding');
-const environmentState=require('../../project-bootstrap/wizard-environments/state');
+const fs=require('node:fs'),path=require('node:path');
 const settingsContract=require('../../project-bootstrap/preview-setup/settings');
-const jobDiagnostics=require('../shared/job-diagnostics');
+const environmentState=require('../../project-bootstrap/wizard-environments/state');
 const evidenceContract=require('../../gitlab/guided-preview-evidence');
-const required=['build:source','test:browser','build:wizard','test:wizard'];
-const terminal=new Set(['success','failed','canceled','skipped']);
+const platform=require('./guided-preview-platform');
+const {execute}=require('./system-beta-fixture-helper');
 function requireValue(value,code){if(!value)throw Object.assign(Error(code),{noRetry:true});}
-function settings(candidate) {
-  requireValue((candidate.spec.fullAcceptance===true||candidate.spec.operatorAcceptance===true)&&candidate.spec.guidedPreviewAcceptance===true,'guided-preview-explicit-owned-platform-required');
-  requireValue(/^[a-f0-9]{24}$/.test(candidate.id),'guided-preview-owner-required');
+function settings(candidate){
+  requireValue(candidate.spec.fullAcceptance===true&&candidate.spec.guidedPreviewAcceptance===true&&/^[a-f0-9]{24}$/.test(candidate.id),'system-beta-owned-disposable-platform-required');
   const value=settingsContract.settings(candidate.spec.guidedPreviewSettings);
-  requireValue(value.wizard.mode==='import'&&(!value.system||value.system.mode==='import'),'guided-preview-fresh-source-import-required');
+  requireValue(value.version===2&&value.wizard.mode==='existing'&&!value.review.enabled&&value.beta.enabled,'system-beta-shared-source-settings-required');
   return value;
 }
-async function controller(candidate,action) {
-  const script="try{const fs=require('fs'),path=require('path'),crypto=require('crypto');const state='/state';const binding=require('/system/project-bootstrap/wizard-source-primary/binding');const main=fs.readFileSync(path.join(state,'.docker.env'),'utf8');const result=binding.read(path.join(state,'.projects.env/.wizard.env'));const receipt=result.receipt;"+action+"}catch{process.exitCode=1;}";
-  try{return JSON.parse(await candidate.inner(['exec','system_bootstrapper_1','node','-e',script]));}
-  catch{throw Error('guided-preview-native-controller-proof-failed');}
+async function production(candidate){
+  const value=await platform.node(candidate,function(){
+    const fs=require('fs'),crypto=require('crypto');
+    const {readReceipt}=require('/system/sync/dist/ProjectBootstrap');
+    const main=fs.readFileSync('/state/.docker.env');
+    const receipt=readReceipt(fs.readFileSync('/state/.projects.env/.wizard.env','utf8'));
+    if(receipt?.defaultProject!==true||receipt.template!=='wizard'||receipt.state!=='complete'||receipt.repository?.systemProject!==true)throw Error();
+    return {mainSha256:crypto.createHash('sha256').update(main).digest('hex'),repository:receipt.repository,environment:receipt.wizardWorkflow?.environments};
+  },{});
+  value.runningImage=(await candidate.inner(['inspect','--format','{{.Image}}','system_wizard_1'])).trim();
+  requireValue(/^sha256:[a-f0-9]{64}$/.test(value.runningImage),'system-beta-production-image-required');return value;
 }
-async function production(candidate,initial=false) {
-  const result=await controller(candidate,
-    (initial?"if(binding.primary(receipt)||receipt.wizardWorkflow)throw Error();const {Adoption}=require('/system/project-bootstrap/wizard-source-primary/run');const publicImage=new Adoption({mainConfig:path.join(state,'.docker.env'),request:async()=>undefined}).retainedInstallation(main);": "const publicImage=null;")+
-    "process.stdout.write(JSON.stringify({mainSha256:crypto.createHash('sha256').update(main).digest('hex'),publicImage,projectId:receipt.repository.id,projectPath:receipt.repository.path,managementMode:receipt.repository.managementMode,sourcePrimary:receipt.sourcePrimary,build:receipt.wizardWorkflow?.build,environment:receipt.wizardWorkflow?.environments}));");
-  result.runningImage=(await candidate.inner(['inspect','--format','{{.Image}}','system_wizard_1'])).trim();
-  requireValue(/^sha256:[a-f0-9]{64}$/.test(result.runningImage),'guided-preview-production-image-required');
-  if(initial) {
-    const accepted=(await candidate.inner(['image','inspect','--format','{{.Id}}',result.publicImage])).trim();
-    requireValue(accepted===result.runningImage,'guided-preview-running-public-image-mismatch');
-  }
-  return result;
-}
-function unchanged(before,after) {
-  requireValue(before.mainSha256===after.mainSha256&&before.runningImage===after.runningImage,'guided-preview-production-changed');
-}
-function nativeJobs(pipeline,jobs) {
-  try{binding.pipelineChecks(pipeline,jobs);}
-  catch{requireValue(false,'guided-preview-native-check-failed');}
-  requireValue(required.every(name=>jobs.find(job=>job.name===name)?.runner?.id),'guided-preview-real-runner-jobs-required');
-  return jobs.filter(job=>required.includes(job.name)).map(job=>({id:job.id,name:job.name,status:job.status,runnerId:job.runner.id}));
-}
-async function pipelineEvidence(candidate,projectId,token,pipeline,jobs,extra={}) {
-  const rows=(Array.isArray(jobs)?jobs:[]).filter(job=>required.includes(job?.name)).slice(0,8).map(job=>({
-    id:job.id,name:job.name,status:job.status,runnerId:job.runner?.id,sourceCommit:job.commit?.id,pipelineId:job.pipeline?.id,
-    ...(jobDiagnostics.failureReason(job.failure_reason)?{failureReason:jobDiagnostics.failureReason(job.failure_reason)}:{})}));
-  const read=new Set();
-  for(const job of rows.filter(row=>row.status==='failed')) {
-    if(read.has(job.name)||!Number.isSafeInteger(job.id)||job.id<1)continue;
-    read.add(job.name);
-    try{
-      job.diagnostics=jobDiagnostics.classify(await candidate.api('/projects/'+projectId+'/jobs/'+job.id+'/trace',token));
-      if(!job.diagnostics.codes.length)job.diagnostics.codes=['unclassified-job-failure'];
-    }catch{job.diagnostics={codes:['trace-unavailable']};}
-  }
-  return evidenceContract.sanitize({source:{projectId,pipelineId:pipeline.id,sourceCommit:pipeline.sha,
-    source:pipeline.source,pipelineStatus:pipeline.status,jobs:rows,...extra}}).source;
-}
+function unchanged(before,after){requireValue(before.mainSha256===after.mainSha256&&before.runningImage===after.runningImage,'guided-preview-production-changed');}
 function syncSession(candidate) {
   let accessToken,issuedAt=0;
   const now=()=>candidate.now?candidate.now():Date.now();
@@ -82,244 +49,175 @@ function syncSession(candidate) {
     try{return JSON.parse(response.body);}catch{throw Error('guided-preview-sync-result-invalid');}
   };
 }
-async function run(candidate) {
-  const desired=settings(candidate),before=await production(candidate,true);
-  let token,mintAttempted=false,mintConfirmed=false,lastSetup;
-  const evidence={productionMainSha256:before.mainSha256,productionImageId:before.runningImage,initialRegistrationId:before.projectId,betaEnabled:desired.beta.enabled};
-  candidate.evidence.guidedPreview=evidence;
-  // This adapter requires real HTTPS/DNS/trust/public-source and native CI
-  // dependencies prepared by the existing platform harness. It creates no CA,
-  // accepted-release receipt, alternate CI producer, or privileged test bypass.
-  const sync=syncSession(candidate);
-  const setupStatus=async job=>{
-    const fixed={state:job?.state,uncertain:job?.uncertain,uncertainAction:job?.uncertainAction,
-      ...(job?.state==='failed'?{failureCode:jobDiagnostics.setupFailure(job)}:{})};
-    evidence.setup=evidenceContract.sanitize({setup:fixed})?.setup;
-    lastSetup=await sync('/projects/wizard/preview-setup');
-    evidence.setup=evidenceContract.sanitize({setup:{...fixed,phase:lastSetup.phase,uncertain:fixed.uncertain??lastSetup.uncertain,
-      projectId:lastSetup.projects?.wizard?.id,pipelineId:lastSetup.pipeline?.id,pipelineStatus:lastSetup.pipeline?.status}}).setup;
-    return lastSetup;
-  };
-  const apply=async()=>{
-    const preview=await sync('/projects/wizard/preview-setup/preflight',{settings:desired});
-    requireValue(preview.productionChanged===false&&preview.runnerReady===true,'guided-preview-preflight-proof-failed');
-    let job=await sync('/projects/wizard/preview-setup/apply',{settings:desired,previewHash:preview.previewHash});
-    await candidate.wait(async()=>{
-      if(job.state==='running')job=await sync('/projects/jobs/'+job.id);
-      if(job.state==='failed')try{await setupStatus(job);}catch{}
-      if(job.state==='failed'){
-        const code=jobDiagnostics.setupFailure(job);
-        requireValue(false,code==='setup-failure-unclassified'?'guided-preview-setup-job-failed':'guided-preview-'+code);
-      }
-      return job.state!=='running';
-    },1800000);
-    return setupStatus(job);
-  };
-  try {
-    await candidate.stage('guided-preview-fresh-public-registration',async()=>{
-      const existing=await sync('/projects/wizard/preview-setup');requireValue(existing.phase==='not-started','guided-preview-fresh-setup-required');
-      mintAttempted=true;
-      const auth=await candidate.rails("require 'json';t=User.find_by_username('root').personal_access_tokens.create!(name:'guided-preview-acceptance-"+candidate.id+"',scopes:['api'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token)");
-      requireValue(typeof auth.token==='string'&&auth.token.length>10,'guided-preview-credential-required');token=auth.token;mintConfirmed=true;
-      // Both destinations must be absent before setup. A fresh database alone
-      // does not prove that old source-project IDs were not reused.
-      const projects=await candidate.api('/projects?per_page=100',token);
-      requireValue(Array.isArray(projects)&&projects.length<100,'guided-preview-project-inventory-required');
-      for(const name of [desired.wizard.project,desired.system?.project].filter(Boolean))
-        requireValue(!projects.some(project=>project.path_with_namespace===desired.namespace+'/'+name),'guided-preview-source-destination-already-exists');
-      evidence.previousProjectIds=projects.map(project=>project.id);
-    });
-    let setup,project,pipeline,reviewPipeline,mergedPipeline,reviewJobs,mergedJobs,mr,reviewCommit,environmentOperation;
-    await candidate.stage('guided-preview-native-source-push-and-build',async()=>{
-      try{
-      setup=await apply();requireValue(['waiting-build','ready'].includes(setup.phase),'guided-preview-source-import-failed');
-      requireValue(Number.isSafeInteger(setup.projects?.wizard?.id)&&!evidence.previousProjectIds.includes(setup.projects.wizard.id)&&setup.projects.wizard.id!==before.projectId,'guided-preview-fresh-wizard-id-required');
-      if(desired.system)requireValue(Number.isSafeInteger(setup.projects.system?.id)&&setup.projects.system.id!==setup.projects.wizard.id&&!evidence.previousProjectIds.includes(setup.projects.system.id),'guided-preview-fresh-system-id-required');
-      project=await candidate.api('/projects/'+setup.projects.wizard.id,token);
-      requireValue(project.visibility==='private'&&project.path_with_namespace===desired.namespace+'/'+desired.wizard.project&&project.ci_config_path==='.gitlab/primary.yml','guided-preview-created-source-project-mismatch');
-      requireValue(project.only_allow_merge_if_pipeline_succeeds===true&&project.only_allow_merge_if_all_discussions_are_resolved===true,'guided-preview-native-merge-gates-required');
-      const branch=await candidate.api('/projects/'+project.id+'/repository/branches/'+encodeURIComponent(project.default_branch),token);
-      await candidate.wait(async()=>{
-        const runs=await candidate.api('/projects/'+project.id+'/pipelines?ref='+encodeURIComponent(project.default_branch)+'&sha='+branch.commit.id+'&source=push',token);
-        pipeline=runs.find(row=>row.sha===branch.commit.id&&row.source==='push');return !!pipeline&&terminal.has(pipeline.status);
-      },900000);
-      const jobs=await candidate.api('/projects/'+project.id+'/pipelines/'+pipeline.id+'/jobs?per_page=100&include_retried=false',token);
-      evidence.source=await pipelineEvidence(candidate,project.id,token,pipeline,jobs,{systemProjectId:setup.projects.system?.id});
-      nativeJobs(pipeline,jobs);
-      unchanged(before,await production(candidate));
-      }catch(error){
-        // Setup can itself observe a finished failed pipeline. Capture its
-        // exact freshly imported source before token revocation and cleanup.
-        const id=lastSetup?.projects?.wizard?.id;
-        if(!evidence.source&&Number.isSafeInteger(id)&&id>0&&!evidence.previousProjectIds.includes(id)&&id!==before.projectId)try{
-          const imported=await candidate.api('/projects/'+id,token);
-          if(imported.visibility==='private'&&imported.path_with_namespace===desired.namespace+'/'+desired.wizard.project&&imported.ci_config_path==='.gitlab/primary.yml'){
-            const branch=await candidate.api('/projects/'+id+'/repository/branches/'+encodeURIComponent(imported.default_branch),token);
-            const runs=await candidate.api('/projects/'+id+'/pipelines?ref='+encodeURIComponent(imported.default_branch)+'&sha='+branch.commit.id+'&source=push',token);
-            const selected=runs.find(row=>row.sha===branch.commit.id&&row.source==='push');
-            if(selected){
-              const jobs=await candidate.api('/projects/'+id+'/pipelines/'+selected.id+'/jobs?per_page=100&include_retried=false',token);
-              evidence.source=await pipelineEvidence(candidate,id,token,selected,jobs);
-            }
-          }
-        }catch{}
-        throw error;
-      }
-    });
-    await candidate.stage('guided-preview-native-evidence-adoption',async()=>{
-      setup=await apply();requireValue(setup.phase==='ready','guided-preview-adoption-not-ready');
-      const current=await production(candidate);unchanged(before,current);
-      requireValue(current.managementMode==='source-primary'&&current.projectId===project.id&&current.sourcePrimary?.adoptionCommit===pipeline.sha&&current.build?.phase==='candidate-verified'&&current.environment?.phase==='ready','guided-preview-canonical-adoption-proof-failed');
-      environmentOperation=current.environment.operation;
-      requireValue(/^[a-f0-9]{48}$/.test(environmentOperation||''),'guided-preview-environment-operation-required');
-      const actual=await controller(candidate,"binding.validate(receipt);process.stdout.write(JSON.stringify({receipt}));");
-      const artifact=await candidate.api('/projects/'+project.id+'/jobs/'+evidence.source.jobs.find(job=>job.name==='build:wizard').id+'/artifacts/build-evidence.json',token);
-      const native=await binding.evidence(route=>candidate.api('/'+route,token),actual.receipt,pipeline.id,pipeline.sha,artifact.imageRef);
-      requireValue(native.build.unitTests&&native.smoke.renderedUI&&/^.+@sha256:[a-f0-9]{64}$/.test(artifact.imageRef),'guided-preview-native-artifact-proof-failed');
-      Object.assign(evidence.source,{artifactsVerified:true,imageDigest:artifact.imageRef.split('@').at(-1)});
-      const retained=await controller(candidate,"const {Adoption}=require('/system/project-bootstrap/wizard-source-primary/run');process.stdout.write(JSON.stringify({publicImage:new Adoption({mainConfig:path.join(state,'.docker.env'),request:async()=>undefined}).retainedInstallation(main)}));");
-      requireValue(retained.publicImage===before.publicImage,'guided-preview-retained-public-selection-changed');
-      evidence.adoptedProjectId=current.projectId;
-    });
-    const artifacts=async(pipeline,jobs)=>{
-      const [build,smoke]=await Promise.all([['build:wizard','build-evidence.json'],['test:wizard','wizard-evidence.json']].map(async([name,file])=>
-        candidate.api('/projects/'+project.id+'/jobs/'+jobs.find(job=>job.name===name).id+'/artifacts/'+file,token)));
-      requireValue([build,smoke].every(row=>row?.version===1&&row.pipelineId===pipeline.id&&row.sourceCommit===pipeline.sha&&row.imageRef===build.imageRef)&&
-        /^.+@sha256:[a-f0-9]{64}$/.test(build.imageRef)&&['unitTests','lint','typecheck','productionBuild'].every(key=>build[key]===true)&&build.testRunner==='vitest'&&
-        ['http','renderedUI','projects','spa','configurationBackup','cubeSignature'].every(key=>smoke[key]===true),'guided-preview-native-artifact-proof-failed');
-      return {artifactsVerified:true,imageDigest:build.imageRef.split('@').at(-1)};
-    };
-    const awaitChecks=async(select,context,extra={})=>{
-      let selected,jobs;
-      await candidate.wait(async()=>{
-        selected=await select();if(!selected)return false;
-        selected=await candidate.api('/projects/'+project.id+'/pipelines/'+selected.id,token);
-        jobs=await candidate.api('/projects/'+project.id+'/pipelines/'+selected.id+'/jobs?per_page=100&include_retried=false',token);
-        if(['failed','canceled','skipped'].includes(selected.status)||jobs.some(job=>required.includes(job.name)&&['failed','canceled','skipped'].includes(job.status))){
-          evidence[context]=await pipelineEvidence(candidate,project.id,token,selected,jobs,extra);
-          requireValue(false,'guided-preview-native-check-failed');
-        }
-        return selected.status==='success';
-      },900000);
-      evidence[context]=await pipelineEvidence(candidate,project.id,token,selected,jobs,extra);
-      return {pipeline:selected,jobs,proof:nativeJobs(selected,jobs)};
-    };
-    const lifecycle=async(kind,pipeline,row)=>{
-      const play=async action=>{
-        const name=action+':'+kind;
-        // Refresh before Stop: GitLab can update its availability after Deploy.
-        const available=await candidate.api('/projects/'+project.id+'/pipelines/'+pipeline.id+'/jobs?per_page=100&include_retried=false',token);
-        const job=available.find(item=>item.name===name);
-        requireValue(job?.status==='manual','guided-preview-native-manual-job-required');
-        row[action]={id:job.id,name,status:job.status};
-        await candidate.api('/projects/'+project.id+'/jobs/'+job.id+'/play',token,'POST',{});
-        let current;await candidate.wait(async()=>{current=await candidate.api('/projects/'+project.id+'/jobs/'+job.id,token);return terminal.has(current.status);},600000);
-        row[action]={id:current.id,name,status:current.status,runnerId:current.runner?.id};
-        requireValue(current.status==='success'&&current.runner?.id&&current.commit?.id===pipeline.sha&&current.pipeline?.id===pipeline.id,'guided-preview-native-manual-job-failed');
-      };
-      const identity=deployment=>({projectId:deployment.projectId,pipelineId:deployment.pipelineId,jobId:deployment.jobId,mrIid:deployment.mrIid,
-        sourceCommit:deployment.sourceCommit,operation:deployment.operation,generation:deployment.generation,state:deployment.state,imageDigest:deployment.imageRef.split('@').at(-1)});
-      let attempted=false,deployment;
-      try {
-        // Even a timed-out/failed play may have started a real deployment.
-        attempted=true;await play('deploy');
-        const active=await production(candidate);unchanged(before,active);
-        deployment=active.environment?.deployments?.[kind]?.active;
-        requireValue(deployment?.state==='active'&&deployment.kind===kind&&deployment.projectId===project.id&&deployment.pipelineId===pipeline.id&&
-          deployment.sourceCommit===pipeline.sha&&deployment.jobId===row.deploy.id&&deployment.mrIid===(kind==='review'?row.mergeRequestIid:0)&&
-          deployment.operation===environmentOperation&&deployment.generation==='p'+pipeline.id+'-j'+row.deploy.id&&deployment.imageRef.endsWith('@'+row.imageDigest),'guided-preview-active-environment-proof-failed');
-        row.deployment=identity(deployment);
-        const inspected=JSON.parse(await candidate.inner(['inspect',deployment.containerName]));
-        const selectedImage=(await candidate.inner(['image','inspect','--format','{{.Id}}',deployment.imageRef])).trim();
-        requireValue(inspected.length===1&&inspected[0].State.Running===true&&inspected[0].Image===selectedImage&&
-          Object.entries(environmentState.labels(deployment)).every(([key,value])=>inspected[0].Config.Labels?.[key]===value),'guided-preview-owned-running-environment-image-required');
-        const page=await candidate.request('https://'+desired[kind].host+'/',{});
-        requireValue(page.status===200&&/<!doctype html|<html/i.test(page.body),'guided-preview-routed-environment-page-required');
-      } finally {
-        if(attempted)await candidate.stage('guided-preview-native-'+kind+'-stop',async()=>{
-          await play('stop');
-          const stopped=await production(candidate);unchanged(before,stopped);
-          const slot=stopped.environment?.deployments?.[kind];
-          requireValue(!slot?.active&&!slot?.pending&&slot?.tombstone?.state==='stopped'&&slot.tombstone.projectId===project.id&&
-            slot.tombstone.pipelineId===pipeline.id&&slot.tombstone.jobId===row.deploy.id&&slot.tombstone.kind===kind&&slot.tombstone.operation===environmentOperation&&
-            slot.tombstone.generation==='p'+pipeline.id+'-j'+row.deploy.id&&slot.tombstone.imageRef.endsWith('@'+row.imageDigest)&&
-            slot.tombstone.sourceCommit===pipeline.sha&&slot.tombstone.mrIid===(kind==='review'?row.mergeRequestIid:0)&&
-            slot.stoppedThroughPipelineId>=pipeline.id,'guided-preview-environment-stop-proof-failed');
-          if(deployment)requireValue(environmentState.sameGeneration(deployment,slot.tombstone)&&deployment.generation===slot.tombstone.generation&&deployment.imageRef===slot.tombstone.imageRef,'guided-preview-stopped-generation-mismatch');
-          row.stopped=identity(slot.tombstone);row.stoppedThroughPipelineId=slot.stoppedThroughPipelineId;
-          const remaining=(await candidate.inner(['container','ls','--all','--filter','name=^/'+slot.tombstone.containerName+'$','--format','{{.Names}}'])).trim();
-          requireValue(!remaining,'guided-preview-environment-container-not-removed');row.containerRemoved=true;
-        });
-      }
-    };
-    await candidate.stage('guided-preview-native-review-deploy-stop',async()=>{
-      const branch='guided-review-'+candidate.id;
-      reviewCommit=await candidate.api('/projects/'+project.id+'/repository/commits',token,'POST',{branch,start_branch:project.default_branch,
-        commit_message:'Exercise owned native preview lifecycle',actions:[{action:'create',file_path:'.guided-preview-proof-'+candidate.id,content:'Owned disposable native preview proof\n'}]});
-      mr=await candidate.api('/projects/'+project.id+'/merge_requests',token,'POST',{source_branch:branch,target_branch:project.default_branch,title:'Exercise owned native preview lifecycle'});
-      const checked=await awaitChecks(async()=>{
-        const rows=await candidate.api('/projects/'+project.id+'/merge_requests/'+mr.iid+'/pipelines',token);
-        return rows.find(row=>row.sha===reviewCommit.id&&row.source==='merge_request_event');
-      },'review',{mergeRequestIid:mr.iid});
-      reviewPipeline=checked.pipeline;reviewJobs=checked.jobs;
-      requireValue(reviewPipeline.sha===reviewCommit.id&&reviewPipeline.source==='merge_request_event','guided-preview-review-pipeline-mismatch');
-      evidence.review={projectId:project.id,mergeRequestIid:mr.iid,pipelineId:reviewPipeline.id,sourceCommit:reviewCommit.id,source:reviewPipeline.source,jobs:checked.proof,
-        ...await artifacts(reviewPipeline,reviewJobs)};
-      await lifecycle('review',reviewPipeline,evidence.review);
-    });
-    await candidate.stage('guided-preview-native-merge-and-build',async()=>{
-      const currentProject=await candidate.api('/projects/'+project.id,token);
-      requireValue(currentProject.only_allow_merge_if_pipeline_succeeds===true&&currentProject.only_allow_merge_if_all_discussions_are_resolved===true,'guided-preview-native-merge-gates-required');
-      let ready;
-      await candidate.wait(async()=>{
-        ready=await candidate.api('/projects/'+project.id+'/merge_requests/'+mr.iid+'?with_merge_status_recheck=true',token);
-        requireValue(ready.state==='opened'&&ready.sha===reviewCommit.id&&ready.draft===false&&ready.head_pipeline?.id===reviewPipeline.id&&ready.head_pipeline?.status==='success','guided-preview-normal-merge-gate-failed');
-        return ready.detailed_merge_status==='mergeable';
-      },120000);
-      const merged=await candidate.api('/projects/'+project.id+'/merge_requests/'+mr.iid+'/merge',token,'PUT',
-        {sha:reviewCommit.id,should_remove_source_branch:true});
-      requireValue(merged.state==='merged'&&/^[a-f0-9]{40}$/.test(merged.merge_commit_sha),'guided-preview-normal-merge-failed');
-      const branch=await candidate.api('/projects/'+project.id+'/repository/branches/'+encodeURIComponent(project.default_branch),token);
-      requireValue(branch.commit.id===merged.merge_commit_sha,'guided-preview-merged-default-identity-mismatch');
-      const checked=await awaitChecks(async()=>{
-        const rows=await candidate.api('/projects/'+project.id+'/pipelines?ref='+encodeURIComponent(project.default_branch)+'&sha='+branch.commit.id+'&source=push',token);
-        return rows.find(row=>row.sha===branch.commit.id&&row.source==='push');
-      },'merge');
-      mergedPipeline=checked.pipeline;mergedJobs=checked.jobs;
-      requireValue(mergedPipeline.sha===branch.commit.id&&mergedPipeline.ref===project.default_branch&&mergedPipeline.source==='push','guided-preview-merged-push-required');
-      evidence.merge={projectId:project.id,mergeRequestIid:mr.iid,merged:true,normalGate:true,mergeCommit:merged.merge_commit_sha,
-        sourceCommit:mergedPipeline.sha,pipelineId:mergedPipeline.id,source:mergedPipeline.source,jobs:checked.proof,...await artifacts(mergedPipeline,mergedJobs)};
-      unchanged(before,await production(candidate));
-    });
-    if(desired.beta.enabled)await candidate.stage('guided-preview-native-beta-deploy-stop',async()=>{
-      evidence.beta={projectId:project.id,pipelineId:mergedPipeline.id,sourceCommit:mergedPipeline.sha,source:mergedPipeline.source,
-        jobs:nativeJobs(mergedPipeline,mergedJobs),...await artifacts(mergedPipeline,mergedJobs)};
-      await lifecycle('beta',mergedPipeline,evidence.beta);
-    });
-    candidate.evidence.guidedPreview=evidence;return evidence;
-  } finally {
-    try { await candidate.stage('guided-preview-production-retained',async()=>{const after=await production(candidate);unchanged(before,after);evidence.productionRetained={mainSha256:after.mainSha256,runningImage:after.runningImage};}); }
-    finally { if(mintAttempted) {
-      await candidate.stage('guided-preview-temporary-credential-revoked',async()=>{
-        if(!mintConfirmed)evidence.credentialCleanupUncertain=true;
-        try {
-          let revoked=false;
-          if(token)try{await candidate.api('/personal_access_tokens/self',token,'DELETE');revoked=true;}catch{}
-          const query="User.find_by_username('root').personal_access_tokens.where(name:'guided-preview-acceptance-"+candidate.id+"',revoked:false)";
-          // A lost/malformed Rails result can conceal a successfully minted PAT.
-          // A currently inactive name cannot prove that the original request
-          // finished; it may still commit after this best-effort cleanup.
-          const check=await candidate.rails("require 'json';"+(!revoked?query+".find_each(&:revoke!);":"")+"puts JSON.generate(activeCount:"+query+".count)");
-          requireValue(check.activeCount===0,'guided-preview-credential-still-active');
-          if(token){
-            const response=await candidate.request((candidate.gitlabUrl||candidate.url)+'/api/v4/user',{headers:{Host:new URL(candidate.gitlabUrl||candidate.url).host,'PRIVATE-TOKEN':token}});
-            requireValue(response.status===401,'guided-preview-credential-still-active');
-          }
-        } finally {
-          if(!mintConfirmed)throw Error('guided-preview-credential-mint-completion-uncertain');
-        }
-      });
-    } }
+async function verifierContract(candidate){
+  const root=path.resolve(__dirname,'../..');
+  const verifier=fs.readFileSync(path.join(root,'project-bootstrap/system-beta/verify.rb'),'utf8');
+  let tests=fs.readFileSync(path.join(root,'tests/gitlab/system-beta.rb'),'utf8');
+  tests=tests.replace("require_relative '../../project-bootstrap/system-beta/verify'",verifier)
+    .replace("JSON.parse(File.read(File.expand_path('../../gitlab/security-release.json', __dir__)))",'JSON.parse(Base64.strict_decode64('+JSON.stringify(Buffer.from(JSON.stringify(require('../../gitlab/security-release.json'))).toString('base64'))+'))')
+    .replace("load File.expand_path('../../project-bootstrap/system-beta/verify.rb', __dir__)",'eval(Base64.strict_decode64('+JSON.stringify(Buffer.from(verifier).toString('base64'))+'))');
+  const result=await candidate.rails(tests+'\nputs JSON.generate(mode:"contract-fixture",passed:true,negativeGatesPassed:true)');
+  requireValue(result.mode==='contract-fixture'&&result.passed===true&&result.negativeGatesPassed===true,'system-beta-verifier-contract-failed');return result;
+}
+async function helper(candidate,binding,action,jobId,verifier){
+  const request={action,kind:'beta',delivery:'system',projectId:binding.projectId,pipelineId:binding.pipelineId,jobId,
+    sourceCommit:binding.sourceCommit,mrIid:0,operation:binding.operation};
+  const input={fixtureNamespace:'system-beta-contract-fixture-v1',verifierMode:verifier.mode,verifierPassed:verifier.passed,
+    negativeGatesPassed:verifier.negativeGatesPassed,owner:candidate.id,request,helperImage:binding.helperImage,
+    wizardImageId:binding.wizardImageId,wizardImageRef:binding.wizardImageRef,fixtureCandidateJobId:binding.candidateJobId};
+  const name='wizard-environment-'+binding.projectId+'-'+jobId;let attempted=false;
+  try{
+    requireValue(!(await candidate.inner(['container','ls','--all','--filter','name=^/'+name+'$','--format','{{.Names}}'])).trim(),'system-beta-helper-name-conflict');
+    attempted=true;
+    const id=(await candidate.inner(['create','--name',name,'--network','none','--read-only','--memory','256m','--cpus','1','--pids-limit','128',
+      '--tmpfs','/tmp:rw,nosuid,noexec,size=16m','--label','system.wizard.environments.helper='+binding.operation,
+      '--label','org.system-bootstrapper.disposable-beta='+candidate.id,
+      '--mount','type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock',
+      '--mount','type=volume,source=system_templates,target=/templates','--mount','type=volume,source=system_ssl,target=/ssl,readonly',
+      '--entrypoint','node',binding.helperImage,'-e','('+execute.toString()+')(JSON.parse(process.argv[1])).then(()=>console.log("completed")).catch(()=>{console.error("disposable-beta-failed");process.exitCode=1;})',JSON.stringify(input)])).trim();
+    requireValue(/^[a-f0-9]{64}$/.test(id),'system-beta-helper-identity-invalid');
+    await candidate.inner(['start','--attach',id],{timeout:480000});
+  }finally{
+    if(attempted){
+      const names=(await candidate.inner(['container','ls','--all','--filter','name=^/'+name+'$','--format','{{.Names}}'])).trim();
+      if(names){const own=JSON.parse(await candidate.inner(['inspect',name]));requireValue(own.length===1&&own[0].Image===binding.helperImage&&
+        own[0].Config.Labels?.['system.wizard.environments.helper']===binding.operation&&own[0].Config.Labels?.['org.system-bootstrapper.disposable-beta']===candidate.id,'system-beta-helper-owner-changed');
+        await candidate.inner(['stop','--time','120',own[0].Id],{timeout:130000});await candidate.inner(['rm',own[0].Id]);}
+    }
   }
 }
-module.exports={run,settings,nativeJobs,unchanged,production,syncSession};
+async function sharedSource(candidate,repository,token,desired){
+  requireValue(repository.path===desired.namespace+'/'+desired.wizard.project,'system-beta-existing-shared-project-required');
+  requireValue(typeof candidate.spec.sharedSourceBundle==='string'&&path.isAbsolute(candidate.spec.sharedSourceBundle),'system-beta-exact-source-bundle-required');
+  const branch='system-candidate-'+candidate.id,temporary='/tmp/system-beta-source-'+candidate.id;
+  await candidate.inner(['exec','-i','system_bootstrapper_1','sh','-ec','umask 077; cat > "$1"','sh',temporary+'.bundle'],{inputFile:candidate.spec.sharedSourceBundle});
+  try{
+    await platform.node(candidate,async function(input){
+      const fs=require('fs'),{spawnSync}=require('child_process');
+      const run=(args,env={})=>{const r=spawnSync('git',args,{env:{...process.env,...env},encoding:'utf8',timeout:180000,maxBuffer:1024*1024});if(r.error||r.status!==0)throw Error();return r.stdout.trim();};
+      run(['clone','--bare',input.temporary+'.bundle',input.temporary]);
+      if(run(['--git-dir',input.temporary,'rev-parse',input.source+'^{tree}'])!==input.tree||
+        run(['--git-dir',input.temporary,'rev-parse',input.source+':wizard'])!==input.wizardTree)throw Error();
+      run(['--git-dir',input.temporary,'push','-o','ci.skip',input.url,input.source+':refs/heads/'+input.branch],{
+        GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.extraHeader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('oauth2:'+input.token).toString('base64'),GIT_TERMINAL_PROMPT:'0'});
+    },{temporary,source:candidate.spec.sourceRevision,tree:candidate.spec.sourceTree,wizardTree:candidate.spec.wizardSourceTree,
+      url:candidate.gitlabUrl+'/'+repository.path+'.git',branch,token},{timeout:240000});
+    await candidate.api('/projects/'+repository.id,token,'PUT',{default_branch:branch,ci_config_path:'.gitlab-ci.yml',only_allow_merge_if_pipeline_succeeds:true,only_allow_merge_if_all_discussions_are_resolved:true});
+    await candidate.api('/projects/'+repository.id+'/protected_branches',token,'POST',{name:branch,push_access_level:40,merge_access_level:40});
+    const selected=await candidate.api('/projects/'+repository.id+'/repository/branches/'+branch,token);
+    requireValue(selected.commit?.id===candidate.spec.sourceRevision&&selected.protected===true,'system-beta-shared-source-identity-changed');
+    return {...repository,defaultBranch:branch};
+  }finally{await candidate.inner(['exec','system_bootstrapper_1','rm','-rf','--',temporary,temporary+'.bundle']);}
+}
+async function publishImages(candidate,repository,token){
+  return platform.node(candidate,async function(input){
+    const fs=require('fs'),os=require('os'),path=require('path'),{spawnSync}=require('child_process');
+    const root=fs.mkdtempSync(path.join(os.tmpdir(),'beta-registry-'));
+    const run=(args,stdin)=>{const r=spawnSync('docker',['--config',root,...args],{input:stdin,encoding:'utf8',timeout:180000,maxBuffer:1024*1024});if(r.error||r.status!==0)throw Error();return r.stdout.trim();};
+    try{
+      run(['login','--username','oauth2','--password-stdin',input.registry],input.token);
+      const result={};for(const [role,id]of Object.entries(input.images)){
+        const repository=input.registry+'/'+input.path+'/'+(role==='helper'?'successor':'successor-wizard'),tag=repository+':fixture-'+input.owner;
+        run(['tag',id,tag]);run(['push',tag]);
+        const inspected=JSON.parse(run(['image','inspect',tag]))[0],reference=inspected.RepoDigests.find(ref=>ref.startsWith(repository+'@sha256:'));
+        if(inspected.Id!==id||!reference)throw Error();result[role]={id,reference};
+      }return result;
+    }finally{fs.rmSync(root,{recursive:true,force:true});}
+  },{registry:'registry.candidate.test:5050',path:repository.path,owner:candidate.id,token,
+    images:{helper:candidate.spec.images.candidate.id,wizard:candidate.spec.images.wizard.id}},{timeout:480000});
+}
+async function run(candidate){
+  const desired=settings(candidate),before=await production(candidate),sync=syncSession(candidate);
+  const evidence={version:2,sourceLayout:'system-monorepo-v1',fixtureNamespace:'system-beta-contract-fixture-v1',
+    acceptanceScope:'native-lifecycle-with-contract-verifier',productionMainSha256:before.mainSha256,productionImageId:before.runningImage};
+  candidate.evidence.guidedPreview=evidence;
+  let token,mintAttempted=false,mintConfirmed=false,binding,deployAttempted=false,repository,images,pipelineCount;
+  const fixturePipelineId=candidate.spec.ciIdentity?.pipelineId,fixtureCandidateJobId=candidate.spec.ciIdentity?.candidateJobId;
+  const fixtureDeployJobId=1000000001,fixtureStopJobId=1000000002;
+  requireValue([fixturePipelineId,fixtureCandidateJobId].every(value=>Number.isSafeInteger(value)&&value>0)&&
+    candidate.spec.sourceLayout==='system-monorepo-v1','system-beta-candidate-identities-required');
+  const inventory=async()=>{const rows=await candidate.api('/projects/'+before.repository.id+'/pipelines?per_page=100',token);requireValue(Array.isArray(rows)&&rows.length<100,'system-beta-pipeline-inventory-required');return rows.map(row=>row.id).sort((a,b)=>a-b);};
+  const identity=row=>({projectId:row.projectId,pipelineId:row.pipelineId,jobId:row.jobId,mrIid:row.mrIid,sourceCommit:row.sourceCommit,
+    operation:row.operation,generation:row.generation,state:row.state,imageDigest:row.imageRef.split('@').at(-1)});
+  try{
+    await candidate.stage('system-beta-native-source',async()=>{
+      mintAttempted=true;const auth=await candidate.rails("require 'json';t=User.find_by_username('root').personal_access_tokens.create!(name:'guided-preview-acceptance-"+candidate.id+"',scopes:['api','write_repository','read_registry','write_registry'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token)");
+      requireValue(typeof auth.token==='string'&&auth.token.length>10,'guided-preview-credential-required');token=auth.token;mintConfirmed=true;
+      pipelineCount=await inventory();repository=await sharedSource(candidate,before.repository,token,desired);
+      const project=await candidate.api('/projects/'+repository.id,token);
+      requireValue(project.path_with_namespace===repository.path&&project.visibility==='private','system-beta-owned-source-changed');
+      repository.namespaceId=project.namespace.id;images=await publishImages(candidate,repository,token);
+      evidence.candidate={projectId:repository.id,namespaceId:repository.namespaceId,fixturePipelineId,fixtureCandidateJobId,
+        sourceCommit:candidate.spec.sourceRevision,sourceTree:candidate.spec.sourceTree,wizardSourceTree:candidate.spec.wizardSourceTree,
+        helperImage:images.helper.id,wizardImageId:images.wizard.id,helperRegistryDigest:images.helper.reference.split('@').at(-1),
+        wizardRegistryDigest:images.wizard.reference.split('@').at(-1),pipelineEvidence:'contract-fixture'};
+    });
+    await candidate.stage('system-beta-native-setup',async()=>{
+      const plan=await sync('/projects/wizard/preview-setup/preflight',{settings:desired});
+      requireValue(plan.version===2&&plan.productionChanged===false&&plan.manualDeployment===true&&plan.source?.id===repository.id&&
+        plan.source.sourceRevision===candidate.spec.sourceRevision,'system-beta-native-preflight-mismatch');
+      let job=await sync('/projects/wizard/preview-setup/apply',{settings:desired,previewHash:plan.previewHash});
+      await candidate.wait(async()=>{if(job.state==='running')job=await sync('/projects/jobs/'+job.id);requireValue(job.state!=='failed','system-beta-native-setup-failed');return job.state!=='running';},180000);
+      const status=await sync('/projects/wizard/preview-setup');
+      requireValue(status.version===2&&status.phase==='ready'&&status.productionChanged===false&&status.manualDeployment===true,'system-beta-native-setup-not-ready');
+      requireValue(JSON.stringify(await inventory())===JSON.stringify(pipelineCount),'system-beta-setup-started-build');
+      const current=await production(candidate);unchanged(before,current);
+      requireValue(current.environment?.managementMode==='system-monorepo'&&current.environment.settings.review.enabled===false,'system-beta-review-reservation-present');
+      evidence.setup={projectId:repository.id,namespaceId:repository.namespaceId,sourceCommit:plan.source.sourceRevision,operation:status.operation,
+        native:true,productionChanged:false,reviewEnabled:false,betaEnabled:true,noBuildStarted:true};
+    });
+    await candidate.stage('system-beta-contract-verifier',async()=>{evidence.verifier=await verifierContract(candidate);});
+    await candidate.stage('system-beta-native-binding',async()=>{
+      const input={operation:evidence.setup.operation,projectId:repository.id,projectPath:repository.path,namespaceId:repository.namespaceId,
+        defaultBranch:repository.defaultBranch,pipelineId:fixturePipelineId,candidateJobId:fixtureCandidateJobId,sourceCommit:candidate.spec.sourceRevision,
+        wizardSourceTree:candidate.spec.wizardSourceTree,helperImage:images.helper.id,wizardImageId:images.wizard.id,wizardImageRef:images.wizard.reference};
+      binding=await platform.node(candidate,async function(input){
+        const fs=require('fs'),path=require('path'),os=require('os');const {main}=require('/system/project-bootstrap/system-beta/bind');
+        const root=fs.mkdtempSync(path.join(os.tmpdir(),'beta-binding-')),file=path.join(root,'input.json');
+        try{fs.writeFileSync(file,JSON.stringify(input),{mode:0o600});const plan=await main(['plan',file]);await main(['apply',file,plan.planHash]);return plan.binding;}
+        finally{fs.rmSync(root,{recursive:true,force:true});}
+      },input);
+      evidence.beta={bindingVerified:true,fixtureDeployJobId,fixtureStopJobId};
+    });
+    try{
+      await candidate.stage('system-beta-native-deploy',async()=>{
+        deployAttempted=true;await helper(candidate,binding,'deploy',fixtureDeployJobId,evidence.verifier);
+        const current=await production(candidate);unchanged(before,current);
+        const active=current.environment?.deployments?.beta?.active;
+        requireValue(active?.state==='active'&&active.projectId===binding.projectId&&active.pipelineId===fixturePipelineId&&active.jobId===fixtureDeployJobId&&
+          active.sourceCommit===binding.sourceCommit&&active.operation===binding.operation&&active.imageRef===binding.wizardImageRef,'system-beta-active-identity-mismatch');
+        const inspected=JSON.parse(await candidate.inner(['inspect',active.containerName]));
+        requireValue(inspected.length===1&&inspected[0].State.Running===true&&inspected[0].Image===binding.wizardImageId&&
+          Object.entries(environmentState.labels(active)).every(([key,value])=>inspected[0].Config.Labels?.[key]===value),'system-beta-image-ownership-mismatch');
+        evidence.beta.deployment=identity(active);evidence.beta.imageOwnershipVerified=true;
+        const page=await candidate.request('https://'+desired.beta.host+'/',{});
+        requireValue(page.status===200&&/<!doctype html|<html/i.test(page.body),'system-beta-https-page-unavailable');evidence.beta.tlsVerified=true;
+      });
+    }finally{
+      if(deployAttempted)await candidate.stage('system-beta-native-stop',async()=>{
+        await helper(candidate,binding,'stop',fixtureStopJobId,evidence.verifier);
+        const current=await production(candidate);unchanged(before,current);const slot=current.environment?.deployments?.beta,tombstone=slot?.tombstone;
+        requireValue(!slot?.active&&!slot?.pending&&!slot?.retired?.length&&tombstone?.state==='stopped'&&tombstone.jobId===fixtureDeployJobId&&
+          tombstone.pipelineId===fixturePipelineId&&tombstone.operation===binding.operation&&tombstone.imageRef===binding.wizardImageRef,'system-beta-stop-identity-mismatch');
+        evidence.beta.stopped=identity(tombstone);evidence.beta.stoppedThroughPipelineId=slot.stoppedThroughPipelineId;
+        requireValue(!(await candidate.inner(['container','ls','--all','--filter','name=^/'+tombstone.containerName+'$','--format','{{.Names}}'])).trim(),'system-beta-container-remains');
+        requireValue(!(await candidate.inner(['network','ls','--filter','name=^'+tombstone.networkName+'$','--format','{{.Name}}'])).trim(),'system-beta-network-remains');
+        requireValue(!(await candidate.inner(['container','ls','--all','--filter','label=org.system-bootstrapper.disposable-beta='+candidate.id,'--format','{{.Names}}'])).trim(),'system-beta-helper-remains');
+        const unlocked=await platform.node(candidate,function(){return !require('fs').existsSync('/state/.projects.env/.wizard.env.environments.lock');},{});
+        requireValue(unlocked,'system-beta-lease-remains');Object.assign(evidence.beta,{containerRemoved:true,networkRemoved:true,helperRemoved:true,leaseReleased:true});
+      });
+    }
+    return evidence;
+  }finally{
+    try{await candidate.stage('guided-preview-production-retained',async()=>{const after=await production(candidate);unchanged(before,after);evidence.productionRetained={mainSha256:after.mainSha256,runningImage:after.runningImage};});}
+    finally{if(mintAttempted)await candidate.stage('guided-preview-temporary-credential-revoked',async()=>{
+      if(!mintConfirmed)evidence.credentialCleanupUncertain=true;
+      const query="User.find_by_username('root').personal_access_tokens.where(name:'guided-preview-acceptance-"+candidate.id+"',revoked:false)";
+      const revoked=await candidate.rails("require 'json';"+query+".find_each(&:revoke!);puts JSON.generate(activeCount:"+query+".count)");
+      requireValue(revoked.activeCount===0&&mintConfirmed,'guided-preview-credential-cleanup-uncertain');
+      const response=await candidate.request(candidate.gitlabUrl+'/api/v4/user',{headers:{'PRIVATE-TOKEN':token}});
+      requireValue(response.status===401,'guided-preview-credential-still-active');evidence.temporaryCredentialRevoked=true;
+    });}
+  }
+}
+module.exports={run,settings,unchanged,production,syncSession,verifierContract,helper,sharedSource,publishImages};

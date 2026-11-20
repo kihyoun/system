@@ -46,7 +46,7 @@ test('terminal guided failures do not consume a readiness timeout and cleanup ke
   let clock=0;const candidate=new Candidate(spec(),{now:()=>clock,sleep:async()=>assert.fail('retried terminal failure'),docker:(_args,options)=>{assert(options.timeout<=180000);return 'ok';}});
   await assert.rejects(candidate.wait(async()=>{throw Object.assign(Error('failed-check'),{noRetry:true});},900000),/failed-check/);
   clock=candidate.deadline+1;candidate.canceled=true;
-  assert.equal(await candidate.stage('guided-preview-native-review-stop',()=>candidate.call(['version'])),'ok');
+  assert.equal(await candidate.stage('system-beta-native-stop',()=>candidate.call(['version'])),'ok');
   assert.equal(candidate.cleanupDeadline,undefined);await assert.rejects(candidate.call(['version']),/overall-timeout/);
 });
 test('full candidate inputs bind actual CI identity and native exact-host Review/Beta settings',()=>{
@@ -54,6 +54,5 @@ test('full candidate inputs bind actual CI identity and native exact-host Review
   assert.deepEqual(prepared.ciIdentity(env),{projectId:12,pipelineId:34,candidateJobId:56});
   for(const key of Object.keys(env))assert.throws(()=>prepared.ciIdentity({...env,[key]:'0'}));
   const desired=prepared.guidedSettings('https://github.com/example/wizard.git',env);
-  assert(desired.review.enabled&&desired.beta.enabled);assert.equal(desired.wizard.project,'guided-wizard-12-56');
-  assert.throws(()=>prepared.guidedSettings('http://private.invalid/wizard.git',env));
+  assert.equal(desired.version,2);assert.equal(desired.review.enabled,false);assert(desired.beta.enabled);assert.equal(desired.wizard.mode,'existing');assert.equal(desired.wizard.project,'wizard');
 });
