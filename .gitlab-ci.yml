@@ -289,6 +289,8 @@ test:platform-candidate:
   allow_failure: false
   before_script:
     - sh bootstrapper/install-runtime.sh
+    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+    - npm --prefix operations run build
   script:
     - node gitlab/check-candidate-capacity.js
     - sh tests/ci-platform.sh
@@ -327,6 +329,8 @@ build:
   cache: []
   before_script:
     - timeout -k 5 110 sh bootstrapper/install-runtime.sh
+    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+    - npm --prefix operations run build
   timeout: 14m
   interruptible: false
   resource_group: wizard-beta
@@ -378,6 +382,8 @@ deploy:dockerhub:
   allow_failure: false
   before_script:
     - sh bootstrapper/install-runtime.sh
+    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+    - npm --prefix operations run build
   script:
     - node gitlab/publish-dockerhub.js
   artifacts:
@@ -445,6 +451,8 @@ deploy:github-release:
   resource_group: 'github-release-$CI_PROJECT_ID'
   allow_failure: false
   script:
+    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+    - npm --prefix operations run build
     - node gitlab/publish-github-release.js
   artifacts:
     when: always
