@@ -8,6 +8,9 @@ bootstrapper.json
 bootstrapper_initial_root_password
 sync/node_modules
 sync/dist
+operations/node_modules/
+operations/dist/
+operations/*.tgz
 test-results/
 project-bootstrap/wizard-source/snapshot.json
 .test-context/
