@@ -19,7 +19,7 @@ function fixture(t, configured = false, reset = false) {
   for (const relative of ['system', 'bootstrapper', 'sync', 'wizard', 'nginx/.templates', 'bin', 'mounted/platform/configuration']) {
     fs.mkdirSync(path.join(dir, relative), {recursive: true});
   }
-  for (const relative of ['bootstrapper/persistence.sh', 'bootstrapper/storage-env.sh', 'system/.docker.env.example', 'system/.seed.env']) {
+  for (const relative of ['system/.docker.env.example', 'system/.seed.env']) {
     fs.copyFileSync(path.join(root, relative), path.join(dir, relative));
   }
   fs.symlinkSync(path.join(root, 'operations'), path.join(dir, 'operations'), 'dir');

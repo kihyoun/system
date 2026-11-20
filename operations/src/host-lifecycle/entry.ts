@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 import path from 'node:path';
+import fs from 'node:fs';
+import { environmentAssignments } from '../runtime/environment-assignments';
 import { NestFactory } from '@nestjs/core';
 import { HostLifecycleModule } from './host-lifecycle.module';
 import { HostPersistenceService } from './persistence.service';
@@ -14,7 +16,13 @@ export async function hostLifecycle(action: string, checkout: string) {
   process.on('SIGTERM', cancel);
   try {
     if (action === 'persistence') {
-      await app.get(HostPersistenceService).prepare(process.env, undefined, abort.signal);
+      const environment = { ...process.env };
+      if (environment.PERSISTENCE_ENV_FILE)
+        Object.assign(
+          environment,
+          environmentAssignments(fs.readFileSync(environment.PERSISTENCE_ENV_FILE, 'utf8')),
+        );
+      await app.get(HostPersistenceService).prepare(environment, undefined, abort.signal);
       console.log('Persistent storage verified.');
     } else
       await app

@@ -32,6 +32,10 @@ test('compatibility storage argument parser preserves environment and selectors'
  const {storageArguments}=require('../dist/host/storage-entry');
  assert.deepEqual(storageArguments(['restore','--image','accepted','--configuration-backup','/backup.zip','--check-only'],{PERSISTENCE_ENV_FILE:'/private/settings'},'/checkout'),{operation:'restore',image:'accepted',checkout:'/checkout',persistenceEnv:'/private/settings',configurationBackup:'/backup.zip',checkOnly:true});
  assert.throws(()=>storageArguments(['restore','--other'],{},'/checkout'),/arguments/);
+ const {spawnSync}=require('node:child_process');
+ const invalid=spawnSync(process.execPath,[path.resolve(__dirname,'../../bootstrapper/seed-operation.js'),'restore','--other'],{encoding:'utf8'});
+ assert.equal(invalid.status,1);assert.equal(invalid.stdout,'');
+ assert.equal(invalid.stderr,'Host storage failed or its outcome is uncertain. Retain the owned launcher and storage lease; inspect operation state before retrying.\n');
 });
 test('native controller lease preserves critical ownership, excludes contenders and adopts only dead owners',async t=>{
  const {ControllerLeaseService}=require('../dist/host/controller-lease.service');

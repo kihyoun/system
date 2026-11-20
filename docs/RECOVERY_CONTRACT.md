@@ -152,15 +152,17 @@ promote a `.harvest-*` staging directory to `current`.
 With the target available, **Harvest** in the authenticated Wizard uses the
 same repository-owned dispatcher as `system/harvest.sh`. You can instead run
 from a reviewed host checkout using an available, accepted complete controller
-image. Resolve and record its actual image identity, then use:
+image. Resolve and record its actual image identity, then use the Node executable
+prepared by Quickstart below. A source installation uses its explicitly retained
+Node executable in place of `/opt/system-bootstrapper-runtime/bin/node`:
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh harvest \
+  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --check-only
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh harvest \
+  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
 ```
 
@@ -192,7 +194,7 @@ verified image archives. The former live data directory is not an input.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash -euc 'set -a; source "$PERSISTENCE_ENV_FILE"; source bootstrapper/storage-env.sh; set +a; exec bash bootstrapper/persistence.sh'
+     /opt/system-bootstrapper-runtime/bin/node bootstrapper/persistence.js
    ```
 
    This step neither starts containers nor requires the backup medium. It must
@@ -209,12 +211,12 @@ verified image archives. The former live data directory is not an input.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/seed-operation.sh restore \
+     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip \
      --check-only
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/seed-operation.sh restore \
+     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip
    ```

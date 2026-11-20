@@ -2,7 +2,7 @@
 
 `HostLifecycleModule` supplies the standalone host start/stop services and the
 persistence preflight. The public `start.sh`, `stop.sh` and
-`bootstrapper/persistence.sh` entry points select the prepared Node executable and
+`bootstrapper/persistence.js` entry points use the prepared Node runtime and
 invoke this module. They do not duplicate lifecycle or storage decisions. Prepare
 the supported runtime and compiled operations before using them, including during
 offline recovery; the wrappers do not install dependencies.
@@ -24,14 +24,14 @@ prepares Wizard source and requests a Compose build. Stopping drains the running
 controller before bringing its Compose service down; a failed drain prevents that
 second step and reports failure.
 
-Bash remains the native reader of the existing shell configuration format; it is
-not used to construct arbitrary command strings or reproduce operation policy.
+The shared literal-assignment parser reads existing exported configuration values;
+variable expansion and command execution are rejected.
 External commands use argument arrays and bounded process adapters. Long Compose
 commands and source preparation use owned process groups with cancellation; the
 compatibility entry forwards SIGINT/SIGTERM and closes its Nest context. A failed
 or interrupted start does not erase persistent data or an operation lease.
 
-The existing `tests/persistence/persistence-guard.test.py` checks mount refusal,
+The existing `tests/persistence/persistence-guard.test.js` checks mount refusal,
 local/volume selection, free space, symlink boundaries, marker handling and file
 permissions. `tests/persistence/persistence-start.test.js` checks the public native
 entry in an isolated container, including saved selectors and immutable images.

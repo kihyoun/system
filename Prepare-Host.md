@@ -67,7 +67,7 @@ platform acceptance are separate steps.
 
 ## Prepare the host operations runtime
 
-Host `start.sh`, `stop.sh`, `bootstrapper/persistence.sh`, the release installer
+Host `start.sh`, `stop.sh`, `bootstrapper/persistence.js`, the release installer
 and replacement/restore tools require Node and compiled `operations` **before**
 their first call. Installing Docker alone, or passing `--install-host` to an
 initializer, does not prepare this runtime. Choose one preparation path below;
@@ -135,7 +135,7 @@ sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bi
 ```
 
 Keep `SYSTEM_NODE_BIN` for subsequent `sudo env "PATH=..."` calls to `stop.sh`,
-`bootstrapper/persistence.sh` and Python host tools: sudo normally discards the
+`bootstrapper/persistence.js` and Python host tools: sudo normally discards the
 interactive nvm PATH. Alternatively use the retained dedicated runtime prepared
 by the accepted-image path. A source build still constructs controller/Wizard
 images during startup unless an existing accepted release profile disables builds;
