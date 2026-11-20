@@ -61,11 +61,12 @@ class Fixture {
       return '<title>System Bootstrapper</title><div id="root"></div>';
     }
     if (args[0] === 'exec' && args[1] === 'system_bootstrapper_1') {
-      if (args[2] === 'node') {
+      if (args[2] === 'node' && args[3] === '-e') {
         if (this.badPublication) throw Error('Public publication filesystem or content check failed');
         return JSON.stringify({ok: true});
       }
-      const snapshot = args[args.indexOf('--') + 1]; const data = fs.readFileSync(snapshot, 'utf8');
+      assert.deepEqual(args.slice(2,6), ['node','/system/operations/dist/lifecycle/entry.js','wizard-apply-image','/system']);
+      const snapshot = args[6]; const data = fs.readFileSync(snapshot, 'utf8');
       const references = [...data.matchAll(/export WIZARD_IMAGE='([^']+)'/g)];
       const image = references.pop()[1] === oldId ? oldId : nextId; this.events.push('compose-' + (image === oldId ? 'old' : 'new'));
       this.containers.get('system_wizard_1').imageId = image;

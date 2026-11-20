@@ -24,6 +24,14 @@ test('runner failure leaves Wizard startup available, while registry recovery fa
  assert(f.calls.find(call=>call.route==='proxies'));assert(f.calls.find(call=>call.args?.at(-1)==='wizard'));assert(f.calls.find(call=>call.args?.[0]?.endsWith('wizard-image-recovery.js')));
  const original=f.children.run;f.calls.length=0;f.children.run=async(binary,args,options)=>{if(args[0]?.endsWith('wizard-image-recovery.js'))throw Error('recovery failed');return original(binary,args,options);};
  await assert.rejects(f.service.intermediate(f.context,true),/recovery failed/);assert(!f.calls.some(call=>call.route==='proxies'||call.args?.at(-1)==='wizard'));
+ const snapshot=path.join(f.root,'state/image.env'),compose=path.join(f.root,'system/docker-compose.yml');
+ fs.writeFileSync(snapshot,'WIZARD_IMAGE=mutable\n');f.calls.length=0;
+ await assert.rejects(f.service.applyWizardImage(f.context,snapshot,compose),/immutable/);assert.equal(f.calls.length,0);
+ const image='wizard@sha256:'+'a'.repeat(64);
+ fs.writeFileSync(snapshot,`WIZARD_IMAGE=${image}\nPRIVATE_SETTING='not-in-arguments'\n`);
+ await f.service.applyWizardImage(f.context,snapshot,compose);
+ assert.equal(f.calls[0].binary,'docker');assert.deepEqual(f.calls[0].args.slice(-6),['up','--no-deps','--pull','never','-d','wizard']);
+ assert.equal(f.calls[0].options.env.WIZARD_IMAGE,image);assert(!f.calls[0].args.includes('not-in-arguments'));
 });
 test('startup orders mounted state and public settings before writers, settles lease before unlimited prebuilt Sync, then stops',async t=>{
  const f=fixture(t),original=f.children.run;

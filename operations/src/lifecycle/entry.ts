@@ -66,6 +66,8 @@ export async function main(args = process.argv.slice(2), environment = process.e
       supervisedGroup: upgrade,
     };
     if (action === 'refresh-source') await app.get(LifecycleService).refreshSource(context);
+    else if (action === 'wizard-apply-image')
+      await app.get(LifecycleService).applyWizardImage(context, scope, pool);
     else if (action === 'gitlab-start' || action === 'gitlab-stop')
       await app.get(LifecycleService).gitlab(context, action === 'gitlab-start');
     else if (action === 'wizard-start' || action === 'wizard-stop')

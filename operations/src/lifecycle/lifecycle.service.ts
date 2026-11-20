@@ -99,6 +99,30 @@ export class LifecycleService {
       );
     if (start) await this.address(selected, 'wizard', 'wizard/.docker.env', 'WIZARD_IP');
   }
+  async applyWizardImage(context: LifecycleContext, snapshot: string, compose: string) {
+    if (!path.isAbsolute(snapshot) || !path.isAbsolute(compose))
+      throw Error('Absolute configuration snapshot and Compose paths required.');
+    const environment = settings(this.configuration, [snapshot], context.environment);
+    if (
+      !/^(?:sha256:[a-f0-9]{64}|[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64})$/.test(
+        environment.WIZARD_IMAGE || '',
+      )
+    )
+      throw Error('Only immutable Wizard images can be applied.');
+    await this.command({ ...context, environment }, 'docker', [
+      '--host=unix:///var/run/docker.sock',
+      'compose',
+      '--compatibility',
+      '-f',
+      compose,
+      'up',
+      '--no-deps',
+      '--pull',
+      'never',
+      '-d',
+      'wizard',
+    ]);
+  }
   async gitlab(context: LifecycleContext, start: boolean) {
     if (!this.configured(context)) return;
     const selected = this.load(context, ['system/.docker.env']);
