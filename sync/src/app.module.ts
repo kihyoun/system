@@ -1,6 +1,6 @@
 import {Module} from '@nestjs/common';
 import {AuthModule} from './auth/auth.module';
-import {ConfigurationModule} from './configuration/configuration.module';
+import {ConfigurationModule} from './config/configuration.module';
 import {ProjectsModule} from './projects/projects.module';
 import {OperationsModule} from './operations/operations.module';
 import {DiagnosticsModule} from './diagnostics/diagnostics.module';
