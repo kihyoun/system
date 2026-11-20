@@ -344,3 +344,12 @@ test('monorepo public metadata rejects mixed source identities and invented Wiza
     assert.throws(() => publicMetadata(ci, accepted, {...pair, ...patch}, undefined, Buffer.from('n'), Buffer.from('q')));
   assert.throws(() => publicMetadata(ci, accepted, pair, source, Buffer.from('n'), Buffer.from('q')));
 });
+
+
+test('publication transport stops oversized bodies before buffering an unbounded response', async () => {
+  let canceled = false, pulls = 0;
+  const body = new ReadableStream({pull(controller) { pulls++; controller.enqueue(new Uint8Array(1024 * 1024)); }, cancel() { canceled = true; }});
+  await assert.rejects(api('https://api.github.com', 'fixture', 'Authorization', async () => new Response(body))('/repos/example/system/releases', {raw: true}), /too large/);
+  assert.equal(canceled, true);
+  assert(pulls <= 10, 'bounded reader cancels upstream after crossing eight MiB');
+});

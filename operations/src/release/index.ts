@@ -40,3 +40,10 @@ export { NpmPublicationError, readNpmReceipt, validateNpmPublication } from './n
 export type { NpmReceipt } from './npm-identity';
 export * from './npm-publication.service';
 export * from './release.module';
+
+export * from './github-publication.service';
+export * from './github-acceptance';
+export * from './github-metadata';
+export * from './github-presentation';
+export * from './github-transport';
+export * from './public-upgrade-assets';

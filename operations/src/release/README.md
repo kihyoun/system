@@ -67,3 +67,17 @@ name, version and integrity match exactly; conflicting versions are never replac
 `node tests/gitlab/npm-publication.js` exercises these paths with injected ports
 and no network or live publication. The public CI entry points require the built
 operations runtime and configured protected publisher credentials.
+
+
+`ReleaseModule.registerGithub` exports `GithubPublicationService`. The service
+uses typed acceptance, public-metadata, upgrade-provenance and immutable-release
+presentation policies, with injected HTTP, process and accepted-image evidence
+ports. The former GitHub and public-upgrade scripts are compatibility adapters.
+Same-attempt native GitLab jobs and their exact artifact bytes must pass before
+any GitHub tag or draft is created. Draft retries retain existing immutable
+assets; published releases cannot acquire replacement assets. Anonymous readback
+verifies the exact source, public image digests and every release asset. The HTTP
+adapter bounds response streams and strips credentials before following an
+allowlisted signed asset redirect. `tests/gitlab/publish-github-release.js` and
+`tests/gitlab/public-upgrade-release.js` exercise both historical and monorepo
+publication, interrupted drafts, privacy allowlists and native verifier roundtrips.
