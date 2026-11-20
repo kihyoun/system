@@ -1,13 +1,5 @@
 ## Öffentlicher Server: eigene Domain und HTTPS
 
-Bereiten Sie vor nativer Hostinstallation, Start/Stopp, Persistenzprüfung oder
-Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
-vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
-Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
-installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
-Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` vor Wartungsbeginn offline verfügbar.
-
 Dieser Weg installiert eine **neue** Plattform auf einem Ubuntu-24.04-LTS-Server mit sudo-
 Zugriff, ausreichend lokalem Speicherplatz und einer von Ihnen kontrollierten Domain. Ein ausdrücklich eingebundenes
 Live-Volume ist optional. Die Wiederverwendung von GitLab-Daten erfordert stattdessen das [Ersatzhostverfahren](#replace-a-host-while-retaining-its-data-volume).

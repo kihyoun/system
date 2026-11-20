@@ -19,8 +19,8 @@ docker run --rm --network none system-component-tests sync
 이 자식 컨테이너에 Docker 소켓, 비공개 구성, 호스트 네트워크 또는 플랫폼 볼륨을
 마운트하지 마세요. 신뢰된 호스트에 Node가 없으면
 `bash project-bootstrap/wizard-source/prepare.sh`가 소스 패키징 대안을 제공합니다.
-컨텍스트에는 현재 커밋된 Git 트리의 허용된 blob과 `system-monorepo-v1`의 일반
-`wizard/` 트리가 포함됩니다. 과거 gitlink 소스는 별도의 검증된 Wizard 스냅샷과
+컨텍스트에는 현재 커밋된 Git 트리의 허용된 blob과 일반
+`wizard/` 트리가 포함됩니다(`system-monorepo-v1`). 과거 gitlink 소스는 별도의 검증된 Wizard 스냅샷과
 정확한 재귀 서브모듈이 필요합니다(`git submodule update --init --recursive`). Git 메타데이터, 비공개/무시/미추적 파일 및 작업
 사본 편집은 제외합니다. 패키징 전에 의도한 코드를 커밋하세요. 전체 체크아웃을 보내는
 대체 동작은 없습니다.
@@ -35,7 +35,7 @@ Rails 런타임과 별개입니다.
 구성 내보내기 도구로 `tests/wizard/configuration-routing-export.js`도 실행합니다.
 첫 Save/Fetch/Backup 왕복 과정, 서버 확인 기록의 정확한 보존, Fetch가 파생된
 저장소 메타데이터를 채울 때 선택적 라우팅이 유지되는지를 검증합니다.
-별도로 실행하려면 `npm run build:config-export` 명령을 초기화된 `wizard`
+별도로 실행하려면 `npm run build:config-export` 명령을 커밋된 `wizard/`
 체크아웃에서 실행하여 Wizard 내보내기 도구를 빌드한 다음 아래 명령을 실행하세요.
 
 ```sh

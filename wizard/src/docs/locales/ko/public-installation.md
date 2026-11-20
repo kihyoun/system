@@ -1,12 +1,5 @@
 ## 공개 서버: 자체 도메인 및 HTTPS
 
-네이티브 호스트 설치, 시작/중지, 영구 저장소 검사 또는 복구 전에
-[호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료하세요.
-Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
-먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
-설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
-
 이 경로는 sudo 권한, 충분한 로컬 디스크 및 관리 권한이 있는 도메인을 갖춘
 Ubuntu 24.04 LTS 서버에 **새 플랫폼**을 설치합니다.
 명시적으로 마운트한 운영 볼륨은 선택 사항입니다.

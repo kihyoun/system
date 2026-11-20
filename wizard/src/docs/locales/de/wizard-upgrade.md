@@ -194,3 +194,16 @@ Wenn die Konfiguration übernommen, das Schreiben des Prüfpunkts aber unterbroc
 wurde, repariert eine verifizierte erneute Übernahme diesen Prüfpunkt, ohne die
 Konfiguration umzuschreiben. Ersetze `build-stage` nicht durch einen
 Quellcode-Neuimport, um einen widersprüchlichen Plan zu umgehen.
+
+Das kompilierte Operations-`UpgradeModule` stellt Staging und Übernahme über einen
+eigenständigen Nest-Dienst bereit. Die typisierte Sitzung bewahrt genaue Repository-/Dateiprüfungen,
+Commit-Absichten, Abgleich ungewisser Antworten, geprüfte Fast-Forward-Abstammung,
+quellerhaltende Rezept-Upgrades und den Verlauf gestoppter Generationen. Der ursprüngliche
+Betreiberbefehl delegiert an diesen Dienst; historische Rezeptgeneratoren bleiben
+byte-stabile Formatadapter.
+
+Vor dem Staging muss der isolierte saubere Helfer dem vollständigen geprüften
+project-bootstrap-Baum, kompilierten Operations-Baum, aufgelösten produktiven Abhängigkeiten
+und CA-Bootstrap-Eingaben entsprechen. Die Prüfung vergleicht einen deterministischen
+Gesamthash im Image ohne Netzwerk, Schreibzugriff oder Host-Mounts. Bauen Sie operations
+und paketieren Sie dieselben Abhängigkeitsversionen, bevor Sie den Helfer vorbereiten.

@@ -39,7 +39,7 @@ Konfigurationsexporter des gebauten Wizards vor dem Start der vollständigen Pla
 Die Prüfung umfasst den ersten Save/Fetch/Backup-Rundlauf, den exakten Erhalt des
 Serverbelegs und selektives Routing, wenn Fetch die abgeleiteten Repository-Metadaten ergänzt.
 Für einen separaten Lauf bauen Sie den Wizard-Exporter mit `npm run build:config-export`
-im initialisierten `wizard`-Checkout und führen anschließend Folgendes aus:
+im committeten `wizard/`-Verzeichnis und führen anschließend Folgendes aus:
 
 ```sh
 node tests/wizard/configuration-routing-export.js --exporter wizard/build-tools/export-configuration.cjs

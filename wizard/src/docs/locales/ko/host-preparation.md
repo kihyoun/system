@@ -74,8 +74,8 @@ nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
 필요가 없습니다.
 
 수동 설치에서는 먼저 네이티브 호스트 의존성을 설치하고, 검토된 릴리스의 소스를
-체크아웃한 다음 공개 메타데이터를 검증합니다. 릴리스 설치 도구를 실행하기 전에
-다음 명령으로 런타임을 준비하세요.
+체크아웃한 다음 [릴리스 안내](docs/RELEASES.md)에 따라 공개 메타데이터를 검증합니다.
+호스트 수명 주기, 영구 저장 또는 설치 진입점을 호출하기 전에 다음 명령으로 런타임을 준비하세요.
 
 ```sh
 sudo python3 bootstrapper/prepare-host-runtime.py \
@@ -124,8 +124,8 @@ sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bi
   bash start.sh
 ```
 
-이후 `stop.sh`, `bootstrapper/persistence.sh`, Python 호스트 도구의
-`sudo env "PATH=..."` 호출을 위해 `SYSTEM_NODE_BIN`을 유지하세요. sudo는 보통 대화형
+`SYSTEM_NODE_BIN`을 유지하여 이후 `sudo env "PATH=..."` 호출에서
+`stop.sh`, `bootstrapper/persistence.sh`, Python 호스트 도구에 전달하세요. sudo는 보통 대화형
 nvm PATH를 제거합니다. 또는 승인된 이미지 경로로 준비한 전용 런타임을 사용하세요.
 기존 승인 릴리스 프로필에서 빌드를 비활성화하지 않았다면 소스 시작은 여전히 컨트롤러와
 Wizard 이미지를 빌드합니다. 복구 기록에 필요한 이미지를 다시 빌드하여 대체해도 된다는

@@ -1,6 +1,7 @@
 # Runner-Persistenz
 
-`start.sh` liest das `PERSISTENT_DIR` der Plattform und erzeugt einen Compose-Dienst
+Der Kompatibilitätseinstieg `start.sh` ruft den gemeinsamen `RunnerLifecycleService` auf.
+Dieser liest das `PERSISTENT_DIR` der Plattform und erzeugt einen Compose-Dienst
 für jeden Runner-Manager. Manager `runner_docker_1` bindet ein:
 
 - `PERSISTENT_DIR/runners/runner/1/config` nach `/etc/gitlab-runner`;
@@ -47,5 +48,7 @@ docker run --rm --network none --read-only --tmpfs /tmp:exec \
   "$BOOTSTRAPPER_IMAGE" tests/gitlab-runner/persistence.js
 ```
 
-Dies verwendet das tatsächliche `mktemp` der Laufzeit, ohne Docker-Zugriff oder
-aktiven Zustand.
+Dies verwendet das tatsächliche temporäre Dateisystem der Laufzeit ohne Docker-Zugriff
+oder aktiven Zustand. Bauen Sie das Operations-Paket vor Ausführung der Kompatibilitätsbefehle.
+Die Runner-Einrichtung teilt die dauerhafte Controller-Lease; ein geerbtes Upgrade muss
+seine genaue Operationsidentität liefern und der lebende Vorfahr des Runner-Befehls bleiben.

@@ -83,7 +83,7 @@ angelegte Container wird nicht gestartet. Ein npm-Installationslauf auf dem Host
 ist nicht erforderlich.
 
 Beim manuellen Weg zuerst die nativen Host-Abhängigkeiten installieren, den
-geprüften Release-Checkout wählen und die öffentlichen Metadaten verifizieren.
+geprüften Release-Checkout wählen und die öffentlichen Metadaten anhand des [Release-Leitfadens](docs/RELEASES.md) verifizieren.
 Danach vor jedem Host-Lebenszyklus-, Persistenz- oder Installationseinstieg ausführen:
 
 ```sh
@@ -127,7 +127,7 @@ SYSTEM_NODE_BIN="$(dirname "$(command -v node)")"
 test -f operations/dist/host-lifecycle/entry.js
 ```
 
-Wählen Sie den Arbeitsspeicher wie im Startabschnitt beschrieben. Verwenden Sie
+Wählen Sie den Speicher für Arbeitsdaten wie im Startabschnitt beschrieben. Verwenden Sie
 danach diesen Quellstart anstelle des Installers für öffentliche Images:
 
 ```bash

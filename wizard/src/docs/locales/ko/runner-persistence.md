@@ -1,6 +1,7 @@
 # Runner 데이터 영속성
 
-`start.sh`는 플랫폼의 `PERSISTENT_DIR`를 읽고 각 Runner 관리자에 대한 Compose
+호환성 진입점 `start.sh`는 공유 `RunnerLifecycleService`를 호출합니다. 이 서비스는
+플랫폼의 `PERSISTENT_DIR`를 읽고 각 Runner 관리자에 대한 Compose
 서비스를 생성합니다. `runner_docker_1` 관리자는 다음 경로를 바인드합니다.
 
 - `PERSISTENT_DIR/runners/runner/1/config`를 `/etc/gitlab-runner`에 연결합니다.
@@ -42,4 +43,7 @@ docker run --rm --network none --read-only --tmpfs /tmp:exec \
   "$BOOTSTRAPPER_IMAGE" tests/gitlab-runner/persistence.js
 ```
 
-이 검사는 Docker 접근이나 운영 상태 없이 런타임의 실제 `mktemp`를 사용합니다.
+이 검사는 Docker 접근이나 운영 상태 없이 런타임의 실제 임시 파일 시스템을 사용합니다.
+호환성 명령을 실행하기 전에 operations 패키지를 빌드하세요. Runner 설정은 영구
+컨트롤러 lease를 공유합니다. 상속된 업그레이드는 정확한 작업 식별 정보를 제공하고
+Runner 명령의 살아 있는 상위 프로세스로 유지되어야 합니다.

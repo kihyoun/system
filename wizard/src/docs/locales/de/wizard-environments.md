@@ -136,3 +136,23 @@ injizierte Fehler bei Gesundheit, Eigentum, CAS, Reload, veralteten Generationen
 und unterbrochenem Wechsel. `node tests/wizard/environment-canonical.js` prüft
 die erhaltene kanonische Sperre und den Belegadapter. Diese lokalen Prüfungen
 belegen keine Live-Kandidatenabnahme.
+
+`CanonicalModule` übernimmt Reservierungsabfragen, tokengebundene Sperren und Abbruch,
+CAS für bytegenaue Nachweise, DNS-Konsistenz und den Ersatz archivierter Beta-Bindungen.
+Der saubere Helfer ruft seinen kompilierten stdin-Adapter im ursprünglichen Controller auf;
+Quelltext wird nicht mehr als kanonische Implementierung ausgewertet. Der Adapter liefert
+nur die bestehende öffentliche Antwortstruktur und eine feste Fehlerdiagnose.
+
+`EnvironmentModule` übernimmt Helferaufruf, kanonische Reservierungsprüfungen,
+Image-/Quell-/Jobidentität, TLS-Bereitschaft, Auswahl des nativen Ruby-Prüfers und
+Wartung gestoppter Routen. Der begrenzte Prozessadapter verfolgt Kindprozesse und
+behält ein separates Bereinigungsbudget; Abbruch erlaubt niemals fremde Bereinigung.
+Die Reservierungsrichtlinie für primäre Quellen bewahrt genaue CI-Identitäten,
+Nachweisverlauf, Stopp-Tombstones und Generationsuntergrenzen. Kompatibilitätsexporte
+bleiben für bestehende Offline-Tests und verwerfbare Prüfer-Fixtures verfügbar.
+
+`SystemBetaModule` validiert und speichert ausdrückliche Kandidatenbindungen und führt
+den eigenen CI-Helferlebenszyklus mit getrennten Arbeits- und Bereinigungsbudgets aus.
+Der alte System-Review-Einstieg akzeptiert nur Stop; neue Review-Bindungen scheitern
+vor Erwerb einer kanonischen Sperre. Erhaltene Review-Bindungs- und Ressourcenprüfungen
+dienen ausschließlich der Bereinigung eigener Ressourcen.

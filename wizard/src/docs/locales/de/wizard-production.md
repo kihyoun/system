@@ -172,3 +172,11 @@ Das sind Komponentenprüfungen. Prüfe eine echte erfolgreiche Pipeline, einen
 separaten Kandidaten, Production-Freigabe und Rollback auf deiner eigenen
 Infrastruktur, bevor du dich bei einem verfügbar zu haltenden Dienst auf das
 Verfahren verlässt.
+
+Das kompilierte Operations-`ProductionModule` stellt den eigenständigen Betreiberdienst
+bereit. Seine typisierte Promotionssitzung übernimmt Vorschau, Kandidaten-Gesundheitsprüfungen,
+Routenumschaltung, dauerhafte Checkpoints, Rollback und Wiederherstellung bei inaktivem
+Eigentümer. Docker läuft über einen begrenzten Adapter; unabhängige GitLab-Nachweise
+verwenden weiterhin den Ruby-Formatadapter. Der historische Befehl `run.js` und
+exportierte Richtlinienhelfer sind Kompatibilitätseinstiege und benötigen ein gebautes
+Operations-Paket.
