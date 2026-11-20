@@ -65,7 +65,7 @@ python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply
 사용하며 GitLab에 쓰지는 않습니다.
 
 ```sh
-python3 gitlab/renovate/verify.py --config /secure/operator/renovate.json \
+node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json
 ```
 
@@ -93,7 +93,7 @@ python3 gitlab/renovate/setup.py --config /secure/operator/renovate.json --apply
 포함되었는지 검증하세요.
 
 ```sh
-python3 gitlab/renovate/verify.py --config /secure/operator/renovate.json \
+node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json --verify
 ```
 

@@ -70,7 +70,7 @@ Record the first-run branch/MR inventory before activating it. This uses the
 scoped bot token in private state; it does not write to GitLab:
 
 ```sh
-python3 gitlab/renovate/verify.py --config /secure/operator/renovate.json \
+node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json
 ```
 
@@ -100,7 +100,7 @@ verify the selected project dashboards, unchanged branch/MR inventories and that
 pipeline contained only the successful bot job:
 
 ```sh
-python3 gitlab/renovate/verify.py --config /secure/operator/renovate.json \
+node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json --verify
 ```
 

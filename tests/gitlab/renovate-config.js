@@ -56,3 +56,34 @@ try {
   }
 }
 console.log('PASS: explicit repository allowlist, approval safety policy and supported custom pin extraction');
+
+// Consolidated former Python discovery checks use the same native service as CLI.
+(async () => {
+  const {RenovateVerificationService} = require('../../operations/dist/renovate/verification.service');
+  const {RenovateModule} = require('../../operations/dist/renovate/renovate.module');
+  const {NestFactory} = require('../../operations/node_modules/@nestjs/core');
+  const app = await NestFactory.createApplicationContext(RenovateModule, {logger:false});
+  try {
+    const service = app.get(RenovateVerificationService);
+    let changed = false, extraJob = false;
+    const api = {
+      async all(route) {
+        if (route.includes('/repository/branches')) return [{name:'main'}, ...(changed ? [{name:'renovate/unapproved'}] : [])];
+        if (route.includes('/merge_requests?')) return [];
+        if (route.includes('/issues?')) return [{title:'Dependency Dashboard',author:{id:9},iid:1}];
+        if (route.endsWith('/jobs')) return [{name:'renovate:discover',status:'success'}, ...(extraJob ? [{name:'test:isolated',status:'success'}] : [])];
+        throw Error('Unexpected read route');
+      },
+      async get() { return {last_pipeline:{id:42,status:'success'}}; },
+    };
+    const config = {project_ids:[10,11]}, state = {user_id:9,schedule_id:3};
+    const baseline = {project_ids:[10,11],user_id:9,inventory:await service.inventory(api,[10,11])};
+    assert.equal((await service.verify(api,config,state,baseline)).discovery,'dashboard-only');
+    changed = true;
+    await assert.rejects(service.verify(api,config,state,baseline),/inventories changed/);
+    changed = false; extraJob = true;
+    await assert.rejects(service.verify(api,config,state,baseline),/unexpected/);
+    await assert.rejects(service.verify(api,config,state,{...baseline,user_id:99}),/another bot/);
+    console.log('PASS: shared Nest discovery verifies dashboard-only run and rejects unrelated inventories/jobs');
+  } finally { await app.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

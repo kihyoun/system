@@ -264,35 +264,4 @@ class Provisioning(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '0600'):
             setup.private_json(p)
 
-verify_spec = importlib.util.spec_from_file_location('renovate_verify', Path(__file__).resolve().parents[2] / 'gitlab/renovate/verify.py')
-verification = importlib.util.module_from_spec(verify_spec)
-verify_spec.loader.exec_module(verification)
-
-class DiscoveryVerification(unittest.TestCase):
-    def test_first_run_dashboard_only_and_detect_mutations(self):
-        class Reader:
-            changed = False
-            extra_job = False
-            def all(self, route):
-                if '/repository/branches' in route:
-                    return [{'name': 'main'}] + ([{'name': 'renovate/unapproved'}] if self.changed else [])
-                if '/merge_requests?' in route: return []
-                if '/issues?' in route: return [{'title': 'Dependency Dashboard', 'author': {'id': 9}, 'iid': 1}]
-                if '/jobs' in route:
-                    return [{'name': 'renovate:discover', 'status': 'success'}] + ([{'name': 'test:isolated', 'status': 'success'}] if self.extra_job else [])
-                raise AssertionError(route)
-            def call(self, method, route):
-                return {'last_pipeline': {'id': 42, 'status': 'success'}}
-        api = Reader()
-        config = {'project_ids': [10,11]}
-        state = {'user_id': 9, 'schedule_id': 3}
-        baseline = dict(project_ids=[10,11], user_id=9, inventory=verification.inventory(api, [10,11]))
-        self.assertEqual(verification.verify(api, config, state, baseline)['discovery'], 'dashboard-only')
-        api.changed = True
-        with self.assertRaisesRegex(ValueError, 'inventories changed'):
-            verification.verify(api, config, state, baseline)
-        api.changed = False; api.extra_job = True
-        with self.assertRaisesRegex(ValueError, 'unexpected'):
-            verification.verify(api, config, state, baseline)
-
 if __name__ == '__main__': unittest.main()

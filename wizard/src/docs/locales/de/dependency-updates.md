@@ -75,7 +75,7 @@ Erfassen Sie vor der Aktivierung die Branch-/MR-Bestände für den ersten Lauf. 
 das begrenzte Bot-Token im privaten Zustand und schreibt nichts nach GitLab:
 
 ```sh
-python3 gitlab/renovate/verify.py --config /secure/operator/renovate.json \
+node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json
 ```
 
@@ -106,7 +106,7 @@ die Dashboards der ausgewählten Projekte, unveränderte Branch-/MR-Bestände un
 nur den erfolgreichen Botjob enthielt:
 
 ```sh
-python3 gitlab/renovate/verify.py --config /secure/operator/renovate.json \
+node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json --verify
 ```
 
