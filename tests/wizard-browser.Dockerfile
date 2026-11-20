@@ -11,7 +11,9 @@ RUN test "$(node --version)" = v24.22.0 && test "$(npm --version)" = 11.19.1 \
  && npx --no-install playwright install-deps chromium \
  && sh /candidate/bootstrapper/refresh-ca.sh && node /candidate/bootstrapper/ca/check.js \
  && npx --no-install playwright install chromium
+COPY .prettierrc .prettierignore /candidate/
 COPY wizard/ ./
+RUN npm run format:check
 # Full native suite, including its localhost build/preview server and mock APIs.
 ENV CI=true \
     PLAYWRIGHT_HTML_OUTPUT_DIR=/candidate/test-results/wizard-browser/playwright-report \

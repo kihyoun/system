@@ -8,7 +8,7 @@ const {execFileSync} = require('child_process');
 const {validate, verifyCommitted} = require('../project-bootstrap/wizard-source/package');
 const recipe = 'tests/wizard-browser.Dockerfile';
 // Exact public build inputs only; never copy a host trust store or private CAs.
-const systemInputs = [recipe, 'bootstrapper/refresh-ca.sh', 'bootstrapper/ca/cacert-2026-10-20.crt',
+const systemInputs = [recipe, '.prettierrc', '.prettierignore', 'bootstrapper/refresh-ca.sh', 'bootstrapper/ca/cacert-2026-10-20.crt',
   'bootstrapper/ca/provenance.json', 'bootstrapper/ca/check.js'];
 function prepareWizardBrowser(root) {
   root = path.resolve(root);

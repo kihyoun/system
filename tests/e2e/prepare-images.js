@@ -29,13 +29,14 @@ function ciIdentity(env=process.env){
   if(!Object.values(identity).every(value=>Number.isSafeInteger(value)&&value>0))throw Error('Exact positive CI project, pipeline and candidate job identities required.');
   return identity;
 }
-function guidedSettings(origin, env=process.env) {
-  const value={version:1,namespace:'root',wizard:{mode:'import',project:'guided-wizard-'+env.CI_PROJECT_ID+'-'+env.CI_JOB_ID,
-    origin:env.SYSTEM_TEST_WIZARD_ORIGIN||origin},
-    review:{enabled:true,host:'review.candidate.test',ssl:'/ssl/live/recovery-fixture/fullchain.pem',sslKey:'/ssl/live/recovery-fixture/privkey.pem'},
-    beta:{enabled:true,host:'beta.candidate.test',ssl:'/ssl/live/recovery-fixture/fullchain.pem',sslKey:'/ssl/live/recovery-fixture/privkey.pem'}};
-  return require('../../project-bootstrap/preview-setup/settings').settings(value);
+function guidedSettings() {
+  return require('../../project-bootstrap/preview-setup/settings').settings({
+    version:2,namespace:'root',wizard:{mode:'existing',project:'wizard'},
+    review:{enabled:false,host:'',ssl:'',sslKey:''},
+    beta:{enabled:true,host:'beta.candidate.test',ssl:'/ssl/live/recovery-fixture/fullchain.pem',sslKey:'/ssl/live/recovery-fixture/privkey.pem'}
+  });
 }
+
 function privateWizardAcceptance(files,exists=filename=>fs.existsSync(path.join(root,filename))) {
   const helpers=["system/ensure-wizard-image.sh","system/wizard-image-recovery.js","system/wizard-registry-token.rb"];
   if(!helpers.some(filename=>files.includes(filename)))return false;
@@ -74,8 +75,9 @@ async function prepare(){
   const trackedManifest=JSON.parse(fs.readFileSync(path.join(manifest,'manifest.json'),'utf8'));
   const sourceTree=execFileSync('git',['rev-parse',process.env.CI_COMMIT_SHA+'^{tree}'],{encoding:'utf8'}).trim();
   if(!/^[a-f0-9]{40}$/.test(sourceTree))throw Error('Exact candidate source tree required.');
-  const origin=execFileSync('git',['config','--file','.gitmodules','--get','submodule.wizard.url'],{encoding:'utf8'}).trim();
-  const guidedPreviewSettings=guidedSettings(origin);
+  const wizardSourceTree=execFileSync('git',['rev-parse',process.env.CI_COMMIT_SHA+':wizard'],{encoding:'utf8'}).trim();
+  const sharedSourceBundle=require('./shared-source-bundle').prepare(root,output,process.env.CI_COMMIT_SHA,sourceTree,wizardSourceTree);
+  const guidedPreviewSettings=guidedSettings();
   const recoveryAcceptance=trackedManifest.files.includes('system/seed-manifest.js');
   const privateWizardRecovery=privateWizardAcceptance(trackedManifest.files);
   const acmeRenewalAcceptance=acmeAcceptance(trackedManifest.files);
@@ -124,7 +126,7 @@ async function prepare(){
   const acmeImages=acmeRenewalAcceptance?require('./prepare-acme-images').prepare(output):undefined;
   if(acmeRenewalAcceptance)require('./local-acme').validate({acmeImages});
   const spec={sourceRevision:process.env.CI_COMMIT_SHA,sourceTree,wizardSourceRevision:snapshot.sourceRevision,
-    ciIdentity:identity,
+    sourceLayout:'system-monorepo-v1',wizardSourceTree,sharedSourceBundle,ciIdentity:identity,
     guidedPreviewAcceptance:true,guidedPreviewSettings,configurationExporter,recoveryAcceptance,privateWizardRecovery,acmeRenewalAcceptance,acmeImages,daemonImage:defaults.daemon,images:Object.fromEntries(Object.entries(images).filter(([role])=>!['helper','previousGitlab','previousRunner','previousHelper','proxy'].includes(role))),
     publicUpgrade, supportImages:{...publicUpgrade.images,proxy:images.proxy,helper:images.helper,previousGitlab:images.previousGitlab,previousRunner:images.previousRunner,previousHelper:images.previousHelper},gitlabUpgradeAcceptance:true,fullAcceptance:true,readinessMilliseconds:600000};
   fs.writeFileSync(path.join(output,'spec.json'),JSON.stringify(spec,null,2)+'\n',{mode:0o600});

@@ -21,12 +21,13 @@ try {
   git(wizard, 'add', '.'); git(wizard, 'update-index', '--chmod=+x', 'tests/browser/run.sh'); git(wizard, 'commit', '-m', 'Source');
   const wizardRevision = git(wizard, 'rev-parse', 'HEAD');
   write('tests/wizard-browser.Dockerfile', 'FROM scratch\n');
+  write('.prettierrc','{}\n'); write('.prettierignore','node_modules\n');
   const trust = ['bootstrapper/refresh-ca.sh', 'bootstrapper/ca/cacert-2026-10-20.crt', 'bootstrapper/ca/provenance.json', 'bootstrapper/ca/check.js'];
   const trustContents = new Map(trust.map(name => [name, fs.readFileSync(path.join(__dirname, '../..', name))]));
   for (const [name, content] of trustContents) write(name, content);
   write('bootstrapper/ca/operator-private.pem', 'committed private CA must not enter');
   write('bootstrapper/unrelated-host-file', 'unrelated host file must not enter');
-  git(root, 'add', 'tests', 'bootstrapper'); git(root, 'update-index', '--chmod=+x', 'bootstrapper/refresh-ca.sh');
+  git(root, 'add', 'tests', 'bootstrapper', '.prettierrc', '.prettierignore'); git(root, 'update-index', '--chmod=+x', 'bootstrapper/refresh-ca.sh');
   git(root, 'update-index', '--add', '--cacheinfo', '160000,'+wizardRevision+',wizard'); git(root, 'commit', '-m', 'System');
   const snapshot = pack(root);
   write('project-bootstrap/wizard-source/snapshot.json', JSON.stringify({...snapshot, unknownPrivateMetadata:'must not enter'}));

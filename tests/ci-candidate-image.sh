@@ -49,7 +49,11 @@ printf '{"revision":"%s","imageId":"%s"}\n' "$CI_COMMIT_SHA" "$image_id" > "$rep
 docker create --name "$resource" --label "org.system-bootstrapper.test-job=$CI_JOB_ID" \
   --init --network none --memory 1g --cpus 2 --pids-limit 128 --entrypoint /bin/sh "$image" -ec '
   cd /system/sync
+  npm run format:check
   npm run lint
+  npm run check
+  cd /system/operations
+  npm run format:check
   npm run check
   test "$(node --version)" = v24.22.0
   test "$(npm --version)" = 11.19.1

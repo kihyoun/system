@@ -20,6 +20,9 @@ COPY . /system
 COPY --from=configuration-export /wizard/build-tools/export-configuration.cjs /opt/system-bootstrapper/export-configuration.cjs
 RUN sh /system/bootstrapper/install-runtime.sh
 RUN node /system/project-bootstrap/wizard-source/package.js --verify
+# Shared CLI and recovery services are prepared before maintenance begins.
+WORKDIR /system/operations
+RUN npm ci && npm run build
 # Install Sync Server
 WORKDIR /system/sync
 RUN npm ci && npm run build

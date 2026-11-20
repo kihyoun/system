@@ -20,7 +20,15 @@ RUN cd sync && npm ci --ignore-scripts --no-audit --no-fund
 COPY sync/src ./sync/src
 COPY sync/tsconfig.json ./sync/tsconfig.json
 COPY sync/eslint.config.mjs ./sync/eslint.config.mjs
+COPY operations/package.json operations/package-lock.json ./operations/
+RUN cd operations && npm ci --ignore-scripts --no-audit --no-fund
+COPY operations/src ./operations/src
+COPY operations/tests ./operations/tests
+COPY operations/tsconfig.json ./operations/tsconfig.json
+COPY operations/scripts ./operations/scripts
+COPY LICENSE .prettierrc .prettierignore ./
 COPY project-bootstrap ./project-bootstrap
+RUN cd operations && npm run build
 COPY gitlab/*.js gitlab/*.sh gitlab/*.rb gitlab/*.json gitlab/docker-compose.omnibus.yml ./gitlab/
 COPY gitlab/renovate ./gitlab/renovate
 COPY renovate.json ./
