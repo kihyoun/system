@@ -34,31 +34,48 @@ Die [Testanleitung](../tests/README.md) beschreibt die isolierten Prüfbefehle.
 
 ## Gemeinsame Betriebslaufzeit
 
-Das Paket `operations/` stellt Funktionsmodule für die authentifizierte API und
-die eigenständige CLI bereit. Ein Nest-Anwendungskontext startet keinen Server
-und verändert keine Infrastruktur. Aufrufer prüfen Eingaben, beziehen den
-passenden Dienst und schließen den Kontext nach Abschluss. Dienste trennen
-Betriebsentscheidungen von injizierten Prozess- und Konfigurationsadaptern.
+Das Paket `operations/` stellt typisierte Funktionsmodule für die authentifizierte
+Sync-API und eigenständige Repository-Befehle bereit. Die npm-CLI bietet `install`,
+`harvest` und `restore`; andere Betriebseinstiege bleiben ausdrückliche Repository-
+Befehle. Ein Nest-Kontext startet keinen HTTP-Server und erteilt keine Deployment-
+Berechtigung. Dienste verwenden injizierte Prozess-, Konfigurations- und Nachweisadapter.
 
-- `StorageModule` steuert Harvest, Seed-Wiederherstellung und gemeinsame
-  Konfigurationssicherung einschließlich dauerhafter Sperre und Wiederherstellungsnachweisen.
-- `HostModule` steuert die Installation akzeptierter Releases, die Prüfung
-  aufbewahrter Images und Quellen, Host-Speichervorgänge und Upgrade-Voraussetzungen.
-- `ProjectsRoutingModule` steuert Aliasprüfung, Routingvorlagen, Auswahl von
-  Anwendungsproxys, Konfigurationsimportprüfung und Routing-Rollback.
+- `HostLifecycleModule` prüft produktiven Speicher und koordiniert Host-Start/-Stopp
+  über `HostPersistenceService` und `HostLifecycleService`.
+- `HostModule` steuert akzeptierte Installation, Host-Speichervorgänge, Quell-/Image-
+  und Release-Nachweise, Kaltwartung, Controller-/Paar-Upgrades,
+  Wiederherstellungsjournale und Laufzeitprüfung.
+- `StorageModule` steuert Harvest, Seed-Wiederherstellung und koordinierte
+  Konfigurationssicherung einschließlich dauerhafter Sperren und Abschlussnachweise.
+- `ConfigurationModule` steuert ZIP-Push, Auswirkungsprüfung und exakten
+  Konfigurationsersatz; `ProjectsRoutingModule` steuert Proxyauswahl, Routing und Rollback.
+- `LifecycleModule` steuert Controller-/Runner-Start/-Stopp, Registrierung,
+  Abbruch und den zeitlich unbegrenzten, vorgebauten Sync-Prozess im Vordergrund.
+- `ProjectLifecycleModule`, `EnvironmentModule` und `CanonicalModule` steuern
+  Deployment-Transaktionen, Quellübertragung und kanonischen Umgebungszustand.
+  `PreviewOperatorModule`, `AdoptionModule`, `UpgradeModule`, `ProductionModule`
+  und `SystemBetaModule` trennen Einrichtung, Quellübernahme/Build-Upgrades,
+  bewusste Wizard-Production-Freigabe und System-Beta eines akzeptierten Kandidaten.
+- `GitLabUpgradeModule` steuert den freigegebenen nativen Datenbankübergang,
+  Kalt-Checkpoint, Bereitschaftsprüfung, Abbruch und Rollback unter seinem dauerhaften Guardian.
+- `ReleaseModule` bindet akzeptierte Quell-/Image-/Jobnachweise an unveränderliche
+  Image-, GitHub- und npm-Veröffentlichung. Es aktualisiert keine laufende Installation.
 
-Bestehende Einstiegspfade bleiben als Kompatibilitätsadapter erhalten. Sie rufen
-kompilierte Operationen auf und dürfen deren Entscheidungslogik nicht duplizieren.
-Die kompilierte Laufzeit und ihre Abhängigkeiten müssen vor Wartungsarbeiten
-bereitstehen. Offline-Wiederherstellung darf weder eine laufende Sync-API noch
-Zugriff auf die npm-Registry benötigen. Die Komponentenanleitungen unter
-`operations/src/` beschreiben Dienstgrenzen und reproduzierbare Tests.
+Das [Betriebsinventar](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md) ordnet öffentliche und
+Kompatibilitätseinstiege ihren Aufrufern, Berechtigungen, dauerhaften Besitznachweisen,
+nativen Werkzeugen, Fehlerpfaden und ausführbaren Tests zu. Dünne Einstiege rufen
+vorbereitete kompilierte Dienste auf. Verbleibende Python-Aufgaben für Host-Vorprüfung
+und Wiederherstellung werden dort ausdrücklich benannt und nicht als vollständig
+migrierte Adapter dargestellt.
 
-Native Werkzeuge übernehmen weiterhin ihre Aufgaben: Docker/Compose verwalten
-Container, NGINX lädt Routing, Git verarbeitet Quellobjekte und `flock` serialisiert
-Schreibvorgänge. Reservierte historische Build-Rezepte und externe GitLab-Formatadapter
-behalten ihre Verträge. Wizard-HTTP-Endpunkte, gespeicherte Konfiguration und das
-Harvest-/Seed-Konzept müssen dafür nicht geändert werden.
+Bereiten Sie die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
+**vor** Host-Start/-Stopp, Persistenzprüfung, Installation oder Wiederherstellung vor.
+Quickstart übernimmt dies; Quellcodeentwickler bauen die Laufzeit vor Host-Befehlen.
+Behalten Sie Node, kompilierte Operationen und Abhängigkeiten für Offline-Recovery.
+Vorbereitende Bootstrap-Werkzeuge, OS-/Certbot-Einrichtung, GitLab-natives Ruby,
+eigenständige Kindprozess-Guardians und bytegenaue historische Build-Rezepte
+behalten eigene Verträge. Docker/Compose, NGINX, Git und `flock` bleiben native
+Ausführungsgrenzen. Wizard-HTTP-Endpunkte, gespeicherte Konfiguration und Harvest/Seed bleiben kompatibel.
 
 ## Wegweiser für den Betrieb
 
@@ -229,13 +246,15 @@ Containerdefinitionen sind reproduzierbar; GitLab-Repositorys, Datenbanken, Regi
 
 | Pfad | Zweck in der vorhandenen Implementierung |
 | --- | --- |
-| `start.sh`, `stop.sh` | Zentrale Lebenszyklus-Einstiegspunkte. |
+| `start.sh`, `stop.sh` | Dünne Host-Lebenszykluseinstiege zur vorbereiteten Betriebslaufzeit. |
 | `bootstrapper/` | Basis-Image, Hostinitialisierung, Wiederherstellung, Laufzeitprüfung sowie akzeptierte Controller-Freigabe-/Exportwerkzeuge. |
-| `system/` | Zentrale Compose-Definition und Orchestrierungsskripte. |
-| `gitlab/` | GitLab-Lebenszyklus/-Konfiguration und unterstützte Upgrade-, Checkpoint- und Rollback-Werkzeuge. |
-| `gitlab-runner/` | Runner-Konfiguration, Registrierung und Lebenszyklusskripte. |
-| `nginx/` | Konfiguration und Lebenszyklusskripte des zentralen Reverse-Proxys. |
+| `system/` | Zentrale Compose-Definition, Controller-Kompatibilitätseinstiege und Zustandsinitialisierung. |
+| `gitlab/` | GitLab-Konfiguration/Ruby-Adapter sowie Kompatibilitätseinstiege für typisierte Upgrades und Veröffentlichung. |
+| `gitlab-runner/` | Runner-Compose-Format und Kompatibilitätseinstiege für Registrierung/Lebenszyklus. |
+| `nginx/` | Konfiguration des zentralen Reverse-Proxys und typisierte Routingadapter. |
 | `nginx-proxy/` | Konfiguration der Production-, Beta- und Review-Proxys. |
+| `operations/` | Gemeinsame Nest-Funktionsmodule, native Adapter und CLI; [Betriebsinventar](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md). |
+| `project-bootstrap/` | Kompatibilitätseinstiege für Projekt-CI/Quellen/Umgebungen, native GitLab-Adapter und versionierte Build-Rezepte. |
 | `sync/` | Modulare NestJS-API für Konfiguration, Projektabläufe, Betriebsaufgaben und Diagnose. |
 | `wizard/` | Regulärer Wizard-Anwendungscode mit erhaltener ursprünglicher Historie. |
 | `.gitlab-ci.yml` | Kurzer Dokumentationspfad; erforderliche Komponenten-, Image- und kurzlebige Plattformprüfungen; Image-Veröffentlichung und optionaler GitHub-Spiegel. |

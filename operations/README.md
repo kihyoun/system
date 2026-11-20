@@ -53,3 +53,7 @@ offline recovery procedure.
 The public package contains compiled operation code and its required validation
 assets. It has no install-time scripts. Builds and publication run in GitLab;
 GitHub provides the public source and accepted release documentation.
+
+The [operation architecture and entry-point inventory](ARCHITECTURE.md) maps
+API/CLI compatibility paths, privileges, durable ownership, native boundaries,
+focused tests and failure/recovery responsibilities across the platform.

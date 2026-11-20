@@ -30,31 +30,47 @@ provides the isolated verification commands.
 
 ## Shared operations runtime
 
-The `operations/` package supplies feature modules to the authenticated API and
-standalone CLI. Creating a Nest application context does not start a server or
-change infrastructure. Callers validate their inputs, resolve the appropriate
-service and close the context after completion. Shared services keep operational
-decisions separate from injected native process and configuration adapters.
+The `operations/` package supplies typed feature modules to the authenticated
+Sync API and standalone repository commands. The npm CLI exposes `install`,
+`harvest` and `restore`; other operational entries remain explicit repository
+commands. A Nest context starts no HTTP server and grants no deployment authority.
+Services use injected process, configuration and evidence ports.
 
-- `StorageModule` owns Harvest, Seed restore and coordinated configuration
-  backup, including the persistent operation lease and recovery receipts.
-- `HostModule` owns accepted-release installation, retained image and source
-  verification, host storage dispatch and upgrade prerequisite validation.
-- `ProjectsRoutingModule` owns alias validation, routing templates, application
-  proxy selection, configuration import checks and routing rollback.
+- `HostLifecycleModule` validates live storage and coordinates host start/stop
+  through `HostPersistenceService` and `HostLifecycleService`.
+- `HostModule` owns accepted installation, host storage dispatch, source/image
+  and release authority, cold maintenance, controller/paired-upgrade coordination,
+  recovery journals and runtime inspection.
+- `StorageModule` owns Harvest, Seed restore and coordinated configuration backup,
+  including persistent operation leases and completed recovery receipts.
+- `ConfigurationModule` owns ZIP Push, impact checks and exact configuration
+  replacement; `ProjectsRoutingModule` owns proxy selection, routing and rollback.
+- `LifecycleModule` owns controller/runner startup and shutdown, registration,
+  cancellation and the unlimited foreground prebuilt Sync process.
+- `ProjectLifecycleModule`, `EnvironmentModule` and `CanonicalModule` own project
+  deployment transactions, source transfer and canonical environment state.
+  `PreviewOperatorModule`, `AdoptionModule`, `UpgradeModule`, `ProductionModule`
+  and `SystemBetaModule` separate setup, source adoption/build upgrades, deliberate
+  Wizard Production promotion and accepted-candidate System Beta.
+- `GitLabUpgradeModule` owns the approved native database transition, cold
+  checkpoint, readiness verification, abort and rollback under its durable guardian.
+- `ReleaseModule` binds accepted source/image/job evidence to immutable image,
+  GitHub and npm publication. It does not promote the running installation.
 
-Compatibility entry paths remain available for existing callers. These adapters
-invoke compiled operations; they must not implement a second copy of their
-decision logic. Prepare the compiled runtime and its dependencies before
-maintenance. Offline recovery must not need a running Sync API or npm registry.
-Component guides under `operations/src/` describe the supported service boundaries
-and their reproducible tests.
+The [operation inventory](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md) maps public and
+compatibility entries, their callers, privileges, persistent ownership, native
+tools, failure handling and executable tests. Thin entries call prepared compiled
+services; remaining host Python preflight/recovery responsibilities are explicitly
+identified there rather than described as fully migrated adapters.
 
-Native tools still perform their own work: Docker/Compose manage containers,
-NGINX reloads routing, Git handles source objects and `flock` serializes writers.
-Reserved historical build recipes and external GitLab format adapters retain
-their original contracts. These boundaries do not require changing Wizard HTTP
-endpoints, saved configuration or the Harvest/Seed concept.
+Prepare the [host runtime](../Prepare-Host.md#prepare-the-host-operations-runtime)
+**before** host start/stop, persistence checks, installation or recovery. Fresh
+Quickstart prepares it; source developers build it before using host lifecycle
+commands. Retain Node, compiled operations and dependencies for offline recovery.
+Pre-runtime bootstrapping, OS/Certbot setup, GitLab-native Ruby, independent child
+guardians and byte-sensitive historical build recipes retain distinct contracts.
+Docker/Compose, NGINX, Git and `flock` remain native execution boundaries. These
+boundaries preserve Wizard HTTP endpoints, saved configuration and Harvest/Seed.
 
 ## Operational guide map
 
@@ -223,13 +239,15 @@ The container definitions can be reproduced; GitLab repositories, database conte
 
 | Path | Purpose in the existing implementation |
 | --- | --- |
-| `start.sh`, `stop.sh` | Top-level lifecycle entry points. |
+| `start.sh`, `stop.sh` | Thin host lifecycle entries to prepared operations. |
 | `bootstrapper/` | Base image, host initialization, recovery, runtime verification and accepted controller promotion/export tools. |
-| `system/` | Main Compose definition and orchestration scripts. |
-| `gitlab/` | GitLab lifecycle/configuration and supported upgrade, checkpoint and rollback tools. |
-| `gitlab-runner/` | Runner configuration, registration, and lifecycle scripts. |
-| `nginx/` | Entry-point reverse-proxy configuration and lifecycle scripts. |
+| `system/` | Main Compose definition, controller compatibility entries and state initialization. |
+| `gitlab/` | GitLab configuration/Ruby adapters, typed upgrade and publication compatibility entries. |
+| `gitlab-runner/` | Runner Compose format and registration/lifecycle compatibility entries. |
+| `nginx/` | Entry-point reverse-proxy configuration and typed routing adapters. |
 | `nginx-proxy/` | Production, beta, and review proxy configuration. |
+| `operations/` | Shared Nest feature modules, native ports and CLI; [operation inventory](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md). |
+| `project-bootstrap/` | Project CI/source/environment compatibility entries, native GitLab adapters and versioned build recipes. |
 | `sync/` | Modular NestJS API for configuration, project workflows, operations and diagnostics. |
 | `wizard/` | Regular Wizard application source, with original history retained by the import merge. |
 | `.gitlab-ci.yml` | Short documentation lane; required runtime component, image and disposable platform checks; image publishing and optional GitHub mirror. |

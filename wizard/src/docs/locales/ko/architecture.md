@@ -27,29 +27,43 @@ Angular, React, 일반 웹 프로젝트를 제공하며, NestJS는 내부 Sync �
 
 ## 공통 운영 런타임
 
-`operations/` 패키지는 인증된 API와 독립형 CLI에 기능 모듈을 제공합니다.
-Nest 애플리케이션 컨텍스트를 만드는 것만으로 서버가 시작되거나 인프라가 변경되지는
-않습니다. 호출자는 입력을 검증하고 필요한 서비스를 가져오며 작업 후 컨텍스트를
-닫습니다. 공통 서비스는 운영 판단을 주입된 프로세스 및 구성 어댑터와 분리합니다.
+`operations/` 패키지는 인증된 Sync API와 독립형 저장소 명령에 타입이 지정된 기능 모듈을
+제공합니다. npm CLI는 `install`, `harvest`, `restore`를 제공하며, 다른 운영 진입점은
+명시적인 저장소 명령으로 유지됩니다. Nest 컨텍스트는 HTTP 서버를 시작하거나 배포 권한을
+부여하지 않습니다. 서비스는 주입된 프로세스, 구성, 증거 포트를 사용합니다.
 
-- `StorageModule`은 영구 작업 잠금과 복구 기록을 포함하여 Harvest, Seed 복원,
+- `HostLifecycleModule`은 운영 저장소를 검증하고 `HostPersistenceService`와
+  `HostLifecycleService`를 통해 호스트 시작/중지를 조정합니다.
+- `HostModule`은 승인된 설치, 호스트 저장소 작업, 소스/이미지 및 릴리스 권한 검증,
+  콜드 유지보수, 컨트롤러/쌍 업그레이드 조정, 복구 저널과 런타임 검사를 담당합니다.
+- `StorageModule`은 영구 작업 잠금과 완료된 복구 기록을 포함하여 Harvest, Seed 복원,
   구성 백업 조정을 담당합니다.
-- `HostModule`은 승인된 릴리스 설치, 보관된 이미지와 소스 검증, 호스트 저장소 작업,
-  업그레이드 사전 조건 검증을 담당합니다.
-- `ProjectsRoutingModule`은 별칭 검증, 라우팅 템플릿, 애플리케이션 프록시 선택,
-  구성 가져오기 검증과 라우팅 롤백을 담당합니다.
+- `ConfigurationModule`은 ZIP Push, 영향 검증과 정확한 구성 교체를 담당하며,
+  `ProjectsRoutingModule`은 프록시 선택, 라우팅과 롤백을 담당합니다.
+- `LifecycleModule`은 컨트롤러/Runner 시작과 중지, 등록, 취소 및 시간 제한 없이
+  포그라운드에서 실행되는 사전 빌드된 Sync 프로세스를 담당합니다.
+- `ProjectLifecycleModule`, `EnvironmentModule`, `CanonicalModule`은 프로젝트 배포
+  트랜잭션, 소스 전송과 기준 환경 상태를 담당합니다. `PreviewOperatorModule`,
+  `AdoptionModule`, `UpgradeModule`, `ProductionModule`, `SystemBetaModule`은 설정,
+  소스 채택/빌드 업그레이드, 명시적인 Wizard Production 승격, 승인된 후보의 System Beta를 구분합니다.
+- `GitLabUpgradeModule`은 영구 Guardian의 감독 아래 승인된 네이티브 데이터베이스 전환,
+  콜드 체크포인트, 준비 상태 검증, 중단과 롤백을 담당합니다.
+- `ReleaseModule`은 승인된 소스/이미지/작업 증거를 변경 불가능한 이미지, GitHub, npm
+  게시와 연결합니다. 실행 중인 설치를 승격하지는 않습니다.
 
-기존 진입 경로는 호환성 어댑터로 유지됩니다. 어댑터는 컴파일된 운영 코드를 호출하며
-판단 로직을 별도로 복제해서는 안 됩니다. 유지보수 전에 컴파일된 런타임과 의존성을
-준비하세요. 오프라인 복구에는 실행 중인 Sync API나 npm Registry 접근이 필요해서는
-안 됩니다. `operations/src/`의 구성 요소 안내는 서비스 경계와 재현 가능한 테스트를
-설명합니다.
+[운영 목록](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md)은 공개 및 호환 진입점의 호출자, 권한, 영구
+소유권, 네이티브 도구, 실패 처리와 실행 가능한 테스트를 연결합니다. 얇은 진입점은 준비된
+컴파일 서비스를 호출합니다. 남아 있는 Python 호스트 사전 검사/복구 책임도 명시하며,
+모든 파일을 완전히 이전된 어댑터라고 설명하지 않습니다.
 
-네이티브 도구는 고유 역할을 유지합니다. Docker/Compose는 컨테이너를 관리하고,
-NGINX는 라우팅을 다시 로드하며, Git은 소스 객체를 처리하고, `flock`은 쓰기 작업을
-직렬화합니다. 보존된 과거 빌드 레시피와 외부 GitLab 형식 어댑터의 계약은 유지됩니다.
-이 구조 때문에 Wizard HTTP 엔드포인트, 저장된 구성 또는 Harvest/Seed 개념을
-변경할 필요는 없습니다.
+호스트 시작/중지, 영구 저장소 검사, 설치 또는 복구 **전에**
+[호스트 런타임](../Prepare-Host.md#prepare-the-host-operations-runtime)을 준비하세요.
+Quickstart는 이를 준비하며, 소스 개발자는 호스트 수명 주기 명령을 사용하기 전에 빌드합니다.
+오프라인 복구를 위해 Node, 컴파일된 운영 코드와 의존성을 보관하세요. 런타임 이전 부트스트랩,
+OS/Certbot 설정, GitLab 네이티브 Ruby, 독립 자식 프로세스 Guardian과 바이트 단위 식별이
+필요한 과거 빌드 레시피는 별도의 계약을 유지합니다. Docker/Compose, NGINX, Git,
+`flock`은 네이티브 실행 경계로 남습니다. Wizard HTTP 엔드포인트, 저장된 구성 및
+Harvest/Seed는 호환성을 유지합니다.
 
 ## 운영 안내 지도
 
@@ -216,13 +230,15 @@ Engine 업데이트에는 자체 유지 관리 경로가 필요합니다.
 
 | 경로 | 기존 구현에서의 목적 |
 | --- | --- |
-| `start.sh`, `stop.sh` | 최상위 수명 주기 진입점입니다. |
+| `start.sh`, `stop.sh` | 준비된 운영 런타임을 호출하는 얇은 호스트 수명 주기 진입점입니다. |
 | `bootstrapper/` | 기반 이미지, 호스트 초기화, 복구, 런타임 검증, 승인된 컨트롤러 승격/내보내기 도구입니다. |
-| `system/` | 기본 Compose 정의와 오케스트레이션 스크립트입니다. |
-| `gitlab/` | GitLab 수명 주기/구성과 지원되는 업그레이드, 체크포인트, 롤백 도구입니다. |
-| `gitlab-runner/` | Runner 구성, 등록, 수명 주기 스크립트입니다. |
-| `nginx/` | 진입점 리버스 프록시 구성과 수명 주기 스크립트입니다. |
+| `system/` | 기본 Compose 정의, 컨트롤러 호환 진입점과 상태 초기화입니다. |
+| `gitlab/` | GitLab 구성/Ruby 어댑터와 타입이 지정된 업그레이드/게시 호환 진입점입니다. |
+| `gitlab-runner/` | Runner Compose 형식과 등록/수명 주기 호환 진입점입니다. |
+| `nginx/` | 진입점 리버스 프록시 구성과 타입이 지정된 라우팅 어댑터입니다. |
 | `nginx-proxy/` | 운영 환경, Beta, Review 프록시 구성입니다. |
+| `operations/` | 공통 Nest 기능 모듈, 네이티브 포트와 CLI입니다. [운영 목록](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md)을 참조하세요. |
+| `project-bootstrap/` | 프로젝트 CI/소스/환경 호환 진입점, 네이티브 GitLab 어댑터와 버전별 빌드 레시피입니다. |
 | `sync/` | 구성, 프로젝트 작업 흐름, 운영 작업, 진단을 위한 모듈형 NestJS API입니다. |
 | `wizard/` | 원래 이력을 유지하는 일반 Wizard 애플리케이션 소스입니다. |
 | `.gitlab-ci.yml` | 짧은 문서 경로, 필수 런타임 컴포넌트/이미지/폐기 가능한 플랫폼 검사, 이미지 게시, 선택적 GitHub 미러입니다. |
