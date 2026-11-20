@@ -496,14 +496,16 @@ def main():
     args = parser.parse_args()
     require(os.geteuid() == 0 and 60 <= args.timeout <= 3600, 'root-and-bounded-readiness-timeout-required')
     require(not args.staged_promotion or args.operation == 'promote', 'staged-promotion-is-only-for-promotion')
+    if args.operation == 'abort':
+        retained = Path('/opt/system-bootstrapper-runtime/bin/node')
+        node = str(retained.resolve()) if retained.is_file() else 'node'
+        os.execvp(node, [node, str(successor.HERE.parent / 'operations/dist/host/promotion-recovery-entry.js'),
+            '--checkout', str(successor.HERE.parent), '--checkpoint-dir', args.checkpoint_dir,
+            '--persistence-env', args.persistence_env, '--timeout', str(args.timeout)])
     config = runtime.settings(args.persistence_env)
     config['_persistence_env'] = args.persistence_env
     if args.operation == 'status':
         print(json.dumps(controller_status(config, args.checkpoint_dir), indent=2))
-        return
-    if args.operation == 'abort':
-        abort_promotion(config, args.checkpoint_dir, args.timeout)
-        print('Interrupted controller promotion aborted; old controller/configuration resumed without rewinding GitLab data.')
         return
     require(all((args.release, args.evidence, args.gitlab_url, args.token_file)), 'successor-release-API-inputs-required')
     require(args.gitlab_url.rstrip('/') == runtime.origin(config, 'GITLAB'), 'GitLab-origin-does-not-match-saved-config')

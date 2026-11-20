@@ -55,6 +55,10 @@ export class PromotionNativePortService implements PromotionAbortPort {
   async prepare(input: PromotionNativeInput): Promise<PromotionAbortInput> {
     ensure(!this.context && this.host.rootUser(), 'root-and-idle-promotion-context-required');
     ensure(this.gitlabProbe || this.nativeGitlabProbe, 'native-GitLab-preflight-provider-required');
+    ensure(
+      Number.isInteger(input.timeout) && input.timeout >= 60 && input.timeout <= 3600,
+      'bounded-promotion-readiness-timeout-required',
+    );
     for (const value of [input.checkout, input.checkpoint, input.persistenceEnv])
       ensure(path.isAbsolute(value), 'absolute-promotion-input-required');
     const config = await this.runtime.settings(
