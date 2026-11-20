@@ -1,463 +1,103 @@
 #!/usr/bin/env python3
-"""Capture a private pre-start baseline or verify a retained-volume platform.
-
-Only fixed diagnostic labels are printed; credentials and raw Docker/HTTP output
-remain in memory. Baselines and result files contain no configuration contents.
-"""
-import argparse
+"""Compatibility transport for the shared Nest runtime verification service."""
+import base64
 import datetime
-import hashlib
 import importlib.util
-import json
 import os
 from pathlib import Path
-import re
-import subprocess
 import sys
-import time
-import urllib.error
-import urllib.parse
 import urllib.request
 
-sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('system_recovery', HERE / 'recovery.py')
 recovery = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(recovery)
 require, run = recovery.require, recovery.run
 DOCKER = ['docker', '--host=unix:///var/run/docker.sock']
-STORAGE_KEYS = ['PERSISTENCE_MODE', 'PERSISTENT_MOUNT', 'PERSISTENT_DIR', 'PERSISTENT_UUID', 'SEED_DIR', 'SEED_MOUNT', 'SEED_UUID']
-KEYS = STORAGE_KEYS + ['BOOTSTRAPPER_IMAGE',
-        'WIZARD_IMAGE', 'NGINX_IMAGE', 'GITLAB_IMAGE', 'GITLAB_RUNNER_IMAGE', 'GITLAB_RUNNER_SCALE',
-        'WIZARD_ENABLE', 'SYNC_ENABLE', 'WIZARD_HOST', 'SYNC_HOST', 'GITLAB_HOST', 'GITLAB_REGISTRY_HOST',
-        'WIZARD_DOMAIN_MODE', 'SYNC_DOMAIN_MODE', 'GITLAB_DOMAIN_MODE', 'GITLAB_REGISTRY_DOMAIN_MODE',
-        'SYNC_USER', 'SYNC_PASS', 'GITLAB_EXTERNAL_URL', 'GITLAB_REGISTRY_URL']
 
+def call(method, *args):
+    return recovery.host_operation('runtimeVerification', method, *args)
 
 def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-
-def write_private(path, data):
-    path = Path(path)
-    require(not path.is_symlink(), 'receipt-must-not-be-symlink')
-    payload = (json.dumps(data, indent=2) + '\n').encode()
-    # O_EXCL avoids following an existing link while publishing a new receipt.
-    temporary = path.with_name(path.name + '.tmp-' + str(os.getpid()))
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(descriptor, 'wb') as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
-
-
-def read_values(files, keys=KEYS):
-    # These are trusted operator-owned shell assignments, as used by start.sh.
-    # Fixed names are emitted as NUL-separated values, never all of the environment.
-    script = 'set -e; set -a; for config in "$@"; do source "$config"; done; '
-    script += ''.join('printf "%s\\0" "${' + key + '-}"; ' for key in keys)
-    raw = run(['bash', '-c', script, 'read-config', *map(str, files)])
-    values = raw.split(b'\0')
-    require(len(values) == len(keys) + 1 and values[-1] == b'', 'configuration-value-format')
-    return dict(zip(keys, (value.decode() for value in values[:-1])))
-
-
 def settings(persistence):
-    storage = read_values([persistence], STORAGE_KEYS)
-    storage['PERSISTENCE_MODE'] = storage['PERSISTENCE_MODE'] or ('volume' if storage['PERSISTENT_MOUNT'] else 'local')
-    if storage['PERSISTENCE_MODE'] == 'local':
-        storage['PERSISTENT_MOUNT'] = storage['PERSISTENT_MOUNT'] or '/'
-        storage['PERSISTENT_DIR'] = storage['PERSISTENT_DIR'] or '/var/lib/system-bootstrapper/platform'
-    environment = dict(os.environ, **storage)
-    try:
-        subprocess.run(['bash', str(HERE / 'persistence.sh')], env=environment,
-                       check=True, capture_output=True, timeout=30)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        raise recovery.RecoveryError('persistent-storage-preflight-failed') from None
-    root = Path(storage['PERSISTENT_DIR']).resolve(strict=True)
-    main = root / 'configuration/.docker.env'
-    require(main.is_file() and not main.is_symlink(), 'saved-configuration-required')
-    auth = root / 'configuration/sync-auth.env'
-    require(not auth.is_symlink(), 'sync-auth-must-not-be-symlink')
-    profile = root / 'configuration/.release-images.env'
-    profiles = []
-    if profile.exists() or profile.is_symlink():
-        require(profile.is_file() and not profile.is_symlink() and profile.stat().st_uid == 0 and
-                profile.stat().st_mode & 0o777 == 0o600 and profile.stat().st_size <= 1024,
-                'private-release-profile-required')
-        lines = profile.read_bytes().decode('ascii').split('\n')
-        if lines[-1] == '':
-            lines.pop()
-        records = [re.fullmatch(r'(BOOTSTRAPPER_IMAGE|WIZARD_IMAGE)=(docker\.io/[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64})', line) for line in lines]
-        require(len(records) == 2 and all(records) and
-                {record[1] for record in records} == {'BOOTSTRAPPER_IMAGE', 'WIZARD_IMAGE'},
-                'invalid-release-profile-assignments')
-        profiles = [profile]
-    # Match native startup: public defaults first, saved configuration wins.
-    result = read_values(profiles + ([auth] if auth.is_file() else []) + [main])
-    result.update(storage)  # Host-selected storage always wins over saved settings.
-    result['_root'] = root
-    result['_main'] = main
+    result = call('settings', str(persistence), str(HERE.parent))
+    result['_root'], result['_main'] = Path(result['_root']), Path(result['_main'])
     return result
-
-
-def runner_count(config):
-    raw = config.get('GITLAB_RUNNER_SCALE', '')
-    require(raw.isdigit() and 0 <= int(raw) <= 50, 'invalid-runner-count')
-    return int(raw)
-
 
 def cube(raw):
-    require(raw[807:808] == b'$' and hashlib.md5(raw[:1184]).hexdigest() ==
-            'bd4a8426355824593a5e21ad759830c1', 'cube-signature-mismatch')
+    return call('cube', base64.b64encode(raw).decode())
 
+def origin(config, prefix):
+    return call('origin', config, prefix)
+
+def runner_count(config):
+    return recovery.host_operation('runtimeRunnerCount', config)
 
 def configuration_files(root):
-    files = [root / 'configuration/.docker.env', root / 'configuration/sync-auth.env']
-    files += sorted((root / 'configuration/.projects.env').glob('*.env'))
-    return {str(path.relative_to(root)): recovery.sha(path) for path in files if path.is_file()}
-
+    return call('files', {'_root': str(root)})
 
 def public_manifest_absent(config):
-    path = config['_root'] / 'recovery/images.json'
-    require(not path.exists() and not path.is_symlink(), 'public-image-mode-refuses-recovery-manifest')
-
+    return call('manifestAbsent', config)
 
 def public_images(config, services):
-    """Resolve saved selections against actual images; never invent an archive manifest."""
-    require(re.fullmatch(r'(?:docker\.io/)?[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64}',
-                         config['BOOTSTRAPPER_IMAGE'] or '') is not None or recovery.recovery_alias(config['BOOTSTRAPPER_IMAGE']),
-            'public-controller-digest-required')
-    selected = [('system_bootstrapper_1', 'BOOTSTRAPPER_IMAGE', ''),
-                ('system_web_1', 'NGINX_IMAGE', 'nginx'), ('system_gitlab_1', 'GITLAB_IMAGE', '')]
-    selected += [(f'runner_docker_{index}', 'GITLAB_RUNNER_IMAGE', '')
-                 for index in range(1, runner_count(config) + 1)]
-    if config['WIZARD_ENABLE'] == 'true':
-        selected.append(('system_wizard_1', 'WIZARD_IMAGE', ''))
-    images = {}
-    for name, key, default in selected:
-        reference = config[key] or default
-        require(bool(reference), 'saved-image-selection-required')
-        image = recovery.inspect_image(reference)
-        require(recovery.image_id(image.get('Id')) and services[name]['Image'] == image['Id'],
-                'service-image-selection-mismatch')
-        if recovery.recovery_alias(reference):
-            require(recovery.recovered_image(config, reference, image['Id']), 'recovered-image-alias-mismatch')
-        if '@sha256:' in reference:
-            # Docker omits its default Docker Hub hostname in some inspections.
-            # Keep explicit private registry hosts/ports as part of identity.
-            normalize = lambda value: recovery.canonical_digest(value).removeprefix('docker.io/')
-            require(normalize(reference) in {normalize(value) for value in image.get('RepoDigests', [])},
-                    'running-image-digest-not-verified')
-        images[name] = {'key': key, 'reference': reference, 'imageId': image['Id']}
-    return images
-
+    return call('publicImages', config, services)
 
 def capture(config, checkout, manifest=None, public=False, stopped_controller_id=None):
-    require(stopped_controller_id is None or public, 'stopped-controller-requires-public-baseline')
-    root = config['_root']
-    cube(config['_main'].read_bytes())
-    require(not run(['git', '-C', str(checkout), 'status', '--porcelain']).strip(),
-            'initialization-checkout-is-modified')
-    # Promotion may provide its authenticated, completed staging validation view.
-    # Ordinary recovery/baseline callers always load the archive-backed manifest.
-    if public:
-        public_manifest_absent(config)
-        services = (inspect_services(config) if stopped_controller_id is None else
-                    inspect_services(config, stopped_controller_id=stopped_controller_id))
-        images = public_images(config, services)
-        controller = recovery.inspect_image(images['system_bootstrapper_1']['reference'])
-        source = controller.get('Config', {}).get('Labels', {}).get('org.opencontainers.image.revision')
-        require(recovery.git_id(source), 'public-controller-source-label-required')
-        source_tree = run(['git', '-C', str(checkout), 'rev-parse', source + '^{tree}']).decode().strip()
-        require(recovery.git_id(source_tree), 'public-controller-source-tree-required')
-    elif manifest is None:
-        manifest = recovery.load_manifest(root / 'recovery', checkout)
-    if not public:
-        recovery.validate_selected_images(manifest, config['_main'])
-    identities = {}
-    for index in range(1, runner_count(config) + 1):
-        path = root / f'runners/runner/{index}/config/.runner_system_id'
-        if path.is_file():
-            identities[str(index)] = recovery.sha(path)
-    result = {'schemaVersion': 1, 'startedAt': now(), 'configurationFiles': configuration_files(root),
-            'runnerManagerIdentitySha256': identities, 'expectedRunnerCount': runner_count(config),
-            'hostToolsRevision': run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).decode().strip()}
-    if public:
-        result.update(imageMode='public-images-v1', selectedImages=images,
-                      sourceCommit=source, sourceTree=source_tree)
-    else:
-        result.update(manifestSha256=recovery.sha(root / 'recovery/images.json'),
-                      sourceCommit=manifest['sourceCommit'], sourceTree=manifest['sourceTree'])
-    return result
+    return call('capture', config, str(checkout), public, stopped_controller_id, manifest)
 
+def assert_baseline(config, baseline):
+    return call('assertBaseline', config, baseline)
+
+def verify_sync(config):
+    return call('sync', config)
+
+def verify_management_routes(config):
+    return call('managementRoutes', config)
+
+def verify_routes(config, services, redirect_from=None):
+    return call('routes', config, services, redirect_from)
+
+def runner_contacts(config, baseline, token_file):
+    return call('runnerContacts', config, baseline, token_file)
+
+def verify(config, baseline, checkout, token_file=None, redirect_from=None, public=False):
+    return call('verify', config, baseline, {'operation':'check', 'checkout':str(checkout), 'publicImages':public,
+                'tokenFile':str(token_file) if token_file else None, 'redirectFrom':redirect_from})
+
+def write_private(path, data):
+    import json
+    return recovery.host_operation('writePrivate', str(path), base64.b64encode((json.dumps(data, indent=2)+'\n').encode()).decode())
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
 
-
 def http(url, body=None, headers=None):
-    selected = dict(headers or {})
-    if body is not None:
-        selected['Content-Type'] = 'application/json'
-    request = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
-                                     headers=selected)
-    try:
-        response = urllib.request.build_opener(NoRedirect()).open(request, timeout=recovery.budget(10))
-    except urllib.error.HTTPError as error:
-        response = error
-    except (urllib.error.URLError, OSError):
-        raise recovery.RecoveryError('application-endpoint-not-ready') from None
-    with response:
-        return response.code, response.read(4 * 1024 ** 2), response.headers
-
-
-def origin(config, prefix):
-    host = config[prefix + '_HOST']
-    require(host and all(character not in host for character in '/@?#\r\n '), 'invalid-service-host')
-    mode = config[prefix + '_DOMAIN_MODE']
-    require(mode in ('0', '1', '2', '3'), 'invalid-domain-mode')
-    return ('https://' if mode in ('2', '3') else 'http://') + host
-
-
-def assert_baseline(config, baseline):
-    root = config['_root']
-    require(configuration_files(root) == baseline['configurationFiles'], 'saved-configuration-changed')
-    if baseline.get('imageMode') == 'public-images-v1':
-        public_manifest_absent(config)
-    else:
-        require(recovery.sha(root / 'recovery/images.json') == baseline['manifestSha256'], 'recovery-manifest-changed')
-    require(runner_count(config) == baseline['expectedRunnerCount'], 'runner-count-changed')
-    for index, expected in baseline['runnerManagerIdentitySha256'].items():
-        path = root / f'runners/runner/{index}/config/.runner_system_id'
-        require(path.is_file() and recovery.sha(path) == expected, 'retained-runner-identity-changed')
-    cube(config['_main'].read_bytes())
-
+    from email.message import Message
+    result = call('http', url, body, headers)
+    selected = Message()
+    for key, value in result['headers'].items():
+        selected[key] = value
+    return result['status'], base64.b64decode(result['body']), selected
 
 def failed_stopped_controller(row, expected_id):
     return recovery.host_operation('failedStoppedController', row, expected_id)
 
 
 def inspect_services(config, stopped_controller_id=None):
-    # Native Docker transport remains mockable; all acceptance decisions are shared.
-    names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1']
-    if config['WIZARD_ENABLE'] == 'true':
-        names.append('system_wizard_1')
-    names += [f'runner_docker_{index}' for index in range(1, runner_count(config) + 1)]
-    rows = json.loads(run([*DOCKER, 'inspect', *names]))
-    return recovery.host_operation('inspectServiceRows', {key: str(value) for key, value in config.items()}, rows, stopped_controller_id)
-
+    return call('inspectServices', config, stopped_controller_id)
 
 def verify_images(config, manifest, services):
-    selected = recovery.host_operation('runtimeImageSelectors', config)
-    references = set(selected.values()) | {config['GITLAB_RUNNER_IMAGE']}
-    inspected = {reference: recovery.inspect_image(reference) for reference in references}
-    return recovery.host_operation('verifyImageInspections', config, manifest, services, inspected)
-
+    return call('verifyImages', config, manifest, services)
 
 def verify_mounts(config, services):
     return recovery.host_operation('verifyMounts', {key: str(value) for key, value in config.items()}, services)
 
 
-def verify_sync(config):
-    require(config['SYNC_ENABLE'] == 'true', 'authenticated-fetch-requires-enabled-sync')
-    base = origin(config, 'SYNC')
-    status, payload, _ = http(base + '/login', {'username': config['SYNC_USER'], 'password': config['SYNC_PASS']})
-    require(status == 200, 'sync-login-failed')
-    login = json.loads(payload)
-    status, payload, _ = http(base + '/token', {'token': login['refreshToken']})
-    require(status == 200, 'sync-token-failed')
-    access = json.loads(payload)['accessToken']
-    status, payload, _ = http(base + '/config/main', headers={'Authorization': 'Bearer ' + access})
-    require(status == 200 and json.loads(payload)['data'].encode() == config['_main'].read_bytes(),
-            'authenticated-fetch-does-not-match-saved-config')
-
-
-def verify_management_routes(config):
-    status, _, _ = http(origin(config, 'GITLAB') + '/users/sign_in')
-    require(status == 200, 'gitlab-sign-in-not-ready')
-    ready = json.loads(run([*DOCKER, 'exec', 'system_gitlab_1', 'curl', '-fsS', '--max-time', '10',
-                           'http://127.0.0.1/-/readiness']))
-    require(ready.get('status') == 'ok', 'gitlab-application-not-ready')
-    registry = origin(config, 'GITLAB_REGISTRY')
-    if config['GITLAB_REGISTRY_DOMAIN_MODE'] in ('0', '1') and ':' not in urllib.parse.urlsplit(registry).netloc:
-        registry += ':5050'
-    status, _, headers = http(registry + '/v2/')
-    require(status == 401 and headers.get('WWW-Authenticate', '').startswith('Bearer '), 'registry-authentication-not-ready')
-
-
-def verify_routes(config, services, redirect_from=None):
-    verify_management_routes(config)
-    if config['WIZARD_ENABLE'] == 'true':
-        public = origin(config, 'WIZARD')
-        status, body, _ = http(public + '/')
-        require(status == 200, 'wizard-public-not-ready')
-        networks = services['system_wizard_1']['NetworkSettings']['Networks'].values()
-        addresses = [row['IPAddress'] for row in networks if row.get('IPAddress')]
-        require(bool(addresses), 'wizard-container-network-missing')
-        direct_status, direct_body, _ = http('http://' + addresses[0] + '/',
-                                            headers={'Host': urllib.parse.urlsplit(public).netloc})
-        require(direct_status == 200 and direct_body == body, 'public-host-does-not-route-to-wizard')
-        if redirect_from:
-            parsed = urllib.parse.urlsplit(redirect_from)
-            require(parsed.scheme in ('http', 'https') and bool(parsed.netloc) and
-                    not parsed.username and parsed.path in ('', '/') and not parsed.query and not parsed.fragment,
-                    'invalid-redirect-origin')
-            suffix = '/bootstrapper-routing-check?probe=1'
-            status, _, headers = http(redirect_from.rstrip('/') + suffix)
-            require(status in (301, 308) and headers.get('Location') == public + suffix,
-                    'canonical-host-redirect-mismatch')
-
-
-def runner_contacts(config, baseline, token_file):
-    if not token_file:
-        return {'checked': False, 'reason': 'no-operator-supplied-GitLab-API-token'}
-    path = Path(token_file)
-    require(path.is_file() and not path.is_symlink() and not (path.stat().st_mode & 0o077), 'GitLab-token-file-must-be-private')
-    token = path.read_text().strip()
-    require(bool(token), 'GitLab-token-file-is-empty')
-    base = origin(config, 'GITLAB') + '/api/v4'
-    def pages(route):
-        result = []
-        for page in range(1, 101):
-            status, body, headers = http(base + route + ('&' if '?' in route else '?') +
-                                         f'per_page=100&page={page}', headers={'PRIVATE-TOKEN': token})
-            require(status == 200, 'GitLab-runner-API-permission-or-readiness')
-            rows = json.loads(body)
-            require(isinstance(rows, list), 'invalid-GitLab-runner-API-response')
-            result.extend(rows)
-            if not headers.get('X-Next-Page'):
-                return result
-        raise recovery.RecoveryError('GitLab-runner-API-pagination-limit')
-    runners = pages('/runners/all')
-    expected = {}
-    for index in range(1, runner_count(config) + 1):
-        raw = (config['_root'] / f'runners/runner/{index}/config/.runner_system_id').read_bytes()
-        expected[hashlib.sha256(raw.strip()).hexdigest()] = f'runner_docker_{index}'
-    require(len(expected) == runner_count(config), 'runner-manager-identities-not-unique')
-    matched = {}
-    probes = 0
-    started = datetime.datetime.fromisoformat(baseline['startedAt'])
-    for runner in runners:
-        require(isinstance(runner.get('id'), int), 'invalid-GitLab-runner-id')
-        for manager in pages('/runners/' + str(runner['id']) + '/managers'):
-            identity = hashlib.sha256(manager.get('system_id', '').encode()).hexdigest()
-            if identity in expected:
-                contact = manager.get('contacted_at')
-                # Workhorse can serve idle job polls without updating the Rails
-                # contact timestamp. Probe the retained configuration explicitly;
-                # this proves authentication, not job execution or poller activity.
-                if contact is not None and manager.get('status') == 'online' and \
-                        datetime.datetime.fromisoformat(contact.replace('Z', '+00:00')) < started:
-                    try:
-                        run([*DOCKER, 'exec', expected[identity], 'gitlab-runner', 'verify',
-                             '--config', '/etc/gitlab-runner/config.toml'], timeout=15)
-                    except recovery.RecoveryError:
-                        if recovery.OPERATION_DEADLINE is not None and time.monotonic() >= recovery.OPERATION_DEADLINE:
-                            raise recovery.RecoveryError('operation-readiness-deadline-expired') from None
-                        raise recovery.RecoveryError('runner-manager-authentication-probe-failed') from None
-                    probes += 1
-                    refreshed = [row for row in pages('/runners/' + str(runner['id']) + '/managers')
-                                 if hashlib.sha256(row.get('system_id', '').encode()).hexdigest() == identity]
-                    require(len(refreshed) == 1, 'runner-manager-identity-changed-during-probe')
-                    manager = refreshed[0]
-                    contact = manager.get('contacted_at')
-                require(contact is not None and manager.get('status') == 'online' and
-                        datetime.datetime.fromisoformat(contact.replace('Z', '+00:00')) >= started,
-                        'runner-manager-contact-not-fresh')
-                matched[identity] = {'identitySha256': identity, 'runnerId': runner['id'], 'contactedAt': contact}
-    require(set(matched) == set(expected), 'expected-runner-managers-not-online')
-    return {'checked': True, 'online': len(matched), 'contactsAfterStart': True,
-            'authenticationProbeCount': probes, 'jobExecutionChecked': False}
-
-
-def verify(config, baseline, checkout, token_file=None, redirect_from=None, public=False):
-    require(public == (baseline.get('imageMode') == 'public-images-v1'), 'runtime-image-mode-mismatch')
-    assert_baseline(config, baseline)
-    require(run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).decode().strip() == baseline['hostToolsRevision'] and
-            not run(['git', '-C', str(checkout), 'status', '--porcelain']).strip(), 'host-tools-checkout-changed')
-    services = inspect_services(config)
-    if public:
-        require(public_images(config, services) == baseline['selectedImages'], 'public-service-image-changed')
-        source = baseline
-    else:
-        manifest = recovery.load_manifest(config['_root'] / 'recovery', checkout)
-        verify_images(config, manifest, services)
-        source = manifest
-    mounts = verify_mounts(config, services)
-    verify_routes(config, services, redirect_from)
-    verify_sync(config)
-    runners = runner_contacts(config, baseline, token_file)
-    tls = any(config.get(key + '_DOMAIN_MODE') in ('2', '3') for key in ('WIZARD', 'SYNC', 'GITLAB', 'GITLAB_REGISTRY'))
-    if tls:
-        require(Path('/etc/letsencrypt').resolve(strict=True) == config['_root'] / 'host/letsencrypt',
-                'certificate-state-is-not-on-volume')
-        require(run(['systemctl', 'is-active', 'certbot.timer']).strip() == b'active', 'certificate-renewal-timer-inactive')
-        next_run = run(['systemctl', 'show', 'certbot.timer', '--property=NextElapseUSecRealtime', '--value']).strip()
-        require(next_run not in (b'', b'n/a'), 'certificate-renewal-not-scheduled')
-    for name in ('.wizard-image-recovery.lock', '.wizard-image-recovery.pending'):
-        require(not (config['_root'] / 'configuration' / name).exists(), 'private-registry-recovery-cleanup-pending')
-    assert_baseline(config, baseline)
-    final = inspect_services(config)
-    require(all(final[name]['Id'] == row['Id'] and final[name]['State']['StartedAt'] == row['State']['StartedAt']
-                for name, row in services.items()), 'services-replaced-during-verification')
-    return {'passed': True, 'at': now(), 'sourceCommit': source['sourceCommit'],
-            'sourceTree': source['sourceTree'], 'hostToolsRevision': baseline['hostToolsRevision'],
-            'runningCoreServices': len(services), 'persistentMountCount': mounts,
-            'configurationUnchanged': True, 'authenticatedFetchMatchesSavedBytes': True,
-            'cubeExact': True, 'runnerManagers': runners, 'renewalTimerChecked': tls}
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['baseline', 'check'])
-    parser.add_argument('--persistence-env', required=True)
-    parser.add_argument('--baseline', help='Required for check; baseline does not change after capture.')
-    parser.add_argument('--output', required=True)
-    parser.add_argument('--timeout', type=int, default=0, help='Bounded readiness wait in seconds.')
-    parser.add_argument('--gitlab-token-file', help='Optional private operator API token; verifies fresh manager contacts.')
-    parser.add_argument('--redirect-from', help='Optional old origin that must redirect to configured Wizard origin.')
-    parser.add_argument('--public-images', action='store_true',
-                        help='Explicit installed-image baseline without recovery/images.json; refuses an existing archive manifest.')
-    args = parser.parse_args()
-    require(0 <= args.timeout <= 3600, 'invalid-readiness-timeout')
-    output = Path(args.output).resolve()
-    require(output != HERE.parent and HERE.parent not in output.parents, 'receipts-must-be-outside-checkout')
-    config = settings(args.persistence_env)
-    checkout = HERE.parent
-    if args.operation == 'baseline':
-        require(not Path(args.output).exists(), 'baseline-already-exists')
-        write_private(args.output, capture(config, checkout, public=args.public_images))
-        print('Pre-start baseline captured.')
-        return
-    require(bool(args.baseline), 'pre-start-baseline-required')
-    baseline = json.loads(Path(args.baseline).read_bytes())
-    deadline = time.monotonic() + args.timeout
-    recovery.OPERATION_DEADLINE = deadline if args.timeout else None
-    while True:
-        try:
-            result = verify(config, baseline, checkout, args.gitlab_token_file, args.redirect_from, public=args.public_images)
-            write_private(args.output, result)
-            print('Runtime verification passed.')
-            return
-        except Exception as error:
-            label = str(error) if isinstance(error, recovery.RecoveryError) else type(error).__name__
-            write_private(args.output, {'passed': False, 'at': now(), 'failedCheck': label})
-            if time.monotonic() >= deadline:
-                raise recovery.RecoveryError(label) from None
-            time.sleep(min(10, max(0, deadline - time.monotonic())))
-
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as error:
-        print('Verification failed: ' + (str(error) if isinstance(error, recovery.RecoveryError)
-                                          else type(error).__name__), file=__import__('sys').stderr)
-        raise SystemExit(1)
+    retained = Path('/opt/system-bootstrapper-runtime/bin/node')
+    node = str(retained.resolve()) if retained.is_file() else 'node'
+    os.execvp(node, [node, str(HERE / 'verify-runtime.js'), *sys.argv[1:]])

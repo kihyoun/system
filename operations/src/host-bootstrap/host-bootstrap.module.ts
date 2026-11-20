@@ -1,3 +1,5 @@
+import { RuntimeVerificationService } from './runtime-verification.service';
+import { HostInitializeService } from './initialize.service';
 import { HostInstallService } from '../host/install';
 import { QuickstartPreflightService } from './quickstart-preflight.service';
 import { QuickstartService } from './quickstart.service';
@@ -9,6 +11,26 @@ import { LocalHostService } from './local.service';
 import { BuildToolsService } from './build-tools.service';
 @Module({
   providers: [
+    {
+      provide: RuntimeVerificationService,
+      inject: [HostInstallService],
+      useFactory: (host: HostInstallService) => new RuntimeVerificationService(host),
+    },
+    {
+      provide: HostInitializeService,
+      inject: [
+        RetainedRecoveryService,
+        RuntimeVerificationService,
+        UbuntuHostService,
+        HostCertificateService,
+      ],
+      useFactory: (
+        recovery: RetainedRecoveryService,
+        verification: RuntimeVerificationService,
+        ubuntu: UbuntuHostService,
+        certificates: HostCertificateService,
+      ) => new HostInitializeService(recovery, verification, ubuntu, certificates),
+    },
     { provide: HostInstallService, useFactory: () => new HostInstallService() },
     { provide: QuickstartPreflightService, useFactory: () => new QuickstartPreflightService() },
     {
@@ -27,6 +49,8 @@ import { BuildToolsService } from './build-tools.service';
     { provide: BuildToolsService, useFactory: () => new BuildToolsService() },
   ],
   exports: [
+    RuntimeVerificationService,
+    HostInitializeService,
     QuickstartService,
     BuildToolsService,
     HostCertificateService,

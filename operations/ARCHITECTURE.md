@@ -61,7 +61,7 @@ and [controller guide](../bootstrapper/README.md) for command-specific inputs.
 ## Boundaries deliberately outside operation services
 
 - **Before Node/operations exists:** `bootstrapper/quickstart.sh`,
-  `prepare-host-runtime.py`, `install.sh` and image-build `install-runtime.sh`
+  `quickstart.sh --runtime-only vMAJOR.MINOR.PATCH`, `install.js` and image-build `install-runtime.js`
   bootstrap the verified release/runtime or native packages. Quickstart verifies
   pinned nvm/Node and copies compiled operations from the accepted controller;
   it cannot depend on the runtime it is installing. Source developers prepare

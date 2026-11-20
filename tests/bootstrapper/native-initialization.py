@@ -28,6 +28,13 @@ recovery = module('recovery_test', ROOT / 'bootstrapper/recovery.py')
 runtime = module('runtime_test', ROOT / 'bootstrapper/verify-runtime.py')
 
 
+def verify_images(config, manifest, services):
+    selectors = recovery.host_operation('runtimeImageSelectors', config)
+    references = set(selectors.values()) | {config['GITLAB_RUNNER_IMAGE']}
+    return runtime.recovery.host_operation('verifyImageInspections', config, manifest, services,
+                                   {reference: runtime.recovery.inspect_image(reference) for reference in references})
+
+
 class RecoveryManifest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='system-native-init-')
@@ -213,7 +220,7 @@ class RecoveryManifest(unittest.TestCase):
         def inspect(selected):
             return {'Id': self.image if selected == 'controller:retained' else public_image}
         with patch.object(runtime.recovery, 'inspect_image', side_effect=inspect):
-            runtime.verify_images(runtime_config, self.manifest, services)
+            verify_images(runtime_config, self.manifest, services)
         self.assertEqual((config.read_bytes(), self.path.read_bytes()), before)
 
         # Matching the default tag does not relax the declared exact image ID.
@@ -221,12 +228,12 @@ class RecoveryManifest(unittest.TestCase):
             return {'Id': 'sha256:' + 'f' * 64} if selected == 'nginx' else inspect(selected)
         with patch.object(runtime.recovery, 'inspect_image', side_effect=retargeted):
             with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'image-alias-retargeted'):
-                runtime.verify_images(runtime_config, self.manifest, services)
+                verify_images(runtime_config, self.manifest, services)
 
         services['system_web_1']['Image'] = 'sha256:' + 'f' * 64
         with patch.object(runtime.recovery, 'inspect_image', side_effect=inspect):
             with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'service-image-selection-mismatch'):
-                runtime.verify_images(runtime_config, self.manifest, services)
+                verify_images(runtime_config, self.manifest, services)
 
     def test_default_tag_matching_does_not_accept_other_tags_repositories_or_ports(self):
         self.manifest['publicImages'][0]['tag'] = 'registry.example.invalid:5050/group/nginx:latest'
@@ -247,246 +254,9 @@ class RecoveryManifest(unittest.TestCase):
 
 
 class RuntimeVerification(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix='system-runtime-proof-')
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        self.config = {'_root': self.root, '_main': self.root / 'configuration/.docker.env',
-                       'GITLAB_RUNNER_SCALE': '1', 'GITLAB_HOST': 'gitlab.example.invalid',
-                       'GITLAB_DOMAIN_MODE': '2', 'GITLAB_REGISTRY_HOST': 'registry.example.invalid',
-                       'GITLAB_REGISTRY_DOMAIN_MODE': '2', 'WIZARD_ENABLE': 'true',
-                       'WIZARD_HOST': 'wizard.example.invalid', 'WIZARD_DOMAIN_MODE': '2'}
-        self.services = {'system_wizard_1': {'NetworkSettings': {'Networks': {'system_default': {'IPAddress': '172.19.0.3'}}}}}
-        self.baseline = {'startedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
-
-    def test_runtime_mount_failures_use_shared_typescript_service(self):
-        result = subprocess.run(['node', '--test', str(Path(__file__).resolve().parents[2] / 'operations/tests/host-runtime-inspection.test.cjs')], capture_output=True, text=True)
+    def test_native_runtime_acceptance(self):
+        result = subprocess.run(['node', '--test', str(ROOT / 'operations/tests/host-runtime-inspection.test.cjs')], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_readiness_budget_caps_blocking_commands(self):
-        runtime.recovery.OPERATION_DEADLINE = __import__('time').monotonic() + 0.02
-        try:
-            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'command-failed'):
-                runtime.run(['python3', '-c', 'import time;time.sleep(2)'])
-        finally:
-            runtime.recovery.OPERATION_DEADLINE = None
-
-    def test_example_configuration_preserves_exact_cube(self):
-        raw = (ROOT / 'system/.docker.env.example').read_bytes()
-        runtime.cube(raw)
-        with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'cube'):
-            runtime.cube(raw.replace(b'#$ ', b'#  ', 1))
-
-    def test_missing_token_is_explicitly_not_an_online_runner_claim(self):
-        result = runtime.runner_contacts(self.config, self.baseline, None)
-        self.assertFalse(result['checked'])
-        self.assertNotIn('online', result)
-
-    def test_runner_online_requires_actual_contact_after_baseline(self):
-        identity = self.root / 'runners/runner/1/config/.runner_system_id'
-        identity.parent.mkdir(parents=True)
-        identity.write_text('synthetic-manager\n')
-        token = self.root / 'api-token'
-        token.write_text('synthetic-private-token')
-        token.chmod(0o600)
-        contact = {'status': 'online', 'system_id': 'synthetic-manager', 'contacted_at': '2000-01-01T00:00:00Z'}
-        def api(url, body=None, headers=None):
-            self.assertEqual(headers['PRIVATE-TOKEN'], 'synthetic-private-token')
-            result = [{'id': 3}] if '/runners/all?' in url else [contact]
-            return 200, json.dumps(result).encode(), {}
-        with patch.object(runtime, 'http', side_effect=api), patch.object(runtime, 'run', return_value=b'') as probe:
-            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'contact-not-fresh'):
-                runtime.runner_contacts(self.config, self.baseline, token)
-            probe.assert_called_once_with([*runtime.DOCKER, 'exec', 'runner_docker_1', 'gitlab-runner',
-                                           'verify', '--config', '/etc/gitlab-runner/config.toml'], timeout=15)
-            probe.reset_mock()
-            contact['contacted_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            result = runtime.runner_contacts(self.config, self.baseline, token)
-            self.assertEqual(result['online'], 1)
-            self.assertEqual(result['authenticationProbeCount'], 0)
-            self.assertFalse(result['jobExecutionChecked'])
-            probe.assert_not_called()
-        token.chmod(0o644)
-        with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'must-be-private'):
-            runtime.runner_contacts(self.config, self.baseline, token)
-
-    def test_cached_manager_contact_needs_successful_probe_and_fresh_matching_api_evidence(self):
-        identity = self.root / 'runners/runner/1/config/.runner_system_id'
-        identity.parent.mkdir(parents=True)
-        identity.write_text('synthetic-manager\n')
-        token = self.root / 'api-token'
-        token.write_text('synthetic-private-token')
-        token.chmod(0o600)
-        stale = {'status': 'online', 'system_id': 'synthetic-manager', 'contacted_at': '2000-01-01T00:00:00Z'}
-        fresh = dict(stale, contacted_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
-        for changed, expected_error in [
-                (fresh, None),
-                (stale, 'contact-not-fresh'),
-                (dict(fresh, status='offline'), 'contact-not-fresh'),
-                (dict(fresh, system_id='another-manager'), 'identity-changed-during-probe'),
-                (dict(fresh, contacted_at=None), 'contact-not-fresh')]:
-            with self.subTest(expected_error=expected_error, manager=changed):
-                responses = [(200, json.dumps(rows).encode(), {}) for rows in
-                             ([{'id': 3}], [stale], [changed])]
-                with patch.object(runtime, 'http', side_effect=responses) as api, \
-                        patch.object(runtime, 'run', return_value=b'private command output') as probe:
-                    if expected_error:
-                        with self.assertRaisesRegex(runtime.recovery.RecoveryError, expected_error):
-                            runtime.runner_contacts(self.config, self.baseline, token)
-                    else:
-                        result = runtime.runner_contacts(self.config, self.baseline, token)
-                        self.assertEqual(result, {'checked': True, 'online': 1, 'contactsAfterStart': True,
-                                                 'authenticationProbeCount': 1, 'jobExecutionChecked': False})
-                        self.assertNotIn('private', json.dumps(result))
-                    self.assertEqual(api.call_count, 3)
-                    probe.assert_called_once()
-
-    def test_runner_authentication_probe_failure_is_bounded_and_drops_command_output(self):
-        identity = self.root / 'runners/runner/1/config/.runner_system_id'
-        identity.parent.mkdir(parents=True)
-        identity.write_text('synthetic-manager\n')
-        token = self.root / 'api-token'
-        token.write_text('synthetic-private-token')
-        token.chmod(0o600)
-        responses = [(200, json.dumps(rows).encode(), {}) for rows in ([{'id': 3}],
-                     [{'status': 'online', 'system_id': 'synthetic-manager', 'contacted_at': '2000-01-01T00:00:00Z'}])]
-        with patch.object(runtime, 'http', side_effect=responses), \
-                patch.object(runtime.recovery, 'OPERATION_DEADLINE', __import__('time').monotonic() + 2), \
-                patch.object(runtime.subprocess, 'run', side_effect=subprocess.CalledProcessError(
-                    1, 'docker', output=b'private-token', stderr=b'private-server')) as command:
-            with self.assertRaisesRegex(runtime.recovery.RecoveryError, '^runner-manager-authentication-probe-failed$'):
-                runtime.runner_contacts(self.config, self.baseline, token)
-            self.assertGreater(command.call_args.kwargs['timeout'], 0)
-            self.assertLessEqual(command.call_args.kwargs['timeout'], 2)
-            self.assertTrue(command.call_args.kwargs['capture_output'])
-        with patch.object(runtime, 'http', side_effect=responses), \
-                patch.object(runtime.recovery, 'OPERATION_DEADLINE', 0), \
-                patch.object(runtime.subprocess, 'run') as command:
-            with self.assertRaisesRegex(runtime.recovery.RecoveryError, '^operation-readiness-deadline-expired$'):
-                runtime.runner_contacts(self.config, self.baseline, token)
-            command.assert_not_called()
-
-    def test_each_retained_manager_needs_its_own_fresh_contact(self):
-        config = dict(self.config, GITLAB_RUNNER_SCALE='2')
-        for index in (1, 2):
-            identity = self.root / f'runners/runner/{index}/config/.runner_system_id'
-            identity.parent.mkdir(parents=True)
-            identity.write_text(f'manager-{index}\n')
-        token = self.root / 'api-token'
-        token.write_text('synthetic-private-token')
-        token.chmod(0o600)
-        contacts = [{'system_id': f'manager-{index}', 'status': 'online',
-                     'contacted_at': '2000-01-01T00:00:00Z'} for index in (1, 2)]
-        def api(url, **kwargs):
-            return 200, json.dumps([{'id': 3}] if '/runners/all?' in url else contacts).encode(), {}
-        def probe(args, **kwargs):
-            index = int(args[3].removeprefix('runner_docker_'))
-            contacts[index - 1]['contacted_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            return b''
-        with patch.object(runtime, 'http', side_effect=api), patch.object(runtime, 'run', side_effect=probe) as command:
-            result = runtime.runner_contacts(config, self.baseline, token)
-            self.assertEqual(result['online'], 2)
-            self.assertEqual(result['authenticationProbeCount'], 2)
-            self.assertEqual([call.args[0][3] for call in command.call_args_list],
-                             ['runner_docker_1', 'runner_docker_2'])
-
-    def test_offline_missing_or_unrelated_manager_does_not_trigger_authentication_probe(self):
-        identity = self.root / 'runners/runner/1/config/.runner_system_id'
-        identity.parent.mkdir(parents=True)
-        identity.write_text('synthetic-manager\n')
-        token = self.root / 'api-token'
-        token.write_text('synthetic-private-token')
-        token.chmod(0o600)
-        known = {'status': 'online', 'system_id': 'synthetic-manager', 'contacted_at': '2000-01-01T00:00:00Z'}
-        for managers in ([], [dict(known, status='offline')], [dict(known, contacted_at=None)],
-                         [dict(known, system_id='unrelated-manager')]):
-            with self.subTest(managers=managers):
-                responses = [(200, json.dumps(rows).encode(), {}) for rows in ([{'id': 3}], managers)]
-                with patch.object(runtime, 'http', side_effect=responses), patch.object(runtime, 'run') as command:
-                    with self.assertRaises(runtime.recovery.RecoveryError):
-                        runtime.runner_contacts(self.config, self.baseline, token)
-                    command.assert_not_called()
-
-    def test_container_health_is_insufficient_when_gitlab_http_is_not_ready(self):
-        with patch.object(runtime, 'http', return_value=(502, b'', {})):
-            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'gitlab-sign-in-not-ready'):
-                runtime.verify_routes(self.config, self.services)
-
-    def test_public_wizard_must_match_its_container_not_gitlab(self):
-        def endpoint(url, body=None, headers=None):
-            if url.endswith('/v2/'):
-                return 401, b'', {'WWW-Authenticate': 'Bearer realm="test"'}
-            if url.startswith('http://172.'):
-                return 200, b'wizard-content', {}
-            return 200, b'gitlab-content', {}
-        with patch.object(runtime, 'http', side_effect=endpoint), \
-             patch.object(runtime, 'run', return_value=b'{"status":"ok"}'):
-            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'does-not-route-to-wizard'):
-                runtime.verify_routes(self.config, self.services)
-
-    def test_authenticated_fetch_compares_exact_saved_bytes(self):
-        self.config.update(SYNC_ENABLE='true', SYNC_HOST='sync.example.invalid', SYNC_DOMAIN_MODE='2',
-                           SYNC_USER='fixture', SYNC_PASS='synthetic-private-password')
-        self.config['_main'].parent.mkdir()
-        self.config['_main'].write_bytes(b'original config\n')
-        responses = [(200, b'{"refreshToken":"private-refresh"}', {}),
-                     (200, b'{"accessToken":"private-access"}', {}),
-                     (200, b'{"data":"original config"}', {})]
-        with patch.object(runtime, 'http', side_effect=responses):
-            with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'does-not-match-saved-config'):
-                runtime.verify_sync(self.config)
-        responses[-1] = (200, b'{"data":"original config\\n"}', {})
-        with patch.object(runtime, 'http', side_effect=responses):
-            runtime.verify_sync(self.config)
-
-    def test_private_receipt_does_not_follow_a_symlink(self):
-        target = self.root / 'unrelated'
-        target.write_text('keep')
-        alias = self.root / 'receipt'
-        alias.symlink_to(target)
-        with self.assertRaisesRegex(runtime.recovery.RecoveryError, 'symlink'):
-            runtime.write_private(alias, {'passed': True})
-        self.assertEqual(target.read_text(), 'keep')
-        result = self.root / 'result.json'
-        runtime.write_private(result, {'passed': True})
-        self.assertEqual(result.stat().st_mode & 0o777, 0o600)
-
-    def test_absent_volume_blocks_packages_services_and_receipt_creation(self):
-        selector = self.root / 'selectors.env'
-        data = self.root / 'not-mounted/platform'
-        data.parent.mkdir()
-        selector.write_text(f'PERSISTENT_MOUNT={data.parent}\nPERSISTENT_DIR={data}\nSEED_DIR={data.parent}/seed\n')
-        receipt = self.root / 'operation'
-        command = subprocess.run(['bash', str(ROOT / 'bootstrapper/initialize.sh'), '--install-host',
-                                  '--receipt-dir', str(receipt)], capture_output=True,
-                                 env=dict(os.environ, PERSISTENCE_ENV_FILE=str(selector)))
-        self.assertNotEqual(command.returncode, 0)
-        self.assertFalse(receipt.exists())
-        self.assertFalse(data.exists())
-
-    def test_recovery_rejects_unknown_arguments_before_loading_selectors(self):
-        command = subprocess.run(['bash', str(ROOT / 'bootstrapper/recover-volume.sh'), '--unknown'],
-                                 capture_output=True, env=dict(os.environ, PERSISTENCE_ENV_FILE='/missing'))
-        self.assertNotEqual(command.returncode, 0)
-        self.assertIn(b'Usage:', command.stderr)
-        self.assertNotIn(b'/missing', command.stderr)
-
-    def test_help_never_needs_live_access(self):
-        command = subprocess.run(['bash', str(ROOT / 'bootstrapper/initialize.sh'), '--help'], capture_output=True)
-        self.assertEqual(command.returncode, 0)
-        self.assertIn(b'No disk formatting or Seed restore', command.stdout)
-
-    def test_cli_error_does_not_dump_private_configuration_or_traceback(self):
-        path = self.root / 'selectors.env'
-        path.write_text('PERSISTENT_MOUNT=/does-not-exist\nPERSISTENT_DIR=/does-not-exist/data\n'
-                        'PERSISTENT_UUID=fixture\nSEED_DIR=/does-not-exist/seed\nSECRET=synthetic-private-secret\n')
-        command = subprocess.run(['python3', str(ROOT / 'bootstrapper/verify-runtime.py'), 'baseline',
-                                  '--persistence-env', str(path), '--output', str(self.root / 'receipt.json')],
-                                 capture_output=True)
-        self.assertNotEqual(command.returncode, 0)
-        self.assertNotIn(b'synthetic-private-secret', command.stdout + command.stderr)
-        self.assertNotIn(b'Traceback', command.stderr)
-
 
 if __name__ == '__main__':
     unittest.main()

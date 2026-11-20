@@ -1,3 +1,10 @@
+import {
+  RuntimeVerificationService,
+  cube,
+  serviceOrigin,
+  type RuntimeBaseline,
+  type VerificationOptions,
+} from '../host-bootstrap/runtime-verification.service';
 import 'reflect-metadata';
 import {
   RecoveryPublicationService,
@@ -10,6 +17,7 @@ import { UpgradePrerequisiteService } from './upgrade-prerequisite.service';
 import { HostReleaseAuthorityService } from './release-authority.service';
 import {
   runtimeImageSelectors,
+  runnerCount,
   verifyImageInspections,
   RuntimeInspectionService,
   inspectServiceRows,
@@ -73,6 +81,8 @@ export async function compatibility(
         args[1],
         args[2] === null ? undefined : (args[2] as string),
       );
+    case 'runtimeRunnerCount':
+      return runnerCount(args[0] as RuntimeConfig);
     case 'failedStoppedController':
       return failedStoppedController(args[0] as ContainerRow, args[1]);
     case 'validateUpgradeGraph':
@@ -120,6 +130,83 @@ export async function compatibility(
     host.deadline = input.deadline;
     host.environment = input.environment ?? process.env;
     switch (input.operation) {
+      case 'runtimeVerification': {
+        const service = app.get(RuntimeVerificationService),
+          method = String(args[0]),
+          values = args.slice(1),
+          config = values[0] as RuntimeConfig;
+        switch (method) {
+          case 'cube':
+            return cube(Buffer.from(String(values[0]), 'base64'));
+          case 'origin':
+            return serviceOrigin(config, String(values[1]));
+          case 'settings':
+            return service.settings(String(values[0]), String(values[1]), host.environment);
+          case 'files':
+            return service.files(config);
+          case 'manifestAbsent':
+            return service.manifestAbsent(config);
+          case 'inspectServices':
+            return service.services(config, values[1] == null ? undefined : String(values[1]));
+          case 'verifyImages':
+            return app
+              .get(RuntimeInspectionService)
+              .images(
+                config,
+                values[1] as RecoveryManifest,
+                values[2] as Record<string, ContainerRow>,
+              );
+          case 'publicImages':
+            return service.publicImages(config, values[1] as Record<string, ContainerRow>);
+          case 'capture':
+            return service.capture(
+              config,
+              String(values[1]),
+              values[2] === true,
+              values[3] == null ? undefined : String(values[3]),
+              values[4] == null ? undefined : (values[4] as RecoveryManifest),
+            );
+          case 'assertBaseline':
+            return service.assertBaseline(config, values[1] as RuntimeBaseline);
+          case 'sync':
+            return service.sync(config);
+          case 'managementRoutes':
+            return service.managementRoutes(config);
+          case 'routes':
+            return service.routes(
+              config,
+              values[1] as Record<string, ContainerRow>,
+              values[2] == null ? undefined : String(values[2]),
+            );
+          case 'runnerContacts':
+            return service.runnerContacts(
+              config,
+              values[1] as RuntimeBaseline,
+              values[2] == null ? undefined : String(values[2]),
+            );
+          case 'verify':
+            return service.verify(
+              config,
+              values[1] as RuntimeBaseline,
+              values[2] as VerificationOptions,
+            );
+          case 'http': {
+            const result = await service.http(
+              String(values[0]),
+              undefined,
+              values[1] ?? undefined,
+              (values[2] ?? {}) as Record<string, string>,
+            );
+            return {
+              status: result.status,
+              body: result.body.toString('base64'),
+              headers: Object.fromEntries(result.headers),
+            };
+          }
+          default:
+            throw Error('unsupported-runtime-verification-operation');
+        }
+      }
       case 'refreshRecoveryManifest':
         return app
           .get(RecoveryPublicationService)

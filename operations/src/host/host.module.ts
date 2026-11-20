@@ -1,3 +1,4 @@
+import { RuntimeVerificationService } from '../host-bootstrap/runtime-verification.service';
 import {
   PublicUpgradePlanService,
   type PublicUpgradePlanPort,
@@ -66,6 +67,7 @@ export class HostModule {
       RecoveryImageService,
       RecoveryManifestService,
       RuntimeInspectionService,
+      RuntimeVerificationService,
     ];
     const nativePortRequired = () => {
       throw Error('cold-maintenance-native-port-required');

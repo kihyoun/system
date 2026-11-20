@@ -2,11 +2,20 @@
 # The only shell bootstrap: prepare pinned Node, verify the accepted CLI, hand off to Nest.
 set -euo pipefail
 umask 077
+mode=install
+release_tag=''
+if (( $# )); then
+  [[ $# == 2 && $1 == --runtime-only && $2 =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Usage: quickstart.sh [--runtime-only vMAJOR.MINOR.PATCH]' >&2; exit 1; }
+  mode=runtime
+  release_tag=$2
+fi
 [[ $(id -u) == 0 ]] || { echo 'Run Quickstart with sudo/root access.' >&2; exit 1; }
 exec 9>/run/system-bootstrapper-quickstart.lock
 flock -n 9 || { echo 'Another Quickstart is running.' >&2; exit 1; }
 runtime=/opt/system-bootstrapper-runtime
-for target in "$runtime" /opt/system-bootstrapper /etc/system-bootstrapper /var/lib/system-bootstrapper /system; do
+targets=("$runtime")
+if [[ $mode == install ]]; then targets+=(/opt/system-bootstrapper /etc/system-bootstrapper /var/lib/system-bootstrapper /system); fi
+for target in "${targets[@]}"; do
   [[ ! -e "$target" && ! -L "$target" ]] || { echo "Preserving existing state: $target" >&2; exit 1; }
 done
 # Download into a private temporary directory; execute only checksum-verified bytes.
@@ -31,7 +40,7 @@ node="$runtime/bin/node"
 [[ $("$node" --version) == v24.22.0 ]]
 printf '%s\n' "$runtime/nvm/versions/node/v24.22.0/bin/node" > "$runtime/node-executable"
 export PATH="$runtime/bin:$PATH"
-"$node" --input-type=module - "$staging" "$runtime" <<'SYSTEM_QUICKSTART_JS'
+"$node" --input-type=module - "$staging" "$runtime" "$mode" "$release_tag" <<'SYSTEM_QUICKSTART_JS'
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -63,10 +72,13 @@ async function download(address, limit = 32 * 1024 * 1024) {
   throw Error('Too many public download redirects.');
 }
 const digest = (data, algorithm, encoding='hex') => crypto.createHash(algorithm).update(data).digest(encoding);
-export async function metadata() {
-  const release = JSON.parse(await download('https://api.github.com/repos/'+REPOSITORY+'/releases/'+(ACCEPTED_RELEASE_TAG ? 'tags/'+ACCEPTED_RELEASE_TAG : 'latest')));
+export async function metadata(requestedTag = '') {
+  require(!requestedTag || /^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(requestedTag), 'Stable release tag required.');
+  const selectedTag = ACCEPTED_RELEASE_TAG || requestedTag;
+  require(!ACCEPTED_RELEASE_TAG || !requestedTag || requestedTag === ACCEPTED_RELEASE_TAG, 'Published Quickstart release binding mismatch.');
+  const release = JSON.parse(await download('https://api.github.com/repos/'+REPOSITORY+'/releases/'+(selectedTag ? 'tags/'+selectedTag : 'latest')));
   const tag = release.tag_name;
-  require(/^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(tag) && (!ACCEPTED_RELEASE_TAG || tag === ACCEPTED_RELEASE_TAG) && release.draft === false && release.prerelease === false, 'Published stable accepted release required.');
+  require(/^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(tag) && (!selectedTag || tag === selectedTag) && release.draft === false && release.prerelease === false, 'Published stable accepted release required.');
   const asset = async name => {
     const rows = release.assets.filter(row=>row.name === name);
     const url = 'https://github.com/'+REPOSITORY+'/releases/download/'+tag+'/'+name;
@@ -83,8 +95,8 @@ export async function metadata() {
   require(digest(artifact,'sha256') === receipt.sha256 && 'sha512-'+digest(artifact,'sha512','base64') === receipt.integrity, 'Accepted CLI checksum mismatch.');
   return {value,artifact};
 }
-export async function main(staging, runtime) {
-  const {value,artifact} = await metadata();
+export async function main(staging, runtime, mode, requestedTag) {
+  const {value,artifact} = await metadata(requestedTag);
   const archive = path.join(staging,value.quickstart.cli.filename), manifest = path.join(staging,'release.json');
   fs.writeFileSync(archive,artifact,{mode:0o600});
   fs.writeFileSync(manifest,JSON.stringify(value),{mode:0o600});
@@ -93,9 +105,10 @@ export async function main(staging, runtime) {
     require(!result.error && result.status === 0,'Native CLI operation failed. Preserve state and consult the installation guide.');
   };
   run([path.join(runtime,'bin/npm'),'install','--offline','--ignore-scripts','--no-audit','--no-fund','--prefix',path.join(runtime,'cli'),archive],{PATH:path.join(runtime,'bin'),HOME:staging,npm_config_cache:path.join(staging,'cache'),npm_config_userconfig:path.join(staging,'user.npmrc'),npm_config_globalconfig:path.join(staging,'global.npmrc')},180000);
+  if (mode === 'runtime') { console.log('Accepted offline host runtime ready: '+runtime); return; }
   run([path.join(runtime,'cli/node_modules/@systembootstrapper/cli/dist/host-bootstrap/entry.js'),'quickstart','--checkout','/opt/system-bootstrapper','--metadata',manifest],process.env,3600000);
   console.log('Wizard ready: http://127.0.0.1/configuration. For remote access use a protected SSH tunnel: ssh -N -L 8080:127.0.0.1:80 <your-user>@<your-host>');
   console.log('Read first-access credentials locally: sudo cat /var/lib/system-bootstrapper/platform/configuration/sync-auth.env');
 }
-if (process.argv[1] === '-') await main(process.argv[2],process.argv[3]).catch(error=>{console.error('Quickstart: '+error.message);process.exitCode=1;});
+if (process.argv[1] === '-') await main(process.argv[2],process.argv[3],process.argv[4],process.argv[5]).catch(error=>{console.error('Quickstart: '+error.message);process.exitCode=1;});
 SYSTEM_QUICKSTART_JS

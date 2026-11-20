@@ -64,7 +64,7 @@ Developers can build the base with the existing standalone build context:
 docker build -t system-runtime:candidate ./bootstrapper
 ```
 
-The complete System image also runs `bootstrapper/install-runtime.sh` from its
+The complete System image also runs `bootstrapper/install-runtime.js` from its
 repository build context. It starts from the same official digest-pinned Node
 24.22.0 / Alpine 3.24 image instead of requiring a separately published System
 base. The shared installer checks Node 24.22.0 and npm 11.19.1 before installing
@@ -159,7 +159,7 @@ Docker; Certbot is installed as well when
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/initialize.sh \
+  node bootstrapper/initialize.js \
   --install-host \
   --receipt-dir /var/log/system-bootstrapper/initialize-example \
   --timeout 1200 \
@@ -218,13 +218,13 @@ application-specific acceptance remains that application's responsibility.
 The commands can also be run separately:
 
 ```sh
-sudo python3 bootstrapper/verify-runtime.py baseline \
+sudo node bootstrapper/verify-runtime.js baseline \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/pre-start-baseline.json
 # Start the retained platform through the committed recovery entry point.
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/recover-volume.sh
-sudo python3 bootstrapper/verify-runtime.py check \
+  node bootstrapper/recover-volume.js
+sudo node bootstrapper/verify-runtime.js check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/pre-start-baseline.json \
   --output /root/runtime-verification.json --timeout 1200
@@ -470,10 +470,10 @@ For independent runtime checks of this installation type, select the explicit
 public-image mode for both baseline and check:
 
 ```sh
-sudo python3 bootstrapper/verify-runtime.py baseline --public-images \
+sudo node bootstrapper/verify-runtime.js baseline --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/public-runtime-baseline.json
-sudo python3 bootstrapper/verify-runtime.py check --public-images \
+sudo node bootstrapper/verify-runtime.js check --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/public-runtime-baseline.json --output /root/public-runtime-check.json \
   --gitlab-token-file /root/private-gitlab-api-token --timeout 1200 \
@@ -761,22 +761,21 @@ GitLab installation.
 
 ## Native TypeScript runtime preparation
 
-Fresh Quickstart installs nvm **0.41.0** from the pinned upstream commit and
-verifies its script checksum, then uses nvm to install Node **24.22.0**. It keeps
-this dedicated root-owned installation under `/opt/system-bootstrapper-runtime`;
-existing user nvm installations, default versions and shell profiles are preserved.
-The exact Node archive checksum is verified after nvm's download verification.
-Compiled operations and dependencies are copied from the accepted controller image
-using an owned container that is never started. No host-side npm install is needed.
+Fresh Quickstart verifies the pinned nvm script and Node **24.22.0** archive,
+then installs the exact accepted CLI tarball with bundled dependencies, offline
+and with npm scripts disabled. The accepted release metadata binds that tarball
+to the same tested source revision and tree as the controller and Wizard.
+The dedicated runtime lives under `/opt/system-bootstrapper-runtime`.
 
-For the explicit installation path, first install the native host dependencies,
-check out the reviewed release, and verify its public metadata as described below.
-Then prepare the runtime before invoking the TypeScript-backed installer:
+For an explicitly selected accepted release, prepare its runtime before recovery:
 
 ```sh
-sudo python3 bootstrapper/prepare-host-runtime.py \
-  --checkout "$PWD" --release-metadata /absolute/path/release.json
+sudo bash bootstrapper/quickstart.sh --runtime-only v2.0.0
 ```
+
+Invoke the retained CLI with an explicit reviewed checkout. This mode installs
+only the Node/CLI runtime; it does not start or restore the platform. Retain the
+checkout's compiled operations when preparing an offline recovery environment.
 
 The preparation refuses an existing runtime directory instead of overwriting it.
 Keep that directory and the checkout's `operations/dist` and

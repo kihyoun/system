@@ -106,13 +106,13 @@ export class HostCertificateService {
     args: string[],
     input: NodeJS.ProcessEnv,
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<string> {
     const env = await this.selection(checkout, input, signal),
       data = await this.validate(env, signal);
     const lock = path.join(data, 'host/letsencrypt/.system-bootstrapper-certificate-lock');
     fs.mkdirSync(lock, { mode: 0o700 });
     try {
-      await this.run('/usr/bin/certbot', args, env, signal, 7200000);
+      return await this.run('/usr/bin/certbot', args, env, signal, 7200000);
     } finally {
       fs.rmdirSync(lock);
     }

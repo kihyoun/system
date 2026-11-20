@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import 'reflect-metadata';
 import path from 'node:path';
+import { RuntimeVerificationService } from './runtime-verification.service';
+import { HostInitializeService } from './initialize.service';
+import { parseArguments, absolute, optionalString } from './arguments';
 import { QuickstartService } from './quickstart.service';
 import { UbuntuHostService } from './ubuntu.service';
 import { RetainedRecoveryService } from './recovery.service';
@@ -10,6 +13,12 @@ import { BuildToolsService } from './build-tools.service';
 import { HostCertificateService } from './certificate.service';
 import { LocalHostService } from './local.service';
 export async function main(input: string[], env = process.env): Promise<void> {
+  if (input.includes('--help') || input.includes('-h')) {
+    console.log(
+      'Host bootstrap: initialize --checkout ABS --receipt-dir ABS [--install-host] [--swap-gib 0..32] [--timeout 0..3600] [--renewal-dry-run]; verify-runtime --checkout ABS baseline|check --persistence-env ABS --output ABS [--baseline ABS] [--public-images] [--timeout SECONDS] [--gitlab-token-file ABS] [--redirect-from ORIGIN]',
+    );
+    return;
+  }
   const args = [...input],
     command = args.shift();
   const index = args.indexOf('--checkout'),
@@ -19,6 +28,8 @@ export async function main(input: string[], env = process.env): Promise<void> {
     throw Error('An explicit absolute --checkout is required.');
   if (
     ![
+      'initialize',
+      'verify-runtime',
       'quickstart',
       'install-host',
       'recover-volume',
@@ -33,6 +44,8 @@ export async function main(input: string[], env = process.env): Promise<void> {
     throw Error('Unsupported host bootstrap action.');
   if (
     command !== 'certbot' &&
+    command !== 'initialize' &&
+    command !== 'verify-runtime' &&
     !(
       command === 'quickstart' &&
       args.length === 2 &&
@@ -54,7 +67,58 @@ export async function main(input: string[], env = process.env): Promise<void> {
   process.on('SIGINT', cancel);
   process.on('SIGTERM', cancel);
   try {
-    if (command === 'quickstart')
+    if (command === 'initialize') {
+      const values = parseArguments(
+        args,
+        ['--install-host', '--renewal-dry-run'],
+        ['--receipt-dir', '--timeout', '--swap-gib', '--gitlab-token-file', '--redirect-from'],
+      );
+      await app.get(HostInitializeService).initialize(
+        {
+          checkout,
+          receiptDir: absolute(values['--receipt-dir']),
+          installHost: values['--install-host'] === true,
+          renewalDryRun: values['--renewal-dry-run'] === true,
+          timeout: values['--timeout'] === undefined ? undefined : Number(values['--timeout']),
+          swapGiB: values['--swap-gib'] === undefined ? undefined : Number(values['--swap-gib']),
+          tokenFile: optionalString(values['--gitlab-token-file']),
+          redirectFrom: optionalString(values['--redirect-from']),
+        },
+        env,
+        abort.signal,
+      );
+    } else if (command === 'verify-runtime') {
+      const operation = args.shift();
+      if (operation !== 'baseline' && operation !== 'check')
+        throw Error('Runtime verification requires baseline or check.');
+      const values = parseArguments(
+        args,
+        ['--public-images'],
+        [
+          '--persistence-env',
+          '--output',
+          '--baseline',
+          '--timeout',
+          '--gitlab-token-file',
+          '--redirect-from',
+        ],
+      );
+      await app.get(RuntimeVerificationService).execute(
+        {
+          operation,
+          checkout,
+          persistenceEnv: absolute(values['--persistence-env']),
+          output: absolute(values['--output']),
+          baseline: optionalString(values['--baseline']),
+          timeout: values['--timeout'] === undefined ? undefined : Number(values['--timeout']),
+          tokenFile: optionalString(values['--gitlab-token-file']),
+          redirectFrom: optionalString(values['--redirect-from']),
+          publicImages: values['--public-images'] === true,
+        },
+        env,
+        abort.signal,
+      );
+    } else if (command === 'quickstart')
       await app.get(QuickstartService).install(checkout, args[1], env, abort.signal);
     else if (command === 'install-host')
       await app.get(UbuntuHostService).install(env, abort.signal);
@@ -92,7 +156,11 @@ if (require.main === module) {
     ? [commands[alias], '--checkout', path.resolve(__dirname, '../../..'), ...process.argv.slice(2)]
     : process.argv.slice(2);
   void main(args).catch((error) => {
-    console.error(error.message);
+    console.error(
+      error instanceof SyntaxError || error instanceof TypeError
+        ? 'Invalid host bootstrap input or runtime response.'
+        : error.message,
+    );
     process.exitCode = 1;
   });
 }

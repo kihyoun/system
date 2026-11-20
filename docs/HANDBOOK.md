@@ -104,7 +104,7 @@ for the difference between a complete controller and a runtime base.
 Install the required Docker tools:
 
 ```bash
-sudo bash bootstrapper/install.sh
+sudo node bootstrapper/install.js
 ```
 
 The installer installs Docker and Compose and checks Docker using a test
@@ -112,7 +112,7 @@ container. For the local HTTP test, also configure the local hostnames and the
 registry's HTTP exception:
 
 ```bash
-sudo bash bootstrapper/prepare-local.sh
+sudo node bootstrapper/prepare-local.js
 ```
 
 WSL may regenerate `/etc/hosts` at startup. If the registry or other local
@@ -499,7 +499,7 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo bash bootstrapper/install.sh
+sudo node bootstrapper/install.js
 ```
 
 Choose the source revision and both public image digests from one accepted
@@ -513,7 +513,7 @@ Use Certbot **2.3.0 or newer**, which supports `reconfigure`; the Ubuntu 24.04
 The host integration below invokes
 `/usr/bin/certbot` and `certbot.timer`, so this recipe uses the distribution
 package, rather than a separate Snap installation. Do not run
-`bootstrapper/prepare-local.sh`: public DNS and a trusted HTTPS registry replace
+`bootstrapper/prepare-local.js`: public DNS and a trusted HTTPS registry replace
 its local hosts-file and insecure-registry changes.
 
 ### Public 2. Select working storage and install certificate integration
@@ -538,7 +538,7 @@ PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-sudo bash bootstrapper/install-volume-host.sh
+sudo node bootstrapper/install-volume-host.js
 sudo systemctl stop certbot.timer
 ```
 
@@ -1077,8 +1077,8 @@ are observations, not an installation-time guarantee.
    failures that are resolved within the attempt. Record each milestone's UTC
    and elapsed time privately; do not reset the clock after a failed probe.
 3. For fresh initialization, follow the [public HTTPS walkthrough](#public-server-own-domain-and-https)
-   using `bootstrapper/install.sh`, `bootstrapper/install-release.py` and
-   `bootstrapper/install-volume-host.sh` from the reviewed release checkout.
+   using `bootstrapper/install.js`, `bootstrapper/install-release.py` and
+   `bootstrapper/install-volume-host.js` from the reviewed release checkout.
    Use the release's immutable controller and matching Wizard image selections.
    Configure through Wizard Fetch, Backup and Push; set four managers if
    reproducing this run's count. Complete first certificate issuance and the
@@ -1353,7 +1353,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
 
    ```bash
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/initialize.sh \
+     node bootstrapper/initialize.js \
        --install-host \
        --receipt-dir /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID \
        --timeout 1200
@@ -1393,7 +1393,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
    committed verifier and add the optional token/redirect arguments as needed:
 
    ```bash
-   sudo python3 bootstrapper/verify-runtime.py check \
+   sudo node bootstrapper/verify-runtime.js check \
      --persistence-env /etc/system-bootstrapper/persistence.env \
      --baseline /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/baseline.json \
      --output /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/recheck.json \
@@ -1696,7 +1696,7 @@ to the shared instance pool.
 | Four configured runner containers appear as one GitLab runner | Open the runner detail page and inspect **Runner managers**; the shared pool has one entry with independent manager system IDs |
 | Startup reports missing persistent storage | Check the selected mode and directory; mount an explicitly selected live volume instead of changing modes to bypass its guard |
 | A pipeline waits for its runner after a GitLab restart | Register checks the pool and updates managed internal IP endpoints to the stable Docker service name |
-| A pipeline cannot resolve `registry.localhost` | Run `sudo bash bootstrapper/prepare-local.sh` again in Ubuntu; WSL may reset local hosts entries at startup |
+| A pipeline cannot resolve `registry.localhost` | Run `sudo node bootstrapper/prepare-local.js` again in Ubuntu; WSL may reset local hosts entries at startup |
 | MongoDB fails before database initialization | Run `bootstrapper/container-preflight.py` on the daemon host; distinguish CPU, Ubuntu upstream kernel and image execution using the [host operations guide](HOST_OPERATIONS.md) |
 | Container logs have no verified rotation | Inspect the exact containers with `bootstrapper/log-policy.py`; apply and verify the bounded policy through a deliberate deployment, with no assumed maximum age |
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
@@ -2144,7 +2144,7 @@ the new manifest before relying on it:
 
 ```bash
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/recover-volume.sh --verify
+  node bootstrapper/recover-volume.js --verify
 ```
 
 This check validates inputs without restarting services. The next
