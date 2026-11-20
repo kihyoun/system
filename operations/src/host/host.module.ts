@@ -1,3 +1,9 @@
+import { PromotionRecoveryService } from './promotion-recovery.service';
+import {
+  PromotionNativePortService,
+  type PromotionGitLabProbe,
+} from './promotion-native-port.service';
+import { ControllerCheckpointService } from './controller-checkpoint.service';
 import { RuntimeVerificationService } from '../host-bootstrap/runtime-verification.service';
 import { ControllerLeaseService } from './controller-lease.service';
 import { PromotionAbortService, type PromotionAbortPort } from './promotion-abort.service';
@@ -44,6 +50,7 @@ export const HOST_PROCESS_RUNNER = Symbol('HOST_PROCESS_RUNNER');
 export const HOST_LIFECYCLE_EVIDENCE = Symbol('HOST_LIFECYCLE_EVIDENCE');
 export const HOST_ENVIRONMENT = Symbol('HOST_ENVIRONMENT');
 export interface HostModuleOptions {
+  promotionGitLabProbe?: PromotionGitLabProbe;
   publicUpgradePlanPort?: PublicUpgradePlanPort;
   publicUpgradeApplyPort?: PublicUpgradeApplyPort;
   controllerRollbackPort?: ControllerRollbackPort;
@@ -79,6 +86,48 @@ export class HostModule {
     return {
       module: HostModule,
       providers: [
+        {
+          provide: PromotionNativePortService,
+          inject: [
+            HostInstallService,
+            RuntimeVerificationService,
+            ControllerLeaseService,
+            ControllerCheckpointService,
+            HostSourceService,
+            RecoveryImageService,
+            RuntimeInspectionService,
+          ],
+          useFactory: (
+            host: HostInstallService,
+            runtime: RuntimeVerificationService,
+            lease: ControllerLeaseService,
+            checkpoints: ControllerCheckpointService,
+            source: HostSourceService,
+            images: RecoveryImageService,
+            inspection: RuntimeInspectionService,
+          ) =>
+            new PromotionNativePortService(
+              host,
+              runtime,
+              lease,
+              checkpoints,
+              source,
+              images,
+              inspection,
+              options.promotionGitLabProbe,
+            ),
+        },
+        {
+          provide: PromotionRecoveryService,
+          inject: [PromotionNativePortService, PromotionAbortService],
+          useFactory: (port: PromotionNativePortService, abort: PromotionAbortService) =>
+            new PromotionRecoveryService(port, abort),
+        },
+        {
+          provide: ControllerCheckpointService,
+          inject: [ControllerLeaseService],
+          useFactory: (lease: ControllerLeaseService) => new ControllerCheckpointService(lease),
+        },
         { provide: ControllerLeaseService, useFactory: () => new ControllerLeaseService() },
         {
           provide: PublicUpgradePlanService,
@@ -201,40 +250,8 @@ export class HostModule {
         },
         {
           provide: HOST_PROMOTION_ABORT_PORT,
-          useValue:
-            options.promotionAbortPort ??
-            Object.fromEntries(
-              [
-                'main',
-                'checkout',
-                'image',
-                'adopt',
-                'helper',
-                'inspectOptional',
-                'inspect',
-                'command',
-                'verifyCheckpoint',
-                'bootId',
-                'runners',
-                'writeConfiguration',
-                'reload',
-                'services',
-                'mounts',
-                'routes',
-                'sync',
-                'journal',
-                'timestamp',
-                'release',
-                'compose',
-                'phase',
-                'probe',
-                'checkpoint',
-                'now',
-                'sleep',
-                'uptime',
-                'mainHash',
-              ].map((key) => [key, nativePortRequired]),
-            ),
+          inject: [PromotionNativePortService],
+          useFactory: (native: PromotionNativePortService) => options.promotionAbortPort ?? native,
         },
         {
           provide: PromotionAbortService,
@@ -275,17 +292,8 @@ export class HostModule {
         },
         {
           provide: HOST_COLD_MAINTENANCE_PORT,
-          useValue: options.coldMaintenancePort ?? {
-            command: nativePortRequired,
-            inspect: nativePortRequired,
-            phase: nativePortRequired,
-            probe: nativePortRequired,
-            checkpoint: nativePortRequired,
-            now: nativePortRequired,
-            sleep: nativePortRequired,
-            uptime: nativePortRequired,
-            mainHash: nativePortRequired,
-          },
+          inject: [PromotionNativePortService],
+          useFactory: (native: PromotionNativePortService) => options.coldMaintenancePort ?? native,
         },
         {
           provide: ColdMaintenanceService,
@@ -340,6 +348,9 @@ export class HostModule {
         })),
       ],
       exports: [
+        PromotionRecoveryService,
+        PromotionNativePortService,
+        ControllerCheckpointService,
         ControllerLeaseService,
         PromotionAbortService,
         PublicUpgradePlanService,

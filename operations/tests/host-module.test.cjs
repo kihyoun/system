@@ -8,6 +8,8 @@ test('standalone Host module injects shared native adapter without running opera
  let calls=0;const runner={run(){calls++;return {stdout:'',stderr:'',status:0};}};
  const app=await NestFactory.createApplicationContext(HostModule.register({runner,environment:{CUSTOM:'test'}}),{logger:false});
  try {
+  const {PromotionNativePortService}=require('../dist/host/promotion-native-port.service'),{PromotionAbortService}=require('../dist/host/promotion-abort.service'),{ColdMaintenanceService}=require('../dist/host/cold-maintenance.service');
+  assert.equal(app.get(PromotionAbortService).port,app.get(PromotionNativePortService));assert.equal(app.get(ColdMaintenanceService).port,app.get(PromotionNativePortService));
   const host=app.get(HostInstallService);assert.equal(app.get(HOST_PROCESS_RUNNER),runner);assert.equal(app.get(RuntimeInspectionService).host,host);assert.equal(calls,0);
   host.run('git',['--version']);assert.equal(calls,1);
  }finally{await app.close();}
@@ -97,4 +99,17 @@ test('cold maintenance shares awaited native sequencing, bounded drain and fail-
    if(scenario==='claimed-job'){for(const value of Object.values(rows))assert(value.State.Running);assert(!rows.controller.State.Paused);assert.equal(rows.controller.HostConfig.RestartPolicy.Name,'always');}
   }
  }
+});
+test('native checkpoint verifies retained bytes and shared recovery rejects a concurrent caller before cleanup',async t=>{
+ const {ControllerCheckpointService}=require('../dist/host/controller-checkpoint.service');
+ const {PromotionRecoveryService}=require('../dist/host/promotion-recovery.service');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'native-checkpoint-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ for(const name of ['data/gitlab','data/configuration','checkpoint'])fs.mkdirSync(path.join(root,name),{recursive:true});
+ fs.writeFileSync(path.join(root,'data/gitlab/payload'),'retained');fs.symlinkSync('payload',path.join(root,'data/gitlab/link'));
+ const commands=[],lease={guardFd:3,async command(args){commands.push(args);const mounts=args.filter(value=>value.startsWith('type=bind,src=')).map(value=>value.split(',')[1].slice(4));assert.equal(mounts.length,2);fs.cpSync(mounts[0],mounts[1],{recursive:true,preserveTimestamps:true,verbatimSymlinks:true});return Buffer.alloc(0);}};
+ const checkpoint=new ControllerCheckpointService(lease),directory=path.join(root,'checkpoint'),digest=await checkpoint.copy(path.join(root,'data'),directory,'accepted-image');
+ checkpoint.verify(directory,digest);assert.equal(commands.length,2);assert(commands.every(args=>args.includes('--numeric-ids')&&args.includes('--fsync')&&!args.includes('/bin/sh')));
+ fs.writeFileSync(path.join(directory,'gitlab/payload'),'changed');assert.throws(()=>checkpoint.verify(directory,digest),/content-mismatch/);
+ let unblock,finished=0;const waiting=new Promise(resolve=>unblock=resolve),port={async prepare(){await waiting;return {};},finish(failed){finished++;assert.equal(failed,false);}},sequence={async run(){}};
+ const recovery=new PromotionRecoveryService(port,sequence),first=recovery.abort({});await assert.rejects(recovery.abort({}),/already-running/);assert.equal(finished,0);unblock();await first;assert.equal(finished,1);
 });

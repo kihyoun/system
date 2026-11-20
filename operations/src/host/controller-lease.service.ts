@@ -253,7 +253,12 @@ export class ControllerLeaseService {
     this.detach();
   }
   /** The guardian inherits the flock; timing out this caller never kills its owned worker. */
-  command(command: string[], timeout = 300, input = Buffer.alloc(0)): Promise<Buffer> {
+  command(
+    command: string[],
+    timeout = 300,
+    input = Buffer.alloc(0),
+    environment?: NodeJS.ProcessEnv,
+  ): Promise<Buffer> {
     requireValue(
       command.length &&
         command.every((value) => typeof value === 'string') &&
@@ -291,6 +296,7 @@ export class ControllerLeaseService {
       {
         detached: true,
         stdio: ['pipe', 'pipe', 'pipe', guardFd],
+        env: environment,
       },
     );
     return new Promise((resolve, reject) => {
