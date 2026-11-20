@@ -5,12 +5,15 @@
 Containers share the Docker daemon host's kernel and exposed CPU instructions.
 An Ubuntu release name or an image's userspace distribution does not establish
 compatibility. Run the repository preflight **on that Linux x86_64 host** before
-choosing a MongoDB image, changing a host kernel, or enabling a CI database:
+choosing a MongoDB image, changing a host kernel, or enabling a CI database.
+Use the pinned Node runtime prepared by Quickstart. For a source checkout, prepare
+the shared services first with `npm ci --prefix operations` and
+`npm run build --prefix operations`:
 
 ```sh
-python3 bootstrapper/container-preflight.py --mongodb-version 8.0.37
+node bootstrapper/container-preflight.js --mongodb-version 8.0.37
 # Pull the exact reviewed digest separately, then test its executable as well:
-python3 bootstrapper/container-preflight.py --mongodb-version 8.0.37 \
+node bootstrapper/container-preflight.js --mongodb-version 8.0.37 \
   --image 'docker.io/library/mongo@sha256:REPLACE_WITH_64_HEX_DIGEST'
 ```
 
@@ -113,7 +116,7 @@ Use positive integer sizes with `k`, `m` or `g` units and a file count from 1 to
 100. Validate desired values before applying them:
 
 ```sh
-python3 bootstrapper/log-policy.py --max-size 10m --max-files 3
+node bootstrapper/log-policy.js --max-size 10m --max-files 3
 ```
 
 The Wizard's existing additional runtime options preserve these exports during
@@ -148,8 +151,8 @@ Inspect exact container names on the daemon host after deployment, and repeat
 after a subsequent normal deployment (use actual names from your deployment):
 
 ```sh
-python3 bootstrapper/log-policy.py system_web_1 system_sync_1
-python3 bootstrapper/log-policy.py --max-size 10m --max-files 3 YOUR_APP_CONTAINER
+node bootstrapper/log-policy.js system_web_1 system_sync_1
+node bootstrapper/log-policy.js --max-size 10m --max-files 3 YOUR_APP_CONTAINER
 ```
 
 A mismatch exits 1 and displays the actual `HostConfig.LogConfig`; unavailable
@@ -158,7 +161,7 @@ prints the expected policy without contacting Docker. For custom core settings,
 supply the matching options explicitly or export the two `SYSTEM_LOG_*` values.
 Do not print a private main configuration into a diagnostic report.
 
-The socket-free component test is `python3 tests/bootstrapper/host-operations.py`.
+The socket-free component test is `node --test tests/bootstrapper/host-operations.js`.
 Existing template, environment-helper, runner and configuration-roundtrip tests
 also verify policy propagation. Candidate image preparation runs
 `tests/bootstrapper/log-rotation-docker.js`: two disposable container generations

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { HostInspectionService } from './inspection.service';
+import { inspectHost } from './inspection-cli';
 import 'reflect-metadata';
 import path from 'node:path';
 import { RuntimeVerificationService } from './runtime-verification.service';
@@ -15,7 +17,7 @@ import { LocalHostService } from './local.service';
 export async function main(input: string[], env = process.env): Promise<void> {
   if (input.includes('--help') || input.includes('-h')) {
     console.log(
-      'Host bootstrap: initialize --checkout ABS --receipt-dir ABS [--install-host] [--swap-gib 0..32] [--timeout 0..3600] [--renewal-dry-run]; verify-runtime --checkout ABS baseline|check --persistence-env ABS --output ABS [--baseline ABS] [--public-images] [--timeout SECONDS] [--gitlab-token-file ABS] [--redirect-from ORIGIN]',
+      'Host bootstrap: container-preflight --mongodb-version X.Y.Z [--image DIGEST] [--timeout 1..120] [--planned-kernel X.Y.Z]; log-policy [--max-size 10m] [--max-files 3] [CONTAINERS]; initialize --checkout ABS --receipt-dir ABS [--install-host] [--swap-gib 0..32] [--timeout 0..3600] [--renewal-dry-run]; verify-runtime --checkout ABS baseline|check --persistence-env ABS --output ABS [--baseline ABS] [--public-images] [--timeout SECONDS] [--gitlab-token-file ABS] [--redirect-from ORIGIN]',
     );
     return;
   }
@@ -28,6 +30,8 @@ export async function main(input: string[], env = process.env): Promise<void> {
     throw Error('An explicit absolute --checkout is required.');
   if (
     ![
+      'container-preflight',
+      'log-policy',
       'initialize',
       'verify-runtime',
       'quickstart',
@@ -43,6 +47,8 @@ export async function main(input: string[], env = process.env): Promise<void> {
   )
     throw Error('Unsupported host bootstrap action.');
   if (
+    command !== 'container-preflight' &&
+    command !== 'log-policy' &&
     command !== 'certbot' &&
     command !== 'initialize' &&
     command !== 'verify-runtime' &&
@@ -56,7 +62,10 @@ export async function main(input: string[], env = process.env): Promise<void> {
     args.length
   )
     throw Error('Unexpected host bootstrap arguments.');
-  if (command !== 'refresh-ca' && process.geteuid?.() !== 0)
+  if (
+    !['refresh-ca', 'container-preflight', 'log-policy'].includes(command) &&
+    process.geteuid?.() !== 0
+  )
     throw Error('Host bootstrap requires root.');
   const app = await NestFactory.createApplicationContext(HostBootstrapModule, {
     logger: false,
@@ -67,7 +76,9 @@ export async function main(input: string[], env = process.env): Promise<void> {
   process.on('SIGINT', cancel);
   process.on('SIGTERM', cancel);
   try {
-    if (command === 'initialize') {
+    if (command === 'container-preflight' || command === 'log-policy') {
+      await inspectHost(app.get(HostInspectionService), command, args, env, abort.signal);
+    } else if (command === 'initialize') {
       const values = parseArguments(
         args,
         ['--install-host', '--renewal-dry-run'],

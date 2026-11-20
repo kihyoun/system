@@ -1,3 +1,4 @@
+import { HostInspectionService } from './inspection.service';
 import { RuntimeVerificationService } from './runtime-verification.service';
 import { HostInitializeService } from './initialize.service';
 import { HostInstallService } from '../host/install';
@@ -12,6 +13,7 @@ import { BuildToolsModule } from './build-tools.module';
 @Module({
   imports: [BuildToolsModule],
   providers: [
+    { provide: HostInspectionService, useFactory: () => new HostInspectionService() },
     {
       provide: RuntimeVerificationService,
       inject: [HostInstallService],
@@ -49,6 +51,7 @@ import { BuildToolsModule } from './build-tools.module';
     { provide: LocalHostService, useFactory: () => new LocalHostService() },
   ],
   exports: [
+    HostInspectionService,
     RuntimeVerificationService,
     HostInitializeService,
     QuickstartService,

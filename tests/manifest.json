@@ -5,7 +5,7 @@
   {"component":"sync","file":"sync/security-api.js","timeoutSeconds":30,"port":8071},
   {"component":"shared","file":"shared/codeql-gate.js","timeoutSeconds":15},
   {"component":"shared","file":"shared/codeql-parent.js","timeoutSeconds":20},
-  {"component":"bootstrapper","file":"bootstrapper/host-operations.py","timeoutSeconds":15},
+  {"component":"bootstrapper","file":"bootstrapper/host-operations.js","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/root-password.js","timeoutSeconds":15},
   {"component":"gitlab","file":"gitlab/startup.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/application-templates.js","timeoutSeconds":20},

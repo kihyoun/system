@@ -3,6 +3,7 @@
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const aliases = {
+  'container-preflight': 'container-preflight', 'log-policy': 'log-policy',
   'initialize': 'initialize', 'verify-runtime': 'verify-runtime',
   'install': 'install-host', 'recover-volume': 'recover-volume',
   'install-runtime': 'install-runtime', 'refresh-ca': 'refresh-ca',
