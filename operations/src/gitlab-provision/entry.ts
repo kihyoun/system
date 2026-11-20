@@ -2,7 +2,7 @@
 import 'reflect-metadata';
 import { SourcePrimaryOperationService } from './source-primary-operation.service';
 import { GitlabProjectCredentialService } from './project-credential.service';
-import fs from 'node:fs';
+import { readPrivateInput } from '../host/private-input';
 import path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
@@ -11,23 +11,11 @@ import { GitlabCredentialService } from './credential.service';
 function privateToken(filename: string): string {
   if (!path.isAbsolute(filename))
     throw Error('Absolute private administrator-token file required.');
-  const fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-  try {
-    const stat = fs.fstatSync(fd);
-    if (
-      !stat.isFile() ||
-      stat.nlink !== 1 ||
-      stat.uid !== process.getuid?.() ||
-      (stat.mode & 0o777) !== 0o600 ||
-      stat.size > 4096
-    )
-      throw Error('Private administrator-token file must be owned and mode 0600.');
-    const token = fs.readFileSync(fd, 'utf8').replace(/\r?\n$/, '');
-    if (!token || /[\r\n\0]/.test(token)) throw Error('Invalid administrator-token file.');
-    return token;
-  } finally {
-    fs.closeSync(fd);
-  }
+  const token = readPrivateInput(filename, 4096, { owner: process.getuid?.(), mode: 0o600 })
+    .toString('utf8')
+    .replace(/\r?\n$/, '');
+  if (!token || /[\r\n\0]/.test(token)) throw Error('Invalid administrator-token file.');
+  return token;
 }
 export async function main(args: string[]): Promise<void> {
   if (args.length === 1 && args[0] === '--help') {

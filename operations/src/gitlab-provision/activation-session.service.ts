@@ -214,7 +214,7 @@ export class GitlabActivationSessionService {
                 journal.save(state);
               }
               const backend = await this.backend(session, state);
-              if (state.phase === 'releasing' && !backend) {
+              if (!backend && !state.pending && ['held', 'releasing'].includes(state.phase)) {
                 const execution = await this.execs.inspect(
                   state.execId,
                   context.containerId,

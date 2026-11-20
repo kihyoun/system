@@ -618,6 +618,15 @@ async function bindingRefresh(f) {
   const {NestFactory}=require('../../operations/node_modules/@nestjs/core'), {GitlabProvisionModule}=require('../../operations/dist/gitlab-provision/gitlab-provision.module');
   const provisioningModule=await NestFactory.createApplicationContext(GitlabProvisionModule,{logger:false});try {assert(provisioningModule.get(GitlabCredentialService));} finally {await provisioningModule.close();}
 
+  const {main:credentialCommand}=require('../../operations/dist/gitlab-provision/entry');
+  const unsafeCredentialDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-credential-input-'));
+  try {
+    const file=path.join(unsafeCredentialDirectory,'token');fs.writeFileSync(file,'private',{mode:0o644});
+    const command=()=>credentialCommand(['renew','--checkout',nativeApiContext.checkout,'--administrator-token-file',file]);
+    await assert.rejects(command,/permissions-or-owner/);fs.unlinkSync(file);
+    require('child_process').execFileSync('mkfifo',[file]);await assert.rejects(command,/must-be-regular/);fs.unlinkSync(file);
+    fs.writeFileSync(file,'x'.repeat(4097),{mode:0o600});await assert.rejects(command,/too-large/);
+  } finally {fs.rmSync(unsafeCredentialDirectory,{recursive:true,force:true});}
   const contextDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-native-context-'));
   try {
     const local=fs.statSync(contextDirectory,{bigint:true}), contextCalls=[];
@@ -668,6 +677,8 @@ async function bindingRefresh(f) {
     executions.clear(); // Docker may garbage-collect completed execs before the controller retries.
     current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/release-reconciled-retry/);assert.equal(launches,2);assert.equal(cancels,2);
     current=session();await current.withAdvisoryLock('42',async()=>{const original=backend, before=writes;backend=undefined;await assert.rejects(()=>current.request('PUT','projects/7/variables/WIZARD_REVIEW_HOST',body),/backend-ownership-lost/);assert.equal(writes,before);backend=original;});
+    current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{backend=undefined;for(const execution of executions.values()){execution.running=false;execution.exitCode=3;}throw Error('database holder exited');}),/release-ownership-lost/);
+    current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/release-reconciled-retry/);
     current=session();loseProofAfterWrite=true;await assert.rejects(()=>current.withAdvisoryLock('42',()=>current.request('PUT','projects/7/variables/WIZARD_REVIEW_HOST',body)),/backend-ownership-lost/);
     assert(JSON.parse(fs.readFileSync(path.join(lockDirectory,'system-bootstrapper-auth/project-7.json'))).pending,'successful response without lock proof must retain pending write');
 
