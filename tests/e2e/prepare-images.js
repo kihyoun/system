@@ -45,7 +45,7 @@ function privateWizardAcceptance(files,exists=filename=>fs.existsSync(path.join(
 }
 function acmeAcceptance(files,exists=filename=>fs.existsSync(path.join(root,filename))) {
   const adapter=['tests/e2e/local-acme.js','tests/e2e/prepare-acme-images.js','tests/e2e/acme-fixture/pebble.minica.pem'];
-  const host=['bootstrapper/certbot-with-volume-lock.sh','bootstrapper/install-volume-certificate.sh','bootstrapper/rebind-renewal.py'];
+  const host=['operations/src/host-bootstrap/certificate.service.ts','operations/src/host-lifecycle/lifecycle.service.ts','tests/e2e/acme-host-runtime.js'];
   if(!adapter.some(exists))return false;
   if(!adapter.every(exists)||!host.every(filename=>files.includes(filename)))throw Error('ACME acceptance requires the complete pinned authority and fresh-source host contract.');
   return true;

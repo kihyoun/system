@@ -29,6 +29,7 @@ try {
   wizardGit('add','.'); wizardGit('commit','-m','Committed Wizard fixture');
   const wizardRevision=wizardGit('rev-parse','HEAD');
   write('tests/Dockerfile','FROM scratch\n');
+  write('tests/e2e/acme-host-runtime.js','committed native ACME transport\n');
   write('operations/src/ci/codeql.service.ts', 'public scanner service fixture\n');
   for (const name of ['Dockerfile', 'check-sarif.js']) write('tests/codeql/' + name, 'public scanner fixture\n');
   write('.gitlab-ci.yml','stages: [test]\n');
@@ -78,7 +79,9 @@ try {
   const candidate=prepareCandidate(root);
   assert(candidate.files.includes('system/Dockerfile'));
   assert(candidate.files.includes('wizard/start.sh'));
-  assert(!candidate.files.some(name=>/private\.env|credentials|untracked-secret|seed\/data|old\.xml|^tests\//.test(name)));
+  assert.deepEqual(candidate.files.filter(name=>name.startsWith('tests/')),['tests/e2e/acme-host-runtime.js']);
+  assert.equal(execFileSync('tar',['-xOf',path.join(root,'.candidate-context/context.tar'),'tests/e2e/acme-host-runtime.js'],{encoding:'utf8'}),'committed native ACME transport\n');
+  assert(!candidate.files.some(name=>/private\.env|credentials|untracked-secret|seed\/data|old\.xml/.test(name)));
   assert.equal(execFileSync('tar',['-xOf',path.join(root,'.candidate-context/context.tar'),'sync/src/public.ts'],{encoding:'utf8'}),'committed source\n');
   assert.equal(execFileSync('tar',['-xOf',path.join(root,'.candidate-context/context.tar'),'sync/src/config/configuration.module.ts'],{encoding:'utf8'}),'committed feature module\n');
   assert.equal(candidate.wizardRevision,snapshot.sourceRevision);
