@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>System Bootstrapper double cube</title>
+  <g stroke="#1565c0" stroke-width="2.5" stroke-linejoin="round">
+    <path fill="#90caf9" d="M24 14 34 4h26L50 14Z" />
+    <path fill="#42a5f5" d="m50 14 10-10v28L50 42Z" />
+    <path fill="#e3f2fd" d="M24 14h26v28H24Z" />
+    <path fill="#90caf9" d="m4 44 7-7h17l-7 7Z" />
+    <path fill="#42a5f5" d="m21 44 7-7v17l-7 7Z" />
+    <path fill="#e3f2fd" d="M4 44h17v17H4Z" />
+  </g>
+</svg>
