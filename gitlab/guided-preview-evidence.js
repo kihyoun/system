@@ -89,4 +89,19 @@ function validate(value,results){
   if(value?.version!==undefined&&value.version!==1)throw Error('Unsupported guided acceptance evidence version.');
   return legacy.validate(value,results);
 }
-module.exports={sanitize,validate,stages:legacy.stages,requiredJobs:legacy.requiredJobs,stagesV2};
+function validateAuthority(value,results,context){
+  const proof=validate(value,results);
+  if(proof.productionImageId!==context.wizardImageId)throw Error('Guided Production baseline must match the accepted Wizard image.');
+  if(context.sourceLayout==='system-monorepo-v1'||value?.version===2){
+    const candidate=proof.candidate;
+    if(context.sourceLayout!=='system-monorepo-v1'||proof.version!==2||!candidate||
+      !sha(context.sourceTree)||!sha(context.wizardSourceTree)||
+      candidate.sourceCommit!==context.sourceRevision||candidate.sourceTree!==context.sourceTree||candidate.wizardSourceTree!==context.wizardSourceTree||
+      candidate.helperImage!==context.candidateImageId||candidate.wizardImageId!==context.wizardImageId||
+      !positive(context.ciIdentity?.projectId)||!positive(context.ciIdentity?.pipelineId)||!positive(context.ciIdentity?.candidateJobId)||
+      candidate.fixturePipelineId!==context.ciIdentity.pipelineId||candidate.fixtureCandidateJobId!==context.ciIdentity.candidateJobId)
+      throw Error('System Beta fixture evidence must match the exact accepted source, images and candidate attempt.');
+  }else if(context.sourceLayout!==undefined)throw Error('Unsupported guided source layout.');
+  return proof;
+}
+module.exports={sanitize,validate,validateAuthority,stages:legacy.stages,requiredJobs:legacy.requiredJobs,stagesV2};

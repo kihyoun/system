@@ -18,6 +18,15 @@ const upgradeKeys = ['fromImage', 'toImage', 'fromImageId', 'toImageId',
   'checkpointVerified', 'migrationVerified', 'registryVerified', 'rollbackVerified',
   'runnerImage', 'runnerImageId', 'fromRunnerImageId', 'runnerVersion', 'helperImage', 'helperImageId',
   'fromHelperImageId', 'jobCaBundleSha256', 'securityTrustVerified', 'runnerUpgradeVerified', 'runnerManagerIdentityPreserved'];
+function lifecycleAuthority(proof: CandidateProof, ci: CiIdentity) {
+  if(proof.sourceLayout==='system-monorepo-v1'&&(['projectId','pipelineId','candidateJobId'] as const).some(key=>ci[key]!==undefined&&proof.ciIdentity?.[key]!==ci[key]))throw Error('System Beta evidence belongs to another CI attempt.');
+  for(const key of ['sourceLayout','sourceTree','wizardSourceTree'] as const)
+    if((ci.sourceLayout!==undefined||proof.sourceLayout!==undefined)&&ci[key]!==undefined&&proof[key]!==ci[key])throw Error('Candidate source identity differs from release authority.');
+  return guided.validateAuthority(proof.evidence.guidedPreview,proof.results,{
+    sourceLayout:proof.sourceLayout,sourceRevision:proof.sourceRevision,sourceTree:proof.sourceTree,wizardSourceTree:proof.wizardSourceTree,
+    candidateImageId:proof.images.candidate,wizardImageId:proof.images.wizard,ciIdentity:proof.ciIdentity
+  });
+}
 function validateLineage(restored: CandidateProof, original: CandidateProof, ci: CiIdentity) {
   validateReceipt(original, ci);
   const recovery = original.evidence?.recovery;
@@ -31,14 +40,15 @@ function validateLineage(restored: CandidateProof, original: CandidateProof, ci:
         original.ciIdentity?.[key] === ci[key] && restored.ciIdentity?.[key] === ci[key]) ||
       !['recovery-original-host-removed', 'cleanup'].every(name => original.results.some(row => row.name === name && row.status === 'passed')))
     throw Error('Recovery summary must reference its matching complete successor receipt and same-job guided origin.');
-  const lifecycle=guided.validate(original.evidence?.guidedPreview, original.results);
+  const lifecycle=lifecycleAuthority(original,ci);
   if(lifecycle.productionImageId!==original.images.wizard)throw Error('Guided Production baseline must be the prepared Wizard image from the same candidate job.');
 }
 function guidedOrigin(original: CandidateProof): CandidateProof {
   return {format: 'system-guided-preview-origin-v1', runId: original.runId, sourceRevision: original.sourceRevision,
+    ...(original.sourceLayout==='system-monorepo-v1'?{sourceLayout:original.sourceLayout,sourceTree:original.sourceTree,wizardSourceTree:original.wizardSourceTree}:{}),
     fullAcceptance: true, ciIdentity: Object.fromEntries((['projectId','pipelineId','candidateJobId'] as const).map(key=>[key,original.ciIdentity?.[key]])),
     images: Object.fromEntries(['candidate', 'wizard', 'runner', 'gitlab', 'nginx'].filter(role => imageId(original.images[role])).map(role => [role, original.images[role]])),
-    results: original.results.filter(row => [...guided.stages, 'recovery-original-host-removed', 'cleanup'].includes(row.name))
+    results: original.results.filter(row => [...guided.stages,...guided.stagesV2, 'recovery-original-host-removed', 'cleanup'].includes(row.name))
       .map(row => ({name: row.name, status: row.status})),
     evidence: {guidedPreview: guided.sanitize(original.evidence.guidedPreview),
       gitlabUpgrade: Object.fromEntries(upgradeKeys.filter(key => original.evidence.gitlabUpgrade[key] !== undefined && (!['fromImageId','toImageId'].includes(key)||imageId(original.evidence.gitlabUpgrade[key]))).map(key => [key, original.evidence.gitlabUpgrade[key]])),
@@ -53,7 +63,7 @@ function sanitizeGuidedReceipt(input: unknown): CandidateProof | undefined {
     if(!revision(value.sourceRevision)||!(['projectId','pipelineId','candidateJobId'] as const).every(key=>positive(value.ciIdentity?.[key]))||
       !(typeof value.evidence?.recovery?.runId==='string'&&/^[a-f0-9]{24}$/.test(value.evidence.recovery!.runId))||value.evidence.recovery!.runId===value.runId||
       !['backupOnly','originalHostRemoved','guidedBindingRestored'].every(key=>value.evidence.recovery![key]===true))return undefined;
-    guided.validate(value.evidence?.guidedPreview,value.results);
+    lifecycleAuthority(value,{sourceRevision:value.sourceRevision});
     return guidedOrigin(value);
   }catch{return undefined;}
 }
@@ -91,6 +101,8 @@ function validateReceipt(input: unknown, ci: CiIdentity): string {
 function validateEvidence(input: unknown, ci: CiIdentity): string {
   const proof = parseProof(input);
   const acceptedImage = validateReceipt(proof, ci);
+  for(const key of ['sourceLayout','sourceTree','wizardSourceTree'] as const)
+    if((ci.sourceLayout!==undefined||proof.sourceLayout!==undefined)&&ci[key]!==undefined&&proof[key]!==ci[key])throw Error('Candidate source identity differs from release authority.');
   for (const name of ['gitlab-upgrade-migrated-data', 'gitlab-upgrade-registry-ci',
     'gitlab-upgrade-restored-checkpoint', 'gitlab-upgrade-security-trust',
     'storage-global-live-lease', 'storage-refuse-nonempty-and-corrupt-restore',
@@ -107,7 +119,7 @@ function validateEvidence(input: unknown, ci: CiIdentity): string {
       throw Error('A versioned original guided preview receipt is required.');
     validateLineage(proof, proof.guidedPreviewReceipt, ci);
   } else {
-    const lifecycle=guided.validate(proof.evidence?.guidedPreview, proof.results);
+    const lifecycle=lifecycleAuthority(proof,ci);
     if(lifecycle.productionImageId!==proof.images.wizard)throw Error('Guided Production baseline must be the prepared Wizard image from the same candidate job.');
   }
   return acceptedImage;

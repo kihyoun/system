@@ -202,8 +202,9 @@ class NativeCLI {
     const previous = candidate.spec.publicUpgrade.metadata;
     await this.write(this.fixture + '/fixture.json', JSON.stringify({runId: candidate.id, live: this.live, previous,
       spec: {sourceRevision: candidate.spec.sourceRevision, sourceTree: candidate.spec.sourceTree,
+        sourceLayout:candidate.spec.sourceLayout,wizardSourceTree:candidate.spec.wizardSourceTree,
         wizardSourceRevision: candidate.spec.wizardSourceRevision, ciIdentity: candidate.spec.ciIdentity, images: candidate.spec.images},
-      gitlabUpgrade: candidate.evidence.gitlabUpgrade}));
+      gitlabUpgrade: candidate.evidence.gitlabUpgrade,guidedOrigin:candidate.guidedFixtureOrigin}));
     const mappings = [];
     for (const role of ['controller', 'wizard']) {
       mappings.push(previous.images[role].reference.replace(/^docker.io\//, '') + '\t' + previous.images[role].imageId + '\tprevious');

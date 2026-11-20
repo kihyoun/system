@@ -3,12 +3,15 @@ export type Environment = Record<string, string | undefined>;
 export type CommandOptions = ProcessOptions;
 export type Execute = (binary: string, args: string[], options?: CommandOptions) => string;
 export interface CiIdentity {
+  sourceLayout?: string;
+  sourceTree?: string;
+  wizardSourceTree?: string;
   sourceRevision: string;
   projectId?: number;
   pipelineId?: number;
   candidateJobId?: number;
 }
-export interface PublicationContext extends CiIdentity {
+export interface PublicationContext extends Omit<CiIdentity, 'sourceLayout' | 'sourceTree' | 'wizardSourceTree'> {
   projectId: number;
   pipelineId: number;
   candidateJobId: number;
@@ -26,6 +29,8 @@ export interface CandidateProof {
   runId: string;
   sourceRevision: string;
   sourceLayout?: string;
+  sourceTree?: string;
+  wizardSourceTree?: string;
   fullAcceptance: boolean;
   images: Record<string, string>;
   results: Stage[];
@@ -42,6 +47,10 @@ export interface CandidateProof {
 /** Required, injected product-specific acceptance policy. No permissive default. */
 export interface LifecycleEvidencePort {
   stages: readonly string[];
+  stagesV2: readonly string[];
+  validateAuthority(value: unknown, results: Stage[], context: CiIdentity & {
+    candidateImageId: string; wizardImageId: string; ciIdentity?: Omit<CiIdentity, 'sourceRevision'>
+  }): { productionImageId: string };
   validate(value: unknown, results: Stage[]): { productionImageId: string };
   sanitize(value: unknown): unknown;
 }

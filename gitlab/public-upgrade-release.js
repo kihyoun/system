@@ -26,9 +26,22 @@ function publicUpgrade(metadata, released, proof, graph, jobs) {
       !['dataPreserved', 'configurationPreserved', 'runnerRegistryVerified', 'rollbackVerified'].every(key => tested[key] === true))
       throw Error('Previous public release transition has no matching candidate proof.');
   }
-  const evidence = {sourceRevision: proof.sourceRevision, runId: proof.runId, fullAcceptance: proof.fullAcceptance,
-    images: pick(proof.images, ['candidate', 'wizard', 'gitlab', 'runner']),
+  const monorepo=released.sourceLayout==='system-monorepo-v1';
+  let guidedReceipt;
+  if(monorepo){
+    const publisher=require('./publish-successor');
+    publisher.validateEvidence(proof,released);
+    if(proof.guidedPreviewReceipt){
+      guidedReceipt=publisher.sanitizeGuidedReceipt(proof.guidedPreviewReceipt);
+      if(!guidedReceipt)throw Error('Validated original System Beta authority is required.');
+    }
+  }
+  const evidence = {...(monorepo?{sourceLayout:released.sourceLayout,sourceTree:released.sourceTree,wizardSourceTree:released.wizardSourceTree,
+      ciIdentity:pick(proof.ciIdentity,['projectId','pipelineId','candidateJobId']),
+      ...(guidedReceipt?{guidedPreviewReceipt:guidedReceipt}:{})}:{}),sourceRevision: proof.sourceRevision, runId: proof.runId, fullAcceptance: proof.fullAcceptance,
+    images: pick(proof.images, ['candidate', 'wizard', 'gitlab', 'runner','nginx']),
     results: proof.results.map(row => pick(row, ['name', 'status'])), evidence: {
+      ...(monorepo?(guidedReceipt?{recovery:pick(proof.evidence.recovery,['guidedBindingRestored'])}:{guidedPreview:require('./guided-preview-evidence').sanitize(proof.evidence.guidedPreview)}):{}),
       storage: pick(proof.evidence.storage, ['localLiveVerified', 'externalSeedRestored', 'backupDetached', 'missingBackupGuardVerified', 'globalLeaseVerified', 'invalidRestoreGuardVerified']),
       gitlabUpgrade: pick(proof.evidence.gitlabUpgrade, ['fromImage', 'toImage', 'fromImageId', 'toImageId', 'checkpointVerified', 'migrationVerified', 'registryVerified', 'rollbackVerified', 'runnerImage', 'runnerImageId', 'fromRunnerImageId', 'runnerVersion', 'helperImage', 'helperImageId', 'fromHelperImageId', 'jobCaBundleSha256', 'securityTrustVerified', 'runnerUpgradeVerified', 'runnerManagerIdentityPreserved']),
       ...(proof.evidence.publicUpgrade ? {publicUpgrade: pick(proof.evidence.publicUpgrade, ['fromVersion', 'toVersion', 'fromSourceRevision', 'fromControllerImageId', 'fromWizardImageId', 'dataPreserved', 'configurationPreserved', 'runnerRegistryVerified', 'rollbackVerified'])} : {})}};

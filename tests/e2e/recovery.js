@@ -645,6 +645,13 @@ async function run(original,reportDirectory,dependencies={}) {
     await second.platform();
     await (dependencies.verifyRegistryBlob || verifyRegistryBlob)(second,input);
     if(acme)await acme.renew(second,input.expected.acme);
+    if(original.spec.guidedPreviewAcceptance===true&&!dependencies.Candidate){
+      // Private future-publication fixture input retains where lifecycle ran.
+      // This is not the final restored acceptance receipt.
+      second.guidedFixtureOrigin={runId:original.id,results:original.results.map(({name,status})=>({name,status})),
+        guidedPreview:require('../../gitlab/guided-preview-evidence').validateAuthority(original.evidence.guidedPreview,original.results,{
+          ...original.spec,candidateImageId:original.spec.images.candidate.id,wizardImageId:original.spec.images.wizard.id})};
+    }
     if(original.spec.gitlabUpgradeAcceptance===true){
       await require('./gitlab-upgrade').run(second);
       original.evidence.gitlabUpgrade=second.evidence.gitlabUpgrade;

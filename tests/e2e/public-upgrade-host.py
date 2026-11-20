@@ -109,7 +109,9 @@ def publication(fixture):
     metadata, proof, _ = contracts.fixture()
     spec, previous = fixture['spec'], fixture['previous']
     source = {'repository': previous['source']['repository'], 'revision': spec['sourceRevision'],
-              'tree': spec['sourceTree'], 'wizardRevision': spec['wizardSourceRevision']}
+              'tree': spec['sourceTree']}
+    shared = spec.get('sourceLayout') == 'system-monorepo-v1'
+    source.update({'sourceLayout': 'system-monorepo-v1', 'wizardSourceTree': spec['wizardSourceTree']} if shared else {'wizardRevision': spec['wizardSourceRevision']})
     metadata.update(source=source, compatibility={'versions': ['24.04'], 'minimumMemoryGiB': 8})
     # The config comes from each prepared archive; the daemon's local ID can
     # instead name its manifest. Future publication transport remains synthetic.
@@ -118,10 +120,15 @@ def publication(fixture):
               for role, key in [('controller', 'candidate'), ('wizard', 'wizard')]}
     metadata['images'] = images
     release, evidence = proof['release'], proof['evidence']
-    release.update(sourceRevision=source['revision'], sourceTree=source['tree'], wizardRevision=source['wizardRevision'],
+    release.update(sourceRevision=source['revision'], sourceTree=source['tree'],
                    **spec['ciIdentity'], imageId=images['controller']['imageId'], wizardImageId=images['wizard']['imageId'],
                    registryRepository='system-upgrade-fixture/controller', registryReference=images['controller']['reference'],
                    wizardRegistryReference=images['wizard']['reference'])
+    if shared:
+        release.pop('wizardRevision', None)
+        release.update(sourceLayout='system-monorepo-v1', wizardSourceTree=source['wizardSourceTree'])
+    else:
+        release.update(wizardRevision=source['wizardRevision'])
     security = json.loads((SOURCE / 'gitlab/security-release.json').read_bytes())
     upgrade = copy.deepcopy(fixture['gitlabUpgrade'])
     # Publication happens after this whole candidate succeeds. These fixture
@@ -134,6 +141,19 @@ def publication(fixture):
     evidence['evidence']['publicUpgrade'].update(fromVersion=previous['version'], toVersion=metadata['version'],
         fromSourceRevision=previous['source']['revision'], fromControllerImageId=previous['images']['controller']['imageId'],
         fromWizardImageId=previous['images']['wizard']['imageId'])
+    if shared:
+        origin = fixture['guidedOrigin']
+        successor.require(origin['guidedPreview']['version'] == 2 and origin['runId'] != fixture['runId'], 'shared-beta-origin-required')
+        evidence.update(sourceLayout='system-monorepo-v1', sourceTree=spec['sourceTree'], wizardSourceTree=spec['wizardSourceTree'], ciIdentity=spec['ciIdentity'])
+        evidence['evidence']['recovery'] = {'guidedBindingRestored': True}
+        evidence['guidedPreviewReceipt'] = {
+            'format': 'system-guided-preview-origin-v1', 'runId': origin['runId'],
+            'sourceLayout': 'system-monorepo-v1', 'sourceRevision': source['revision'],
+            'sourceTree': spec['sourceTree'], 'wizardSourceTree': spec['wizardSourceTree'],
+            'fullAcceptance': True, 'ciIdentity': spec['ciIdentity'], 'images': evidence['images'],
+            'results': origin['results'], 'evidence': {'guidedPreview': origin['guidedPreview'],
+                'gitlabUpgrade': upgrade, 'recovery': {'runId': fixture['runId'], 'backupOnly': True,
+                    'originalHostRemoved': True, 'guidedBindingRestored': True}}}
     release['candidateEvidenceSha256'] = hashlib.sha256(encoded(evidence)).hexdigest()
     metadata['acceptance'].update(candidateJobId=release['candidateJobId'], evidenceSha256=release['candidateEvidenceSha256'])
     for index, job in enumerate(proof['publication']['jobs']):

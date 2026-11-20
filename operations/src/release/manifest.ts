@@ -11,7 +11,7 @@ export function readSuccessorRelease(input: unknown, bytes: Buffer, ci: CiIdenti
       row.projectId !== ci.projectId || row.pipelineId !== ci.pipelineId || !positive(row.candidateJobId) ||
       row.candidateEvidencePath !== 'test-results/successor/candidate-results.json' ||
       row.candidateEvidenceSha256 !== sha256(bytes) ||
-      evidence.validateEvidence(proof, { ...ci, candidateJobId: row.candidateJobId }) !== row.imageId ||
+      evidence.validateEvidence(proof, { ...ci, ...source, candidateJobId: row.candidateJobId }) !== row.imageId ||
       !imageId(row.wizardImageId) || proof.images.wizard !== row.wizardImageId)
     throw Error('The exact same-pipeline passing controller and Wizard release is required.');
   for (const [field, suffix] of [['registryReference', '/successor'], ['wizardRegistryReference', '/successor-wizard']] as const) {

@@ -520,6 +520,7 @@ delivery-must-not-run:
     prepareReportDirectory(directory,io,platform);
     const safe={runId:this.id,startedAt:this.startedAt===undefined?undefined:new Date(this.startedAt).toISOString(),results:this.results,resources:this.resources,
       images:this.spec?.images ? Object.fromEntries(Object.entries(this.spec.images).map(([role,image])=>[role,image.id])) : undefined,
+      ...(this.spec?.sourceLayout==='system-monorepo-v1'?{sourceLayout:this.spec.sourceLayout,sourceTree:this.spec.sourceTree,wizardSourceTree:this.spec.wizardSourceTree}:{}),
       daemonImage:this.spec?.daemonImage,sourceRevision:this.spec?.sourceRevision,ciIdentity:ciIdentity(this.spec?.ciIdentity),guidedPreviewReceipt:this.guidedPreviewReceipt,evidence:this.evidence,fullAcceptance:this.spec?.fullAcceptance===true,
       acceptance:this.spec?.fullAcceptance===true?'explicit-private-platform-scenarios; see individual stage outcomes':'lifecycle-and-http-smoke-only'};
     atomicReplace(path.join(directory,'results.json'),JSON.stringify(safe,null,2),io,platform);
@@ -569,7 +570,7 @@ function recover(report,exec=docker) {
     startedAt:typeof report.startedAt==='string'&&Number.isFinite(Date.parse(report.startedAt))?Date.parse(report.startedAt):undefined,
     evidence:Object.keys(evidence).length?evidence:undefined,
     guidedPreviewReceipt:require('../../gitlab/publish-successor').sanitizeGuidedReceipt(report.guidedPreviewReceipt),
-    spec:{images,ciIdentity:ciIdentity(report.ciIdentity),sourceRevision:/^[a-f0-9]{40}$/.test(report.sourceRevision||'')?report.sourceRevision:undefined,daemonImage:/^[a-z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(report.daemonImage||'')?report.daemonImage:undefined,fullAcceptance:report.fullAcceptance===true}});
+    spec:{images,...(report.sourceLayout==='system-monorepo-v1'?{sourceLayout:report.sourceLayout,sourceTree:/^[a-f0-9]{40}$/.test(report.sourceTree||'')?report.sourceTree:undefined,wizardSourceTree:/^[a-f0-9]{40}$/.test(report.wizardSourceTree||'')?report.wizardSourceTree:undefined}:{}),ciIdentity:ciIdentity(report.ciIdentity),sourceRevision:/^[a-f0-9]{40}$/.test(report.sourceRevision||'')?report.sourceRevision:undefined,daemonImage:/^[a-z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(report.daemonImage||'')?report.daemonImage:undefined,fullAcceptance:report.fullAcceptance===true}});
   return instance;
 }
 module.exports={Candidate,configuration,signature,configurationValues,recover,atomicReplace,LABEL};

@@ -25,6 +25,7 @@ export function publishSuccessor(evidence: ReturnType<typeof createEvidence>, ex
     return rows[0] as InspectedImage;
   };
   const source = checkoutIdentity(root, ci.sourceRevision, execute);
+  evidence.validateEvidence(proof,{...ci,...source});
   const image = inspect(local);
   if (image.Id !== expectedId || image.Config?.Labels?.['org.system-bootstrapper.test-job'] !== String(ci.candidateJobId) ||
     image.Config?.Labels?.['org.opencontainers.image.revision'] !== ci.sourceRevision)
