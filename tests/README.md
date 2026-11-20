@@ -299,3 +299,33 @@ Review/Beta, Production promotion or rollback. Use the corresponding
 [environment](../project-bootstrap/wizard-environments/README.md) and
 [Production](../project-bootstrap/wizard-production/README.md) procedures for
 those explicit operations.
+
+Host release regression coverage uses injected native-service adapters in
+`bootstrapper/runtime-fixture.cjs`: Docker/Git responses and remote readiness
+ports come from the owning fixture, while the shared runtime service validates
+health, selected images, configuration hashes and retained runner identities.
+The worker retains only the Nest provider graph; every native callback uses the
+current request's fixture. Rejected read-only checks reuse that graph. The
+sequence fixture uses a separate shared provider context, so nested runtime
+checks never share an in-flight channel. The controller-only lifecycle still
+exercises the actual production update/rollback entry adapters; fault matrices
+invoke the same services with request-scoped test I/O and preserve callback
+exception identity.
+
+`bootstrapper/public-controller-update.py` checks controller-only preflight,
+update and API-independent rollback in one retained installation fixture. Paired
+updates, interrupted ownership, configuration drift and failed recovery remain
+separate scenarios. The complete quiescent-controller state matrix runs directly
+in `operations/tests/host-runtime-inspection.test.cjs`; the host coordinator keeps
+representative live-controller and missing-controller rejection checks. Public
+upgrade fixtures select the matching release checkout version, including
+historical publications, rather than inferring a database-migration proof from a
+newer checkout.
+
+The paired pin-preservation scenario also rolls back its exact retained pair,
+so it does not build an identical successful update in a separate rollback
+smoke test. Stopped-repair success asserts that routes, authenticated Sync and
+runner contacts all execute after startup. One post-start readiness failure
+checks the retained lease/journal boundary; the direct native runtime tests
+exercise wrong Wizard routes and stale runner contacts without repeating a
+whole repair for each remote readiness port.

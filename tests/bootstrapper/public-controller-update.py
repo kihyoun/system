@@ -10,6 +10,8 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -44,6 +46,9 @@ class ReadinessDeadline(unittest.TestCase):
                         if transport == 'command':
                             raise subprocess.TimeoutExpired(args[0], kwargs['timeout'])
                         raise runtime.urllib.error.URLError('synthetic-transport-timeout')
+                    def http_timeout(*args, **kwargs):
+                        clock[0] = 103.1 if expires else 103.05
+                        raise recovery.RecoveryError('application-endpoint-not-ready')
                     def verify(*args, **kwargs):
                         if clock[0] == 100:
                             raise recovery.RecoveryError('runner-manager-contact-not-fresh')
@@ -56,9 +61,8 @@ class ReadinessDeadline(unittest.TestCase):
                             patch.object(tool.time, 'monotonic', side_effect=lambda: clock[0]), \
                             patch.object(tool.time, 'sleep', side_effect=sleep), \
                             patch.object(recovery.subprocess, 'run', side_effect=timed_out), \
-                            patch.object(runtime.urllib.request, 'build_opener') as opener, \
+                            patch.object(runtime, 'http', side_effect=http_timeout), \
                             patch.object(runtime, 'verify', side_effect=verify) as checked:
-                        opener.return_value.open.side_effect = timed_out
                         label = ('runner-manager-contact-not-fresh' if expires else
                                  'command-failed:git' if transport == 'command' else 'application-endpoint-not-ready')
                         with self.assertRaisesRegex(recovery.RecoveryError, '^controller-update-readiness-failed:' + label + '$'):
@@ -209,6 +213,28 @@ class PublicControllerUpdate(unittest.TestCase):
         self.compose_fail = False
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
+        import host_service
+        sequence_entry = str(ROOT / 'tests/bootstrapper/runtime-sequence-fixture.cjs')
+        host_service._WORKER_ENTRIES = host_service._WORKER_ENTRIES | {sequence_entry}
+        native_invoke = host_service.invoke
+        def sequence(entry, request, dispatch, error_type, *extra, **options):
+            methods = {'controller-update-sequence-entry.js': 'updateSequence',
+                       'controller-rollback-sequence-entry.js': 'rollbackSequence'}
+            if entry not in methods or self._testMethodName == 'test_controller_only_update_retains_config_pins_data_and_exact_previous_image':
+                return native_invoke(entry, request, dispatch, error_type, *extra, **options)
+            callback_error = []
+            def owned_dispatch(method, args):
+                try: return dispatch(method, args)
+                except Exception as error:
+                    callback_error[:] = [(str(error) if isinstance(error, error_type) else 'host-native-port-failed', error)]
+                    raise
+            outcome = native_invoke(sequence_entry, {'method': methods[entry], 'arguments': [request['input']]}, owned_dispatch, error_type, *extra, **options)
+            if 'rejected' in outcome:
+                if callback_error and outcome['rejected'] == callback_error[0][0]: raise callback_error[0][1]
+                raise error_type(outcome['rejected'])
+            return outcome.get('result')
+        self.stack.enter_context(patch.object(host_service, 'invoke', side_effect=sequence))
+
         self.stack.enter_context(patch.object(successor, 'verify_checkout'))
         self.sync_idle = self.stack.enter_context(patch.object(successor, 'sync_idle'))
         self.stack.enter_context(patch.object(successor, 'environment', return_value={}))
@@ -222,6 +248,9 @@ class PublicControllerUpdate(unittest.TestCase):
                                                              return_value={'checked': True, 'online': 2}))
         self.stack.enter_context(patch.object(runtime, 'run', side_effect=self.git))
         self.stack.enter_context(patch.object(runtime, 'settings', side_effect=self.settings))
+        original_call = runtime.call
+        self.stack.enter_context(patch.object(runtime, 'call', side_effect=lambda method, *args: self.runtime_fixture(method, *args)
+            if method in ('capture', 'publicImages', 'verify') else original_call(method, *args)))
         self.stack.enter_context(patch.object(tool.promoter, 'inspect', side_effect=self.inspect))
         self.probe = self.stack.enter_context(patch.object(tool.promoter, 'gitlab_preflight'))
         self.stack.enter_context(patch.object(tool, 'run', side_effect=self.command))
@@ -231,11 +260,33 @@ class PublicControllerUpdate(unittest.TestCase):
         self.checkpoint = self.root / 'recovery/controller-updates/attempt'
         self.controller_template = copy.deepcopy(self.rows['system_bootstrapper_1'])
 
+    def runtime_fixture(self, method, *arguments):
+        import host_service
+        filename = str(ROOT / 'tests/bootstrapper/runtime-fixture.cjs')
+        # Reuse the existing bounded transport; each callback belongs to this fixture.
+        host_service._WORKER_ENTRIES = host_service._WORKER_ENTRIES | {filename}
+        def dispatch(operation, args):
+            if operation == 'command':
+                binary, words = args
+                if binary == 'git': return self.git([binary, *words]).decode()
+                if binary == 'docker' and words[1:3] == ['image', 'inspect']:
+                    return json.dumps([self.images[words[-1]]])
+                if binary == 'docker' and words[1] == 'inspect':
+                    return json.dumps([self.rows[name] for name in words[2:]])
+                raise AssertionError((binary, words))
+            callbacks = {'routes': runtime.verify_routes, 'sync': runtime.verify_sync,
+                         'runnerContacts': runtime.runner_contacts, 'mounts': runtime.verify_mounts}
+            result = callbacks[operation](*args)
+            return None if operation in ('routes', 'sync') else result
+        outcome = host_service.invoke(filename, json.loads(json.dumps({'method': method, 'arguments': arguments}, default=str)),
+                                   dispatch, recovery.RecoveryError)
+        if 'rejected' in outcome: raise recovery.RecoveryError(outcome['rejected'])
+        return outcome.get('result')
+
     def services(self, config, stopped_controller_id=None):
         # Exercise the actual runtime state boundary, rather than mocking away
         # the default all-running requirement or its one canonical exception.
-        with patch.object(runtime, 'run', return_value=json.dumps(list(self.rows.values())).encode()):
-            return inspect_runtime_services(config, stopped_controller_id=stopped_controller_id)
+        return recovery.host_operation('inspectServiceRows', config, list(self.rows.values()), stopped_controller_id)
 
     def git(self, command, **kwargs):
         if command[-2:] == ['status', '--porcelain']: return b''
@@ -405,33 +456,10 @@ class PublicControllerUpdate(unittest.TestCase):
 
     def test_stopped_repair_rejects_ambiguous_live_signaled_and_unknown_controller_states(self):
         self.enable_repair()
-        original = copy.deepcopy(self.rows['system_bootstrapper_1'])
-        for field, value in [('Running', True), ('Paused', True), ('Restarting', True), ('Dead', True),
-                             ('OOMKilled', True), ('Pid', 17), ('ExitCode', 0), ('ExitCode', 128),
-                             ('ExitCode', 137), ('ExitCode', -1), ('ExitCode', None), ('ExitCode', True),
-                             ('Pid', False), ('Status', 'dead')]:
-            self.rows['system_bootstrapper_1'] = copy.deepcopy(original)
-            self.rows['system_bootstrapper_1']['State'][field] = value
-            with self.subTest(field=field, value=value), self.assertRaisesRegex(recovery.RecoveryError, 'quiescent'):
-                self.repair(check_only=True)
-        self.rows['system_bootstrapper_1'] = original
-        for key in ('ExecIDs', 'Pid', 'Paused'):
-            changed = copy.deepcopy(original)
-            del (changed if key == 'ExecIDs' else changed['State'])[key]
-            self.rows['system_bootstrapper_1'] = changed
-            with self.subTest(missing=key), self.assertRaises(recovery.RecoveryError):
-                self.repair(check_only=True)
-        self.rows['system_bootstrapper_1'] = copy.deepcopy(original)
-        self.rows['system_bootstrapper_1']['ExecIDs'] = ['active-exec']
-        with self.assertRaisesRegex(recovery.RecoveryError, 'execs'):
-            self.repair(check_only=True)
-        self.rows['system_bootstrapper_1'] = copy.deepcopy(original)
-        self.rows['system_bootstrapper_1']['HostConfig']['RestartPolicy']['Name'] = 'always'
-        with self.assertRaisesRegex(recovery.RecoveryError, 'restart-policy'):
-            self.repair(check_only=True)
-        self.rows['system_bootstrapper_1'] = copy.deepcopy(original)
-        self.rows['system_bootstrapper_1']['HostConfig']['RestartPolicy']['MaximumRetryCount'] = 1
-        with self.assertRaisesRegex(recovery.RecoveryError, 'restart-policy'):
+        # The full quiescent-state matrix is exercised directly in the shared
+        # RuntimeInspection test. Keep representative rejection at this boundary.
+        self.rows['system_bootstrapper_1']['State']['Running'] = True
+        with self.assertRaisesRegex(recovery.RecoveryError, 'quiescent'):
             self.repair(check_only=True)
         del self.rows['system_bootstrapper_1']
         with self.assertRaisesRegex(recovery.RecoveryError, 'missing-container'):
@@ -578,24 +606,6 @@ class PublicControllerUpdate(unittest.TestCase):
         self.assertEqual(record['phase'], 'controller-start-started')
         self.assertTrue((self.checkpoint / 'baseline-after.json').is_file())
         self.assertFalse((self.checkpoint / 'verification.json').exists())
-
-    def test_stopped_repair_still_requires_full_Wizard_routes_after_start(self):
-        self.enable_repair()
-        self.routes.side_effect = recovery.RecoveryError('wizard-public-not-ready')
-        with self.assertRaisesRegex(recovery.RecoveryError, 'readiness-failed:wizard-public-not-ready'):
-            self.repair(timeout=0)
-        self.management.assert_has_calls([unittest.mock.call(self.config), unittest.mock.call(self.config)])
-        self.routes.assert_called_once()
-        self.assertTrue((self.root / 'configuration/.storage-operation-lock').exists())
-
-    def test_stopped_repair_still_requires_fresh_runner_contacts_after_start(self):
-        self.enable_repair()
-        self.contacts.side_effect = recovery.RecoveryError('runner-manager-contact-not-fresh')
-        with self.assertRaisesRegex(recovery.RecoveryError, 'readiness-failed:runner-manager-contact-not-fresh'):
-            self.repair(timeout=0)
-        self.sync.assert_called_once()
-        self.contacts.assert_called_once()
-        self.assertTrue((self.root / 'configuration/.storage-operation-lock').exists())
 
     def test_repair_rollback_restores_selectors_and_never_starts_old_controller(self):
         self.enable_repair()
@@ -868,6 +878,13 @@ class PublicControllerUpdate(unittest.TestCase):
                 self.assertEqual(before['selectedImages'][name], after['selectedImages'][name])
         self.assertEqual(self.rows['system_wizard_1']['Image'], self.release['wizardImageId'])
 
+        with patch.object(successor, 'verify_public_pair', side_effect=AssertionError('CI API not needed')):
+            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(record['phase'], 'rolled-back')
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertEqual(self.rows['system_wizard_1']['Image'], self.wizard_template['Image'])
+        self.assertEqual(self.rows['system_bootstrapper_1']['Image'], self.controller_template['Image'])
+
     def test_pair_preflight_and_bad_Wizard_image_do_not_mutate_services(self):
         self.enable_pair()
         self.assertEqual(self.update(wizard=self.wizard, check_only=True)['phase'], 'preflight-passed')
@@ -910,16 +927,6 @@ class PublicControllerUpdate(unittest.TestCase):
         self.assertEqual(self.config['_main'].read_bytes(), self.raw)
         self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
 
-    def test_pair_rollback_restores_both_images_and_configuration_without_CI_API(self):
-        self.enable_pair()
-        self.update(wizard=self.wizard)
-        with patch.object(successor, 'verify_public_pair', side_effect=AssertionError('CI API not needed')):
-            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
-        self.assertEqual(record['phase'], 'rolled-back')
-        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
-        self.assertEqual(self.rows['system_wizard_1']['Image'], self.wizard_template['Image'])
-        self.assertEqual(self.rows['system_bootstrapper_1']['Image'], self.controller_template['Image'])
-
     def test_interrupted_pair_handles_missing_Wizard_and_controller_with_owned_lease(self):
         self.enable_pair()
         self.compose_fail = True
@@ -956,6 +963,10 @@ class PublicControllerUpdate(unittest.TestCase):
         self.assertFalse(any('stop' in command for command in self.commands[commands_before:]))
 
     def test_controller_only_update_retains_config_pins_data_and_exact_previous_image(self):
+        self.assertEqual(self.update(check_only=True)['phase'], 'preflight-passed')
+        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
+        self.assertFalse(self.checkpoint.exists())
+        self.assertEqual(self.commands, [])
         record = self.update(redirect_from='https://alias.example.invalid')
         self.assertEqual(record['phase'], 'completed')
         self.assertEqual(self.config['_main'].read_bytes(), tool.assignment(self.raw, self.new))
@@ -977,17 +988,20 @@ class PublicControllerUpdate(unittest.TestCase):
         self.assertEqual(self.routes.call_args.args[2], 'https://alias.example.invalid')
         self.assertEqual(self.probe.call_args.args[0]['fromVersion'], 'new')
 
-    def test_check_only_does_not_write_checkpoint_or_configuration_or_stop_services(self):
-        self.assertEqual(self.update(check_only=True)['phase'], 'preflight-passed')
+        with patch.object(successor, 'verify_pipeline', side_effect=AssertionError('API must not be required')):
+            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
+        self.assertEqual(record['phase'], 'rolled-back')
+        self.assertFalse(record['databaseRewound'])
         self.assertEqual(self.config['_main'].read_bytes(), self.raw)
-        self.assertFalse(self.checkpoint.exists())
-        self.assertEqual(self.commands, [])
+        self.assertEqual(self.rows['system_bootstrapper_1']['Image'], self.images[self.old]['Id'])
+        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
 
     def test_preflight_waits_for_recent_runner_contact_without_mutation(self):
         self.contacts.side_effect = [recovery.RecoveryError('runner-manager-contact-not-fresh'),
                                      {'checked': True, 'online': 2}]
-        with patch.object(tool.time, 'sleep') as sleep:
-            self.assertEqual(self.update(check_only=True)['phase'], 'preflight-passed')
+        with patch.object(tool, 'time', SimpleNamespace(monotonic=time.monotonic, sleep=lambda _: None)):
+            with patch.object(tool.time, 'sleep') as sleep:
+                self.assertEqual(self.update(check_only=True)['phase'], 'preflight-passed')
         sleep.assert_called_once_with(3)
         self.assertEqual(self.commands, [])
         self.assertFalse(self.checkpoint.exists())
@@ -1067,16 +1081,6 @@ class PublicControllerUpdate(unittest.TestCase):
         self.config['BOOTSTRAPPER_IMAGE'] = 'local-controller:mutable'
         with self.assertRaisesRegex(recovery.RecoveryError, 'public-controller-digest-required'):
             runtime.public_images(self.config, self.rows)
-
-    def test_completed_update_can_rollback_without_API_or_data_rewind(self):
-        self.update()
-        with patch.object(successor, 'verify_pipeline', side_effect=AssertionError('API must not be required')):
-            record = tool.rollback(self.config, self.checkpoint, '/private/synthetic-token')
-        self.assertEqual(record['phase'], 'rolled-back')
-        self.assertFalse(record['databaseRewound'])
-        self.assertEqual(self.config['_main'].read_bytes(), self.raw)
-        self.assertEqual(self.rows['system_bootstrapper_1']['Image'], self.images[self.old]['Id'])
-        self.assertFalse((self.root / 'configuration/.storage-operation-lock').exists())
 
     def test_interrupted_start_retains_lease_then_rollback_adopts_without_rewinding_data(self):
         self.compose_fail = True

@@ -308,13 +308,18 @@ class Authority(unittest.TestCase):
         try:
             metadata = case.accepted_metadata()
             _metadata, proof, _security = fixture()
+            metadata.update(version=_metadata['version'], tag=_metadata['tag'])
+            historical_source = case.root / 'accepted-source'
+            historical_source.mkdir()
+            (historical_source / 'VERSION').write_text(metadata['version'])
+            case.stack.enter_context(patch.object(native.tool, 'ROOT', historical_source))
             proof['release'] = copy.deepcopy(case.release)
             proof['evidence'] = copy.deepcopy(case.evidence)
             proof['evidence']['results'].append({'name': upgrade_paths.load()['transitions'][0]['requiredStage'], 'status': 'passed'})
             proof['evidence']['evidence']['publicUpgrade'] = fixture()[1]['evidence']['evidence']['publicUpgrade']
             proof['release'].update(registryRepository=case.new.split('@')[0], registryReference=case.new,
                 wizardRegistryReference=case.wizard, candidateEvidenceSha256=tool.digest(encoded(proof['evidence'])))
-            proof.update(source=metadata['source'], images=metadata['images'], originalEvidenceSha256=metadata['acceptance']['evidenceSha256'])
+            proof.update(version=metadata['version'], source=metadata['source'], images=metadata['images'], originalEvidenceSha256=metadata['acceptance']['evidenceSha256'])
             accepted = authority(metadata, proof, case.security)
             accepted.base = successor.runtime.origin(case.config, 'GITLAB')
             successor.atomic_json(case.metadata, accepted.metadata)
@@ -496,6 +501,10 @@ if operation == 'changed-apply':
 raw = contract.encoded(metadata)
 authority = contract.PublicReleaseAuthority(metadata, proof, 'https://own-gitlab.example.invalid', security)
 tool, successor = adapter.tool, adapter.successor
+selected_checkout = root / 'target-source'
+selected_checkout.mkdir(exist_ok=True)
+(selected_checkout / 'VERSION').write_text(metadata['version'])
+tool.ROOT = selected_checkout
 live = root / 'live'
 config = {'_root': live, '_main': live / 'configuration/.docker.env', 'SEED_DIR': str(root / 'backup')}
 target = live / 'recovery/public-upgrades/test'
@@ -633,12 +642,19 @@ class ReleaseProfile(unittest.TestCase):
             profile.chmod(0o600)
             selector = root / 'storage.env'
             selector.write_text("PERSISTENCE_MODE=local\nPERSISTENT_MOUNT=/\nPERSISTENT_DIR='" + str(root) + "'\n")
-            execute = subprocess.run
-            def checked(arguments, **kwargs):
-                if arguments[:2] == ['node', str(ROOT / 'bootstrapper/persistence.js')]:
-                    return subprocess.CompletedProcess(arguments, 0)
-                return execute(arguments, **kwargs)
-            with patch.object(successor.runtime.subprocess, 'run', side_effect=checked):
+            selector.chmod(0o600)
+            import host_service
+            entry = str(ROOT / 'tests/bootstrapper/runtime-fixture.cjs')
+            host_service._WORKER_ENTRIES = host_service._WORKER_ENTRIES | {entry}
+            def settings(method, *args):
+                self.assertEqual(method, 'settings')
+                outcome = host_service.invoke(entry, {'method': method, 'arguments': args},
+                    lambda *_: self.fail('unexpected native command'), successor.recovery.RecoveryError)
+                if 'rejected' in outcome: raise successor.recovery.RecoveryError(outcome['rejected'])
+                return outcome.get('result')
+            # Storage contracts have their own native acceptance; this fixture selects
+            # private fallback/configuration bytes through the real runtime service.
+            with patch.object(successor.runtime, 'call', side_effect=settings):
                 self.assertEqual(successor.runtime.settings(selector)['BOOTSTRAPPER_IMAGE'], controller)
                 main.write_text("BOOTSTRAPPER_IMAGE='operator-selection'\n")
                 self.assertEqual(successor.runtime.settings(selector)['BOOTSTRAPPER_IMAGE'], 'operator-selection')
@@ -648,7 +664,7 @@ class ReleaseProfile(unittest.TestCase):
                         successor.runtime.settings(selector)
                 profile.write_bytes(content)
                 profile.chmod(0o644)
-                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'private-release-profile'):
+                with self.assertRaisesRegex(successor.recovery.RecoveryError, 'private-release-image-selector'):
                     successor.runtime.settings(selector)
 
 
@@ -807,7 +823,11 @@ class BackupAndApply(unittest.TestCase):
         native_clock = SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds))
         stack.enter_context(patch.object(tool.updater, 'time', native_clock))
         stack.enter_context(patch.object(successor.recovery, 'time', native_clock))
-        stack.enter_context(patch.object(tool.runtime, 'run', side_effect=docker))
+        def inspect(config):
+            rows = json.loads(docker([*successor.runtime.DOCKER, 'inspect', 'system_bootstrapper_1',
+                'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1']))
+            return successor.recovery.host_operation('inspectServiceRows', config, rows, None)
+        stack.enter_context(patch.object(tool.runtime, 'inspect_services', side_effect=inspect))
         stack.enter_context(patch.object(tool.runtime, 'verify', side_effect=verify))
         self.addCleanup(stack.close)
         return clock, inspections

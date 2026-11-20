@@ -7,6 +7,10 @@ const config={GITLAB_RUNNER_SCALE:'0',WIZARD_ENABLE:'false'};
 test('stopped controller requires exact quiescent identity and no active execs',()=>{
  const row={Name:'/system_bootstrapper_1',Id:'owned',State:{Status:'exited',ExitCode:1,Pid:0,Running:false,Paused:false,Restarting:false,Dead:false,OOMKilled:false},ExecIDs:null,HostConfig:{RestartPolicy:{Name:'no'}}};
  failedStoppedController(row,'owned');
+ for(const [field,value] of [['Running',true],['Paused',true],['Restarting',true],['Dead',true],['OOMKilled',true],['Pid',17],['ExitCode',0],['ExitCode',128],['ExitCode',137],['ExitCode',-1],['ExitCode',null],['ExitCode',true],['Pid',false],['Status','dead']])assert.throws(()=>failedStoppedController({...row,State:{...row.State,[field]:value}},'owned'),/quiescent/);
+ for(const key of ['ExecIDs','Pid','Paused']){const changed=structuredClone(row);delete (key==='ExecIDs'?changed:changed.State)[key];assert.throws(()=>failedStoppedController(changed,'owned'));}
+ assert.throws(()=>failedStoppedController({...row,HostConfig:{RestartPolicy:{Name:'no',MaximumRetryCount:1}}},'owned'),/restart-policy/);
+
  for(const changed of [{Id:'other'},{ExecIDs:['active']},{State:{...row.State,ExitCode:137}},{State:{...row.State,Running:true}},{HostConfig:{RestartPolicy:{Name:'always'}}}])assert.throws(()=>failedStoppedController({...row,...changed},'owned'));
 });
 test('service inspection rejects duplicate identities and unhealthy services',()=>{
