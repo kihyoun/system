@@ -2,8 +2,8 @@
 
 관리형 CI 활성화는 [소스 초기화](WIZARD_SOURCE.md) 후 후보를 빌드하고 검증합니다.
 빌드를 활성화해도 실행 중인 Wizard는 유지됩니다. Review/Beta는 별도의
-[수동 환경 작업](../project-bootstrap/wizard-environments/README.md)을 사용하며,
-운영 환경은 보호된 [운영자 승격 명령](../project-bootstrap/wizard-production/README.md)을 사용합니다.
+[수동 환경 작업](../templates/project-bootstrap/wizard-environments/README.md)을 사용하며,
+운영 환경은 보호된 [운영자 승격 명령](../templates/project-bootstrap/wizard-production/README.md)을 사용합니다.
 
 ## 미리보기 및 활성화
 
@@ -113,14 +113,14 @@ Node는 이 갱신된 OpenSSL 신뢰 저장소를 사용합니다.
 
 기존 관리형 가져오기는 일치하는 소스와 함께 `"buildProfile": "node24-vite8-quickstart-v5"`를 지정하여
 보호된 빌드/환경 전용 업그레이드를 사용하세요. 연결된 소스 기준 프로젝트는 대신
-[네이티브 소스 병합 및 연결 새로고침](../project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe)을 사용합니다.
+[네이티브 소스 병합 및 연결 새로고침](../templates/project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe)을 사용합니다.
 모든 이전 프로필은 정확한 과거 해시를 유지합니다.
 현재 동등한 레거시 프로필은 `legacy-ca-v4`입니다.
 
 예약된 과거 레시피는 레거시 Node 13/CRA/Jest 레시피를 포함해 정확한 해시로 계속 검증할 수 있습니다.
 과거 호환성을 유지한다고 오래된 도구 모음이 새 프로젝트에 적합해지는 것은 아닙니다.
 가져온 프로젝트를 업그레이드하려면 보호된
-[소스/도구 모음 마이그레이션](../project-bootstrap/wizard-upgrade/README.md)이 필요합니다.
+[소스/도구 모음 마이그레이션](../templates/project-bootstrap/wizard-upgrade/README.md)이 필요합니다.
 컨트롤러 이미지를 바꾸어도 기존 예약은 다시 작성되지 않습니다.
 소스가 이미 현대화되어 로컬 개발 내용을 유지해야 한다면 빌드/환경 전용 업그레이드를 사용할 수 있습니다.
 컨트롤러 업그레이드가 기존 레시피 예약을 자동 갱신하지 않습니다.

@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert');
-const {settings} = require('../../project-bootstrap/preview-setup/settings');
-const {publicAddress} = require('../../project-bootstrap/preview-setup/source');
+const {settings} = require('../../dist/modules/project-lifecycle/preview-settings');
+const {publicAddress} = require('../../dist/modules/project-lifecycle/source-transfer.service');
 const host = {enabled: true, host: 'review.example.test', ssl: '/ssl/review/cert.pem', sslKey: '/ssl/review/key.pem'};
 const desired = {version: 1, namespace: 'team/dev', wizard: {mode: 'import', project: 'wizard-fork', origin: 'https://example.test/fork.git'}, review: host, beta: {...host, enabled: false, host: ''}};
 assert.deepEqual(settings(desired), desired);

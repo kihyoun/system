@@ -114,7 +114,7 @@ sync` replaces a local override with `.gitmodules`;
 wenden Sie die private Zuordnung daher erneut an, falls eine Synchronisierung
 erforderlich ist. In der System-CI deaktiviert `prepare:wizard-source` den
 automatischen Submodul-Checkout des Runners mit `GIT_SUBMODULE_STRATEGY: none`.
-`gitlab/prepare-wizard-source.js` initialisiert und prüft anschließend den
+`system-bootstrapper source-checkout` initialisiert und prüft anschließend den
 exakten Gitlink anhand der konfigurierten privaten Auswahl, bevor der Quellcode
 gepackt wird. Eine erst nach diesem Vorbereitungsschritt angewandte
 Überschreibung käme zu spät. Prüfen Sie, dass das ausgewählte Wizard-Repository
@@ -123,7 +123,7 @@ erfolgreichen GitHub-Lesezugriff benötigen, um fortzufahren.
 
 ## Vereinbarung des Helfers
 
-`node operations/dist/mirror/entry.js ci` läuft in einem Checkout, dessen `origin` auf das gewünschte primäre GitLab-Projekt zeigt. Bereite zuerst die festgelegte Node-Laufzeit und das kompilierte Operations-Paket vor. Das gemeinsame `MirrorModule` verwaltet Transport, Sperren und Bereinigung über native Git- und OpenSSH-Werkzeuge. Die Konfiguration stammt aus dem geschützten CI-Job:
+`node dist/modules/mirror/entry.js ci` läuft in einem Checkout, dessen `origin` auf das gewünschte primäre GitLab-Projekt zeigt. Bereite zuerst die festgelegte Node-Laufzeit und das kompilierte Operations-Paket vor. Das gemeinsame `MirrorModule` verwaltet Transport, Sperren und Bereinigung über native Git- und OpenSSH-Werkzeuge. Die Konfiguration stammt aus dem geschützten CI-Job:
 
 | Variable | Erforderlicher Wert |
 | --- | --- |
@@ -217,7 +217,7 @@ erforderlichen Laufzeitprüfungen als `$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG` i
 seiner eigenen GitLab-Registry. Der vollständige Nachfolgecontroller wird
 separat vom Kandidaten-Abnahmejob mit unveränderlichem Digest und
 Abnahmenachweisen im Repository `/successor` desselben Projekts veröffentlicht.
-Folgen Sie dem [Freigabeleitfaden für Nachfolger](../bootstrapper/README.md#promoting-a-tested-successor-controller),
+Folgen Sie dem [Freigabeleitfaden für Nachfolger](BOOTSTRAPPER.md#promoting-a-tested-successor-controller),
 um dieses vollständige Image bereitzustellen. Keine der Veröffentlichungen
 benötigt Docker-Hub-Publikationszugangsdaten, aktiviert eine Produktionsfreigabe
 oder umgeht die ressourcenintensiven System-Kandidatenprüfungen. Die
@@ -241,7 +241,7 @@ unveränderliche Image in der Registry desselben Projekts und prüfen genau
 dieses Image. Konfigurierte optionale Review-/Beta-Jobs verwenden anschließend
 dasselbe Projekt; die Produktionsumgebung bleibt eine gesonderte kontrollierte
 Freigabe. Folgen Sie beim Ersetzen eines bestehenden verwalteten
-Auslieferungsprojekts dem [Übernahmeleitfaden für ein primäres Quellrepository](../project-bootstrap/wizard-source-primary/README.md).
+Auslieferungsprojekts dem [Übernahmeleitfaden für ein primäres Quellrepository](../templates/project-bootstrap/wizard-source-primary/README.md).
 Löschen Sie das alte Projekt nicht, bevor seine produktiven Abhängigkeiten und
 benötigten Wiederherstellungsdaten migriert wurden.
 
@@ -292,7 +292,7 @@ der Systemspiegel unterstütze einen frischen öffentlichen rekursiven Checkout.
 Ein verzögerter öffentlicher Spiegel blockiert weder interne Gitlink-Arbeit
 noch private Auslieferung. Es wird weder ein automatischer System-Merge noch
 eine Produktionsbereitstellung eingeführt. Produktion bleibt eine bewusste,
-vom Betreiber bestätigte [Freigabeaktion](../project-bootstrap/wizard-production/README.md).
+vom Betreiber bestätigte [Freigabeaktion](../templates/project-bootstrap/wizard-production/README.md).
 
 ### Den Wizard in einem einzigen Systemrelease ausliefern
 
@@ -323,7 +323,7 @@ Die vorhandene unabhängig geprüfte GitHub-Hostschlüsseldatei muss auch für
 dieses Ziel gelten. Der Wrapper hält die beiden Identitäten getrennt und
 entfernt seine privaten Kopien und den SSH-Agenten beim Beenden.
 
-`gitlab/publish-wizard-source.js` liest den exakten Gitlink aus dem geschützten
+`system-bootstrapper wizard-source-publish` liest den exakten Gitlink aus dem geschützten
 System-Standardbranch-Push, beschafft ihn aus der kanonischen Wizard-Quelle
 derselben Instanz mit dem Job-Token und veröffentlicht
 `system-release/<Wizard commit>`. Eine atomare Nur-Erstellen-Sperre verweigert
@@ -336,7 +336,7 @@ Wiederherstellungseingabe sie benötigt.
 
 Der Beleg `test-results/github/wizard-source.json` aus derselben Pipeline
 zeichnet ausschließlich Quell-, Ziel- und Jobidentitäten auf. Der optionale
-[Updater für gepaarte Releases](../bootstrapper/README.md#deliberately-updating-the-accepted-controller-and-wizard-together)
+[Updater für gepaarte Releases](BOOTSTRAPPER.md#deliberately-updating-the-accepted-controller-and-wizard-together)
 verlangt diesen erfolgreichen Publikationsnachweis, die vollständige
 freigegebene Systempipeline und das unveränderte Docker-Hub-Image-Paar-Artefakt.
 Sein standardmäßiger Modus nur für den Controller behält die ursprüngliche

@@ -5,8 +5,8 @@ Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operat
 vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
-Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
+Halten Sie die geprüfte Node-Installation, `dist` und
+`node_modules` und `assets` vor Wartungsbeginn offline verfügbar.
 
 Die Plattform unterscheidet zwei Speicherrollen:
 
@@ -156,7 +156,7 @@ Speichern Sie den vollständigen Certbot-Baum unter `host/letsencrypt`:
 Kontoschlüssel, `archive`, `live`, Erneuerungskonfiguration und Hooks. Die
 symbolischen Links unter `live` allein reichen nicht aus. Installieren Sie
 Certbot gesondert und führen Sie anschließend
-`sudo node bootstrapper/install-volume-host.js` aus dem ausgewählten Checkout
+`sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` aus dem ausgewählten Checkout
 aus. Der aus Kompatibilitätsgründen so benannte Installer behandelt beide Modi
 für produktive Daten. Der Volume-Modus behält seine fstab-/Docker-Mount-Abhängigkeit;
 der lokale Modus ergänzt keine Voraussetzung für externen Speicher. Keiner der
@@ -206,8 +206,8 @@ Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operat
 vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
-Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
+Halten Sie die geprüfte Node-Installation, `dist` und
+`node_modules` und `assets` vor Wartungsbeginn offline verfügbar.
 
 1. Stoppen Sie schreibende Prozesse sauber, bevor Sie Speicher abtrennen. Behalten
    Sie das Volume beim Löschen der VM ausdrücklich; formatieren Sie es nicht und
@@ -215,7 +215,7 @@ Halten Sie die geprüfte Node-Installation, `operations/dist` und
 2. Stellen Sie einen kompatiblen Ubuntu-Host bereit, schließen Sie das Volume an
    und hängen Sie sein vorhandenes Dateisystem ein. Laden Sie die vorgesehene
    Systemrevision mit aufgezeichnetem Wizard-Baum; nur historische Gitlink-Releases benötigen exakt initialisierte Submodule. Installieren Sie Docker mit
-   `sudo node bootstrapper/install.js`; installieren Sie Certbot gesondert.
+   `sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"`; installieren Sie Certbot gesondert.
 3. Erstellen Sie `/etc/system-bootstrapper/persistence.env` mit
    `PERSISTENCE_MODE=volume` und den aufbewahrten Mount-/Verzeichnis-/UUID-Angaben
    neu. Prüfen Sie Einhängung/UUID und gespeicherte Konfiguration. Führen Sie die
@@ -227,8 +227,8 @@ Halten Sie die geprüfte Node-Installation, `operations/dist` und
    behalten Sie unveränderliche private Wizard-Festlegungen bei. Optionale
    verwaltete Review-/Beta-Helfer benötigen einen eigenen sauberen Neuaufbau und
    eine ausdrückliche erneute Bereitstellung, falls ihr bisheriges lokales Image
-   fehlt; siehe [Leitfaden für verwaltete Umgebungen](../project-bootstrap/wizard-environments/README.md).
-5. Führen Sie `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` aus diesem Checkout aus. Es prüft den Speicher,
+   fehlt; siehe [Leitfaden für verwaltete Umgebungen](../templates/project-bootstrap/wizard-environments/README.md).
+5. Führen Sie `sudo system-bootstrapper start --checkout "$PWD"` aus diesem Checkout aus. Es prüft den Speicher,
    erstellt den Controller und startet Dienste mit der aufbewahrten
    Konfiguration. Container-IPs, Netzwerke und Proxy-Konfiguration werden neu
    erstellt. Ändern Sie DNS, wenn sich die Host-Adresse geändert hat, und
@@ -237,7 +237,7 @@ Halten Sie die geprüfte Node-Installation, `operations/dist` und
    TLS-Erneuerung. Gleichen Sie jede aufbewahrte Einhängung und jedes Gerät eines
    benannten Volumes mit dem angeschlossenen Dateisystem ab.
 
-Ein alternativer archivbasierter Weg ist `bootstrapper/recover-volume.js`.
+Ein alternativer archivbasierter Weg ist `system-bootstrapper host-bootstrap recover-volume --checkout "$PWD"`.
 Er benötigt das vom Betreiber vorbereitete `PERSISTENT_DIR/recovery/images.json`,
 die referenzierten gzip-Image-Archive mit SHA-256-Werten, öffentliche
 Image-Referenzen und eine aufbewahrte Auswahldatei; diese privaten

@@ -77,7 +77,7 @@ child.execFile = (command, args, options, callback) => {
   if (failure && push && failure.command === 'push' && failure.ordinal === ordinal && failure.after) callback(failure.error, '');
   else callback(null, output);
 };
-const {transfer} = require('../../project-bootstrap/preview-setup/source');
+const {sourceTransfer: transfer} = require('../../dist/modules/project-lifecycle/source-entry');
 const cleaned = () => {
   for (const row of calls.filter(row => row.args.includes('clone')))
     assert(!fs.existsSync(path.dirname(row.args.at(-1))), 'Temporary clone survived transfer');

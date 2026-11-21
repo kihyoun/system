@@ -36,8 +36,8 @@ the controller's Docker host with the exact accepted source/job labels; retain i
 for Stop. No value from an unrelated pipeline can authorize this reservation.
 
 ```sh
-node project-bootstrap/system-beta/bind.js plan /state/beta-input.json
-node project-bootstrap/system-beta/bind.js apply /state/beta-input.json PLAN_HASH
+system-bootstrapper system-beta bind plan /state/beta-input.json
+system-bootstrapper system-beta bind apply /state/beta-input.json PLAN_HASH
 ```
 
 Run the binding tool from the reviewed checkout on the Docker host that runs the
@@ -76,8 +76,8 @@ Do not delete bindings, receipts, generation floors or tombstones to bypass a
 conflict. Beta setup refuses active, pending, retired or uncleared stopped routes.
 
 ```sh
-node project-bootstrap/system-review/run.js stop
-node project-bootstrap/wizard-environments/cleanup-stopped.js OPERATION
+system-bootstrapper system-review stop
+system-bootstrapper project-environments-cleanup OPERATION
 ```
 
 The Stop launcher requires the original job identity and retained helper image.

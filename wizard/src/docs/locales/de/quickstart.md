@@ -80,3 +80,25 @@ Auch eine öffentliche Release-Veröffentlichung ändert keine vorhandene Plattf
 
 [Release-Richtlinie und exakter Quellcode-Checkout](RELEASES.md) beschreiben den öffentlichen
 Metadatenvertrag, die Installation einer expliziten Version sowie Update-/Rollback-Anforderungen.
+
+## Die installierte CLI verwenden
+
+Quickstart installiert den benannten Befehl `system-bootstrapper` mit seiner
+geprüften Node-Laufzeit. Eine neue SSH-Sitzung und `sudo` benötigen weder ein
+nvm-Shellprofil noch einen JavaScript-Dateipfad. Die private Installationsbindung
+wählt den geprüften Checkout und die Persistenzeinstellungen; sie wählt kein neueres Release.
+
+```sh
+system-bootstrapper --help
+sudo system-bootstrapper start
+sudo system-bootstrapper harvest
+```
+
+Harvest benötigt weiterhin das eingehängte konfigurierte Sicherungsdateisystem.
+Es verwendet dieselben Speicherprüfungen und Sperren wie der Wizard.
+Für einen anderen ausdrücklich geprüften Checkout dienen `--checkout /absolute/path`
+und die dokumentierten Wiederherstellungseingaben. Eine reine Laufzeitinstallation
+bindet keine Installation und startet keine Dienste. Entwicklungs-Checkouts können
+den npm-Befehl mit `npm link --ignore-scripts` verfügbar machen; die systemweite
+Bindung verwendet `system-bootstrapper cli-install` erst nach erfolgreicher
+Prüfung der Eigentümerschaft und der akzeptierten Installation.

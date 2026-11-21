@@ -1,0 +1,165 @@
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import { Injectable } from '@nestjs/common';
+interface OutputChunk {
+  type: 'chunk';
+  code: string;
+  modules: Record<string, unknown>;
+}
+interface Bundle {
+  generate(options: unknown): Promise<{ output: ({ type: string } & Partial<OutputChunk>)[] }>;
+  close(): Promise<void>;
+}
+interface Bundler {
+  rolldown(options: unknown): Promise<Bundle>;
+}
+function record(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw Error('invalid-bundle-metadata');
+  return value as Record<string, unknown>;
+}
+const noticeText = (value: string) =>
+  value
+    .replace(/\r\n/g, '\n')
+    .replace(/[\t ]+$/gm, '')
+    .trim();
+const optional = [
+  '@nestjs/microservices',
+  '@nestjs/microservices/microservices-module.js',
+  '@nestjs/websockets/socket-module.js',
+  '@nestjs/platform-express',
+  'class-validator',
+  'class-transformer',
+];
+@Injectable()
+export class ProjectCiBundleService {
+  async bundle(root: string, check = false): Promise<void> {
+    if (!path.isAbsolute(root)) throw Error('absolute-bundle-root-required');
+    const require = createRequire(path.join(root, 'wizard/package.json'));
+    const entry = require.resolve('rolldown');
+    const metadata = record(
+      JSON.parse(
+        fs.readFileSync(path.resolve(path.dirname(entry), '../package.json'), 'utf8'),
+      ) as unknown,
+    );
+    const lock = record(
+      JSON.parse(fs.readFileSync(path.join(root, 'wizard/package-lock.json'), 'utf8')) as unknown,
+    );
+    if (metadata.version !== record(record(lock.packages)['node_modules/rolldown']).version)
+      throw Error('Pinned Wizard bundler required');
+    const module: unknown = await import(pathToFileURL(entry).href);
+    if (typeof record(module).rolldown !== 'function')
+      throw Error('Pinned Wizard bundler required');
+    const { rolldown } = module as Bundler;
+    const bundle = await rolldown({
+      cwd: root,
+      input: 'dist/modules/project-ci/portable-entry.js',
+      platform: 'node',
+      resolve: { symlinks: false },
+      external: optional,
+      onwarn(warning: { message: string }) {
+        throw Error(warning.message);
+      },
+    });
+    try {
+      const { output } = await bundle.generate({
+        format: 'cjs',
+        codeSplitting: false,
+        comments: { legal: true },
+        minify: false,
+      });
+      if (
+        output.length !== 1 ||
+        output[0].type !== 'chunk' ||
+        typeof output[0].code !== 'string' ||
+        !output[0].modules
+      )
+        throw Error('Expected one portable runtime');
+      const chunk = output[0] as OutputChunk;
+      const notices = this.notices(root, Object.keys(chunk.modules));
+      const content =
+        '// Generated from compiled shared operations; run system-bootstrapper bundle-project-ci.\n' +
+        chunk.code.replace(/^[\t ]+$/gm, '');
+      const file = path.join(root, 'wizard/.gitlab/runtime/project-ci.cjs');
+      const noticeFile = path.join(path.dirname(file), 'LICENSES.txt');
+      const recipeRuntime = path.join(
+        root,
+        'templates/project-bootstrap/wizard-build/typed-v6/runtime',
+      );
+      const sourceRecipeRuntime = path.join(root, 'wizard/.system-bootstrapper/build-v2/runtime');
+      const producerFile = path.join(root, 'wizard/.gitlab/producer-v2.json');
+      const producer =
+        JSON.stringify(
+          {
+            version: 2,
+            runtime: '.gitlab/runtime/project-ci.cjs',
+            runtimeSha256: crypto.createHash('sha256').update(content).digest('hex'),
+            buildProfile: 'node24-vite8-typed-v6',
+          },
+          null,
+          2,
+        ) + '\n';
+      const outputs: [string, string][] = [
+        [file, content],
+        [noticeFile, notices],
+        [producerFile, producer],
+        ...[recipeRuntime, sourceRecipeRuntime].flatMap(
+          (directory) =>
+            [
+              [path.join(directory, 'project-ci.cjs'), content],
+              [path.join(directory, 'LICENSES.txt'), notices],
+            ] as [string, string][],
+        ),
+      ];
+      if (check) {
+        if (outputs.some(([name, value]) => fs.readFileSync(name, 'utf8') !== value))
+          throw Error('Portable project CI runtime differs from compiled operations');
+      } else
+        for (const [name, value] of outputs) {
+          fs.mkdirSync(path.dirname(name), { recursive: true });
+          fs.writeFileSync(name, value);
+        }
+    } finally {
+      await bundle.close();
+    }
+  }
+
+  private notices(root: string, modules: string[]): string {
+    const licenses = new Map<string, string>();
+    for (const id of modules) {
+      if (!id.includes('/node_modules/')) continue;
+      let directory = path.dirname(id);
+      while (!fs.existsSync(path.join(directory, 'package.json'))) {
+        const parent = path.dirname(directory);
+        if (parent === directory) throw Error('Missing bundled dependency metadata');
+        directory = parent;
+      }
+      const pkg = record(
+        JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8')) as unknown,
+      );
+      if (typeof pkg.name !== 'string' || typeof pkg.version !== 'string')
+        throw Error('Missing bundled dependency identity');
+      const license = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'license', 'license.md'].find(
+        (name) => fs.existsSync(path.join(directory, name)),
+      );
+      if (!license) throw Error('Missing bundled dependency license: ' + pkg.name);
+      licenses.set(
+        pkg.name + '@' + pkg.version,
+        noticeText(fs.readFileSync(path.join(directory, license), 'utf8')),
+      );
+    }
+    return (
+      'Bundled project CI runtime licenses\n\nSystem Bootstrapper\n' +
+      noticeText(fs.readFileSync(path.join(root, 'LICENSE'), 'utf8')) +
+      '\n\n' +
+      [...licenses]
+        .sort(([a], [b]) => a.localeCompare(b, 'en'))
+        .map(([name, license]) => name + '\n' + license)
+        .join('\n\n') +
+      '\n'
+    );
+  }
+}

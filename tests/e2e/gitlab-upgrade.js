@@ -1,9 +1,9 @@
 'use strict';
 // Runs only inside the owned private candidate, after cold recovery has proved
 // existing database, repository, registry, TLS and encrypted-state identity.
-const release=require('../../gitlab/security-release.json');
+const release=require('../../config/gitlab/security-release.json');
 const recovery=require('./recovery');
-const trust=require('../../bootstrapper/ca/check');
+const trust=require('../../dist/modules/host-bootstrap/ca-verification.service');
 function sanitizeEvidence(value){
   if(value?.fromImage!==release.fromImage||value.toImage!==release.toImage||
     !/^sha256:[a-f0-9]{64}$/.test(value.fromImageId||'')||!/^sha256:[a-f0-9]{64}$/.test(value.toImageId||''))return undefined;
@@ -25,11 +25,14 @@ function prepared(candidate){
 async function invoke(candidate,action,checkpointSha256){
   const input={...prepared(candidate),action,checkpointSha256};
   const script=`const fs=require('fs');let raw='';process.stdin.on('data',chunk=>raw+=chunk);process.stdin.on('end',async()=>{try{
-    const input=JSON.parse(raw),{Upgrade,release,hash}=require('/system/gitlab/upgrade');
+    const input=JSON.parse(raw),{release}=require('/system/dist/modules/gitlab-upgrade/types'),{hash}=require('/system/dist/modules/gitlab-upgrade/policy');
+    const {NestFactory}=require('/system/node_modules/@nestjs/core'),{GitLabUpgradeModule}=require('/system/dist/modules/gitlab-upgrade/gitlab-upgrade.module'),{GitLabUpgradeService}=require('/system/dist/modules/gitlab-upgrade/gitlab-upgrade.service');
+    const app=await NestFactory.createApplicationContext(GitLabUpgradeModule,{logger:false,abortOnError:false});
+    try {
     // These image IDs were loaded from outer-driver archives whose public pins
     // were verified before the network-isolated daemon was created. Only this
     // test adapter supplies aliases; the production CLI requires RepoDigests.
-    const engine=new Upgrade(input.options,{imageIds:input.imageIds,aliases:input.aliases,runnerAliases:input.runnerAliases,helperAliases:input.helperAliases});let result;
+    const engine=app.get(GitLabUpgradeService).create(input.options,{imageIds:input.imageIds,aliases:input.aliases,runnerAliases:input.runnerAliases,helperAliases:input.helperAliases});let result;
     if(input.action==='migrate'){
       engine.lock('a'.repeat(64));engine.syncIdle();
       const before=await engine.preflight(release.fromVersion);
@@ -38,6 +41,7 @@ async function invoke(candidate,action,checkpointSha256){
       result=await engine.migrate(plan);
     }else if(input.action==='rollback')result=await engine.rollback(input.checkpointSha256);else throw Error();
     process.stdout.write(JSON.stringify(result));
+    }finally{await app.close();}
   }catch{process.exitCode=1;}});`;
   const raw=await candidate.inner(['exec','-i','system_bootstrapper_1','node','-e',script],{input:JSON.stringify(input),timeout:1200000});
   return JSON.parse(raw.split('\n').at(-1));
@@ -102,7 +106,7 @@ async function runnerState(candidate,promoted,previous){
   return {version:actualVersion,imageId:container.Image,helperImageId:helperImage.Id,identity};
 }
 async function verifyTrust(candidate){
-  const proof=JSON.parse(await candidate.inner(['exec','system_bootstrapper_1','node','/system/bootstrapper/ca/check.js']));
+  const proof=JSON.parse(await candidate.inner(['exec','system_bootstrapper_1','node','-e',"process.stdout.write(JSON.stringify(new (require('/system/dist/modules/host-bootstrap/ca-verification.service').CaVerificationService)().system('/system')))"]));
   if(proof.bundleSha256!==release.jobCaBundleSha256||proof.systemCertificates<50||proof.nodeCertificates<50)throw Error('upgrade-controller-CA-trust-invalid');
   for(const args of [
     ['exec','runner_docker_1','cat','/etc/ssl/certs/ca-certificates.crt'],

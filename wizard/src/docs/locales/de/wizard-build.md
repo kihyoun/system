@@ -3,8 +3,8 @@
 Die Aktivierung verwalteter CI baut und prüft nach der
 [Quellcode-Initialisierung](WIZARD_SOURCE.md) einen Kandidaten. Die Build-Aktivierung
 bewahrt den laufenden Wizard. Review/Beta verwenden eigene
-[manuelle Umgebungsjobs](../project-bootstrap/wizard-environments/README.md);
-Production verwendet den abgesicherten [Freigabebefehl des Betreibers](../project-bootstrap/wizard-production/README.md).
+[manuelle Umgebungsjobs](../templates/project-bootstrap/wizard-environments/README.md);
+Production verwendet den abgesicherten [Freigabebefehl des Betreibers](../templates/project-bootstrap/wizard-production/README.md).
 
 ## Vorschau und Aktivierung
 
@@ -133,7 +133,7 @@ Overview-v3- und CA-v4-Reservierungen behalten ihre historischen Prüfungen für
 Verwende für einen vorhandenen verwalteten Import das abgesicherte Upgrade nur für
 Build/Umgebungen mit `"buildProfile": "node24-vite8-quickstart-v5"` zusammen mit dem
 passenden Quellcode. Ein übernommenes quellcodeführendes Projekt verwendet stattdessen
-seinen [nativen Quellcode-Merge und die Bindungsaktualisierung](../project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe).
+seinen [nativen Quellcode-Merge und die Bindungsaktualisierung](../templates/project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe).
 Jedes frühere Profil behält seinen exakten historischen Hash. Das entsprechende aktuelle
 Legacy-Profil ist `legacy-ca-v4`.
 
@@ -141,7 +141,7 @@ Reservierte historische Rezepte bleiben anhand ihres exakten Hashs verifizierbar
 einschließlich älterer Node-13-/CRA-/Jest-Rezepte. Historische Kompatibilität macht
 diese veraltete Werkzeugkette nicht für ein neues Projekt geeignet. Ein Upgrade
 eines importierten Projekts erfordert die abgesicherte
-[Quellcode-/Werkzeugkettenmigration](../project-bootstrap/wizard-upgrade/README.md);
+[Quellcode-/Werkzeugkettenmigration](../templates/project-bootstrap/wizard-upgrade/README.md);
 eine Änderung des Controller-Images schreibt keine bestehende Reservierung um.
 Ein Upgrade nur für Build/Umgebungen ist verfügbar, wenn der Quellcode bereits
 modern ist und lokale Entwicklung erhalten bleiben muss. Eine bestehende

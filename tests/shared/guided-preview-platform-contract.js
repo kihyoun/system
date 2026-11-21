@@ -48,14 +48,14 @@ test('fixture TLS uses one existing authority and extends its exact owned SANs',
   assert.equal(f.calls.filter(call=>call.issue).length,1);
   assert.equal(f.candidate.guidedAcmeIdentity.serial,'AA');
   assert.equal(f.calls.filter(call=>call.probe).length,3);
-  const configure=f.calls.find(call=>call.inner?.includes('/system/gitlab')).inner;
+  const configure=f.calls.find(call=>call.inner?.includes('gitlab-start')).inner;
   assert(configure.includes('gitlab-start'),'the native committed GitLab configuration entrypoint is required');
   const tls=f.calls.find(call=>call.input?.settings).input;
   assert.equal(tls.settings.GITLAB_EXTERNAL_URL,'https://gitlab.candidate.test');
   assert.equal(tls.settings.GITLAB_DOMAIN_MODE,'2');
   assert(!Object.hasOwn(tls.settings,'GITLAB_REGISTRY_URL'));
   assert(!Object.hasOwn(tls.settings,'WIZARD_IMAGE'));assert(!Object.hasOwn(tls.settings,'BOOTSTRAPPER_IMAGE'));
-  const recording=f.calls.find(call=>call.inner?.includes('/system/bootstrapper/record-source-installation.js')).inner;
+  const recording=f.calls.find(call=>call.inner?.includes('/system/dist/modules/lifecycle/source-installation-entry.js')).inner;
   for(const value of [f.candidate.spec.sourceRevision,f.candidate.spec.sourceTree,f.candidate.spec.sourceRevision,
     f.candidate.spec.images.candidate.id,f.candidate.spec.images.wizard.id])assert(recording.includes(value));
   assert.equal(f.stages.at(-1),'guided-preview-native-source-installation-record');
@@ -144,7 +144,7 @@ test('capacity ceiling arithmetic retains room beneath the existing hard candida
   const boundary=fs.readFileSync(path.join(__dirname,'disposable-candidate.js'),'utf8');
   assert(boundary.includes("'--privileged','--memory','12g','--cpus','4'"));
   for(const file of ['build.sh','verify.sh']){
-    const producer=fs.readFileSync(path.join(__dirname,'../../project-bootstrap/wizard-build/modern',file),'utf8');
+    const producer=fs.readFileSync(path.join(__dirname,'../../templates/project-bootstrap/wizard-build/modern',file),'utf8');
     assert(producer.includes('--driver-opt memory=4g --driver-opt cpu-period=100000 --driver-opt cpu-quota=200000'));
     if(file==='verify.sh')assert(producer.includes('docker run --memory 1g --cpus 1'));
   }
@@ -189,10 +189,10 @@ test('supplementary hashed trust preserves the exact public CA gate and supports
   const result=spawnSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=Owned fixture root',
     '-addext','basicConstraints=critical,CA:TRUE','-addext','subjectAltName=DNS:fixture.local','-keyout',key,'-out',certificate],{stdio:'ignore'});
   assert.equal(result.status,0);
-  const root=fs.readFileSync(certificate,'utf8'),bundle=fs.readFileSync(path.join(__dirname,'../../bootstrapper/ca/cacert-2026-10-20.crt'),'utf8');
+  const root=fs.readFileSync(certificate,'utf8'),bundle=fs.readFileSync(path.join(__dirname,'../../config/ca/cacert-2026-10-20.crt'),'utf8');
   const hash=spawnSync('openssl',['x509','-subject_hash','-noout'],{input:root,encoding:'utf8'});
   assert.equal(hash.status,0);const subjectHash=hash.stdout.trim();
-  const publicBundleSha256=require('../../gitlab/security-release.json').jobCaBundleSha256;
+  const publicBundleSha256=require('../../config/gitlab/security-release.json').jobCaBundleSha256;
   const anchors=path.join(directory,'anchors'),empty=path.join(directory,'empty');fs.mkdirSync(anchors);fs.mkdirSync(empty);
   const canonical=path.join(anchors,'ca-certificates.crt');fs.writeFileSync(canonical,bundle);
   fs.symlinkSync('existing-unrelated-anchor.pem',path.join(anchors,subjectHash+'.0'));
@@ -203,11 +203,11 @@ test('supplementary hashed trust preserves the exact public CA gate and supports
   assert(!fs.existsSync(path.join(anchors,subjectHash+'.2')),'repeat installation retains the exact anchor');
   const server=require('node:https').createServer({cert:root,key:fs.readFileSync(key)},(_request,response)=>response.end('verified'));
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
-  const check=path.resolve(__dirname,'../../bootstrapper/ca/check.js');
-  const program="const proof=require(process.argv[1]).system();require('https').get({hostname:'fixture.local',port:Number(process.argv[2]),lookup:(_host,options,done)=>options.all?done(null,[{address:'127.0.0.1',family:4}]):done(null,'127.0.0.1',4)},response=>{response.resume();response.on('end',()=>process.stdout.write(JSON.stringify({...proof,status:response.statusCode})));}).on('error',error=>{process.stderr.write(error.code||'tls-failed');process.exitCode=1;});";
+  const check=path.resolve(__dirname,'../../dist/modules/host-bootstrap/ca-verification.service.js');
+  const program="const proof=new (require(process.argv[1]).CaVerificationService)().system(process.cwd());require('https').get({hostname:'fixture.local',port:Number(process.argv[2]),lookup:(_host,options,done)=>options.all?done(null,[{address:'127.0.0.1',family:4}]):done(null,'127.0.0.1',4)},response=>{response.resume();response.on('end',()=>process.stdout.write(JSON.stringify({...proof,status:response.statusCode})));}).on('error',error=>{process.stderr.write(error.code||'tls-failed');process.exitCode=1;});";
   const run=certDirectory=>new Promise(resolve=>{
     const env={...process.env,NODE_OPTIONS:'--use-openssl-ca',SSL_CERT_FILE:canonical,SSL_CERT_DIR:certDirectory};delete env.NODE_EXTRA_CA_CERTS;
-    const child=spawn(process.execPath,['-e',program,check,String(server.address().port)],{env,stdio:['ignore','pipe','pipe']});let stdout='',stderr='';
+    const child=spawn(process.execPath,['-e',program,check,String(server.address().port)],{env,cwd:path.resolve(__dirname,'../..'),stdio:['ignore','pipe','pipe']});let stdout='',stderr='';
     child.stdout.on('data',part=>stdout+=part);child.stderr.on('data',part=>stderr+=part);child.on('close',code=>resolve({code,stdout,stderr}));
   });
   const trusted=await run(anchors);assert.equal(trusted.code,0,trusted.stderr);
@@ -243,7 +243,7 @@ test('additional ACME SANs stay within the disposable DNS namespace',()=>{
   for(const domains of [['live.example.com'],['*.candidate.test'],['127.0.0.1'],['https://gitlab.candidate.test']])assert.throws(()=>acme.issuanceDomains(domains),/owned-certificate-domains/);
 });
 test('binding proof validates shared source and stopped Beta identity without configuration disclosure',async t=>{
-  const state=require('../../project-bootstrap/wizard-environments/state'),binding=require('../../project-bootstrap/system-beta/binding');
+  const state=require('../../dist/modules/project-lifecycle/state'),binding=require('../../dist/modules/project-lifecycle/system-beta-binding');
   const operation='a'.repeat(48),source='b'.repeat(40),image='sha256:'+'c'.repeat(64),hash=value=>require('crypto').createHash('sha256').update(value).digest('hex');
   const settings={review:{enabled:false},beta:{enabled:true,host:'beta.candidate.test'}};
   const stopped={...state.record({action:'deploy',kind:'beta',delivery:'system',projectId:7,pipelineId:20,jobId:40,sourceCommit:source,mrIid:0,operation},settings.beta.host,'registry.candidate.test/root/wizard@'+image),state:'stopped'};
@@ -252,9 +252,9 @@ test('binding proof validates shared source and stopped Beta identity without co
   const selected={version:2,sourceLayout:'system-monorepo-v1',mrIid:0,operation,projectId:7,projectPath:'root/wizard',namespaceId:4,defaultBranch:'main',pipelineId:20,candidateJobId:30,sourceCommit:source,wizardSourceTree:'d'.repeat(40),helperImage:image,wizardImageId:image,wizardImageRef:'registry.candidate.test/root/wizard@'+image,wizardProjectId:7,wizardProjectPath:'root/wizard',wizardDefaultBranch:'main',environmentHash:binding.environmentHash(environment)};
   let current=receipt;
   const execute=async(_candidate,action,input)=>vm.runInNewContext('('+action.toString()+')',{require(name){
-    if(name==='/system/sync/dist/ProjectBootstrap')return {readReceipt:()=>current};
-    if(name==='/system/project-bootstrap/system-beta/binding')return binding;
-    if(name==='/system/project-bootstrap/wizard-environments/state')return state;
+    if(name==='/system/dist/api/projects/project-workflow')return {readReceipt:()=>current};
+    if(name==='/system/dist/modules/project-lifecycle/system-beta-binding')return binding;
+    if(name==='/system/dist/modules/project-lifecycle/state')return state;
     if(name==='fs')return {readFileSync:file=>file.endsWith('.system-beta.json')?JSON.stringify(selected):'retained configuration'};return require(name);
   }})(input);
   const result=await fixture.bindingProof({}, {node:execute});assert.equal(result.projectId,7);assert.equal(result.receiptSha256,hash(JSON.stringify(receipt)));

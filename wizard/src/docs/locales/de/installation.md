@@ -77,7 +77,7 @@ finden Sie den Unterschied zwischen einem vollständigen Controller und einer La
 Installieren Sie die erforderlichen Docker-Werkzeuge:
 
 ```bash
-sudo node bootstrapper/install.js
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 Das Installationsprogramm installiert Docker und Compose und prüft Docker mit einem Test-
@@ -85,7 +85,7 @@ Container. Konfigurieren Sie für den lokalen HTTP-Test außerdem die lokalen Ho
 HTTP-Ausnahme der Registry:
 
 ```bash
-sudo node bootstrapper/prepare-local.js
+sudo system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"
 ```
 
 WSL kann `/etc/hosts` beim Start neu erzeugen. Falls die Registry oder andere lokale
@@ -108,8 +108,8 @@ Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operat
 vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
-Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
+Halten Sie die geprüfte Node-Installation, `dist` und
+`node_modules` und `assets` vor Wartungsbeginn offline verfügbar.
 
 Neue Ubuntu-/WSL-Installationen verwenden lokale Arbeitsdaten unter
 `/var/lib/system-bootstrapper/platform` auf dem Systemlaufwerk. Für den ersten Start sind weder eine zweite Festplatte, ein USB-
@@ -142,7 +142,7 @@ Führen Sie dann diesen Befehl im Stammverzeichnis des Projekts aus:
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```

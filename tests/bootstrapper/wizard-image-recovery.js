@@ -4,20 +4,20 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {test}=require('node:test');
-const {localRegistry,projectForImage}=require('../../system/wizard-image-recovery');
-const {WizardRecoveryService}=require('../../operations/dist/wizard-recovery/wizard-recovery.service');
-const {syncDirectory}=require('../../operations/dist/wizard-recovery/identity');
+const {localRegistry,projectForImage}=require('../../dist/modules/wizard-recovery/identity');
+const {WizardRecoveryService}=require('../../dist/modules/wizard-recovery/wizard-recovery.service');
+const {syncDirectory}=require('../../dist/modules/wizard-recovery/identity');
 const recoverImage=(settings,f)=>new WizardRecoveryService({run:async(command,args,details)=>f.execute(command,args,details)},
   {run:command=>{assert.equal(command.action,'recovery');assert.equal(command.environment.DOCKER_HOST,undefined);}},f.registry,{wait:f.waitReady},
   {syncDirectory:directory=>f.syncState?f.syncState():syncDirectory(directory)})
   .recover({checkout:path.resolve(__dirname,'../..'),settings,signal:f.signal});
-const logo=require('../../sync/dist/Helper').default.textLogo;
+const logo=require('../../dist/common/configuration-signature').default.textLogo;
 const token='synthetic-registry-secret';
 test('the isolated component context and native module contain the exact shared recovery implementation',async()=>{
-  const {included}=require('../prepare-context');
-  for(const name of ['system/wizard-image-recovery.js','operations/src/wizard-recovery/wizard-recovery.service.ts','operations/src/wizard-recovery/registry.service.ts'])assert(included(name),name);
-  assert(!included('system/.docker.env'));assert(!included('system/credentials.json'));
-  const {NestFactory}=require('../../operations/node_modules/@nestjs/core'),{LifecycleModule}=require('../../operations/dist/lifecycle/lifecycle.module');
+  const {includedTest:included}=require('../../dist/modules/ci/context-selection');
+  for(const name of ['src/cli/application-commands.ts','src/modules/wizard-recovery/wizard-recovery.service.ts','src/modules/wizard-recovery/registry.service.ts'])assert(included(name),name);
+  assert(!included('config/system/.docker.env'));assert(!included('config/system/credentials.json'));
+  const {NestFactory}=require('../../node_modules/@nestjs/core'),{LifecycleModule}=require('../../dist/modules/lifecycle/lifecycle.module');
   const app=await NestFactory.createApplicationContext(LifecycleModule,{logger:false,abortOnError:false});assert(app.get(WizardRecoveryService));await app.close();
 });
 function fixture(t,options={}){
@@ -145,7 +145,7 @@ test('a failed pending-directory durability barrier mints no token and preserves
 });
 
 test('native registry credentials bind the exact project, expire next UTC day and remove only owned deploy tokens',async()=>{
-  const {RecoveryRegistryCredentialService}=require('../../operations/dist/gitlab-provision/recovery-registry-credential.service');
+  const {RecoveryRegistryCredentialService}=require('../../dist/modules/gitlab-provision/recovery-registry-credential.service');
   const name='system-bootstrapper-wizard-image-recovery', context={checkout:'/source',containerId:'a'.repeat(64)},calls=[],tokens=new Map();
   const fixtureToken=(id,scopes=['read_registry'],extra={})=>({id,name,scopes,username:`gitlab+deploy-token-${id}`,token:'fixture-registry-token',expires_at:'2026-11-21T00:00:00.000Z',revoked:false,expired:false,...extra});
   tokens.set(1,fixtureToken(1,['api'],{name:'unrelated'}));tokens.set(2,fixtureToken(2));
@@ -176,7 +176,7 @@ test('native registry credentials bind the exact project, expire next UTC day an
   await service.execute(context,'fixture-administrator',{...input,action:'cleanup'});assert(!tokens.has(21));assert(tokens.has(1));
   const before=calls.length;await assert.rejects(service.execute(context,'fixture-administrator',{...input,projectPath:'wrong/wizard'}),/mismatch/);
   assert(!calls.slice(before).some(call=>call.method!=='GET'));
-  const {WizardRecoveryRegistryService}=require('../../operations/dist/wizard-recovery/registry.service');
+  const {WizardRecoveryRegistryService}=require('../../dist/modules/wizard-recovery/registry.service');
   const bound=[],abort=new AbortController();
   const bridge=new WizardRecoveryRegistryService({async ensure(options){return {context:{checkout:options.checkout,containerId:options.checkout},credential:{token:options.checkout+'-token'}};}},
     {async execute(actual,administrator,input){bound.push({actual,administrator,input});return {revoked:true};}});

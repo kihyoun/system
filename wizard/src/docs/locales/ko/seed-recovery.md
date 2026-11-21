@@ -5,7 +5,7 @@
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
+`dist`, `node_modules`, `assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 복구 입력은 별도로 유지됩니다. Wizard 구성 백업, 완료된 Harvest Seed 및 기록된
 Wizard 트리가 포함된 System 소스가 필요합니다. 새 모노레포 릴리스는 일반 `wizard/`
@@ -98,7 +98,7 @@ SEED_UUID=REPLACE_WITH_BACKUP_FILESYSTEM_UUID
 
 ## 완료된 복구 Seed 만들기
 
-`bootstrapper/install-volume-host.js`로 호스트 통합을 설치하여 예약된 Certbot 갱신이
+`system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"`로 호스트 통합을 설치하여 예약된 Certbot 갱신이
 `system-certbot`을 사용하게 하세요. 수동 갱신과 갱신 시험 실행에도 같은 래퍼를
 사용하세요. 예: `system-certbot renew --dry-run`. 이 래퍼는 Harvest와 파일시스템
 임대를 공유합니다. Harvest 중에는 관리되지 않는 Certbot 명령이나 수동 인증서 상태
@@ -139,15 +139,15 @@ Harvest/복원/갱신 프로세스가 남아 있지 않은지 확인하고 필�
 
 ### Wizard 또는 호스트에서 실행하기
 
-대상을 사용할 수 있으면 인증된 Wizard의 **Harvest**는 `system/seed-operation.js harvest`와 같은 저장소 소유 디스패처를 사용합니다. 대신 검토한 호스트 체크아웃에서 사용 가능한 승인된 전체 컨트롤러 이미지로 실행할 수 있습니다. 실제 이미지 식별 정보를 확인하고 기록한 다음 아래의 Quickstart가 준비한 Node 실행 파일을 사용하세요. 소스 설치는 `/opt/system-bootstrapper-runtime/bin/node` 대신 명시적으로 보관한 Node 실행 파일을 사용합니다.
+대상을 사용할 수 있으면 인증된 Wizard의 **Harvest**는 설치된 `system-bootstrapper harvest` 명령과 같은 공유 저장소 서비스를 사용합니다. 또는 검토한 호스트 체크아웃과 사용 가능한 승인된 전체 컨트롤러 이미지를 명시적으로 선택할 수 있습니다. 실제 이미지 식별 정보를 확인하고 기록한 다음 Quickstart 또는 소스 설치가 준비한 이름 있는 명령을 실행하세요:
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
+  system-bootstrapper harvest --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --check-only
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
+  system-bootstrapper harvest --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
 ```
 
@@ -163,7 +163,7 @@ Seed에 추가하지 않습니다.
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
+`dist`, `node_modules`, `assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 입력은 완료 Seed, 일치하는 Wizard `bootstrapper.zip`, 기록된 Wizard 레이아웃을 포함한
 System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브입니다. 이전 라이브
@@ -177,7 +177,7 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     /opt/system-bootstrapper-runtime/bin/node bootstrapper/persistence.js
+     system-bootstrapper persistence --checkout "$PWD"
    ```
 
    이 단계는 컨테이너를 시작하지 않으며 백업 매체도 필요하지 않습니다. 새 대상에서는
@@ -193,12 +193,12 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
+     system-bootstrapper restore --checkout "$PWD" \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip \
      --check-only
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
+     system-bootstrapper restore --checkout "$PWD" \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip
    ```
@@ -220,11 +220,11 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
    쓰기나 인증서 갱신 시작 전에 1단계의 네이티브 준비 명령을 다시 실행하세요.
    공개 챌린지 디렉터리를 준비하고 SSL 루트에 탐색 권한을 추가하되 비공개 인증서
    디렉터리와 키 파일은 변경하지 않습니다. 보존 Seed도 변경하지 않습니다.
-   필요하면 Certbot을 설치하고 `sudo node bootstrapper/install-volume-host.js`를
+   필요하면 Certbot을 설치하고 `sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"`를
    실행하세요. webroot 갱신 경로를 새 라이브 디렉터리에 다시 바인딩하고 갱신/배포
-   통합을 설치합니다. 필수 이미지 선택자를 설정하고 `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"`로 시작하세요.
+   통합을 설치합니다. 필수 이미지 선택자를 설정하고 `sudo system-bootstrapper start --checkout "$PWD"`로 시작하세요.
    이전 불변 이미지가 없으면 선택적 Review/Beta 도우미를 명시적으로 재프로비저닝하세요.
-   [환경 절차](../project-bootstrap/wizard-environments/README.md)를 확인하세요.
+   [환경 절차](../templates/project-bootstrap/wizard-environments/README.md)를 확인하세요.
    Runner 관리자/작업 공간은 구성과 복원 GitLab 상태에서 다시 만들어지므로 이전
    Runner 디렉터리는 필수 입력이 아닙니다.
 6. 인증된 가져오기, Wizard/GitLab/레지스트리 접속, 복원 데이터 및 Runner CI를 확인하세요.
@@ -260,7 +260,7 @@ Harvest가 원격 GitLab 중지 명령의 완료를 확인하지 못하면 Seed 
 
 ## 검증 범위
 
-`operations/tests/storage-copy.test.cjs`는 픽스처 Docker 명령으로 네이티브 서비스와 rsync를
+`tests/operations/storage-copy.test.cjs`는 픽스처 Docker 명령으로 네이티브 서비스와 rsync를
 검사합니다. 복사 실패, 강제 종료, 버전 불일치, 손상, 완료 마커 누락, 활성 쓰기,
 갱신 잠금 및 중단 복사의 내구성을 포함합니다. Wizard 모델 회귀 검사는 리터럴 할당,
 JSON/ENV/ZIP 동등성 및 불변 서명을 검사합니다.

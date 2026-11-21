@@ -5,8 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const {test} = require('node:test');
-const aliases = require('../../nginx/wizard-aliases');
-const cube = fs.readFileSync(path.resolve(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+const aliases = require('../../dist/modules/projects-routing/wizard-aliases');
+const cube = fs.readFileSync(path.resolve(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 const main = {
   WIZARD_ENABLE: 'true', WIZARD_HOST: 'wizard.example.test', WIZARD_DOMAIN_MODE: '2',
   WIZARD_ALIASES: 'example.test old.example.test', WIZARD_SSL: '/ssl/live/example/fullchain.pem',
@@ -107,8 +107,8 @@ test('CLI writes only a new private file and refuses conflicts before writing', 
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   const source = path.join(root, '.docker.env'), output = path.join(root, 'next.env');
   fs.writeFileSync(source, env({...main, WIZARD_ALIASES: ''}));
-  const tool = path.resolve(__dirname, '../../nginx/wizard-aliases.js');
-  const run = (...args) => spawnSync(process.execPath, [tool, 'configure', '--config', source, '--output', output, ...args], {encoding: 'utf8'});
+  const tool = path.resolve(__dirname, '../../dist/cli/main.js');
+  const run = (...args) => spawnSync(process.execPath, [tool, 'projects-routing', 'wizard-aliases', 'configure', '--config', source, '--output', output, ...args], {encoding: 'utf8'});
   const before = fs.readFileSync(source, 'utf8');
   assert.notEqual(run('--alias', 'gitlab.example.test').status, 0);
   assert.equal(fs.existsSync(output), false);

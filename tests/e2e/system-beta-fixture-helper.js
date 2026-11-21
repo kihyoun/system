@@ -4,8 +4,8 @@
 async function execute(input) {
   if(input.fixtureNamespace!=='system-beta-contract-fixture-v1'||input.verifierMode!=='contract-fixture'||
     input.verifierPassed!==true||input.negativeGatesPassed!==true||!/^[a-f0-9]{24}$/.test(input.owner||''))throw Error('Explicit disposable contract fixture required.');
-  const {Runtime}=require('/system/project-bootstrap/wizard-environments/helper');
-  const {validate}=require('/system/project-bootstrap/system-beta/binding');
+  const {Runtime}=require('/system/dist/modules/project-lifecycle/environment-runtime');
+  const {validate}=require('/system/dist/modules/project-lifecycle/system-beta-binding');
   class DisposableRuntime extends Runtime {
     async verifyInput(value) {
       const binding=validate(value.binding,this.context,this.request);

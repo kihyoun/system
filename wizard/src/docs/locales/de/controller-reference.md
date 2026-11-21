@@ -5,18 +5,18 @@ Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operat
 vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
-Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
+Halten Sie die geprüfte Node-Installation, `dist` und
+`node_modules` und `assets` vor Wartungsbeginn offline verfügbar.
 
 Ein öffentliches **Controller-Release** ist das vollständige Image aus
-`system/Dockerfile`: Orchestrierungscode, Sync-Dienst, paketierter Wizard-Quellcode
+`containers/controller/Dockerfile`: Orchestrierungscode, Sync-Dienst, paketierter Wizard-Quellcode
 und Laufzeitwerkzeuge. Dazu gehört ein separat gebautes Wizard-Web-Image.
 Ein neuer Host kann diese freigegebenen Images laden, ohne Controller- oder
 Wizard-Images zu bauen oder ihre Alpine-Build-Pakete aufzulösen. Der akzeptierte Controller enthält vorgebautes Sync und operations; beim Start
 werden weder npm-Abhängigkeiten installiert noch TypeScript-Dateien kompiliert. Siehe
 [Release-Installation](../Prepare-Host.md#install-a-tested-public-release).
 
-Die eigenständige **Laufzeitbasis** aus `bootstrapper/Dockerfile` enthält nur die
+Die eigenständige **Laufzeitbasis** aus `containers/bootstrapper/Dockerfile` enthält nur die
 gemeinsamen Werkzeuge. Sie kann den vollständigen Controller nicht ersetzen, auch wenn ein Basis-
 Image in einer Registry veröffentlicht wurde. Beide Images haben nützliche Aufgaben in CI;
 nur ein getesteter vollständiger Controller und der passende Wizard bilden das öffentliche Start-
@@ -24,7 +24,7 @@ Release.
 
 ## Host-Workload-Kompatibilität und Protokollierung
 
-Führen Sie die [native Host-Kompatibilitätsprüfung und den Protokollrichtlinien-Inspektor](../docs/HOST_OPERATIONS.md)
+Führen Sie die [native Host-Kompatibilitätsprüfung und den Protokollrichtlinien-Inspektor](HOST_OPERATIONS.md)
 auf dem Docker-Daemon-Host aus, wenn Sie MongoDB-Images auswählen, Kernel-Wartung
 planen oder eine bewusste Auslieferung prüfen. Der Leitfaden beschreibt den Vertrag
 zur begrenzten Protokollierung, die erhaltene Konfiguration und die Grenzen größenbasierter Aufbewahrung.
@@ -36,11 +36,11 @@ Host-Einstiegspunkt für eine leere Installation. Er löst `HostInstallService` 
 gemeinsamen eigenständigen Nest-Anwendungskontext auf. Bereiten
 Sie Node.js 24.22.0 und das gebaute Operations-Paket vor Installation oder Offline-
 Wartung vor; dieser Einstiegspunkt lädt keine Abhängigkeiten und kompiliert keinen Code.
-Der untergeordnete Einstiegspunkt `node operations/dist/host/entry.js` akzeptiert
+Der untergeordnete Einstiegspunkt `node dist/modules/host/entry.js` akzeptiert
 dieselben Image-Optionen und leitet den Checkout aus dem Aufrufverzeichnis ab. Die CLI erwartet
 `--controller IMAGE@sha256:...` und `--wizard IMAGE@sha256:...` sowie optional
 `--persistence-env FILE`. `--install-host` installiert Docker/Compose bei Bedarf über das
-versionierte Host-Installationsprogramm. Das [Handbuch](../docs/HANDBOOK.md) beschreibt
+versionierte Host-Installationsprogramm. Das [Handbuch](HANDBOOK.md) beschreibt
 vollständige lokale HTTP- und öffentliche Domain-/Certbot-Verfahren mit diesen Optionen.
 
 Das Installationsprogramm prüft den sauberen System-Checkout, die festgelegte Wizard-Version und
@@ -64,7 +64,7 @@ Entwickler können die Basis mit dem bestehenden eigenständigen Build-Kontext b
 docker build -t system-runtime:candidate ./bootstrapper
 ```
 
-Das vollständige System-Image führt ebenfalls `bootstrapper/install-runtime.js` aus seinem
+Das vollständige System-Image führt ebenfalls `system-bootstrapper host-bootstrap install-runtime --checkout "$PWD"` aus seinem
 Repository-Build-Kontext aus. Es beginnt mit demselben offiziellen, per Digest festgelegten Node-
 24.22.0-/Alpine-3.24-Image, statt eine separat veröffentlichte System-
 Basis zu verlangen. Das gemeinsame Installationsprogramm prüft Node 24.22.0 und npm 11.19.1, bevor es
@@ -104,7 +104,7 @@ Ein neuer Start verwendet standardmäßig lokale Arbeitsdaten unter
 und fällt niemals auf lokalen Speicher zurück. Alte Selektoren, die einen Live-Mount
 ohne Modus deklarieren, behalten diese Volume-Zusage. `PERSISTENCE_MODE`, `PERSISTENT_DIR`
 und gegebenenfalls Volume-Einhängepunkt bzw. UUID sind hostseitige Parameter; Änderungen daran migrieren
-bestehende Daten nicht. Siehe [Speicheranleitung](../docs/PERSISTENT_VOLUME.md).
+bestehende Daten nicht. Siehe [Speicheranleitung](PERSISTENT_VOLUME.md).
 
 Seed-Backup-Speicher ist unabhängig. `SEED_DIR` ist beim normalen
 Start optional; `SEED_MOUNT`/`SEED_UUID` identifizieren externe Backup-Medien, wenn ausgewählt.
@@ -116,13 +116,13 @@ noch normale Dienste und Erneuerung blockieren.
 
 Verwenden Sie für einen abgeschlossenen externen Seed und die passende private Konfigurations-ZIP den
 versionierten Host-Einstiegspunkt, bevor schreibende Dienste starten. Bereiten Sie zuerst die leeren Live-
-Grundverzeichnisse mit `bootstrapper/persistence.js` und dem privaten Host-Selektor vor, wie
-im [Verfahren für neue Ziele](../docs/RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation) gezeigt.
+Grundverzeichnisse mit `system-bootstrapper persistence --checkout "$PWD"` und dem privaten Host-Selektor vor, wie
+im [Verfahren für neue Ziele](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation) gezeigt.
 Die schreibgeschützte Vorprüfung verlangt, dass diese Verzeichnisse existieren. Diese Beispiele verwenden die beibehaltene Quickstart-Node-Datei; eine Quellinstallation setzt ihre ausdrücklich vorbereitete Node-Datei ein.
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
+  system-bootstrapper restore --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --configuration-backup /root/recovery/bootstrapper.zip \
   --check-only
@@ -130,7 +130,7 @@ sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
 
 Prüfen Sie die Vorprüfung und wiederholen Sie sie dann ohne `--check-only`, um in neue
 Live-Dienstdatenverzeichnisse wiederherzustellen. Verwenden Sie `harvest --image ...`, um ein Backup einer
-bestehenden Plattform zu erstellen. Der [Wiederherstellungsvertrag](../docs/RECOVERY_CONTRACT.md) nennt
+bestehenden Plattform zu erstellen. Der [Wiederherstellungsvertrag](RECOVERY_CONTRACT.md) nennt
 erforderliche Quellcode-/Image-Parameter, Abschluss- und Fehlerschutz, Konfigurations-
 trennung und Prüfungen nach der Wiederherstellung. Trennen Sie Backup-Medien nach dem Vorgang;
 der normale lokale Betrieb hängt dann nicht mehr davon ab. Das Löschen einer VM mit lokalen Live-
@@ -145,10 +145,10 @@ GitLab der Installation nicht verfügbar, kann ein unabhängig verfügbarer Spie
 Quellcode-Bundle dieselben geprüften Git-Objekte liefern. Das Werkzeug patcht,
 aktualisiert oder klont sich während der Initialisierung niemals selbst.
 
-`node bootstrapper/initialize.js` behandelt den Austausch eines Hosts bei Erhalt **aktiver** Dienstdaten.
+`system-bootstrapper host-bootstrap initialize` behandelt den Austausch eines Hosts bei Erhalt **aktiver** Dienstdaten.
 Es formatiert kein Dateisystem, stellt keine ersten Zertifikate aus, migriert keine GitLab-Versionen,
 wendet keinen Seed an und macht aus einem leeren Dateisystem keine bestehende Installation. Folgen Sie
-bei einer Neuinstallation dem Erstinstallationsweg im [Handbuch](../docs/HANDBOOK.md).
+bei einer Neuinstallation dem Erstinstallationsweg im [Handbuch](HANDBOOK.md).
 
 Erforderlich sind root-Zugriff unter unterstütztem Ubuntu, Git und die festgelegte Node-Laufzeit, ausgewählter
 lokaler oder ausdrücklich volumegestützter Live-Speicher, gespeicherte Konfiguration und das
@@ -159,7 +159,7 @@ Docker; Certbot wird ebenfalls installiert, wenn
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/initialize.js \
+  system-bootstrapper host-bootstrap initialize \
   --install-host \
   --receipt-dir /var/log/system-bootstrapper/initialize-example \
   --timeout 1200 \
@@ -219,13 +219,13 @@ anwendungsspezifische Abnahme bleibt Aufgabe der jeweiligen Anwendung.
 Die Befehle können auch separat ausgeführt werden:
 
 ```sh
-sudo node bootstrapper/verify-runtime.js baseline \
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" baseline \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/pre-start-baseline.json
 # Start the retained platform through the committed recovery entry point.
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/recover-volume.js
-sudo node bootstrapper/verify-runtime.js check \
+  system-bootstrapper host-bootstrap recover-volume --checkout "$PWD"
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/pre-start-baseline.json \
   --output /root/runtime-verification.json --timeout 1200
@@ -295,14 +295,14 @@ Ein ausgelassener Image-Tag hat Dockers normale Bedeutung `:latest`, sodass der 
 Registry-Ports, Digest-Referenzen und exakte Image-ID-Prüfungen bleiben verschieden.
 
 Ein älteres Prüfsummenmanifest mit zwei Listen kann ausdrücklich geprüft werden mit
-`/opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js recovery verify --checkout "$PWD" --directory /path/to/recovery --checksums-only`.
+`system-bootstrapper recovery verify --checkout "$PWD" --directory /path/to/recovery --checksums-only`.
 Diese Kompatibilitätsprüfung kann weder Images laden noch Dienste starten; vervollständigen Sie zuerst die Quellcode-
 und Alias-Deklarationen über den normalen geprüften Betreiberablauf.
 
 ## Öffentlichen Controller bei bereits aktuellen Diensten aktualisieren
 
 Für ein unterstütztes unverändertes offizielles Release `system-bootstrapper upgrade` mit dem
-[öffentlichen Upgrade-Leitfaden](../docs/RELEASES.md#upgrade-and-rollback) verwenden.
+[öffentlichen Upgrade-Leitfaden](RELEASES.md#upgrade-and-rollback) verwenden.
 Der Befehl lädt öffentliche Nachweise, prüft den genauen Übergang, koordiniert
 eine passende Sicherung und verlangt vor dem Paar-Updater den geprüften Plan-SHA-256.
 Nur das API-Token der eigenen Installation ist nötig. Status und Wiederherstellung
@@ -337,7 +337,7 @@ Quellcodelabel und Kandidatenjoblabel. Das öffentliche Wizard-Image wird nur ge
 wenn die unten beschriebene ausdrückliche Paaroption gewählt ist.
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" \
+sudo system-bootstrapper controller-update --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/accepted-release/release.json \
   --evidence /root/accepted-release/candidate-results.json \
@@ -377,10 +377,10 @@ erhält die exakte Konfiguration nach der Aktualisierung für diesen späteren A
 Prüfen Sie eine unterbrochene oder abgeschlossene Aktualisierung oder rollen Sie sie mit demselben Checkout zurück:
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" --operation status \
+sudo system-bootstrapper controller-update --checkout "$PWD" --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" --operation rollback \
+sudo system-bootstrapper controller-update --checkout "$PWD" --operation rollback \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example \
   --token-file /root/private-gitlab-api-token
@@ -452,7 +452,7 @@ Controllers oder Wizards wird durch native Neuerstellung unter der zugehörigen 
 Übergeben Sie für ein versioniertes öffentliches Release außerdem
 `--release-metadata /root/accepted-release/system-release-vX.Y.Z.json` sowohl an
 Vorprüfung als auch Aktualisierung. Beziehen Sie Metadaten und Prüfsumme aus dem ausgewählten
-[public release](../docs/RELEASES.md). Diese Option verlangt `--wizard` und bindet
+[public release](RELEASES.md). Diese Option verlangt `--wizard` und bindet
 Produktversion, Quellbaum, Wizard-Gitlink, beide Images, Kandidatenjob und
 Nachweishash an den unabhängig geprüften freigegebenen Versuch. Sie aktualisiert die
 private Auswahl in `.release-images.json` und `.release-images.env`, die bei der ersten
@@ -471,10 +471,10 @@ Wählen Sie für unabhängige Laufzeitprüfungen dieses Installationstyps den au
 Modus für öffentliche Images sowohl für Ausgangszustand als auch Prüfung:
 
 ```sh
-sudo node bootstrapper/verify-runtime.js baseline --public-images \
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" baseline --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/public-runtime-baseline.json
-sudo node bootstrapper/verify-runtime.js check --public-images \
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/public-runtime-baseline.json --output /root/public-runtime-check.json \
   --gitlab-token-file /root/private-gitlab-api-token --timeout 1200 \
@@ -542,12 +542,12 @@ Sie anschließend ausschließlich `web` über die eingecheckte Compose-Definitio
 sudo env PERSISTENT_DIR=/var/lib/system-bootstrapper/platform \
   NGINX_IMAGE=nginx@sha256:REPLACE_WITH_64_HEX_DIGEST \
   docker --host unix:///var/run/docker.sock compose --compatibility \
-  --env-file /dev/null -p system -f system/docker-compose.yml \
+  --env-file /dev/null -p system -f config/system/docker-compose.yml \
   run --rm --no-deps --pull never web nginx -t
 sudo env PERSISTENT_DIR=/var/lib/system-bootstrapper/platform \
   NGINX_IMAGE=nginx@sha256:REPLACE_WITH_64_HEX_DIGEST \
   docker --host unix:///var/run/docker.sock compose --compatibility \
-  --env-file /dev/null -p system -f system/docker-compose.yml \
+  --env-file /dev/null -p system -f config/system/docker-compose.yml \
   up --no-deps --no-build --pull never -d web
 ```
 
@@ -562,7 +562,7 @@ Führen Sie anschließend die Vorabprüfung der freigegebenen Reparatur aus dere
 sauberem, geprüftem Checkout aus:
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" \
+sudo system-bootstrapper controller-update --checkout "$PWD" \
   --repair-stopped-controller \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/accepted-release/release.json \
@@ -622,7 +622,7 @@ prüfsumme belegen seine Identität. Dadurch kann ein neuer Host den Controller 
 bevor die eigene GitLab-Registry des Controllers läuft.
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -672,7 +672,7 @@ Generation. Ein neuerer freigegebener Kandidat kann diesen vorbereiteten Control
 denselben Einstiegspunkt ersetzen, ohne gespeicherte Selektoren oder Wiederherstellungsmanifest zu bearbeiten:
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -715,10 +715,10 @@ Checkpoint ist kein Parameter für dessen Rollback-Aktion.
 Prüfen oder brechen Sie einen unterbrochenen Controller-Vorgang mit dem versionierten Einstiegspunkt ab:
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" --operation status \
+sudo system-bootstrapper promote --checkout "$PWD" --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" --operation abort \
+sudo system-bootstrapper promote --checkout "$PWD" --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
 ```
@@ -744,7 +744,7 @@ Aktualisieren Sie nach erfolgreicher GitLab-Migration die aufbewahrten Wiederher
 die VM löschen oder auf einen späteren Hostaustausch vertrauen:
 
 ```sh
-sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
+sudo node dist/modules/host/recovery-export-entry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -768,7 +768,7 @@ Ein erneuter Versuch erzeugt ein weiteres Vorgangsarchiv, statt es zu überschre
 Löschen Sie den Host erst, wenn Exporter und `recover-volume.js --verify` erfolgreich sind.
 
 Isolierte Vertragsprüfungen laufen mit `node --test tests/bootstrapper/native-initialization.js` und
-`node --test operations/tests/host-module.test.cjs`. Der ausdrückliche kleine Docker-
+`node --test tests/operations/host-module.test.cjs`. Der ausdrückliche kleine Docker-
 Grundmechanismustest ist von der socketfreien Komponentensuite getrennt:
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`.
 Er verwendet einen einzigen exakt markierten, begrenzten, verwerfbaren lokalen Container und niemals eine laufende
@@ -787,7 +787,7 @@ sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
 Rufe die beibehaltene CLI mit einem ausdrücklich geprüften Checkout auf. Dieser Modus installiert nur die Node-/CLI-Laufzeit; er startet die Plattform nicht und stellt sie nicht wieder her. Bewahre beim Vorbereiten einer Offline-Wiederherstellung die kompilierten Operations-Dateien, gebündelten Abhängigkeiten und Richtlinienressourcen des Checkouts auf. Führe vor dem Aufruf von Checkout-Einstiegen das vollständige [Verfahren zur Laufzeitbereitstellung](../Prepare-Host.md#prepare-the-host-operations-runtime) durch; `--runtime-only` allein installiert das Paket unter `/opt/system-bootstrapper-runtime/cli`.
 
 Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery
-müssen das Laufzeitverzeichnis sowie `operations/dist` und
-`operations/node_modules` und `operations/assets` erhalten bleiben. Die Werkzeuge nutzen den gespeicherten
+müssen das Laufzeitverzeichnis sowie `dist` und
+`node_modules` und `assets` erhalten bleiben. Die Werkzeuge nutzen den gespeicherten
 absoluten Node-Pfad ohne nvm, Shell-Profil oder npm-Zugriff. Die Datei
 `/opt/system-bootstrapper-runtime/node-executable` enthält diesen Pfad.

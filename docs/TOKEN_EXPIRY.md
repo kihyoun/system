@@ -75,7 +75,7 @@ stale after independent rotation; update or remove them deliberately.
 ## Renew credentials through their owning tools
 
 Use the renewal link for the affected purpose and follow the corresponding
-repository-owned procedure. For Renovate, the existing `gitlab/renovate/setup.js`
+repository-owned procedure. For Renovate, the existing `system-bootstrapper renovate setup`
 workflow supports `--apply --rotate --enable` with the operator's private configuration.
 For release metadata access, create a replacement project-scoped GitLab token
 with the Reporter role, `read_api` scope and an explicit expiry date, then replace

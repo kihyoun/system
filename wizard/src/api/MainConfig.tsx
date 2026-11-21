@@ -23,6 +23,7 @@ export default class MainConfig {
   get syncDomainMode() {
     return this._syncDomainMode;
   }
+
   set syncDomainMode(mode: any) {
     this._syncDomainMode = parseInt(mode, 10) || 0;
   }
@@ -37,6 +38,7 @@ export default class MainConfig {
   get wizardDomainMode() {
     return this._wizardDomainMode;
   }
+
   set wizardDomainMode(mode: any) {
     this._wizardDomainMode = parseInt(mode, 10) || 0;
   }

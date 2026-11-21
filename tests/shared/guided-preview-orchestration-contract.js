@@ -6,7 +6,7 @@ const {scenario}=require('../e2e/candidate');
 const {Candidate}=require('./disposable-candidate');
 const prepared=require('../e2e/prepare-images');
 const image='sha256:'+'a'.repeat(64);
-const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
 function spec(){return {example,daemonImage:'docker@'+image,images:Object.fromEntries(['candidate','wizard','gitlab','runner','nginx'].map(role=>[role,{id:image,archive:'/images/'+role+'.tar'}]))};}
 test('one original platform runs guided acceptance once and transfers its existing authority into cold recovery',async()=>{
   const events=[],ownership={},candidate={spec:{fullAcceptance:true,guidedPreviewAcceptance:true,recoveryAcceptance:true,acmeRenewalAcceptance:true},

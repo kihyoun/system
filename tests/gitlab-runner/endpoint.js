@@ -1,5 +1,5 @@
 const assert = require('assert');
-const {stableEndpoint} = require('../../gitlab-runner/refresh-endpoint');
+const {stableEndpoint} = require('../../dist/modules/lifecycle/runner.service');
 const config = '[[runners]]\n  url = "http://172.19.0.2/"\n  clone_url = "http://172.19.0.2/"\n  token = "glrt-test-only"\n  [runners.docker]\n    network_mode = "system_gitlab"\n';
 const updated = stableEndpoint(config);
 assert(updated.includes('url = "http://gitlab/"'));
@@ -11,8 +11,9 @@ assert.equal(stableEndpoint(config.replace('system_gitlab', 'unmanaged')), confi
 console.log('Managed runner endpoint migration preserves tokens, external URLs and unrelated networks.');
 
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const {RunnerLifecycleService}=require('../../operations/dist/lifecycle/runner.service');
-const {ProcessFailure}=require('../../operations/dist/runtime/process');
+const {RunnerComposeService}=require('../../dist/modules/lifecycle/runner-compose.service');
+const {RunnerLifecycleService}=require('../../dist/modules/lifecycle/runner.service');
+const {ProcessFailure}=require('../../dist/common/runtime/process');
 (async()=>{
  for(const failure of ['', 'copy', 'rename', 'cancel']){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'runner-endpoint-test-'));
@@ -35,7 +36,7 @@ const {ProcessFailure}=require('../../operations/dist/runtime/process');
    else throw Error('Unexpected transport');
    return '';
   }};
-  const service=new RunnerLifecycleService(child,{});
+  const service=new RunnerLifecycleService(child,{}, {},new RunnerComposeService());
   try {
    if(failure)await assert.rejects(service.refreshEndpoint(context,'runner_docker_1'),ProcessFailure);
    else await service.refreshEndpoint(context,'runner_docker_1');

@@ -71,3 +71,23 @@ Seed 작업, 데이터 마이그레이션 또는 운영 환경 승격은 수행�
 
 공개 메타데이터 계약, 명시한 버전 설치 및 업데이트/롤백 요구사항은
 [릴리스 정책과 정확한 소스 체크아웃](RELEASES.md)을 확인하세요.
+
+## 설치된 CLI 사용
+
+Quickstart는 검증된 Node 런타임과 함께 `system-bootstrapper` 명령을 설치합니다.
+새 SSH 세션과 `sudo`는 nvm 셸 프로필이나 JavaScript 파일 경로를 요구하지 않습니다.
+비공개 설치 연결 정보는 검토된 체크아웃과 영구 저장소 설정을 선택하며,
+새 릴리스를 자동으로 선택하지 않습니다.
+
+```sh
+system-bootstrapper --help
+sudo system-bootstrapper start
+sudo system-bootstrapper harvest
+```
+
+Harvest에는 설정된 백업 파일시스템이 계속 마운트되어 있어야 합니다.
+Wizard와 같은 저장소 검증과 잠금을 사용합니다. 명시적으로 검토한 다른 체크아웃은
+`--checkout /absolute/path`와 문서의 복구 입력으로 선택합니다. 런타임만 설치하면
+설치 연결 정보를 만들거나 서비스를 시작하지 않습니다. 개발 체크아웃은
+`npm link --ignore-scripts`로 npm 명령을 제공할 수 있습니다. 시스템 전체 연결은
+소유권과 승인된 설치 검증을 통과한 후에만 `system-bootstrapper cli-install`로 설정합니다.

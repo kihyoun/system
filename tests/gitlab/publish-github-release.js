@@ -5,7 +5,16 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {test} = require('node:test');
-const {context, token, api, gates, publicMetadata, present} = require('../../gitlab/publish-github-release');
+const release=require('../../dist/modules/release');
+const profile=release.readPublicationProfile(path.resolve(__dirname,'../..'));
+const native=release.createPublicationRuntime(profile);
+const context=(env,root)=>release.githubContext(env,root,native.images.context);
+const {publicationToken:token,publicationApi:api,githubGates:gates,githubPublicMetadata:publicMetadata,presentGithubRelease:present}=release;
+async function publish(env,root,request){
+ const {NestFactory}=require('../../node_modules/@nestjs/core');
+ const app=await NestFactory.createApplicationContext(release.ReleaseModule.registerGithub(release.createPublicationRuntime(profile,request).githubPorts),{logger:false,abortOnError:false});
+ try{return await app.get(release.GithubPublicationService).publish(env,root);}finally{await app.close();}
+}
 const guided = require('../shared/guided-preview-fixture');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const sha = 'a'.repeat(40), tree = 'b'.repeat(40), wizard = 'c'.repeat(40), id = n => 'sha256:' + n.repeat(64);
@@ -160,9 +169,8 @@ test('gates bind required successful jobs and byte-identical artifacts before Gi
 
 for (const monorepo of [false, true]) test(monorepo ? 'publisher derives deterministic monorepo assets without rebuilding' : 'publisher refuses historical layout before external publication', async t => {
   const {spawnSync} = require('node:child_process');
-  const {publish} = require('../../gitlab/publish-github-release');
-  const {candidates, validateEvidence} = require('../../gitlab/publish-successor');
-  const security = require('../../gitlab/security-release.json');
+  const {candidates, validateEvidence} = native.evidence;
+  const security = require('../../config/gitlab/security-release.json');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'github-release-full-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   const git = (...args) => {
@@ -170,12 +178,12 @@ for (const monorepo of [false, true]) test(monorepo ? 'publisher derives determi
     assert.equal(result.status, 0, result.stderr); return result.stdout.trim();
   };
   git('init', '--quiet'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
-  fs.mkdirSync(path.join(root, 'bootstrapper'));
+  fs.mkdirSync(path.join(root, 'config/releases'),{recursive:true});
   fs.mkdirSync(path.join(root, 'tools/quickstart'), {recursive: true});
   fs.copyFileSync(path.join(__dirname, '../../tools/quickstart/quickstart.sh'), path.join(root, 'tools/quickstart/quickstart.sh'));
   fs.writeFileSync(path.join(root, 'CHANGELOG.md'), '# Changelog\n\n## 1.0.0\n\nReviewed fixture release. See [Quickstart](docs/QUICKSTART.md).\n');
   fs.writeFileSync(path.join(root, 'VERSION'), '1.0.0\n');
-  fs.writeFileSync(path.join(root, 'bootstrapper/upgrade-paths.json'), JSON.stringify({format: 'system-upgrade-paths-v1', versions: ['1.0.0'], transitions: []}));
+  fs.writeFileSync(path.join(root, 'config/releases/upgrade-paths.json'), JSON.stringify({format: 'system-upgrade-paths-v1', versions: ['1.0.0'], transitions: []}));
   if (monorepo) { fs.mkdirSync(path.join(root, 'wizard')); fs.writeFileSync(path.join(root, 'wizard/index.ts'), 'export {};\n'); }
   else fs.writeFileSync(path.join(root, '.gitmodules'), '[submodule "wizard"]\npath = wizard\nurl = https://github.com/kihyoun/system-wizard.git\n');
   git('add', '.'); if (!monorepo) git('update-index', '--add', '--cacheinfo', '160000,' + wizard + ',wizard'); git('commit', '--quiet', '-m', 'Accepted fixture');

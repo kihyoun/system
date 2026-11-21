@@ -103,8 +103,8 @@ and matching filesystem device/inode before opening any credential journal.
 volume; it cannot select an unrelated private directory.
 
 ```sh
-node operations/dist/gitlab-provision/entry.js initialize --checkout "$PWD"
-node operations/dist/gitlab-provision/entry.js renew --checkout "$PWD"
+node dist/modules/gitlab-provision/entry.js initialize --checkout "$PWD"
+node dist/modules/gitlab-provision/entry.js renew --checkout "$PWD"
 ```
 
 Initialization reserves `system-bootstrapper-controller` with the non-delivery
@@ -121,7 +121,7 @@ administrator token using your GitLab administrator account and place it in a
 private, operator-owned regular file with mode `0600`. Supply its absolute path:
 
 ```sh
-node operations/dist/gitlab-provision/entry.js renew --checkout "$PWD" \
+node dist/modules/gitlab-provision/entry.js renew --checkout "$PWD" \
   --administrator-token-file /absolute/private/recovery-token
 ```
 
@@ -169,7 +169,7 @@ ordinary use. For deliberate credential replacement, first restore the correct
 project binding and run:
 
 ```sh
-node operations/dist/gitlab-provision/entry.js renew-project --checkout "$PWD" \
+node dist/modules/gitlab-provision/entry.js renew-project --checkout "$PWD" \
   --project-id YOUR_PROJECT_ID --project-path YOUR_GROUP/YOUR_PROJECT
 ```
 

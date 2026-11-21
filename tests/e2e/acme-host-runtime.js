@@ -14,9 +14,9 @@ async function run(input, dependencies = {}) {
       !Array.isArray(input.args) || input.args.some(value => typeof value !== 'string' || /[\0\r\n]/.test(value)))
     throw Error('Invalid isolated ACME host input.');
   const selectedPaths = basePaths(input.base), paths = dependencies.paths || selectedPaths;
-  const {NestFactory} = require('../../operations/node_modules/@nestjs/core');
-  const {HostCertificateService} = require('../../operations/dist/host-bootstrap/certificate.service');
-  const {ManagedChildProcess} = require('../../operations/dist/runtime/managed-child');
+  const {NestFactory} = require('../../node_modules/@nestjs/core');
+  const {HostCertificateService} = require('../../dist/modules/host-bootstrap/certificate.service');
+  const {ManagedChildProcess} = require('../../dist/common/runtime/managed-child');
   const native = dependencies.native || new ManagedChildProcess();
   const checkout = dependencies.checkout || '/system';
   const selector = dependencies.selector || '/tmp/acme-persistence.env';

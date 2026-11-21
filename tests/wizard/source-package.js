@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {execFileSync} = require('child_process');
-const {pack, validate, safePath} = require('../../project-bootstrap/wizard-source/package');
+const {pack, validate, safePath} = require('../../dist/modules/source-preparation/wizard-source.service');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-source-'));
 const source = path.resolve(__dirname, '../..');
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], {stdio: ['ignore', 'pipe', 'pipe']}).toString().trim();
@@ -17,7 +17,7 @@ try {
   fs.writeFileSync(path.join(wizard, 'package.json'), '{}');
   // The candidate contains only the validated pinned snapshot, not checkout Git
   // metadata. Use its unchanged Helper bytes to seed our disposable Git fixture.
-  const snapshotFixture = validate(JSON.parse(fs.readFileSync(path.join(source, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8')));
+  const snapshotFixture = validate(JSON.parse(fs.readFileSync(path.join(source, 'assets/wizard-source/snapshot.json'), 'utf8')));
   const helper = Buffer.from(snapshotFixture.files.find(file => file.path === 'src/api/Helper.tsx').content, 'base64');
   fs.writeFileSync(path.join(wizard, 'src/api/Helper.tsx'), helper);
   fs.writeFileSync(path.join(wizard, '.gitlab-ci.yml'), 'original upstream ci\n');

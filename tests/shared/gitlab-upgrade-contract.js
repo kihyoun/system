@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const {test}=require('node:test');
 const {run,prepared,sanitizeEvidence,runnerState,invoke}=require('../e2e/gitlab-upgrade');
-const release=require('../../gitlab/security-release.json');
+const release=require('../../config/gitlab/security-release.json');
 function fixture(){const events=[];const candidate={id:'a'.repeat(24),spec:{sourceRevision:'b'.repeat(40),gitlabUpgradeAcceptance:true,restore:{base:'/recovered-data/platform'},images:{gitlab:{id:'sha256:'+'c'.repeat(64)},runner:{id:'sha256:'+'8'.repeat(64)}},supportImages:{previousGitlab:{id:'sha256:'+'d'.repeat(64)},previousRunner:{id:'sha256:'+'7'.repeat(64)},helper:{id:'sha256:'+'6'.repeat(64)},previousHelper:{id:'sha256:'+'5'.repeat(64)}}},evidence:{},stage:async(name,action)=>{events.push(name);return action();},inner:async()=>{},events};const dependencies={recordIdentity:async()=>({private:'fixture-secret'}),invoke:async(_c,action,sha)=>{events.push(action);return action==='migrate'?{status:'promoted',toImage:release.toImage,checkpointSha256:'e'.repeat(64)}:{status:'restored-checkpoint',checkpointSha256:sha};},runnerState:async(_c,promoted)=>({imageId:'sha256:'+(promoted?'8':'7').repeat(64),version:promoted?release.runner.toVersion:release.runner.fromVersion,helperImageId:'sha256:'+(promoted?'6':'5').repeat(64),identity:{1:'fixture'}}),verifyTrust:async()=>events.push('CA-trust'),verifyServiceIdentity:async()=>events.push('identity'),verifyRegistryBlob:async(_c,input)=>{events.push('registry-ci');events.push('registry-runner-image:'+input.runnerImageId);events.push('registry-phase:'+input.phase);}};return {candidate,dependencies};}
 test('real migration adapter preserves old-data oracle, runs registry CI and restores the cold checkpoint',async()=>{const {candidate,dependencies}=fixture();await run(candidate,dependencies);assert(candidate.events.indexOf('migrate')<candidate.events.indexOf('registry-ci'));assert(candidate.events.indexOf('registry-ci')<candidate.events.indexOf('rollback'));assert.equal(candidate.events.filter(e=>e==='identity').length,2);assert.deepEqual(candidate.evidence.gitlabUpgrade,sanitizeEvidence(candidate.evidence.gitlabUpgrade));assert(candidate.evidence.gitlabUpgrade.rollbackVerified);assert.deepEqual(candidate.events.filter(e=>e.startsWith('registry-phase:')),['registry-phase:upgraded','registry-phase:rollback']);assert(!JSON.stringify(candidate.evidence).includes('fixture-secret'));assert.deepEqual(candidate.events.filter(e=>e.startsWith('registry-runner-image:')),['registry-runner-image:'+candidate.spec.images.runner.id,'registry-runner-image:'+candidate.spec.supportImages.previousRunner.id]);
  const publicFixture=fixture(),platform=publicFixture.candidate,ports=publicFixture.dependencies;platform.spec.publicUpgrade={};
@@ -71,7 +71,7 @@ test('platform job retains preparation, independent cleanup and artifact reserve
     return Number(match[1])*(match[2]==='m'?60000:1000);
   };
   const {Candidate}=require('./disposable-candidate');
-  const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+  const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
   const id='sha256:'+'a'.repeat(64),archive=path.resolve('fixture.tar');
   const candidate=new Candidate({example,gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:{},
     daemonImage:'docker:29-dind@'+id,
@@ -84,7 +84,7 @@ test('platform job retains preparation, independent cleanup and artifact reserve
   assert.equal((ci.match(/timeout: 120m/g)||[]).length,1,'other CI jobs keep their own deadlines');
   assert(script>=candidate.deadline+5*60000,'preparation/publication must fit outside the shared lifecycle');
   assert(total>=script+cleanup+3*60000,'independent cleanup and artifact collection need job time');
-  assert.match(job,/before_script: \*operations-runtime/);
-  assert.match(job,/after_script:\n\s+- node operations\/dist\/ci\/entry\.js platform "\$CI_PROJECT_DIR" cleanup/);
+  assert.match(job,/before_script: \*runtime-tools/);
+  assert.match(job,/after_script:\n\s+- node dist\/cli\/main\.js ci platform "\$CI_PROJECT_DIR" cleanup/);
   assert.match(job,/allow_failure: false/);
 });

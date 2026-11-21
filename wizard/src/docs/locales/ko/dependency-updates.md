@@ -3,7 +3,7 @@
 Renovate OSS는 기존 Docker Runner 풀에서 예약된 `renovate:discover` GitLab 작업으로
 실행됩니다. 검토된 안정 버전 `44.222.5-full` 이미지는 `.gitlab-ci.yml`에서 다이제스트로
 고정됩니다. 다른 의존성처럼 검토를 거쳐 업데이트하세요. 상시 실행 봇 서비스는 없습니다.
-[저장소 구성](../renovate.json)과 [자체 호스팅 구성](../gitlab/renovate/config.cjs)은 운영자가
+[저장소 구성](../renovate.json)과 [자체 호스팅 구성](../src/modules/renovate/configuration.ts)은 운영자가
 제공한 System 소스 프로젝트와 그 안에 포함된 Wizard만 선택합니다. GitHub 미러나
 프로젝트 자동 탐색은 선택하지 않습니다.
 
@@ -49,8 +49,8 @@ Wizard 프로젝트 선택을 유지할 수 있습니다. 원래의 비공개 �
 아닙니다.
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply
+system-bootstrapper renovate setup --config /secure/operator/renovate.json
+system-bootstrapper renovate setup --config /secure/operator/renovate.json --apply
 ```
 
 첫 호출은 API 변경 없이 비공개 파일 처리를 검증합니다. 두 번째는 계정, Developer 멤버십,
@@ -65,14 +65,14 @@ node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply
 사용하며 GitLab에 쓰지는 않습니다.
 
 ```sh
-node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
+system-bootstrapper renovate verify --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json
 ```
 
 선택한 저장소 구성을 검토한 뒤 활성화하세요.
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --enable
+system-bootstrapper renovate setup --config /secure/operator/renovate.json --apply --enable
 ```
 
 명령은 반복 실행할 수 있습니다. 0600 권한 상태 파일에는 중단 후 안전한 조정을 위한 봇
@@ -93,7 +93,7 @@ node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --
 포함되었는지 검증하세요.
 
 ```sh
-node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
+system-bootstrapper renovate verify --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json --verify
 ```
 
@@ -106,7 +106,7 @@ node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
 런타임 이미지/다이제스트 변경은 런타임 배치로 묶습니다. 주 버전 변경은 분리합니다.
 Npm은 매니페스트와 npm 잠금 파일을 함께 관리하며 잠금 파일 갱신도 승인이 필요합니다.
 기본 Dockerfile, Compose, GitLab CI 관리자가 이미지 참조를 처리합니다. 좁은 범위의
-정규식 관리자가 `ARG IMAGE=node:...@sha256:...` 고정을 `system/Dockerfile`에서 처리하고,
+정규식 관리자가 `ARG IMAGE=node:...@sha256:...` 고정을 `containers/controller/Dockerfile`에서 처리하고,
 Runner 등록의 Docker CLI 기본값, 현재 Wizard 빌드/검증 BuildKit 드라이버 고정을 처리합니다.
 그룹화는 저장소별이며 프로젝트 간 트랜잭션이 아닙니다. 포함된 Wizard의 npm 매니페스트와
 잠금 파일은 Sync 및 Operations CLI와 함께 탐색됩니다. 관리자는 승인된 업데이트와
@@ -128,7 +128,7 @@ gitlink는 없습니다.
 15일 미만이면 토큰을 교체하며, 명시적으로 다음과 같이 실행할 수도 있습니다.
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --rotate --enable
+system-bootstrapper renovate setup --config /secure/operator/renovate.json --apply --rotate --enable
 ```
 
 새 토큰을 비공개로 저장하고 보호 변수를 갱신한 다음, 이 도구가 소유한 오래된 토큰을
@@ -149,7 +149,7 @@ GitLab 구성과 비밀 정보를 복원하세요. 새 Runner 관리자/캐시/�
 비공개 이메일, 제한된 계정을 검증한 뒤 명시적으로 복구해야 합니다.
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json \
+system-bootstrapper renovate setup --config /secure/operator/renovate.json \
   --apply --recover-user-id 123 --rotate
 ```
 

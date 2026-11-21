@@ -181,7 +181,7 @@ Migrationsergebnisse für Quell- und Zielversion.
 
 ### 5.4 Beispiel: Ein GitLab-Sicherheitspatch ist eine Systemweiterentwicklung
 
-Das eingecheckte [Sicherheitsrelease-Profil](../gitlab/security-release.json)
+Das eingecheckte [Sicherheitsrelease-Profil](../config/gitlab/security-release.json)
 deklariert einen Übergang von GitLab CE **19.5.3 → 19.6.1** sowie von GitLab
 Runner **19.5.1 → 19.6.0** mit passendem Helfer. Die verlinkte
 [Patch-Mitteilung](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-6-1-released/)
@@ -289,7 +289,7 @@ Administrationsverbindung aus, statt darauf zu vertrauen, dass ein CI-Job das
 Stoppen des GitLab überlebt, das ihn koordiniert.
 
 Für den deklarierten Übergang CE 19.5.3 → 19.6.1 enthält
-[`gitlab/security-release.json`](../gitlab/security-release.json) die zulässigen
+[`config/gitlab/security-release.json`](../config/gitlab/security-release.json) die zulässigen
 Image-Festlegungen. Rufen Sie vor der Planung oder dem Beginn der Ausfallzeit
 alle sechs Image-Referenzen ab: `fromImage`, `toImage`, `runner.fromImage`,
 `runner.toImage`, `runner.fromHelperImage` und `runner.helperImage`. Diese
@@ -331,7 +331,7 @@ ihn nicht. Andere Pipeline-Fehler blockieren die Freigabe.
 Führen Sie zuerst die Quellcode-/CI-Eingabeprüfung aus:
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation promote \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
@@ -367,12 +367,12 @@ Wird dieser **Controller**-Vorgang unterbrochen, verwenden Sie denselben Prüfpu
 mit den eingecheckten Status- und gegebenenfalls Abbruchaktionen:
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID
 
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \
@@ -418,7 +418,7 @@ Fordern Sie von einem unabhängigen Host-Terminal den schreibgeschützten Plan a
 
 ```bash
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js plan /state/upgrade-options.json
+  system-bootstrapper gitlab-maintenance plan /state/upgrade-options.json
 ```
 
 Prüfen Sie den zurückgegebenen Plan und `planSha256`. Er bindet die freigegebenen
@@ -431,7 +431,7 @@ exakten Plans seinen Hash als Bestätigung:
 ```bash
 PLAN_SHA256=REPLACE_WITH_REVIEWED_PLAN_SHA256
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js promote /state/upgrade-options.json "$PLAN_SHA256"
+  system-bootstrapper gitlab-maintenance promote /state/upgrade-options.json "$PLAN_SHA256"
 ```
 
 Führen Sie diesen Host-Befehl außerhalb des GitLab-CI-Jobs aus, der seinen Server
@@ -466,7 +466,7 @@ Wiederherstellungsexporter aus demselben unveränderten freigegebenen Checkout
 aus:
 
 ```bash
-sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
+sudo node dist/modules/host/recovery-export-entry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
   --evidence /root/system-successor/candidate-results.json \
@@ -492,7 +492,7 @@ Manifest, bevor Sie sich darauf verlassen:
 
 ```bash
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/recover-volume.js --verify
+  system-bootstrapper host-bootstrap recover-volume --checkout "$PWD" --verify
 ```
 
 Diese Prüfung validiert Eingaben, ohne Dienste neu zu starten. Der nächste
@@ -508,7 +508,7 @@ eingecheckten Helfers:
 
 ```bash
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js status /state/upgrade-options.json
+  system-bootstrapper gitlab-maintenance status /state/upgrade-options.json
 ```
 
 Bevor der Helfer einen freigegebenen Prüfpunkt-Hash aufzeichnet, akzeptiert seine
@@ -524,12 +524,12 @@ mehr läuft.
 ```bash
 # Only for a confirmed failure before checkpoint acceptance:
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js abort /state/upgrade-options.json "$PLAN_SHA256"
+  system-bootstrapper gitlab-maintenance abort /state/upgrade-options.json "$PLAN_SHA256"
 
 # For a confirmed completed-checkpoint recovery:
 CHECKPOINT_SHA256=REPLACE_WITH_VERIFIED_CHECKPOINT_SHA256
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
+  system-bootstrapper gitlab-maintenance rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
 ```
 
 Verwenden Sie ausschließlich die zur aufgezeichneten Phase passende Aktion;
@@ -553,7 +553,7 @@ sudo docker restart system_bootstrapper_1
 Wenn GitLab auf das alte Image wiederhergestellt wurde, während ein freigegebener
 Controller vorbereitet bleibt, entwickeln Sie jede Korrektur über einen neuen
 Merge Request mit seinen erforderlichen Prüfungen. Verwenden Sie den
-dokumentierten [Ersatz eines vorbereiteten Controllers](../bootstrapper/README.md#replacing-an-accepted-controller-before-gitlab-migration)
+dokumentierten [Ersatz eines vorbereiteten Controllers](BOOTSTRAPPER.md#replacing-an-accepted-controller-before-gitlab-migration)
 mit dem bisherigen abgeschlossenen Controller-Prüfpunkt und einem neuen
 Vorgangsverzeichnis. Das Werkzeug authentifiziert den bisherigen Kandidaten
 gesondert und hält gleichzeitig die Schranken des aktuellen Standardbranchs

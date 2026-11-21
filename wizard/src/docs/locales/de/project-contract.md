@@ -15,7 +15,7 @@ die [Betriebsanleitung](PROJECT_BOOTSTRAP_GUIDE.md).
 | Allgemeines Webprojekt | Frameworkfreies HTML, CSS und JavaScript, ohne Node-Build von NGINX ausgeliefert. |
 | Leeres Repository | README und verwaltete CI; Anwendungsquellcode und ein Dockerfile im Wurzelverzeichnis müssen separat bereitgestellt werden. |
 
-Vorlagendateien werden unter `project-bootstrap/templates/` versioniert. Quellcode,
+Vorlagendateien werden unter `templates/project-bootstrap/templates/` versioniert. Quellcode,
 Dockerfile, Laufzeitkonfiguration und CI bleiben nach der Erstellung bearbeitbar.
 Erzeugte Anwendungspipelines bauen ein Image, veröffentlichen es in der
 Instanz-Registry, führen einen HTTP-Kurztest aus und stellen aktivierte Umgebungen
@@ -83,10 +83,10 @@ Aktionen erfolgen ausdrücklich und unabhängig:
 1. [Quellcode initialisieren](WIZARD_SOURCE.md) aus dem eingecheckten System-Wizard-Gitlink.
 2. [Bauen und prüfen](WIZARD_BUILD.md) der importierten Anwendung und des unveränderlichen
    Registry-Kandidaten.
-3. [Review und Beta](../project-bootstrap/wizard-environments/README.md) auf separaten
+3. [Review und Beta](../templates/project-bootstrap/wizard-environments/README.md) auf separaten
    HTTPS-Hosts konfigurieren und über manuelle GitLab-Jobs bereitstellen/stoppen.
 4. Einen geprüften Kandidaten über das abgesicherte
-   [Verfahren für Production-Freigabe und Rollback](../project-bootstrap/wizard-production/README.md) anwenden.
+   [Verfahren für Production-Freigabe und Rollback](../templates/project-bootstrap/wizard-production/README.md) anwenden.
 
 Quellcodeimport, Kandidaten-Builds und Review-/Beta-Deployment ersetzen die laufende
 Verwaltungsoberfläche nicht. Die Production-Freigabe ist eine vom Betreiber

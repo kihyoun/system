@@ -287,7 +287,7 @@ HTTPS and its reviewed publication workflow. Hashes establish a consistent
 publication; a checksum alongside its payload is not an independent signature.
 No consumer check disables the publisher's native merge or acceptance gates.
 
-Maintain `bootstrapper/upgrade-paths.json` with each supported release. Add only
+Maintain `config/releases/upgrade-paths.json` with each supported release. Add only
 explicitly exercised ascending edges, prerequisites, ordered steps and the named
 candidate stage; preserve mandatory intermediate releases. The CLI and offline
 Wizard bundle use this same metadata. Export the Docs bundle, review English,
@@ -314,10 +314,10 @@ git clone https://github.com/kihyoun/system.git system-upgrade-2
 cd system-upgrade-2
 git checkout --detach v2.0.0
 sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
-test ! -e operations/dist && test ! -e operations/node_modules && test ! -e operations/assets && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets operations/assets
+test ! -e dist && test ! -e node_modules && test ! -e assets && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets assets
 ```
 
 Prepare validates the public metadata/provenance and installed release, then
@@ -328,15 +328,15 @@ replace `GITLAB_PLAN_SHA256` before promote. The accepted target helper runs the
 shared Nest migration services while the previous controller stays selected.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+sudo system-bootstrapper gitlab-upgrade \
   --operation prepare --checkout "$PWD" --target 2.0.0 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+sudo system-bootstrapper gitlab-upgrade \
   --operation plan --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+sudo system-bootstrapper gitlab-upgrade \
   --operation promote --checkout "$PWD" --confirm-plan GITLAB_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
@@ -350,14 +350,14 @@ controller/Wizard recovery payloads and takes the coordinated matching backup.
 Inspect this separate plan and replace `PAIR_PLAN_SHA256` explicitly.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+sudo system-bootstrapper upgrade \
   --checkout "$PWD" --target 2.0.0 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
   --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2.0.0 \
   --backup-file /mnt/backup/configuration-before-2.0.0.zip \
   --token-file /root/system-api-token
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+sudo system-bootstrapper upgrade \
   --operation apply --checkout "$PWD" --confirm-plan PAIR_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
@@ -369,11 +369,11 @@ preparation directory, both checkpoints, configuration ZIP and Seed. Inspect
 status after interruption; never delete a lease to retry.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+sudo system-bootstrapper upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+sudo system-bootstrapper gitlab-upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0

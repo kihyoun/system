@@ -1,6 +1,6 @@
 # Runner-Persistenz
 
-Der vorbereitete native Einstieg `operations/dist/lifecycle/entry.js runner-start CHECKOUT` ruft den gemeinsamen `RunnerLifecycleService` auf.
+Der vorbereitete native Einstieg `dist/modules/lifecycle/entry.js runner-start CHECKOUT` ruft den gemeinsamen `RunnerLifecycleService` auf.
 Dieser liest das `PERSISTENT_DIR` der Plattform und erzeugt einen Compose-Dienst
 für jeden Runner-Manager. Manager `runner_docker_1` bindet ein:
 
@@ -60,15 +60,15 @@ Die native Bereitstellung nutzt die gemeinsame GitLab-Controller-Zugangskennung 
 Wenn der alte Token nicht wiederhergestellt werden kann, rotiere ausdrücklich die exakte Runner-ID im vorbereiteten Mount-Namensraum des Controllers:
 
 ```sh
-node operations/dist/lifecycle/entry.js runner-rotate "$PWD" RUNNER_ID ROTATION_OPERATION
+node dist/modules/lifecycle/entry.js runner-rotate "$PWD" RUNNER_ID ROTATION_OPERATION
 ```
 
-Ersetze `RUNNER_ID` durch die numerische ID des bestehenden Instanz-Runners und `ROTATION_OPERATION` durch eine neue Operations-ID aus 48 kleingeschriebenen hexadezimalen Zeichen. Bewahre diese ID bis zum Abschluss der Wiederherstellung auf und verwende bei jedem erneuten Versuch **denselben** Wert. Der Controller benötigt seine normalen `PERSISTENT_DIR`-, GitLab-Konfigurations- und `SYSTEM_CONFIG_DIR`-Mounts. Der Befehl teilt die persistente Startsperre und die Runner-Registrierungssperre. Er stoppt die exakt zugeordneten bestehenden Manager-Container des Hauptpools, setzt den Token einmal zurück, aktualisiert den privaten Nachweis, die Manager-Tokens und die Hauptkonfiguration und lässt die Manager gestoppt. Plane den Vorgang für ein Zeitfenster, in dem Jobs unterbrochen werden dürfen. Runner-Datensatz, Konfigurationsfelder und Manager-System-IDs bleiben erhalten; die Manager werden nicht abgemeldet. Starte nach Erfolg über `node operations/dist/lifecycle/entry.js runner-start "$PWD" main` neu.
+Ersetze `RUNNER_ID` durch die numerische ID des bestehenden Instanz-Runners und `ROTATION_OPERATION` durch eine neue Operations-ID aus 48 kleingeschriebenen hexadezimalen Zeichen. Bewahre diese ID bis zum Abschluss der Wiederherstellung auf und verwende bei jedem erneuten Versuch **denselben** Wert. Der Controller benötigt seine normalen `PERSISTENT_DIR`-, GitLab-Konfigurations- und `SYSTEM_CONFIG_DIR`-Mounts. Der Befehl teilt die persistente Startsperre und die Runner-Registrierungssperre. Er stoppt die exakt zugeordneten bestehenden Manager-Container des Hauptpools, setzt den Token einmal zurück, aktualisiert den privaten Nachweis, die Manager-Tokens und die Hauptkonfiguration und lässt die Manager gestoppt. Plane den Vorgang für ein Zeitfenster, in dem Jobs unterbrochen werden dürfen. Runner-Datensatz, Konfigurationsfelder und Manager-System-IDs bleiben erhalten; die Manager werden nicht abgemeldet. Starte nach Erfolg über `node dist/modules/lifecycle/entry.js runner-start "$PWD" main` neu.
 
 Eine unterbrochene Anfrage behält ihre exakte Docker-Exec-ID und privaten Antwortdateien. Wiederhole nach einem regulär zurückgegebenen Fehler ohne beibehaltene Startsperre dieselbe Operation. Wenn die Startsperre nach einer Unterbrechung erhalten blieb, verwende:
 
 ```sh
-node operations/dist/lifecycle/entry.js runner-reconcile "$PWD" STARTUP_OPERATION ROTATION_OPERATION
+node dist/modules/lifecycle/entry.js runner-reconcile "$PWD" STARTUP_OPERATION ROTATION_OPERATION
 ```
 
 `STARTUP_OPERATION` besteht aus `startup-`, gefolgt von der Operation im privaten Nachweis `SYSTEM_CONFIG_DIR/.storage-operation-lock/startup-owner.json`. Diese Datei enthält Eigentumsmetadaten, keine Zugangsdaten. Verwende für eine unterbrochene erstmalige Runner-Bereitstellung als letztes Argument den wörtlichen Wert `provision` statt einer Rotationsoperation. Der Abgleich prüft das passende Runner-Journal und den exakten Docker-Exec und verlangt anhand von Boot-, PID-Start- und PID-Namensraumidentität den Nachweis, dass der vorherige Eigentümer beendet ist. Er verwendet die bestehende Sperre weiter und löscht keine fremde Speicher-/Upgradesperre. Alte Nachweise ohne Prozessbeleg und Namensraumwechsel innerhalb desselben Boots werden weiterhin abgelehnt. Er stellt die gespeicherte Antwort wieder her, statt einen weiteren Reset auszuführen. Solange eine Operation aussteht, wird eine andere abgelehnt. Endet curl ohne vollständige Antwort oder verschwindet der aufgezeichnete Exec vor der Ergebniswiederherstellung, bricht der Befehl sicher ab und behält den Nachweis. Stelle vor einem erneuten Versuch einen passenden Harvest/Seed-Snapshot wieder her; das Löschen des ausstehenden Journals oder ein blinder weiterer Reset ist keine Wiederherstellung. Widersprüchliche oder unlesbare Manager-Konfiguration wird ebenfalls abgelehnt, statt übernommen oder überschrieben.

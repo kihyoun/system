@@ -190,7 +190,7 @@
       "Projects and runners"
     ],
     [
-      "gitlab-runner/README.md",
+      "docs/RUNNER_GUIDE.md",
       "runner-persistence",
       "4.1 Runner persistence",
       "Projects and runners"
@@ -226,37 +226,37 @@
       "Evolution"
     ],
     [
-      "project-bootstrap/wizard-environments/README.md",
+      "templates/project-bootstrap/wizard-environments/README.md",
       "wizard-environments",
       "8.4 Wizard Review and Beta",
       "Evolution"
     ],
     [
-      "project-bootstrap/wizard-production/README.md",
+      "templates/project-bootstrap/wizard-production/README.md",
       "wizard-production",
       "8.5 Wizard Production and rollback",
       "Evolution"
     ],
     [
-      "project-bootstrap/wizard-upgrade/README.md",
+      "templates/project-bootstrap/wizard-upgrade/README.md",
       "wizard-upgrade",
       "8.6 Upgrade managed Wizard",
       "Evolution"
     ],
     [
-      "project-bootstrap/wizard-source-primary/README.md",
+      "templates/project-bootstrap/wizard-source-primary/README.md",
       "wizard-source-primary",
       "8.7 One source-primary repository",
       "Evolution"
     ],
     [
-      "project-bootstrap/wizard-build/README.md",
+      "templates/project-bootstrap/wizard-build/README.md",
       "wizard-build-reference",
       "8.8 Managed build reference",
       "Evolution"
     ],
     [
-      "bootstrapper/README.md",
+      "docs/BOOTSTRAPPER.md",
       "controller-reference",
       "9. Controller and recovery reference",
       "Reference"

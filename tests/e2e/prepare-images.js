@@ -4,10 +4,10 @@ const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
 const {execFileSync}=require('child_process');
-const {validate}=require('../../project-bootstrap/wizard-source/package');
+const {validate}=require('../../dist/modules/source-preparation/wizard-source.service');
 const root=path.resolve(__dirname,'../..');
-const securityRelease=require('../../gitlab/security-release.json');
-const trust=require('../../bootstrapper/ca/check');
+const securityRelease=require('../../config/gitlab/security-release.json');
+const trust=require('../../dist/modules/host-bootstrap/ca-verification.service');
 const defaults={
   daemon:'docker:29.9.2-dind@sha256:9e79b879b177fbd72c34376a3dd3d91747da5db49e1f560f76aea59561471977',
   gitlab:securityRelease.toImage,
@@ -36,7 +36,7 @@ function wizardDockerfile(files) {
   return dockerfiles[0].path;
 }
 function guidedSettings() {
-  return require('../../project-bootstrap/preview-setup/settings').settings({
+  return require('../../dist/modules/project-lifecycle/preview-settings').settings({
     version:2,namespace:'root',wizard:{mode:'existing',project:'wizard'},
     review:{enabled:false,host:'',ssl:'',sslKey:''},
     beta:{enabled:true,host:'beta.candidate.test',ssl:'/ssl/live/recovery-fixture/fullchain.pem',sslKey:'/ssl/live/recovery-fixture/privkey.pem'}
@@ -44,14 +44,14 @@ function guidedSettings() {
 }
 
 function privateWizardAcceptance(files,exists=filename=>fs.existsSync(path.join(root,filename))) {
-  const helpers=['system/wizard-image-recovery.js','operations/src/wizard-recovery/wizard-recovery.service.ts','operations/src/wizard-recovery/registry.service.ts'];
+  const helpers=['src/modules/wizard-recovery/entry.ts','src/modules/wizard-recovery/wizard-recovery.service.ts','src/modules/wizard-recovery/registry.service.ts'];
   if(!helpers.some(filename=>files.includes(filename)))return false;
   if(!helpers.every(filename=>files.includes(filename))||!exists("tests/e2e/recovery.js")||!exists("tests/e2e/wizard-pin-fixture.js"))throw Error("Private Wizard startup requires the complete private-registry recovery contract.");
   return true;
 }
 function acmeAcceptance(files,exists=filename=>fs.existsSync(path.join(root,filename))) {
   const adapter=['tests/e2e/local-acme.js','tests/e2e/prepare-acme-images.js','tests/e2e/acme-fixture/pebble.minica.pem'];
-  const host=['operations/src/host-bootstrap/certificate.service.ts','operations/src/host-lifecycle/lifecycle.service.ts','tests/e2e/acme-host-runtime.js'];
+  const host=['src/modules/host-bootstrap/certificate.service.ts','src/modules/host-lifecycle/lifecycle.service.ts','tests/e2e/acme-host-runtime.js'];
   if(!adapter.some(exists))return false;
   if(!adapter.every(exists)||!host.every(filename=>files.includes(filename)))throw Error('ACME acceptance requires the complete pinned authority and fresh-source host contract.');
   return true;
@@ -84,7 +84,7 @@ async function prepare(){
   const wizardSourceTree=execFileSync('git',['rev-parse',process.env.CI_COMMIT_SHA+':wizard'],{encoding:'utf8'}).trim();
   const sharedSourceBundle=require('./shared-source-bundle').prepare(root,output,process.env.CI_COMMIT_SHA,sourceTree,wizardSourceTree);
   const guidedPreviewSettings=guidedSettings();
-  const recoveryAcceptance=trackedManifest.files.includes('system/seed-manifest.js');
+  const recoveryAcceptance=trackedManifest.files.includes('src/modules/storage/manifest.ts');
   const privateWizardRecovery=privateWizardAcceptance(trackedManifest.files);
   const acmeRenewalAcceptance=acmeAcceptance(trackedManifest.files);
   if(acmeRenewalAcceptance&&!recoveryAcceptance)throw Error('ACME acceptance requires marked Seed recovery.');
@@ -92,15 +92,15 @@ async function prepare(){
   if(recoveryAcceptance&&!fs.existsSync(path.join(__dirname,'recovery.js')))throw Error('Marked Seed requires the complete cold recovery adapter.');
   const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',timeout:600000,...options});
   let fd=fs.openSync(archive,'r');
-  try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.source-tree='+sourceTree,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','system/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
+  try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.source-tree='+sourceTree,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','containers/controller/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
   require('../bootstrapper/log-rotation-docker').run({helperImage:tags.candidate});
   run(['pull',defaults.nginx]);
   require('../persistence/http01-nginx-probe').run({helperImage:tags.candidate,nginxImage:defaults.nginx});
-  const snapshot=validate(JSON.parse(fs.readFileSync(path.join(root,'project-bootstrap/wizard-source/snapshot.json'),'utf8')));
+  const snapshot=validate(JSON.parse(fs.readFileSync(path.join(root,'assets/wizard-source/snapshot.json'),'utf8')));
   const context=path.join(output,'wizard-context');fs.mkdirSync(context,{recursive:true});
   for(const file of snapshot.files){const name=path.join(context,file.path);fs.mkdirSync(path.dirname(name),{recursive:true});fs.writeFileSync(name,Buffer.from(file.content,'base64'),{mode:file.mode==='100755'?0o755:0o644});}
-  const recipes=require('../../project-bootstrap/wizard-build/recipe');
-  const logo=fs.readFileSync(path.join(root,'system/.docker.env.example'),'utf8').slice(0,1184);
+  const recipes=require('../../dist/modules/project-lifecycle/build-recipe.service');
+  const logo=fs.readFileSync(path.join(root,'config/system/.docker.env.example'),'utf8').slice(0,1184);
   const recipe=recipes.forSource?recipes.forSource(logo,snapshot.sourceRevision):recipes.generate(logo);
   const buildFiles=recipe.files;
   const dockerfile=wizardDockerfile(buildFiles);

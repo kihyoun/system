@@ -2,12 +2,14 @@
 const assert = require('node:assert/strict');
 const {test} = require('node:test');
 const path = require('node:path');
-const {publicUpgrade} = require('../../gitlab/public-upgrade-release');
+const release=require('../../dist/modules/release');
 const root = path.resolve(__dirname, '../..');
+const runtime=release.createPublicationRuntime(release.readPublicationProfile(root));
+const publicUpgrade=(...args)=>release.publicUpgradeAssets(...args,{evidence:runtime.evidence,lifecycle:release.lifecyclePolicy()});
 function fixture() {
-  const {PublicUpgradePublicationService}=require('../../operations/dist/testing/public-upgrade-publication.service');
+  const {PublicUpgradePublicationService}=require('../../dist/modules/testing/public-upgrade-publication.service');
   const generated=new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}}).prepare(root,require('../shared/public-upgrade-fixture').publicationFixture());
-  const metadata=generated.metadata,proof=JSON.parse(generated.proof),security=require('../../gitlab/security-release.json');
+  const metadata=generated.metadata,proof=JSON.parse(generated.proof),security=require('../../config/gitlab/security-release.json');
   const jobs = proof.publication.jobs.map(row => ({...row, pipeline: {id: row.pipelineId}, commit: {id: row.sourceRevision}}));
   return {metadata, proof, security, jobs};
 }
@@ -21,7 +23,7 @@ test('sanitized public proof round-trips through shared native authority without
   assert(!payload.toString().includes('must-never-publish'));
   assert(!payload.toString().includes('private-fixture-password'));
   assert(!payload.toString().includes('registry.example.invalid'));
-  const {HostReleaseAuthorityService}=require('../../operations/dist/host/release-authority.service');
+  const {HostReleaseAuthorityService}=require('../../dist/modules/host/release-authority.service');
   const accepted=new HostReleaseAuthorityService({}).publicInputs(metadata,payload,security);
   assert.equal(accepted.release.imageId,proof.release.imageId);
 });
@@ -36,7 +38,7 @@ test('publisher refuses an untested transition, failed runtime check or false pr
 
 test('public monorepo authority retains only validated v2 fixture boundary and refuses substituted source or attempt',()=>{
   const {metadata,proof,jobs}=fixture(),released=proof.release,value=proof.evidence;
-  const lifecycle=require('../../gitlab/guided-preview-evidence'),beta=require('../shared/system-beta-evidence-fixture').proof();
+  const lifecycle=require('../../dist/modules/release/guided-preview-evidence'),beta=require('../shared/system-beta-evidence-fixture').proof();
   released.sourceLayout='system-monorepo-v1';released.wizardSourceTree='f'.repeat(40);delete released.wizardRevision;
   Object.assign(value,{sourceLayout:released.sourceLayout,sourceTree:released.sourceTree,wizardSourceTree:released.wizardSourceTree,
     ciIdentity:{projectId:released.projectId,pipelineId:released.pipelineId,candidateJobId:released.candidateJobId}});
@@ -46,7 +48,7 @@ test('public monorepo authority retains only validated v2 fixture boundary and r
   beta.setup.sourceCommit=released.sourceRevision;beta.beta.stoppedThroughPipelineId=released.pipelineId;
   for(const row of [beta.beta.deployment,beta.beta.stopped])Object.assign(row,{sourceCommit:released.sourceRevision,pipelineId:released.pipelineId,generation:'p'+released.pipelineId+'-j201'});
   value.images.runner='sha256:'+'4'.repeat(64);
-  const security=require('../../gitlab/security-release.json'),upgrade=value.evidence.gitlabUpgrade;
+  const security=require('../../config/gitlab/security-release.json'),upgrade=value.evidence.gitlabUpgrade;
   Object.assign(upgrade,{fromImage:security.fromImage,toImage:security.toImage,runnerImage:security.runner.toImage,
     runnerImageId:value.images.runner,fromRunnerImageId:'sha256:'+'1'.repeat(64),runnerVersion:security.runner.toVersion,
     helperImage:security.runner.helperImage,helperImageId:'sha256:'+'2'.repeat(64),fromHelperImageId:'sha256:'+'3'.repeat(64),
@@ -72,11 +74,11 @@ test('future public-upgrade fixture carries real original Beta observations with
     helperImage:spec.images.candidate.id,wizardImageId:spec.images.wizard.id,fixturePipelineId:spec.ciIdentity.pipelineId,fixtureCandidateJobId:spec.ciIdentity.candidateJobId});
   beta.setup.sourceCommit=spec.sourceRevision;beta.beta.stoppedThroughPipelineId=spec.ciIdentity.pipelineId;
   for(const row of [beta.beta.deployment,beta.beta.stopped])Object.assign(row,{sourceCommit:spec.sourceRevision,pipelineId:spec.ciIdentity.pipelineId,generation:'p'+spec.ciIdentity.pipelineId+'-j201'});
-  value.guidedOrigin={runId:'e'.repeat(24),guidedPreview:beta,results:[...require('../../gitlab/guided-preview-evidence').stagesV2,'recovery-original-host-removed','cleanup'].map(name=>({name,status:'passed'}))};
-  const {PublicUpgradePublicationService}=require('../../operations/dist/testing/public-upgrade-publication.service');
+  value.guidedOrigin={runId:'e'.repeat(24),guidedPreview:beta,results:[...require('../../dist/modules/release/guided-preview-evidence').stagesV2,'recovery-original-host-removed','cleanup'].map(name=>({name,status:'passed'}))};
+  const {PublicUpgradePublicationService}=require('../../dist/modules/testing/public-upgrade-publication.service');
   const service=new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}});
   const published=JSON.parse(service.prepare(root,value).proof);
-  assert.equal(require('../../gitlab/publish-successor').validateEvidence(published.evidence,published.release),spec.images.candidate.id);
+  assert.equal(runtime.evidence.validateEvidence(published.evidence,published.release),spec.images.candidate.id);
   assert.equal(published.evidence.guidedPreviewReceipt.runId,value.guidedOrigin.runId);
   assert.equal(published.evidence.evidence.guidedPreview,undefined);
   assert.equal(published.evidence.guidedPreviewReceipt.evidence.guidedPreview.verifier.mode,'contract-fixture');

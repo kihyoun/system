@@ -39,8 +39,8 @@ akzeptierten Quell-/Job-Labels vorhanden sein; bewahre es für Stop auf. Werte e
 anderen Pipeline können diese Reservierung nicht autorisieren.
 
 ```sh
-node project-bootstrap/system-beta/bind.js plan /state/beta-input.json
-node project-bootstrap/system-beta/bind.js apply /state/beta-input.json PLAN_HASH
+system-bootstrapper system-beta bind plan /state/beta-input.json
+system-bootstrapper system-beta bind apply /state/beta-input.json PLAN_HASH
 ```
 
 Führe das Bindungswerkzeug aus dem geprüften Checkout auf dem Docker-Host des
@@ -81,8 +81,8 @@ Generationsgrenzen oder Tombstones, um einen Konflikt zu umgehen. Beta-Einrichtu
 verweigert aktive, ausstehende, ausgemusterte oder unbereinigte gestoppte Routen.
 
 ```sh
-node project-bootstrap/system-review/run.js stop
-node project-bootstrap/wizard-environments/cleanup-stopped.js OPERATION
+system-bootstrapper system-review stop
+system-bootstrapper project-environments-cleanup OPERATION
 ```
 
 Der Stop-Launcher benötigt die ursprüngliche Jobidentität und das aufbewahrte

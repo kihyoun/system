@@ -74,14 +74,14 @@ Git 체크아웃만 갱신해도 이미지가 갱신되지는 않습니다.
 필요한 Docker 도구를 설치하세요.
 
 ```bash
-sudo node bootstrapper/install.js
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 설치 프로그램은 Docker와 Compose를 설치하고 테스트 컨테이너로 Docker를 확인합니다.
 로컬 HTTP 테스트에는 로컬 호스트 이름과 레지스트리의 HTTP 예외도 설정하세요.
 
 ```bash
-sudo node bootstrapper/prepare-local.js
+sudo system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"
 ```
 
 WSL은 시작할 때 `/etc/hosts`를 다시 만들 수 있습니다.
@@ -104,7 +104,7 @@ HTTP 예외는 로컬 테스트로 제한됩니다.
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
+`dist`, `node_modules`, `assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 새 Ubuntu/WSL 설치는 시스템 디스크의 `/var/lib/system-bootstrapper/platform`에
 로컬 작업 데이터를 저장합니다. 최초 시작에 두 번째 디스크, USB,
@@ -137,7 +137,7 @@ Harvest 또는 Seed 복원을 사용하려면 독립적인 백업 저장소를 �
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```

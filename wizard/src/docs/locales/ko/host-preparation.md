@@ -8,8 +8,8 @@
 ## 테스트된 공개 릴리스 설치
 
 최종 사용자 설치에는 검토된 **완전한 컨트롤러** 이미지와 이에 일치하는 Wizard 웹 이미지를
-공개 Docker Hub 저장소에서 사용하세요. 컨트롤러는 `system/Dockerfile`에서 빌드하며
-Sync와 수명 주기 도구를 포함합니다. `bootstrapper/Dockerfile`에서 빌드한 더 작은 런타임
+공개 Docker Hub 저장소에서 사용하세요. 컨트롤러는 `containers/controller/Dockerfile`에서 빌드하며
+Sync와 수명 주기 도구를 포함합니다. `containers/bootstrapper/Dockerfile`에서 빌드한 더 작은 런타임
 기반 이미지는 부팅 가능한 컨트롤러가 아니므로 대신 사용하면 안 됩니다.
 
 릴리스의 정확한 System 소스 리비전과 각각 `@sha256:...`로 끝나는 두 불변 이미지 참조를
@@ -52,7 +52,7 @@ git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
 # After preparing the runtime below:
-sudo /opt/system-bootstrapper-runtime/bin/node bootstrapper/install.js
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 설치 프로그램은 오케스트레이션 스크립트용 `docker-compose` 래퍼를 제공합니다.
@@ -61,8 +61,8 @@ sudo /opt/system-bootstrapper-runtime/bin/node bootstrapper/install.js
 
 ## 네이티브 호스트 런타임 준비
 
-호스트의 `start`, `stop`, `bootstrapper/persistence.js`, 릴리스 설치 및 호스트 작업 진입점,
-교체/복원 도구는 첫 호출 **전에** Node와 컴파일된 `operations`가 필요합니다. Docker만
+호스트의 `start`, `stop`, `system-bootstrapper persistence --checkout "$PWD"`, 릴리스 설치 및 호스트 작업 진입점,
+교체/복원 도구는 첫 호출 **전에** Node와 컴파일된 루트 NestJS 패키지가 필요합니다. Docker만
 설치하거나 초기화 도구에 `--install-host`를 전달해도 이 런타임은 준비되지 않습니다.
 아래 준비 경로 중 하나를 선택하여 시작 절차나 복구 절차 전에 완료하세요.
 
@@ -81,13 +81,13 @@ nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
 SYSTEM_RELEASE_TAG='vMAJOR.MINOR.PATCH' # Exact reviewed public release
 sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
 # The checkout must match the source revision in that release's verified metadata.
-test ! -e operations/dist && test ! -e operations/node_modules && test ! -e operations/assets && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets operations/assets
+test ! -e dist && test ! -e node_modules && test ! -e assets && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets assets
 ```
 
-준비 과정은 기존 런타임 디렉터리를 덮어쓰지 않고 거부합니다. 오프라인 복구를 위해 이 디렉터리와 체크아웃의 `operations/dist`, `operations/node_modules`, `operations/assets`를 보관하세요. 호환성 도구는 저장된 절대 Node 실행 파일을 직접 선택하며 복구 중 셸 프로필을 읽거나 nvm을 호출하거나 npm에 연결하지 않습니다. 명시적인 네이티브 호출에는 `/opt/system-bootstrapper-runtime/bin/node`를 사용하세요.
+준비 과정은 기존 런타임 디렉터리를 덮어쓰지 않고 거부합니다. 오프라인 복구를 위해 이 디렉터리와 체크아웃의 `dist`, `node_modules`, `assets`를 보관하세요. 호환성 도구는 저장된 절대 Node 실행 파일을 직접 선택하며 복구 중 셸 프로필을 읽거나 nvm을 호출하거나 npm에 연결하지 않습니다. 일반 호스트 작업에는 `system-bootstrapper`를 사용하세요.
 
 ### 사전 빌드된 컨트롤러 런타임 없이 소스 개발하기
 
@@ -111,10 +111,11 @@ nvm use 24.22.0
 printf '%s  %s\n' cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008 "$NVM_DIR/.cache/bin/node-v24.22.0-linux-x64/node-v24.22.0-linux-x64.tar.xz" | sha256sum --check
 test "$(node --version)" = v24.22.0
 test "$(npm --version)" = 11.19.1
-npm ci --prefix operations --ignore-scripts
-npm run build --prefix operations
+npm ci --ignore-scripts
+npm run build
+npm link --ignore-scripts
 SYSTEM_NODE_BIN="$(dirname "$(command -v node)")"
-test -f operations/dist/host-lifecycle/entry.js
+test -f dist/modules/host-lifecycle/entry.js
 ```
 
 부팅 절차에 따라 운영 저장소를 선택한 다음 공개 이미지 설치 프로그램 대신
@@ -122,19 +123,19 @@ test -f operations/dist/host-lifecycle/entry.js
 
 ```bash
 sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  "$SYSTEM_NODE_BIN/node" operations/dist/cli.js start --checkout "$PWD"
+  system-bootstrapper start --checkout "$PWD"
 ```
 
 `SYSTEM_NODE_BIN`을 유지하여 이후 `sudo env "PATH=..."` 호출에서
-`stop`, `bootstrapper/persistence.js`, 네이티브 호스트 도구에 전달하세요. sudo는 보통 대화형
+`stop`, `system-bootstrapper persistence --checkout "$PWD"`, 네이티브 호스트 도구에 전달하세요. sudo는 보통 대화형
 nvm PATH를 제거합니다. 또는 승인된 이미지 경로로 준비한 전용 런타임을 사용하세요.
 기존 승인 릴리스 프로필에서 빌드를 비활성화하지 않았다면 소스 시작은 여전히 컨트롤러와
 Wizard 이미지를 빌드합니다. 복구 기록에 필요한 이미지를 다시 빌드하여 대체해도 된다는
 뜻은 아닙니다.
 
-오프라인 복구를 위해 원래 호스트를 잃기 전에 Node 설치와 `operations/dist`,
-`operations/node_modules`, `operations/assets`를 포함한 일치하는 체크아웃을 보관하세요. `initialize.js`나
-`recover-volume.js`가 저장소를 확인하기 전에 검증된 도구를 복원하세요. 없다면 유지보수
+오프라인 복구를 위해 원래 호스트를 잃기 전에 Node 설치와 `dist`,
+`node_modules`, `assets`를 포함한 일치하는 체크아웃을 보관하세요. `system-bootstrapper host-bootstrap initialize`나
+`system-bootstrapper host-bootstrap recover-volume`가 저장소를 확인하기 전에 검증된 도구를 복원하세요. 없다면 유지보수
 전에 호환되는 검토된 도구를 별도로 준비하세요. 중지된 플랫폼이나 npm 가용성은 복구의
 전제 조건이 아닙니다. 기록된 서비스 이미지와 소스 식별 정보를 유지하세요.
 
@@ -182,7 +183,7 @@ GitLab의 지원되는 업그레이드 경로를 따르지 않고 새 주 버전
 
 로컬 통합 설정에서는 GitLab을 시작하기 전에 다음 선택적 내보내기를
 `PERSISTENT_DIR/configuration/.docker.env`의 완전한 비공개 기본 구성에 포함하세요.
-이 옵션만 있는 불완전한 기본 구성을 만들지 마세요. 컨트롤러 내부에서 `system/.docker.env`는
+이 옵션만 있는 불완전한 기본 구성을 만들지 마세요. 컨트롤러 내부에서 `config/system/.docker.env`는
 저장된 구성에 대한 호환성 링크입니다. 영구 저장된 사본이 이미지에 포함된 구성보다 우선합니다.
 
 ```bash
@@ -194,7 +195,7 @@ export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 
 GitLab, Registry, Sync, Wizard 호스트로 각각 `gitlab.localhost`, `registry.localhost`,
 `sync.localhost`, `localhost`를 사용하고, 도메인 모드는 0(HTTP), 외부 URL은 일치하도록
-설정하세요. `sudo node bootstrapper/prepare-local.js`를 실행하면 로컬 호스트 이름과
+설정하세요. `sudo system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"`를 실행하면 로컬 호스트 이름과
 `registry.localhost:5050`에 대한 Docker HTTP 예외를 추가합니다. 이 도우미는 로컬 테스트에
 명시적으로 선택하는 도구입니다. 운영 환경에서는 구성된 도메인과 인증서를 사용해야 합니다.
 다른 Docker 데몬 설정은 보존합니다. 위 포트 재정의는 GitLab SSH와 Registry에 적용되며
@@ -234,7 +235,7 @@ PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```
@@ -247,7 +248,7 @@ WSL에서는 Windows 마운트 데이터 디렉터리 대신 Linux 파일시스�
 [작업 저장소와 백업 매체](docs/PERSISTENT_VOLUME.md)를 참조하세요.
 
 HTTPS를 사용하는 호스트에는 Certbot을 별도로 설치한 뒤
-`sudo node bootstrapper/install-volume-host.js`를 실행해 영구 TLS 상태와 갱신 통합을
+`sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"`를 실행해 영구 TLS 상태와 갱신 통합을
 구성하세요. 로컬 모드에는 추가 마운트 의존성이 필요하지 않습니다. Docker, 정상 서비스 시작,
 인증서 갱신 중 어느 것도 외부 Seed 대상에 의존하지 않습니다.
 
@@ -255,7 +256,7 @@ HTTPS를 사용하는 호스트에는 Certbot을 별도로 설치한 뒤
 정보와 대조해 검증합니다. 재설치를 업그레이드로 취급하지 않고, 기존 기본 구성이나 GitLab
 데이터가 있으면 거부합니다. 비공개 `configuration/.release-images.env`에는 두 릴리스
 이미지 선택자만 기록하고 빌드를 비활성화하여 기본 시작을 호출합니다. 이후 일반적인
-`sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` 호출은 이 프로필을 재사용합니다. 저장된 기본 구성에 명시한 선택자가
+`sudo system-bootstrapper start --checkout "$PWD"` 호출은 이 프로필을 재사용합니다. 저장된 기본 구성에 명시한 선택자가
 여전히 우선합니다. Docker 설치를 아직 실행하지 않았다면 `--install-host`로 수행할 수
 있습니다. 이 설치 프로그램은 Seed 복원, 구성 ZIP 가져오기, 인증서 발급을 수행하지 않습니다.
 
@@ -304,7 +305,7 @@ Sync를 컴파일한 뒤 `node tests/sync/config-suggestions.js`를 실행하세
 사용자 이름은 `root`입니다. 새 데이터베이스에서는 Bootstrapper가 고유한 초기 암호를
 생성하거나, `GITLAB_INITIAL_ROOT_PASSWORD`(12자 이상)를
 `PERSISTENT_DIR/configuration/.docker.env`의 완전한 비공개 기본 구성에서 받습니다. 컨트롤러는
-`system/.docker.env` 호환성 링크를 통해 이를 읽습니다. 영구 저장된 구성이 이미지에 포함된
+`config/system/.docker.env` 호환성 링크를 통해 이를 읽습니다. 영구 저장된 구성이 이미지에 포함된
 구성보다 우선합니다. 추적되는 예시에는 의도적으로 공용 기본 암호가 없습니다.
 
 시작 후 로컬에서 암호를 읽으세요.
@@ -349,7 +350,7 @@ Wizard 백업으로 유지하며, Wizard는 서비스 데이터 Seed를 다운�
 셸/rsync 회귀 검사는 임시 데이터와 픽스처 Docker 명령을 사용합니다.
 
 ```bash
-node --test operations/tests/storage-copy.test.cjs
+node --test tests/operations/storage-copy.test.cjs
 ```
 
 실제 GitLab, Registry, Runner CI, 구성 내보내기, TLS 갱신을 함께 실행하려면
@@ -360,5 +361,5 @@ node --test operations/tests/storage-copy.test.cjs
 준비된 호스트 런타임을 사용하세요. 소스 개발 경로에서는 위의 명시적 Node PATH를 전달하세요.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js stop --checkout "$PWD"
+sudo system-bootstrapper stop --checkout "$PWD"
 ```

@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
-const {impact} = require('../../project-bootstrap/routing-impact');
+const {impact} = require('../../dist/modules/projects-routing/impact');
 function run(exporter) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configuration-routing-export-'));
   let sequence = 0;

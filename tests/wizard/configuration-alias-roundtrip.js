@@ -4,9 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const ts = require('../../sync/node_modules/typescript');
-const aliases = require('../../nginx/wizard-aliases');
-const snapshot = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../project-bootstrap/wizard-source/snapshot.json'), 'utf8'));
+const ts = require('../../node_modules/typescript');
+const aliases = require('../../dist/modules/projects-routing/wizard-aliases');
+const snapshot = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../assets/wizard-source/snapshot.json'), 'utf8'));
 const source = name => Buffer.from(snapshot.files.find(file => file.path === name).content, 'base64').toString('utf8');
 const cube = fs.readFileSync(path.resolve(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
 function moduleFromSource(name, imports = {}) {

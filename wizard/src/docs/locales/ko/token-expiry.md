@@ -68,7 +68,7 @@ GitHub와 Docker Hub는 운영자가 만료일을 기록하지 않으면 만료 
 ## 인증 정보를 소유한 도구로 갱신
 
 해당 용도의 갱신 링크를 열고 저장소에서 관리하는 절차를 따르세요.
-Renovate의 기존 `gitlab/renovate/setup.js` 절차는 운영자의 비공개 설정으로
+Renovate의 기존 `system-bootstrapper renovate setup` 절차는 운영자의 비공개 설정으로
 `--apply --rotate --enable`을 지원합니다.
 릴리스 메타데이터 접근에는 Reporter 역할, `read_api` 범위 및 명시적인 만료일을 가진
 프로젝트 범위의 대체 GitLab 토큰을 만들고, 소유한 System 프로젝트의 보호되고 마스킹된

@@ -41,7 +41,7 @@ nicht prüfen.
 ## Betreiberverfahren
 
 Führe den geprüften Quellcode im kanonischen Controller mit Node 24 aus. Bereite
-seine geprüfte `project-bootstrap/wizard-source/snapshot.json` passend zum geprüften
+seine geprüfte `assets/wizard-source/snapshot.json` passend zum geprüften
 System-Gitlink vor. Speichere ablaufende GitLab-API-Zugangsdaten privat auf dem
 Volume mit Modus 0600 als `{ "baseUrl": "https://gitlab.example/api/v4", "token": "..." }`.
 Der API-Token wird ausschließlich aus dieser Datei gelesen, niemals aus einem
@@ -64,10 +64,10 @@ Betreiber muss außerdem beim Ausrollen des geprüften Controllers dessen
 geladene Hilfs-Image auf dem gemeinsamen Runner-Daemon auf.
 
 ```sh
-node project-bootstrap/wizard-upgrade/run.js plan /state/upgrade-options.json
+system-bootstrapper wizard-upgrade plan /state/upgrade-options.json
 # Review source revision, project identity, branch, current head and path diff.
 # Reserve a bounded CI slot before stage: its last commit starts CI.
-node project-bootstrap/wizard-upgrade/run.js stage /state/upgrade-options.json PLAN_HASH
+system-bootstrapper wizard-upgrade stage /state/upgrade-options.json PLAN_HASH
 ```
 
 Prüfe den zurückgegebenen MR des bestehenden Projekts und die erforderlichen
@@ -83,8 +83,8 @@ Identische Dateiinhalte benötigen diese Historie, um ihren neuen
 der Übernahme bei Bedarf wieder her. Der alte Beleg bleibt bis zur Übernahme aktiv.
 
 ```sh
-node project-bootstrap/wizard-upgrade/run.js adoption-plan /state/upgrade-options.json
-node project-bootstrap/wizard-upgrade/run.js adopt /state/upgrade-options.json ADOPTION_HASH
+system-bootstrapper wizard-upgrade adoption-plan /state/upgrade-options.json
+system-bootstrapper wizard-upgrade adopt /state/upgrade-options.json ADOPTION_HASH
 ```
 
 Die Übernahme verlangt eine grüne exakte vorbereitete MR-Pipeline, beide
@@ -158,13 +158,13 @@ verwenden ihren [nativen Quellcode-Merge und die Bindungsaktualisierung](../wiza
 anstelle dieser Migrationsaktionen für bisherige Importe.
 
 ```sh
-node project-bootstrap/wizard-upgrade/run.js build-plan /state/upgrade-options.json
+system-bootstrapper wizard-upgrade build-plan /state/upgrade-options.json
 # Review scope=build-environment, exact head, managed paths and preservedTreeHash.
 # Reserve a bounded CI slot before this final MR commit starts CI.
-node project-bootstrap/wizard-upgrade/run.js build-stage /state/upgrade-options.json PLAN_HASH
+system-bootstrapper wizard-upgrade build-stage /state/upgrade-options.json PLAN_HASH
 # Review required build/browser jobs; fast-forward the MR without squash/rebase.
-node project-bootstrap/wizard-upgrade/run.js build-adoption-plan /state/upgrade-options.json
-node project-bootstrap/wizard-upgrade/run.js build-adopt /state/upgrade-options.json ADOPTION_HASH
+system-bootstrapper wizard-upgrade build-adoption-plan /state/upgrade-options.json
+system-bootstrapper wizard-upgrade build-adopt /state/upgrade-options.json ADOPTION_HASH
 ```
 
 Der private Prüfpunkt und Migrationsvorgang unterscheiden sich von einem

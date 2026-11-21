@@ -7,10 +7,11 @@ const source = path.resolve(__dirname, '../..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-workflow-'));
 fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
+process.env.SYSTEM_CONFIG_DIR = path.join(root, 'system');
 process.chdir(path.join(root, 'sync'));
-const bootstrap = require(path.join(source, 'sync/dist/ProjectBootstrap'));
-const {wizardConfiguration, wizardCi} = require(path.join(source, 'sync/dist/DefaultWizard'));
-const {initializeWizardSource, previewWizardSource} = require(path.join(source, 'sync/dist/WizardWorkflow'));
+const bootstrap = require(path.join(source, 'dist/api/projects/project-workflow'));
+const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/api/projects/default-wizard'));
+const {initializeWizardSource, previewWizardSource} = require(path.join(source, 'dist/api/projects/wizard-source-workflow'));
 const config = path.join(root, 'system/.projects.env/.wizard.env');
 const data = wizardConfiguration({WIZARD_HOST: 'localhost'});
 const repository = {id: 99, namespaceId: 1, path: 'root/wizard', defaultBranch: 'main',

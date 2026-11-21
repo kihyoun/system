@@ -2,9 +2,9 @@
 // Public host preflight with synthetic mount discovery; never mount a disk.
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawnSync}=require('node:child_process');
-const {HostPersistenceService}=require('../../operations/dist/host-lifecycle/persistence.service');
-const {ManagedChildProcess}=require('../../operations/dist/runtime/managed-child');
-const script=path.resolve(__dirname,'../../bootstrapper/persistence.js');
+const {HostPersistenceService}=require('../../dist/modules/host-lifecycle/persistence.service');
+const {ManagedChildProcess}=require('../../dist/common/runtime/managed-child');
+const script=path.resolve(__dirname,'../../dist/cli/main.js');
 function fixture(t){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'system-storage-guard-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const mount=path.join(root,'mounted'),data=path.join(mount,'platform'),bin=path.join(root,'bin');fs.mkdirSync(mount);fs.mkdirSync(bin);
@@ -20,7 +20,7 @@ function fixture(t){
     return native.run(binary,args,options);
   }});
   const run=async()=>{try{await service.prepare(env);return {status:0};}catch(error){return {status:1,stderr:error.message};}};
-  const runCli=()=>spawnSync(process.execPath,[script],{env,encoding:'utf8'});
+  const runCli=()=>spawnSync(process.execPath,[script,'persistence','--checkout',path.resolve(__dirname,'../..')],{env,encoding:'utf8'});
   return {root,mount,data,env,mock,run,runCli};
 }
 test('missing mount, invalid selection, UUID and free space fail before creating live data',async t=>{

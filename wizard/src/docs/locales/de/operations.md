@@ -26,8 +26,8 @@ Führe jeden Durchlauf wie folgt aus; bewahre Belege außerhalb des Quellcode-Ch
    Speicherzustand, Paketsperre, `dpkg --audit`-Befund oder einem nicht abgeschlossenen
    Plattformvorgang.
 2. Erfasse vom akzeptierten Remote-Checkout eine neue private Baseline und führe
-   vor Änderungen `bootstrapper/verify-runtime.js check` dagegen aus. Verwende
-   die [dokumentierten Optionen](../bootstrapper/README.md#reviewed-replacement-host-initialization).
+   vor Änderungen `system-bootstrapper host-bootstrap verify-runtime check` dagegen aus. Verwende
+   die [dokumentierten Optionen](BOOTSTRAPPER.md#reviewed-replacement-host-initialization).
    Behalte Hashes der gespeicherten Konfiguration/Authentifizierung und exakte
    Image-Identitäten unverändert. Aktualisiere Paketindizes mit `sudo apt-get update`
    und prüfe anschließend `sudo apt-get -s --with-new-pkgs --no-remove upgrade`.
@@ -45,7 +45,7 @@ Führe jeden Durchlauf wie folgt aus; bewahre Belege außerhalb des Quellcode-Ch
 
    ```bash
    GITLAB_CONTAINER_ID="$(sudo docker inspect --format '{{.Id}}' system_gitlab_1)"
-   sudo docker exec system_bootstrapper_1 node /system/operations/dist/gitlab-preflight/entry.js "$GITLAB_CONTAINER_ID"
+   sudo docker exec system_bootstrapper_1 system-bootstrapper gitlab-preflight "$GITLAB_CONTAINER_ID"
    ```
 
    Ihr JSON muss die akzeptierte CE-Version, `runningJobs: 0` und
@@ -60,7 +60,7 @@ Führe jeden Durchlauf wie folgt aus; bewahre Belege außerhalb des Quellcode-Ch
    dieselben GitLab-Dienste/den Proxy wieder aufnehmen und verschieben; Runner
    und Controller bleiben unberührt. Stoppe erst nach diesem abschließenden
    Nachweis von null Jobs den Haupt-Runner-Pool über
-   `docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js runner-stop /system main`
+   `docker exec system_bootstrapper_1 system-bootstrapper lifecycle runner-stop /system main`
    und bewahre dabei die Registrierungen. Halte die ursprünglichen Neustartrichtlinien
    von Controller/GitLab privat fest und führe dann
    `docker update --restart=no system_bootstrapper_1 system_gitlab_1` aus, damit

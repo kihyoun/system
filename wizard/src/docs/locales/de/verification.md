@@ -7,8 +7,8 @@ Tests sind nach der geprüften Infrastrukturkomponente gruppiert. Native TypeScr
 Aus einem sauberen versionierten Checkout mit verfügbarem Node, Git, tar und Docker:
 
 ```sh
-node project-bootstrap/wizard-source/package.js
-node tests/prepare-context.js
+system-bootstrapper source-prepare
+system-bootstrapper ci prepare-context "$PWD"
 docker build -f tests/Dockerfile -t system-component-tests - < .test-context/context.tar
 docker run --rm --network none system-component-tests all
 docker run --rm --network none system-component-tests sync
@@ -16,7 +16,7 @@ docker run --rm --network none system-component-tests sync
 
 Binde weder Docker-Socket noch private Konfiguration, Host-Netzwerk oder Plattform-Volumes in dieses Kind ein. Bereite die festgelegte Node-Laufzeit und das Operations-Paket vor der Quellpaketierung vor; der erste Quickstart ist der einzige Shell-Einstieg vor Node. Der Kontext enthält nur erlaubte Blobs aus dem aktuellen versionierten Git-Baum einschließlich des regulären `wizard/`-Baums für `system-monorepo-v1`. Historische Gitlink-Quellen benötigen zusätzlich den validierten separaten Wizard-Snapshot und exakte rekursive Submodule (`git submodule update --init --recursive`). Er schließt Git-Metadaten, private/ignorierte/unversionierte Dateien und Arbeitskopieänderungen aus. Committe den beabsichtigten Code vor der Paketierung; kein Ersatzweg sendet den gesamten Checkout.
 
-Das Image nutzt per Digest festgelegtes Node 24.22.0/npm 11.19.1 auf Debian Bookworm/glibc, mit Python für unabhängige ZIP-/TOML-Fixture-Orakel und Shell-/nativen Werkzeugen für Prozess- und historische Formatprüfungen. Eine Ruby-Testlaufzeit wird nicht installiert. Es installiert die versionierte Sync-Lockdatei und führt `npm run build` aus, dessen Prebuild ESLint ohne automatische Korrektur prüft. Laufzeit- und Bibliotheksversionen werden beim Bau ausgegeben. Diese Fixture-Abhängigkeiten implementieren keine Plattformoperationen.
+Das Image nutzt per Digest festgelegtes Node 24.22.0/npm 11.19.1 auf Debian Bookworm/glibc, mit Python für unabhängige ZIP-/TOML-Fixture-Orakel und Shell-/nativen Werkzeugen für Prozess- und historische Formatprüfungen. Eine Ruby-Testlaufzeit wird nicht installiert. Es installiert die versionierte Root-Lockdatei und baut die gemeinsame NestJS-Anwendung. Die schnellen Prüfungen führen ESLint und Prettier ohne automatische Korrektur aus. Laufzeit- und Bibliotheksversionen werden beim Bau ausgegeben. Diese Fixture-Abhängigkeiten implementieren keine Plattformoperationen.
 
 Die Vorbereitung der Kandidaten-Images führt außerdem
 `tests/wizard/configuration-routing-export.js` mit dem tatsächlichen
@@ -78,7 +78,7 @@ den Controller der Public-Upgrade-Testumgebung nach manuellem Austausch und beim
 | `shared/` | Runner-/Kontextverträge, Bereinigung/Fehlerweitergabe, Lebenszyklus privater Daemons, Wiederherstellung nur aus Nutzdaten und lokale ACME-Testumgebungen |
 | `performance/resources/` | Offline-Verträge zur Ressourcenerfassung und ausdrückliche Messwerkzeuge |
 
-Kaltkopie-/Wiederherstellungsfehlerfälle sind in `operations/tests/storage-copy.test.cjs` zusammengefasst und laufen in der bestehenden Operations-Laufzeitprüfung. Sie verwenden echtes rsync, native find-/runit-Befehlsfixtures und Subprozess-Zeitlimits; Docker/GitLab bleiben kontrollierte Transporte.
+Kaltkopie-/Wiederherstellungsfehlerfälle sind in `tests/operations/storage-copy.test.cjs` zusammengefasst und laufen in der bestehenden Operations-Laufzeitprüfung. Sie verwenden echtes rsync, native find-/runit-Befehlsfixtures und Subprozess-Zeitlimits; Docker/GitLab bleiben kontrollierte Transporte.
 
 Das Manifest ist maßgeblich für exakte Prüfnamen, Voraussetzungen und Budgets.
 Tests verwenden temporäre Dateien, synthetische Git-Repositorys, nachgebildete Rails-/Docker-/API-
@@ -129,7 +129,7 @@ bedingt und die Production-Freigabe manuell.
 
 `check:documentation` verwendet den bestehenden vertrauenswürdigen `docker`-Runner-Pool der Plattform;
 weder ein separater Dokumentationsrunner noch eine Koordinatorregistrierung sind erforderlich. Sein
-versionierter Elternprozess `node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR"` nutzt die Docker-Befugnis dieses Runners,
+versionierter Elternprozess `node dist/modules/ci/entry.js documentation "$CI_PROJECT_DIR"` nutzt die Docker-Befugnis dieses Runners,
 um ein kurzlebiges, per Digest festgelegtes Node-Kind als Benutzer 1000 ohne Netzwerk,
 Host-Socket, Bind-Mounts, zusätzliche Fähigkeiten oder geerbte CI-Zugangsdaten zu starten. Dies
 isoliert die eigentliche Prüfung, nicht den vertrauenswürdigen Elternprozess: Beliebiger ungeprüfter Code
@@ -151,7 +151,7 @@ Tags und Ressourcengrenzen bleiben für vollständige Prüfungen unverändert.
 Bilde Auswahl- und Dokumentationsregressionen mit dem festgelegten Operations-YAML-Parser, Node und Git nach, ohne Docker oder zusätzliche Lint-Pakete:
 
 ```sh
-npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+npm ci --ignore-scripts --no-audit --no-fund
 node tests/gitlab/ci-selection.js
 node tests/gitlab/check-documentation.js
 ```
@@ -168,7 +168,7 @@ veraltete Artefakte führen vor der Docker-Ausführung zum Fehler.
 
 Acht Komponentenmatrix-Jobs laufen vor der Veröffentlichung. Jeder ist ein vertrauenswürdiger Elternprozess
 mit festgelegter Docker CLI, `services: []` und dem bestehenden Runner-Tag `docker`.
-Er ruft `node operations/dist/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"` auf, baut aus dem geprüften stdin-
+Er ruft `node dist/modules/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"` auf, baut aus dem geprüften stdin-
 Archiv und führt dann ein socketfreies, netzwerkdeaktiviertes Kind ohne geerbte CI-
 Zugangsdaten aus. Berichte verlassen es über `docker cp`, da der Checkout-Pfad eines Jobs
 auf dem Docker-Host nicht existieren muss.
@@ -180,11 +180,11 @@ stellen keinen zusätzlichen Runner bereit.
 
 `prepare:wizard-source` prüft vor der Paketierung auch die gebündelten Docs gegen die vollständigen öffentlichen
 Anleitungsquellen. Bearbeiten Sie zur Aktualisierung des Readers die Originalanleitungen,
-bauen Sie das festgelegte Operations-Paket, führen Sie `node docs/export-wizard-docs.js` aus und committen Sie den erzeugten Wizard-Katalog
-im selben System-Commit. `node docs/check-wizard-docs.js` prüft Quellabweichung und
+bauen Sie das festgelegte Operations-Paket, führen Sie `system-bootstrapper docs export` aus und committen Sie den erzeugten Wizard-Katalog
+im selben System-Commit. `system-bootstrapper docs check` prüft Quellabweichung und
 Volltexterhalt; `node tests/wizard/docs-source.js` prüft auch den gemeinsamen nativen
 Exporter sowie Kapitel-, Link- und Offline-Bildabdeckung.
-`node docs/export-wizard-docs.js --check` vergleicht den vollständig erzeugten Katalog.
+`system-bootstrapper docs export --check` vergleicht den vollständig erzeugten Katalog.
 
 Der erforderliche Job `test:wizard-browser` verarbeitet einen separat prüfsummengesicherten Kontext
 aus demselben versionierten Wizard-Baum; historische Gitlink-Eingaben behalten ihre getrennte Identität. Sein vertrauenswürdiger Elternprozess baut die Browser-
@@ -207,7 +207,7 @@ sobald der Daemon erreichbar ist. Ersetzen Sie dies niemals durch globale Docker
 
 ## Schranken für Gesamtsystem und Plattform
 
-`test:candidate-image` baut `system/Dockerfile` aus versionierten Laufzeit-Blobs
+`test:candidate-image` baut `containers/controller/Dockerfile` aus versionierten Laufzeit-Blobs
 und dem validierten Wizard-Snapshot unter Verwendung von `.candidate-context/`. Beide Kontext-
 paketierer unterstützen GNU- und BusyBox-tar. Das vollständige Image installiert festgelegte Sync-
 Abhängigkeiten und kompiliert Sync. Ein socketfreies, netzwerkdeaktiviertes Kind prüft
@@ -218,7 +218,7 @@ Bilden Sie Paketierung und Bau nach Vorbereitung des Wizard-Snapshots nach:
 
 ```sh
 node tests/prepare-candidate.js
-docker build -f system/Dockerfile -t system-candidate:local - < .candidate-context/context.tar
+docker build -f containers/controller/Dockerfile -t system-candidate:local - < .candidate-context/context.tar
 ```
 
 `test:platform-candidate` führt dann einen separat autorisierten privilegierten verwerfbaren
@@ -255,7 +255,7 @@ Der Scan analysiert die kanonischen eigenen Quellen statt dieser drei generierte
 Kopien derselben portablen Laufzeit:
 
 ```text
-project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs
+templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs
 wizard/.system-bootstrapper/build-v2/runtime/project-ci.cjs
 wizard/.gitlab/runtime/project-ci.cjs
 ```
@@ -285,7 +285,7 @@ und der Job schließt kein Abonnement ab. Rechenleistung und Speicher des Runner
 liegen weiterhin in der Verantwortung des Betreibers.
 
 `node tests/prepare-codeql.js` paketiert nach der normalen Wizard-Quellvorbereitung
-die versionierten Eingaben. `node operations/dist/ci/entry.js codeql-parent "$CI_PROJECT_DIR"` führt diesen geprüften Kontext
+die versionierten Eingaben. `node dist/modules/ci/entry.js codeql-parent "$CI_PROJECT_DIR"` führt diesen geprüften Kontext
 auf dem ausgewählten vertrauenswürdigen Docker-Runner mit dessen üblichen
 CI-Identitätsvariablen aus. Der Kindcontainer ist auf 6 GiB RAM und zwei CPUs
 begrenzt; Image-Vorbereitung und Scan haben jeweils ein Zeitlimit von 15 Minuten.
@@ -313,12 +313,12 @@ GET mit Authentifizierungsfehler einmal; verändernde POSTs werden niemals blind
 `wizard/acceptance-driver.js` prüft diese Polling-/Erneuerungs-/Fristverträge
 mit Offline-Transporten. Build-Abnahme allein belegt weder MR-Fehler,
 Review/Beta noch Production-Freigabe oder Rollback. Verwenden Sie die entsprechenden
-[Umgebungs-](../project-bootstrap/wizard-environments/README.md) und
-[Production-Verfahren](../project-bootstrap/wizard-production/README.md) für
+[Umgebungs-](../templates/project-bootstrap/wizard-environments/README.md) und
+[Production-Verfahren](../templates/project-bootstrap/wizard-production/README.md) für
 diese ausdrücklichen Vorgänge.
 
-Host-Release-Regressionsprüfungen rufen kompilierte gemeinsame Nest-Dienste über `tests/bootstrapper/paired-native-fixture.cjs` und bestehende `operations/tests/host-*.test.cjs`-Suiten auf. Docker/Git und Bereitschaftsports sind kontrollierte Fixtures; echtes Dateisystem, Git, Prozesseigentümerschaft und Advisory-Sperren werden weiterhin lokal geprüft. Fehlermatrizen decken Quell-/Image-Autorität, Ablehnungen vor Änderungen, unterbrochene Eigentümerschaft, Konfigurationsabweichungen, Kalt-Checkpoints und Wiederherstellungsfehler ab, ohne für jede Ablehnung eine weitere Plattform aufzubauen.
+Host-Release-Regressionsprüfungen rufen kompilierte gemeinsame Nest-Dienste über `tests/bootstrapper/paired-native-fixture.cjs` und bestehende `tests/operations/host-*.test.cjs`-Suiten auf. Docker/Git und Bereitschaftsports sind kontrollierte Fixtures; echtes Dateisystem, Git, Prozesseigentümerschaft und Advisory-Sperren werden weiterhin lokal geprüft. Fehlermatrizen decken Quell-/Image-Autorität, Ablehnungen vor Änderungen, unterbrochene Eigentümerschaft, Konfigurationsabweichungen, Kalt-Checkpoints und Wiederherstellungsfehler ab, ohne für jede Ablehnung eine weitere Plattform aufzubauen.
 
-`tests/bootstrapper/public-controller-update.cjs` und `public-upgrade.cjs` prüfen Paar-Update, Plan/Apply/Wiederherstellung und API-unabhängigen Rollback über die gemeinsamen Dienste. Die vollständige Matrix für ruhende Controller liegt in `operations/tests/host-runtime-inspection.test.cjs`. Öffentliche Upgrade-Fixtures wählen die passende Release-Checkout-Version einschließlich historischer Veröffentlichungen; sie leiten Datenbankmigrationsnachweise niemals aus einem neueren Checkout ab.
+`tests/bootstrapper/public-controller-update.cjs` und `public-upgrade.cjs` prüfen Paar-Update, Plan/Apply/Wiederherstellung und API-unabhängigen Rollback über die gemeinsamen Dienste. Die vollständige Matrix für ruhende Controller liegt in `tests/operations/host-runtime-inspection.test.cjs`. Öffentliche Upgrade-Fixtures wählen die passende Release-Checkout-Version einschließlich historischer Veröffentlichungen; sie leiten Datenbankmigrationsnachweise niemals aus einem neueren Checkout ab.
 
 Das Szenario zum Erhalt der Paar-Pins setzt auch sein exakt beibehaltenes Paar zurück und baut daher kein identisches erfolgreiches Update in einem separaten Rollback-Kurztest. Eine erfolgreiche Reparatur bei gestopptem Controller prüft, dass Routen, authentifiziertes Sync und Runner-Kontakte nach dem Start ausgeführt werden. Ein Bereitschaftsfehler nach dem Start prüft die erhaltene Lease-/Journalgrenze; direkte native Laufzeittests prüfen falsche Wizard-Routen und veraltete Runner-Kontakte, ohne für jeden entfernten Bereitschaftsport eine ganze Reparatur zu wiederholen.

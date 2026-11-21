@@ -34,8 +34,8 @@ projectId, pipelineId, candidateJobId, wizardSourceTree, wizardImageId는 정확
 다른 파이프라인의 값은 이 예약에 권한을 부여할 수 없습니다.
 
 ```sh
-node project-bootstrap/system-beta/bind.js plan /state/beta-input.json
-node project-bootstrap/system-beta/bind.js apply /state/beta-input.json PLAN_HASH
+system-bootstrapper system-beta bind plan /state/beta-input.json
+system-bootstrapper system-beta bind apply /state/beta-input.json PLAN_HASH
 ```
 
 정식 컨트롤러가 실행 중인 Docker 호스트의 검토된 체크아웃에서 Node 24와 해당
@@ -72,8 +72,8 @@ Production이나 다른 프로젝트의 리소스를 삭제하지 않습니다. 
 퇴역 리소스나 아직 정리하지 않은 중지 라우트가 있으면 거부합니다.
 
 ```sh
-node project-bootstrap/system-review/run.js stop
-node project-bootstrap/wizard-environments/cleanup-stopped.js OPERATION
+system-bootstrapper system-review stop
+system-bootstrapper project-environments-cleanup OPERATION
 ```
 
 Stop 실행기에는 원래 작업 식별자와 보관된 도우미 이미지가 필요합니다. 원래

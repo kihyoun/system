@@ -1,8 +1,8 @@
 const assert = require('assert');
 const crypto = require('crypto');
-const {prepareApplication} = require('../../sync/dist/ApplicationTemplates');
-const {validateProject} = require('../../sync/dist/ProjectBootstrap');
-const logo = require('../../sync/dist/Helper').default.textLogo;
+const {prepareApplication} = require('../../dist/api/projects/application-templates');
+const {validateProject} = require('../../dist/api/projects/project-workflow');
+const logo = require('../../dist/common/configuration-signature').default.textLogo;
 const settings = {
   PROJECT_NAME: 'templatecheck', USE_PROD_HOST: 'true', PROD_HOST: 'app.localhost',
   PROD_DOMAIN_MODE: '0', PROD_DEPLOY_MODE: '0', USE_BETA_HOST: 'false',
@@ -19,7 +19,7 @@ for (const template of ['angular', 'react', 'web']) {
   assert(files.get('Dockerfile').includes('project-ci.cjs refresh-ca'));
   assert(generated.ci.includes('node:24.22.0-alpine3.24@sha256:'));
   assert(generated.ci.includes('node .system-bootstrapper/runtime/project-ci.cjs prepare-runtime .system-bootstrapper'));
-  assert.equal(require('crypto').createHash('sha256').update(files.get('.system-bootstrapper/bootstrapper/ca/cacert-2026-10-20.crt')).digest('hex'), require('../../gitlab/security-release.json').jobCaBundleSha256);
+  assert.equal(require('crypto').createHash('sha256').update(files.get('.system-bootstrapper/bootstrapper/ca/cacert-2026-10-20.crt')).digest('hex'), require('../../config/gitlab/security-release.json').jobCaBundleSha256);
   assert(files.has('GETTING_STARTED.md'));
   assert(!generated.files.some(file => file.file_path.includes('node_modules') || file.file_path.includes('..')));
   assert(generated.files.every(file => file.action === 'create' && !file.content.includes('__PROJECT_KEY__')));

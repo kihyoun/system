@@ -34,8 +34,8 @@ ID는 예시입니다. 실제로 검토한 파이프라인과 이미지를 사�
 정확한 `planHash`를 적용 명령에 복사하세요.
 
 ```sh
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js plan /state/wizard-production-proof.json
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js apply /state/wizard-production-proof.json PLAN_HASH
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production plan /state/wizard-production-proof.json
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production apply /state/wizard-production-proof.json PLAN_HASH
 ```
 
 적용은 임시 서버 측 API 인증 정보로 정확한 비공개 GitLab 프로젝트, 성공한 파이프라인,
@@ -104,8 +104,8 @@ Sync 인증 없이 `/privacy-instance.json`을 제공합니다.
 ## 의도적인 롤백
 
 ```sh
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js rollback-plan
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js rollback PLAN_HASH
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production rollback-plan
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production rollback PLAN_HASH
 ```
 
 롤백하려면 완료된 체크포인트가 현재 이미지, 설정 및 경로와 여전히 일치해야 합니다.
@@ -123,8 +123,8 @@ docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-producti
 그런 다음 복구를 미리 보고 확인하세요.
 
 ```sh
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js recover-plan
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js recover PLAN_HASH
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production recover-plan
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production recover PLAN_HASH
 ```
 
 복구는 원래 프로세스가 아직 실행 중이거나 잠금 소유자가 바뀐 경우 거부됩니다.

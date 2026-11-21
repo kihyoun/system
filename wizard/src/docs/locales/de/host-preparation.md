@@ -9,8 +9,8 @@ Vorhandene Installationen, DNS/HTTPS und Wiederherstellung nutzen die folgenden 
 
 Verwenden Sie für eine Endbenutzerinstallation ein geprüftes **vollständiges Controller**-Image und
 das passende Wizard-Web-Image aus öffentlichen Docker-Hub-Repositorys. Der Controller
-wird aus `system/Dockerfile` gebaut und enthält Sync und die Lebenszykluswerkzeuge. Die
-kleinere Laufzeitbasis aus `bootstrapper/Dockerfile` ist kein startfähiger
+wird aus `containers/controller/Dockerfile` gebaut und enthält Sync und die Lebenszykluswerkzeuge. Die
+kleinere Laufzeitbasis aus `containers/bootstrapper/Dockerfile` ist kein startfähiger
 Controller und darf nicht an dessen Stelle verwendet werden.
 
 Wählen Sie die exakte System-Quellcodeversion eines Releases und beide unveränderlichen Image-
@@ -58,7 +58,7 @@ git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
 # After preparing the runtime below:
-sudo /opt/system-bootstrapper-runtime/bin/node bootstrapper/install.js
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 Das Installationsprogramm stellt einen `docker-compose`-Wrapper für die Orchestrierungsskripte bereit.
@@ -68,8 +68,8 @@ Plattformabnahme sind separate Schritte.
 
 ## Native Host-Laufzeit vorbereiten
 
-Host-`start`, `stop`, `bootstrapper/persistence.js`, der Release-Installer
-und Ersatz-/Wiederherstellungswerkzeuge benötigen Node und kompilierte `operations`
+Host-`start`, `stop`, `system-bootstrapper persistence --checkout "$PWD"`, der Release-Installer
+und Ersatz-/Wiederherstellungswerkzeuge benötigen Node und kompilierte NestJS-Suite im Repository-Root
 **vor** ihrem ersten Aufruf. Docker-Installation allein oder `--install-host` am
 Initialisierer bereiten diese Laufzeit nicht vor. Wählen Sie einen der folgenden
 Wege und schließen Sie ihn vor dem Startabschnitt oder einem Recovery-Verfahren ab.
@@ -90,13 +90,13 @@ Danach vor jedem Host-Lebenszyklus-, Persistenz- oder Installationseinstieg ausf
 SYSTEM_RELEASE_TAG='vMAJOR.MINOR.PATCH' # Exact reviewed public release
 sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
 # The checkout must match the source revision in that release's verified metadata.
-test ! -e operations/dist && test ! -e operations/node_modules && test ! -e operations/assets && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets operations/assets
+test ! -e dist && test ! -e node_modules && test ! -e assets && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets assets
 ```
 
-Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Bewahre dieses Verzeichnis sowie `operations/dist` und `operations/node_modules` und `operations/assets` des Checkouts für Offline-Recovery auf. Kompatibilitätswerkzeuge wählen die gespeicherte absolute Node-Datei direkt; sie laden kein Shell-Profil, rufen nvm nicht auf und kontaktieren npm nicht während der Wiederherstellung. Verwende `/opt/system-bootstrapper-runtime/bin/node` für ausdrückliche native Aufrufe.
+Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Bewahre dieses Verzeichnis sowie `dist` und `node_modules` und `assets` des Checkouts für Offline-Recovery auf. Kompatibilitätswerkzeuge wählen die gespeicherte absolute Node-Datei direkt; sie laden kein Shell-Profil, rufen nvm nicht auf und kontaktieren npm nicht während der Wiederherstellung. Verwende `system-bootstrapper` für normale Hostbefehle.
 
 ### Quellcodeentwicklung ohne vorgebauten Controller-Laufzeitinhalt
 
@@ -122,10 +122,11 @@ nvm use 24.22.0
 printf '%s  %s\n' cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008 "$NVM_DIR/.cache/bin/node-v24.22.0-linux-x64/node-v24.22.0-linux-x64.tar.xz" | sha256sum --check
 test "$(node --version)" = v24.22.0
 test "$(npm --version)" = 11.19.1
-npm ci --prefix operations --ignore-scripts
-npm run build --prefix operations
+npm ci --ignore-scripts
+npm run build
+npm link --ignore-scripts
 SYSTEM_NODE_BIN="$(dirname "$(command -v node)")"
-test -f operations/dist/host-lifecycle/entry.js
+test -f dist/modules/host-lifecycle/entry.js
 ```
 
 Wählen Sie den Speicher für Arbeitsdaten wie im Startabschnitt beschrieben. Verwenden Sie
@@ -133,11 +134,11 @@ danach diesen Quellstart anstelle des Installers für öffentliche Images:
 
 ```bash
 sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  "$SYSTEM_NODE_BIN/node" operations/dist/cli.js start --checkout "$PWD"
+  system-bootstrapper start --checkout "$PWD"
 ```
 
 Behalten Sie `SYSTEM_NODE_BIN` für weitere `sudo env "PATH=..."`-Aufrufe von
-`stop`, `bootstrapper/persistence.js` und nativen Hostwerkzeugen: sudo verwirft
+`stop`, `system-bootstrapper persistence --checkout "$PWD"` und nativen Hostwerkzeugen: sudo verwirft
 normalerweise den interaktiven nvm-PATH. Alternativ nutzen Sie die beim Weg über
 akzeptierte Images vorbereitete eigene Laufzeit. Beim Quellstart werden weiterhin
 Controller-/Wizard-Images gebaut, sofern ein vorhandenes akzeptiertes Release-Profil
@@ -145,9 +146,9 @@ dies nicht abschaltet. Ein Image aus einem Recovery-Nachweis darf dadurch nicht
 neu gebaut und ersetzt werden.
 
 Behalten Sie für Offline-Recovery die Node-Installation und den passenden Checkout
-mit `operations/dist` und `operations/node_modules` und `operations/assets`, bevor der ursprüngliche Host
+mit `dist` und `node_modules` und `assets`, bevor der ursprüngliche Host
 verloren geht. Stellen Sie diese geprüften Werkzeuge wieder her, bevor
-`initialize.js` oder `recover-volume.js` den Speicher prüft. Fehlen sie, bereiten
+`system-bootstrapper host-bootstrap initialize` oder `system-bootstrapper host-bootstrap recover-volume` den Speicher prüft. Fehlen sie, bereiten
 Sie kompatible geprüfte Werkzeuge getrennt vor der Wartung vor. Weder die gestoppte
 Plattform noch npm-Verfügbarkeit ist eine Recovery-Voraussetzung. Erhalten Sie die
 aufgezeichneten Dienst-Images und Quellidentitäten.
@@ -202,7 +203,7 @@ GitLabs unterstützten Upgrade-Pfad einzuhalten.
 Ergänzen Sie für den lokalen Integrationsaufbau diese optionalen Exporte in der vollständigen
 privaten Hauptkonfiguration unter `PERSISTENT_DIR/configuration/.docker.env`, bevor
 Sie GitLab starten. Erstellen Sie keine unvollständige Hauptkonfiguration, die nur
-diese Optionen enthält. Innerhalb des Controllers ist `system/.docker.env` ein Kompatibilitäts-
+diese Optionen enthält. Innerhalb des Controllers ist `config/system/.docker.env` ein Kompatibilitäts-
 link auf die gespeicherte Konfiguration; die persistente Kopie hat Vorrang vor
 in einem Image eingebetteter Konfiguration:
 
@@ -215,7 +216,7 @@ export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 
 Verwenden Sie `gitlab.localhost`, `registry.localhost`, `sync.localhost` und `localhost`
 als GitLab-, Registry-, Sync- bzw. Wizard-Host mit Domain-Modus 0
-(HTTP) und passenden externen URLs. Führen Sie `sudo node bootstrapper/prepare-local.js` aus,
+(HTTP) und passenden externen URLs. Führen Sie `sudo system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"` aus,
 um die lokalen Hostnamen und die Docker-HTTP-Ausnahme für
 `registry.localhost:5050` zu ergänzen. Dieser Helfer wird für lokale Tests ausdrücklich aktiviert; Production
 sollte ihre konfigurierten Domains und Zertifikate verwenden. Er erhält andere Docker-
@@ -259,7 +260,7 @@ PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```
@@ -273,7 +274,7 @@ Ersatzdaten anzulegen. Ein Moduswechsel migriert niemals eine bestehende Install
 Siehe [Arbeitsdatenspeicher und Backup-Medien](docs/PERSISTENT_VOLUME.md).
 
 Installieren Sie auf HTTPS-Hosts Certbot separat und führen Sie dann
-`sudo node bootstrapper/install-volume-host.js` für persistenten TLS-Zustand und
+`sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` für persistenten TLS-Zustand und
 Erneuerungsintegration aus. Der lokale Modus benötigt keine zusätzliche Mount-Abhängigkeit. Weder Docker
 noch normaler Dienststart oder Zertifikatserneuerung hängen von einem externen Seed-Ziel ab.
 
@@ -282,7 +283,7 @@ gegen die Identitäten der geladenen öffentlichen Images. Es lehnt eine bestehe
 konfiguration oder GitLab-Daten ab, statt eine Neuinstallation als Upgrade zu behandeln.
 Es verzeichnet nur die beiden Release-Image-Selektoren in der privaten Datei
 `configuration/.release-images.env` und ruft den nativen Start mit deaktivierten
-Builds auf. Normale spätere Aufrufe von `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` verwenden dieses Profil erneut;
+Builds auf. Normale spätere Aufrufe von `sudo system-bootstrapper start --checkout "$PWD"` verwenden dieses Profil erneut;
 ausdrückliche Selektoren in der gespeicherten Hauptkonfiguration haben weiterhin Vorrang. `--install-host`
 kann die Docker-Installation ausführen, wenn sie noch nicht erfolgt ist. Dieses
 Installationsprogramm stellt keinen Seed wieder her, importiert keine Konfigurations-ZIP und stellt keine Zertifikate aus.
@@ -337,7 +338,7 @@ Der Benutzername ist `root`. Für eine neue Datenbank erzeugt der Bootstrapper e
 Anfangspasswort oder akzeptiert `GITLAB_INITIAL_ROOT_PASSWORD` mit mindestens 12 Zeichen
 aus der vollständigen privaten Hauptkonfiguration unter
 `PERSISTENT_DIR/configuration/.docker.env`. Der Controller liest dies über
-seinen Kompatibilitätslink `system/.docker.env`; die persistent gespeicherte Konfiguration
+seinen Kompatibilitätslink `config/system/.docker.env`; die persistent gespeicherte Konfiguration
 hat Vorrang vor in einem Image eingebetteter Konfiguration. Das versionierte Beispiel
 enthält bewusst kein gemeinsames Standardpasswort.
 
@@ -385,7 +386,7 @@ Sperren, Fehlerbehandlung und Wiederherstellung auf leerem Speicher.
 Die Shell-/rsync-Regressionsprüfung verwendet temporäre Daten und einen Docker-Testbefehl:
 
 ```bash
-node --test operations/tests/storage-copy.test.cjs
+node --test tests/operations/storage-copy.test.cjs
 ```
 
 Führen Sie die [vollständige verwerfbare Abnahmesuite](tests/e2e/README.md) aus, um echtes
@@ -397,5 +398,5 @@ Verwenden Sie die vorbereitete Host-Laufzeit; geben Sie beim Quellentwicklungswe
 den oben gezeigten ausdrücklichen Node-PATH an.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js stop --checkout "$PWD"
+sudo system-bootstrapper stop --checkout "$PWD"
 ```

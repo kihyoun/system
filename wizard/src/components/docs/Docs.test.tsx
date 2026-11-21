@@ -13,6 +13,7 @@ beforeEach(() => {
     'ResizeObserver',
     class {
       observe() {}
+
       disconnect() {}
     },
   );

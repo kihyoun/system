@@ -57,7 +57,7 @@ Wizard는 선택한 호스트, 프로토콜 및 인증서 경로를 저장하지
 운영 환경, Beta 또는 Review 호스트를 추가하려면 반복하세요. 와일드카드 HTTPS에는
 운영자가 구성한 DNS-01 인증서가 필요합니다. HTTP-01로는 와일드카드 인증서를
 발급할 수 없습니다. 관리형 시스템 Wizard 환경에는 별도의
-[활성화 절차](../project-bootstrap/wizard-environments/README.md)가 있습니다.
+[활성화 절차](../templates/project-bootstrap/wizard-environments/README.md)가 있습니다.
 
 운영자는 다음 입력값과 사전 조건을 준비하세요.
 
@@ -229,10 +229,10 @@ sudo env APP_HOST="$APP_HOST" bash -c '
 
 등록만으로는 비활성 골격이 설치됩니다. 관리형 프로젝트 동작을 사용하여
 [고정 소스를 초기화](WIZARD_SOURCE.md)하고 [후보를 빌드 및 검증](WIZARD_BUILD.md)하며
-[Review/Beta 환경](../project-bootstrap/wizard-environments/README.md)을 구성하세요.
+[Review/Beta 환경](../templates/project-bootstrap/wizard-environments/README.md)을 구성하세요.
 선택적 환경은 처음에는 비활성화되어 있으며 호스트/인증서를 명시적으로 구성해야 합니다.
 배포/중지 작업은 수동입니다. 후보가 운영 환경 인터페이스를 교체하려면 별도의 보호된
-[운영자 승격 절차](../project-bootstrap/wizard-production/README.md)를 거쳐야 합니다.
+[운영자 승격 절차](../templates/project-bootstrap/wizard-production/README.md)를 거쳐야 합니다.
 
 보내기/가져오기와 열기/백업은 구성을 관리하며, 영구 서비스 데이터와 인증서를 처리하는
 Harvest/Seed와 독립적입니다. 실제 구성 백업은 비공개로 보관하세요. 생성된 소스 저장소에
@@ -240,7 +240,7 @@ Harvest/Seed와 독립적입니다. 실제 구성 백업은 비공개로 보관�
 
 ## 검증
 
-`cd sync && npm run build`로 Sync를 빌드하세요. 격리된 API 회귀 검사
+저장소 루트에서 `npm run build`로 Sync를 빌드하세요. 격리된 API 회귀 검사
 `node tests/gitlab/project-bootstrap.js`는 포트 8071을 사용하므로 폐기 가능한
 컨테이너/네트워크 네임스페이스에서 실행해야 합니다. 검증, 인증, 네임스페이스 충돌,
 경합하는 저장, 복구, 폴링, 구성 쓰기 차단 및 가져오기 왕복을 검사합니다.

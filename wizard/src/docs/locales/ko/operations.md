@@ -21,8 +21,8 @@
    유닛을 기록하세요. 예상하지 못한 식별 정보, 저장소, 패키지 잠금, `dpkg --audit` 문제나
    완료되지 않은 플랫폼 작업 상태가 있으면 연기하세요.
 2. 원격의 승인된 체크아웃에서 새 비공개 기준선을 캡처하고, 변경 전에 그 기준선에 대해
-   `bootstrapper/verify-runtime.js check`를 실행하세요.
-   [문서화된 옵션](../bootstrapper/README.md#reviewed-replacement-host-initialization)을 사용하세요.
+   `system-bootstrapper host-bootstrap verify-runtime check`를 실행하세요.
+   [문서화된 옵션](BOOTSTRAPPER.md#reviewed-replacement-host-initialization)을 사용하세요.
    저장된 구성/인증 해시와 정확한 이미지 식별 정보를 그대로 유지하세요.
    `sudo apt-get update`로 인덱스를 갱신한 뒤
    `sudo apt-get -s --with-new-pkgs --no-remove upgrade`를 검사하세요. 패키지 보류와
@@ -36,7 +36,7 @@
 
    ```bash
    GITLAB_CONTAINER_ID="$(sudo docker inspect --format '{{.Id}}' system_gitlab_1)"
-   sudo docker exec system_bootstrapper_1 node /system/operations/dist/gitlab-preflight/entry.js "$GITLAB_CONTAINER_ID"
+   sudo docker exec system_bootstrapper_1 system-bootstrapper gitlab-preflight "$GITLAB_CONTAINER_ID"
    ```
 
    JSON에 승인된 CE 버전, `runningJobs: 0`, `unfinishedBackgroundMigrations: 0`이
@@ -47,7 +47,7 @@
    `puma`, `sidekiq` 각각에 실행하세요. 중지되었는지 확인한 뒤 데이터베이스를 중지하기 전에
    사전 검사를 반복하세요. 경합으로 작업이 시작되었다면 같은 GitLab 서비스/프록시를 재개하고
    Runner/컨트롤러는 그대로 둔 채 연기하세요. 이 최종 작업 수 0 증거를 확보한 뒤에만
-   `docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js runner-stop /system main`으로
+   `docker exec system_bootstrapper_1 system-bootstrapper lifecycle runner-stop /system main`으로
    기본 Runner 풀을 중지하고 등록은 보존하세요. 원래 컨트롤러/GitLab 다시 시작 정책을
    비공개로 기록한 다음 `docker update --restart=no system_bootstrapper_1 system_gitlab_1`을
    실행해 패키지에 의해 Docker가 다시 시작되어도 이 쓰기 주체들이 살아나지 않도록 하세요.

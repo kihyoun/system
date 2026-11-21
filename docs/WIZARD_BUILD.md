@@ -3,8 +3,8 @@
 Managed CI activation builds and verifies a candidate after
 [source initialization](WIZARD_SOURCE.md). Build activation preserves the running
 Wizard. Review/Beta use separate
-[manual environment jobs](../project-bootstrap/wizard-environments/README.md);
-Production uses the guarded [operator promotion command](../project-bootstrap/wizard-production/README.md).
+[manual environment jobs](../templates/project-bootstrap/wizard-environments/README.md);
+Production uses the guarded [operator promotion command](../templates/project-bootstrap/wizard-production/README.md).
 
 ## Preview and activate
 
@@ -126,14 +126,14 @@ retain their historical **Getting Started** / **Open Wizard** checks.
 For an existing managed import, use the guarded build/environment-only upgrade
 with `"buildProfile": "node24-vite8-quickstart-v5"` alongside the matching source.
 An adopted source-primary project instead uses its
-[native source merge and binding refresh](../project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe).
+[native source merge and binding refresh](../templates/project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe).
 Every earlier profile retains its exact historical hash. The equivalent current
 legacy profile is `legacy-ca-v4`.
 
 Reserved historical recipes remain verifiable by their exact hash, including
 legacy Node 13/CRA/Jest recipes. Historical compatibility does not make that
 obsolete toolchain appropriate for a new project. Upgrading an imported
-project requires the guarded [source/toolchain migration](../project-bootstrap/wizard-upgrade/README.md);
+project requires the guarded [source/toolchain migration](../templates/project-bootstrap/wizard-upgrade/README.md);
 changing a controller image does not rewrite an existing reservation. A
 build/environment-only upgrade is available when source is already modern and
 must retain local development.

@@ -72,8 +72,8 @@ TLS 원본은 설정된 자체 GitLab 호스트와 일치해야 합니다.
 인증 정보와 설정 내용은 출력하지 않습니다. 사용한 뒤 운영자 인증 정보를 취소하세요.
 
 ```sh
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-source-primary/run.js plan /state/adoption-input.json /state/adoption-credential.json
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-source-primary/run.js apply /state/adoption-input.json /state/adoption-credential.json PLAN_HASH
+docker exec system_bootstrapper_1 system-bootstrapper wizard-source-primary plan /state/adoption-input.json /state/adoption-credential.json
+docker exec system_bootstrapper_1 system-bootstrapper wizard-source-primary apply /state/adoption-input.json /state/adoption-credential.json PLAN_HASH
 ```
 
 정확한 계획 해시, 이전/새 프로젝트 ID, 이전 운영 이미지,
@@ -160,8 +160,8 @@ Review/Beta는 중지하고 정리해야 합니다.
 컨트롤러를 시작하거나 Docker 소켓을 마운트할 필요는 없습니다.
 
 ```sh
-docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/project-bootstrap/wizard-source-primary/run.js plan /state/adoption-input.json /state/adoption-credential.json
-docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/project-bootstrap/wizard-source-primary/run.js apply /state/adoption-input.json /state/adoption-credential.json PLAN_HASH
+docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/templates/project-bootstrap/wizard-source-primary/run.js plan /state/adoption-input.json /state/adoption-credential.json
+docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/templates/project-bootstrap/wizard-source-primary/run.js apply /state/adoption-input.json /state/adoption-credential.json PLAN_HASH
 ```
 
 설정 마운트와 이미지 ID를 독립적으로 검증한 운영자 입력값으로 바꾸세요.

@@ -96,15 +96,15 @@ sind Beobachtungen, keine Garantie für Installationszeiten.
    Fehlern, die innerhalb des Versuchs behoben werden. Erfassen Sie UTC
    und verstrichene Zeit jedes Meilensteins privat; setzen Sie die Uhr nach einer fehlgeschlagenen Prüfung nicht zurück.
 3. Folgen Sie bei einer Neuinitialisierung der [öffentlichen HTTPS-Anleitung](#public-server-own-domain-and-https)
-   mit `bootstrapper/install.js`, `system-bootstrapper install` und
-   `bootstrapper/install-volume-host.js` aus dem geprüften Release-Checkout.
+   mit `system-bootstrapper host-bootstrap install-host --checkout "$PWD"`, `system-bootstrapper install` und
+   `system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` aus dem geprüften Release-Checkout.
    Verwenden Sie die unveränderlichen Controller- und passenden Wizard-Image-Auswahlen des Releases.
    Konfigurieren Sie über Wizard-Abrufen, Sichern und Übertragen; stellen Sie vier Manager ein, wenn Sie
    die Anzahl dieses Durchlaufs nachbilden. Schließen Sie die erste Zertifikatsausstellung und die
    dokumentierte Webroot-Erneuerungs-/Deploy-Hook-Prüfung mit `system-certbot` ab.
 4. Folgen Sie zur Wiederherstellung der [externen Seed-Wiederherstellung](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation),
    einschließlich nativer Speichervorbereitung und
-   `bootstrapper/seed-operation.js restore --check-only` vor der tatsächlichen
+   `system-bootstrapper restore --check-only` vor der tatsächlichen
    Wiederherstellung mit passendem Konfigurationsbackup. Lassen Sie GitLab gestoppt, bis
    die Wiederherstellungsprüfung endet. Hängen Sie nach Abschluss des Helfers das
    Backup-Medium vor dem Start aus, um die Speichertrennung dieses Durchlaufs nachzubilden.
@@ -119,7 +119,7 @@ sind Beobachtungen, keine Garantie für Installationszeiten.
    Registry-Inhalt und die erwarteten gespeicherten Einstellungen. Legen Sie zusätzliche
    Prüfungen verwalteter Images oder Anwendungen fest und beziehen Sie deren Wiederherstellung sowie die Bereinigung temporärer
    Zugangsdaten in Ihre Bereitschaftsgrenze ein. Bei Abläufen mit der
-   [nativen Laufzeitprüfung](../bootstrapper/README.md#reviewed-replacement-host-initialization)
+   [nativen Laufzeitprüfung](BOOTSTRAPPER.md#reviewed-replacement-host-initialization)
    übergeben Sie deren private API-Token-Datei zur Prüfung kürzlichen Manager-Kontakts und
    `--redirect-from`, wenn ein kanonischer Wizard-Alias erforderlich ist. Eine übersprungene Prüfung
    muss als übersprungen gekennzeichnet bleiben.

@@ -30,7 +30,7 @@ try {
   const malicious = {...old, 'recovery.json': JSON.stringify({savedImages: {controller: {reference: 'attacker/latest'}}, seed: {verified: true}}),
     'RECOVERY.md': 'descriptive only'};
   fs.copyFileSync(archive('push', malicious), path.join(project, 'bootstrapper.zip'));
-  const pushed = spawnSync(process.execPath, [path.resolve(__dirname,'../../operations/dist/configuration/entry.js'),'push',project,state,path.join(project,'bootstrapper.zip')], {cwd: system, env: {...process.env, SYSTEM_CONFIG_DIR: state}, encoding: 'utf8'});
+  const pushed = spawnSync(process.execPath, [path.resolve(__dirname,'../../dist/modules/configuration/entry.js'),'push',project,state,path.join(project,'bootstrapper.zip')], {cwd: system, env: {...process.env, SYSTEM_CONFIG_DIR: state}, encoding: 'utf8'});
   assert.equal(pushed.status, 0, pushed.stderr);
   assert.equal(fs.readFileSync(path.join(state, '.docker.env'), 'utf8'), old['.docker.env']);
   assert.equal(fs.existsSync(path.join(state, 'recovery.json')), false);

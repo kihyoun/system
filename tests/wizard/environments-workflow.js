@@ -7,15 +7,16 @@ const source = path.resolve(__dirname, '../..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-environments-'));
 fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
+process.env.SYSTEM_CONFIG_DIR = path.join(root, 'system');
 process.chdir(path.join(root, 'sync'));
-const bootstrap = require(path.join(source, 'sync/dist/ProjectBootstrap'));
-const {wizardConfiguration, wizardCi, ensureDefaultWizard} = require(path.join(source, 'sync/dist/DefaultWizard'));
-const Helper = require(path.join(source, 'sync/dist/Helper')).default;
-const env = require(path.join(source, 'sync/dist/WizardEnvironments'));
+const bootstrap = require(path.join(source, 'dist/api/projects/project-workflow'));
+const {wizardConfiguration, wizardCi, ensureDefaultWizard} = require(path.join(source, 'dist/api/projects/default-wizard'));
+const Helper = require(path.join(source, 'dist/common/configuration-signature')).default;
+const env = require(path.join(source, 'dist/api/projects/wizard-environment-workflow'));
 const certificateAdapter = env.environmentAdapters.certificate;
 const tlsFixture = path.join('/ssl', 'wizard-environment-fixture-' + process.pid);
-const builds = require(path.join(source, 'sync/dist/WizardBuild'));
-const legacy = require(path.join(source, 'project-bootstrap/wizard-build/recipe')).generate(Helper.textLogo);
+const builds = require(path.join(source, 'dist/api/projects/wizard-build-workflow'));
+const legacy = require(path.join(source, 'dist/modules/project-lifecycle/build-recipe.service')).generate(Helper.textLogo);
 const file = path.join(root, 'system/.projects.env/.wizard.env');
 const mainFile = path.join(root, 'system/.docker.env');
 const platform = {WIZARD_HOST: 'production.example', WIZARD_ENABLE: 'true'};
@@ -232,7 +233,7 @@ const installed = () => ({environments: {...input.environments, activationCommit
   reset();
   const nativeSettings = enabled(env.previewWizardEnvironments());
   const nativeFiles = ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map(path => ({path, sha256: '5'.repeat(64)}));
-  const nativeEnvironment = require(path.join(source, 'project-bootstrap/wizard-environments/source-primary')).sourcePrimaryEnvironment(
+  const nativeEnvironment = require(path.join(source, 'dist/modules/project-lifecycle/source-primary-environment')).sourcePrimaryEnvironment(
     {phase: 'ready', operation: '1'.repeat(48), settings: nativeSettings, settingsHash: hash(nativeSettings),
       deployments: {review: {lastPipelineId: 43, stoppedThroughPipelineId: 43}, beta: {lastPipelineId: 44, stoppedThroughPipelineId: 44}}},
     {operation: '2'.repeat(48), helperImage: process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE,

@@ -24,10 +24,15 @@ function owners(f,options={}){
     inner:async(args,input)=>{calls.push({inner:args,input});return JSON.stringify({status:200,body:'{}'});}};
   class Owner{
     constructor(spec){this.spec=spec;this.id=String(instances.length+1).repeat(24);this.name='system-candidate-'+this.id;this.resources=[];instances.push(this);}
+
     report(){calls.push({report:this.id});}
+
     async create(kind,args){calls.push({create:kind,args});const id=kind==='volume'?this.name:this.id.repeat(2)+'0'.repeat(16);this.resources.push({kind,id,name:this.name});return id;}
+
     async start(){throw Error('heavy Candidate.start must never be used');}
+
     async call(args,input){calls.push({args,input});return this.exec(args);}
+
     exec(args){
       if(args[0]==='image'&&args.at(-1)===f.spec.images.candidate.id)return JSON.stringify({Id:args.at(-1),Config:{}});
       if(args[0]==='image'){const item=Object.values(f.spec.acmeImages).find(image=>image.reference===args.at(-1));return JSON.stringify({Id:item.id,RepoDigests:[item.reference],Config:{Volumes:options.imageVolumes}});}
@@ -37,6 +42,7 @@ function owners(f,options={}){
       if(args[0]==='container'&&args[1]==='inspect')return JSON.stringify([{Id:original.daemon,Name:'/'+original.name,Config:{Labels:{[LABEL]:options.foreign?'foreign':original.id}},NetworkSettings:{Networks:{[instances[0].name]:{}}}}]);
       return '';
     }
+
     cleanup(){calls.push({cleanup:this.id});return !options.cleanupFailure;}
   }
   const instance=new acme.LocalAcme(original,()=>f.directory,{Owner});

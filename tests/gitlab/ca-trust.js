@@ -1,7 +1,8 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-const trust=require('../../bootstrapper/ca/check'),release=require('../../gitlab/security-release.json');
-const bundle=fs.readFileSync(path.join(__dirname,'../../bootstrapper/ca',trust.provenance.bundle));
+const nativeTrust=require('../../dist/modules/host-bootstrap/ca-verification.service');
+const trust={...nativeTrust,provenance:nativeTrust.readCaProvenance(),system:()=>new nativeTrust.CaVerificationService().system(path.resolve(__dirname,'../..'))},release=require('../../config/gitlab/security-release.json');
+const bundle=fs.readFileSync(path.join(__dirname,'../../config/ca',trust.provenance.bundle));
 assert.equal(crypto.createHash('sha256').update(bundle).digest('hex'),trust.provenance.sha256);
 assert.equal(release.jobCaBundleSha256,trust.provenance.sha256);
 assert.equal(new Set(trust.provenance.distrustedSha256).size,21);
@@ -16,15 +17,15 @@ const {spawnSync}=require('node:child_process'),os=require('node:os');
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'public-CA-refusal-'));
 try{
  const filename=path.join(directory,'distrusted.crt');fs.writeFileSync(filename,compromised);
- const execute=env=>spawnSync(process.execPath,[path.join(__dirname,'../../bootstrapper/ca/check.js')],{env:{...process.env,...env},encoding:'utf8'});
+ const execute=env=>spawnSync(process.execPath,[path.join(__dirname,'../../dist/cli/main.js'),'host-bootstrap','ca-check','--checkout',path.resolve(__dirname,'../..')],{env:{...process.env,...env},encoding:'utf8'});
  assert.notEqual(execute({NODE_OPTIONS:'--use-bundled-ca'}).status,0);
  assert.notEqual(execute({NODE_OPTIONS:'--use-openssl-ca',NODE_EXTRA_CA_CERTS:filename}).status,0);
 }finally{fs.rmSync(directory,{recursive:true,force:true});}
 const {verifyPreparedTrust}=require('../e2e/prepare-images');let calls=0;
 verifyPreparedTrust({candidate:'candidate:fixture',wizard:'wizard:fixture'},()=>{calls++;return bundle.toString();});assert.equal(calls,6);
 assert.throws(()=>verifyPreparedTrust({candidate:'candidate:fixture',wizard:'wizard:fixture'},()=>bundle.toString()+compromised),/distrusted/);
-const recipes=require('../../project-bootstrap/wizard-build/recipe');
-const logo=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184);
+const recipes=require('../../dist/modules/project-lifecycle/build-recipe.service');
+const logo=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8').slice(0,1184);
 for(const profile of ['legacy-ca-v4','node24-vite8-ca-v4','node24-vite8-quickstart-v5']){
  const recipe=recipes.generate(logo,profile);assert.deepEqual(recipes.select(logo,recipe.recipeHash),recipe);
  assert(recipe.ci.includes('29.9.2-cli@sha256:'));assert(recipe.ci.includes('before_script:'));

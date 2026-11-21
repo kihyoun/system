@@ -1,13 +1,13 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const {checkRegistry, configuredRegistry} = require('../../sync/dist/SystemDiagnostics');
-const {inspectRunner, validHelperImage} = require('../../sync/dist/SystemDiagnosticsDocker');
-const {nativeProbe} = require('../../sync/dist/SystemDiagnosticsProbe');
+const {checkRegistry, configuredRegistry} = require('../../dist/api/diagnostics/system-diagnostics');
+const {inspectRunner, validHelperImage} = require('../../dist/api/diagnostics/docker-diagnostics.adapter');
+const {nativeProbe} = require('../../dist/api/diagnostics/connection-diagnostics.adapter');
 const http = require('node:http');
-const {createSyncApplication} = require('../../sync/dist/bootstrap');
-const {AuthService} = require('../../sync/dist/auth/auth.service');
-const {DIAGNOSTIC_DEPENDENCIES} = require('../../sync/dist/diagnostics/diagnostics.service');
+const {createSyncApplication} = require('../../dist/api/bootstrap');
+const {AuthService} = require('../../dist/api/auth/auth.service');
+const {DIAGNOSTIC_DEPENDENCIES} = require('../../dist/api/diagnostics/diagnostics.service');
 const image = 'registry.example.test/runner/helper:x86_64-v1@sha256:' + 'a'.repeat(64);
 const targets = {registry: 'https://registry.example.test:5443', helper: 'https://helper.example.test', helperImage: image,
   runners: ['runner_docker_1'], context: 'controller'};
@@ -148,7 +148,7 @@ test('bounded concurrency rejects a second pull while first is running', async (
 });
 
 test('native pull uses verified socket/exact image; daemon stream error and timeout are safe', async () => {
-  const {pullHelper} = require('../../sync/dist/SystemDiagnosticsDocker');
+  const {pullHelper} = require('../../dist/api/diagnostics/docker-diagnostics.adapter');
   const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'diagnostic-daemon-'));
   let responseBody = '', hanging = false;
@@ -187,9 +187,9 @@ test('native TLS timeout is bounded against a controlled stalled fixture', async
 
 test('server target configuration preserves explicit default/nondefault ports and local helper scheme', async () => {
   const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
-  const {diagnosticTargets} = require('../../sync/dist/SystemDiagnostics');
-  const docker = require('../../sync/dist/SystemDiagnosticsDocker');
-  const Helper = require('../../sync/dist/Helper').default;
+  const {diagnosticTargets} = require('../../dist/api/diagnostics/system-diagnostics');
+  const docker = require('../../dist/api/diagnostics/docker-diagnostics.adapter');
+  const Helper = require('../../dist/common/configuration-signature').default;
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'diagnostic-targets-'));
   const previousDirectory = process.env.SYSTEM_CONFIG_DIR, originalRead = docker.dockerRead;
   process.env.SYSTEM_CONFIG_DIR = directory; docker.dockerRead = async () => 'runner_docker_1\nforeign_docker_1\n';

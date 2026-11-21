@@ -103,7 +103,7 @@ describe('Offline migration guide', () => {
     const examples = document.querySelectorAll('pre');
     expect(examples[0]).toHaveTextContent('python3 bootstrapper/upgrade-release.py');
     expect(examples[0]).toHaveTextContent('--target 1.2.0');
-    expect(examples[4]).toHaveTextContent('operations/dist/cli.js upgrade');
+    expect(examples[4]).toHaveTextContent('dist/cli/main.js upgrade');
     expect(examples[4]).toHaveTextContent('--target 2.0.0');
     const prerequisite = screen.getByRole('checkbox', { name: '1.1.3 → 1.2.0: Prerequisites' });
     fireEvent.click(prerequisite);
@@ -132,7 +132,7 @@ describe('Offline migration guide', () => {
       expect(screen.getAllByRole('status')[0]).toHaveTextContent(supported);
       expect(screen.getByRole('alert')).toHaveTextContent('GitLab 19.5.3 → 19.6.1');
       expect(document.querySelector('pre')).toHaveTextContent('--gitlab-checkpoint');
-      expect(document.querySelector('pre')).toHaveTextContent('operations/dist/cli.js upgrade');
+      expect(document.querySelector('pre')).toHaveTextContent('dist/cli/main.js upgrade');
       expect(screen.getByRole('alert').querySelector('a')).toHaveAttribute(
         'href',
         'https://github.com/kihyoun/system/blob/v2.0.0/gitlab/UPGRADE.md',

@@ -39,7 +39,7 @@ try {
 } finally { fs.rmSync(root, {recursive: true, force: true}); }
 
 // Keep the former authoring checks in the existing component entry: no extra gate.
-const {DocumentationExportService,documentationHeadings}=require('../../operations/dist/documentation/documentation-export.service');
+const {DocumentationExportService,documentationHeadings}=require('../../dist/modules/documentation/documentation-export.service');
 const service=new DocumentationExportService(),checkout=path.resolve(__dirname,'../..'),bundle=service.build(checkout);
 const {included}=require('../prepare-context');
 for(const filename of [...Object.keys(bundle.sources),...Object.keys(bundle.images),'docs/wizard-docs-catalog.json'])assert(included(filename),filename);

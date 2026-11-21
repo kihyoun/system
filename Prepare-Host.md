@@ -9,8 +9,8 @@ Existing installations, DNS/HTTPS and recovery use the explicit paths below.
 
 For an end-user installation, use a reviewed **complete controller** image and
 its matching Wizard web image from public Docker Hub repositories. The controller
-is built from `system/Dockerfile`, including Sync and the lifecycle tools. The
-smaller runtime base built from `bootstrapper/Dockerfile` is not a bootable
+is built from `containers/controller/Dockerfile`, including Sync and the lifecycle tools. The
+smaller runtime base built from `containers/bootstrapper/Dockerfile` is not a bootable
 controller and must not be substituted for it.
 
 Choose a release's exact System source revision and both immutable image
@@ -58,7 +58,7 @@ git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
 # After preparing the runtime below:
-sudo /opt/system-bootstrapper-runtime/bin/node bootstrapper/install.js
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 The installer provides a `docker-compose` adapter for native lifecycle services.
@@ -68,8 +68,8 @@ platform acceptance are separate steps.
 
 ## Prepare the host operations runtime
 
-Host CLI `start` and `stop`, `bootstrapper/persistence.js`, the release installer
-and replacement/restore tools require Node and compiled `operations` **before**
+Host CLI `start` and `stop`, `system-bootstrapper persistence --checkout "$PWD"`, the release installer
+and replacement/restore tools require Node and the compiled root backend package **before**
 their first call. Installing Docker alone, or passing `--install-host` to an
 initializer, does not prepare this runtime. Choose one preparation path below;
 complete it before the Boot section or a recovery procedure.
@@ -90,17 +90,17 @@ Then prepare the runtime before invoking any host lifecycle, persistence or inst
 SYSTEM_RELEASE_TAG='vMAJOR.MINOR.PATCH' # Exact reviewed public release
 sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
 # The checkout must match the source revision in that release's verified metadata.
-test ! -e operations/dist && test ! -e operations/node_modules && test ! -e operations/assets && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets operations/assets
+test ! -e dist && test ! -e node_modules && test ! -e assets && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets assets
 ```
 
 The preparation refuses an existing runtime directory instead of overwriting it.
-Keep that directory and the checkout's `operations/dist` and
-`operations/node_modules` and `operations/assets` for offline recovery. Compatibility tools select the
+Keep that directory and the checkout's `dist` and
+`node_modules` and `assets` for offline recovery. The installed CLI selects the
 saved absolute Node executable directly; they do not source a shell profile,
-invoke nvm or contact npm during recovery. Use `/opt/system-bootstrapper-runtime/bin/node` for explicit native invocations.
+invoke nvm or contact npm during recovery. Use the installed `system-bootstrapper` command for normal host operations.
 
 ### Source development without a prebuilt controller runtime
 
@@ -125,10 +125,11 @@ nvm use 24.22.0
 printf '%s  %s\n' cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008 "$NVM_DIR/.cache/bin/node-v24.22.0-linux-x64/node-v24.22.0-linux-x64.tar.xz" | sha256sum --check
 test "$(node --version)" = v24.22.0
 test "$(npm --version)" = 11.19.1
-npm ci --prefix operations --ignore-scripts
-npm run build --prefix operations
+npm ci --ignore-scripts
+npm run build
+npm link --ignore-scripts
 SYSTEM_NODE_BIN="$(dirname "$(command -v node)")"
-test -f operations/dist/host-lifecycle/entry.js
+test -f dist/modules/host-lifecycle/entry.js
 ```
 
 After selecting working storage as described under Boot, use this source-build
@@ -136,19 +137,19 @@ startup instead of the public-image installer:
 
 ```bash
 sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  "$SYSTEM_NODE_BIN/node" operations/dist/cli.js start --checkout "$PWD"
+  system-bootstrapper start --checkout "$PWD"
 ```
 
 Keep `SYSTEM_NODE_BIN` for subsequent `sudo env "PATH=..."` calls to the CLI `stop` command,
-`bootstrapper/persistence.js` and other native host commands: sudo normally discards the
+`system-bootstrapper persistence --checkout "$PWD"` and other native host commands: sudo normally discards the
 interactive nvm PATH. Alternatively use the retained dedicated runtime prepared
 by the accepted-image path. A source build still constructs controller/Wizard
 images during startup unless an existing accepted release profile disables builds;
 it is not permission to rebuild an image required by a recovery receipt.
 
 For offline recovery retain the Node installation and matching checkout with
-`operations/dist`, `operations/node_modules` and `operations/assets` before losing the original host.
-Restore those verified tools before `initialize.js` or `recover-volume.js` checks
+`dist`, `node_modules` and `assets` before losing the original host.
+Restore those verified tools before `system-bootstrapper host-bootstrap initialize` or `system-bootstrapper host-bootstrap recover-volume` checks
 storage. If they are absent, prepare compatible reviewed tools separately before
 maintenance; neither the stopped platform nor npm availability is a recovery
 prerequisite. Preserve the recorded service images and source identities.
@@ -203,7 +204,7 @@ GitLab's supported upgrade path.
 For the local integration setup, include these optional exports in the complete
 private main configuration at `PERSISTENT_DIR/configuration/.docker.env` before
 starting GitLab. Do not create a partial main configuration containing only
-these options. Inside the controller, `system/.docker.env` is a compatibility
+these options. Inside the controller, `config/system/.docker.env` is a compatibility
 link to the saved configuration; the persistent copy takes precedence over
 configuration embedded in an image:
 
@@ -216,7 +217,7 @@ export GITLAB_REGISTRY_BIND=127.0.0.1:5050
 
 Use `gitlab.localhost`, `registry.localhost`, `sync.localhost` and `localhost`
 as the respective GitLab, registry, sync and wizard hosts, with domain mode 0
-(HTTP) and matching external URLs. Run `sudo node bootstrapper/prepare-local.js`
+(HTTP) and matching external URLs. Run `sudo system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"`
 to add the local hostnames and the Docker HTTP exception for
 `registry.localhost:5050`. This helper is opt-in for local tests; production
 should use its configured domains and certificates. It preserves other Docker
@@ -260,7 +261,7 @@ PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```
@@ -274,7 +275,7 @@ replacement data. Changing the mode never migrates an existing installation.
 See [working storage and backup media](docs/PERSISTENT_VOLUME.md).
 
 Install Certbot separately on hosts using HTTPS, then run
-`sudo node bootstrapper/install-volume-host.js` for persistent TLS state and
+`sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` for persistent TLS state and
 renewal integration. Local mode needs no extra mount dependency. Neither Docker,
 normal service startup nor certificate renewal depends on an external Seed target.
 
@@ -283,7 +284,7 @@ against the pulled public-image identities. It refuses an existing main
 configuration or GitLab data rather than treating a reinstall as an upgrade.
 It records only the two release image selectors in the private
 `configuration/.release-images.env` and invokes native startup with builds
-disabled. Ordinary subsequent `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` calls reuse that profile;
+disabled. Ordinary subsequent `sudo system-bootstrapper start --checkout "$PWD"` calls reuse that profile;
 explicit saved main-configuration selectors still take precedence. `--install-host`
 can perform the Docker installation when it has not already been run. This
 installer does not restore a Seed, import a configuration ZIP or issue certificates.
@@ -336,7 +337,7 @@ The username is `root`. For a fresh database, the bootstrapper generates a uniqu
 initial password, or accepts `GITLAB_INITIAL_ROOT_PASSWORD` (at least 12 characters)
 from the complete private main configuration at
 `PERSISTENT_DIR/configuration/.docker.env`. The controller reads this through
-its `system/.docker.env` compatibility link; the persistent saved configuration
+its `config/system/.docker.env` compatibility link; the persistent saved configuration
 takes precedence over configuration embedded in an image. The tracked example
 deliberately has no shared default password.
 
@@ -384,7 +385,7 @@ locks, failure handling and restoration on empty storage.
 The shell/rsync regression uses temporary data and a fixture Docker command:
 
 ```bash
-node --test operations/tests/storage-copy.test.cjs
+node --test tests/operations/storage-copy.test.cjs
 ```
 
 Run the [full disposable acceptance suite](tests/e2e/README.md) to exercise real
@@ -396,5 +397,5 @@ Use the already prepared host runtime; source-development installs must pass the
 explicit Node PATH shown above.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js stop --checkout "$PWD"
+sudo system-bootstrapper stop --checkout "$PWD"
 ```

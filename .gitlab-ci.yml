@@ -26,20 +26,20 @@ services:
 variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
   NODE_OPTIONS: --use-openssl-ca
-  SSL_CERT_FILE: "$CI_PROJECT_DIR/bootstrapper/ca/cacert-2026-10-20.crt"
+  SSL_CERT_FILE: "$CI_PROJECT_DIR/config/ca/cacert-2026-10-20.crt"
   SSL_CERT_DIR: "$CI_PROJECT_DIR/.empty-ca-directory"
-  npm_config_cafile: "$CI_PROJECT_DIR/bootstrapper/ca/cacert-2026-10-20.crt"
+  npm_config_cafile: "$CI_PROJECT_DIR/config/ca/cacert-2026-10-20.crt"
 
 default:
   before_script:
-    - node bootstrapper/ca/check.js --bundle
+    - node src/cli/verify-ca.mts --bundle
 
-.operations-runtime:
-  before_script: &operations-runtime
-    - node bootstrapper/ca/check.js --bundle
-    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
-    - npm --prefix operations run build
-    - timeout -k 5 110 node operations/dist/host-bootstrap/entry.js install-runtime --checkout "$CI_PROJECT_DIR"
+.runtime-tools:
+  before_script: &runtime-tools
+    - node src/cli/verify-ca.mts --bundle
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
+    - timeout -k 5 110 node dist/cli/main.js host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"
 
 stages:
   - prepare
@@ -72,7 +72,7 @@ cache:
 
 # The native trusted parent exports public Git objects to a socket-free child.
 check:documentation:
-  before_script: *operations-runtime
+  before_script: *runtime-tools
   stage: prepare
   image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
@@ -87,9 +87,9 @@ check:documentation:
   timeout: 3m
   allow_failure: false
   script:
-    - node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR"
+    - node dist/cli/main.js ci documentation "$CI_PROJECT_DIR"
   after_script:
-    - node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR" cleanup
+    - node dist/cli/main.js ci documentation "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -107,14 +107,17 @@ renovate:discover:
   image: ghcr.io/renovatebot/renovate:44.222.5-full@sha256:1e5baa47058a74b5f41e425838862f6728b4351790d8278f1356df2e56e8df62
   services: []
   tags: [docker]
-  before_script: []
+  before_script:
+    - node src/cli/verify-ca.mts --bundle
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
   cache: []
   dependencies: []
   resource_group: renovate-discovery
   timeout: 45m
   variables:
     GIT_SUBMODULE_STRATEGY: none
-    RENOVATE_CONFIG_FILE: gitlab/renovate/config.cjs
+    RENOVATE_CONFIG_FILE: dist/modules/renovate/config-entry.js
     LOG_LEVEL: info
   script:
     - renovate-config-validator --strict --no-global renovate.json
@@ -135,17 +138,19 @@ prepare:wizard-source:
   cache: []
   timeout: 5m
   script:
-    - node gitlab/prepare-wizard-source.js
-    - node docs/check-wizard-docs.js
-    - node project-bootstrap/wizard-source/package.js
-    - node project-bootstrap/wizard-source/package.js --verify
-    - node tests/prepare-context.js
-    - node tests/prepare-candidate.js
-    - node tests/prepare-wizard-browser.js
-    - node tests/prepare-codeql.js
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
+    - node dist/cli/main.js source-checkout "$CI_PROJECT_DIR"
+    - node dist/cli/main.js docs check
+    - node dist/cli/main.js source-prepare "$CI_PROJECT_DIR"
+    - node dist/cli/main.js source-prepare "$CI_PROJECT_DIR" --verify
+    - node dist/cli/main.js ci prepare-context "$CI_PROJECT_DIR"
+    - node dist/cli/main.js ci prepare-candidate "$CI_PROJECT_DIR"
+    - node dist/cli/main.js ci prepare-wizard-browser "$CI_PROJECT_DIR"
+    - node dist/cli/main.js ci prepare-codeql "$CI_PROJECT_DIR"
   artifacts:
     expire_in: 1 day
-    paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/, .codeql-context/]
+    paths: [assets/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/, .codeql-context/]
   rules: *runtime-rules
 
 # Package-only checks share the accepted source; no second platform is created.
@@ -161,10 +166,10 @@ test:npm-package:
   timeout: 5m
   allow_failure: false
   script:
-    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
-    - npm --prefix operations run build
-    - node --test operations/tests/cli.test.cjs operations/tests/package.test.cjs
-    - node gitlab/package-cli.js
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
+    - node --test tests/operations/cli.test.cjs tests/operations/package.test.cjs
+    - node dist/cli/main.js release package-cli
   artifacts:
     expire_in: 1 year
     paths: [test-results/npm-package/]
@@ -173,7 +178,7 @@ test:npm-package:
 # The existing trusted socket runner launches a socket-free test child.
 # The current build/deploy jobs retain their upstream publishing behavior.
 test:isolated:
-  before_script: *operations-runtime
+  before_script: *runtime-tools
   stage: test
   image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
@@ -191,9 +196,9 @@ test:isolated:
   cache: []
   dependencies: [prepare:wizard-source]
   script:
-    - node operations/dist/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"
+    - node dist/cli/main.js ci isolated "$CI_PROJECT_DIR" "$COMPONENT"
   after_script:
-    - node operations/dist/ci/entry.js isolated "$CI_PROJECT_DIR" cleanup
+    - node dist/cli/main.js ci isolated "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -204,7 +209,7 @@ test:isolated:
 
 # Independent static gate; no database services or platform execution.
 test:codeql:
-  before_script: *operations-runtime
+  before_script: *runtime-tools
   stage: test
   image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
@@ -220,9 +225,9 @@ test:codeql:
   cache: []
   dependencies: [prepare:wizard-source]
   script:
-    - node operations/dist/ci/entry.js codeql-parent "$CI_PROJECT_DIR"
+    - node dist/cli/main.js ci codeql-parent "$CI_PROJECT_DIR"
   after_script:
-    - node operations/dist/ci/entry.js codeql-parent "$CI_PROJECT_DIR" cleanup
+    - node dist/cli/main.js ci codeql-parent "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -231,7 +236,7 @@ test:codeql:
 
 # Build the complete runtime and packaged Sync/Wizard source before publishing.
 test:candidate-image:
-  before_script: *operations-runtime
+  before_script: *runtime-tools
   stage: test
   image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
@@ -246,9 +251,9 @@ test:candidate-image:
   timeout: 15m
   allow_failure: false
   script:
-    - node operations/dist/ci/entry.js candidate-image "$CI_PROJECT_DIR"
+    - node dist/cli/main.js ci candidate-image "$CI_PROJECT_DIR"
   after_script:
-    - node operations/dist/ci/entry.js candidate-image "$CI_PROJECT_DIR" cleanup
+    - node dist/cli/main.js ci candidate-image "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -260,7 +265,7 @@ test:candidate-image:
 # Browser coverage belongs to this same System candidate when the Wizard
 # gitlink is delivered without a separate Wizard pipeline.
 test:wizard-browser:
-  before_script: *operations-runtime
+  before_script: *runtime-tools
   stage: test
   image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
@@ -275,9 +280,9 @@ test:wizard-browser:
   timeout: 15m
   allow_failure: false
   script:
-    - node operations/dist/ci/entry.js wizard-browser "$CI_PROJECT_DIR"
+    - node dist/cli/main.js ci wizard-browser "$CI_PROJECT_DIR"
   after_script:
-    - node operations/dist/ci/entry.js wizard-browser "$CI_PROJECT_DIR" cleanup
+    - node dist/cli/main.js ci wizard-browser "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -303,12 +308,12 @@ test:platform-candidate:
   dependencies: [prepare:wizard-source]
   timeout: 120m
   allow_failure: false
-  before_script: *operations-runtime
+  before_script: *runtime-tools
   script:
-    - node gitlab/check-candidate-capacity.js
-    - node operations/dist/ci/entry.js platform "$CI_PROJECT_DIR"
+    - node dist/cli/main.js ci candidate-capacity "$CI_PROJECT_DIR"
+    - node dist/cli/main.js ci platform "$CI_PROJECT_DIR"
   after_script:
-    - node operations/dist/ci/entry.js platform "$CI_PROJECT_DIR" cleanup
+    - node dist/cli/main.js ci platform "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -319,11 +324,9 @@ test:platform-candidate:
 
 build:
   stage: build
-  before_script: *operations-runtime
+  before_script: *runtime-tools
   script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
-    - docker build --provenance=false --sbom=false -f bootstrapper/Dockerfile -t $IMAGE_TAG .
-    - docker push $IMAGE_TAG
+    - node dist/cli/main.js ci build-bootstrapper "$CI_PROJECT_DIR"
   rules: *runtime-rules
 
 # Optional Wizard-only acceptance on the configured fixed HTTPS Beta host.
@@ -339,7 +342,7 @@ build:
     RUNNER_SCRIPT_TIMEOUT: 12m
     RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
   cache: []
-  before_script: *operations-runtime
+  before_script: *runtime-tools
   timeout: 14m
   interruptible: false
   resource_group: wizard-beta
@@ -357,7 +360,7 @@ deploy:wizard-beta:
   extends: .wizard-beta
   dependencies: [test:platform-candidate]
   script:
-    - node project-bootstrap/system-beta/run.js deploy
+    - node dist/cli/main.js system-beta run deploy
   environment:
     name: 'wizard-beta/$CI_PROJECT_ID'
     url: '$SYSTEM_BETA_URL'
@@ -367,7 +370,7 @@ stop:wizard-beta:
   extends: .wizard-beta
   dependencies: []
   script:
-    - node project-bootstrap/system-beta/run.js stop
+    - node dist/cli/main.js system-beta run stop
   environment:
     name: 'wizard-beta/$CI_PROJECT_ID'
     action: stop
@@ -389,9 +392,9 @@ deploy:dockerhub:
   interruptible: false
   resource_group: 'dockerhub-release-$CI_PROJECT_ID'
   allow_failure: false
-  before_script: *operations-runtime
+  before_script: *runtime-tools
   script:
-    - node gitlab/publish-dockerhub.js
+    - node dist/cli/main.js release dockerhub
   artifacts:
     expire_in: 1 year
     paths: [test-results/dockerhub/]
@@ -419,15 +422,15 @@ deploy:github:
     expire_in: 1 year
     paths: [test-results/github/]
   before_script:
-    - node bootstrapper/ca/check.js --bundle
-    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
-    - npm --prefix operations run build
+    - node src/cli/verify-ca.mts --bundle
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
   rules:
     - if: '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       when: on_success
     - when: never
   script:
-    - node operations/dist/mirror/entry.js ci
+    - node dist/cli/main.js github-backup ci
 
 
 
@@ -459,9 +462,9 @@ deploy:github-release:
   resource_group: 'github-release-$CI_PROJECT_ID'
   allow_failure: false
   script:
-    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
-    - npm --prefix operations run build
-    - node gitlab/publish-github-release.js
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
+    - node dist/cli/main.js release github
   artifacts:
     when: always
     expire_in: 1 year
@@ -487,9 +490,9 @@ deploy:npm:
   resource_group: npm-release
   allow_failure: false
   script:
-    - npm --prefix operations ci --ignore-scripts --no-audit --no-fund
-    - npm --prefix operations run build
-    - node gitlab/publish-npm.js
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
+    - node dist/cli/main.js release npm
   rules:
     - if: '$NPM_PUBLISH_ENABLED == "true" && $GITHUB_RELEASE_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       changes: *runtime-changes

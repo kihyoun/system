@@ -6,12 +6,12 @@ const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'suggestions-api-'));
-fs.mkdirSync(path.join(tmp, 'sync'));
-fs.mkdirSync(path.join(tmp, 'system'));
+fs.mkdirSync(path.join(tmp, 'config/system'),{recursive:true});
+const startCode = `const path=require('node:path');const paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installation-paths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);paths.cliArguments=(command,args)=>[path.join(fixture,'dist/cli/main.js'),command,...args];require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
 const child = spawn(process.execPath,
-  [process.env.SYNC_ENTRY || path.resolve(__dirname, '../../sync/dist/index.js')], {
-    cwd: path.join(tmp, 'sync'), stdio: 'ignore',
-    env: { ...process.env, SYNC_USER: 'test-user', SYNC_PASS: 'test-only-password' }
+  ['-e', startCode, process.env.SYNC_ENTRY || path.resolve(__dirname, '../../dist/api/index.js'), tmp], {
+    cwd: tmp, stdio: 'ignore',
+    env: { ...process.env, SYSTEM_CONFIG_DIR: path.join(tmp, 'config/system'), SYNC_USER: 'test-user', SYNC_PASS: 'test-only-password' }
   });
 function request(route, token, data, method) {
   return new Promise((resolve, reject) => {
@@ -47,7 +47,7 @@ function request(route, token, data, method) {
     assert.equal(suggestions.headers['cache-control'], 'no-store');
     assert.equal(JSON.parse(suggestions.body).source, 'derived');
     assert.equal(JSON.parse(suggestions.body).config.gitlabHost, 'gitlab.localhost');
-    const main = path.join(tmp, 'system', '.docker.env');
+    const main = path.join(tmp, 'config/system', '.docker.env');
     assert.equal(fs.existsSync(main), false, 'suggestions must not create config');
     const saved = 'export GITLAB_HOST=gitlab.saved.test\n';
     fs.writeFileSync(main, saved);
@@ -56,10 +56,9 @@ function request(route, token, data, method) {
     assert.equal(JSON.parse(fetched.body).data, saved);
     assert.equal((await request('/config/suggestions', token)).status, 409);
     assert.equal(fs.readFileSync(main, 'utf8'), saved);
-    fs.mkdirSync(path.join(tmp, 'gitlab-runner'));
-    fs.mkdirSync(path.join(tmp,'operations/dist/lifecycle'),{recursive:true});
-    const runnerScript = path.join(tmp, 'operations/dist/lifecycle/entry.js');
-    fs.writeFileSync(runnerScript, 'setTimeout(()=>console.log("Runner registered."),1000);\n');
+        fs.mkdirSync(path.join(tmp,'dist/cli'),{recursive:true});
+    const runnerScript = path.join(tmp, 'dist/cli/main.js');
+    fs.writeFileSync(runnerScript, 'require("node:assert/strict").deepEqual(process.argv.slice(2,4),["lifecycle","runner-start"]);setTimeout(()=>console.log("Runner registered."),1000);\n');
     assert.equal((await request('/command/runners/register', null, null, 'PATCH')).status, 401);
     const setup = request('/command/runners/register', token, null, 'PATCH');
     await new Promise(resolve => setTimeout(resolve, 200));

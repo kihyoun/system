@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
 const child = require('node:child_process');
-const source = path.resolve(__dirname, '../../sync/dist');
+const source = path.resolve(__dirname, '../../dist/api');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-nest-'));
 const previous = {...process.env};
 process.env.SYSTEM_CONFIG_DIR = root;
@@ -16,7 +16,7 @@ const originals = {listen: net.Server.prototype.listen, log: console.log, error:
 const commands = ['exec', 'execFile', 'execSync', 'execFileSync', 'spawn', 'spawnSync'];
 for (const name of commands) { originals[name] = child[name]; child[name] = () => { throw Error('Native commands are forbidden in Nest initialization.'); }; }
 net.Server.prototype.listen = () => { throw Error('Import, creation and initialization must not open a listener.'); };
-const wizard = require(path.join(source, 'DefaultWizard'));
+const wizard = require(path.join(source, 'projects/default-wizard'));
 const ensureDefaultWizard = wizard.ensureDefaultWizard;
 let registrations = 0, complete;
 wizard.ensureDefaultWizard = () => {

@@ -2,8 +2,9 @@
 const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
-const {run, request, writeEnvironment, WORK_BUDGET, CLEANUP_BUDGET} = require('../../project-bootstrap/system-beta/run');
-const {environmentHash} = require('../../project-bootstrap/system-beta/binding');
+const {run} = require('../../dist/modules/project-lifecycle/system-beta-entry');
+const {request, writeEnvironment, WORK_BUDGET, CLEANUP_BUDGET} = require('../../dist/modules/project-lifecycle/system-beta-session');
+const {environmentHash} = require('../../dist/modules/project-lifecycle/system-beta-binding');
 const copy = value => JSON.parse(JSON.stringify(value));
 const image = char => 'sha256:' + char.repeat(64);
 const operation = 'a'.repeat(48), sourceCommit = 'b'.repeat(40), containerId = 'c'.repeat(64);

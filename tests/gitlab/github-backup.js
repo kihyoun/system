@@ -5,7 +5,7 @@ const path = require('path');
 const { spawnSync, execFile } = require('child_process');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'system-github-backup-'));
-const helper = path.resolve(__dirname, '../../operations/dist/mirror/entry.js');
+const helper = path.resolve(__dirname, '../../dist/modules/mirror/entry.js');
 const ciHelper = helper;
 const shell = process.env.GITHUB_BACKUP_TEST_SHELL || 'sh';
 const posix = value => value.replace(/\\/g, '/');

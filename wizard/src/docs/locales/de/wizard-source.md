@@ -15,7 +15,7 @@ oder unversionierten Dateien. Alte Quellimporte bleiben ausdrücklich; neue
 optionale Beta verwendet den gemeinsamen System-Kandidaten ohne separaten Build.
 
 Dies ist der bisherige Ablauf für verwalteten Quellcode. Ein ausdrücklich
-übernommenes [quellcodeführendes Repository](../project-bootstrap/wizard-source-primary/README.md)
+übernommenes [quellcodeführendes Repository](../templates/project-bootstrap/wizard-source-primary/README.md)
 entwickelt direkt über eigene Merge Requests und importiert keinen Quellcode.
 Allgemeine `.system-bootstrapper/build-v1/`-Erzeuger, die ein solches Repository
 eingecheckt hat, werden aus bisherigen Quellcode-Schnappschüssen ausgeschlossen:
@@ -57,7 +57,7 @@ Die laufende Oberfläche, das Routing und die Production-URL bleiben unveränder
 Beta und Review bleiben deaktiviert. Die Quellcode-Initialisierung startet keine
 Builds oder Deployments; die [Aktivierung des verwalteten Builds](WIZARD_BUILD.md)
 ist eine eigene ausdrückliche Aktion. Review-/Beta-Deployment und
-[Production-Freigabe](../project-bootstrap/wizard-production/README.md) sind
+[Production-Freigabe](../templates/project-bootstrap/wizard-production/README.md) sind
 separate ausdrückliche Vorgänge. Ein Quellcodeimport gibt kein Image frei.
 
 ## Das unveränderliche Quellcodepaket bauen
@@ -66,8 +66,8 @@ Prüfe vor dem Bau des System-Images das versionierte Quelllayout. Historische
 Gitlinks werden nur initialisiert, wenn der gewählte Commit sie benötigt:
 
 ```sh
-node gitlab/prepare-wizard-source.js
-node project-bootstrap/wizard-source/package.js
+system-bootstrapper source-checkout
+system-bootstrapper source-prepare
 ```
 
 Das normale oberste `start --checkout /absolute/reviewed/source` ruft die Vorbereitung auf, bevor Compose das

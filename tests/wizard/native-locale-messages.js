@@ -1,13 +1,13 @@
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
-const {validate} = require('../../project-bootstrap/wizard-source/package');
+const {validate} = require('../../dist/modules/source-preparation/wizard-source.service');
 const root = path.resolve(__dirname, '../..');
 const cataloguePath = 'src/i18n/nativeOperationMessages.ts';
 const args = process.argv.slice(2);
 assert(args.length === 0 || args.length === 2 && args[0] === '--catalog', 'Use no arguments for the pinned snapshot, or --catalog FILE for an explicit local source check.');
 const contents = args.length ? fs.readFileSync(path.resolve(args[1]), 'utf8') : (() => {
-  const snapshot = validate(JSON.parse(fs.readFileSync(path.join(root, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8')));
+  const snapshot = validate(JSON.parse(fs.readFileSync(path.join(root, 'assets/wizard-source/snapshot.json'), 'utf8')));
   const file = snapshot.files.find(file => file.path === cataloguePath);
   assert(file, 'The pinned Wizard snapshot must contain the actual native operation message catalogue.');
   return Buffer.from(file.content, 'base64').toString('utf8');
@@ -26,16 +26,16 @@ try {
   };
   const messages = new Set();
   for (const filename of [
-    'sync/src/PreviewSetup.ts',
-    'sync/src/SystemBetaSetup.ts',
-    'operations/src/project-lifecycle/preview-settings.ts',
-    'operations/src/project-lifecycle/source-transfer.service.ts',
-    'operations/src/gitlab-provision/preview-setup.service.ts',
-    'operations/src/gitlab-provision/preview-evidence.ts',
-    'operations/src/project-lifecycle/preview-producers.ts',
-    'operations/src/project-lifecycle/adoption-session.ts',
-    'operations/src/project-lifecycle/source-primary-binding.ts',
-    'sync/src/WizardEnvironments.ts'
+    'src/api/projects/preview-setup.ts',
+    'src/api/projects/system-beta-setup.ts',
+    'src/modules/project-lifecycle/preview-settings.ts',
+    'src/modules/project-lifecycle/source-transfer.service.ts',
+    'src/modules/gitlab-provision/preview-setup.service.ts',
+    'src/modules/gitlab-provision/preview-evidence.ts',
+    'src/modules/project-lifecycle/preview-producers.ts',
+    'src/modules/project-lifecycle/adoption-session.ts',
+    'src/modules/project-lifecycle/source-primary-binding.ts',
+    'src/api/projects/wizard-environment-workflow.ts'
   ]) {
     const extracted = messagesIn(filename);
     assert(extracted.length >= 2, 'No native public messages extracted from ' + filename);
@@ -43,9 +43,9 @@ try {
   }
   // Public API messages can move between native Nest modules without changing
   // the Wizard translation contract. Read their actual producers recursively.
-  const syncSources = fs.readdirSync(path.join(root, 'sync/src'), {recursive: true})
+  const syncSources = fs.readdirSync(path.join(root, 'src/api'), {recursive: true})
     .filter(filename => filename.endsWith('.ts'))
-    .map(filename => 'sync/src/' + filename);
+    .map(filename => 'src/api/' + filename);
   const api = syncSources.flatMap(messagesIn);
   for (const prefix of ['A GitLab upgrade is in progress.', 'A backup or recovery operation is in progress.',
     'Wait for the current platform operation to finish.', 'Development preview setup status is unavailable.']) {
@@ -53,7 +53,7 @@ try {
     assert(message, 'Native API fixture disappeared: ' + prefix);
     messages.add(message);
   }
-  const environments = fs.readFileSync(path.join(root, 'sync/src/WizardEnvironments.ts'), 'utf8');
+  const environments = fs.readFileSync(path.join(root, 'src/api/projects/wizard-environment-workflow.ts'), 'utf8');
   const dynamic = /throw new Error\(\s*'([^'\n]+)' \+ name \+ '([^'\n]+)'\s*,?\s*\)/.exec(environments);
   assert(dynamic, 'Native exact-host certificate diagnostic changed.');
   for (const name of ['review', 'beta']) messages.add(dynamic[1] + name + dynamic[2]);

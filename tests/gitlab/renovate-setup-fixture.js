@@ -1,8 +1,8 @@
 'use strict';
 // Stateful reconciliation cases consolidated from the former Python suite.
 const assert=require('node:assert/strict');
-const {RenovateSetupService,protectedDefaultRules,BOT_MARKER}=require('../../operations/dist/renovate/setup.service');
-const {RenovateApi}=require('../../operations/dist/renovate/api');
+const {RenovateSetupService,protectedDefaultRules,BOT_MARKER}=require('../../dist/modules/renovate/setup.service');
+const {RenovateApi}=require('../../dist/modules/renovate/api');
 const protection=(name='main',push=40,merge=40)=>({name,push_access_levels:[{access_level:push}],merge_access_levels:[{access_level:merge}]});
 class GitLab {
   constructor(){this.user=null;this.members={};this.variables={};this.tokens=[];this.schedules=[];this.calls=[];this.extra=[];this.rules={};}
@@ -72,7 +72,7 @@ module.exports=async function run(){
   {const f=fixture();await f.run();const recovered={};await f.run({recoverUserId:9},recovered);assert.notEqual(recovered.ownership_nonce,f.state.ownership_nonce);assert(f.api.tokens[0].revoked);}
   {const f=fixture();await f.run();f.api.user.can_create_group=true;f.api.calls=[];await assert.rejects(f.run({recoverUserId:9},{}));readOnly(f);}
   const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-  const {savePrivate}=require('../../operations/dist/renovate/setup-entry'),{privateJson}=require('../../operations/dist/renovate/private-files');
+  const {savePrivate}=require('../../dist/modules/renovate/setup-entry'),{privateJson}=require('../../dist/modules/renovate/private-files');
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'renovate-private-'));
   try{const file=path.join(tmp,'state.json');savePrivate(file,{ok:true});assert.equal(fs.statSync(file).mode&0o777,0o600);assert.deepEqual(privateJson(file),{ok:true});fs.chmodSync(file,0o644);assert.throws(()=>privateJson(file),/0600/);assert.throws(()=>savePrivate(file,{}),/0600/);}finally{fs.rmSync(tmp,{recursive:true,force:true});}
   console.log('PASS: native Renovate reconciliation, protected rules, interrupted ownership and token recovery');

@@ -6,8 +6,8 @@ const path = require('path');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'system-beta-setup-'));
 process.env.SYSTEM_CONFIG_DIR = root;
 process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE = 'sha256:' + 'f'.repeat(64);
-const bootstrap = require('../../sync/dist/ProjectBootstrap');
-const logo = require('../../sync/dist/Helper').default.textLogo;
+const bootstrap = require('../../dist/api/projects/project-workflow');
+const logo = require('../../dist/common/configuration-signature').default.textLogo;
 const config = path.join(root, '.projects.env/.wizard.env'), main = path.join(root, '.docker.env');
 fs.mkdirSync(path.dirname(config));
 const receipt = {defaultProject: true, template: 'wizard', state: 'complete', operation: '1'.repeat(48), namespaceId: 1,
@@ -19,7 +19,7 @@ const originalMain = fs.readFileSync(main, 'utf8');
 const desired = {version: 2, namespace: 'team', wizard: {mode: 'existing', project: 'system', origin: ''},
   review: {enabled: false, host: '', ssl: '', sslKey: ''}, beta: {enabled: true, host: 'beta.example.test', ssl: '/ssl/beta/cert', sslKey: '/ssl/beta/key'}};
 let checks = 0, failTls = false, sourceId = 7;
-require('../../sync/dist/WizardEnvironments').preflightWizardEnvironmentSettings = async value => {
+require('../../dist/api/projects/wizard-environment-workflow').preflightWizardEnvironmentSettings = async value => {
   assert.equal(value.review.enabled, false); checks++;
   if (failTls) throw Error('TLS fixture refusal');
   return value;
@@ -29,7 +29,7 @@ bootstrap.rails = async input => {
   assert.equal(input.sourceLayout, 'system-monorepo-v1');
   return {namespaceId: 1, projects: [{id: sourceId, path: 'team/system', namespaceId: 1, defaultBranch: 'main', sourceRevision: 'a'.repeat(40)}]};
 };
-const setup = require('../../sync/dist/PreviewSetup');
+const setup = require('../../dist/api/projects/preview-setup');
 const wait = async job => {while (job.state === 'running') await new Promise(resolve => setTimeout(resolve, 5)); return job;};
 (async () => {
   try {

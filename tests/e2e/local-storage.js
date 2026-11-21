@@ -50,14 +50,14 @@ async function prepareLocal(candidate,base) {
   if(!['/candidate-data/platform','/recovered-data/platform'].includes(base))throw Error('storage-owned-root-required');
   await candidate.inner(['run','--rm','--network','none','--entrypoint','node',
     '--mount','type=bind,src=/,dst=/host','--env','PERSISTENCE_MODE=local','--env','PERSISTENT_MOUNT=/',
-    '--env','PERSISTENT_DIR='+base,'system-candidate:under-test','/system/system/seed-operation.js','prepare-local']);
+    '--env','PERSISTENT_DIR='+base,'system-candidate:under-test','/system/dist/cli/main.js','storage','prepare-local']);
 }
 function failureCodes(code) {
   return {[code]:code,['Seed operation failed: '+code+'.']:code};
 }
 async function refused(candidate,code,operation='harvest') {
   try {
-    await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','node','/system/operations/dist/storage/entry.js','launch',operation],
+    await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/storage/entry.js','launch',operation],
       {timeout:30000,failureCodes:failureCodes(code)});
   } catch(error) {if(error.message===code)return;throw error;}
   throw Error('storage-refusal-not-enforced');

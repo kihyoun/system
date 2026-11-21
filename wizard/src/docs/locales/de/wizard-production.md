@@ -37,8 +37,8 @@ Hole einen schreibgeschützten Plan, prüfe seine aktuellen/Ziel-Image-IDs, Hash
 und den Host und kopiere dann seinen exakten `planHash` in den Apply-Befehl:
 
 ```sh
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js plan /state/wizard-production-proof.json
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js apply /state/wizard-production-proof.json PLAN_HASH
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production plan /state/wizard-production-proof.json
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production apply /state/wizard-production-proof.json PLAN_HASH
 ```
 
 Apply prüft unabhängig das exakte private GitLab-Projekt, die erfolgreiche
@@ -125,8 +125,8 @@ Verzeichnis anzulegen.
 ## Bewusster Rollback
 
 ```sh
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js rollback-plan
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js rollback PLAN_HASH
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production rollback-plan
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production rollback PLAN_HASH
 ```
 
 Rollback erfordert, dass der abgeschlossene Prüfpunkt noch zu aktivem Image,
@@ -149,8 +149,8 @@ löse externe Konfigurations-/Vorlagenänderungen ausdrücklich auf. Erstelle da
 eine Vorschau der Wiederherstellung und bestätige sie:
 
 ```sh
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js recover-plan
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-production/run.js recover PLAN_HASH
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production recover-plan
+docker exec system_bootstrapper_1 system-bootstrapper wizard-production recover PLAN_HASH
 ```
 
 Die Wiederherstellung lehnt einen noch laufenden ursprünglichen Prozess oder

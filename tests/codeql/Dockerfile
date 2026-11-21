@@ -1,24 +1,36 @@
 FROM node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5 AS tooling
 WORKDIR /runtime
-COPY source/operations/package*.json ./operations/
-RUN npm --prefix operations ci --ignore-scripts --no-audit --no-fund
-COPY source/operations ./operations
-RUN cd operations && npx --no-install tsc
+COPY source/config/ca ./config/ca
+COPY source/src/common/ca-policy.mts ./src/common/ca-policy.mts
+COPY source/src/cli/verify-ca.mts ./src/cli/verify-ca.mts
+ENV NODE_OPTIONS=--use-openssl-ca \
+    SSL_CERT_FILE=/runtime/config/ca/cacert-2026-10-20.crt \
+    SSL_CERT_DIR=/runtime/config/ca/empty \
+    npm_config_cafile=/runtime/config/ca/cacert-2026-10-20.crt
+RUN node src/cli/verify-ca.mts --bundle
+COPY source/package.json source/package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY source/src ./src
+COPY source/tsconfig.json source/LICENSE ./
+COPY tooling/config ./config
+COPY tooling/templates ./templates
+COPY tooling/containers ./containers
+COPY tooling/wizard/.gitlab/runtime ./wizard/.gitlab/runtime
+RUN npm run build
 
 FROM node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl zstd \
- && rm -rf /var/lib/apt/lists/*
-RUN curl --fail --location --retry 3 --max-time 600 \
-      https://github.com/github/codeql-action/releases/download/codeql-bundle-v2.27.4/codeql-bundle-linux64.tar.zst \
-      --output /tmp/codeql.tar.zst \
- && printf '%s  %s\n' da3e952c7fe978a0b6b93e75d9cbabbdf8535667ca0810bd4b2ae37bc840ffee /tmp/codeql.tar.zst | sha256sum --check - \
- && tar --zstd -xf /tmp/codeql.tar.zst -C /opt \
- && chmod -R a+rX /opt/codeql \
- && rm /tmp/codeql.tar.zst \
- && mkdir /reports && chown node:node /reports
-COPY --from=tooling /runtime/operations /runtime/operations
+WORKDIR /runtime
+COPY --from=tooling /runtime ./
+ENV NODE_OPTIONS=--use-openssl-ca \
+    SSL_CERT_FILE=/runtime/config/ca/cacert-2026-10-20.crt \
+    SSL_CERT_DIR=/runtime/config/ca/empty \
+    CURL_CA_BUNDLE=/runtime/config/ca/cacert-2026-10-20.crt \
+    SYSTEM_CODEQL_IMAGE_BUILD=1
+RUN node dist/cli/main.js ci codeql-toolchain /runtime
+RUN node dist/cli/main.js host-bootstrap refresh-ca --checkout /runtime
+RUN node dist/cli/main.js host-bootstrap ca-check --checkout /runtime
 COPY source /source
 ENV HOME=/reports/home
 USER node
 WORKDIR /source
-ENTRYPOINT ["node", "/runtime/operations/dist/ci/entry.js", "codeql", "/source", "/reports"]
+ENTRYPOINT ["node", "/runtime/dist/cli/main.js", "ci", "codeql", "/source", "/reports"]

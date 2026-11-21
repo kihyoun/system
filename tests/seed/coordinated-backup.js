@@ -6,7 +6,7 @@ const os=require('node:os');
 const path=require('node:path');
 const backup=require('../../system/coordinated-backup');
 const seedOperation=require('../../system/seed-operation');
-const logo=fs.readFileSync(path.join(__dirname,'../../sync/src/Helper.ts'),'utf8').match(/return `([\s\S]*?)`;/)[1];
+const logo=fs.readFileSync(path.join(__dirname,'../../src/common/configuration-signature.ts'),'utf8').match(/return `([\s\S]*?)`;/)[1];
 function fixture(run) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'coordinated-backup-'));
   try {

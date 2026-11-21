@@ -5,7 +5,7 @@ const childProcess = require('child_process');
 const originalExecFile = childProcess.execFile, originalTimeout = global.setTimeout;
 let scenario;
 childProcess.execFile = (command, args, options, callback) => {
-  assert.equal(command, process.execPath); assert(args[0].endsWith('/operations/dist/gitlab-provision/entry.js')); assert.equal(args[1], 'preview');
+  assert.equal(command, process.execPath); assert(args[0].endsWith('/dist/cli/main.js')); assert.deepEqual(args.slice(1,3), ['gitlab-provision','preview']);
   assert.equal(options.timeout, 240000); assert.equal(options.maxBuffer, 2 * 1024 * 1024);
   const child = new EventEmitter();
   child.stdin = new EventEmitter(); child.stdin.end = text => {assert(JSON.parse(text).action.startsWith('preview-setup-'));};
@@ -20,7 +20,7 @@ childProcess.execFile = (command, args, options, callback) => {
   });
   return child;
 };
-const {rails, startJob} = require('../../sync/dist/ProjectBootstrap');
+const {rails, startJob} = require('../../dist/api/projects/project-workflow');
 (async () => {
   for (const action of ['preview-setup-project', 'preview-setup-revoke'])
    for (scenario of ['timeout', 'transport-loss', 'client-exit', 'truncated-json', 'invalid-json-shape', 'oversized-output']) {

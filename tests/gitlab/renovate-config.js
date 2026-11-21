@@ -11,13 +11,13 @@ assert(policy.enabledManagers.includes('custom.regex'));
 assert(!policy.ignorePaths.includes('wizard/**'), 'embedded Wizard dependencies must be discovered');
 assert(policy.ignorePaths.includes('**/security-release.json'));
 const custom = policy.customManagers[0];
-assert.equal(custom.managerFilePatterns[0], '/^system/Dockerfile$/');
-const pin = fs.readFileSync(path.join(root, 'system/Dockerfile'), 'utf8');
+assert.equal(custom.managerFilePatterns[0], '/^containers/controller/Dockerfile$/');
+const pin = fs.readFileSync(path.join(root, 'containers/controller/Dockerfile'), 'utf8');
 const matches = [...pin.matchAll(new RegExp(custom.matchStrings[0], 'g'))];
 assert.equal(matches.length, 1, 'custom manager extracts only the supported ARG pin');
 assert.equal(matches[0].groups.depName, 'node');
 assert.match(matches[0].groups.currentDigest, /^sha256:[a-f0-9]{64}$/);
-for (const [index, files] of [[1, ['operations/src/lifecycle/runner.service.ts']], [2, ['project-bootstrap/wizard-build/modern/build.sh', 'project-bootstrap/wizard-build/modern/verify.sh']]]) {
+for (const [index, files] of [[1, ['src/modules/lifecycle/runner.service.ts']], [2, ['templates/project-bootstrap/wizard-build/modern/build.sh', 'templates/project-bootstrap/wizard-build/modern/verify.sh']]]) {
   const manager = policy.customManagers[index];
   for (const file of files) {
     assert(new RegExp(manager.managerFilePatterns[0].slice(1, -1)).test(file));
@@ -26,7 +26,7 @@ for (const [index, files] of [[1, ['operations/src/lifecycle/runner.service.ts']
     assert.match(extracted[0].groups.currentDigest, /^sha256:[a-f0-9]{64}$/);
   }
 }
-const globalPath = path.join(root, 'gitlab/renovate/config.cjs');
+const globalPath = path.join(root, 'dist/modules/renovate/config-entry.js');
 const original = {...process.env};
 try {
   process.env.CI_API_V4_URL = 'https://gitlab.example.com/api/v4';
@@ -60,9 +60,9 @@ console.log('PASS: explicit repository allowlist, approval safety policy and sup
 // Consolidated former Python discovery checks use the same native service as CLI.
 (async () => {
   await require('./renovate-setup-fixture')();
-  const {RenovateVerificationService} = require('../../operations/dist/renovate/verification.service');
-  const {RenovateModule} = require('../../operations/dist/renovate/renovate.module');
-  const {NestFactory} = require('../../operations/node_modules/@nestjs/core');
+  const {RenovateVerificationService} = require('../../dist/modules/renovate/verification.service');
+  const {RenovateModule} = require('../../dist/modules/renovate/renovate.module');
+  const {NestFactory} = require('../../node_modules/@nestjs/core');
   const app = await NestFactory.createApplicationContext(RenovateModule, {logger:false});
   try {
     const service = app.get(RenovateVerificationService);

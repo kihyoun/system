@@ -5,8 +5,8 @@ Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operat
 vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
-Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
+Halten Sie die geprüfte Node-Installation, `dist` und
+`node_modules` und `assets` vor Wartungsbeginn offline verfügbar.
 
 Dieser Abschnitt beschreibt ausdrücklich die Wiederverwendung eines vorhandenen
 Datenvolumes. Wenn Sie stattdessen einen frischen lokalen Arbeitsspeicher aus einer
@@ -95,7 +95,7 @@ die öffentliche Adresse ändert. Für öffentliches HTTPS müssen die Ports 80 
 3. Prüfen Sie, ob `platform/recovery/images.json` den aufgezeichneten Quellcode,
    die exakten Image-IDs, lokalen Aliase und Archive mit Prüfsummen beschreibt.
    Das vollständige Manifestschema und die Eingabeanforderungen stehen in der
-   [Dokumentation des Initialisierungswerkzeugs](../bootstrapper/README.md).
+   [Dokumentation des Initialisierungswerkzeugs](BOOTSTRAPPER.md).
    Fehlende Quellcode-Identitäten oder Aliase sind ein Vorbereitungsfehler und
    keine Erlaubnis, ein anderes Image einzusetzen oder ein privates
    Wiederherstellungsskript auf den Host zu kopieren.
@@ -117,7 +117,7 @@ die öffentliche Adresse ändert. Für öffentliches HTTPS müssen die Ports 80 
 
    ```bash
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     node bootstrapper/initialize.js \
+     system-bootstrapper host-bootstrap initialize \
        --install-host \
        --receipt-dir /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID \
        --timeout 1200
@@ -165,7 +165,7 @@ die öffentliche Adresse ändert. Für öffentliches HTTPS müssen die Ports 80 
    optionalen Token-/Weiterleitungsargumente:
 
    ```bash
-   sudo node bootstrapper/verify-runtime.js check \
+   sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check \
      --persistence-env /etc/system-bootstrapper/persistence.env \
      --baseline /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/baseline.json \
      --output /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/recheck.json \

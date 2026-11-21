@@ -45,7 +45,7 @@ mit installiertem Node ausgeführt werden.
 
 ```sh
 private_config_dir="$HOME/private-bootstrapper-config"
-node nginx/wizard-aliases.js configure \
+system-bootstrapper projects-routing wizard-aliases configure \
   --config "$private_config_dir/.docker.env" \
   --projects "$private_config_dir/.projects.env" \
   --alias example.com \
@@ -117,7 +117,7 @@ Führe die native Prüfung neben den üblichen Prüfungen der konfigurierten Die
 auch mit dem vom Betreiber angegebenen Alias-Ursprung aus:
 
 ```sh
-sudo node bootstrapper/verify-runtime.js check \
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline "$private_config_dir/pre-start-baseline.json" \
   --output "$private_config_dir/runtime-check.json" \

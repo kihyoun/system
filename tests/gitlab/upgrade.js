@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {Upgrade,release,options,imageAssignment,inventory,hash,atomic,run}=require('../../gitlab/upgrade');
-const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+const {Upgrade,release,options,imageAssignment,inventory,hash,atomic,run}=require('../../dist/modules/gitlab-upgrade/compatibility');
+const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
 const base={sourceRevision:'a'.repeat(40),evidence:'/state/evidence.json',stateDir:'/state',persistentDir:'/operator/platform',checkpointDir:'/state/gitlab-upgrades/test',readyTimeoutSeconds:600};
 const ids={old:'sha256:'+'b'.repeat(64),next:'sha256:'+'c'.repeat(64)};
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-upgrade-contract-'));
@@ -23,12 +23,12 @@ function nativeProof(args, proof={}) {
   assert.equal(release.runner.fromVersion,'19.5.1');assert.equal(release.runner.toVersion,'19.6.0');
   assert.equal(release.requiredUpgradeStop,'19.5');
   assert.match(release.runner.helperImage,/:x86_64-v19\.6\.0@sha256:[a-f0-9]{64}$/);
-  for(const file of ['system/.docker.env.example','system/docker-compose.yml','Prepare-Host.md']){
+  for(const file of ['config/system/.docker.env.example','config/system/docker-compose.yml','Prepare-Host.md']){
     const text=fs.readFileSync(path.join(__dirname,'../..',file),'utf8');
     assert(text.includes(release.toImage),file+' must select the reviewed GitLab target');
     assert(text.includes(release.runner.toImage),file+' must select the reviewed Runner target');
   }
-  assert(fs.readFileSync(path.join(__dirname,'../../gitlab-runner/docker-compose.yml'),'utf8').includes(release.runner.toImage));
+  assert(fs.readFileSync(path.join(__dirname,'../../config/gitlab-runner/docker-compose.yml'),'utf8').includes(release.runner.toImage));
   assert.equal(options(base),base);for(const patch of [{stateDir:'/tmp'},{checkpointDir:'/state/../private'},{sourceRevision:'main'},{readyTimeoutSeconds:30},{allowFailure:true}])assert.throws(()=>options({...base,...patch}));
   const updated=imageAssignment(example,release.toImage);assert.equal(updated.slice(0,1184),example.slice(0,1184));assert(updated.includes(release.toImage));assert.equal(imageAssignment(updated,release.toImage),updated);
   assert.throws(()=>imageAssignment(example+'\nGITLAB_IMAGE=one\nGITLAB_IMAGE=two\n',release.toImage),/duplicate/);assert.throws(()=>imageAssignment('badcube',release.toImage),/cube/);assert.throws(()=>imageAssignment(example,'gitlab/gitlab-ee:latest'),/approved/);
@@ -120,8 +120,8 @@ function nativeProof(args, proof={}) {
     };
     await ready.ready(release.toVersion,ids.next);assert.equal(sleeps,1,'Explicit startup/migration states remain retryable.');
   }
-  const {GitlabPreflightService}=require('../../operations/dist/gitlab-preflight/gitlab-preflight.service');
-  const probe=new GitlabPreflightService(new (require('../../operations/dist/gitlab-preflight/gitlab-database.service').GitlabDatabaseService)()), probeCommands=[], probeInputs=[];
+  const {GitlabPreflightService}=require('../../dist/modules/gitlab-preflight/gitlab-preflight.service');
+  const probe=new GitlabPreflightService(new (require('../../dist/modules/gitlab-preflight/gitlab-database.service').GitlabDatabaseService)()), probeCommands=[], probeInputs=[];
   const topology='production:\n  main: &db\n    adapter: postgresql\n    username: gitlab\n    database: main_data\n    host: /var/opt/gitlab/postgresql\n  ci:\n    <<: *db\n    database: ci_data\n    database_tasks: false\n';
   const proof=await probe.probe(running.Id,{command(args,timeout,input){
     if(input!==undefined)probeInputs.push(input);
@@ -138,7 +138,7 @@ function nativeProof(args, proof={}) {
   }
   for(const invalid of ['-1','1.5','NaN','9007199254740992','0\nsecret'])await assert.rejects(()=>probe.probe(running.Id,{command:args=>nativeProof(args,{runningJobs:invalid})}),/upgrade-preflight-refused/);
   const secret=' private:token\\with-space ', tlsTopology=topology.replace('username: gitlab',`username: remote_user\n    password: ${JSON.stringify(secret)}\n    sslmode: verify-full\n    sslrootcert: /private/root.crt\n    sslcert: /private/client.crt\n    sslkey: /private/client.key`).replace('/var/opt/gitlab/postgresql','db.example.test');
-  const database = new (require('../../operations/dist/gitlab-preflight/gitlab-database.service').GitlabDatabaseService)();
+  const database = new (require('../../dist/modules/gitlab-preflight/gitlab-database.service').GitlabDatabaseService)();
   const session = await database.open(running.Id, {command: args => nativeProof(args, {topology})});
   assert.equal(session.main, 0); assert.equal(session.ci, 1);
   const interactive = session.command(session.main, {interactive: true, applicationName: 'bootstrapper-lock:fixture'});
@@ -150,7 +150,7 @@ function nativeProof(args, proof={}) {
   assert.throws(() => session.command(99), /session-invalid/);
   await session.close(); await session.close();
   assert.throws(() => session.command(0), /session-invalid/);
-  const sampler = new (require('../../operations/dist/gitlab-preflight/gitlab-data-sample.service').GitlabDataSampleService)(database);
+  const sampler = new (require('../../dist/modules/gitlab-preflight/gitlab-data-sample.service').GitlabDataSampleService)(database);
   const sampled = {projects: [[1, 'team/full', 'a'.repeat(40)], [2, 'team/empty', null]], users: [[1, 'root']], issues: [[2, 1, 1]], mergeRequests: [[3, 1, 1]], registries: [[4, 1, '']]};
   let sampleClosed = false, sampleQueries = 0, sampleGets = [];
   const samplePort = {
@@ -184,18 +184,18 @@ function nativeProof(args, proof={}) {
   assert(privateInputs.some(value=>value.includes(' private\\:token\\\\with-space ')));
   assert(!JSON.stringify(privateCommands).includes('private:token'));assert(privateCommands.at(-1).includes('rm'));
   let cleanedAfterFailure=false;await assert.rejects(()=>probe.probe(running.Id,{command(args){if(args.includes('rm'))cleanedAfterFailure=true;if(args.includes('/opt/gitlab/embedded/bin/psql'))throw Error('database-unavailable');return nativeProof(args,{topology:tlsTopology});}}),/database-unavailable/);assert(cleanedAfterFailure);
-  const nativeProcess=require('../../operations/dist/runtime/process').nativeProcess, oldNativeRun=nativeProcess.run, oldStdout=process.stdout.write;let cliProof='';
+  const nativeProcess=require('../../dist/common/runtime/process').nativeProcess, oldNativeRun=nativeProcess.run, oldStdout=process.stdout.write;let cliProof='';
   try {
     nativeProcess.run=(binary,args,options)=>{assert.equal(binary,'docker');if(args.includes('dd'))assert.equal(typeof options.input,'string','Public CLI must forward private stdin');return {stdout:nativeProof(args),stderr:'',status:0};};
     process.stdout.write=value=>{cliProof+=value;return true;};
-    await require('../../operations/dist/gitlab-preflight/entry').main([running.Id]);
+    await require('../../dist/modules/gitlab-preflight/entry').main([running.Id]);
   } finally {nativeProcess.run=oldNativeRun;process.stdout.write=oldStdout;}
   assert.equal(JSON.parse(cliProof).version,release.toVersion);
   await assert.rejects(()=>probe.probe('system_gitlab_1',{command(){assert.fail('Mutable name must not execute');}}),/container-identity/);
   const planEngine=new Upgrade(base);let entered=false,unlocked=false;
   planEngine.lock=()=>{};planEngine.unlock=()=>{unlocked=true;};planEngine.syncIdle=()=>{};planEngine.plan=async()=>({planSha256:'d'.repeat(64)});planEngine.migrate=async()=>{entered=true;};
   await assert.rejects(()=>planEngine.promote('e'.repeat(64)),/reviewed-plan/);assert(!entered);assert(unlocked);
-  const {gitLabReadiness,controlGitLabServices}=require('../../operations/dist/gitlab-upgrade/service-control');
+  const {gitLabReadiness,controlGitLabServices}=require('../../dist/modules/gitlab-upgrade/service-control');
   for(const code of [0,7,22,28,52,56,2,127]){
     const port={command(args){assert(args.includes('curl')&&args.includes('--output')&&!args.includes('/bin/sh'));return run(process.execPath,['-e','process.exit('+code+')']);}};
     if([0,7,22,28,52,56].includes(code))assert.equal(await gitLabReadiness(port,'fixture'),code===0);

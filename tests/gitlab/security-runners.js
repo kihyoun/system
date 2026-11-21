@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {Upgrade,release,runnerAssignment,runnerSelection,imageAssignment,runnerHelper,runnerCheckpoint,atomic,run}=require('../../gitlab/upgrade');
-const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+const {Upgrade,release,runnerAssignment,runnerSelection,imageAssignment,runnerHelper,runnerCheckpoint,atomic,run}=require('../../dist/modules/gitlab-upgrade/compatibility');
+const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
 const imageIds=Object.fromEntries([release.fromImage,release.toImage,release.runner.fromImage,release.runner.toImage,release.runner.fromHelperImage,release.runner.helperImage].map((ref,i)=>[ref,'sha256:'+String(i+1).repeat(64)]));
 function fixture(t,retainedTag=false){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'security-runners-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -15,7 +15,7 @@ function fixture(t,retainedTag=false){
   const events=[];let runnerImage=imageIds[release.runner.fromImage],gitlabImage=imageIds[release.fromImage],runnerRunning=true,gitlabRunning=true,wrongRunner=false,wrongIdentity=false;
   let taggedImage={Id:imageIds[release.runner.fromImage],RepoDigests:[oldDigest]};
   const engine=new Upgrade({sourceRevision:'a'.repeat(40),stateDir:'/state',persistentDir:'/platform',checkpointDir:'/state/gitlab-upgrades/test',evidence:'/state/evidence.json',readyTimeoutSeconds:60},{serviceData,certbot,runnerData,seed:path.join(root,'absent-backup-target'),run(binary,args,opts={}){
-    if(binary==='bash'||(binary===process.execPath && args[0].includes('/operations/dist/'))){
+    if(binary==='bash'||(binary===process.execPath && args[0].includes('/dist/modules/'))){
       if(opts.cwd.endsWith('/gitlab-runner')){events.push(args[1]);runnerRunning=args[1]==='runner-start';if(runnerRunning){runnerImage=wrongRunner?'sha256:'+'9'.repeat(64):imageIds[engine.runnerReference()];if(wrongIdentity)atomic(path.join(runnerConfig,'.runner_system_id'),'unexpected-new-manager');}}
       else if(opts.cwd.endsWith('/gitlab')){gitlabRunning=true;gitlabImage=engine.configuration().includes(release.toImage)?imageIds[release.toImage]:imageIds[release.fromImage];events.push('gitlab-start');}
       return '';

@@ -12,6 +12,7 @@ test('backup media has an independent journaled owner and shares cancellation/de
   const calls=[],parent={spec:{fullAcceptance:true,recoveryAcceptance:true},deadline:123,checkpoint:owner=>calls.push(['checkpoint',owner.id]),canceled:false};
   class Owner {
     constructor(spec,options){this.spec=spec;this.id='b'.repeat(24);this.name='system-candidate-'+this.id;this.checkpoint=options.checkpoint;}
+
     async create(kind,args){calls.push([kind,args]);return this.name;}
   }
   const mounts=await storage.prepareOwner(parent,{Owner});
@@ -81,7 +82,7 @@ test('public upgrade reuses the owned device while its configured backup target 
 
 test('a failed payload refusal cannot publish acceptance or leave the corruption injected by its fixture',async()=>{
   const calls=[],candidate={daemon:'owned',stage:async(_name,action)=>action(),call:async args=>{calls.push(args);return args.includes('readlink')?'snapshots/completed':'';},inner:async args=>{
-    assert.deepEqual(args.slice(-3),['/system/operations/dist/storage/entry.js','launch','restore']);
+    assert.deepEqual(args.slice(-3),['/system/dist/modules/storage/entry.js','launch','restore']);
     if(calls.some(call=>call.at(-1).includes('printf corrupt')))throw Error('docker-exec-failed');
     throw Error('restore-target-not-empty');
   }};
@@ -100,8 +101,8 @@ test('fresh restore checks the same live lease even before a GitLab container ex
   const calls=[],candidate={inner:async args=>{
     calls.push(args);
     if(args[0]==='ps')return '';
-    if(args.includes('/system/operations/dist/storage/entry.js')){
-      assert.deepEqual(args.slice(-3),['/system/operations/dist/storage/entry.js','launch','restore']);
+    if(args.includes('/system/dist/modules/storage/entry.js')){
+      assert.deepEqual(args.slice(-3),['/system/dist/modules/storage/entry.js','launch','restore']);
       throw Error('storage-operation-busy');
     }
     return '';
@@ -115,7 +116,7 @@ test('fresh restore checks the same live lease even before a GitLab container ex
 
 function restartedControlFixture(responses={},readinessMilliseconds=5000,deadline=20000,control={}) {
   let time=0,restarted=false;
-  const requests=[],results=[],commands=[],scripts=[],config=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+  const requests=[],results=[],commands=[],scripts=[],config=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
   let pushed=false;
   const candidate={daemon:'owned',spec:{readinessMilliseconds},secrets:{user:'fixture-user',password:'private-fixture-password'},
     now:()=>time,deadline,sleep:async milliseconds=>{time+=milliseconds;},checkpoint:()=>{},results,

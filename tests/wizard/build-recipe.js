@@ -3,8 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const root = path.resolve(__dirname, '../..');
-const logo = require(path.join(root, 'sync/dist/Helper')).default.textLogo;
-const recipe = require(path.join(root, 'project-bootstrap/wizard-build/recipe')).generate(logo);
+const logo = require(path.join(root, 'dist/common/configuration-signature')).default.textLogo;
+const recipe = require(path.join(root, 'dist/modules/project-lifecycle/build-recipe.service')).generate(logo);
 const {wizardDockerfile} = require('../e2e/prepare-images');
 assert.equal(wizardDockerfile(recipe.files), '.system-bootstrapper/build-v1/Dockerfile');
 assert.equal(recipe.version, 1);
@@ -37,10 +37,10 @@ const lock = JSON.parse(content('smoke/package-lock.json'));
 assert.equal(lock.packages['node_modules/playwright'].version, '1.63.0');
 assert.equal(lock.packages['node_modules/playwright-core'].version, '1.63.0');
 assert.equal(JSON.parse(content('smoke/package.json')).dependencies.playwright, '1.63.0');
-const again = require(path.join(root, 'project-bootstrap/wizard-build/recipe')).generate(logo);
+const again = require(path.join(root, 'dist/modules/project-lifecycle/build-recipe.service')).generate(logo);
 assert.equal(recipe.recipeHash, again.recipeHash);
 console.log('Wizard recipe: immutable signature, deterministic manifest, legacy lockfile checks, browser gate, contextual excludes and no deployment passed.');
-const recipes = require(path.join(root, 'project-bootstrap/wizard-build/recipe'));
+const recipes = require(path.join(root, 'dist/modules/project-lifecycle/build-recipe.service'));
 const modern = recipes.generate(logo, 'node24-vite8');
 const modernContent = name => modern.files.find(file => file.path.endsWith('/' + name)).content;
 assert.equal(modern.profile, 'node24-vite8');
@@ -59,7 +59,7 @@ assert(!modernContent('build.sh').includes('"jest":true'), 'Vitest evidence must
 assert.equal(JSON.parse(modernContent('smoke/package.json')).dependencies.playwright, '1.64.1');
 assert.equal(JSON.parse(modernContent('smoke/package-lock.json')).packages['node_modules/playwright'].version, '1.64.1');
 for (const file of modern.files) assert.equal(crypto.createHash('sha256').update(file.content).digest('hex'), file.sha256);
-const sourceSnapshot = JSON.parse(fs.readFileSync(path.join(root, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8'));
+const sourceSnapshot = JSON.parse(fs.readFileSync(path.join(root, 'assets/wizard-source/snapshot.json'), 'utf8'));
 const packageJson = JSON.parse(Buffer.from(sourceSnapshot.files.find(file => file.path === 'package.json').content, 'base64'));
 assert.equal(recipes.forSource(logo, sourceSnapshot.sourceRevision).recipeHash,
   recipes.generate(logo, sourceSnapshot.files.some(file=>file.path==='.gitlab/producer-v2.json') ? 'node24-vite8-typed-v6' : packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-quickstart-v5' : 'legacy-ca-v4').recipeHash);
@@ -99,7 +99,7 @@ for (const file of ca.files.filter(file => !file.path.endsWith('/smoke/check.js'
 }
 for (const file of quickstart.files) assert.equal(crypto.createHash('sha256').update(file.content).digest('hex'), file.sha256);
 const quickstartSmoke = quickstart.files.find(file => file.path.endsWith('/smoke/check.js')).content;
-assert.equal(quickstartSmoke, fs.readFileSync(path.join(root, 'project-bootstrap/wizard-build/quickstart-v5/check.js'), 'utf8'));
+assert.equal(quickstartSmoke, fs.readFileSync(path.join(root, 'templates/project-bootstrap/wizard-build/quickstart-v5/check.js'), 'utf8'));
 assert(quickstartSmoke.includes("name: 'How it works'") && quickstartSmoke.includes("name: 'Quick Install'"));
 assert(quickstartSmoke.includes("name: 'Docs'") && quickstartSmoke.includes('cubeSignature: true'));
 console.log('Quick Install browser profile: source-selected version, unchanged CI/toolchain/CA files and seven exact historical recipe hashes passed.');
@@ -112,7 +112,7 @@ assert(typed.files.every(file => file.path.startsWith('.system-bootstrapper/buil
 assert(typed.ci.includes('project-ci.cjs prepare-runtime') && typed.ci.includes('project-ci.cjs build') && typed.ci.includes('project-ci.cjs verify'));
 assert(!typed.ci.includes('sh .system-bootstrapper'));
 assert.equal(crypto.createHash('md5').update(typed.ci.slice(0,1184)).digest('hex'),'bd4a8426355824593a5e21ad759830c1');
-assert.equal(typed.files.find(file=>file.path.endsWith('/runtime/project-ci.cjs')).content,fs.readFileSync(path.join(root,'project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs'),'utf8'));
+assert.equal(typed.files.find(file=>file.path.endsWith('/runtime/project-ci.cjs')).content,fs.readFileSync(path.join(root,'templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs'),'utf8'));
 const typedDocker=typed.files.find(file=>file.path.endsWith('/Dockerfile')).content;
 assert(typedDocker.includes('npm run lint && npm test && npm run build && npm run test:config-export'));
 assert(typedDocker.includes('project-ci.cjs refresh-ca'));

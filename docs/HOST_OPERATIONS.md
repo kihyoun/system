@@ -7,13 +7,13 @@ An Ubuntu release name or an image's userspace distribution does not establish
 compatibility. Run the repository preflight **on that Linux x86_64 host** before
 choosing a MongoDB image, changing a host kernel, or enabling a CI database.
 Use the pinned Node runtime prepared by Quickstart. For a source checkout, prepare
-the shared services first with `npm ci --prefix operations` and
-`npm run build --prefix operations`:
+the shared services first with `npm ci` and
+`npm run build`:
 
 ```sh
-node bootstrapper/container-preflight.js --mongodb-version 8.0.37
+system-bootstrapper host-bootstrap container-preflight --checkout "$PWD" --mongodb-version 8.0.37
 # Pull the exact reviewed digest separately, then test its executable as well:
-node bootstrapper/container-preflight.js --mongodb-version 8.0.37 \
+system-bootstrapper host-bootstrap container-preflight --checkout "$PWD" --mongodb-version 8.0.37 \
   --image 'docker.io/library/mongo@sha256:REPLACE_WITH_64_HEX_DIGEST'
 ```
 
@@ -116,7 +116,7 @@ Use positive integer sizes with `k`, `m` or `g` units and a file count from 1 to
 100. Validate desired values before applying them:
 
 ```sh
-node bootstrapper/log-policy.js --max-size 10m --max-files 3
+system-bootstrapper host-bootstrap log-policy --checkout "$PWD" --max-size 10m --max-files 3
 ```
 
 The Wizard's existing additional runtime options preserve these exports during
@@ -151,8 +151,8 @@ Inspect exact container names on the daemon host after deployment, and repeat
 after a subsequent normal deployment (use actual names from your deployment):
 
 ```sh
-node bootstrapper/log-policy.js system_web_1 system_sync_1
-node bootstrapper/log-policy.js --max-size 10m --max-files 3 YOUR_APP_CONTAINER
+system-bootstrapper host-bootstrap log-policy --checkout "$PWD" system_web_1 system_sync_1
+system-bootstrapper host-bootstrap log-policy --checkout "$PWD" --max-size 10m --max-files 3 YOUR_APP_CONTAINER
 ```
 
 A mismatch exits 1 and displays the actual `HostConfig.LogConfig`; unavailable

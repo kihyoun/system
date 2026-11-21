@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert/strict');
-const {assess, LIMITS} = require('../../gitlab/check-candidate-capacity');
+const {assess, LIMITS} = require('../../dist/modules/ci/candidate-capacity');
 const memory = gib => `MemTotal: 99999999 kB\nMemAvailable: ${gib * 1024 ** 2} kB\n`;
 const disk = gib => ({bavail: BigInt(gib * 1024 ** 2), bsize: 1024n});
 

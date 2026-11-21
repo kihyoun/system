@@ -8,19 +8,21 @@ const http = require('http');
 const vm = require('vm');
 const {spawn} = require('child_process');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'project-bootstrap-'));
-const builtSync = path.resolve(__dirname, '../../sync/dist');
-const sync = path.join(root, 'sync/dist');
-fs.mkdirSync(path.join(root, 'sync'));
-fs.mkdirSync(path.join(root, 'bin'));
-fs.cpSync(builtSync,sync,{recursive:true});
-fs.symlinkSync(path.resolve(__dirname,'../../sync/node_modules'),path.join(root,'sync/node_modules'),'dir');
-for(const name of ['project-bootstrap','nginx','wizard','bootstrapper','gitlab'])fs.symlinkSync(path.resolve(__dirname,'../..',name),path.join(root,name),'dir');
-fs.mkdirSync(path.join(root,'operations/dist/gitlab-provision'),{recursive:true});
-fs.mkdirSync(path.join(root,'system'));
-for(const file of fs.readdirSync(path.resolve(__dirname,'../../system')).filter(file=>file.endsWith('.js')))fs.symlinkSync(path.resolve(__dirname,'../../system',file),path.join(root,'system',file));
-fs.mkdirSync(path.join(root,'operations/dist/projects-routing'),{recursive:true});
-fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), 'process.exit(0)\n');
+const builtRuntime = path.resolve(__dirname, '../../dist');
+const api = path.join(root, 'dist/api');
+fs.cpSync(builtRuntime,path.join(root,'dist'),{recursive:true});
+fs.mkdirSync(path.join(root,'bin'));
+fs.mkdirSync(path.join(root,'state'));
+fs.symlinkSync(path.resolve(__dirname,'../../node_modules'),path.join(root,'node_modules'),'dir');
+fs.cpSync(path.resolve(__dirname,'../../config'),path.join(root,'config'),{recursive:true});
+for(const name of ['templates','assets','wizard','tools'])fs.symlinkSync(path.resolve(__dirname,'../..',name),path.join(root,name),'dir');
+fs.renameSync(path.join(root,'dist/cli/main.js'),path.join(root,'dist/cli/native-main.js'));
+const routingStatus=path.join(root,'routing-status');fs.writeFileSync(routingStatus,'0');
+process.env.SYSTEM_CONFIG_DIR=path.join(root,'state');
 const mock = `#!${process.execPath}
+if(process.argv[2]==='api'){require('./native-main').main(['api']).catch(()=>{process.exitCode=1;});}
+else if(process.argv[2]==='projects-routing'){process.exit(Number(require('fs').readFileSync(${JSON.stringify(routingStatus)},'utf8')));}
+else {
 let text = ''; process.stdin.on('data', chunk => text += chunk);
 process.stdin.on('end', () => {
  const input = JSON.parse(text);
@@ -34,21 +36,22 @@ process.stdin.on('end', () => {
  {repository: {id: 42, namespaceId: Number(input.namespaceId), path: 'root/' + input.projectKey, defaultBranch: 'main', webUrl: 'http://gitlab.localhost/root/' + input.projectKey}};
  setTimeout(() => console.log(JSON.stringify(result)), 100);
 });
+}
 `;
-fs.writeFileSync(path.join(root, 'operations/dist/gitlab-provision/entry.js'), mock, {mode: 0o755});
+fs.writeFileSync(path.join(root, 'dist/cli/main.js'), mock, {mode: 0o755});
 process.env.PATH = path.join(root, 'bin') + ':' + process.env.PATH;
-process.chdir(path.join(root, 'sync'));
-const bootstrap = require(path.join(sync, 'ProjectBootstrap'));
-const logo = require(path.join(sync, 'Helper')).default.textLogo;
+process.chdir(root);
+const bootstrap = require(path.join(api, 'projects/project-workflow'));
+const logo = require(path.join(root,'dist/common/configuration-signature')).default.textLogo;
 // Use the exact pinned Wizard Fetch parser and ProjectConfig serializer. Only
 // browser/storage dependencies and MobX observation are inert in this fixture.
-const snapshot = require('../../project-bootstrap/wizard-source/package').validate(JSON.parse(fs.readFileSync(
-  path.resolve(__dirname, '../../project-bootstrap/wizard-source/snapshot.json'), 'utf8')));
-const ts = require('../../sync/node_modules/typescript');
+const snapshot = require('../../dist/modules/source-preparation/wizard-source.service').validate(JSON.parse(fs.readFileSync(
+  path.resolve(__dirname, '../../assets/wizard-source/snapshot.json'), 'utf8')));
+const ts = require('../../node_modules/typescript');
 const wizardModules = new Map();
 const wizardStubs = {
   'file-saver': {}, jszip: {}, mobx: {makeAutoObservable: () => {}, observable: value => value, runInAction: operation => operation()},
-  uuid: {v4: () => 'fixture-wizard'}, md5: {__esModule: true, default: require('../../sync/node_modules/md5')},
+  uuid: {v4: () => 'fixture-wizard'}, md5: {__esModule: true, default: require('../../node_modules/md5')},
   './MainConfig': {__esModule: true, default: class {}}, './SyncServer': {__esModule: true, default: class {}}, './Recovery': {}, './PreviewSetupIntent': {}
 };
 function wizardModule(name) {
@@ -95,7 +98,7 @@ function request(route, token, body) {
   });
 }
 async function nativeProvisionContracts() {
-  const {ProjectProvisionService}=require('../../operations/dist/gitlab-provision/project-provision.service');
+  const {ProjectProvisionService}=require('../../dist/modules/gitlab-provision/project-provision.service');
   const payload={action:'create',projectKey:'application',namespaceId:'7',operation:'owned-operation',template:'angular',templateVersion:1,ci:'original generated CI',files:[{action:'create',file_path:'starter.ts',content:'initial starter'}]};
   const binding={id:42,namespaceId:7,path:'team/application',webUrl:'https://gitlab.example.test/team/application',defaultBranch:'main',pipelineUrl:'https://gitlab.example.test/team/application/-/pipelines',ciPath:'.system-bootstrapper/ci.yml',template:'angular',templateVersion:1,generatedCi:payload.ci,deploymentState:'awaiting-pipeline'};
   function fixture(){
@@ -206,8 +209,8 @@ async function nativeProvisionContracts() {
   for(const exists of [false,true]){f=fixture();f.state.exists=exists;assert.equal((await f.invoke({...payload,action:'availability'})).availability,exists?'occupied':'available');assert(f.state.requests.every(row=>row.method==='GET'));}
   for(const status of [400,409,403]){f=fixture();f.state.exists=false;f.state.createStatus=status;const result=await f.invoke();assert.equal(result.state,'failed');assert.equal(result.conflict,status!==403);assert.equal(f.state.requests.filter(row=>row.method!=='GET').length,1);}
   f=fixture();assert.equal((await f.invoke({...payload,projectKey:'application\n'})).state,'failed');assert.equal(f.state.requests.length,0);
-  const {NestFactory}=require('../../operations/node_modules/@nestjs/core');
-  const {GitlabProvisionModule}=require('../../operations/dist/gitlab-provision/gitlab-provision.module');
+  const {NestFactory}=require('../../node_modules/@nestjs/core');
+  const {GitlabProvisionModule}=require('../../dist/modules/gitlab-provision/gitlab-provision.module');
   const app=await NestFactory.createApplicationContext(GitlabProvisionModule,{logger:false,abortOnError:false});
   try{assert(app.get(ProjectProvisionService) instanceof ProjectProvisionService);}finally{await app.close();}
   console.log('Native project provisioning: paginated read-only discovery, exact resume identity, unchanged edited source, protected-branch controller membership, creation races, interrupted writes and pipeline retry reconciliation passed.');
@@ -241,7 +244,7 @@ let child;
     const failed=await wait(bootstrap.createProject({...input('diagnostic'),fixtureResult:{diagnostic:{phase:'managed-ci-commit',httpStatus:400}}}));
     assert.equal(failed.state,'failed');assert.equal(failed.message,'CI installation failed; retry Save');
     assert(!Object.hasOwn(failed,'diagnostic'));assert.deepEqual(output,['BOOTSTRAPPER_PROJECT_CI_COMMIT_HTTP:400']);
-    const retained=bootstrap.readReceipt(fs.readFileSync(path.join(root,'system/.projects.env/.diagnostic.env'),'utf8'));
+    const retained=bootstrap.readReceipt(fs.readFileSync(path.join(root,'state/.projects.env/.diagnostic.env'),'utf8'));
     assert.equal(retained.state,'pending');assert(!Object.hasOwn(retained,'diagnostic'));assert.equal(retained.repository,undefined);
   }finally{console.log=originalLog;}
   for (const key of ['', 'A', 'a-b', 'ä', 'a b', '../x', null]) {
@@ -261,20 +264,20 @@ let child;
   assert(!bootstrap.projectBusy());
   assert.equal(bootstrap.createProject({...data, data: data.data.replace('created on first', 'created on later')}).id, first.id);
   assert.throws(() => bootstrap.createProject({...data, ci: '# changed CI_DEFAULT_BRANCH\n'}), /already exists locally/);
-  const receipt = bootstrap.readReceipt(fs.readFileSync(path.join(root, 'system/.projects.env/.example.env'), 'utf8'));
+  const receipt = bootstrap.readReceipt(fs.readFileSync(path.join(root, 'state/.projects.env/.example.env'), 'utf8'));
   assert.equal(receipt.repository.id, 42);
   assert.equal(receipt.repository.defaultBranch, 'main');
   assert.equal((await wait(bootstrap.createProject(input('race')))).state, 'failed');
-  assert(!fs.existsSync(path.join(root, 'system/.projects.env/.race.env')), 'collision does not claim foreign repository locally');
+  assert(!fs.existsSync(path.join(root, 'state/.projects.env/.race.env')), 'collision does not claim foreign repository locally');
   assert.equal((await wait(bootstrap.queryGitlab({action: 'availability', projectKey: 'occupied', namespaceId: 1}))).availability, 'occupied');
-  fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), 'process.exit(1)\n');
+  fs.writeFileSync(routingStatus,'1');
   const model = new WizardProject(new WizardMain(), {projectKey: 'resume', namespaceId: '1', template: 'angular',
     useProdHost: 'false', useBetaHost: 'false', useReviewHost: 'false', prodDomainMode: 0, betaDomainMode: 0,
     reviewDomainMode: 1, prodDeployMode: 1, betaDeployMode: 1, reviewDeployMode: 1, gitlabRunnerToken: 'fixture', gitlabRunnerScale: 1});
   const original = wizardInput(model);
   const interrupted = bootstrap.createProject(original);
   assert.equal((await wait(interrupted)).state, 'failed');
-  const resumeFile = path.join(root, 'system/.projects.env/.resume.env');
+  const resumeFile = path.join(root, 'state/.projects.env/.resume.env');
   const pending = bootstrap.readReceipt(fs.readFileSync(resumeFile, 'utf8'));
   assert.equal(pending.state, 'pending'); assert.equal(pending.repository.id, 42);
   const fetchedModel = fetchedWizardProject(fs.readFileSync(resumeFile, 'utf8'), pending);
@@ -284,10 +287,9 @@ let child;
   assert.throws(() => bootstrap.createProject({...saved, namespaceId: '2'}), /already exists locally/);
   assert.throws(() => bootstrap.createProject({...saved, data: saved.data.replace('GITLAB_RUNNER_SCALE="1"', 'GITLAB_RUNNER_SCALE="2"')}), /already exists locally/);
   assert.throws(() => bootstrap.createProject({...saved, template: 'react', data: saved.data.replace('PROJECT_TEMPLATE="angular"', 'PROJECT_TEMPLATE="react"')}), /already exists locally/);
-  fs.mkdirSync(path.join(root,'operations/dist/projects-routing'),{recursive:true});
-fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), 'process.exit(0)\n');
-  delete require.cache[require.resolve(path.join(sync, 'ProjectBootstrap'))];
-  const restarted = require(path.join(sync, 'ProjectBootstrap'));
+  fs.writeFileSync(routingStatus,'0');
+  delete require.cache[require.resolve(path.join(api, 'projects/project-workflow'))];
+  const restarted = require(path.join(api, 'projects/project-workflow'));
   const resumed = restarted.createProject({...saved, resumeRepository: {id: 999}});
   assert.equal(resumed.id, interrupted.id, 'restart resumes the durable operation');
   assert.equal((await wait(resumed)).state, 'complete');
@@ -309,7 +311,7 @@ fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), '
   const newForged = input('forged');
   newForged.data += '# BOOTSTRAPPER_PROJECT=' + forged + '\n'; newForged.resumeRepository = {id: 999};
   const reserved = restarted.createProject(newForged);
-  const forgedFile = path.join(root, 'system/.projects.env/.forged.env');
+  const forgedFile = path.join(root, 'state/.projects.env/.forged.env');
   assert.equal(restarted.readReceipt(fs.readFileSync(forgedFile, 'utf8')).operation, reserved.id, 'initial reservation is server-owned');
   assert.equal((await wait(reserved)).state, 'complete');
   const forgedData = fs.readFileSync(forgedFile, 'utf8');
@@ -326,12 +328,12 @@ fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), '
   assert.equal(rewrittenData.slice(0, 1184), original.data.slice(0, 1184));
   const nativeInterrupted = await wait(bootstrap.createProject(input('uncertain')));
   assert.equal(nativeInterrupted.uncertain, true);assert.equal(nativeInterrupted.uncertainAction, 'create');
-  assert(fs.existsSync(path.join(root,'system/.projects.env/.uncertain.env')),'unconfirmed native writes retain the operation receipt');
+  assert(fs.existsSync(path.join(root,'state/.projects.env/.uncertain.env')),'unconfirmed native writes retain the operation receipt');
   const application = await wait(bootstrap.createProject({...input('reactapp'), template: 'react'}));
   assert.equal(application.state, 'complete');
   assert.equal(application.repository.initialPipeline.id, 123);
   assert.equal(application.repository.deploymentState, 'pipeline-started');
-  child = spawn(process.execPath, [path.join(sync, 'index.js')], {cwd: path.join(root, 'sync'),
+  child = spawn(process.execPath, [path.join(root, 'dist/cli/main.js'),'api'], {cwd: root,
     env: {...process.env, SYNC_USER: 'test', SYNC_PASS: 'test-password'}, stdio: 'ignore'});
   for (let attempt = 0; attempt < 100; attempt++) {
     try { await request('/status'); break; } catch (_) { await new Promise(resolve => setTimeout(resolve, 50)); }

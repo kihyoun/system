@@ -5,8 +5,8 @@ Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operat
 vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
-Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
+Halten Sie die geprüfte Node-Installation, `dist` und
+`node_modules` und `assets` vor Wartungsbeginn offline verfügbar.
 
 Die Wiederherstellungseingaben bleiben getrennt: eine
 Wizard-Konfigurationssicherung, ein abgeschlossener Harvest-Seed und frisch
@@ -118,7 +118,7 @@ Sie sich auf einen Ersatzhost verlassen.
 
 ## Einen abgeschlossenen Wiederherstellungs-Seed erstellen
 
-Installieren Sie die Hostintegration mit `bootstrapper/install-volume-host.js`,
+Installieren Sie die Hostintegration mit `system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"`,
 damit geplante Certbot-Erneuerungen `system-certbot` verwenden. Verwenden Sie für
 manuelle Erneuerungen und Erneuerungs-Probeläufe denselben Wrapper, etwa
 `system-certbot renew --dry-run`. Er teilt sich eine Dateisystemsperre mit
@@ -172,15 +172,15 @@ veraltete Sperre. Erheben Sie kein Zwischenverzeichnis `.harvest-*` zu `current`
 
 ### Aus dem Wizard oder auf dem Host ausführen
 
-Bei verfügbarem Ziel verwendet **Harvest** im authentifizierten Wizard denselben Repository-eigenen Dispatcher wie `system/seed-operation.js harvest`. Alternativ kannst du aus einem geprüften Host-Checkout mit einem verfügbaren akzeptierten vollständigen Controller-Image arbeiten. Ermittle und protokolliere dessen tatsächliche Image-Identität und verwende dann die unten durch Quickstart vorbereitete Node-Datei. Eine Quellinstallation ersetzt `/opt/system-bootstrapper-runtime/bin/node` durch ihre ausdrücklich beibehaltene Node-Datei:
+Bei verfügbarem Ziel verwendet **Harvest** im authentifizierten Wizard dieselben gemeinsamen Speicherdienste wie der installierte Befehl `system-bootstrapper harvest`. Alternativ kannst du einen geprüften Host-Checkout und ein verfügbares akzeptiertes vollständiges Controller-Image ausdrücklich auswählen. Ermittle und protokolliere dessen tatsächliche Image-Identität und führe dann den durch Quickstart oder die Quellinstallation vorbereiteten benannten Befehl aus:
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
+  system-bootstrapper harvest --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --check-only
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
+  system-bootstrapper harvest --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
 ```
 
@@ -197,8 +197,8 @@ Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operat
 vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
-Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
+Halten Sie die geprüfte Node-Installation, `dist` und
+`node_modules` und `assets` vor Wartungsbeginn offline verfügbar.
 
 Die Eingaben sind der abgeschlossene Seed, das passende Wizard-`bootstrapper.zip`,
 der aufgezeichnete System-Quellcode mit seinem aufgezeichneten Wizard-Layout sowie
@@ -217,7 +217,7 @@ Datenverzeichnis ist keine Eingabe.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     /opt/system-bootstrapper-runtime/bin/node bootstrapper/persistence.js
+     system-bootstrapper persistence --checkout "$PWD"
    ```
 
    Dieser Schritt startet keine Container und benötigt kein Sicherungsmedium.
@@ -237,12 +237,12 @@ Datenverzeichnis ist keine Eingabe.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
+     system-bootstrapper restore --checkout "$PWD" \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip \
      --check-only
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
+     system-bootstrapper restore --checkout "$PWD" \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip
    ```
@@ -274,13 +274,13 @@ Datenverzeichnis ist keine Eingabe.
    SSL-Wurzelverzeichnisses, während private Zertifikatsverzeichnisse und
    Schlüsseldateien unverändert bleiben. Der aufbewahrte Seed bleibt
    unverändert. Installieren Sie Certbot bei Bedarf und führen Sie
-   `sudo node bootstrapper/install-volume-host.js` aus. Dies bindet
+   `sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` aus. Dies bindet
    Webroot-Erneuerungspfade an das neue produktive Verzeichnis und installiert
    die Erneuerungs-/Deploy-Integration. Setzen Sie die erforderlichen
-   Image-Auswahlwerte und starten Sie dann mit `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"`.
+   Image-Auswahlwerte und starten Sie dann mit `sudo system-bootstrapper start --checkout "$PWD"`.
    Stellen Sie optionale Review-/Beta-Helfer ausdrücklich erneut bereit, falls
    ihr altes unveränderliches Image fehlt; siehe
-   [Umgebungsverfahren](../project-bootstrap/wizard-environments/README.md).
+   [Umgebungsverfahren](../templates/project-bootstrap/wizard-environments/README.md).
    Runner-Manager und Arbeitsverzeichnisse werden aus Konfiguration und
    wiederhergestelltem GitLab-Zustand neu erstellt; alte Runner-Verzeichnisse
    sind keine erforderlichen Eingaben.
@@ -327,7 +327,7 @@ Wenn Harvest den Abschluss des entfernten GitLab-Stoppbefehls nicht bestätigen 
 
 ## Prüfgrenzen
 
-`operations/tests/storage-copy.test.cjs` prüft die nativen Dienste und rsync
+`tests/operations/storage-copy.test.cjs` prüft die nativen Dienste und rsync
 mit einem Docker-Testbefehl, einschließlich gescheiterter Kopien, erzwungenem
 Herunterfahren, Versionskonflikten, Beschädigungen, fehlenden
 Abschlussmarkierungen, aktiven schreibenden Prozessen, Erneuerungssperren und

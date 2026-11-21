@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 'use strict';
-require('../../operations/node_modules/reflect-metadata');
+require('../../node_modules/reflect-metadata');
 const assert = require('node:assert/strict');
 const {createHash} = require('node:crypto');
-const {PreviewSetupService} = require('../../operations/dist/gitlab-provision/preview-setup.service');
-const {PreviewEvidence} = require('../../operations/dist/gitlab-provision/preview-evidence');
-const binding = require('../../project-bootstrap/wizard-source-primary/binding');
+const {PreviewSetupService} = require('../../dist/modules/gitlab-provision/preview-setup.service');
+const {PreviewEvidence} = require('../../dist/modules/gitlab-provision/preview-evidence');
+const binding = require('../../dist/modules/project-lifecycle/source-primary-binding');
 const clone = value => structuredClone(value), hash = value => createHash('sha256').update(value).digest('hex');
 async function main() {
   const operation = 'a'.repeat(48), calls = [], variables = {};
@@ -65,8 +65,8 @@ async function main() {
   assert.equal((await large.execute('/checkout',{...batch,routes:['projects/7','projects/7']})).state,'failed');
   await evidenceContracts();
   await sharedContracts(credentials);
-  const {NestFactory} = require('../../operations/node_modules/@nestjs/core');
-  const {GitlabProvisionModule} = require('../../operations/dist/gitlab-provision/gitlab-provision.module');
+  const {NestFactory} = require('../../node_modules/@nestjs/core');
+  const {GitlabProvisionModule} = require('../../dist/modules/gitlab-provision/gitlab-provision.module');
   const app = await NestFactory.createApplicationContext(GitlabProvisionModule,{logger:false});
   try {assert(app.get(PreviewSetupService) instanceof PreviewSetupService);} finally {await app.close();}
   console.log('Preview setup: scoped ownership, read-only preflight, bounded fresh evidence, pipeline parity, interruption and shared System identity passed.');

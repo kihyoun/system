@@ -5,16 +5,16 @@
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
+`dist`, `node_modules`, `assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
-공개 **컨트롤러 릴리스**는 `system/Dockerfile`에서 빌드한 전체 이미지로, 오케스트레이션
+공개 **컨트롤러 릴리스**는 `containers/controller/Dockerfile`에서 빌드한 전체 이미지로, 오케스트레이션
 코드, Sync 서비스, 패키징된 Wizard 소스 및 런타임 도구를 포함합니다. 별도로 빌드한
 Wizard 웹 이미지가 함께 제공됩니다. 새 호스트는 컨트롤러나 Wizard 이미지를 빌드하거나
 Alpine 빌드 패키지를 해석하지 않고 승인된 이미지를 가져올 수 있습니다. 승인된 컨트롤러에는
 사전 빌드된 Sync와 operations가 포함되며 시작 시 npm 설치나 TypeScript 컴파일을 하지 않습니다.
 [릴리스 설치](../Prepare-Host.md#install-a-tested-public-release)를 확인하세요.
 
-`bootstrapper/Dockerfile`에서 빌드하는 독립 실행형 **런타임 베이스**에는 공유 도구만
+`containers/bootstrapper/Dockerfile`에서 빌드하는 독립 실행형 **런타임 베이스**에는 공유 도구만
 있습니다. 베이스 이미지가 레지스트리에 게시되어 있어도 전체 컨트롤러를 대체할 수
 없습니다. 두 이미지는 CI에서 각각 유용하지만, 검증된 전체 컨트롤러와 일치하는
 Wizard만이 공개 시작 릴리스를 이룹니다.
@@ -22,7 +22,7 @@ Wizard만이 공개 시작 릴리스를 이룹니다.
 ## 호스트 워크로드 호환성 및 로깅
 
 MongoDB 이미지를 선택하거나 커널 유지보수를 계획하거나 명시적인 배포를 확인할 때
-Docker 데몬 호스트에서 [기본 호스트 호환성 검사 및 로그 정책 검사기](../docs/HOST_OPERATIONS.md)를
+Docker 데몬 호스트에서 [기본 호스트 호환성 검사 및 로그 정책 검사기](HOST_OPERATIONS.md)를
 실행하세요. 이 가이드는 제한된 로깅 계약, 보존되는 구성 및 크기 기반
 보관의 한계를 설명합니다.
 
@@ -33,11 +33,11 @@ Docker 데몬 호스트에서 [기본 호스트 호환성 검사 및 로그 정�
 `HostInstallService`를 가져옵니다. 설치 또는 오프라인
 유지보수 전에 Node.js 24.22.0과 빌드된 operations 패키지를 준비하세요.
 이 진입점은 의존성을 다운로드하거나 코드를 컴파일하지 않습니다.
-하위 진입점 `node operations/dist/host/entry.js`는 같은 이미지 플래그를 받고
+하위 진입점 `node dist/modules/host/entry.js`는 같은 이미지 플래그를 받고
 호출 디렉터리에서 체크아웃을 결정합니다. CLI는
 `--controller IMAGE@sha256:...`와 `--wizard IMAGE@sha256:...`를 받고 선택적으로
 `--persistence-env FILE`을 받습니다. `--install-host`는 필요할 때 커밋된 호스트 설치
-프로그램으로 Docker/Compose를 설치합니다. [핸드북](../docs/HANDBOOK.md)은 이 플래그를
+프로그램으로 Docker/Compose를 설치합니다. [핸드북](HANDBOOK.md)은 이 플래그를
 사용하는 전체 로컬 HTTP 및 공개 도메인/Certbot 절차를 제공합니다.
 
 설치 프로그램은 깨끗한 System 체크아웃, 고정된 Wizard 리비전 및 가져온 이미지 식별
@@ -59,7 +59,7 @@ HTTPS 인증서를 준비하세요.
 docker build -t system-runtime:candidate ./bootstrapper
 ```
 
-전체 System 이미지도 저장소 빌드 컨텍스트에서 `bootstrapper/install-runtime.js`를
+전체 System 이미지도 저장소 빌드 컨텍스트에서 `system-bootstrapper host-bootstrap install-runtime --checkout "$PWD"`를
 실행합니다. 별도로 게시된 System 베이스를 요구하는 대신 같은 공식 다이제스트 고정
 Node 24.22.0 / Alpine 3.24 이미지에서 시작합니다. 공유 설치 프로그램은 Node 24.22.0과
 npm 11.19.1을 확인한 뒤 고정된 Docker CLI 29.9.3-r1, Compose 5.7.2, Buildx 0.38.1,
@@ -92,7 +92,7 @@ Wizard 소스 패키징을 검증하세요. 라이브 재시작/복구 승인과
 파일시스템이 여전히 필요하며 로컬 저장소로 대체하지 않습니다. 모드 없이 라이브
 마운트를 선언한 레거시 선택자는 해당 볼륨 계약을 유지합니다. `PERSISTENCE_MODE`,
 `PERSISTENT_DIR` 및 볼륨 마운트/UUID는 호스트 소유 입력이며, 변경해도 기존 데이터를
-마이그레이션하지 않습니다. [저장소 가이드](../docs/PERSISTENT_VOLUME.md)를 확인하세요.
+마이그레이션하지 않습니다. [저장소 가이드](PERSISTENT_VOLUME.md)를 확인하세요.
 
 Seed 백업 저장소는 독립적입니다. 일반 시작 중 `SEED_DIR`은 선택 사항이며,
 `SEED_MOUNT`/`SEED_UUID`는 선택 시 외부 백업 매체를 식별합니다. 컨트롤러/GitLab
@@ -102,13 +102,13 @@ Seed 백업 저장소는 독립적입니다. 일반 시작 중 `SEED_DIR`은 선
 루트 디스크 대체 경로가 되거나 일반 서비스와 갱신을 차단할 수 없습니다.
 
 완료된 외부 Seed와 일치하는 비공개 구성 ZIP이 있으면 쓰기 시작 전에 커밋된 호스트
-진입점을 사용하세요. 먼저 [새 대상 절차](../docs/RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation)에
-나온 대로 `bootstrapper/persistence.js`와 비공개 호스트 선택자로 빈 라이브 골격을
+진입점을 사용하세요. 먼저 [새 대상 절차](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation)에
+나온 대로 `system-bootstrapper persistence --checkout "$PWD"`와 비공개 호스트 선택자로 빈 라이브 골격을
 준비하세요. 읽기 전용 사전 검사는 해당 디렉터리가 이미 있어야 합니다.. 이 예시는 보관한 Quickstart Node 실행 파일을 사용하며 소스 설치에서는 명시적으로 준비한 Node 실행 파일을 대입합니다.
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
+  system-bootstrapper restore --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --configuration-backup /root/recovery/bootstrapper.zip \
   --check-only
@@ -116,7 +116,7 @@ sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
 
 사전 검사를 검토한 뒤 `--check-only` 없이 반복하여 새 라이브 서비스 데이터
 디렉터리로 복원하세요. 기존 플랫폼의 백업 생성에는 `harvest --image ...`를 사용하세요.
-[복구 계약](../docs/RECOVERY_CONTRACT.md)은 필수 소스/이미지 입력, 완료와 실패 보호,
+[복구 계약](RECOVERY_CONTRACT.md)은 필수 소스/이미지 입력, 완료와 실패 보호,
 구성 분리 및 복원 후 검사를 설명합니다. 작업 후 백업 매체를 분리하세요. 일반 로컬
 작업은 더 이상 이에 의존하지 않습니다. 일치하는 복구 입력을 다른 곳에 보존하지
 않았다면 로컬 라이브 데이터를 가진 VM 삭제는 해당 데이터를 삭제합니다.
@@ -129,10 +129,10 @@ sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
 소스 번들로 같은 검토된 Git 객체를 제공할 수 있습니다. 도구는 초기화 중 자신을
 패치하거나 업데이트하거나 복제하지 않습니다.
 
-`node bootstrapper/initialize.js`는 **라이브** 서비스 데이터를 유지하면서 호스트를 교체합니다.
+`system-bootstrapper host-bootstrap initialize`는 **라이브** 서비스 데이터를 유지하면서 호스트를 교체합니다.
 파일시스템 포맷, 최초 인증서 발급, GitLab 버전 마이그레이션, Seed 적용 또는 빈
 파일시스템을 기존 설치로 전환하는 동작은 수행하지 않습니다. 새 설치는
-[핸드북](../docs/HANDBOOK.md)의 최초 설치 경로를 따르세요.
+[핸드북](HANDBOOK.md)의 최초 설치 경로를 따르세요.
 
 지원되는 Ubuntu의 root 접속, Git과 고정된 Node 런타임, 선택된 로컬 또는 명시적 볼륨 라이브
 저장소, 저장 구성 및 아래 복구 매니페스트가 필요합니다. 선택된 라이브 볼륨은 이미
@@ -142,7 +142,7 @@ Docker를 제공하고 `--install-host` 선택 시 Certbot도 설치합니다. �
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/initialize.js \
+  system-bootstrapper host-bootstrap initialize \
   --install-host \
   --receipt-dir /var/log/system-bootstrapper/initialize-example \
   --timeout 1200 \
@@ -199,13 +199,13 @@ GitLab은 유휴 작업 폴링에 응답하는 동안 이전 접속 시각을 �
 명령을 별도로 실행할 수도 있습니다.
 
 ```sh
-sudo node bootstrapper/verify-runtime.js baseline \
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" baseline \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/pre-start-baseline.json
 # Start the retained platform through the committed recovery entry point.
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/recover-volume.js
-sudo node bootstrapper/verify-runtime.js check \
+  system-bootstrapper host-bootstrap recover-volume --checkout "$PWD"
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/pre-start-baseline.json \
   --output /root/runtime-verification.json --timeout 1200
@@ -273,14 +273,14 @@ sudo node bootstrapper/verify-runtime.js check \
 계속 구분됩니다.
 
 이전 두 목록 체크섬 매니페스트는
-`/opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js recovery verify --checkout "$PWD" --directory /path/to/recovery --checksums-only`로
+`system-bootstrapper recovery verify --checkout "$PWD" --directory /path/to/recovery --checksums-only`로
 명시적으로 감사할 수 있습니다. 이 호환성 감사는 이미지를 로드하거나 서비스를 시작할 수
 없습니다. 먼저 일반 검토된 운영자 작업 흐름으로 소스와 별칭 선언을 완성하세요.
 
 ## 서비스가 이미 최신인 공개 컨트롤러 업데이트하기
 
 지원되는 변경되지 않은 공식 릴리스는 `system-bootstrapper upgrade`와
-[공개 업그레이드 안내](../docs/RELEASES.md#upgrade-and-rollback)를 사용하세요. 공개
+[공개 업그레이드 안내](RELEASES.md#upgrade-and-rollback)를 사용하세요. 공개
 검증 자료를 내려받고 정확한 전환을 검증하며 일치하는 백업을 조정한 후 아래의
 쌍 업데이터를 호출하기 전에 검토된 계획 SHA-256을 요구합니다. 자신의 설치 API
 토큰만 필요합니다. 상태와 복구는 같은 보관된 계획 디렉터리를 사용하며 릴리스
@@ -311,7 +311,7 @@ GitLab은 이미 후보의 승인된 **대상** 이미지/버전과 일치해야
 가져오지 않습니다.
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" \
+sudo system-bootstrapper controller-update --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/accepted-release/release.json \
   --evidence /root/accepted-release/candidate-results.json \
@@ -348,10 +348,10 @@ Wizard 별칭 활성화 같은 이후 구성 변경에는 업데이트 후 일�
 동일한 체크아웃으로 중단되거나 완료된 업데이트를 점검하거나 롤백하세요.
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" --operation status \
+sudo system-bootstrapper controller-update --checkout "$PWD" --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" --operation rollback \
+sudo system-bootstrapper controller-update --checkout "$PWD" --operation rollback \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example \
   --token-file /root/private-gitlab-api-token
@@ -412,7 +412,7 @@ System 프로젝트의 `successor-wizard` 레지스트리 저장소에 게시된
 
 버전이 있는 공개 릴리스의 경우 사전 검사와 업데이트 모두에
 `--release-metadata /root/accepted-release/system-release-vX.Y.Z.json`도 전달하세요.
-선택한 [공개 릴리스](../docs/RELEASES.md)에서 메타데이터와 체크섬을 확보하세요.
+선택한 [공개 릴리스](RELEASES.md)에서 메타데이터와 체크섬을 확보하세요.
 이 옵션에는 `--wizard`가 필요하며 제품 버전, 소스 트리, Wizard gitlink, 두 이미지,
 후보 작업 및 증거 해시를 독립적으로 검증된 승인 시도에 연결합니다. 최초 개발 미리보기
 설정에 사용하는 비공개 `.release-images.json` 및 `.release-images.env` 선택을
@@ -430,10 +430,10 @@ System 프로젝트의 `successor-wizard` 레지스트리 저장소에 게시된
 이미지 모드를 선택하세요.
 
 ```sh
-sudo node bootstrapper/verify-runtime.js baseline --public-images \
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" baseline --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --output /root/public-runtime-baseline.json
-sudo node bootstrapper/verify-runtime.js check --public-images \
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check --public-images \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline /root/public-runtime-baseline.json --output /root/public-runtime-check.json \
   --gitlab-token-file /root/private-gitlab-api-token --timeout 1200 \
@@ -491,12 +491,12 @@ sudo docker stop --timeout 30 system_bootstrapper_1
 sudo env PERSISTENT_DIR=/var/lib/system-bootstrapper/platform \
   NGINX_IMAGE=nginx@sha256:REPLACE_WITH_64_HEX_DIGEST \
   docker --host unix:///var/run/docker.sock compose --compatibility \
-  --env-file /dev/null -p system -f system/docker-compose.yml \
+  --env-file /dev/null -p system -f config/system/docker-compose.yml \
   run --rm --no-deps --pull never web nginx -t
 sudo env PERSISTENT_DIR=/var/lib/system-bootstrapper/platform \
   NGINX_IMAGE=nginx@sha256:REPLACE_WITH_64_HEX_DIGEST \
   docker --host unix:///var/run/docker.sock compose --compatibility \
-  --env-file /dev/null -p system -f system/docker-compose.yml \
+  --env-file /dev/null -p system -f config/system/docker-compose.yml \
   up --no-deps --no-build --pull never -d web
 ```
 
@@ -508,7 +508,7 @@ sudo env PERSISTENT_DIR=/var/lib/system-bootstrapper/platform \
 그런 다음 변경 사항이 없는 검토된 체크아웃에서 승인된 복구를 사전 점검하세요.
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" \
+sudo system-bootstrapper controller-update --checkout "$PWD" \
   --repair-stopped-controller \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/accepted-release/release.json \
@@ -560,7 +560,7 @@ Sync API에 유휴 대기열 확인을 요청하는 대신 기존 컨트롤러�
 레지스트리가 시작되기 전에 컨트롤러를 시작할 수 있습니다.
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -608,7 +608,7 @@ GitLab이 이전 검토 이미지를 실행하는 동안 컨트롤러 준비가 
 복구 매니페스트를 편집하지 않고 같은 진입점으로 준비된 컨트롤러를 교체할 수 있습니다.
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -647,10 +647,10 @@ sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --
 커밋된 진입점으로 중단된 컨트롤러 작업을 점검하거나 중단하세요.
 
 ```sh
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" --operation status \
+sudo system-bootstrapper promote --checkout "$PWD" --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" --operation abort \
+sudo system-bootstrapper promote --checkout "$PWD" --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
 ```
@@ -675,7 +675,7 @@ GitLab 마이그레이션 성공 후 VM 삭제나 이후 호스트 교체에 의
 입력을 갱신하세요.
 
 ```sh
-sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
+sudo node dist/modules/host/recovery-export-entry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -698,7 +698,7 @@ sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
 `recover-volume.js --verify`가 통과할 때까지 호스트를 삭제하지 마세요.
 
 격리 계약은 `node --test tests/bootstrapper/native-initialization.js`와
-`node --test operations/tests/host-module.test.cjs`로 실행합니다. 명시적인 작은
+`node --test tests/operations/host-module.test.cjs`로 실행합니다. 명시적인 작은
 Docker 기본 동작 테스트는 소켓 없는 구성 요소 테스트와 별도입니다.
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`을 사용합니다.
 정확한 레이블이 있고 제한된 폐기 가능 로컬 컨테이너 하나만 사용하며 라이브 GitLab
@@ -717,7 +717,7 @@ sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
 보관한 CLI를 명시적으로 검토한 체크아웃과 함께 호출하세요. 이 모드는 Node/CLI 런타임만 설치하며 플랫폼을 시작하거나 복원하지 않습니다. 오프라인 복구 환경을 준비할 때 체크아웃의 컴파일된 operations, 번들된 의존성과 정책 리소스를 보관하세요. 체크아웃 진입점을 호출하기 전에 전체 [런타임 배치 절차](../Prepare-Host.md#prepare-the-host-operations-runtime)를 따르세요. `--runtime-only`만 실행하면 패키지를 `/opt/system-bootstrapper-runtime/cli` 아래에 설치합니다.
 
 기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
-런타임 디렉터리와 `operations/dist`, `operations/node_modules`, `operations/assets`를
+런타임 디렉터리와 `dist`, `node_modules`, `assets`를
 보존하세요. 도구는 저장된 Node 실행 파일의 절대 경로를 사용하므로 복구 중에는
 nvm, 셸 프로필이나 npm 네트워크 접근이 필요하지 않습니다. 실행 파일 경로는
 `/opt/system-bootstrapper-runtime/node-executable`에 기록됩니다.

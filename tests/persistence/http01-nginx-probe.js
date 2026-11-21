@@ -56,7 +56,7 @@ function run({helperImage,nginxImage}) {
     const write=(filename,content)=>command(['exec','--interactive',proxy,'sh','-c','cat > '+filename],{input:content});
     command(['exec',proxy,'sh','-ec','command -v openssl >/dev/null; mkdir -p /tmp/app']);
     write('/tmp/app/index.html',html);write('/tmp/app/media.bin',media);
-    const templateDirectory=path.join(__dirname,'../../nginx/.templates');
+    const templateDirectory=path.join(__dirname,'../../templates/nginx');
     const fallback=fs.readFileSync(path.join(templateDirectory,'acme-http01.conf.template'),'utf8');
     const application=ssl=>{
       const values={PROXY_UPSTREAM:'probe_application',PROXY_IP:'127.0.0.1',PROXY_PORT:'8080',PROXY_HOSTNAME:hostname,
@@ -97,7 +97,7 @@ function run({helperImage,nginxImage}) {
     assertApplication(false);
     // This isolates HTTP worker permissions; the full candidate separately proves
     // native host mount selection. The volume fixture supplies its mount record.
-    executeHelper(`const operation=require('/system/system/seed-operation');
+    executeHelper(`const operation=require('/system/dist/modules/storage/validation');
       operation.prepareLocal({PERSISTENCE_MODE:'local',PERSISTENT_MOUNT:'/',PERSISTENT_DIR:'/data/platform'},
       '/host','1 0 0:1 / / rw - overlay overlay rw\\n');
       const fs=require('node:fs'),assert=require('node:assert/strict'),ssl='/host/data/platform/ssl';

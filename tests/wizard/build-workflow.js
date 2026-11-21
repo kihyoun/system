@@ -9,10 +9,11 @@ fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
 const mainConfig = path.join(root, 'system/.docker.env');
 fs.writeFileSync(mainConfig, 'GITLAB_REGISTRY_URL=http://registry.localhost\nGITLAB_REGISTRY_DOMAIN_MODE=0\n');
+process.env.SYSTEM_CONFIG_DIR = path.join(root, 'system');
 process.chdir(path.join(root, 'sync'));
-const bootstrap = require(path.join(source, 'sync/dist/ProjectBootstrap'));
-const {wizardConfiguration, wizardCi} = require(path.join(source, 'sync/dist/DefaultWizard'));
-const {previewWizardBuild, activateWizardBuild, refreshWizardBuild} = require(path.join(source, 'sync/dist/WizardBuild'));
+const bootstrap = require(path.join(source, 'dist/api/projects/project-workflow'));
+const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/api/projects/default-wizard'));
+const {previewWizardBuild, activateWizardBuild, refreshWizardBuild} = require(path.join(source, 'dist/api/projects/wizard-build-workflow'));
 const file = path.join(root, 'system/.projects.env/.wizard.env');
 const data = wizardConfiguration({WIZARD_HOST: 'localhost'});
 const receipt = {operation: 'registration', namespaceId: 1, defaultProject: true, template: 'wizard', state: 'complete',

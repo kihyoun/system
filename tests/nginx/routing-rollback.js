@@ -5,12 +5,12 @@ const {test}=require('node:test');
 const source=path.resolve(__dirname,'../..');
 test('native proxy reload restores known failures and retains exact ownership evidence for uncertain recovery',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'routing-rollback-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- fs.symlinkSync(path.join(source,'operations'),path.join(root,'operations'),'dir');
- for(const directory of ['nginx','system/.projects.env','gitlab','wizard','nginx-proxy/.projects','bin','templates','active'])fs.mkdirSync(path.join(root,directory),{recursive:true});
- fs.cpSync(path.join(source,'nginx/.templates'),path.join(root,'nginx/.templates'),{recursive:true});
+ fs.symlinkSync(path.join(source,'dist'),path.join(root,'dist'),'dir');
+ for(const directory of ['config/system','config/system/.projects.env','config/gitlab','wizard','config/nginx-proxy/.projects','bin','templates','active'])fs.mkdirSync(path.join(root,directory),{recursive:true});
+ fs.cpSync(path.join(source,'templates/nginx'),path.join(root,'templates/nginx'),{recursive:true});
  fs.writeFileSync(path.join(root,'.docker.env'),'BOOTSTRAPPER_IP=127.0.0.1\n');
- fs.writeFileSync(path.join(root,'gitlab/.docker.env'),'GITLAB_IP=127.0.0.1\n');
- fs.writeFileSync(path.join(root,'system/.docker.env'),'GITLAB_HOST=gitlab.example.test\nGITLAB_DOMAIN_MODE=0\nGITLAB_REGISTRY_HOST=registry.example.test\nGITLAB_REGISTRY_DOMAIN_MODE=0\nSYNC_ENABLE=false\nWIZARD_ENABLE=false\n');
+ fs.writeFileSync(path.join(root,'config/gitlab/.docker.env'),'GITLAB_IP=127.0.0.1\n');
+ fs.writeFileSync(path.join(root,'config/system/.docker.env'),'GITLAB_HOST=gitlab.example.test\nGITLAB_DOMAIN_MODE=0\nGITLAB_REGISTRY_HOST=registry.example.test\nGITLAB_REGISTRY_DOMAIN_MODE=0\nSYNC_ENABLE=false\nWIZARD_ENABLE=false\n');
  // Only emulate the Docker transport/NGINX executable; filesystem primitives run for real.
  fs.writeFileSync(path.join(root,'bin/docker'),'#!'+process.execPath+'\n'+`
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),assert=require('node:assert/strict');
@@ -35,8 +35,8 @@ if(binary==='cp'&&phase==='snapshot'&&selected()){consume();process.exit(19);}
 if(binary==='cp'&&fs.existsSync(path.join(root,'rollback-fail')))process.exit(23);
 const result=cp.spawnSync(binary,mapped,{stdio:'inherit'});process.exit(result.status??1);
 `,{mode:0o755});
- const invoke=phase=>spawnSync(process.execPath,[path.join(root,'operations/dist/projects-routing/entry.js'),'routing','reload',root,path.join(root,'templates')],{
-  cwd:path.join(root,'nginx'),encoding:'utf8',env:{...process.env,PATH:path.join(root,'bin')+':'+process.env.PATH,FIXTURE:root,PHASE:phase},timeout:20000,
+ const invoke=phase=>spawnSync(process.execPath,[path.join(root,'dist/modules/projects-routing/entry.js'),'routing','reload',root,path.join(root,'templates')],{
+  cwd:path.join(root,'config/system'),encoding:'utf8',env:{...process.env,PATH:path.join(root,'bin')+':'+process.env.PATH,FIXTURE:root,PHASE:phase},timeout:20000,
  });
  for(const phase of ['success','snapshot','render','validate','reload','rollback','cancel']){
   for(const name of ['lease','rollback-fail','active/new.conf'])fs.rmSync(path.join(root,name),{recursive:true,force:true});

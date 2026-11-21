@@ -41,7 +41,7 @@ can also run the helper on a workstation with Node installed.
 
 ```sh
 private_config_dir="$HOME/private-bootstrapper-config"
-node nginx/wizard-aliases.js configure \
+system-bootstrapper projects-routing wizard-aliases configure \
   --config "$private_config_dir/.docker.env" \
   --projects "$private_config_dir/.projects.env" \
   --alias example.com \
@@ -108,7 +108,7 @@ Run the native verifier with the operator-supplied alias origin in addition to
 its ordinary configured-service checks:
 
 ```sh
-sudo node bootstrapper/verify-runtime.js check \
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline "$private_config_dir/pre-start-baseline.json" \
   --output "$private_config_dir/runtime-check.json" \

@@ -6,8 +6,10 @@ const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const {test} = require('node:test');
 
-const script = path.resolve(__dirname, '../../operations/dist/configuration/entry.js');
-const {publish} = require('../../system/wizard-public');
+const script = path.resolve(__dirname, '../../dist/modules/configuration/entry.js');
+const {WizardPublicSettingsService} = require('../../dist/modules/lifecycle/public-settings.service');
+const publicService = new WizardPublicSettingsService();
+const publish = publicService.publish.bind(publicService);
 // Small stored ZIP fixtures keep this acceptance test independent of Python or
 // a zip writer package. Production unzip and rsync execute without stubs.
 function zip(entries) {
@@ -115,7 +117,7 @@ test('failed main copy does not report success or replace the saved file', t => 
 });
 
 test('normal ZIP Push preserves public settings for startup generation and explicit clearing', t => {
-  const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+  const cube = fs.readFileSync(path.join(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
   const source = cube + '\nexport WIZARD_OPERATOR_NAME="Published Operator"\n' +
     'export WIZARD_OPERATOR_ADDRESS="Line 1\nLine 2"\nexport WIZARD_OPERATOR_EMAIL="operator@example.test"\n' +
     'export WIZARD_PRIVACY_TEXT="Quoted \\"text\\" and literal \\$HOME"\nexport SYNC_PASS="never-public"\n';
@@ -137,7 +139,7 @@ test('normal ZIP Push preserves public settings for startup generation and expli
 });
 
 test('ZIP Push validates aliases against its complete new project set before any saved-state mutation', t => {
-  const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+  const cube = fs.readFileSync(path.join(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
   const main = cube + '\nWIZARD_ENABLE="true"\nWIZARD_HOST="wizard.example.test"\nWIZARD_DOMAIN_MODE="2"\n' +
     'WIZARD_SSL="/ssl/example/cert.pem"\nWIZARD_SSL_KEY="/ssl/example/key.pem"\nWIZARD_ALIASES="example.test"\n';
   const project = cube + '\nUSE_PROD_HOST="true"\nPROD_HOST="example.test"\nPROD_DOMAIN_MODE="2"\n';
@@ -156,8 +158,8 @@ test('ZIP Push validates aliases against its complete new project set before any
 test('uncertain import subprocess completion retains shared barriers and does not rewrite saved input', t => {
   const f=fixture(t,{'.docker.env':'replacement'});
   fs.writeFileSync(path.join(f.state,'.docker.env'),'previous');
-  const {ConfigurationService}=require('../../operations/dist/configuration/configuration.service');
-  const {ProcessFailure}=require('../../operations/dist/runtime/process');
+  const {ConfigurationService}=require('../../dist/modules/configuration/configuration.service');
+  const {ProcessFailure}=require('../../dist/common/runtime/process');
   const service=new ConfigurationService({run(){throw new ProcessFailure('unzip',null,'SIGTERM',true);}},{run(){throw Error('routing must not run');}});
   assert.throws(()=>service.push({root:f.root,state:f.state,archive:path.join(f.root,'bootstrapper.zip')}),ProcessFailure);
   assert(fs.existsSync(path.join(f.state,'.storage-operation-lock/startup-owner.json')));

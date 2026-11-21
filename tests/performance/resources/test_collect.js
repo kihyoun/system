@@ -1,9 +1,9 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const {ResourceCollectorService,quantity,pair,number,summary,role,runnerSettings}=require('../../../operations/dist/resources/collector.service');
-const {ObservationProcess,ObservationFailure}=require('../../../operations/dist/resources/process');
-const {ResourceBenchmarkService,inputManifest}=require('../../../operations/dist/resources/benchmark.service');
-const {WindowsResourceService}=require('../../../operations/dist/resources/windows.service');
+const {ResourceCollectorService,quantity,pair,number,summary,role,runnerSettings}=require('../../../dist/modules/resources/collector.service');
+const {ObservationProcess,ObservationFailure}=require('../../../dist/modules/resources/process');
+const {ResourceBenchmarkService,inputManifest}=require('../../../dist/modules/resources/benchmark.service');
+const {WindowsResourceService}=require('../../../dist/modules/resources/windows.service');
 const root=path.resolve(__dirname,'../../..');
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function directory(t){const value=fs.mkdtempSync(path.join(os.tmpdir(),'resources-offline-'));t.after(()=>fs.rmSync(value,{recursive:true,force:true}));return value;}
@@ -19,7 +19,7 @@ class FixtureCollector extends ResourceCollectorService{
  }
 }
 test('passive metrics retain sanitized schema, inventory bounds, literal units and incomplete coverage',async()=>{
- const {NestFactory}=require('../../../operations/node_modules/@nestjs/core'),{ResourcesModule}=require('../../../operations/dist/resources/resources.module');
+ const {NestFactory}=require('../../../node_modules/@nestjs/core'),{ResourcesModule}=require('../../../dist/modules/resources/resources.module');
  const app=await NestFactory.createApplicationContext(ResourcesModule,{logger:false});assert(app.get(ResourceCollectorService));await app.close();
  assert.equal(quantity('1.5GiB'),1610612736);assert.deepEqual(pair('1kB / 2KiB'),[1000,2048]);
  for(const value of ['NaN','Infinity','-1','SECRET','0x10',null,{},'']){assert.equal(number(value),null);assert.equal(quantity(value),null);}
@@ -53,7 +53,7 @@ test('local cgroup reads require matching daemon identity and reject unrelated P
 test('Windows orchestration refuses stopped WSL and reports allowlisted physical metrics without starting workloads',async()=>{
  const linux=await new FixtureCollector(undefined,12,1).sample(),calls=[];
  const transport={async run(args){calls.push(args);assert(!args.includes('python3'));if(args[0]==='wsl.exe'){
-  if(args.includes('--list'))return 'Ubuntu\n';if(args.includes('wslpath'))return '/work/operations/dist/resources/entry.js';return JSON.stringify({schemaVersion:1,samples:[linux]});
+  if(args.includes('--list'))return 'Ubuntu\n';if(args.includes('wslpath'))return '/work/dist/modules/resources/entry.js';return JSON.stringify({schemaVersion:1,samples:[linux]});
  }const command=args.at(-1);assert(command.includes('Get-CimInstance'));
  if(command.includes('Win32_OperatingSystem'))return JSON.stringify({TotalVisibleMemorySize:100,FreePhysicalMemory:30,SECRET:'private'});
  if(command.includes('Win32_ComputerSystem'))return '{"NumberOfLogicalProcessors":4}';

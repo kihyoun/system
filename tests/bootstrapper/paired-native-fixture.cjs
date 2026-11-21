@@ -3,16 +3,16 @@ const fs = require('node:fs'),
   path = require('node:path'),
   assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..'),
-  dist = path.join(root, 'operations/dist');
-const { PairedUpdateService } = require(dist + '/host/paired-update.service'),
-  { PairedRuntimeService } = require(dist + '/host/paired-runtime.service'),
-  { ReleaseSelectionService, bytesSha } = require(dist + '/host/release-selection.service'),
-  { ControllerUpdateSequenceService } = require(dist + '/host/controller-update-sequence.service'),
+  dist = path.join(root, 'dist');
+const { PairedUpdateService } = require(dist + '/modules/host/paired-update.service'),
+  { PairedRuntimeService } = require(dist + '/modules/host/paired-runtime.service'),
+  { ReleaseSelectionService, bytesSha } = require(dist + '/modules/host/release-selection.service'),
+  { ControllerUpdateSequenceService } = require(dist + '/modules/host/controller-update-sequence.service'),
   { ControllerRollbackSequenceService } = require(
-    dist + '/host/controller-rollback-sequence.service',
+    dist + '/modules/host/controller-rollback-sequence.service',
   ),
-  { HostPolicyError, requireValue: ensure } = require(dist + '/host/install'),
-  { environmentAssignments } = require(dist + '/runtime/environment-assignments');
+  { HostPolicyError, requireValue: ensure } = require(dist + '/modules/host/install'),
+  { environmentAssignments } = require(dist + '/common/runtime/environment-assignments');
 const image = (value) => 'sha256:' + value.repeat(64),
   reference = (value) => 'docker.io/example/system@' + image(value);
 function fixture(t, { paired = false, selected = false, stopped = false } = {}) {
@@ -34,7 +34,7 @@ function fixture(t, { paired = false, selected = false, stopped = false } = {}) 
     commands = [],
     events = [];
   const raw = Buffer.concat([
-    fs.readFileSync(path.join(root, 'system/.docker.env.example')).subarray(0, 1184),
+    fs.readFileSync(path.join(root, 'config/system/.docker.env.example')).subarray(0, 1184),
     Buffer.from(
       '\n' +
         Object.entries(config)

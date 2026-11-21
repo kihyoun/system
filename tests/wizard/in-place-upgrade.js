@@ -4,12 +4,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {execFileSync, spawnSync} = require('child_process');
-const {Upgrade, sourceMarker, buildMarker, environmentMarker, readConfiguration} = require('../../project-bootstrap/wizard-upgrade/run');
-const {hash, signature} = require('../../project-bootstrap/wizard-production/run');
-const builds = require('../../project-bootstrap/wizard-build/recipe');
-const environments = require('../../project-bootstrap/wizard-environments/recipe');
-const logo = require('../../sync/dist/Helper').default.textLogo;
-const currentSource = JSON.parse(fs.readFileSync(path.join(__dirname, '../../project-bootstrap/wizard-source/snapshot.json'), 'utf8')).sourceRevision;
+const {Upgrade, sourceMarker, buildMarker, environmentMarker, readConfiguration} = require('../../dist/modules/project-lifecycle/upgrade-session');
+const {hash, signature} = require('../../dist/modules/project-lifecycle/production-session');
+const builds = require('../../dist/modules/project-lifecycle/build-recipe.service');
+const environments = require('../../dist/modules/project-lifecycle/environment-recipe.service');
+const logo = require('../../dist/common/configuration-signature').default.textLogo;
+const currentSource = JSON.parse(fs.readFileSync(path.join(__dirname, '../../assets/wizard-source/snapshot.json'), 'utf8')).sourceRevision;
 const helper = 'sha256:' + 'b'.repeat(64), oldHelper = 'sha256:' + 'a'.repeat(64);
 const sourceFile = (name, content, mode = '100644') => ({path: name, mode, sha256: hash(content), content: Buffer.from(content).toString('base64')});
 function snapshot(revision, files) {
@@ -344,7 +344,7 @@ global.fetch = async (target, options) => {
       fs.writeFileSync(trace, '');
       fs.writeFileSync(options, JSON.stringify({credentialFile: credential, helperImage: helper,
         config: f.config, mainConfig: f.mainConfig, directory: f.directory, ...extra}), {mode: 0o600});
-      return spawnSync(process.execPath, ['--require', preload, path.resolve(__dirname, '../../project-bootstrap/wizard-upgrade/run.js'), 'build-plan', options],
+      return spawnSync(process.execPath, ['--require', preload, path.resolve(__dirname, '../../dist/cli/main.js'), 'wizard-upgrade', 'build-plan', options],
         {encoding: 'utf8', timeout: 30000});
     };
     const accepted = invoke({buildProfile: 'node24-vite8-overview-v3'});
@@ -360,7 +360,7 @@ global.fetch = async (target, options) => {
     const historical = invoke({}); assert.equal(historical.status, 0, historical.stderr);
     assert.equal(JSON.parse(historical.stdout).plan.buildRecipeHash, builds.generate(logo, 'node24-vite8-cleanup-v2').recipeHash);
     for (const invalid of [{buildProfile: 'unknown'}, {buildProfile: 'node24-vite8-overview-v3', unknownOption: true}]) {
-      const rejected = invoke(invalid); assert.equal(rejected.status, 1); assert.match(rejected.stderr, /Managed Wizard upgrade failed/);
+      const rejected = invoke(invalid); assert.equal(rejected.status, 1); assert.equal(rejected.stderr, 'System Bootstrapper: operation-failed\n');
       assert.equal(rejected.stdout, ''); assert.equal(fs.readFileSync(trace, 'utf8'), '', 'Reject invalid operator options before GitLab requests');
     }
     assert.equal(fs.readFileSync(f.config, 'utf8'), before); assert(!fs.existsSync(f.directory));

@@ -5,19 +5,23 @@ const path = require('path');
 const crypto = require('crypto');
 const source = path.resolve(__dirname, '../..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'default-wizard-'));
-for (const name of ['sync', 'system', 'project-bootstrap']) fs.mkdirSync(path.join(root, name));
+for (const name of ['sync', 'system']) fs.mkdirSync(path.join(root, name));
 // Isolate the native operation entry beside the compiled Sync modules, just as
 // the project-provisioning fixture does. No GitLab or Docker process is needed.
-fs.cpSync(path.join(source, 'sync/dist'), path.join(root, 'sync/dist'), {recursive:true});
-fs.symlinkSync(path.join(source, 'sync/node_modules'), path.join(root, 'sync/node_modules'), 'dir');
+fs.cpSync(path.join(source, 'dist'), path.join(root, 'dist'), {recursive:true});
+fs.symlinkSync(path.join(source, 'node_modules'), path.join(root, 'node_modules'), 'dir');
 fs.symlinkSync(path.join(source, 'nginx'), path.join(root, 'nginx'), 'dir');
-fs.mkdirSync(path.join(root,'operations/dist/projects-routing'),{recursive:true});
-fs.mkdirSync(path.join(root,'operations/dist/gitlab-provision'),{recursive:true});
-fs.writeFileSync(path.join(root, 'operations/dist/projects-routing/entry.js'), 'process.exit(0)\n');
+fs.mkdirSync(path.join(root,'dist/modules/projects-routing'),{recursive:true});
+fs.mkdirSync(path.join(root,'dist/modules/gitlab-provision'),{recursive:true});
 const trace = path.join(root, 'trace');
-fs.writeFileSync(path.join(root, 'operations/dist/gitlab-provision/entry.js'), `
+fs.writeFileSync(path.join(root, 'dist/cli/main.js'), `
 const assert=require('node:assert/strict');
-assert.deepEqual(process.argv.slice(2),['project','--checkout',${JSON.stringify(root)}]);
+const args=process.argv.slice(2);
+if(args[0]==='projects-routing'){
+ assert.deepEqual(args,['projects-routing','routing','apply',${JSON.stringify(root)},'/templates']);
+ process.exit(0);
+}
+assert.deepEqual(args,['gitlab-provision','project','--checkout',${JSON.stringify(root)}]);
 let text=''; process.stdin.on('data', c=>text+=c); process.stdin.on('end',()=>{
  const input=JSON.parse(text);
  assert(['namespaces','create'].includes(input.action),'registration must not start a pipeline');
@@ -30,10 +34,11 @@ let text=''; process.stdin.on('data', c=>text+=c); process.stdin.on('end',()=>{
  console.log(JSON.stringify(input.action==='namespaces'?{namespaces:[{id:1,path:'root'}]}:
  {repository:{id:99,namespaceId:1,path:'root/wizard',defaultBranch:'main',template:'wizard'}}));
 });\n`);
+process.env.SYSTEM_CONFIG_DIR = path.join(root, 'system');
 process.chdir(path.join(root, 'sync'));
-const bootstrap = require(path.join(root, 'sync/dist/ProjectBootstrap'));
-const {ensureDefaultWizard, wizardConfiguration} = require(path.join(root, 'sync/dist/DefaultWizard'));
-const {preserve} = require(path.join(source, 'project-bootstrap/preserve-system-project'));
+const bootstrap = require(path.join(root, 'dist/api/projects/project-workflow'));
+const {ensureDefaultWizard, wizardConfiguration} = require(path.join(root, 'dist/api/projects/default-wizard'));
+const {preserve} = require(path.join(source, 'dist/modules/projects-routing/managed-project'));
 const config = path.join(root, 'system/.docker.env');
 const project = path.join(root, 'system/.projects.env/.wizard.env');
 const signature = data => {
@@ -79,4 +84,4 @@ const signature = data => {
  preserve('snapshot',project,backup); assert(!fs.existsSync(backup));
  assert.throws(()=>wizardConfiguration({}),/real Wizard host/);
  console.log('Default Wizard: real URL/HTTPS, first scaffold, no pipeline, idempotent restart, Push preservation, collisions and signature passed.');
-})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{process.chdir(source);fs.rmdirSync(root,{recursive:true});});
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{process.chdir(source);fs.rmSync(root,{recursive:true,force:true});});

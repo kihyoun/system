@@ -1,31 +1,39 @@
 # Dependencies and browser installation happen only during the trusted build.
 FROM node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
-COPY bootstrapper/ca/cacert-2026-10-20.crt bootstrapper/ca/provenance.json bootstrapper/ca/check.js /candidate/bootstrapper/ca/
-ENV NODE_OPTIONS=--use-openssl-ca \
-    SSL_CERT_FILE=/candidate/bootstrapper/ca/cacert-2026-10-20.crt \
-    SSL_CERT_DIR=/candidate/bootstrapper/ca/empty \
-    npm_config_cafile=/candidate/bootstrapper/ca/cacert-2026-10-20.crt
 WORKDIR /candidate
-RUN mkdir -p /candidate/bootstrapper/ca/empty && node /candidate/bootstrapper/ca/check.js --bundle
-COPY operations/package.json operations/package-lock.json ./operations/
-RUN npm ci --prefix operations --ignore-scripts --no-audit --no-fund
-COPY operations/src ./operations/src
-COPY operations/tsconfig.json ./operations/tsconfig.json
-COPY operations/scripts/bundle-project-ci.mjs ./operations/scripts/bundle-project-ci.mjs
-COPY LICENSE ./LICENSE
-COPY project-bootstrap/wizard-build/typed-v6/runtime ./project-bootstrap/wizard-build/typed-v6/runtime
-RUN node operations/node_modules/typescript/bin/tsc -p operations/tsconfig.json
-RUN node operations/dist/host-bootstrap/entry.js refresh-ca --checkout /candidate && node bootstrapper/ca/check.js
+COPY config/ca ./config/ca
+COPY src/common/ca-policy.mts ./src/common/ca-policy.mts
+COPY src/cli/verify-ca.mts ./src/cli/verify-ca.mts
+ENV NODE_OPTIONS=--use-openssl-ca \
+    SSL_CERT_FILE=/candidate/config/ca/cacert-2026-10-20.crt \
+    SSL_CERT_DIR=/candidate/config/ca/empty \
+    npm_config_cafile=/candidate/config/ca/cacert-2026-10-20.crt
+RUN node src/cli/verify-ca.mts --bundle
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY src ./src
+COPY tsconfig.json LICENSE ./
+COPY config ./config
+COPY templates ./templates
+COPY containers ./containers
+COPY wizard/.gitlab/runtime ./wizard/.gitlab/runtime
+RUN npm run build
+RUN node dist/cli/main.js host-bootstrap refresh-ca --checkout /candidate
+RUN node dist/cli/main.js host-bootstrap ca-check --checkout /candidate
 WORKDIR /candidate/wizard
 COPY wizard/package.json wizard/package-lock.json ./
-RUN test "$(node --version)" = v24.22.0 && test "$(npm --version)" = 11.19.1 \
- && npm ci --no-audit --no-fund \
+RUN node /candidate/dist/cli/main.js ci node-runtime /candidate
+RUN npm ci --no-audit --no-fund \
  && npx --no-install playwright install-deps chromium \
- && node /candidate/operations/dist/host-bootstrap/entry.js refresh-ca --checkout /candidate && node /candidate/bootstrapper/ca/check.js \
+ && node /candidate/dist/cli/main.js host-bootstrap refresh-ca --checkout /candidate \
+ && node /candidate/dist/cli/main.js host-bootstrap ca-check --checkout /candidate \
  && npx --no-install playwright install chromium
 COPY .prettierrc .prettierignore /candidate/
 COPY wizard/ ./
-RUN npm run format:check && node /candidate/operations/scripts/bundle-project-ci.mjs --check
+RUN npm run format:check
+WORKDIR /candidate
+RUN node dist/cli/main.js bundle-project-ci --check
+WORKDIR /candidate/wizard
 # Full native suite, including its localhost build/preview server and mock APIs.
 ENV CI=true \
     PLAYWRIGHT_HTML_OUTPUT_DIR=/candidate/test-results/wizard-browser/playwright-report \

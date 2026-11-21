@@ -6,7 +6,7 @@ const os=require('os');
 const {Candidate,configuration,signature,configurationValues,recover,LABEL}=require('./disposable-candidate');
 // Git's committed LF bytes are the signed contract; Windows checkout conversion
 // must not lead this fixture to rewrite or relax the Cube validator.
-let example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+let example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
 try {signature(example);} catch {
   example=require('child_process').execFileSync('git',['-c','core.autocrlf=false','show','HEAD:system/.docker.env.example'],{cwd:path.join(__dirname,'../..'),encoding:'utf8'});
 }

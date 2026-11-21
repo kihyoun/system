@@ -6,7 +6,9 @@ const os = require('os');
 const path = require('path');
 const {spawnSync} = require('child_process');
 const root = path.resolve(__dirname, '../..');
-const {definition} = require(path.join(root, 'gitlab-runner/compose'));
+const {RunnerComposeService} = require(path.join(root, 'dist/modules/lifecycle/runner-compose.service'));
+const compose = new RunnerComposeService();
+const definition = (pool,count,persistent) => compose.definition(pool,count,persistent,path.join(root,'config/gitlab-runner/docker-compose.yml'));
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-persistence-'));
 
 try {
@@ -33,25 +35,24 @@ try {
   for (const name of ['../runner', 'runner/x', 'bad name', '']) assert.throws(() => definition(name, 1, persistent));
   for (const directory of ['', '.', 'relative', '/tmp/$HOME']) assert.throws(() => definition('runner', 1, directory));
 
-  for (const directory of ['gitlab-runner', 'system', 'gitlab', 'bin', 'project-state']) fs.mkdirSync(path.join(fixture, directory));
-  for (const name of ['compose.js', 'docker-compose.yml', 'provision.js']) {
-    fs.copyFileSync(path.join(root, 'gitlab-runner', name), path.join(fixture, 'gitlab-runner', name));
+  for (const directory of ['config/gitlab-runner', 'config/system', 'config/gitlab', 'bin', 'project-state']) fs.mkdirSync(path.join(fixture, directory),{recursive:true});
+  for (const name of ['docker-compose.yml']) {
+    fs.copyFileSync(path.join(root, 'config/gitlab-runner', name), path.join(fixture, 'config/gitlab-runner', name));
   }
-  fs.symlinkSync(path.join(root,'operations'),path.join(fixture,'operations'),'dir');
-  fs.copyFileSync(path.join(root,'gitlab/security-release.json'),path.join(fixture,'gitlab/security-release.json'));
+  fs.copyFileSync(path.join(root,'config/gitlab/security-release.json'),path.join(fixture,'config/gitlab/security-release.json'));
   const log = path.join(fixture, 'compose-log.jsonl');
   fs.writeFileSync(path.join(fixture,'bin/docker'),'#!'+process.execPath+'\nconst fs=require("fs"),args=process.argv.slice(2);if(args.includes("compose")){fs.appendFileSync(process.env.COMPOSE_LOG,JSON.stringify({args,definition:JSON.parse(fs.readFileSync(args[args.indexOf("-f")+1],"utf8"))})+"\\n");}else{process.stdin.resume();process.stdin.on("end",()=>console.log(JSON.stringify({token:"glrt-persisted_test"})));}\n',{mode:0o755});
-  fs.writeFileSync(path.join(fixture, 'gitlab/.docker.env'), 'export GITLAB_HOST=gitlab.example.com\nexport GITLAB_REGISTRY_HOST=registry.example.com\n');
-  fs.symlinkSync(path.join(fixture, 'project-state'), path.join(fixture, 'system/.projects.env'));
+  fs.writeFileSync(path.join(fixture, 'config/gitlab/.docker.env'), 'export GITLAB_HOST=gitlab.example.com\nexport GITLAB_REGISTRY_HOST=registry.example.com\n');
+  fs.symlinkSync(path.join(fixture, 'project-state'), path.join(fixture, 'config/system/.projects.env'));
   fs.writeFileSync(path.join(fixture, 'project-state/.project.env'), 'PROJECT_NAME=project\nPROJECT_TEMPLATE=web\nGITLAB_RUNNER_SCALE=2\n');
   fs.writeFileSync(path.join(fixture, 'project-state/.wizard.env'), 'PROJECT_NAME=wizard\nPROJECT_TEMPLATE=wizard\nGITLAB_RUNNER_SCALE=2\n');
-  const env = {...process.env, PATH: path.join(fixture, 'bin') + ':' + process.env.PATH, COMPOSE_LOG: log, SYSTEM_CONFIG_DIR:path.join(fixture,'system')};
-  const writeMain = scale => fs.writeFileSync(path.join(fixture, 'system/.docker.env'), `export PERSISTENT_DIR='${persistent}'\nexport GITLAB_RUNNER_SCALE=${scale}\nexport GITLAB_RUNNER_TOKEN=glrt-persisted_test\n`);
+  const env = {...process.env, PATH: path.join(fixture, 'bin') + ':' + process.env.PATH, COMPOSE_LOG: log, SYSTEM_CONFIG_DIR:path.join(fixture,'config/system')};
+  const writeMain = scale => fs.writeFileSync(path.join(fixture, 'config/system/.docker.env'), `export PERSISTENT_DIR='${persistent}'\nexport GITLAB_RUNNER_SCALE=${scale}\nexport GITLAB_RUNNER_TOKEN=glrt-persisted_test\n`);
   // Leave mktemp unmocked: run this lifecycle test in the Alpine controller
   // image as well as the component image. BusyBox rejects GNU's suffix form
   // (XXXXXXXX.json); start/stop must work with the runtime's real utility.
   const invoke = (script, argument) => {
-    const result = spawnSync(process.execPath, [path.join(root,'operations/dist/lifecycle/entry.js'),'runner-'+script.replace('.sh',''),fixture,...(argument ? [argument] : [])], {cwd: path.join(fixture, 'gitlab-runner'), env, encoding: 'utf8'});
+    const result = spawnSync(process.execPath, [path.join(root,'dist/cli/main.js'),'lifecycle','runner-'+script.replace('.sh',''),fixture,...(argument ? [argument] : [])], {cwd: path.join(fixture, 'config/gitlab-runner'), env, encoding: 'utf8'});
     assert.equal(result.status, 0, result.stderr + result.stdout);
   };
   writeMain(2); invoke('start.sh');
@@ -79,17 +80,18 @@ try {
   // legacy main-config symlink with a new file on the controller root disk.
   const state = path.join(fixture, 'state'); fs.mkdirSync(state);
   const config = path.join(state, '.docker.env');
-  const original = fs.readFileSync(path.join(root, 'system/.docker.env.example'), 'utf8');
+  const original = fs.readFileSync(path.join(root, 'config/system/.docker.env.example'), 'utf8');
   fs.writeFileSync(config, original);
-  fs.unlinkSync(path.join(fixture, 'system/.docker.env'));
-  fs.symlinkSync(config, path.join(fixture, 'system/.docker.env'));
+  fs.unlinkSync(path.join(fixture, 'config/system/.docker.env'));
+  fs.symlinkSync(config, path.join(fixture, 'config/system/.docker.env'));
   const provision = spawnSync(process.execPath, ['-e', `
-    const {RunnerLifecycleService}=require(${JSON.stringify(path.join(root,'operations/dist/lifecycle/runner.service'))});
-    const service=new RunnerLifecycleService({}, {}, {current:async options=>{if(options.checkout!==${JSON.stringify(fixture)})throw Error('wrong checkout');return {id:12,token:'glrt-persisted_test'};}});
+    const {RunnerLifecycleService}=require(${JSON.stringify(path.join(root,'dist/modules/lifecycle/runner.service'))});
+    const {RunnerComposeService}=require(${JSON.stringify(path.join(root,'dist/modules/lifecycle/runner-compose.service'))});
+    const service=new RunnerLifecycleService({}, {}, {current:async options=>{if(options.checkout!==${JSON.stringify(fixture)})throw Error('wrong checkout');return {id:12,token:'glrt-persisted_test'};}},new RunnerComposeService());
     service.provisionToken({root:${JSON.stringify(fixture)},state:${JSON.stringify(state)},environment:{PERSISTENT_DIR:${JSON.stringify(persistent)}}}).catch(error=>{console.error(error);process.exitCode=1;});
-  `], {cwd: path.join(fixture, 'gitlab-runner'), env, encoding: 'utf8'});
+  `], {cwd: path.join(fixture, 'config/gitlab-runner'), env, encoding: 'utf8'});
   assert.equal(provision.status, 0, provision.stderr);
-  assert(fs.lstatSync(path.join(fixture, 'system/.docker.env')).isSymbolicLink());
+  assert(fs.lstatSync(path.join(fixture, 'config/system/.docker.env')).isSymbolicLink());
   const updated = fs.readFileSync(config, 'utf8');
   assert.equal(updated.slice(0, 1184), original.slice(0, 1184));
   assert(updated.includes("GITLAB_RUNNER_TOKEN='glrt-persisted_test'"));

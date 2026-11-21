@@ -7,12 +7,12 @@ Weder der Ubuntu-Release-Name noch die Userspace-Distribution eines Images beleg
 Kompatibilität. Führen Sie die Repository-Vorprüfung **auf diesem Linux-x86_64-Host**
 aus, bevor Sie ein MongoDB-Image auswählen, den Host-Kernel ändern oder eine
 CI-Datenbank aktivieren:
-Verwende die von Quickstart vorbereitete festgelegte Node-Laufzeit. Bereite bei einem Quellcheckout zuerst die gemeinsamen Dienste mit `npm ci --prefix operations` und `npm run build --prefix operations` vor.
+Verwende die von Quickstart vorbereitete festgelegte Node-Laufzeit. Bereite bei einem Quellcheckout zuerst die gemeinsamen Dienste mit `npm ci` und `npm run build` vor.
 
 ```sh
-node bootstrapper/container-preflight.js --mongodb-version 8.0.37
+system-bootstrapper host-bootstrap container-preflight --checkout "$PWD" --mongodb-version 8.0.37
 # Pull the exact reviewed digest separately, then test its executable as well:
-node bootstrapper/container-preflight.js --mongodb-version 8.0.37 \
+system-bootstrapper host-bootstrap container-preflight --checkout "$PWD" --mongodb-version 8.0.37 \
   --image 'docker.io/library/mongo@sha256:REPLACE_WITH_64_HEX_DIGEST'
 ```
 
@@ -129,7 +129,7 @@ Verwenden Sie positive ganzzahlige Größen mit den Einheiten `k`, `m` oder `g`
 und eine Dateianzahl von 1 bis 100. Validieren Sie gewünschte Werte vor Anwendung:
 
 ```sh
-node bootstrapper/log-policy.js --max-size 10m --max-files 3
+system-bootstrapper host-bootstrap log-policy --checkout "$PWD" --max-size 10m --max-files 3
 ```
 
 Die vorhandenen zusätzlichen Laufzeitoptionen des Wizards erhalten diese Exporte
@@ -168,8 +168,8 @@ wiederholen Sie dies nach einem weiteren normalen Deployment. Verwenden Sie die
 tatsächlichen Namen Ihrer Auslieferung:
 
 ```sh
-node bootstrapper/log-policy.js system_web_1 system_sync_1
-node bootstrapper/log-policy.js --max-size 10m --max-files 3 YOUR_APP_CONTAINER
+system-bootstrapper host-bootstrap log-policy --checkout "$PWD" system_web_1 system_sync_1
+system-bootstrapper host-bootstrap log-policy --checkout "$PWD" --max-size 10m --max-files 3 YOUR_APP_CONTAINER
 ```
 
 Eine Abweichung liefert Exit 1 und zeigt das tatsächliche `HostConfig.LogConfig`.

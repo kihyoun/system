@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const YAML = require('../../operations/node_modules/yaml');
+const YAML = require('../../node_modules/yaml');
 const root = path.resolve(__dirname, '../..');
 const text = fs.readFileSync(path.join(root, '.gitlab-ci.yml'));
 assert.equal(text[807], 36, 'Cube opening');
@@ -89,37 +89,37 @@ for (const [name, paths] of [
 ]) cases.push([name, paths, light]);
 for (const [name, paths] of [
   ['mixed changes', ['README.md', 'system/start.js']], ['unknown location', ['future-component/new-format.xyz']],
-  ['CI configuration', ['.gitlab-ci.yml']], ['CI helper', ['gitlab/check-documentation.js']], ['test guide', ['tests/README.md']],
-  ['infrastructure', ['bootstrapper/Dockerfile', 'system/docker-compose.yml']], ['submodule configuration', ['.gitmodules']], ['Wizard tree', ['wizard']],
+  ['CI configuration', ['.gitlab-ci.yml']], ['CI helper', ['src/modules/ci/documentation-policy.ts']], ['test guide', ['tests/README.md']],
+  ['infrastructure', ['containers/bootstrapper/Dockerfile', 'config/system/docker-compose.yml']], ['submodule configuration', ['.gitmodules']], ['Wizard tree', ['wizard']],
   ['code within docs', ['docs/execute.sh']], ['newline root path', ['README.md\nsystem/start.js']], ['newline docs path', ['docs/guide\nexecute.md']],
   ['trailing newline', ['README.md\n']], ['case mismatch', ['readme.md']], ['suffixed guide', ['README.md.js']],
-  ['Wizard code', ['wizard/src/index.tsx']], ['operations code', ['operations/src/cli.ts']],
+  ['Wizard code', ['wizard/src/index.tsx']], ['operations code', ['src/cli/main.ts']],
   ['rename code to docs', ['runtime.js', 'docs/moved.md']], ['rename docs to code', ['docs/moved.md', 'runtime.js']], ['runtime deletion', ['runtime.js']],
 ]) cases.push([name, paths, runtime]);
 cases.push(
   ['comparison limit', Array(50001).fill('README.md'), runtime],
   ['protected docs push', ['AGENTS.md'], [...light, 'deploy:github'], push],
-  ['protected runtime push', ['system/start.js'], [...runtime, ...beta, 'deploy:github'], push],
-  ['disabled mirror', ['system/start.js'], [...runtime, ...beta], {...push, GITHUB_BACKUP_ENABLED: 'false'}],
-  ['public image push', ['system/start.js'], [...runtime, ...beta, 'deploy:github', 'deploy:dockerhub'], hub],
+  ['protected runtime push', ['src/modules/lifecycle/lifecycle.service.ts'], [...runtime, ...beta, 'deploy:github'], push],
+  ['disabled mirror', ['src/modules/lifecycle/lifecycle.service.ts'], [...runtime, ...beta], {...push, GITHUB_BACKUP_ENABLED: 'false'}],
+  ['public image push', ['src/modules/lifecycle/lifecycle.service.ts'], [...runtime, ...beta, 'deploy:github', 'deploy:dockerhub'], hub],
   ['docs cannot publish images', ['README.md'], [...light, 'deploy:github'], hub],
-  ['MR cannot publish', ['system/start.js'], runtime, {...baseline, DOCKERHUB_PUBLISH_ENABLED: 'true', CI_COMMIT_REF_PROTECTED: 'true'}],
+  ['MR cannot publish', ['src/modules/lifecycle/lifecycle.service.ts'], runtime, {...baseline, DOCKERHUB_PUBLISH_ENABLED: 'true', CI_COMMIT_REF_PROTECTED: 'true'}],
   ['retired Review selector', ['wizard/src/index.tsx'], runtime, review],
   ['fork MR cannot deploy Beta', ['wizard/src/index.tsx'], runtime, {...review, CI_MERGE_REQUEST_SOURCE_PROJECT_ID: '43'}],
   ['Review selector cannot alter Beta', ['wizard/src/index.tsx'], [...runtime, ...beta, 'deploy:github'], {...push, SYSTEM_REVIEW_ENABLED: 'true'}],
-  ['unprotected push', ['system/start.js'], runtime, {...push, CI_COMMIT_REF_PROTECTED: 'false'}],
+  ['unprotected push', ['src/modules/lifecycle/lifecycle.service.ts'], runtime, {...push, CI_COMMIT_REF_PROTECTED: 'false'}],
   ['unavailable comparison', ['README.md'], [...runtime, ...beta, 'deploy:github'], push, false],
-  ['feature push', ['system/start.js'], [], {...push, CI_COMMIT_BRANCH: 'feature'}],
-  ['nonversion tag', ['system/start.js'], [], {...push, CI_COMMIT_BRANCH: null, CI_COMMIT_TAG: 'v1'}],
+  ['feature push', ['src/modules/lifecycle/lifecycle.service.ts'], [], {...push, CI_COMMIT_BRANCH: 'feature'}],
+  ['nonversion tag', ['src/modules/lifecycle/lifecycle.service.ts'], [], {...push, CI_COMMIT_BRANCH: null, CI_COMMIT_TAG: 'v1'}],
   ['protected release tag', ['README.md'], [...runtime, 'deploy:dockerhub'], {...hub, CI_COMMIT_BRANCH: null, CI_COMMIT_TAG: 'v1.2.3'}],
   ['tag without publishing selector', ['README.md'], runtime, {...push, CI_COMMIT_BRANCH: null, CI_COMMIT_TAG: 'v1.2.3'}],
-  ['unprotected release tag', ['system/start.js'], [], {...hub, CI_COMMIT_BRANCH: null, CI_COMMIT_TAG: 'v1.2.3', CI_COMMIT_REF_PROTECTED: 'false'}],
-  ['Renovate discovery alone', ['system/start.js'], ['renovate:discover'], renovate, false],
-  ['unprotected schedule', ['system/start.js'], [], {...renovate, CI_COMMIT_REF_PROTECTED: 'false'}, false],
-  ['MR cannot start bot', ['system/start.js'], runtime, {...baseline, RENOVATE_ENABLED: 'true'}],
-  ['accepted public metadata', ['system/start.js'], [...runtime, ...beta, 'deploy:github', 'deploy:dockerhub', 'deploy:github-release'], publication],
-  ['npm accepted release', ['operations/src/cli.ts'], [...runtime, ...beta, 'deploy:github', 'deploy:dockerhub', 'deploy:github-release', 'deploy:npm'], {...publication, NPM_PUBLISH_ENABLED: 'true'}],
-  ['MR cannot publish npm', ['operations/src/cli.ts'], runtime, {...baseline, NPM_PUBLISH_ENABLED: 'true', GITHUB_RELEASE_PUBLISH_ENABLED: 'true'}],
+  ['unprotected release tag', ['src/modules/lifecycle/lifecycle.service.ts'], [], {...hub, CI_COMMIT_BRANCH: null, CI_COMMIT_TAG: 'v1.2.3', CI_COMMIT_REF_PROTECTED: 'false'}],
+  ['Renovate discovery alone', ['src/modules/lifecycle/lifecycle.service.ts'], ['renovate:discover'], renovate, false],
+  ['unprotected schedule', ['src/modules/lifecycle/lifecycle.service.ts'], [], {...renovate, CI_COMMIT_REF_PROTECTED: 'false'}, false],
+  ['MR cannot start bot', ['src/modules/lifecycle/lifecycle.service.ts'], runtime, {...baseline, RENOVATE_ENABLED: 'true'}],
+  ['accepted public metadata', ['src/modules/lifecycle/lifecycle.service.ts'], [...runtime, ...beta, 'deploy:github', 'deploy:dockerhub', 'deploy:github-release'], publication],
+  ['npm accepted release', ['src/cli/main.ts'], [...runtime, ...beta, 'deploy:github', 'deploy:dockerhub', 'deploy:github-release', 'deploy:npm'], {...publication, NPM_PUBLISH_ENABLED: 'true'}],
+  ['MR cannot publish npm', ['src/cli/main.ts'], runtime, {...baseline, NPM_PUBLISH_ENABLED: 'true', GITHUB_RELEASE_PUBLISH_ENABLED: 'true'}],
 );
 for (const source of ['web', 'api', 'trigger', 'pipeline', 'schedule']) cases.push([source + ' retains runtime gates', ['README.md'], runtime, {...push, CI_PIPELINE_SOURCE: source}, false]);
 for (const [name, paths, expected, environment, available] of cases) assert.deepEqual(select(paths, environment, available), [...expected].sort(), name);
@@ -131,9 +131,9 @@ for (const name of full) {
   assert((job.dependencies || []).every(dependency => full.includes(dependency)), name + ' artifact selection closure');
 }
 const equal = (name, fields) => { for (const [field, expected] of Object.entries(fields)) assert.deepEqual(jobs[name][field], expected, name + '.' + field); };
-const native = ['node bootstrapper/ca/check.js --bundle', 'npm --prefix operations ci --ignore-scripts --no-audit --no-fund', 'npm --prefix operations run build', 'timeout -k 5 110 node operations/dist/host-bootstrap/entry.js install-runtime --checkout "$CI_PROJECT_DIR"'];
+const native = ['node src/cli/verify-ca.mts --bundle', 'npm ci --ignore-scripts --no-audit --no-fund', 'npm run build', 'timeout -k 5 110 node dist/cli/main.js host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"'];
 const isolated = {services: [], tags: ['docker']};
-equal('check:documentation', {...isolated, script: ['node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR"'], after_script: ['node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR" cleanup'], timeout: '3m', allow_failure: false, needs: undefined, dependencies: undefined});
+equal('check:documentation', {...isolated, script: ['node dist/cli/main.js ci documentation "$CI_PROJECT_DIR"'], after_script: ['node dist/cli/main.js ci documentation "$CI_PROJECT_DIR" cleanup'], timeout: '3m', allow_failure: false, needs: undefined, dependencies: undefined});
 assert.equal(jobs['check:documentation'].variables.RUNNER_SCRIPT_TIMEOUT, '2m');
 assert.equal(jobs['check:documentation'].variables.RUNNER_AFTER_SCRIPT_TIMEOUT, '30s');
 assert(!Object.keys(jobs).some(name => name.includes('wizard-review')), 'System Review jobs must not return');
@@ -148,26 +148,26 @@ equal('deploy:wizard-beta', {dependencies: ['test:platform-candidate']});
 equal('stop:wizard-beta', {dependencies: []});
 assert.equal(jobs['deploy:wizard-beta'].environment.on_stop, 'stop:wizard-beta');
 assert.equal(jobs['stop:wizard-beta'].environment.action, 'stop');
-const projectCI = fs.readFileSync(path.join(root, 'project-bootstrap/wizard-environments/recipe.js'), 'utf8');
+const projectCI = fs.readFileSync(path.join(root, 'src/modules/project-lifecycle/environment-recipe.service.ts'), 'utf8');
 assert(projectCI.includes("['review', 'beta']") && projectCI.includes('review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'), 'Generic project Review and Beta remain available');
 equal('deploy:npm', {dependencies: ['test:npm-package', 'test:platform-candidate', 'deploy:dockerhub', 'deploy:github', 'deploy:github-release'], needs: undefined, allow_failure: false, interruptible: false, resource_group: 'npm-release'});
 for (const name of ['deploy:npm', 'deploy:dockerhub']) {
   assert.deepEqual(jobs[name].rules.at(-1), {when: 'never'});
   for (const rule of jobs[name].rules.slice(0, -1)) for (const selector of ['$CI_COMMIT_REF_PROTECTED == "true"', '$CI_PIPELINE_SOURCE == "push"', name === 'deploy:npm' ? '$NPM_PUBLISH_ENABLED == "true"' : '$DOCKERHUB_PUBLISH_ENABLED == "true"']) assert(rule.if.includes(selector), name + ' protected publisher selectors');
 }
-equal('deploy:github', {dependencies: [], script: ['node operations/dist/mirror/entry.js ci']});
+equal('deploy:github', {dependencies: [], script: ['node dist/cli/main.js github-backup ci']});
 assert.deepEqual(jobs['deploy:github'].artifacts.paths, ['test-results/github/']);
 assert.equal(jobs['deploy:github'].artifacts.when, 'always');
 assert.equal(jobs['deploy:github'].rules[0].if, '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null');
-equal('test:wizard-browser', {...isolated, script: ['node operations/dist/ci/entry.js wizard-browser "$CI_PROJECT_DIR"'], after_script: ['node operations/dist/ci/entry.js wizard-browser "$CI_PROJECT_DIR" cleanup']});
+equal('test:wizard-browser', {...isolated, script: ['node dist/cli/main.js ci wizard-browser "$CI_PROJECT_DIR"'], after_script: ['node dist/cli/main.js ci wizard-browser "$CI_PROJECT_DIR" cleanup']});
 assert.equal(jobs['test:wizard-browser'].artifacts.reports.junit, 'test-results/wizard-browser/junit.xml');
-equal('deploy:dockerhub', {...isolated, script: ['node gitlab/publish-dockerhub.js'], dependencies: ['test:platform-candidate'], needs: undefined, stage: 'deploy', allow_failure: false, interruptible: false, resource_group: 'dockerhub-release-$CI_PROJECT_ID'});
+equal('deploy:dockerhub', {...isolated, script: ['node dist/cli/main.js release dockerhub'], dependencies: ['test:platform-candidate'], needs: undefined, stage: 'deploy', allow_failure: false, interruptible: false, resource_group: 'dockerhub-release-$CI_PROJECT_ID'});
 assert.equal(jobs['deploy:dockerhub'].variables.GIT_DEPTH, '0');
 assert.deepEqual(jobs['deploy:dockerhub'].artifacts.paths, ['test-results/dockerhub/']);
-equal('build', {script: ['echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY', 'docker build --provenance=false --sbom=false -f bootstrapper/Dockerfile -t $IMAGE_TAG .', 'docker push $IMAGE_TAG'], before_script: native});
+equal('build', {script: ['node dist/cli/main.js ci build-bootstrapper "$CI_PROJECT_DIR"'], before_script: native});
 assert.equal(config.variables.IMAGE_TAG, '$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG');
 assert.match(config.image, /^node:24\.22\.0-alpine3\.24@sha256:[a-f0-9]{64}$/);
 assert.match(config.services[0], /^docker:29\.9\.2-dind@sha256:[a-f0-9]{64}$/);
-assert.deepEqual(config.default.before_script, ['node bootstrapper/ca/check.js --bundle']);
+assert.deepEqual(config.default.before_script, ['node src/cli/verify-ca.mts --bundle']);
 assert.equal(config.variables.NODE_OPTIONS, '--use-openssl-ca');
 console.log(`PASS: ${cases.length} native YAML path/event cases, Ruby absolute/line anchors, required gates, artifact closure, protected releases and mirror`);

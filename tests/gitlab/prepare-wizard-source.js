@@ -4,7 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {execFileSync} = require('child_process');
-const {selection, prepare} = require('../../gitlab/prepare-wizard-source');
+const {selection,WizardSourcePreparationService}=require('../../dist/modules/source-preparation/wizard-source-preparation.service');
+const prepare=(environment=process.env,execute=execFileSync)=>new WizardSourcePreparationService({run(binary,args,options){return {stdout:String(execute(binary,args,{...options,encoding:'utf8'})),stderr:'',status:0};}}).prepare(environment,process.cwd());
 const base = {CI_SERVER_URL: 'https://gitlab.example.test', CI_JOB_TOKEN: 'fixture-token'};
 assert.equal(selection(base), null, 'public checkout remains the portable fallback');
 for (const url of ['http://gitlab.example.test/team/wizard.git', 'https://other.example/team/wizard.git',

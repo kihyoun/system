@@ -3,8 +3,8 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {Promotion, hash, signature} = require('../../project-bootstrap/wizard-production/run');
-const logo = require('../../sync/dist/Helper').default.textLogo;
+const {Promotion, hash, signature} = require('../../dist/modules/project-lifecycle/production-session');
+const logo = require('../../dist/common/configuration-signature').default.textLogo;
 const oldId = 'sha256:' + 'a'.repeat(64), nextId = 'sha256:' + 'b'.repeat(64);
 const ref = 'registry.example.test/root/wizard@sha256:' + 'c'.repeat(64);
 const proof = {version: 1, projectId: 3, projectPath: 'root/wizard', pipelineId: 21,
@@ -63,11 +63,12 @@ class Fixture {
       return '<title>System Bootstrapper</title><div id="root"></div>';
     }
     if (args[0] === 'exec' && args[1] === 'system_bootstrapper_1') {
-      if (args[2] === 'node' && args[3] === '-e') {
+      if (args[2] === 'node' && args[3] === '/system/dist/cli/main.js' && args[4] === 'public-settings') {
+        assert.deepEqual(args.slice(4), ['public-settings', 'verify', '/state', '/wizard-public']);
         if (this.badPublication) throw Error('Public publication filesystem or content check failed');
         return JSON.stringify({ok: true});
       }
-      assert.deepEqual(args.slice(2,6), ['node','/system/operations/dist/lifecycle/entry.js','wizard-apply-image','/system']);
+      assert.deepEqual(args.slice(2,6), ['node','/system/dist/modules/lifecycle/entry.js','wizard-apply-image','/system']);
       const snapshot = args[6]; const data = fs.readFileSync(snapshot, 'utf8');
       const references = [...data.matchAll(/export WIZARD_IMAGE='([^']+)'/g)];
       const image = references.pop()[1] === oldId ? oldId : nextId; this.events.push('compose-' + (image === oldId ? 'old' : 'new'));
@@ -182,9 +183,9 @@ async function test(name, callback) { const fixture = new Fixture(); try { await
     await assert.rejects(f.apply(), /EEXIST/); assert.equal(f.containers.size, 1);
     assert.equal(hash(f.originalConfig), hash(fs.readFileSync(f.config)));
   });
-  const {NestFactory}=require('../../operations/node_modules/@nestjs/core');
-  const {ProductionModule}=require('../../operations/dist/project-lifecycle/production.module');
-  const {DeploymentEvidenceService}=require('../../operations/dist/project-lifecycle/deployment-evidence.service');
+  const {NestFactory}=require('../../node_modules/@nestjs/core');
+  const {ProductionModule}=require('../../dist/modules/project-lifecycle/production.module');
+  const {DeploymentEvidenceService}=require('../../dist/modules/project-lifecycle/deployment-evidence.service');
   const app=await NestFactory.createApplicationContext(ProductionModule.register(),{logger:false,abortOnError:false});
   try {assert.strictEqual(app.get(Promotion).evidence,app.get(DeploymentEvidenceService));}
   finally {await app.close();}

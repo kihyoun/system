@@ -89,8 +89,8 @@ GitLab-Host passen. Zugangsdaten und Konfigurationsinhalte werden niemals
 ausgegeben. Widerrufe die Betreiberzugangsdaten nach der Verwendung.
 
 ```sh
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-source-primary/run.js plan /state/adoption-input.json /state/adoption-credential.json
-docker exec system_bootstrapper_1 node /system/project-bootstrap/wizard-source-primary/run.js apply /state/adoption-input.json /state/adoption-credential.json PLAN_HASH
+docker exec system_bootstrapper_1 system-bootstrapper wizard-source-primary plan /state/adoption-input.json /state/adoption-credential.json
+docker exec system_bootstrapper_1 system-bootstrapper wizard-source-primary apply /state/adoption-input.json /state/adoption-credential.json PLAN_HASH
 ```
 
 Prüfe den exakten Plan-Hash, alte/neue Projekt-IDs, das vorherige Production-Image,
@@ -189,8 +189,8 @@ Konfiguration unter `/state` einbinden, ohne einen Controller zu starten oder ei
 Docker-Socket einzubinden:
 
 ```sh
-docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/project-bootstrap/wizard-source-primary/run.js plan /state/adoption-input.json /state/adoption-credential.json
-docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/project-bootstrap/wizard-source-primary/run.js apply /state/adoption-input.json /state/adoption-credential.json PLAN_HASH
+docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/templates/project-bootstrap/wizard-source-primary/run.js plan /state/adoption-input.json /state/adoption-credential.json
+docker run --rm --network host --mount type=bind,src=/operator/configuration,dst=/state --entrypoint node sha256:REPLACE_WITH_ACCEPTED_HELPER_IMAGE_ID /system/templates/project-bootstrap/wizard-source-primary/run.js apply /state/adoption-input.json /state/adoption-credential.json PLAN_HASH
 ```
 
 Ersetze Konfigurationseinbindung und Image-ID durch unabhängig geprüfte Betreibereingaben.

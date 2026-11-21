@@ -115,7 +115,7 @@ async function syncFetch(candidate,connection,{waitForReady=false}={}) {
   if(candidate.spec?.guidedPreviewAcceptance===true&&!candidate.spec.restore){
     const preview=await request('/projects/wizard/preview-setup',{headers});
     if(preview.status!==200)throw Error('recovery-preview-intent-fetch-failed');
-    result.previewSetup=require('../../project-bootstrap/preview-setup/settings').settings(JSON.parse(preview.body).settings);
+    result.previewSetup=require('../../dist/modules/project-lifecycle/preview-settings').settings(JSON.parse(preview.body).settings);
   }
   signature(result.main.data);
   if(!Array.isArray(result.projects)||!result.projects.some(project=>project.filename==='.wizard.env')) throw Error('recovery-project-export-missing');
@@ -315,7 +315,7 @@ async function capture(original,dependencies={}) {
       },{settings,certificate,privateKey,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef,realAcme:!!dependencies.acme});
       inputs.expected.wizardAliases=WIZARD_ALIAS;
       if(dependencies.acme)inputs.expected.acme=guided?original.guidedAcmeIdentity:await dependencies.acme.issue(original);
-      else await original.inner(['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates']);
+      else await original.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates']);
       const connection=dependencies.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{};
       await verifyAliasLifecycle(original,connection,'original');
       await require('./application-routing').setup(original,connection);
@@ -332,7 +332,7 @@ async function capture(original,dependencies={}) {
       // metadata subsequently consumed by the unchanged native restore path.
       await node(original,function(input){
         const assert=require('node:assert/strict'),{execFileSync}=require('node:child_process');
-        require('/system/system/seed-operation').validateBackup('/tmp/bootstrapper.zip');
+        require('/system/dist/modules/storage/configuration').validateBackup('/tmp/bootstrapper.zip');
         const read=name=>execFileSync('unzip',['-p','/tmp/bootstrapper.zip',name],{encoding:'utf8',maxBuffer:5000000});
         const metadata=JSON.parse(read('recovery.json')),backup=JSON.parse(read('bootstrapper.json'));
         assert.equal(input.observation?.format,'system-runtime-observation-v1');
@@ -366,13 +366,13 @@ async function capture(original,dependencies={}) {
 
 async function captureSeed(original,inputs) {
   const step=(name,action,allowedReasons)=>checkpoint(original,'recovery-seed-'+name,action,allowedReasons);
-  await step('runner-stop',()=>original.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','node','/system/operations/dist/lifecycle/entry.js','runner-stop','/system']));
-  await step('harvest',()=>original.inner(['exec','-w','/system/system','system_bootstrapper_1','node','/system/operations/dist/storage/entry.js','launch','harvest'],
+  await step('runner-stop',()=>original.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/lifecycle/entry.js','runner-stop','/system']));
+  await step('harvest',()=>original.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/storage/entry.js','launch','harvest'],
     {timeout:180000,failureCodes:HARVEST_FAILURE_CODES}),Object.values(HARVEST_FAILURE_CODES));
   const current=await step('manifest-current',async()=>{
     const current=await original.inner(['run','--rm','--network','none','--read-only',
       '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--mount','type=bind,src='+SEED+',dst=/seed,readonly',
-      '--entrypoint','node','system-candidate:under-test','/system/system/seed-manifest.js','current','/seed']);
+      '--entrypoint','node','system-candidate:under-test','/system/dist/modules/storage/manifest-entry.js','current','/seed']);
     if(!/^\/seed\/snapshots\/[A-Za-z0-9.-]+$/.test(current))throw Error('completed-snapshot-required');
     return current;
   });
@@ -412,7 +412,7 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await candidate.inner([...args,'--entrypoint','/bin/sh','system-candidate:under-test','-c','sleep infinity']);
   await candidate.inner(['start','system_bootstrapper_1']);
   await transferToController(candidate,input.configArchive,'/system/bootstrapper.zip');
-  await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','node','/system/operations/dist/configuration/entry.js','push','/system','/state','/system/bootstrapper.zip']);
+  await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/configuration/entry.js','push','/system','/state','/system/bootstrapper.zip']);
   const wizardImage=await candidate.inner(['exec','system_bootstrapper_1','bash','-c','source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"']);
   if(wizardImage!==(privateWizard?.imageRef||'systembootstrapper/wizard'))throw Error('wizard-pin-recovery-artifact-not-declared');
   if(privateWizard)for(const identity of [privateWizard.imageRef,privateWizard.imageId]){
@@ -434,7 +434,7 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await candidate.call(['exec','-i',candidate.daemon,'sh','-ec',
     'umask 077; mkdir -m 700 /recovery-inputs; cat > '+hostBackup],{inputFile:input.configArchive});
   await candidate.stage('recovery-seed-native-restore',()=>candidate.inner(
-    ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','node','/system/operations/dist/storage/entry.js','launch','restore'],
+    ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system','system_bootstrapper_1','node','/system/dist/modules/storage/entry.js','launch','restore'],
     {timeout:180000,failureCodes:SEED_RESTORE_FAILURE_CODES}));
   if(candidate.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(candidate);
   await storageAdapter.detach(candidate,{retainDevice:!!candidate.spec.publicUpgrade});
@@ -442,7 +442,7 @@ async function bootstrapRestore(candidate,dependencies={}) {
   // Rebind retained renewal files through the same provider as host recovery.
   await candidate.inner(['run','--rm','--network','none','--memory','128m','--cpus','0.25','--entrypoint','node',
     '--volume',BASE+'/host/letsencrypt:/renewal-state','system-candidate:under-test',
-    '/system/operations/dist/host-bootstrap/entry.js','rebind-renewal','--checkout','/system',
+    '/system/dist/modules/host-bootstrap/entry.js','rebind-renewal','--checkout','/system',
     '--directory','/renewal-state/renewal','--webroot',BASE+'/ssl/acme-http01']);
   await candidate.inner(['rm','--force','system_bootstrapper_1']);
   await candidate.inner([...args,'system-candidate:under-test']);
@@ -529,7 +529,7 @@ async function verifyAliasLifecycle(candidate,connection,phase,dependencies={}) 
     ['canonical-alias-redirect-failed','canonical-alias-challenge-failed']);
   await step('routing',()=>verify(candidate,connection));
   await step('reload',async()=>{
-    await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates']);
+    await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates']);
     await verify(candidate,connection);
   });
   await step('restart',async()=>{
@@ -716,7 +716,7 @@ async function run(original,reportDirectory,dependencies={}) {
       // Private future-publication fixture input retains where lifecycle ran.
       // This is not the final restored acceptance receipt.
       second.guidedFixtureOrigin={runId:original.id,results:original.results.map(({name,status})=>({name,status})),
-        guidedPreview:require('../../gitlab/guided-preview-evidence').validateAuthority(original.evidence.guidedPreview,original.results,{
+        guidedPreview:require('../../dist/modules/release/guided-preview-evidence').validateAuthority(original.evidence.guidedPreview,original.results,{
           ...original.spec,candidateImageId:original.spec.images.candidate.id,wizardImageId:original.spec.images.wizard.id})};
     }
     if(original.spec.gitlabUpgradeAcceptance===true){

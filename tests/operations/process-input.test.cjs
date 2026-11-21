@@ -1,0 +1,44 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const os=require('node:os');
+const path=require('node:path');
+const {ManagedChildProcess}=require('../../dist/common/runtime/managed-child');
+const {NativeProcessRunner,ProcessFailure}=require('../../dist/common/runtime/process');
+test('managed process passes exact binary file through stdin and refuses links',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'process-input-'));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const input=path.join(root,'archive'),data=Buffer.from([0,255,254,13,10,128]);
+ fs.writeFileSync(input,data);
+ const child=new ManagedChildProcess();
+ const options={cwd:root,env:process.env,timeout:5000,inputFile:input};
+ const result=await child.run(process.execPath,['-e','process.stdout.write(require("node:fs").readFileSync(0).toString("hex"))'],options);
+ assert.equal(result,data.toString('hex'));
+ const unicode='한글 — Grüße 🧊\n', chunks=[];
+ const streamed=await child.run(process.execPath,['-e',"(async()=>{for(const byte of Buffer.from(process.argv[1])){process.stdout.write(Buffer.from([byte]));await new Promise(resolve=>setTimeout(resolve,3));}})()",unicode],{cwd:root,env:process.env,timeout:5000,output:chunk=>chunks.push(chunk)});
+ assert.equal(streamed,unicode);assert(Buffer.concat(chunks).equals(Buffer.from(unicode)));
+ fs.symlinkSync(input,path.join(root,'link'));
+ await assert.rejects(child.run(process.execPath,['-e','process.exit(0)'],{...options,inputFile:path.join(root,'link')}));
+ await assert.rejects(child.run(process.execPath,['-e','process.exit(0)'],{...options,input:'ambiguous'}),/ambiguous-process-input/);
+});
+test('native process exposes only one opted-in fixed refusal code on a settled failure',()=>{
+ const runner=new NativeProcessRunner(),message='Seed operation failed: seed-target-unavailable.';
+ const controlledFailureCodes={[message]:'seed-target-unavailable','Seed operation failed: storage-operation-busy.':'storage-operation-busy'};
+ const invoke=(output,options={},tail='process.exitCode=1;')=>runner.run(process.execPath,['-e','process.stderr.write('+JSON.stringify(output)+');'+tail],options);
+ const refusal=(output,options={},tail)=>{let failure;assert.throws(()=>invoke(output,options,tail),error=>{failure=error;return error instanceof ProcessFailure;});
+  assert.equal(failure.message,'external-command-failed');assert.equal(failure.code,'external-command-failed');
+  assert(!JSON.stringify(failure).includes('private-child-output'));assert(!failure.stack.includes('private-child-output'));
+  for(const key of ['stdout','stderr','argv','args','env','output'])assert(!Object.hasOwn(failure,key));return failure;};
+ assert.equal(refusal(message+'\nprivate-child-output\n').controlledCode,undefined,'mapping is opt-in');
+ const matched=refusal(message+'\r\nprivate-child-output\n',{controlledFailureCodes});
+ assert.equal(matched.controlledCode,'seed-target-unavailable');assert.equal(matched.status,1);assert.equal(matched.uncertain,false);
+ for(const output of ['prefix '+message+'\n',message+' suffix\n','private-child-output',message+'\nSeed operation failed: storage-operation-busy.\n'])
+  assert.equal(refusal(output,{controlledFailureCodes}).controlledCode,undefined);
+ assert.equal(refusal(message,{controlledFailureCodes:{[message]:'private invalid code'}}).controlledCode,undefined);
+ assert.equal(refusal(message,{controlledFailureCodes:{[message]:{toString:()=> 'private-child-output'}}}).controlledCode,undefined);
+ const signal=refusal(message+'\n',{controlledFailureCodes},'process.kill(process.pid,"SIGTERM");');
+ assert.equal(signal.controlledCode,undefined);assert.equal(signal.uncertain,true);
+ const timeout=refusal(message+'\n',{controlledFailureCodes,timeout:200},'setInterval(()=>{},1000);');
+ assert.equal(timeout.controlledCode,undefined);assert.equal(timeout.uncertain,true);
+ const success=invoke(message,{controlledFailureCodes},'process.exitCode=0;');assert.equal(success.status,0);assert.equal(success.stderr,message);
+});

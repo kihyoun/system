@@ -1,8 +1,8 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path');
-const settingsContract=require('../../project-bootstrap/preview-setup/settings');
-const environmentState=require('../../project-bootstrap/wizard-environments/state');
-const evidenceContract=require('../../gitlab/guided-preview-evidence');
+const settingsContract=require('../../dist/modules/project-lifecycle/preview-settings');
+const environmentState=require('../../dist/modules/project-lifecycle/state');
+const evidenceContract=require('../../dist/modules/release/guided-preview-evidence');
 const platform=require('./guided-preview-platform');
 const {execute}=require('./system-beta-fixture-helper');
 const {syncSession,waitForRegistration}=require('./wizard-registration');
@@ -16,7 +16,7 @@ function settings(candidate){
 async function production(candidate){
   const value=await platform.node(candidate,function(){
     const fs=require('fs'),crypto=require('crypto');
-    const {readReceipt}=require('/system/sync/dist/ProjectBootstrap');
+    const {readReceipt}=require('/system/dist/api/projects/project-workflow');
     const main=fs.readFileSync('/state/.docker.env');
     const receipt=readReceipt(fs.readFileSync('/state/.projects.env/.wizard.env','utf8'));
     if(receipt?.defaultProject!==true||receipt.template!=='wizard'||receipt.state!=='complete'||receipt.repository?.systemProject!==true)throw Error();
@@ -161,7 +161,7 @@ async function run(candidate){
         defaultBranch:repository.defaultBranch,pipelineId:fixturePipelineId,candidateJobId:fixtureCandidateJobId,sourceCommit:candidate.spec.sourceRevision,
         wizardSourceTree:candidate.spec.wizardSourceTree,helperImage:images.helper.id,wizardImageId:images.wizard.id,wizardImageRef:images.wizard.reference};
       binding=await platform.node(candidate,async function(input){
-        const fs=require('fs'),path=require('path'),os=require('os');const {main}=require('/system/project-bootstrap/system-beta/bind');
+        const fs=require('fs'),path=require('path'),os=require('os');const {main}=require('/system/dist/modules/project-lifecycle/system-beta-entry');
         const root=fs.mkdtempSync(path.join(os.tmpdir(),'beta-binding-')),file=path.join(root,'input.json');
         try{fs.writeFileSync(file,JSON.stringify(input),{mode:0o600});const plan=await main(['plan',file]);await main(['apply',file,plan.planHash]);return plan.binding;}
         finally{fs.rmSync(root,{recursive:true,force:true});}

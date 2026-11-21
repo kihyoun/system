@@ -3,17 +3,17 @@ const { test } = require('node:test'),
   fs = require('node:fs'),
   path = require('node:path');
 const { fixture, image, reference } = require('./paired-native-fixture.cjs');
-const { PublicUpgradeService } = require('../../operations/dist/host/public-upgrade.service'),
-  { PublicUpgradePlanService } = require('../../operations/dist/host/public-upgrade-plan.service'),
+const { PublicUpgradeService } = require('../../dist/modules/host/public-upgrade.service'),
+  { PublicUpgradePlanService } = require('../../dist/modules/host/public-upgrade-plan.service'),
   {
     PublicUpgradeApplyService,
-  } = require('../../operations/dist/host/public-upgrade-apply.service'),
-  { UpgradeLifecycleService } = require('../../operations/dist/host/upgrade-lifecycle.service'),
-  { bytesSha } = require('../../operations/dist/host/release-selection.service');
+  } = require('../../dist/modules/host/public-upgrade-apply.service'),
+  { UpgradeLifecycleService } = require('../../dist/modules/host/upgrade-lifecycle.service'),
+  { bytesSha } = require('../../dist/modules/host/release-selection.service');
 function publicFixture(t) {
   t.mock.method(fs, 'statfsSync', () => ({ bavail: 20 * 1024 ** 3, bsize: 1 }));
   const f = fixture(t, { selected: true }),
-    graph = require('../../bootstrapper/upgrade-paths.json'),
+    graph = require('../../config/releases/upgrade-paths.json'),
     previous = {
       version: '1.2.0',
       source: { revision: 'd'.repeat(40), tree: 'e'.repeat(40), wizardRevision: 'f'.repeat(40) },
@@ -207,11 +207,11 @@ test('public native coordinator lock excludes concurrent attempts without interr
 test('public authority freezes publisher identity without contacting installation CI and rejects missing gates, failed jobs or cross-attempt images', async () => {
   const {
       PublicUpgradePublicationService,
-    } = require('../../operations/dist/testing/public-upgrade-publication.service'),
+    } = require('../../dist/modules/testing/public-upgrade-publication.service'),
     {
       HostReleaseAuthorityService,
-    } = require('../../operations/dist/host/release-authority.service'),
-    { PairedControllerService } = require('../../operations/dist/host/paired-controller.service');
+    } = require('../../dist/modules/host/release-authority.service'),
+    { PairedControllerService } = require('../../dist/modules/host/paired-controller.service');
   const input = require('../shared/public-upgrade-fixture').publicationFixture(),
     security = require('../../gitlab/security-release.json'),
     root = path.resolve(__dirname, '../..'),
@@ -295,7 +295,7 @@ function configurationZip(entries) {
 test('native matching backup verifies real ZIP bytes, completed Seed and exact live configuration before accepting the pair', async (t) => {
   const {
     PublicUpgradeBackupService,
-  } = require('../../operations/dist/host/public-upgrade-backup.service');
+  } = require('../../dist/modules/host/public-upgrade-backup.service');
   for (const mode of [
     'valid',
     'not-completed',
@@ -394,7 +394,7 @@ test('native matching backup verifies real ZIP bytes, completed Seed and exact l
   assert(!fs.existsSync(path.dirname(target)));
 });
 test('native retained-image recovery verifies bytes before loading and creates exact owned aliases without registry access', async (t) => {
-  const { RecoveryImageService } = require('../../operations/dist/host/recovery-images'),
+  const { RecoveryImageService } = require('../../dist/modules/host/recovery-images'),
     f = fixture(t),
     directory = path.join(f.directory, 'retained');
   fs.mkdirSync(path.join(directory, 'images'), { recursive: true });

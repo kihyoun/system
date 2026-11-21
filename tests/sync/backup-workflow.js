@@ -6,8 +6,8 @@ const os=require('node:os');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const child=require('node:child_process');
-const workflow=require('../../sync/dist/BackupWorkflow');
-const native=require('../../system/coordinated-backup');
+const workflow=require('../../dist/api/operations/coordinated-backup-workflow');
+const native=require('../../dist/modules/storage/coordinated-backup');
 function fixture(run) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'sync-backup-'));
   const previous=process.env.SYSTEM_CONFIG_DIR;process.env.SYSTEM_CONFIG_DIR=root;
@@ -28,7 +28,7 @@ test('ready exports cannot download until native helper cleanup is witnessed; ZI
 }));
 test('one active operation excludes another start; lost completion remains interrupted without false success',()=>fixture(root=>{
   const original=child.execFile;let finish,done=0;
-  child.execFile=(command,args,options,callback)=>{assert.equal(command,process.execPath);assert.deepEqual(args.slice(-2),['launch','harvest']);assert.match(options.env.SYSTEM_COORDINATED_BACKUP,/^[a-f0-9]{32}$/);finish=callback;};
+  child.execFile=(command,args,options,callback)=>{assert.equal(command,process.execPath);assert(args[0].endsWith('/dist/cli/main.js'));assert.deepEqual(args.slice(1),['storage','launch','harvest']);assert.match(options.env.SYSTEM_COORDINATED_BACKUP,/^[a-f0-9]{32}$/);finish=callback;};
   try {
     const status=workflow.startBackupWorkflow(()=>done++);
     assert.equal(status.state,'working');assert.equal(status.phase,'preflight');

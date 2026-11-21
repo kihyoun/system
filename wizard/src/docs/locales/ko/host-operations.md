@@ -6,12 +6,12 @@
 Ubuntu 릴리스 이름이나 이미지 사용자 공간의 배포판만으로는 호환성을 입증할 수
 없습니다. MongoDB 이미지를 선택하거나 호스트 커널을 변경하거나 CI 데이터베이스를
 활성화하기 전에 **해당 Linux x86_64 호스트에서** 저장소의 사전 검사를 실행하세요.
-Quickstart가 준비한 고정 Node 런타임을 사용하세요. 소스 체크아웃에서는 먼저 `npm ci --prefix operations`와 `npm run build --prefix operations`로 공유 서비스를 준비하세요.
+Quickstart가 준비한 고정 Node 런타임을 사용하세요. 소스 체크아웃에서는 먼저 `npm ci`와 `npm run build`로 공유 서비스를 준비하세요.
 
 ```sh
-node bootstrapper/container-preflight.js --mongodb-version 8.0.37
+system-bootstrapper host-bootstrap container-preflight --checkout "$PWD" --mongodb-version 8.0.37
 # Pull the exact reviewed digest separately, then test its executable as well:
-node bootstrapper/container-preflight.js --mongodb-version 8.0.37 \
+system-bootstrapper host-bootstrap container-preflight --checkout "$PWD" --mongodb-version 8.0.37 \
   --image 'docker.io/library/mongo@sha256:REPLACE_WITH_64_HEX_DIGEST'
 ```
 
@@ -115,7 +115,7 @@ export SYSTEM_LOG_MAX_FILES='3'
 적용 전에 원하는 값을 검증하세요.
 
 ```sh
-node bootstrapper/log-policy.js --max-size 10m --max-files 3
+system-bootstrapper host-bootstrap log-policy --checkout "$PWD" --max-size 10m --max-files 3
 ```
 
 Wizard의 기존 추가 런타임 옵션은 Fetch/Push와 JSON/ZIP Backup/Open에서
@@ -149,8 +149,8 @@ Compose가 계획한 재생성과 중단/복구 요구 사항을 검토하세요
 반복하세요. 실제 배포의 이름을 사용하세요.
 
 ```sh
-node bootstrapper/log-policy.js system_web_1 system_sync_1
-node bootstrapper/log-policy.js --max-size 10m --max-files 3 YOUR_APP_CONTAINER
+system-bootstrapper host-bootstrap log-policy --checkout "$PWD" system_web_1 system_sync_1
+system-bootstrapper host-bootstrap log-policy --checkout "$PWD" --max-size 10m --max-files 3 YOUR_APP_CONTAINER
 ```
 
 불일치는 종료 코드 1을 반환하고 실제 `HostConfig.LogConfig`를 표시합니다.

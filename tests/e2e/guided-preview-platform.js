@@ -1,7 +1,7 @@
 'use strict';
 // Configure the original owned disposable platform before taking the guided
 // baseline. Source CI bytes and TLS verification remain unchanged.
-const {settings: desiredSettings}=require('../../project-bootstrap/preview-setup/settings');
+const {settings: desiredSettings}=require('../../dist/modules/project-lifecycle/preview-settings');
 const recovery=require('./recovery');
 const {ISSUANCE_CA,issuanceDomains}=require('./local-acme');
 const {runnerCapacity}=require('./guided-preview-runner-capacity');
@@ -83,7 +83,7 @@ async function installTrust(candidate,dependencies={}){
     const root=fs.readFileSync(input.root,'utf8');
     const certificate=new crypto.X509Certificate(root);
     if(!certificate.ca||!certificate.verify(certificate.publicKey))throw Error();
-    const publicBundle=fs.readFileSync('/system/bootstrapper/ca/cacert-2026-10-20.crt','utf8');
+    const publicBundle=fs.readFileSync('/system/config/ca/cacert-2026-10-20.crt','utf8');
     const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
     if(sha(publicBundle)!=='796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe')throw Error();
     const bundle=publicBundle.trimEnd()+'\n'+root.trim()+'\n';
@@ -120,8 +120,8 @@ async function restoreTrust(candidate,dependencies={}){
 async function bindingProof(candidate,dependencies={}){
   return (dependencies.node||node)(candidate,function(){
     const fs=require('fs'),crypto=require('crypto');
-    const {readReceipt}=require('/system/sync/dist/ProjectBootstrap');
-    const state=require('/system/project-bootstrap/wizard-environments/state');
+    const {readReceipt}=require('/system/dist/api/projects/project-workflow');
+    const state=require('/system/dist/modules/project-lifecycle/state');
     const file='/state/.projects.env/.wizard.env',text=fs.readFileSync(file,'utf8'),receipt=readReceipt(text);
     const environment=receipt.wizardWorkflow?.environments;
     if(environment?.phase!=='ready'||environment.managementMode!=='system-monorepo'||environment.settings.review.enabled)throw Error();
@@ -159,7 +159,7 @@ async function bootstrapTls(candidate,domains,execute){
     WIZARD_ALIASES:recovery.WIZARD_ALIAS};
   await execute(candidate,function(input){
     const fs=require('fs'),path=require('path');
-    const {signature}=require('/system/project-bootstrap/wizard-production/run');
+    const {signature}=require('/system/dist/modules/project-lifecycle/production-session');
     fs.mkdirSync(path.dirname(input.leaf),{recursive:true,mode:0o700});
     fs.writeFileSync(input.leaf,input.certificate+'\n',{mode:0o644});fs.writeFileSync(input.key,input.privateKey+'\n',{mode:0o600});
     let config=fs.readFileSync('/state/.docker.env','utf8');signature(config);
@@ -186,9 +186,9 @@ async function prepare(candidate,acme,dependencies={}){
     candidate.guidedTrust=await installTrust(candidate,{node:execute});await configureRunner(candidate);
   });
   await candidate.stage('guided-preview-native-https-configuration',async()=>{
-    await candidate.inner(['exec','-w','/system/gitlab','system_bootstrapper_1','node','/system/operations/dist/lifecycle/entry.js','gitlab-start','/system'],{timeout:180000});
+    await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/lifecycle/entry.js','gitlab-start','/system'],{timeout:180000});
     await candidate.wait(async()=>{try{return (await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness'])).includes('ok');}catch{return false;}},600000);
-    await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates']);
+    await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates']);
     // GitLab restricts monitoring endpoints to its local monitoring allowlist.
     // Keep readiness above on loopback; exercise the public sign-in route here.
     for(const [host,route]of [[HOSTS.gitlab,'/users/sign_in'],[HOSTS.sync,'/'],[HOSTS.wizard,'/']]){
@@ -196,7 +196,7 @@ async function prepare(candidate,acme,dependencies={}){
     }
   });
   await candidate.stage('guided-preview-native-source-installation-record',()=>candidate.inner(['exec','system_bootstrapper_1','node',
-    '/system/bootstrapper/record-source-installation.js','--controller',candidate.spec.images.candidate.id,'--wizard',candidate.spec.images.wizard.id,
+    '/system/dist/modules/lifecycle/source-installation-entry.js','--controller',candidate.spec.images.candidate.id,'--wizard',candidate.spec.images.wizard.id,
     '--source-revision',candidate.spec.sourceRevision,'--source-tree',candidate.spec.sourceTree,'--wizard-revision',candidate.spec.sourceRevision]));
   return {acmeIdentity:candidate.guidedAcmeIdentity,trust:candidate.guidedTrust,domains};
 }

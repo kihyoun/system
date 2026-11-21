@@ -5,7 +5,7 @@
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
+`dist`, `node_modules`, `assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 이 절은 명시적으로 볼륨을 사용하는 재사용 절차입니다. 외부 백업에서 데이터를 채운
 새 로컬 작업 저장소를 사용하려면
@@ -78,7 +78,7 @@ A/AAAA 레코드를 갱신하세요. 공개 HTTPS를 사용하려면 포트 80�
 
 3. `platform/recovery/images.json`이 기록된 소스, 정확한 이미지 ID, 로컬 별칭 및
    체크섬이 있는 아카이브를 설명하는지 확인하세요. 전체 매니페스트 스키마와 입력
-   요구사항은 [초기화 도구 문서](../bootstrapper/README.md)에 있습니다. 소스 식별 정보나
+   요구사항은 [초기화 도구 문서](BOOTSTRAPPER.md)에 있습니다. 소스 식별 정보나
    별칭 누락은 준비 실패이며, 다른 이미지로 대체하거나 비공개 복구 스크립트를
    호스트에 복사해도 된다는 뜻이 아닙니다.
 
@@ -94,7 +94,7 @@ A/AAAA 레코드를 갱신하세요. 공개 HTTPS를 사용하려면 포트 80�
 
    ```bash
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     node bootstrapper/initialize.js \
+     system-bootstrapper host-bootstrap initialize \
        --install-host \
        --receipt-dir /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID \
        --timeout 1200
@@ -133,7 +133,7 @@ A/AAAA 레코드를 갱신하세요. 공개 HTTPS를 사용하려면 포트 80�
    필요에 따라 선택적 토큰/리디렉션 인수를 추가하세요.
 
    ```bash
-   sudo node bootstrapper/verify-runtime.js check \
+   sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check \
      --persistence-env /etc/system-bootstrapper/persistence.env \
      --baseline /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/baseline.json \
      --output /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/recheck.json \

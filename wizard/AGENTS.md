@@ -47,7 +47,7 @@ break, URL and the `$` marker in sources, generated configuration, imports,
 exports, local test fixtures and temporary scripts. It also expresses the
 system containing its own means of bootstrapping and development.
 
-The signature in `src/api/Helper.tsx` is validated in `src/api/Main.tsx`:
+The signature in `src/common/configuration-signature.tsx` is validated in `src/api/Main.tsx`:
 `$` must remain at zero-based offset 807, and the MD5 of the first 1184 characters
 must remain `bd4a8426355824593a5e21ad759830c1`. Port 8071 refers to the same
 `substr(807, 1)` marker check and must not be casually replaced. This is a format

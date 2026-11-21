@@ -16,7 +16,7 @@ On Windows with Ubuntu already running, the same prepared checkout mounted in
 WSL, and Docker accessible there (use `--linux-node` for an absolute WSL Node path):
 
 ```powershell
-node operations/dist/resources/entry.js collect-windows --samples 3 --interval 2 `
+node dist/modules/resources/entry.js collect-windows --samples 3 --interval 2 `
   --wsl-backing-volume E: --output "$env:TEMP/system-resource-observation.json"
 ```
 
@@ -29,7 +29,7 @@ Windows CIM observations precede each Linux sample and have separate timestamps.
 On native Linux, or inside WSL when Windows metrics are not needed:
 
 ```sh
-node operations/dist/resources/entry.js collect --samples 3 --interval 2 --output /tmp/system-resources.json
+node dist/modules/resources/entry.js collect --samples 3 --interval 2 --output /tmp/system-resources.json
 ```
 
 The caller needs permission to read Docker metrics; do not change socket permissions
@@ -145,7 +145,7 @@ export TASK_BENCHMARK_REVISION=$(git rev-parse HEAD)
 export TASK_BENCHMARK_INPUTS=$(mktemp -d /tmp/system-resource-inputs.XXXXXXXX)
 export TASK_BENCHMARK_OUTPUT=$(mktemp -d /tmp/system-resource-results.XXXXXXXX)
 git archive --format=tar "$TASK_BENCHMARK_REVISION" project-bootstrap/templates wizard/.gitlab/runtime bootstrapper/ca |   tar -xf - -C "$TASK_BENCHMARK_INPUTS"
-node operations/dist/resources/entry.js benchmark   --case react --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"   --source-revision "$TASK_BENCHMARK_REVISION"   --output "$TASK_BENCHMARK_OUTPUT/react"
+node dist/modules/resources/entry.js benchmark   --case react --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"   --source-revision "$TASK_BENCHMARK_REVISION"   --output "$TASK_BENCHMARK_OUTPUT/react"
 ```
 
 After reviewing that plan and checking host reserve, the following pair uses one
@@ -155,11 +155,11 @@ do not reuse a directory from an interrupted attempt:
 ```sh
 export TASK_BENCHMARK_DEADLINE=$(node -p 'Date.now() / 1000 + 600')
 export SYSTEM_RESOURCE_BENCHMARK_APPROVED=1
-node operations/dist/resources/entry.js benchmark --case react \
+node dist/modules/resources/entry.js benchmark --case react \
   --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates" \
   --source-revision "$TASK_BENCHMARK_REVISION" --output "$TASK_BENCHMARK_OUTPUT/react" \
   --execute --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"
-node operations/dist/resources/entry.js benchmark --case angular \
+node dist/modules/resources/entry.js benchmark --case angular \
   --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates" \
   --source-revision "$TASK_BENCHMARK_REVISION" --output "$TASK_BENCHMARK_OUTPUT/angular" \
   --execute --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"

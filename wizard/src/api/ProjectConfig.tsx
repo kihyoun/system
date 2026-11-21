@@ -36,6 +36,7 @@ export default class ProjectConfig {
   get prodDomainMode() {
     return this._prodDomainMode;
   }
+
   set prodDomainMode(mode: any) {
     this._prodDomainMode = parseInt(mode, 10) || 0;
   }
@@ -43,6 +44,7 @@ export default class ProjectConfig {
   get prodDeployMode() {
     return this._prodDeployMode;
   }
+
   set prodDeployMode(mode: any) {
     this._prodDeployMode = parseInt(mode, 10) || 0;
   }
@@ -56,6 +58,7 @@ export default class ProjectConfig {
   get betaDomainMode() {
     return this._betaDomainMode;
   }
+
   set betaDomainMode(mode: any) {
     this._betaDomainMode = parseInt(mode, 10) || 0;
   }
@@ -63,6 +66,7 @@ export default class ProjectConfig {
   get betaDeployMode() {
     return this._betaDeployMode;
   }
+
   set betaDeployMode(mode: any) {
     this._betaDeployMode = parseInt(mode, 10) || 0;
   }
@@ -76,6 +80,7 @@ export default class ProjectConfig {
   get reviewDomainMode() {
     return this._reviewDomainMode;
   }
+
   set reviewDomainMode(mode: any) {
     this._reviewDomainMode = parseInt(mode, 10) || 0;
   }
@@ -83,6 +88,7 @@ export default class ProjectConfig {
   get reviewDeployMode() {
     return this._reviewDeployMode;
   }
+
   set reviewDeployMode(mode: any) {
     this._reviewDeployMode = parseInt(mode, 10) || 0;
   }
@@ -217,6 +223,7 @@ export default class ProjectConfig {
       this.gitlabRunnerToken = _config?.gitlabRunnerToken ?? '';
     });
   }
+
   public setProperty(propertyKey: any, value: any) {
     switch (propertyKey) {
       case 'PROD_DEPLOY_MODE':

@@ -7,13 +7,12 @@ when it is absent from the Production image.
 Use the repository's declared Node/npm versions. Run `npm audit --json` from each
 of these directories:
 
-- `operations`
-- `sync`
+- `.`
 - `wizard`
-- `project-bootstrap/templates/angular`
-- `project-bootstrap/templates/react`
-- `project-bootstrap/wizard-build/modern/smoke`
-- `project-bootstrap/wizard-build/recipe/smoke`
+- `templates/project-bootstrap/templates/angular`
+- `templates/project-bootstrap/templates/react`
+- `templates/project-bootstrap/wizard-build/modern/smoke`
+- `templates/project-bootstrap/wizard-build/recipe/smoke`
 
 The last directory is a retained historical recipe. Preserve its source and
 recipe identity; changes to a current managed build belong in a new supported
@@ -43,7 +42,7 @@ The current fixes cover these distinct paths:
 | `fast-uri` | Transitive URI/schema processing in the Angular toolchain. | A compatible `3.1.9` lockfile selection corrects URI normalization and scheme handling. |
 
 The `minimatch` overrides are limited to `eslint`, `@eslint/config-array` and
-`@typescript-eslint/typescript-estree` in Sync and Wizard. Their parent releases
+`@typescript-eslint/typescript-estree` in the root backend package and Wizard. Their parent releases
 still request the affected 10.x line. Version 11 removes regular-expression
 construction APIs; these callers use the retained `Minimatch`/`match` APIs.
 Validate the actual project lint/configuration traversal on the declared Node

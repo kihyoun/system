@@ -1,29 +1,17 @@
-# Only maintained package source is eligible, including editor format-on-save.
+# Maintained application TypeScript only; build output and byte-sensitive data are excluded.
 /*
+!/src/
 !/wizard/
-!/sync/
-!/operations/
 /wizard/*
-/sync/*
-/operations/*
 !/wizard/src/
-!/sync/src/
-!/operations/src/
-# Source assets, generated documentation and fixtures are not formatter inputs.
-**/src/**/*
-!**/src/**/
-!**/src/**/*.ts
-!**/src/**/*.tsx
-!**/src/**/*.js
-!**/src/**/*.jsx
 **/node_modules/**
 **/dist/**
-**/build/**
+/build/**
+/wizard/build/**
 **/coverage/**
-**/src/**/fixtures/**
-**/src/**/__fixtures__/**
-# Byte-sensitive System Cube signatures: preserve these complete files.
-/sync/src/Helper.ts
+**/fixtures/**
+**/__fixtures__/**
+# Exact System Cube signatures and presentation bytes.
+/src/common/configuration-signature.ts
+/src/cli/presentation.ts
 /wizard/src/api/Helper.tsx
-
-/operations/src/cli/presentation.ts

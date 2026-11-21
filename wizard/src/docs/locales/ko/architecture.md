@@ -27,10 +27,11 @@ Angular, React, 일반 웹 프로젝트를 제공하며, NestJS는 내부 Sync �
 
 ## 공통 운영 런타임
 
-`operations/` 패키지는 인증된 Sync API와 독립형 저장소 명령에 타입이 지정된 기능 모듈을
-제공합니다. npm CLI는 `install`, `harvest`, `restore`를 제공하며, 다른 운영 진입점은
-명시적인 저장소 명령으로 유지됩니다. Nest 컨텍스트는 HTTP 서버를 시작하거나 배포 권한을
-부여하지 않습니다. 서비스는 주입된 프로세스, 구성, 증거 포트를 사용합니다.
+루트 패키지는 `src/modules/`의 기능 모듈, `src/api/`의 HTTP 어댑터,
+`src/cli/`의 CLI 어댑터, `src/common/`의 공통 런타임 인프라를 제공합니다.
+공개 CLI `system-bootstrapper`는 인증된 Sync API와 동일한 서비스를 호출합니다.
+React 프런트엔드는 별도의 `wizard/` 디렉터리에 유지됩니다. Nest 컨텍스트는 HTTP
+서버를 시작하거나 배포 권한을 부여하지 않습니다. 서비스는 주입된 프로세스, 구성, 증거 포트를 사용합니다.
 
 - `HostLifecycleModule`은 운영 저장소를 검증하고 `HostPersistenceService`와
   `HostLifecycleService`를 통해 호스트 시작/중지를 조정합니다.
@@ -51,14 +52,15 @@ Angular, React, 일반 웹 프로젝트를 제공하며, NestJS는 내부 Sync �
 - `ReleaseModule`은 승인된 소스/이미지/작업 증거를 변경 불가능한 이미지, GitHub, npm
   게시와 연결합니다. 실행 중인 설치를 승격하지는 않습니다.
 
-[작업 목록](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md)은 공개 및 호환성 진입점, 호출자, 권한, 영구 소유권, 네이티브 도구, 실패 처리와 실행 가능한 검사를 연결합니다. 얇은 진입점은 독립 실행 CLI와 API가 공유하는 준비된 컴파일 Nest 서비스를 호출합니다. 현재 호스트 사전 검사, 백업 폴링, 승격 및 복구는 더 이상 Python 프로그램에 위임하지 않습니다.
+[작업 목록](https://github.com/kihyoun/system/blob/HEAD/docs/OPERATIONS_ARCHITECTURE.md)은 공개 및 호환성 진입점, 호출자, 권한, 영구 소유권, 네이티브 도구, 실패 처리와 실행 가능한 검사를 연결합니다. 얇은 진입점은 독립 실행 CLI와 API가 공유하는 준비된 컴파일 Nest 서비스를 호출합니다. 현재 호스트 사전 검사, 백업 폴링, 승격 및 복구는 더 이상 Python 프로그램에 위임하지 않습니다.
 
 호스트 시작/중지, 영구 저장소 검사, 설치 또는 복구 **전에**
 [호스트 런타임](../Prepare-Host.md#prepare-the-host-operations-runtime)을 준비하세요.
 Quickstart는 이를 준비하며, 소스 개발자는 호스트 수명 주기 명령을 사용하기 전에 빌드합니다.
-오프라인 복구를 위해 Node, 컴파일된 운영 코드와 의존성을 보관하세요. 런타임 이전 부트스트랩,
-OS/Certbot 설정, 최초 GitLab 토큰을 위한 최소 Ruby 예외, 독립 자식 프로세스 Guardian과 바이트 단위 식별이
-필요한 과거 빌드 레시피는 별도의 계약을 유지합니다. GitLab 자체의 선언적 Ruby 설정은 업스트림 서비스 인터페이스로 유지됩니다. Docker/Compose, NGINX, Git,
+오프라인 복구를 위해 Node, 컴파일된 운영 코드와 의존성을 보관하세요. 최초 Quickstart와 최초 GitLab 토큰 생성을 위한 최소 Ruby 호출은
+`tools/` 아래에 명시적으로 허용된 예외입니다. OS/Certbot 조정과 독립 자식 프로세스
+Guardian은 네이티브 TypeScript 서비스이며, 과거 레시피의 정확한 바이트는
+`templates/` 아래에 보존됩니다. GitLab 자체의 선언적 Ruby 설정은 업스트림 서비스 인터페이스로 유지됩니다. Docker/Compose, NGINX, Git,
 `flock`은 네이티브 실행 경계로 남습니다. Wizard HTTP 엔드포인트, 저장된 구성 및
 Harvest/Seed는 호환성을 유지합니다.
 
@@ -144,7 +146,7 @@ System Bootstrapper는 이 설정을 저장소에 담습니다. Docker 컨테이
 4. **검토하고 병합합니다.** 필수 게이트를 활성화된 상태로 유지합니다. 병합된 기본 브랜치
    리비전은 해당 검사를 별도로 받습니다. 병합이 운영 환경을 자동으로 교체하지는 않습니다.
 5. **승인된 버전을 승격합니다.** 커밋된
-   [컨트롤러 승격 도구](../bootstrapper/README.md#promoting-a-tested-successor-controller)와,
+   [컨트롤러 승격 도구](BOOTSTRAPPER.md#promoting-a-tested-successor-controller)와,
    선언된 GitLab 마이그레이션에 해당하는
    [업그레이드 절차](HANDBOOK.md#migrate-gitlab-through-the-accepted-controller)를 사용합니다.
    이들은 작업을 승인된 소스/이미지 증거에 연결하고 체크포인트와 복구 작업을 보존합니다.
@@ -158,7 +160,7 @@ System Bootstrapper는 이 설정을 저장소에 담습니다. Docker 컨테이
 마이그레이션은 취소되지 않습니다. GitLab을 사용할 수 없는 동안에도 승인된 체크아웃, 이미지,
 자격 증명, 복구 입력에 업그레이드 대상 서비스와 독립적으로 접근할 수 있어야 합니다.
 
-[선언된 릴리스 프로필](../gitlab/security-release.json)과 테스트가 지원되는 마이그레이션을
+[선언된 릴리스 프로필](../config/gitlab/security-release.json)과 테스트가 지원되는 마이그레이션을
 정의합니다. 새 버전이나 컴포넌트 변경에는 여전히 자체 승인 기준과 성공한 검사가 필요합니다.
 기존 도구가 모든 가능한 업그레이드의 안전성을 보장하지는 않습니다.
 
@@ -227,17 +229,16 @@ Engine 업데이트에는 자체 유지 관리 경로가 필요합니다.
 
 | 경로 | 기존 구현에서의 목적 |
 | --- | --- |
-| `operations/dist/cli.js start/stop --checkout PATH` | 준비된 운영 런타임을 호출하는 얇은 호스트 수명 주기 진입점입니다. |
-| `bootstrapper/` | 기반 이미지, 호스트 초기화, 복구, 런타임 검증, 승인된 컨트롤러 승격/내보내기 도구입니다. |
-| `system/` | 기본 Compose 정의, 컨트롤러 호환 진입점과 상태 초기화입니다. |
-| `gitlab/` | GitLab 구성/Ruby 어댑터와 타입이 지정된 업그레이드/게시 호환 진입점입니다. |
-| `gitlab-runner/` | Runner Compose 형식과 등록/수명 주기 호환 진입점입니다. |
-| `nginx/` | 진입점 리버스 프록시 구성과 타입이 지정된 라우팅 어댑터입니다. |
-| `nginx-proxy/` | 운영 환경, Beta, Review 프록시 구성입니다. |
-| `operations/` | 공통 Nest 기능 모듈, 네이티브 포트와 CLI입니다. [운영 목록](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md)을 참조하세요. |
-| `project-bootstrap/` | 프로젝트 CI/소스/환경 호환 진입점, 네이티브 GitLab 어댑터와 버전별 빌드 레시피입니다. |
-| `sync/` | 구성, 프로젝트 작업 흐름, 운영 작업, 진단을 위한 모듈형 NestJS API입니다. |
-| `wizard/` | 원래 이력을 유지하는 일반 Wizard 애플리케이션 소스입니다. |
+| `src/api/` | 구성, 프로젝트, 운영 및 진단을 위한 인증된 Sync HTTP 어댑터입니다. |
+| `src/cli/` | 이름으로 실행하는 CLI 디스패처와 설치 전 CA 검증을 위한 의존성 없는 진입점입니다. |
+| `src/modules/` | HTTP, CLI, Worker가 공유하는 기능 모듈, 주입 가능한 서비스와 타입이 지정된 네이티브 어댑터입니다. |
+| `src/common/` | 공통 구성 서명, 검증과 런타임 인프라입니다. |
+| `config/` | 공개 Compose 정의, GitLab 구성, 릴리스 정책과 CA 출처입니다. 런타임 비밀 값은 별도로 보관합니다. |
+| `templates/` | 바이트가 보존된 과거 빌드 레시피를 포함한 NGINX 및 프로젝트 템플릿입니다. |
+| `containers/` | 컨트롤러와 Bootstrapper 이미지 정의입니다. |
+| `tools/` | 문서화된 두 부트스트랩 예외인 최초 Quickstart와 최초 GitLab 관리자 토큰 생성입니다. |
+| `wizard/` | 동일한 System 소스 릴리스에 통합된 별도의 React 프런트엔드입니다. |
+| `dist/`, `assets/` | 생성된 컴파일 애플리케이션과 검증된 런타임/소스 자산이며, 별도로 관리하는 스크립트가 아닙니다. |
 | `.gitlab-ci.yml` | 짧은 문서 경로, 필수 런타임 컴포넌트/이미지/폐기 가능한 플랫폼 검사, 이미지 게시, 선택적 GitHub 미러입니다. |
 | [tests/](../tests/README.md) | 컴포넌트 목록, 격리 테스트 명령, 명시적인 라이브 통합 경계입니다. |
 | [Prepare-Host.md](../Prepare-Host.md) | 호스트 설치, 서비스 이미지 선택, 시작입니다. |

@@ -1,1 +1,0 @@
-Files with .env Extension are impported for Project based Domain configuration

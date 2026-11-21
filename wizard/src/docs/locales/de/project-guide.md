@@ -74,7 +74,7 @@ einen Anwendungshost. Wiederhole es für weitere Production-, Beta- oder
 Review-Hosts. Wildcard-HTTPS erfordert ein vom Betreiber konfiguriertes
 DNS-01-Zertifikat; HTTP-01 kann keine Wildcard-Zertifikate ausstellen. Für die
 verwalteten System-Wizard-Umgebungen gibt es ein eigenes
-[Aktivierungsverfahren](../project-bootstrap/wizard-environments/README.md).
+[Aktivierungsverfahren](../templates/project-bootstrap/wizard-environments/README.md).
 
 Bereite diese betreiberseitigen Angaben und Voraussetzungen vor:
 
@@ -274,11 +274,11 @@ oder Repository-Eigentumskonflikt, bevor du den Start erneut versuchst.
 Die Registrierung allein installiert ein deaktiviertes Grundgerüst. Verwende
 die verwalteten Projektaktionen zum [Initialisieren des festgelegten Quellcodes](WIZARD_SOURCE.md),
 [Bauen und Prüfen eines Kandidaten](WIZARD_BUILD.md) und Konfigurieren von
-[Review-/Beta-Umgebungen](../project-bootstrap/wizard-environments/README.md).
+[Review-/Beta-Umgebungen](../templates/project-bootstrap/wizard-environments/README.md).
 Die optionalen Umgebungen sind anfangs deaktiviert und erfordern eine ausdrückliche
 Host-/Zertifikatskonfiguration. Ihre Deploy-/Stop-Jobs sind manuell. Ein Kandidat
 ersetzt die Production-Oberfläche nur durch das separate abgesicherte
-[Freigabeverfahren des Betreibers](../project-bootstrap/wizard-production/README.md).
+[Freigabeverfahren des Betreibers](../templates/project-bootstrap/wizard-production/README.md).
 
 Übertragen/Abrufen und Öffnen/Sichern verwalten die Konfiguration unabhängig von
 Harvest/Seed, das persistente Dienstdaten und Zertifikate verarbeitet. Bewahre
@@ -287,7 +287,7 @@ kein Ort für Zugangsdaten oder exportierte Konfigurationen.
 
 ## Prüfung
 
-Baue Sync mit `cd sync && npm run build`. Die isolierte API-Regression
+Baue Sync aus dem Repository-Root mit `npm run build`. Die isolierte API-Regression
 `node tests/gitlab/project-bootstrap.js` verwendet Port 8071 und muss in einem
 entbehrlichen Container/Netzwerk-Namensraum laufen. Sie prüft Validierung,
 Authentifizierung, Namensraumkonflikte, konkurrierendes Speichern, Wiederaufnahme,

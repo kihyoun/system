@@ -2,9 +2,9 @@
 const assert = require('node:assert/strict');
 const {createHash} = require('node:crypto');
 const fixtures = require('../shared/deployment-evidence-fixtures.json');
-const {verifyDeploymentEvidence, DeploymentEvidenceService} = require('../../operations/dist/project-lifecycle/deployment-evidence.service');
-const common = require('../../operations/dist/project-lifecycle/evidence-common');
-const {systemEvidenceJobs, systemEvidenceStages, systemStorageProofs} = require('../../operations/dist/project-lifecycle/system-evidence');
+const {verifyDeploymentEvidence, DeploymentEvidenceService} = require('../../dist/modules/project-lifecycle/deployment-evidence.service');
+const common = require('../../dist/modules/project-lifecycle/evidence-common');
+const {systemEvidenceJobs, systemEvidenceStages, systemStorageProofs} = require('../../dist/modules/project-lifecycle/system-evidence');
 const hash = value => createHash('sha256').update(value).digest('hex');
 function fixture(kind) {
   const value = structuredClone(fixtures[kind]), calls = [];
@@ -100,7 +100,7 @@ async function runChecks() {
     f.input=input;return f;
   };
   for(const primary of [true,false]){
-    let f=environmentFixture(primary);assert.equal((await require('../../operations/dist/project-lifecycle/wizard-evidence').verifyWizardEnvironment(f.reader,f.input)).imageRef,fixtures.production.input.imageRef);checks++;
+    let f=environmentFixture(primary);assert.equal((await require('../../dist/modules/project-lifecycle/wizard-evidence').verifyWizardEnvironment(f.reader,f.input)).imageRef,fixtures.production.input.imageRef);checks++;
     for(const mutate of [f=>{f.input.request.jobId=71;},f=>{f.baseline['projects/3/merge_requests/2'].sha='f'.repeat(40);},f=>{f.baseline['projects/3/pipelines/21/jobs?per_page=100&include_retried=false'][0].status='failed';},...(primary?[f=>{f.baseline['projects/3/jobs/41/artifacts/cleanup.json'].status='failed';},f=>{f.baseline['projects/3/jobs/42/artifacts/browser-evidence/browser.json'].cubeSignature=false;}]:[f=>{f.baseline['projects/3/repository/files/.system-bootstrapper%2Fbuild-v1%2Fbuild.sh?ref='+f.input.request.sourceCommit].last_commit_id=f.input.request.sourceCommit;}])]){f=environmentFixture(primary);mutate(f);await assert.rejects(verifyDeploymentEvidence(f.reader,'environment',f.input));checks++;}
     f=environmentFixture(primary);f.input.request.action='stop';f.baseline['projects/3/jobs/70'].name='stop:review';f.baseline['projects/3/merge_requests/2'].state='closed';for(const key of Object.keys(f.baseline))if(key.includes('/artifacts/'))delete f.baseline[key];assert.equal((await verifyDeploymentEvidence(f.reader,'environment',f.input)).ok,true);checks++;
   }
@@ -118,7 +118,7 @@ async function runChecks() {
   const nativeApiCalls=[],session={context:{checkout:'/system',containerId:'f'.repeat(64)},credential:{token:'private-fixture-token'}};
   const f=fixture('beta'),service=new DeploymentEvidenceService({async ensure(){return session;}},{async readBytes(context,token,route){assert.strictEqual(context,session.context);assert.equal(token,session.credential.token);nativeApiCalls.push(route);const value=f.baseline[route];assert.notEqual(value,undefined);return {status:200,bytes:Buffer.from(typeof value==='string'?value:JSON.stringify(value))};}});
   const result=await service.verify('/system','beta',f.input);assert.equal(result.ok,true);assert(!JSON.stringify(result).includes(session.credential.token));checks++;
-  const {GitlabNativeApiService}=require('../../operations/dist/gitlab-provision/native-api.service');
+  const {GitlabNativeApiService}=require('../../dist/modules/gitlab-provision/native-api.service');
   const raw=' {"unicode":"한글", "padding":true}\n';let nativeCall;
   const api=new GitlabNativeApiService({async run(binary,args,options){nativeCall={binary,args,options};return raw+'\nBOOTSTRAPPER_HTTP_STATUS:200';}});
   const response=await api.readBytes(session.context,session.credential.token,'projects/4/jobs/24/artifacts/proof.json');assert(response.bytes.equals(Buffer.from(raw)));assert.equal(response.status,200);assert(!nativeCall.args.join(' ').includes(session.credential.token));assert(nativeCall.options.input.includes(session.credential.token));assert(nativeCall.options.maxBuffer<=8*1024**2+128);checks++;

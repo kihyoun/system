@@ -64,7 +64,7 @@ This procedure uses a separate Certbot lineage for one exact application host.
 Repeat it for additional Production, Beta or Review hosts. Wildcard HTTPS needs
 an operator-configured DNS-01 certificate; HTTP-01 cannot issue wildcard
 certificates. The managed system Wizard environments have their own
-[activation procedure](../project-bootstrap/wizard-environments/README.md).
+[activation procedure](../templates/project-bootstrap/wizard-environments/README.md).
 
 Prepare these operator inputs and prerequisites:
 
@@ -244,11 +244,11 @@ key or repository ownership conflict before retrying startup.
 
 Registration alone installs a disabled scaffold. Use the managed project actions
 to [initialize pinned source](WIZARD_SOURCE.md), [build and verify a candidate](WIZARD_BUILD.md)
-and configure [Review/Beta environments](../project-bootstrap/wizard-environments/README.md).
+and configure [Review/Beta environments](../templates/project-bootstrap/wizard-environments/README.md).
 The optional environments begin disabled and require explicit host/certificate
 configuration. Their deploy/stop jobs are manual. A candidate replaces the
 Production interface only through the separate guarded
-[operator promotion procedure](../project-bootstrap/wizard-production/README.md).
+[operator promotion procedure](../templates/project-bootstrap/wizard-production/README.md).
 
 Push/Fetch and Open/Backup manage configuration independently of Harvest/Seed,
 which handles persistent service data and certificates. Save actual
@@ -257,7 +257,7 @@ for credentials or exported configuration.
 
 ## Verification
 
-Build Sync with `cd sync && npm run build`. The isolated API regression
+Build the shared backend with `npm run build` from the repository root. The isolated API regression
 `node tests/gitlab/project-bootstrap.js` uses port 8071 and must run in a
 disposable container/network namespace. It covers validation, authentication,
 namespace conflicts, competing Save, recovery, polling, configuration-write

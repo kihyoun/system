@@ -32,7 +32,7 @@ Runner 자격 증명 또는 환경 경로를 변경하지 않습니다.
 ## 운영자 절차
 
 표준 컨트롤러에서 Node 24로 검토된 코드를 실행하세요. 검토된 System gitlink와
-일치하는 검증된 `project-bootstrap/wizard-source/snapshot.json`을 준비하세요.
+일치하는 검증된 `assets/wizard-source/snapshot.json`을 준비하세요.
 만료되는 GitLab API 자격 증명을 볼륨에 모드 0600으로 비공개 저장하세요. 형식은
 `{ "baseUrl": "https://gitlab.example/api/v4", "token": "..." }`입니다. API 토큰은
 이 파일에서만 읽으며 명령 인수, 로그, CI 변수, 영수증 또는 체크포인트에 넣지 않습니다.
@@ -50,10 +50,10 @@ Runner 자격 증명 또는 환경 경로를 변경하지 않습니다.
 미리 가져온 도우미를 공유 Runner 데몬에 유지하세요.
 
 ```sh
-node project-bootstrap/wizard-upgrade/run.js plan /state/upgrade-options.json
+system-bootstrapper wizard-upgrade plan /state/upgrade-options.json
 # Review source revision, project identity, branch, current head and path diff.
 # Reserve a bounded CI slot before stage: its last commit starts CI.
-node project-bootstrap/wizard-upgrade/run.js stage /state/upgrade-options.json PLAN_HASH
+system-bootstrapper wizard-upgrade stage /state/upgrade-options.json PLAN_HASH
 ```
 
 반환된 기존 프로젝트 MR과 필수 `build:wizard` 및 `test:wizard` 작업을 확인하세요.
@@ -66,8 +66,8 @@ node project-bootstrap/wizard-upgrade/run.js stage /state/upgrade-options.json P
 채택할 때까지 이전 영수증이 활성 상태로 남습니다.
 
 ```sh
-node project-bootstrap/wizard-upgrade/run.js adoption-plan /state/upgrade-options.json
-node project-bootstrap/wizard-upgrade/run.js adopt /state/upgrade-options.json ADOPTION_HASH
+system-bootstrapper wizard-upgrade adoption-plan /state/upgrade-options.json
+system-bootstrapper wizard-upgrade adopt /state/upgrade-options.json ADOPTION_HASH
 ```
 
 채택하려면 정확히 준비된 MR 파이프라인이 성공하고 두 검사 모두 필수여야 하며,
@@ -126,13 +126,13 @@ stage, 채택 및 재시도 내내 명시적 프로필을 유지하세요. 옵�
 사용합니다.
 
 ```sh
-node project-bootstrap/wizard-upgrade/run.js build-plan /state/upgrade-options.json
+system-bootstrapper wizard-upgrade build-plan /state/upgrade-options.json
 # Review scope=build-environment, exact head, managed paths and preservedTreeHash.
 # Reserve a bounded CI slot before this final MR commit starts CI.
-node project-bootstrap/wizard-upgrade/run.js build-stage /state/upgrade-options.json PLAN_HASH
+system-bootstrapper wizard-upgrade build-stage /state/upgrade-options.json PLAN_HASH
 # Review required build/browser jobs; fast-forward the MR without squash/rebase.
-node project-bootstrap/wizard-upgrade/run.js build-adoption-plan /state/upgrade-options.json
-node project-bootstrap/wizard-upgrade/run.js build-adopt /state/upgrade-options.json ADOPTION_HASH
+system-bootstrapper wizard-upgrade build-adoption-plan /state/upgrade-options.json
+system-bootstrapper wizard-upgrade build-adopt /state/upgrade-options.json ADOPTION_HASH
 ```
 
 비공개 체크포인트와 마이그레이션 작업은 소스 업그레이드와 별개입니다. 보존되는 세 커밋은

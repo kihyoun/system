@@ -83,11 +83,11 @@ Change only intended assignments after the signature. Verify the signature and
 an authenticated Fetch response when modifying configuration. Keep the strict
 validator; the MD5 format check is not cryptographic authentication.
 
-Relevant copies are in `sync/src/Helper.ts` and `wizard/src/api/Helper.tsx`.
+Relevant copies are in `src/common/configuration-signature.ts` and `wizard/src/api/Helper.tsx`.
 Configuration validation and routing also live in
-`operations/src/projects-routing/wizard-aliases.ts` and
-`operations/src/projects-routing/projects-routing.service.ts`; lifecycle
-readiness uses `operations/src/lifecycle/lifecycle.service.ts`.
+`src/modules/projects-routing/wizard-aliases.ts` and
+`src/modules/projects-routing/projects-routing.service.ts`; lifecycle
+readiness uses `src/modules/lifecycle/lifecycle.service.ts`.
 
 ## Persistence and recovery
 
@@ -173,6 +173,8 @@ that Nest requires a particular domain architecture.
   providers. Avoid global service collections, circular dependencies and
   routine `forwardRef` workarounds. Do not introduce microservices or CQRS merely
   to organize code in this single platform.
+- Keep the NestJS application sources under root `src/`: HTTP adapters in `src/api`, CLI adapters in `src/cli`, capability modules and their services in `src/modules`, and shared runtime infrastructure in `src/common`. Do not retain operational JavaScript compatibility launchers in legacy source directories. React Wizard remains a separate frontend. Keep templates/static configuration outside the application source and explicitly allowed bootstrap exceptions under `tools/`.
+- Put one blank line between adjacent methods. Preserve that spacing when editing and formatting classes.
 - Use kebab-case filenames and conventional suffixes such as `.module.ts`,
   `.service.ts`, `.controller.ts`, `.dto.ts` and `.spec.ts` for new Nest code.
   Use PascalCase for classes/types and camelCase for functions/properties.

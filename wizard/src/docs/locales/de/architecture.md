@@ -34,11 +34,12 @@ Die [Testanleitung](../tests/README.md) beschreibt die isolierten Prüfbefehle.
 
 ## Gemeinsame Betriebslaufzeit
 
-Das Paket `operations/` stellt typisierte Funktionsmodule für die authentifizierte
-Sync-API und eigenständige Repository-Befehle bereit. Die npm-CLI bietet `install`,
-`harvest` und `restore`; andere Betriebseinstiege bleiben ausdrückliche Repository-
-Befehle. Ein Nest-Kontext startet keinen HTTP-Server und erteilt keine Deployment-
-Berechtigung. Dienste verwenden injizierte Prozess-, Konfigurations- und Nachweisadapter.
+Das Rootpaket stellt Funktionsmodule unter `src/modules/`, HTTP-Adapter unter
+`src/api/`, CLI-Adapter unter `src/cli/` und gemeinsame Laufzeitinfrastruktur unter
+`src/common/` bereit. Die öffentliche CLI `system-bootstrapper` verwendet dieselben
+Dienste wie die authentifizierte Sync-API. React bleibt als eigenes Frontend unter
+`wizard/`. Ein Nest-Kontext startet keinen HTTP-Server und erteilt keine
+Deployment-Berechtigung. Dienste verwenden injizierte Prozess-, Konfigurations- und Nachweisadapter.
 
 - `HostLifecycleModule` prüft produktiven Speicher und koordiniert Host-Start/-Stopp
   über `HostPersistenceService` und `HostLifecycleService`.
@@ -61,15 +62,16 @@ Berechtigung. Dienste verwenden injizierte Prozess-, Konfigurations- und Nachwei
 - `ReleaseModule` bindet akzeptierte Quell-/Image-/Jobnachweise an unveränderliche
   Image-, GitHub- und npm-Veröffentlichung. Es aktualisiert keine laufende Installation.
 
-Das [Betriebsinventar](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md) ordnet öffentliche und Kompatibilitätseinstiege ihren Aufrufern, Berechtigungen, dauerhafter Eigentümerschaft, nativen Werkzeugen, Fehlerpfaden und ausführbaren Tests zu. Dünne Einstiege rufen vorbereitete kompilierte Nest-Dienste auf, die eigenständige CLI und API gemeinsam nutzen; aktuelle Host-Vorprüfung, Sicherungsabfragen, Freigabe und Wiederherstellung delegieren nicht mehr an Python-Programme.
+Das [Betriebsinventar](https://github.com/kihyoun/system/blob/HEAD/docs/OPERATIONS_ARCHITECTURE.md) ordnet öffentliche und Kompatibilitätseinstiege ihren Aufrufern, Berechtigungen, dauerhafter Eigentümerschaft, nativen Werkzeugen, Fehlerpfaden und ausführbaren Tests zu. Dünne Einstiege rufen vorbereitete kompilierte Nest-Dienste auf, die eigenständige CLI und API gemeinsam nutzen; aktuelle Host-Vorprüfung, Sicherungsabfragen, Freigabe und Wiederherstellung delegieren nicht mehr an Python-Programme.
 
 Bereiten Sie die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
 **vor** Host-Start/-Stopp, Persistenzprüfung, Installation oder Wiederherstellung vor.
 Quickstart übernimmt dies; Quellcodeentwickler bauen die Laufzeit vor Host-Befehlen.
 Behalten Sie Node, kompilierte Operationen und Abhängigkeiten für Offline-Recovery.
-Vorbereitende Bootstrap-Werkzeuge, OS-/Certbot-Einrichtung, die minimale Ruby-Ausnahme für den ersten GitLab-Token,
-eigenständige Kindprozess-Guardians und bytegenaue historische Build-Rezepte
-behalten eigene Verträge. GitLabs eigene deklarative Ruby-Konfiguration bleibt eine Upstream-Dienstschnittstelle. Docker/Compose, NGINX, Git und `flock` bleiben native
+Der erste Quickstart und der minimale Ruby-Aufruf für den ersten GitLab-Token
+sind ausdrücklich erlaubte Ausnahmen unter `tools/`. OS-/Certbot-Koordination und
+eigenständige Kindprozess-Guardians sind native TypeScript-Dienste; bytegenaue
+historische Rezepte bleiben unter `templates/`. GitLabs eigene deklarative Ruby-Konfiguration bleibt eine Upstream-Dienstschnittstelle. Docker/Compose, NGINX, Git und `flock` bleiben native
 Ausführungsgrenzen. Wizard-HTTP-Endpunkte, gespeicherte Konfiguration und Harvest/Seed bleiben kompatibel.
 
 ## Wegweiser für den Betrieb
@@ -159,7 +161,7 @@ Der Ablauf:
    Der zusammengeführte Standardbranch-Stand erhält eigene passende Prüfungen;
    ein Merge ersetzt Production nicht automatisch.
 5. **Die akzeptierte Version freigeben.** Das eingecheckte
-   [Controller-Freigabewerkzeug](../bootstrapper/README.md#promoting-a-tested-successor-controller)
+   [Controller-Freigabewerkzeug](BOOTSTRAPPER.md#promoting-a-tested-successor-controller)
    und für die deklarierte GitLab-Migration das
    [Upgrade-Verfahren](HANDBOOK.md#migrate-gitlab-through-the-accepted-controller) verwenden.
    Sie binden den Vorgang an akzeptierte Quellcode-/Image-Nachweise und bewahren
@@ -176,7 +178,7 @@ NGINX-Ziel oder das Zurücksetzen eines Images kann keine Datenbankmigration rü
 machen. Akzeptierter Checkout, Images, Zugangsdaten und Wiederherstellungseingaben
 müssen während GitLabs Ausfall unabhängig vom aktualisierten Dienst zugänglich bleiben.
 
-Das [deklarierte Release-Profil](../gitlab/security-release.json) und seine Tests definieren
+Das [deklarierte Release-Profil](../config/gitlab/security-release.json) und seine Tests definieren
 die unterstützte Migration. Neue Versionen oder Komponentenänderungen benötigen weiterhin
 eigene Abnahmekriterien und erfolgreiche Prüfungen; vorhandene Werkzeuge belegen nicht,
 dass jedes mögliche Upgrade sicher ist.
@@ -241,17 +243,16 @@ Containerdefinitionen sind reproduzierbar; GitLab-Repositorys, Datenbanken, Regi
 
 | Pfad | Zweck in der vorhandenen Implementierung |
 | --- | --- |
-| `operations/dist/cli.js start/stop --checkout PATH` | Dünne Host-Lebenszykluseinstiege zur vorbereiteten Betriebslaufzeit. |
-| `bootstrapper/` | Basis-Image, Hostinitialisierung, Wiederherstellung, Laufzeitprüfung sowie akzeptierte Controller-Freigabe-/Exportwerkzeuge. |
-| `system/` | Zentrale Compose-Definition, Controller-Kompatibilitätseinstiege und Zustandsinitialisierung. |
-| `gitlab/` | GitLab-Konfiguration/Ruby-Adapter sowie Kompatibilitätseinstiege für typisierte Upgrades und Veröffentlichung. |
-| `gitlab-runner/` | Runner-Compose-Format und Kompatibilitätseinstiege für Registrierung/Lebenszyklus. |
-| `nginx/` | Konfiguration des zentralen Reverse-Proxys und typisierte Routingadapter. |
-| `nginx-proxy/` | Konfiguration der Production-, Beta- und Review-Proxys. |
-| `operations/` | Gemeinsame Nest-Funktionsmodule, native Adapter und CLI; [Betriebsinventar](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md). |
-| `project-bootstrap/` | Kompatibilitätseinstiege für Projekt-CI/Quellen/Umgebungen, native GitLab-Adapter und versionierte Build-Rezepte. |
-| `sync/` | Modulare NestJS-API für Konfiguration, Projektabläufe, Betriebsaufgaben und Diagnose. |
-| `wizard/` | Regulärer Wizard-Anwendungscode mit erhaltener ursprünglicher Historie. |
+| `src/api/` | Authentifizierte Sync-HTTP-Adapter für Konfiguration, Projekte, Betrieb und Diagnose. |
+| `src/cli/` | Benannter CLI-Dispatcher und abhängigerkeitsfreier Einstieg für die CA-Prüfung vor der Installation. |
+| `src/modules/` | Funktionsmodule, injizierbare Dienste und typisierte native Adapter für HTTP, CLI und Worker. |
+| `src/common/` | Gemeinsame Konfigurationssignatur, Validierung und Laufzeitinfrastruktur. |
+| `config/` | Öffentliche Compose-Definitionen, GitLab-Konfiguration, Release-Regeln und CA-Herkunft. Laufzeitgeheimnisse bleiben getrennt. |
+| `templates/` | NGINX- und Projektvorlagen einschließlich bytegenau erhaltener historischer Build-Rezepte. |
+| `containers/` | Image-Definitionen für Controller und Bootstrapper. |
+| `tools/` | Die zwei dokumentierten Bootstrap-Ausnahmen: erster Quickstart und Erzeugung des ersten GitLab-Admin-Tokens. |
+| `wizard/` | Eigenständiges React-Frontend innerhalb desselben System-Quellreleases. |
+| `dist/`, `assets/` | Generierte kompilierte Anwendung und geprüfte Laufzeit-/Quellartefakte; keine separat gepflegten Skripte. |
 | `.gitlab-ci.yml` | Kurzer Dokumentationspfad; erforderliche Komponenten-, Image- und kurzlebige Plattformprüfungen; Image-Veröffentlichung und optionaler GitHub-Spiegel. |
 | [tests/](../tests/README.md) | Komponentenübersicht, isolierte Testbefehle und explizite Grenzen für Live-Integration. |
 | [Prepare-Host.md](../Prepare-Host.md) | Hostinstallation, Auswahl von Dienst-Images und Start. |

@@ -14,7 +14,7 @@ Sync 서비스를 통해 프로비저닝을 수행합니다. 브라우저 절차
 | 일반 웹 프로젝트 | Node 빌드 없이 NGINX가 제공하는 프레임워크 없는 HTML, CSS 및 JavaScript. |
 | 빈 저장소 | README와 관리형 CI. 애플리케이션 소스와 루트 Dockerfile은 별도로 제공해야 합니다. |
 
-템플릿 파일은 `project-bootstrap/templates/` 아래에서 버전 관리됩니다. 생성 후에도 소스,
+템플릿 파일은 `templates/project-bootstrap/templates/` 아래에서 버전 관리됩니다. 생성 후에도 소스,
 Dockerfile, 런타임 구성 및 CI를 편집할 수 있습니다. 생성된 애플리케이션 파이프라인은
 이미지를 빌드하여 인스턴스 레지스트리에 게시하고, HTTP 스모크 검사를 수행하며,
 구성된 자동/수동 설정에 따라 활성 환경을 배포합니다. 파이프라인은 특정 브랜치 이름을
@@ -68,9 +68,9 @@ HTTP/HTTPS 모드 및 인증서 설정은 일반에서 가져옵니다. 반복 �
 
 1. 커밋된 System Wizard gitlink에서 [소스를 초기화](WIZARD_SOURCE.md)합니다.
 2. 가져온 애플리케이션과 불변 레지스트리 후보를 [빌드하고 검증](WIZARD_BUILD.md)합니다.
-3. 별도 HTTPS 호스트에 [Review와 Beta](../project-bootstrap/wizard-environments/README.md)를
+3. 별도 HTTPS 호스트에 [Review와 Beta](../templates/project-bootstrap/wizard-environments/README.md)를
    구성하고 수동 GitLab 작업으로 배포/중지합니다.
-4. 보호된 [운영 환경 승격 및 롤백 절차](../project-bootstrap/wizard-production/README.md)로
+4. 보호된 [운영 환경 승격 및 롤백 절차](../templates/project-bootstrap/wizard-production/README.md)로
    검증된 후보를 적용합니다.
 
 소스 가져오기, 후보 빌드 및 Review/Beta 배포는 실행 중인 관리 인터페이스를 교체하지 않습니다.

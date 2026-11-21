@@ -13,14 +13,24 @@ fi
 exec 9>/run/system-bootstrapper-quickstart.lock
 flock -n 9 || { echo 'Another Quickstart is running.' >&2; exit 1; }
 runtime=/opt/system-bootstrapper-runtime
-targets=("$runtime")
+targets=("$runtime" /usr/local/bin/system-bootstrapper)
 if [[ $mode == install ]]; then targets+=(/opt/system-bootstrapper /etc/system-bootstrapper /var/lib/system-bootstrapper /system); fi
 for target in "${targets[@]}"; do
   [[ ! -e "$target" && ! -L "$target" ]] || { echo "Preserving existing state: $target" >&2; exit 1; }
 done
 # Download into a private temporary directory; execute only checksum-verified bytes.
 staging=$(mktemp -d)
-trap 'rm -rf -- "$staging"' EXIT
+runtime_created=0
+cleanup_quickstart() {
+  local status=$?
+  trap - EXIT
+  rm -rf -- "$staging"
+  if (( status != 0 && runtime_created == 1 )) && [[ ! -e "$runtime/.host-handoff" ]]; then
+    rm -rf -- "$runtime"
+  fi
+  exit "$status"
+}
+trap cleanup_quickstart EXIT
 curl --proto '=https' --tlsv1.2 --fail --silent --show-error --max-time 180 \
   https://raw.githubusercontent.com/nvm-sh/nvm/4e8758a801eea9479b32a904f31093e410ddaba4/nvm.sh -o "$staging/nvm.sh"
 curl --proto '=https' --tlsv1.2 --fail --silent --show-error --max-time 300 \
@@ -31,6 +41,7 @@ cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008  node.tar.xz
 SYSTEM_RUNTIME_HASHES
 )
 mkdir "$runtime"
+runtime_created=1
 mkdir -p "$runtime/nvm/versions/node"
 cp "$staging/nvm.sh" "$runtime/nvm/nvm.sh"
 tar -xJf "$staging/node.tar.xz" -C "$runtime/nvm/versions/node" --no-same-owner
@@ -105,8 +116,20 @@ export async function main(staging, runtime, mode, requestedTag) {
     require(!result.error && result.status === 0,'Native CLI operation failed. Preserve state and consult the installation guide.');
   };
   run([path.join(runtime,'bin/npm'),'install','--offline','--ignore-scripts','--no-audit','--no-fund','--prefix',path.join(runtime,'cli'),archive],{PATH:path.join(runtime,'bin'),HOME:staging,npm_config_cache:path.join(staging,'cache'),npm_config_userconfig:path.join(staging,'user.npmrc'),npm_config_globalconfig:path.join(staging,'global.npmrc')},180000);
-  if (mode === 'runtime') { console.log('Accepted offline host runtime ready: '+runtime); return; }
-  run([path.join(runtime,'cli/node_modules/@systembootstrapper/cli/dist/host-bootstrap/entry.js'),'quickstart','--checkout','/opt/system-bootstrapper','--metadata',manifest],process.env,3600000);
+  const retainedArtifact=path.join(runtime,'accepted-cli.tgz');
+  fs.copyFileSync(archive,retainedArtifact,fs.constants.COPYFILE_EXCL);
+  fs.chmodSync(retainedArtifact,0o600);
+  const retainedMetadata=path.join(runtime,'accepted-release.json');
+  fs.copyFileSync(manifest,retainedMetadata,fs.constants.COPYFILE_EXCL);
+  fs.chmodSync(retainedMetadata,0o600);
+  const entry=path.join(runtime,'cli/node_modules/@systembootstrapper/cli/dist/cli/main.js');
+  if (mode === 'runtime') {
+    run([entry,'cli-install','--runtime',runtime,'--release-metadata',manifest,'--artifact',retainedArtifact],process.env,180000);
+    console.log('Accepted offline host runtime ready: '+runtime); return;
+  }
+  fs.writeFileSync(path.join(runtime,'.host-handoff'),'native-quickstart\n',{mode:0o600,flag:'wx'});
+  run([entry,'host-bootstrap','quickstart','--checkout','/opt/system-bootstrapper','--metadata',manifest],process.env,3600000);
+  run([entry,'cli-install','--runtime',runtime,'--release-metadata',manifest,'--artifact',retainedArtifact,'--checkout','/opt/system-bootstrapper'],process.env,180000);
   console.log('Wizard ready: http://127.0.0.1/configuration. For remote access use a protected SSH tunnel: ssh -N -L 8080:127.0.0.1:80 <your-user>@<your-host>');
   console.log('Read first-access credentials locally: sudo cat /var/lib/system-bootstrapper/platform/configuration/sync-auth.env');
 }

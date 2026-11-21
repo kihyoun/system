@@ -139,7 +139,7 @@ System 파이프라인을 시작하지 않습니다. 실제 설정, 연결, Beta
 
 ### 5.4 예시: GitLab 보안 패치도 시스템 진화입니다
 
-커밋된 [보안 릴리스 프로필](../gitlab/security-release.json)은 GitLab CE
+커밋된 [보안 릴리스 프로필](../config/gitlab/security-release.json)은 GitLab CE
 **19.5.3 → 19.6.1** 전환과 일치하는 Helper를 포함한 GitLab Runner **19.5.1 → 19.6.0**
 전환을 선언합니다. 연결된 업스트림
 [패치 공지](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-6-1-released/)와
@@ -227,7 +227,7 @@ GitLab을 중지할 때 CI 작업이 살아남으리라 의존하지 말고, 호
 실행하세요.
 
 선언된 CE 19.5.3 → 19.6.1 전환에 허용되는 이미지 고정값은
-[`gitlab/security-release.json`](../gitlab/security-release.json)에 있습니다. 계획하거나 중단에
+[`config/gitlab/security-release.json`](../config/gitlab/security-release.json)에 있습니다. 계획하거나 중단에
 들어가기 전에 여섯 이미지 참조를 모두 가져오세요. `fromImage`, `toImage`, `runner.fromImage`,
 `runner.toImage`, `runner.fromHelperImage`, `runner.helperImage`입니다. 두 GitLab 버전과
 이전 및 대상 Runner/Helper 쌍이 포함됩니다. 먼저 저장된 19.5.3 GitLab 선택을 보존하면서
@@ -259,7 +259,7 @@ GitLab을 중지할 때 CI 작업이 살아남으리라 의존하지 말고, 호
 먼저 소스/CI 입력 검사를 실행하세요.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation promote \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
@@ -289,12 +289,12 @@ Registry를 사용할 수 있기 전에 아카이브에서 나중에 콜드 시�
 중단 작업을 사용하세요.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID
 
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \
@@ -336,7 +336,7 @@ sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --
 
 ```bash
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js plan /state/upgrade-options.json
+  system-bootstrapper gitlab-maintenance plan /state/upgrade-options.json
 ```
 
 반환된 계획과 `planSha256`을 검사하세요. 승인된 증거, 소스, 현재 컨테이너, 구성을 정확한
@@ -347,7 +347,7 @@ sudo docker exec -w /system system_bootstrapper_1 \
 ```bash
 PLAN_SHA256=REPLACE_WITH_REVIEWED_PLAN_SHA256
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js promote /state/upgrade-options.json "$PLAN_SHA256"
+  system-bootstrapper gitlab-maintenance promote /state/upgrade-options.json "$PLAN_SHA256"
 ```
 
 서버를 잃게 될 GitLab CI 작업 밖에서 이 호스트 명령을 실행하세요. `checkpointSha256`을
@@ -373,7 +373,7 @@ GitLab 마이그레이션과 승인 후 같은 깨끗한 승인 체크아웃에�
 실행하세요.
 
 ```bash
-sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
+sudo node dist/modules/host/recovery-export-entry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
   --evidence /root/system-successor/candidate-results.json \
@@ -394,7 +394,7 @@ Registry 부팅에 이전 Docker 로그인이 필요하지 않습니다.
 
 ```bash
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/recover-volume.js --verify
+  system-bootstrapper host-bootstrap recover-volume --checkout "$PWD" --verify
 ```
 
 이 검사는 서비스를 다시 시작하지 않고 입력을 검증합니다. 다음 교체 호스트는 A를 설명하는
@@ -408,7 +408,7 @@ sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
 
 ```bash
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js status /state/upgrade-options.json
+  system-bootstrapper gitlab-maintenance status /state/upgrade-options.json
 ```
 
 도우미가 승인된 체크포인트 해시를 기록하기 전에는 `abort` 작업이 검토된 계획 해시를 받아
@@ -421,12 +421,12 @@ sudo docker exec -w /system system_bootstrapper_1 \
 ```bash
 # Only for a confirmed failure before checkpoint acceptance:
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js abort /state/upgrade-options.json "$PLAN_SHA256"
+  system-bootstrapper gitlab-maintenance abort /state/upgrade-options.json "$PLAN_SHA256"
 
 # For a confirmed completed-checkpoint recovery:
 CHECKPOINT_SHA256=REPLACE_WITH_VERIFIED_CHECKPOINT_SHA256
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
+  system-bootstrapper gitlab-maintenance rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
 ```
 
 기록된 단계에 맞는 작업만 사용하세요. 이 명령들은 선택지이며 무조건 순서대로 실행하는
@@ -445,7 +445,7 @@ sudo docker restart system_bootstrapper_1
 
 승인된 컨트롤러가 준비된 채로 남아 있는데 GitLab을 이전 이미지로 복원했다면 새 병합 요청과
 필수 검사로 수정을 개발하세요. 이전의 완료된 컨트롤러 체크포인트와 새 작업 디렉터리로
-문서화된 [준비된 컨트롤러 교체](../bootstrapper/README.md#replacing-an-accepted-controller-before-gitlab-migration)를
+문서화된 [준비된 컨트롤러 교체](BOOTSTRAPPER.md#replacing-an-accepted-controller-before-gitlab-migration)를
 사용하세요. 도구는 이전 후보를 별도로 인증하면서 새 후보의 현재 기본 브랜치 게이트를 엄격히
 유지합니다. 교체를 통과시키려고 저장된 선택자나 이전 복구 매니페스트를 편집하지 마세요.
 

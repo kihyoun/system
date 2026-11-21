@@ -97,7 +97,7 @@ Use an authenticated clone URL without embedded credentials. `git submodule
 sync` replaces a local override with `.gitmodules`, so reapply the private
 mapping if syncing is needed. In System CI, `prepare:wizard-source` disables
 automatic runner submodule checkout with `GIT_SUBMODULE_STRATEGY: none`.
-`gitlab/prepare-wizard-source.js` then initializes and verifies the exact gitlink
+`system-bootstrapper source-checkout` then initializes and verifies the exact gitlink
 using the configured private selector before source packaging. An override
 applied only after this preparation step would be too late.
 Verify that the selected Wizard repository contains the exact System gitlink.
@@ -105,9 +105,9 @@ The development and test path must not need a successful GitHub read to proceed.
 
 ## Helper contract
 
-`node operations/dist/mirror/entry.js ci` runs in a checkout with an `origin`
+`node dist/modules/mirror/entry.js ci` runs in a checkout with an `origin`
 pointing to the intended primary GitLab project. Prepare the pinned Node runtime
-and compiled operations package first. The shared `MirrorModule` owns transport,
+and compiled root backend package first. The shared `MirrorModule` owns transport,
 locking and cleanup through native Git and OpenSSH tools. Configuration comes
 from the protected CI job:
 
@@ -187,7 +187,7 @@ registry as `$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG` after the required runtime
 checks. The complete successor controller is published separately by the
 candidate acceptance job to the same project's `/successor` repository, with
 an immutable digest and acceptance evidence. Follow the
-[successor promotion guide](../bootstrapper/README.md#promoting-a-tested-successor-controller)
+[successor promotion guide](BOOTSTRAPPER.md#promoting-a-tested-successor-controller)
 to deploy that complete image. Neither publication requires Docker Hub publishing
 credentials, enables Production promotion or bypasses the resource-heavy System
 candidate checks. GitHub mirroring remains independently opt-in.
@@ -205,7 +205,7 @@ required `build:wizard` and `test:wizard` jobs using its committed generic build
 recipe. Those jobs require a trusted Docker runner, publish the immutable image
 in the same project's registry and verify that exact image. Configured optional
 Review/Beta jobs then use the same project; Production remains a separate
-controlled promotion. Follow the [source-primary adoption guide](../project-bootstrap/wizard-source-primary/README.md)
+controlled promotion. Follow the [source-primary adoption guide](../templates/project-bootstrap/wizard-source-primary/README.md)
 when replacing an existing managed delivery project. Do not delete the old
 project until its live dependencies and required recovery data are migrated.
 
@@ -248,7 +248,7 @@ before claiming the System mirror supports a fresh public recursive checkout.
 A lagging public mirror does not block internal gitlink work or private delivery.
 No automatic System merge
 or Production deployment is introduced. Production remains a deliberate
-operator-confirmed [promotion action](../project-bootstrap/wizard-production/README.md).
+operator-confirmed [promotion action](../templates/project-bootstrap/wizard-production/README.md).
 
 ### Deliver the Wizard in one System release
 
@@ -275,7 +275,7 @@ does not imply access to another repository. The existing independently verified
 GitHub host-key file must also apply to that destination. The wrapper keeps the
 two identities separate and removes its private copies and SSH agent on exit.
 
-`gitlab/publish-wizard-source.js` reads the exact gitlink from the protected
+`system-bootstrapper wizard-source-publish` reads the exact historical gitlink from the protected
 System default-branch push, obtains it from the same-instance canonical Wizard
 source with the job token, and publishes `system-release/<Wizard commit>`.
 An atomic create-only lease refuses changing an existing ref, including an
@@ -286,7 +286,7 @@ a published release or recovery input needs them.
 
 The same-pipeline `test-results/github/wizard-source.json` receipt records only
 source, destination and job identities. The opt-in
-[paired release updater](../bootstrapper/README.md#deliberately-updating-the-accepted-controller-and-wizard-together)
+[paired release updater](BOOTSTRAPPER.md#deliberately-updating-the-accepted-controller-and-wizard-together)
 requires this successful publication proof, the full accepted System pipeline
 and the unchanged Docker Hub image-pair artifact. Its default controller-only
 mode keeps the original mirror policy. Production promotion remains deliberate;

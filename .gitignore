@@ -1,27 +1,23 @@
-gitlab/.docker.env
+# Private and generated installation state.
 .docker.env
 .projects.env/.*.env
-.projects.env/.*.env
-nginx-proxy/.projects/.*.env
-gitlab-runner/.hosts
+/config/gitlab/.docker.env
+/config/system/.docker.env
+/config/system/.projects.env/
+/config/nginx-proxy/.projects/.*.env
+/config/gitlab-runner/.hosts/
 bootstrapper.json
 bootstrapper_initial_root_password
-sync/node_modules
-sync/dist
-operations/node_modules/
-operations/dist/
-operations/*.tgz
-test-results/
-project-bootstrap/wizard-source/snapshot.json
-.test-context/
 
+# Installed dependencies, build output and disposable contexts.
+node_modules/
+/dist/
+/assets/
+/*.tgz
+test-results/
+.test-context/
 .candidate-context/
 .wizard-browser-context/
-__pycache__/
-
 .candidate-images/
-
 .codeql-context/
-
-/operations/assets/
-/operations/LICENSE
+__pycache__/

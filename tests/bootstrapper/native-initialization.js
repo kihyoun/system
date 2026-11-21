@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const {execFileSync, spawnSync} = require('node:child_process');
-const {RecoveryManifestService, canonicalDigest, canonicalSelector, fileSha} = require('../../operations/dist/host/recovery-manifest');
-const {runtimeImageSelectors, verifyImageInspections} = require('../../operations/dist/host/runtime-inspection');
+const {RecoveryManifestService, canonicalDigest, canonicalSelector, fileSha} = require('../../dist/modules/host/recovery-manifest');
+const {runtimeImageSelectors, verifyImageInspections} = require('../../dist/modules/host/runtime-inspection');
 const service = new RecoveryManifestService(), root = path.resolve(__dirname, '../..');
 function fixture() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'system-native-init-'));
@@ -53,7 +53,7 @@ test('retained manifest binds archive bytes, immutable source and declared image
   using(f=>{
     for(const key of Object.keys(f.manifest)) if(!['archives','publicImages'].includes(key))delete f.manifest[key];
     f.save(); f.verify(undefined,true); assert.throws(()=>f.verify(),/local-image-aliases-required/);
-    const result=spawnSync(process.execPath,[path.join(root,'operations/dist/cli.js'),'recovery','load','--checkout',f.checkout,'--directory',f.retained,'--checksums-only'],{encoding:'utf8',timeout:30000,maxBuffer:8192});
+    const result=spawnSync(process.execPath,[path.join(root,'dist/cli/main.js'),'recovery','load','--checkout',f.checkout,'--directory',f.retained,'--checksums-only'],{encoding:'utf8',timeout:30000,maxBuffer:8192});
     assert.notEqual(result.status,0);assert.match(result.stderr,/legacy-checksums-cannot-load/);
   });
 });

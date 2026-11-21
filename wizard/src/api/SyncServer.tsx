@@ -275,6 +275,7 @@ export default class SyncServer {
     const res = await axios.request(options);
     return res;
   }
+
   async hotPatch() {
     await this.token();
     const options: any = Object.assign(this.getHeaders(), {
@@ -284,6 +285,7 @@ export default class SyncServer {
     const res = await axios.request(options);
     return res;
   }
+
   token() {
     return new Promise((resolve, reject) => {
       axios

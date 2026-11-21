@@ -85,3 +85,24 @@ A public release publication also does not change an existing platform.
 
 See [release policy and exact source checkout](RELEASES.md) for the public metadata
 contract, installation from an explicit version and update/rollback requirements.
+
+## Use the installed CLI
+
+Quickstart installs the named `system-bootstrapper` command with its verified
+Node runtime. A fresh SSH session and `sudo` do not need an nvm shell profile or
+a JavaScript file path. The private installation binding selects the reviewed
+checkout and persistence settings; it does not select a newer release.
+
+```sh
+system-bootstrapper --help
+sudo system-bootstrapper start
+sudo system-bootstrapper harvest
+```
+
+Harvest still requires your configured backup filesystem to be mounted. It
+performs the same storage checks and acquires the same leases as the Wizard.
+For another explicitly reviewed checkout, pass `--checkout /absolute/path` and
+the documented recovery inputs. Installing only the runtime does not bind an
+installation or start services. Developer checkouts can expose the npm bin with
+`npm link --ignore-scripts`; system-wide binding uses `system-bootstrapper cli-install`
+only after its ownership and accepted-installation checks pass.

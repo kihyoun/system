@@ -5,7 +5,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
+verified Node installation, `dist`, `node_modules` and `assets`
 available offline before maintenance.
 
 Choose the complete installation path for your environment:
@@ -104,7 +104,7 @@ for the difference between a complete controller and a runtime base.
 Install the required Docker tools:
 
 ```bash
-sudo node bootstrapper/install.js
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 The installer installs Docker and Compose and checks Docker using a test
@@ -112,7 +112,7 @@ container. For the local HTTP test, also configure the local hostnames and the
 registry's HTTP exception:
 
 ```bash
-sudo node bootstrapper/prepare-local.js
+sudo system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"
 ```
 
 WSL may regenerate `/etc/hosts` at startup. If the registry or other local
@@ -135,7 +135,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
+verified Node installation, `dist`, `node_modules` and `assets`
 available offline before maintenance.
 
 Fresh Ubuntu/WSL installations use local working data at
@@ -169,7 +169,7 @@ Then run this command from the project's root directory:
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```
@@ -499,7 +499,7 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo node bootstrapper/install.js
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 Choose the source revision and both public image digests from one accepted
@@ -513,7 +513,7 @@ Use Certbot **2.3.0 or newer**, which supports `reconfigure`; the Ubuntu 24.04
 The host integration below invokes
 `/usr/bin/certbot` and `certbot.timer`, so this recipe uses the distribution
 package, rather than a separate Snap installation. Do not run
-`bootstrapper/prepare-local.js`: public DNS and a trusted HTTPS registry replace
+`system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"`: public DNS and a trusted HTTPS registry replace
 its local hosts-file and insecure-registry changes.
 
 ### Public 2. Select working storage and install certificate integration
@@ -523,7 +523,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
+verified Node installation, `dist`, `node_modules` and `assets`
 available offline before maintenance.
 
 This fresh installation keeps live data on the server's system disk. Create an
@@ -538,11 +538,11 @@ PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-sudo node bootstrapper/install-volume-host.js
+sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"
 sudo systemctl stop certbot.timer
 ```
 
-Despite its compatibility name, `install-volume-host.js` supports local storage.
+The `system-bootstrapper host-bootstrap install-volume-host` command also supports local storage.
 It validates working storage, connects `/etc/letsencrypt` to
 `PERSISTENT_DIR/host/letsencrypt`, and installs the `system-certbot` lock wrapper
 and certificate deploy hook. It does not add a Docker or renewal dependency on
@@ -600,7 +600,7 @@ server, start the fresh installation:
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 sudo docker ps
@@ -657,7 +657,7 @@ adornment displayed beside an input is not a replacement for that prefix. Use
 hostnames without a scheme in the `*_HOST` fields. The generated GitLab and
 registry external URLs must be `https://gitlab.example.com` and
 `https://registry.example.com`, without `:5050`. The historical
-`system/.docker.env.example` contains `/live/...` paths without the `/ssl` mount
+`config/system/.docker.env.example` contains `/live/...` paths without the `/ssl` mount
 prefix; those paths are inactive in HTTP mode and must not be copied unchanged
 when enabling HTTPS. Review **General → Website** and
 replace the public operator examples before publishing your site.
@@ -768,7 +768,7 @@ systemctl list-timers certbot.timer
 ```
 
 `reconfigure` tests against the CA staging service, then saves the successful
-webroot method for future renewals. `install-volume-host.js` rebinds existing
+webroot method for future renewals. `system-bootstrapper host-bootstrap install-volume-host` rebinds existing
 **webroot** paths on recovery; it does not convert a standalone lineage into
 webroot renewal for you. Do not finish setup if reconfiguration or the dry-run
 fails. If a lock reports an active/interrupted renewal or Harvest, resolve the
@@ -949,8 +949,8 @@ the same image and persistent data. From the host, run the existing entry points
 inside the accepted controller:
 
 ```bash
-sudo docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js gitlab-start /system
-sudo docker exec system_bootstrapper_1 node /system/operations/dist/projects-routing/entry.js routing reload /system /templates
+sudo docker exec system_bootstrapper_1 system-bootstrapper lifecycle gitlab-start /system
+sudo docker exec system_bootstrapper_1 system-bootstrapper projects-routing routing reload /system /templates
 ```
 
 The NGINX reload regenerates HTTPS/registry upstreams if GitLab's container IP
@@ -975,7 +975,7 @@ git ls-remote git@gitlab.example.com:namespace/project.git HEAD
 ```
 
 This validates repository read access, not push permission. The
-[native runtime verifier](../bootstrapper/README.md#reviewed-replacement-host-initialization)
+[native runtime verifier](BOOTSTRAPPER.md#reviewed-replacement-host-initialization)
 checks the platform's other application/storage contracts; it does not replace
 these SSH and firewall checks.
 
@@ -1077,15 +1077,15 @@ are observations, not an installation-time guarantee.
    failures that are resolved within the attempt. Record each milestone's UTC
    and elapsed time privately; do not reset the clock after a failed probe.
 3. For fresh initialization, follow the [public HTTPS walkthrough](#public-server-own-domain-and-https)
-   using `bootstrapper/install.js`, `system-bootstrapper install` and
-   `bootstrapper/install-volume-host.js` from the reviewed release checkout.
+   using `system-bootstrapper host-bootstrap install-host --checkout "$PWD"`, `system-bootstrapper install` and
+   `system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` from the reviewed release checkout.
    Use the release's immutable controller and matching Wizard image selections.
    Configure through Wizard Fetch, Backup and Push; set four managers if
    reproducing this run's count. Complete first certificate issuance and the
    documented webroot renewal/deploy-hook check with `system-certbot`.
 4. For recovery, follow [external Seed restore](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation),
    including native storage preparation and
-   `bootstrapper/seed-operation.js restore --check-only` before the actual
+   `system-bootstrapper restore --check-only` before the actual
    restore with the matching configuration backup. Keep GitLab stopped until
    restore verification finishes. After the helper completes, unmount the
    backup medium before startup to reproduce this run's storage separation.
@@ -1100,7 +1100,7 @@ are observations, not an installation-time guarantee.
    registry content and the expected saved settings. Declare any additional
    managed-image or application checks and include their recovery and temporary
    credential cleanup in your ready boundary. In workflows using the
-   [native runtime verifier](../bootstrapper/README.md#reviewed-replacement-host-initialization),
+   [native runtime verifier](BOOTSTRAPPER.md#reviewed-replacement-host-initialization),
    supply its private API-token file to verify recent manager contact and
    `--redirect-from` when a canonical Wizard alias is required. A skipped check
    must remain marked as skipped.
@@ -1135,8 +1135,8 @@ Perform each run as follows; preserve receipts outside the source checkout:
    kernel, held packages and existing failed units. Defer on unexpected identity,
    storage, package-lock, `dpkg --audit` or unfinished platform-operation state.
 2. From the remote accepted checkout, capture a new private baseline and run
-   `bootstrapper/verify-runtime.js check` against it before changes. Use its
-   [documented options](../bootstrapper/README.md#reviewed-replacement-host-initialization).
+   `system-bootstrapper host-bootstrap verify-runtime check` against it before changes. Use its
+   [documented options](BOOTSTRAPPER.md#reviewed-replacement-host-initialization).
    Keep saved configuration/auth hashes and exact image identities unchanged.
    Refresh indexes with `sudo apt-get update`, then inspect
    `sudo apt-get -s --with-new-pkgs --no-remove upgrade`. Respect package holds
@@ -1151,7 +1151,7 @@ Perform each run as follows; preserve receipts outside the source checkout:
 
    ```bash
    GITLAB_CONTAINER_ID="$(sudo docker inspect --format '{{.Id}}' system_gitlab_1)"
-   sudo docker exec system_bootstrapper_1 node /system/operations/dist/gitlab-preflight/entry.js "$GITLAB_CONTAINER_ID"
+   sudo docker exec system_bootstrapper_1 system-bootstrapper gitlab-preflight "$GITLAB_CONTAINER_ID"
    ```
 
    Its JSON must show the accepted CE version, `runningJobs: 0` and
@@ -1163,7 +1163,7 @@ Perform each run as follows; preserve receipts outside the source checkout:
    repeat the preflight before stopping databases. A raced job means resume the
    same GitLab services/proxy and defer with runners/controller untouched.
    Only after this final jobs-zero proof, stop the main runner pool through
-   `docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js runner-stop /system main`,
+   `docker exec system_bootstrapper_1 system-bootstrapper lifecycle runner-stop /system main`,
    preserving registrations. Privately record the original controller/GitLab
    restart policies, then `docker update --restart=no system_bootstrapper_1 system_gitlab_1`
    so a package-triggered Docker restart cannot revive these writers
@@ -1255,7 +1255,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
+verified Node installation, `dist`, `node_modules` and `assets`
 available offline before maintenance.
 
 This section is the explicit volume-backed reuse path. For fresh local working
@@ -1337,7 +1337,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
 3. Verify that `platform/recovery/images.json` describes the recorded source,
    exact image IDs, local aliases and checksummed archives. The full manifest
    schema and input requirements are in the
-   [initialization tool documentation](../bootstrapper/README.md). Missing source
+   [initialization tool documentation](BOOTSTRAPPER.md). Missing source
    identities or aliases are a preparation failure, not permission to substitute
    a different image or copy a private recovery script onto the host.
 
@@ -1355,7 +1355,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
 
    ```bash
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     node bootstrapper/initialize.js \
+     system-bootstrapper host-bootstrap initialize \
        --install-host \
        --receipt-dir /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID \
        --timeout 1200
@@ -1395,7 +1395,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
    committed verifier and add the optional token/redirect arguments as needed:
 
    ```bash
-   sudo node bootstrapper/verify-runtime.js check \
+   sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check \
      --persistence-env /etc/system-bootstrapper/persistence.env \
      --baseline /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/baseline.json \
      --output /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/recheck.json \
@@ -1709,9 +1709,9 @@ to the shared instance pool.
 | Four configured runner containers appear as one GitLab runner | Open the runner detail page and inspect **Runner managers**; the shared pool has one entry with independent manager system IDs |
 | Startup reports missing persistent storage | Check the selected mode and directory; mount an explicitly selected live volume instead of changing modes to bypass its guard |
 | A pipeline waits for its runner after a GitLab restart | Register checks the pool and updates managed internal IP endpoints to the stable Docker service name |
-| A pipeline cannot resolve `registry.localhost` | Run `sudo node bootstrapper/prepare-local.js` again in Ubuntu; WSL may reset local hosts entries at startup |
-| MongoDB fails before database initialization | Run `bootstrapper/container-preflight.js` on the daemon host; distinguish CPU, Ubuntu upstream kernel and image execution using the [host operations guide](HOST_OPERATIONS.md) |
-| Container logs have no verified rotation | Inspect the exact containers with `bootstrapper/log-policy.js`; apply and verify the bounded policy through a deliberate deployment, with no assumed maximum age |
+| A pipeline cannot resolve `registry.localhost` | Run `sudo system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"` again in Ubuntu; WSL may reset local hosts entries at startup |
+| MongoDB fails before database initialization | Run `system-bootstrapper host-bootstrap container-preflight --checkout "$PWD"` on the daemon host; distinguish CPU, Ubuntu upstream kernel and image execution using the [host operations guide](HOST_OPERATIONS.md) |
+| Container logs have no verified rotation | Inspect the exact containers with `system-bootstrapper host-bootstrap log-policy --checkout "$PWD"`; apply and verify the bounded policy through a deliberate deployment, with no assumed maximum age |
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
 
 See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
@@ -1877,7 +1877,7 @@ migration results for an upgrade.
 
 ### 5.4 Example: a GitLab security patch is a system evolution
 
-The committed [security release profile](../gitlab/security-release.json)
+The committed [security release profile](../config/gitlab/security-release.json)
 declares a GitLab CE **19.5.3 → 19.6.1** transition and a GitLab Runner
 **19.5.1 → 19.6.0** transition with its matching helper. The linked upstream
 [patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-6-1-released/)
@@ -1973,7 +1973,7 @@ independent management connection, rather than relying on a CI job to survive
 stopping the GitLab that coordinates it.
 
 For the declared CE 19.5.3 → 19.6.1 transition,
-[`gitlab/security-release.json`](../gitlab/security-release.json) contains the
+[`config/gitlab/security-release.json`](../config/gitlab/security-release.json) contains the
 allowed image pins. Before planning or entering downtime, pull all six image
 references: `fromImage`, `toImage`, `runner.fromImage`, `runner.toImage`,
 `runner.fromHelperImage` and `runner.helperImage`. These include both GitLab
@@ -2010,7 +2010,7 @@ internal runtime test. Other pipeline failures block promotion.
 First run the source/CI input check:
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation promote \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
@@ -2043,12 +2043,12 @@ If this **controller** operation is interrupted, use its same checkpoint with
 the committed status and, when appropriate, abort actions:
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID
 
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \
@@ -2091,7 +2091,7 @@ From an independent host terminal, request the read-only plan:
 
 ```bash
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js plan /state/upgrade-options.json
+  system-bootstrapper gitlab-maintenance plan /state/upgrade-options.json
 ```
 
 Inspect the returned plan and `planSha256`. It binds the accepted evidence,
@@ -2103,7 +2103,7 @@ use its hash as the confirmation:
 ```bash
 PLAN_SHA256=REPLACE_WITH_REVIEWED_PLAN_SHA256
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js promote /state/upgrade-options.json "$PLAN_SHA256"
+  system-bootstrapper gitlab-maintenance promote /state/upgrade-options.json "$PLAN_SHA256"
 ```
 
 Run this host command outside the GitLab CI job that will lose its server.
@@ -2134,7 +2134,7 @@ After GitLab migration and acceptance, run the committed recovery exporter from
 the same clean accepted checkout:
 
 ```bash
-sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
+sudo node dist/modules/host/recovery-export-entry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
   --evidence /root/system-successor/candidate-results.json \
@@ -2157,7 +2157,7 @@ the new manifest before relying on it:
 
 ```bash
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/recover-volume.js --verify
+  system-bootstrapper host-bootstrap recover-volume --checkout "$PWD" --verify
 ```
 
 This check validates inputs without restarting services. The next
@@ -2172,7 +2172,7 @@ If migration or acceptance fails, inspect the committed helper's recorded phase:
 
 ```bash
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js status /state/upgrade-options.json
+  system-bootstrapper gitlab-maintenance status /state/upgrade-options.json
 ```
 
 Before the helper records an accepted checkpoint hash, its `abort` action accepts
@@ -2186,12 +2186,12 @@ the durable receipt and ensure no original operation is still running.
 ```bash
 # Only for a confirmed failure before checkpoint acceptance:
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js abort /state/upgrade-options.json "$PLAN_SHA256"
+  system-bootstrapper gitlab-maintenance abort /state/upgrade-options.json "$PLAN_SHA256"
 
 # For a confirmed completed-checkpoint recovery:
 CHECKPOINT_SHA256=REPLACE_WITH_VERIFIED_CHECKPOINT_SHA256
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
+  system-bootstrapper gitlab-maintenance rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
 ```
 
 Use only the action appropriate to the recorded phase; the commands are
@@ -2211,7 +2211,7 @@ sudo docker restart system_bootstrapper_1
 
 If GitLab is restored to the old image while an accepted controller remains
 staged, develop any correction through a new merge request and its required
-checks. Use the documented [staged-controller replacement](../bootstrapper/README.md#replacing-an-accepted-controller-before-gitlab-migration)
+checks. Use the documented [staged-controller replacement](BOOTSTRAPPER.md#replacing-an-accepted-controller-before-gitlab-migration)
 with the previous completed controller checkpoint and a new operation directory.
 The tool authenticates the prior candidate separately while keeping the new
 candidate's current-default-branch gates strict. Do not edit saved selectors or

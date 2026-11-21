@@ -15,7 +15,7 @@ Docker 이미지를 유지합니다. 두 구성 요소를 하나의 System 커�
 Beta는 별도 빌드 대신 공유 System 후보를 사용합니다.
 
 이 절차는 레거시 관리형 소스 절차입니다. 명시적으로 채택한
-[소스 우선 저장소](../project-bootstrap/wizard-source-primary/README.md)는 자체 병합 요청으로
+[소스 우선 저장소](../templates/project-bootstrap/wizard-source-primary/README.md)는 자체 병합 요청으로
 직접 개발하며 소스를 가져오지 않습니다. 이러한 저장소에 커밋된 일반
 `.system-bootstrapper/build-v1/` 생성기는 레거시 소스 스냅샷에서 제외됩니다. 관리형 빌드
 활성화는 이 예약된 네임스페이스에 자체 검토된 레시피를 설치합니다.
@@ -47,7 +47,7 @@ Beta는 별도 빌드 대신 공유 System 후보를 사용합니다.
 실행 중인 인터페이스, 라우팅, 운영 환경 URL은 그대로 유지합니다. Beta와 Review는 계속
 비활성화됩니다. 소스 초기화는 빌드나 배포를 시작하지 않습니다.
 [관리형 빌드 활성화](WIZARD_BUILD.md)는 별도의 명시적 작업입니다. Review/Beta 배포와
-[운영 환경 승격](../project-bootstrap/wizard-production/README.md)도 별도의 명시적 작업입니다.
+[운영 환경 승격](../templates/project-bootstrap/wizard-production/README.md)도 별도의 명시적 작업입니다.
 소스를 가져오는 것은 이미지를 승격하지 않습니다.
 
 ## 불변 소스 패키지 빌드
@@ -56,8 +56,8 @@ System 이미지를 빌드하기 전에 커밋된 소스 레이아웃을 확인�
 커밋에 필요한 경우에만 과거 gitlink를 초기화합니다.
 
 ```sh
-node gitlab/prepare-wizard-source.js
-node project-bootstrap/wizard-source/package.js
+system-bootstrapper source-checkout
+system-bootstrapper source-prepare
 ```
 
 일반적인 루트 `start --checkout /absolute/reviewed/source`는 Compose가 System 이미지를 빌드하기 전에 준비를 호출합니다.

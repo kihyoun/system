@@ -2,7 +2,7 @@
 const assert=require('assert/strict');
 const {publish,pipelineContent,immutableImage,markerPath}=require('../e2e/wizard-pin-fixture');
 const {privateWizardAcceptance}=require('../e2e/prepare-images');
-const binding=require('../../project-bootstrap/wizard-source-primary/binding');
+const binding=require('../../dist/modules/project-lifecycle/source-primary-binding');
 const owner='a'.repeat(24),commit='b'.repeat(40),base='sha256:'+'c'.repeat(64),derived='sha256:'+'d'.repeat(64),digest='sha256:'+'e'.repeat(64);
 function fixture(overrides={}) {
   const calls=[];let polls=0;
@@ -61,7 +61,7 @@ function nativeFixture() {
   return {candidate,calls,rows,jobs,merge,receipt,image,owned,imageRef};
 }
 (async()=>{
-  const helpers=['system/wizard-image-recovery.js','operations/src/wizard-recovery/wizard-recovery.service.ts','operations/src/wizard-recovery/registry.service.ts'];
+  const helpers=['src/modules/wizard-recovery/entry.ts','src/modules/wizard-recovery/wizard-recovery.service.ts','src/modules/wizard-recovery/registry.service.ts'];
   assert.equal(privateWizardAcceptance([],()=>true),false);
   assert.equal(privateWizardAcceptance(helpers,()=>true),true);
   assert.throws(()=>privateWizardAcceptance(helpers.slice(0,2),()=>true),/complete private-registry recovery/);

@@ -41,7 +41,7 @@ Runner 컨테이너, CI 작업 또는 Docker 데몬에서의 연결성을 입증
 
 **도우미 이미지 다운로드 시도**는 별도 동작입니다. 먼저 실행 중인 관리형 Runner 관리자를
 선택하세요. 대화 상자는 실행 전에 정확한 불변 도우미 이미지 참조를 보여 줍니다.
-기본값은 `gitlab/security-release.json`에서 가져옵니다. 운영자는 서버 구성에서
+기본값은 `config/gitlab/security-release.json`에서 가져옵니다. 운영자는 서버 구성에서
 `GITLAB_RUNNER_HELPER_IMAGE`를 설정할 수 있습니다. 이미지에는 명시적인 SHA-256
 다이제스트가 유지되어야 합니다. 클라이언트는 다른 이미지나 Docker 엔드포인트를 제출할 수 없습니다.
 
@@ -81,7 +81,7 @@ HTTP 응답 헤더는 16 KiB로 제한하고 본문은 버립니다. 사용 가�
 문서화된 Node 런타임과 Sync 의존성을 설치한 체크아웃에서 제어된 픽스처 테스트를 실행하세요.
 
 ```sh
-npm --prefix sync run build
+npm run build
 node --test tests/sync/system-diagnostics.js
 ```
 

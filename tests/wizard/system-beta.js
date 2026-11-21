@@ -1,10 +1,10 @@
 'use strict';
 const assert = require('assert');
-const {environmentHash, validate, sha} = require('../../project-bootstrap/system-beta/binding');
-const {plan} = require('../../project-bootstrap/system-beta/bind');
-const {request} = require('../../project-bootstrap/system-beta/run');
-const {parse} = require('../../project-bootstrap/wizard-environments/helper');
-const state = require('../../project-bootstrap/wizard-environments/state');
+const {environmentHash, validate, sha} = require('../../dist/modules/project-lifecycle/system-beta-binding');
+const {plan} = require('../../dist/modules/project-lifecycle/system-beta-plan');
+const {request} = require('../../dist/modules/project-lifecycle/system-beta-session');
+const {parse} = require('../../dist/modules/project-lifecycle/environment-runtime');
+const state = require('../../dist/modules/project-lifecycle/state');
 const copy = value => JSON.parse(JSON.stringify(value));
 const operation = 'a'.repeat(48), sourceCommit = 'b'.repeat(40), wizardSourceTree = 'c'.repeat(40);
 const environment = {version: 1, phase: 'ready', managementMode: 'source-primary', operation,

@@ -1,5 +1,5 @@
 'use strict';
-const security = require('../../gitlab/security-release.json');
+const security = require('../../config/gitlab/security-release.json');
 const id = char => 'sha256:' + char.repeat(64);
 function publicationFixture() {
   const previous = {format:'system-accepted-release-v1',version:'1.1.3',tag:'v1.1.3',platform:'linux/amd64',

@@ -5,7 +5,7 @@
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
+`dist`, `node_modules`, `assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 환경에 맞는 전체 설치 경로를 선택하세요.
 

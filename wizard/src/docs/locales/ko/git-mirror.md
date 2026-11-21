@@ -82,14 +82,14 @@ git submodule update --init wizard
 자격 증명이 삽입되지 않은 인증된 복제 URL을 사용하세요. `git submodule
 sync` replaces a local override with `.gitmodules` 값으로 대체하므로 동기화가 필요하면 비공개 매핑을 다시
 적용하세요. System CI에서 `prepare:wizard-source`는 `GIT_SUBMODULE_STRATEGY: none`으로
-Runner의 자동 서브모듈 체크아웃을 비활성화합니다. 이어서 `gitlab/prepare-wizard-source.js`가
+Runner의 자동 서브모듈 체크아웃을 비활성화합니다. 이어서 `system-bootstrapper source-checkout`가
 소스 패키징 전에 구성된 비공개 선택자로 정확한 gitlink를 초기화하고 검증합니다. 이 준비 단계
 후에만 재정의를 적용하면 너무 늦습니다. 선택한 Wizard 저장소에 정확한 System gitlink가
 있는지 확인하세요. 개발과 테스트가 진행되기 위해 GitHub 읽기의 성공이 필요해서는 안 됩니다.
 
 ## 도우미 계약
 
-`node operations/dist/mirror/entry.js ci`는 `origin`이 의도한 기본 GitLab 프로젝트를 가리키는 체크아웃에서 실행됩니다. 먼저 고정 Node 런타임과 컴파일한 operations 패키지를 준비하세요. 공유 `MirrorModule`이 네이티브 Git/OpenSSH 도구를 통해 전송, 잠금, 정리를 담당합니다. 설정은 보호된 CI 작업에서 가져옵니다.
+`node dist/modules/mirror/entry.js ci`는 `origin`이 의도한 기본 GitLab 프로젝트를 가리키는 체크아웃에서 실행됩니다. 먼저 고정 Node 런타임과 컴파일한 operations 패키지를 준비하세요. 공유 `MirrorModule`이 네이티브 Git/OpenSSH 도구를 통해 전송, 잠금, 정리를 담당합니다. 설정은 보호된 CI 작업에서 가져옵니다.
 
 | 변수 | 필수 값 |
 | --- | --- |
@@ -158,7 +158,7 @@ System의 `build` 작업은 필수 런타임 검사 후 독립형 런타임 기�
 Registry에 `$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG`로 게시합니다. 완전한 후속 컨트롤러는
 후보 승인 작업이 같은 프로젝트의 `/successor` 저장소에 불변 다이제스트 및 승인 증거와 함께
 별도로 게시합니다. 완전한 이미지의 배포는
-[후속 세대 승격 안내](../bootstrapper/README.md#promoting-a-tested-successor-controller)를 따르세요.
+[후속 세대 승격 안내](BOOTSTRAPPER.md#promoting-a-tested-successor-controller)를 따르세요.
 어느 게시도 Docker Hub 게시 자격 증명을 요구하거나, 운영 환경 승격을 활성화하거나,
 자원을 많이 사용하는 System 후보 검사를 우회하지 않습니다. GitHub 미러링은 계속 독립적인
 명시적 선택 기능입니다.
@@ -175,7 +175,7 @@ Registry에 `$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG`로 게시합니다. 완전�
 Docker Runner가 필요하며, 불변 이미지를 같은 프로젝트의 Registry에 게시하고 정확히 그
 이미지를 검증합니다. 구성된 선택적 Review/Beta 작업도 같은 프로젝트를 사용합니다.
 운영 환경은 별도의 제어된 승격으로 유지됩니다. 기존 관리형 전달 프로젝트를 교체할 때는
-[소스 우선 채택 안내](../project-bootstrap/wizard-source-primary/README.md)를 따르세요.
+[소스 우선 채택 안내](../templates/project-bootstrap/wizard-source-primary/README.md)를 따르세요.
 라이브 의존성과 필수 복구 데이터를 마이그레이션할 때까지 이전 프로젝트를 삭제하지 마세요.
 
 별도 소스 및 전달 프로젝트를 유지하는 설치에서는 이 플래그를 설정하지 않아도 됩니다.
@@ -210,7 +210,7 @@ System 미러가 새로운 공개 재귀 체크아웃을 지원한다고 보고�
 커밋이 GitHub 미러에 있는지 확인하세요. 공개 미러의 지연은 내부 gitlink 작업이나 비공개
 전달을 차단하지 않습니다. 자동 System 병합이나 운영 환경 배포는 도입하지 않습니다.
 운영 환경은 운영자가 확인하는 명시적인
-[승격 작업](../project-bootstrap/wizard-production/README.md)으로 유지됩니다.
+[승격 작업](../templates/project-bootstrap/wizard-production/README.md)으로 유지됩니다.
 
 ### 하나의 System 릴리스로 Wizard 전달
 
@@ -236,7 +236,7 @@ Wizard 저장소의 허가된 게시 식별 정보를 사용하세요. System �
 적용되어야 합니다. 래퍼는 두 식별 정보를 분리해 유지하며 종료 시 비공개 사본과 SSH
 에이전트를 제거합니다.
 
-`gitlab/publish-wizard-source.js`는 보호된 System 기본 브랜치 푸시에서 정확한 gitlink를
+`system-bootstrapper wizard-source-publish`는 보호된 System 기본 브랜치 푸시에서 정확한 gitlink를
 읽고, 작업 토큰으로 같은 인스턴스의 정식 Wizard 소스에서 이를 얻어
 `system-release/<Wizard commit>`을 게시합니다. 원자적인 생성 전용 임대는 조상을 포함해
 기존 참조의 변경을 거부합니다. 재시도는 같은 커밋을 검증합니다. 도우미는 일반 System
@@ -246,7 +246,7 @@ Wizard 저장소의 허가된 게시 식별 정보를 사용하세요. System �
 
 같은 파이프라인의 `test-results/github/wizard-source.json` 기록은 소스, 대상, 작업 식별
 정보만 기록합니다. 명시적으로 선택하는
-[쌍 릴리스 업데이트 도구](../bootstrapper/README.md#deliberately-updating-the-accepted-controller-and-wizard-together)는
+[쌍 릴리스 업데이트 도구](BOOTSTRAPPER.md#deliberately-updating-the-accepted-controller-and-wizard-together)는
 이 성공한 게시 증거, 전체 승인된 System 파이프라인, 변경 없는 Docker Hub 이미지 쌍
 아티팩트를 요구합니다. 기본 컨트롤러 전용 모드는 원래 미러 정책을 유지합니다.
 운영 환경 승격은 계속 명시적이며, 소스 우선 Wizard 연결과 일반 기본 승격 규칙은 별도로

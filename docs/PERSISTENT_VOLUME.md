@@ -5,7 +5,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
+verified Node installation, `dist`, `node_modules` and `assets`
 available offline before maintenance.
 
 The platform has two storage roles:
@@ -135,7 +135,7 @@ remain empty. The file can be regenerated from configuration.
 Persist the full Certbot tree beneath `host/letsencrypt`: account keys,
 `archive`, `live`, renewal configuration and hooks. `live` symlinks alone are
 insufficient. Install Certbot separately, then run
-`sudo node bootstrapper/install-volume-host.js` from the selected checkout.
+`sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` from the selected checkout.
 The compatibility-named installer handles both live storage modes. Volume mode
 retains its fstab/Docker mount dependency; local mode adds no external-storage
 prerequisite. Neither mode adds a dependency on removable Seed media.
@@ -177,7 +177,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
+verified Node installation, `dist`, `node_modules` and `assets`
 available offline before maintenance.
 
 1. Stop writers cleanly before detaching storage. Retain the volume explicitly
@@ -185,7 +185,7 @@ available offline before maintenance.
 2. Provision a compatible Ubuntu host, attach the volume and mount its existing
    filesystem. Fetch the intended System revision and its recorded Wizard tree;
    initialize exact submodules only for a historical gitlink release. Install
-   Docker using `sudo node bootstrapper/install.js`; install Certbot separately.
+   Docker using `sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"`; install Certbot separately.
 3. Recreate `/etc/system-bootstrapper/persistence.env` with
    `PERSISTENCE_MODE=volume` and the retained mount/directory/UUID selectors.
    Check mount/UUID and saved configuration. Run the host integration described
@@ -194,8 +194,8 @@ available offline before maintenance.
    images from the intended source, pull public images at recorded versions or
    digests, and retain immutable private Wizard pins. Optional managed Review/Beta
    helpers require their own clean rebuild and explicit reprovisioning if their
-   prior local image is absent; see the [managed environment guide](../project-bootstrap/wizard-environments/README.md).
-5. Run `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` from that checkout. It checks storage, builds the
+   prior local image is absent; see the [managed environment guide](../templates/project-bootstrap/wizard-environments/README.md).
+5. Run `sudo system-bootstrapper start --checkout "$PWD"` from that checkout. It checks storage, builds the
    controller and starts services using retained configuration. Container IPs,
    networks and proxy configuration are regenerated. Change DNS if the host's
    address changed while preserving the configured domain names.
@@ -203,7 +203,7 @@ available offline before maintenance.
    renewal. Inspect every retained mount and named-volume device against the
    attached filesystem.
 
-An alternative archive-based path is `bootstrapper/recover-volume.js`. It requires
+An alternative archive-based path is `system-bootstrapper host-bootstrap recover-volume --checkout "$PWD"`. It requires
 operator-prepared `PERSISTENT_DIR/recovery/images.json`, the referenced gzip image
 archives with SHA-256 values, public image references and a retained selector file;
 these private recovery artifacts are not supplied by a source checkout. Set

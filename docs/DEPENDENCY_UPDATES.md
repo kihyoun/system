@@ -4,7 +4,7 @@ Renovate OSS runs as the scheduled `renovate:discover` GitLab job on the existin
 Docker runner pool. Its reviewed stable `44.222.5-full` image is pinned by digest
 in `.gitlab-ci.yml`; update it through review like other dependencies. There is no
 permanent bot service. Its [repository configuration](../renovate.json) and
-[self-hosted configuration](../gitlab/renovate/config.cjs) select only the
+[self-hosted configuration](../src/modules/renovate/configuration.ts) select only the
 operator-supplied System source project, including its embedded Wizard, never GitHub mirrors or
 project autodiscovery.
 
@@ -53,8 +53,8 @@ MRs and dashboard issues. Project membership limits that token's project access;
 it is not an administrator token.
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply
+system-bootstrapper renovate setup --config /secure/operator/renovate.json
+system-bootstrapper renovate setup --config /secure/operator/renovate.json --apply
 ```
 
 The first invocation validates private file handling without API mutations. The
@@ -70,14 +70,14 @@ Record the first-run branch/MR inventory before activating it. This uses the
 scoped bot token in private state; it does not write to GitLab:
 
 ```sh
-node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
+system-bootstrapper renovate verify --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json
 ```
 
 After reviewing the selected repository configuration, activate it:
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --enable
+system-bootstrapper renovate setup --config /secure/operator/renovate.json --apply --enable
 ```
 
 The command is repeatable. Keep its mode-0600 state file private: it contains the
@@ -100,7 +100,7 @@ verify the selected project dashboards, unchanged branch/MR inventories and that
 pipeline contained only the successful bot job:
 
 ```sh
-node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
+system-bootstrapper renovate verify --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json --verify
 ```
 
@@ -115,7 +115,7 @@ runtime-image/digest changes share a runtime batch. Major changes remain separat
 Npm manages manifests with their npm lockfiles; lockfile refresh requires approval
 too. Native Dockerfile, Compose and GitLab CI managers cover image references;
 narrowly scoped regex managers cover the `ARG IMAGE=node:...@sha256:...` pin
-in `system/Dockerfile`, the Runner registration Docker CLI default and the
+in `containers/controller/Dockerfile`, the Runner registration Docker CLI default and the
 current Wizard build/verify BuildKit driver pins. Grouping is per repository, not a cross-project transaction.
 The embedded Wizard npm manifests and lockfiles are discovered alongside Sync and
 the operations CLI. Maintainers combine approved updates and other agreed work in
@@ -137,7 +137,7 @@ Tokens expire after 90 days. Arrange an operator reminder before expiry; the set
 command rotates when fewer than 15 days remain, or explicitly:
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --rotate --enable
+system-bootstrapper renovate setup --config /secure/operator/renovate.json --apply --rotate --enable
 ```
 
 It saves the new token privately, updates the protected variable, then revokes
@@ -160,7 +160,7 @@ journal when possible. Otherwise an administrator must verify the intended bot
 user ID, configured private email and restricted account, then explicitly recover:
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json \
+system-bootstrapper renovate setup --config /secure/operator/renovate.json \
   --apply --recover-user-id 123 --rotate
 ```
 

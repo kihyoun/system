@@ -60,7 +60,7 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo node bootstrapper/install.js
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 [공개 릴리스 선택](../Prepare-Host.md#install-a-tested-public-release)에 따라
@@ -72,7 +72,7 @@ sudo node bootstrapper/install.js
 Ubuntu 24.04 [패키지는 이 인터페이스를 제공합니다](https://packages.ubuntu.com/noble/certbot).
 아래 호스트 통합은 `/usr/bin/certbot`과 `certbot.timer`를 호출하므로
 별도 Snap 설치 대신 배포판 패키지를 사용합니다.
-`bootstrapper/prepare-local.js`를 실행하지 마세요.
+`system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"`를 실행하지 마세요.
 공개 DNS와 신뢰할 수 있는 HTTPS 레지스트리가 로컬 hosts 파일과 비보안 레지스트리 변경을 대체합니다.
 
 ### 공개 2. 작업 저장소 선택 및 인증서 통합 설치
@@ -82,7 +82,7 @@ Ubuntu 24.04 [패키지는 이 인터페이스를 제공합니다](https://packa
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
+`dist`, `node_modules`, `assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 이 새 설치는 서버 시스템 디스크에 운영 데이터를 저장합니다.
 인증서 통합과 수명 주기 도구가 같은 작업 디렉터리를 공유하도록 명시적인 선택자를 만드세요.
@@ -95,11 +95,11 @@ PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-sudo node bootstrapper/install-volume-host.js
+sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"
 sudo systemctl stop certbot.timer
 ```
 
-호환성을 위한 이름과 달리 `install-volume-host.js`는 로컬 저장소도 지원합니다.
+`system-bootstrapper host-bootstrap install-volume-host` 명령은 로컬 저장소도 지원합니다.
 작업 저장소를 검증하고 `/etc/letsencrypt`를
 `PERSISTENT_DIR/host/letsencrypt`에 연결하며 `system-certbot` 잠금 래퍼와 인증서 배포 훅을 설치합니다.
 외부 Seed 대상을 Docker 또는 갱신의 의존성으로 추가하지 않습니다.
@@ -154,7 +154,7 @@ TCP 443도 아직 차단해 두세요. 서버의 프로젝트 디렉터리에서
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 sudo docker ps
@@ -212,7 +212,7 @@ ssh -N -o ExitOnForwardFailure=yes \
 `*_HOST` 필드에는 스킴 없는 호스트 이름을 사용하세요.
 생성되는 GitLab 및 레지스트리 외부 URL은 `https://gitlab.example.com`과
 `https://registry.example.com`이어야 하며 `:5050`을 넣으면 안 됩니다.
-과거의 `system/.docker.env.example`에는 `/live/...` 경로가 있으며 `/ssl` 마운트 접두사가 없습니다.
+과거의 `config/system/.docker.env.example`에는 `/live/...` 경로가 있으며 `/ssl` 마운트 접두사가 없습니다.
 HTTP 모드에서는 비활성이지만 HTTPS를 활성화할 때 그대로 복사하면 안 됩니다.
 **일반 → 웹사이트**를 검토하고 사이트 공개 전에 운영자 예시를 바꾸세요.
 
@@ -323,7 +323,7 @@ systemctl list-timers certbot.timer
 ```
 
 `reconfigure`는 CA 스테이징 서비스로 검사한 뒤 성공한 웹 루트 방식을 다음 갱신용으로 저장합니다.
-`install-volume-host.js`는 복구 시 기존 **webroot** 경로를 다시 연결하지만,
+`system-bootstrapper host-bootstrap install-volume-host`는 복구 시 기존 **webroot** 경로를 다시 연결하지만,
 standalone 계보를 웹 루트 갱신으로 변환하지는 않습니다.
 재설정 또는 시험 실행이 실패하면 설정을 완료하지 마세요.
 잠금이 활성/중단된 갱신이나 Harvest를 보고하면 실행 중일 수 있는 잠금을 삭제하는 대신 소유 작업을 해결하세요.
@@ -496,8 +496,8 @@ export GITLAB_REGISTRY_BIND='127.0.0.1:5050'
 호스트에서 승인된 컨트롤러 내부의 기존 진입점을 실행하세요.
 
 ```bash
-sudo docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js gitlab-start /system
-sudo docker exec system_bootstrapper_1 node /system/operations/dist/projects-routing/entry.js routing reload /system /templates
+sudo docker exec system_bootstrapper_1 system-bootstrapper lifecycle gitlab-start /system
+sudo docker exec system_bootstrapper_1 system-bootstrapper projects-routing routing reload /system /templates
 ```
 
 GitLab 컨테이너 IP가 바뀌었으면 NGINX 다시 불러오기가 HTTPS/레지스트리 업스트림을 재생성합니다.
@@ -520,5 +520,5 @@ git ls-remote git@gitlab.example.com:namespace/project.git HEAD
 ```
 
 이는 저장소 읽기 접근을 검증하며 푸시 권한까지 검증하지는 않습니다.
-[네이티브 실행 환경 검증기](../bootstrapper/README.md#reviewed-replacement-host-initialization)는
+[네이티브 실행 환경 검증기](BOOTSTRAPPER.md#reviewed-replacement-host-initialization)는
 다른 플랫폼 애플리케이션/저장소 계약을 확인하며 이 SSH 및 방화벽 검사를 대체하지 않습니다.

@@ -2,8 +2,8 @@
 const assert = require('assert');
 const fs = require('fs');
 const crypto = require('crypto');
-const logo = require('../../sync/dist/Helper').default.textLogo;
-const {CanonicalSession} = require('../../operations/dist/project-lifecycle/canonical-session');
+const logo = require('../../dist/common/configuration-signature').default.textLogo;
+const {CanonicalSession} = require('../../dist/modules/project-lifecycle/canonical-session');
 const file = '/system/system/.projects.env/.wizard.env', lock = file + '.environments.lock';
 const prefix = '# BOOTSTRAPPER_PROJECT=';
 const operation = 'a'.repeat(48), token = 'b'.repeat(48);
@@ -28,7 +28,7 @@ const mockfs = {
 const session = new CanonicalSession({files: mockfs, lookup: async () => []});
 const run = session.run.bind(session);
 (async () => {
-  const invalid = require('child_process').spawnSync(process.execPath, [require.resolve('../../project-bootstrap/wizard-environments/canonical')], {input: '{"action":"lock","payload":{}}', encoding: 'utf8'});
+  const invalid = require('child_process').spawnSync(process.execPath, [require.resolve('../../dist/cli/main'), 'project-environments-canonical'], {input: '{"action":"lock","payload":{}}', encoding: 'utf8'});
   assert.equal(invalid.status, 1);
   assert.deepEqual(JSON.parse(invalid.stdout), {ok: false, message: 'Canonical Wizard ownership, reservation, lock, DNS, or receipt check failed.'});
 

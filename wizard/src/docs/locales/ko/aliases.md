@@ -37,7 +37,7 @@ Wizard에서 현재 저장된 구성을 가져오고 비공개 ZIP 백업을 다
 
 ```sh
 private_config_dir="$HOME/private-bootstrapper-config"
-node nginx/wizard-aliases.js configure \
+system-bootstrapper projects-routing wizard-aliases configure \
   --config "$private_config_dir/.docker.env" \
   --projects "$private_config_dir/.projects.env" \
   --alias example.com \
@@ -96,7 +96,7 @@ Seed는 인증서와 서비스 상태를 유지하며, 별도 구성이 별칭 �
 일반적인 구성 서비스 검사에 더해, 운영자가 제공한 별칭 원본 주소로 기본 검증기를 실행하세요.
 
 ```sh
-sudo node bootstrapper/verify-runtime.js check \
+sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --baseline "$private_config_dir/pre-start-baseline.json" \
   --output "$private_config_dir/runtime-check.json" \

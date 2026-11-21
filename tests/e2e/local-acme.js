@@ -86,6 +86,7 @@ class LocalAcme {
       await require('./application-routing').verify(...args);
     });
   }
+
   async start(){
     const a=this.authority,d=this.dns,i=this.initializer;
     await this.original.stage('acme-independent-authority-start',async()=>{
@@ -123,6 +124,7 @@ class LocalAcme {
       this.ready=true;
     });
   }
+
   async attach(candidate){
     if(!this.ready)throw Error('acme-authority-not-started');
     const inspected=JSON.parse(await this.authority.call(['container','inspect',candidate.daemon]))[0];
@@ -134,6 +136,7 @@ class LocalAcme {
     await candidate.wait(async()=>{const r=await request(candidate,DIRECTORY,{trust:this.trust,address:this.caAddress});return r.status===200;},30000);
     return ip;
   }
+
   async prepareClient(candidate,base){
     const p=basePaths(base),item=this.images.certbot;
     await candidate.call(['exec','-i',candidate.daemon,'docker','load','--quiet'],{inputFile:item.archive,timeout:120000});
@@ -148,6 +151,7 @@ class LocalAcme {
       "require('node:fs').writeFileSync('/fixture-tools/pebble.minica.pem',require('node:fs').readFileSync(0),{mode:0o600});"],{input:this.trust});
     return p;
   }
+
   async certbot(candidate,base,args){
     const p=basePaths(base);
     await candidate.inner(['run','--rm','--pull','never','-i','--name','acme-host-integration','--network','none','--memory','256m','--cpus','0.5','--entrypoint','node',
@@ -155,6 +159,7 @@ class LocalAcme {
       'system-candidate:under-test','/system/tests/e2e/acme-host-runtime.js'],
       {input:JSON.stringify({base,caAddress:this.caAddress,certbotReference:CLIENT_ALIAS,args}),timeout:120000});
   }
+
   async identity(candidate){
     return controller(candidate,function(){
       const fs=require('fs'),path=require('path'),crypto=require('crypto');
@@ -165,6 +170,7 @@ class LocalAcme {
         serial:new crypto.X509Certificate(cert).serialNumber,certificateHash:crypto.createHash('sha256').update(cert).digest('hex')};
     },{});
   }
+
   async issue(candidate,options={}){
     const domains=issuanceDomains(options.domains);
     return candidate.stage('acme-initial-webroot-issuance',async()=>{
@@ -173,7 +179,7 @@ class LocalAcme {
       // Real TLS routing is active using the short-lived bootstrap certificate;
       // Certbot's HTTP-01 webroot will replace it through the actual deploy hook.
       await candidate.stage('acme-initial-proxy-reload',()=>
-        candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates']));
+        candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates']));
       await candidate.stage('acme-initial-certbot-issuance',()=>this.certbot(candidate,'/candidate-data/platform',
         ['certonly','--server',DIRECTORY,'--non-interactive','--agree-tos','--register-unsafely-without-email',
         '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture',...domains.flatMap(host=>['-d',host])]));
@@ -185,6 +191,7 @@ class LocalAcme {
       return candidate.stage('acme-initial-issued-identity',()=>this.identity(candidate));
     });
   }
+
   async renew(candidate,expected){
     await candidate.stage('acme-restored-account-and-real-renewal',async()=>{
       const ip=await this.attach(candidate);await this.prepareClient(candidate,'/recovered-data/platform');
@@ -211,6 +218,7 @@ class LocalAcme {
       if(candidate.evidence?.recovery)candidate.evidence.recovery.acmeRenewalVerified=true;
     });
   }
+
   cleanup(){
     // Cleanup may run after cancellation/deadline. Reuse the guarded synchronous
     // cleanup path, and prove every daemon identity before detaching a bridge.

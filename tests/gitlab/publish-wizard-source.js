@@ -4,7 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {spawnSync} = require('child_process');
-const {publish, isolatedEnvironment} = require('../../gitlab/publish-wizard-source');
+const {WizardSourcePublicationService,isolatedEnvironment}=require('../../dist/modules/mirror/wizard-source-publication.service');
+const {NativeMirrorPort}=require('../../dist/modules/mirror/ports');
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-source-publication-test-'));
 const base = {...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1',
   GIT_AUTHOR_NAME: 'Fixture', GIT_COMMITTER_NAME: 'Fixture',
@@ -53,7 +54,7 @@ function fixture() {
       {cwd: system, env: isolatedEnvironment(base), encoding: 'utf8'});
     return result.status;
   }
-  const run = (extra = {}, selectedTransport = transport) => publish({...env, ...extra}, system, undefined, selectedTransport);
+  const run = (extra = {}, selectedTransport = transport) => {const native=new NativeMirrorPort();return new WizardSourcePublicationService({git:(args,context)=>native.git(args,context),command:(...args)=>native.command(...args),transport:async(args,context)=>await selectedTransport(args,context.env)===0}).publish({env:{...env,...extra},cwd:system});};
   const tip = ref => git(root, '--git-dir=' + publicWizard, 'rev-parse', ref);
   return {root, system, primary, wizard, publicWizard, env, old, sha, calls, run, transport, tip};
 }

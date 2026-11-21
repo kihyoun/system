@@ -10,15 +10,15 @@ or starts a platform automatically.
 From a clean committed checkout, with Node, Git, tar and Docker available:
 
 ```sh
-node project-bootstrap/wizard-source/package.js
-node tests/prepare-context.js
+system-bootstrapper source-prepare
+system-bootstrapper ci prepare-context "$PWD"
 docker build -f tests/Dockerfile -t system-component-tests - < .test-context/context.tar
 docker run --rm --network none system-component-tests all
 docker run --rm --network none system-component-tests sync
 ```
 
 Do not mount the Docker socket, private configuration, host network or platform
-volumes into this child. Prepare the pinned Node runtime and operations package before source packaging;
+volumes into this child. Prepare the pinned Node runtime and root backend package before source packaging;
 the initial Quickstart is the only pre-Node shell entry. The context contains only allowlisted blobs from the current committed
 Git tree, including the ordinary `wizard/` tree for `system-monorepo-v1`.
 Historical gitlink sources additionally require the validated separate Wizard
@@ -30,8 +30,8 @@ intended code before packaging; no fallback sends the entire checkout.
 The image uses digest-pinned Node 24.22.0/npm 11.19.1 on Debian Bookworm/glibc,
 with Python for independent ZIP/TOML fixture oracles and shell/native utilities
 for process and historical-format checks. No Ruby test runtime is installed.
-It installs the committed Sync lockfile and runs `npm run build`, whose prebuild
-checks ESLint without autofix. Runtime and shared-library versions are printed
+It installs the committed root lockfile and builds the shared NestJS application.
+The fast checks run ESLint and Prettier without autofix. Runtime and shared-library versions are printed
 during construction. These fixture dependencies do not implement platform operations.
 
 Candidate image preparation also runs
@@ -92,7 +92,7 @@ fixture's manually replaced controller and final reset using one bounded contain
 | `shared/` | Runner/context contracts, cleanup/failure propagation, private-daemon lifecycle, payload-only recovery and local ACME fixtures |
 | `performance/resources/` | Offline contracts for shared Nest resource collection, Windows/WSL sampling and explicitly leased native benchmarks |
 
-Cold-copy/restore fault cases are consolidated in `operations/tests/storage-copy.test.cjs`,
+Cold-copy/restore fault cases are consolidated in `tests/operations/storage-copy.test.cjs`,
 run by the existing operations-runtime check. They use real rsync, native find/runit
 command fixtures and subprocess timeouts; Docker/GitLab remain controlled transports.
 
@@ -145,7 +145,7 @@ conditional and Production promotion remains manual.
 
 `check:documentation` uses the platform's existing trusted `docker` runner pool;
 no separate documentation runner or coordinator registration is required. Its
-committed `node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR"` parent uses that runner's Docker authority
+committed `node dist/modules/ci/entry.js documentation "$CI_PROJECT_DIR"` parent uses that runner's Docker authority
 to launch a short-lived, digest-pinned Node child as user 1000 with no network,
 host socket, bind mounts, extra capabilities or inherited CI credentials. This
 isolates the actual checker, not the trusted parent: arbitrary unreviewed code
@@ -168,7 +168,7 @@ Reproduce the selection and documentation regressions with the pinned operations
 Node and Git, without Docker or additional lint packages:
 
 ```sh
-npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+npm ci --ignore-scripts --no-audit --no-fund
 node tests/gitlab/ci-selection.js
 node tests/gitlab/check-documentation.js
 ```
@@ -186,7 +186,7 @@ stale artifacts fail before Docker execution.
 
 Eight component matrix jobs run before publishing. Each is a trusted parent
 using the pinned Docker CLI, `services: []` and the existing `docker` runner tag.
-It calls `node operations/dist/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"`, builds from the verified stdin
+It calls `node dist/modules/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"`, builds from the verified stdin
 archive, then runs a socket-free/network-disabled child with no inherited CI
 credentials. Reports leave through `docker cp`, since a job's checkout path
 need not exist on the Docker host.
@@ -198,11 +198,11 @@ is provisioned by the tests.
 
 `prepare:wizard-source` also checks the bundled Docs against the complete public
 guide sources before packaging. To update the reader, edit the original guides,
-build the pinned operations package, run `node docs/export-wizard-docs.js`, and commit the generated Wizard catalog
-in the same System commit. `node docs/check-wizard-docs.js` checks source drift and
+build the pinned root backend package, run `system-bootstrapper docs export`, and commit the generated Wizard catalog
+in the same System commit. `system-bootstrapper docs check` checks source drift and
 full-text preservation; the existing `node tests/wizard/docs-source.js` check also
 exercises the shared native exporter, chapter/link coverage and offline images.
-`node docs/export-wizard-docs.js --check` compares the complete generated catalog.
+`system-bootstrapper docs export --check` compares the complete generated catalog.
 
 The required `test:wizard-browser` job consumes a separately checksummed context
 from that same committed Wizard source tree; historical gitlink inputs retain
@@ -226,7 +226,7 @@ once the daemon is reachable. Never replace this with global Docker pruning.
 
 ## Full-System and platform gates
 
-`test:candidate-image` builds `system/Dockerfile` from committed runtime blobs
+`test:candidate-image` builds `containers/controller/Dockerfile` from committed runtime blobs
 and the validated Wizard snapshot, using `.candidate-context/`. Both context
 packagers support GNU and BusyBox tar. The complete image installs pinned Sync
 dependencies and compiles Sync. A socket-free, network-disabled child checks
@@ -237,7 +237,7 @@ Reproduce packaging and construction after preparing the Wizard snapshot:
 
 ```sh
 node tests/prepare-candidate.js
-docker build -f system/Dockerfile -t system-candidate:local - < .candidate-context/context.tar
+docker build -f containers/controller/Dockerfile -t system-candidate:local - < .candidate-context/context.tar
 ```
 
 `test:platform-candidate` then runs a separately authorized privileged disposable
@@ -273,7 +273,7 @@ The scan analyzes canonical authored sources rather than these three generated
 copies of the same portable runtime:
 
 ```text
-project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs
+templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs
 wizard/.system-bootstrapper/build-v2/runtime/project-ci.cjs
 wizard/.gitlab/runtime/project-ci.cjs
 ```
@@ -300,7 +300,7 @@ project's MIT license does not grant a CodeQL license, and this job purchases no
 subscription. Runner compute and storage remain the operator's responsibility.
 
 `node tests/prepare-codeql.js` packages committed inputs after the ordinary Wizard
-source preparation. `node operations/dist/ci/entry.js codeql-parent "$CI_PROJECT_DIR"` runs that verified context on the
+source preparation. `node dist/modules/ci/entry.js codeql-parent "$CI_PROJECT_DIR"` runs that verified context on the
 selected trusted Docker runner with its ordinary CI identity variables. The
 child is bounded to 6 GiB RAM and two CPUs; image preparation and scanning each
 have a 15-minute ceiling. This static job does not start a disposable platform.
@@ -332,13 +332,13 @@ authentication-failed GET once; mutation POSTs are never blindly replayed.
 `wizard/acceptance-driver.js` verifies those polling/refresh/deadline contracts
 with offline transports. Build acceptance alone does not prove MR failure,
 Review/Beta, Production promotion or rollback. Use the corresponding
-[environment](../project-bootstrap/wizard-environments/README.md) and
-[Production](../project-bootstrap/wizard-production/README.md) procedures for
+[environment](../templates/project-bootstrap/wizard-environments/README.md) and
+[Production](../templates/project-bootstrap/wizard-production/README.md) procedures for
 those explicit operations.
 
 Host release regression coverage invokes compiled shared Nest services through
 `tests/bootstrapper/paired-native-fixture.cjs` and the existing
-`operations/tests/host-*.test.cjs` suites. Docker/Git and readiness ports are
+`tests/operations/host-*.test.cjs` suites. Docker/Git and readiness ports are
 controlled fixtures; real filesystem, Git, process ownership and advisory locks
 remain exercised locally. Fault matrices cover source/image authority,
 pre-mutation refusals, interrupted ownership, configuration drift, cold-checkpoint
@@ -347,7 +347,7 @@ and recovery failures without building another platform for each refusal.
 `tests/bootstrapper/public-controller-update.cjs` and `public-upgrade.cjs` cover
 paired update, plan/apply/recovery and API-independent rollback through the shared
 services. The complete quiescent-controller matrix lives in
-`operations/tests/host-runtime-inspection.test.cjs`. Public upgrade fixtures select
+`tests/operations/host-runtime-inspection.test.cjs`. Public upgrade fixtures select
 the matching release checkout version, including historical publications; they
 never infer database-migration proof from a newer checkout.
 

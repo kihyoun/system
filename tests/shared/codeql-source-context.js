@@ -5,8 +5,13 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
-const {pack} = require('../../project-bootstrap/wizard-source/package');
-const {prepare} = require('../prepare-codeql');
+const {pack} = require('../../dist/modules/source-preparation/wizard-source.service');
+const {CommittedContextService} = require('../../dist/modules/ci/committed-context.service');
+const {NativeContextProcess} = require('../../dist/modules/ci/context-process');
+const {WizardSourceService} = require('../../dist/modules/source-preparation/wizard-source.service');
+const committedContext = new CommittedContextService(new NativeContextProcess(), new WizardSourceService());
+const {CodeqlContextService} = require('../../dist/modules/ci/codeql-context.service');
+const prepare = root => new CodeqlContextService(committedContext).prepare(root);
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codeql-shared-source-'));
 const source = path.resolve(__dirname, '../..');
 const selectors = {SYSTEM_SOURCE_GIT_DIR: process.env.SYSTEM_SOURCE_GIT_DIR, WIZARD_SOURCE_GIT_DIR: process.env.WIZARD_SOURCE_GIT_DIR};
@@ -15,9 +20,9 @@ const write = (name, value) => { const file = path.join(root, name); fs.mkdirSyn
 try {
   for (const key of Object.keys(selectors)) delete process.env[key];
   git('init'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
-  write('operations/src/ci/codeql.service.ts', 'public scanner service fixture\n');
+  write('src/modules/ci/codeql.service.ts', 'public scanner service fixture\n');
   for (const name of ['Dockerfile', 'check-sarif.js']) write('tests/codeql/' + name, 'scanner fixture\n');
-  write('sync/src/index.ts', 'export const role = "sync";\n');
+  write('src/api/index.ts', 'export const role = "sync";\n');
   write('wizard/package.json', '{}\n');
   write('wizard/.gitlab-ci.yml', 'stages: [test]\n');
   write('wizard/src/index.tsx', 'export const role = "wizard";\n');
@@ -28,7 +33,7 @@ try {
   git('add', '.'); git('update-index', '--chmod=+x', 'wizard/start.sh'); git('commit', '-qm', 'Shared source');
   const revision = git('rev-parse', 'HEAD'), tree = git('rev-parse', 'HEAD:wizard');
   const snapshot = pack(root); assert.equal(snapshot.version, 2);
-  write('project-bootstrap/wizard-source/snapshot.json', JSON.stringify(snapshot));
+  write('assets/wizard-source/snapshot.json', JSON.stringify(snapshot));
   write('wizard/src/index.tsx', 'dirty-secret'); write('wizard/credentials.json', 'untracked-secret');
   const result = prepare(root);
   assert.equal(result.sourceLayout, 'system-monorepo-v1');
@@ -36,7 +41,7 @@ try {
   assert.equal(result.wizardRevision, undefined);
   assert.deepEqual(result.excludedGenerated, [], 'Older contexts without the portable inventory retain every source input');
   assert.equal(new Set(result.files).size, result.files.length);
-  assert(result.files.includes('sync/src/index.ts'));
+  assert(result.files.includes('src/api/index.ts'));
   assert(result.files.includes('wizard/src/index.tsx'));
   assert(result.files.includes('wizard/.system-bootstrapper/build-v1/smoke/check.js'));
   assert(!result.files.some(file => /wizard\/(wizard|sync|tests)\//.test(file)));
@@ -44,11 +49,11 @@ try {
   const archive = path.join(root, '.codeql-context/context.tar');
   assert.equal(execFileSync('tar', ['-xOf', archive, 'source/wizard/src/index.tsx'], {encoding: 'utf8'}), 'export const role = "wizard";\n');
   assert.match(execFileSync('tar', ['-tvf', archive, 'source/wizard/start.sh'], {encoding: 'utf8'}), /^-rwxr[-w]xr-x/);
-  write('project-bootstrap/wizard-source/snapshot.json', JSON.stringify({...snapshot, wizardSourceTree: '0'.repeat(40)}));
+  write('assets/wizard-source/snapshot.json', JSON.stringify({...snapshot, wizardSourceTree: '0'.repeat(40)}));
   assert.throws(() => prepare(root), /manifest hash|committed source/);
-  write('project-bootstrap/wizard-source/snapshot.json', JSON.stringify(snapshot));
+  write('assets/wizard-source/snapshot.json', JSON.stringify(snapshot));
 
-  const runtimePaths = ['project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs',
+  const runtimePaths = ['templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs',
     'wizard/.gitlab/runtime/project-ci.cjs', 'wizard/.system-bootstrapper/build-v2/runtime/project-ci.cjs'];
   const licensePaths = runtimePaths.map(name => path.posix.join(path.posix.dirname(name), 'LICENSES.txt'));
   const producerPath = 'wizard/.gitlab/producer-v2.json';
@@ -62,15 +67,15 @@ try {
   const restore = name => write(name, actual.get(name));
   const commit = (message, names) => {
     git('add', '-A', '--', ...names); git('commit', '-qm', message);
-    write('project-bootstrap/wizard-source/snapshot.json', JSON.stringify(pack(root)));
+    write('assets/wizard-source/snapshot.json', JSON.stringify(pack(root)));
   };
   restore(runtimePaths[1]);
   commit('Incomplete generated inventory', [runtimePaths[1]]);
   assert.throws(() => prepare(root), /generated runtime inventory is incomplete/);
   for (const name of actual.keys()) restore(name);
   const fourth = 'wizard/.system-bootstrapper/build-v3/runtime/project-ci.cjs';
-  const historical = 'project-bootstrap/wizard-build/typed-v5/runtime/project-ci.cjs';
-  const authored = 'operations/src/project-ci/portable-entry.ts';
+  const historical = 'templates/project-bootstrap/wizard-build/typed-v5/runtime/project-ci.cjs';
+  const authored = 'src/modules/project-ci/portable-entry.ts';
   write(fourth, actual.get(runtimePaths[0])); write(historical, actual.get(runtimePaths[0]));
   write(authored, 'export const bootstrap = true;\n');
   commit('Complete generated inventory and other public sources', [...actual.keys(), fourth, historical, authored]);
@@ -114,11 +119,11 @@ try {
   const runtimeBlob = git('rev-parse', 'HEAD:' + runtimePaths[0]);
   git('update-index', '--cacheinfo', '120000,' + runtimeBlob + ',' + runtimePaths[0]);
   git('commit', '-qm', 'Reject a generated artifact link');
-  write('project-bootstrap/wizard-source/snapshot.json', JSON.stringify(pack(root)));
+  write('assets/wizard-source/snapshot.json', JSON.stringify(pack(root)));
   assert.throws(() => prepare(root), /links and nested submodules/);
   git('update-index', '--cacheinfo', '100644,' + runtimeBlob + ',' + runtimePaths[0]);
   git('commit', '-qm', 'Restore regular generated artifact');
-  write('project-bootstrap/wizard-source/snapshot.json', JSON.stringify(pack(root)));
+  write('assets/wizard-source/snapshot.json', JSON.stringify(pack(root)));
   git('update-index', '--add', '--cacheinfo', '120000,' + git('hash-object', 'wizard/package.json') + ',wizard/unsafe-link');
   git('commit', '-qm', 'Unsafe source link');
   assert.throws(() => prepare(root), /links and nested submodules/);

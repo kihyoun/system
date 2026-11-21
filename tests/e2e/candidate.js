@@ -71,7 +71,7 @@ async function main() {
     if(!stat.isFile() || stat.isSymbolicLink()) throw new Error('regular-image-archives-required');
   }
   // Only the tracked public example is accepted, never a private workstation config.
-  spec.example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+  spec.example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
   const reportDirectory=instance=>path.join(__dirname,'../../test-results/e2e',instance.id);
   const candidate=new Candidate(spec,{checkpoint:instance=>instance.report(reportDirectory(instance))});
   candidate.report(reportDirectory(candidate));

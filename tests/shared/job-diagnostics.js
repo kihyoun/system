@@ -1,2 +1,2 @@
 'use strict';
-module.exports=require('../../gitlab/job-diagnostics');
+module.exports=require('../../dist/modules/release/job-diagnostics');

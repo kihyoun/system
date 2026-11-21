@@ -38,9 +38,13 @@ function dependencies(first,input,options={}) {
   const events=first.events;
   class FakeCandidate {
     constructor(spec){this.spec=spec;this.id='b'.repeat(24);FakeCandidate.instance=this;events.push('new-host-created');}
+
     report(){events.push('new-host-receipt');}
+
     async start(){assert(first.removed,'old daemon must be removed before fresh daemon startup');events.push('new-host-started');if(options.failStart)throw Error('new-start-failed');}
+
     async platform(){events.push('new-host-ci-registry');if(options.cancelDuringPlatform){first.canceled=true;assert.equal(this.canceled,true);throw Error('canceled');}}
+
     cleanup(){events.push('new-host-cleanup');return !options.failCleanup;}
   }
   return {Candidate:FakeCandidate,capture:async()=>{events.push('backups-captured');return input;},
@@ -123,7 +127,7 @@ test('bootstrap uses only declared binary streams and restores before normal con
   const uploads=calls.filter(call=>call.options?.inputFile);
   assert.deepEqual(uploads.map(call=>call.options.inputFile),[input.configArchive,input.seedArchive,input.configArchive,input.configArchive]);
   assert(!calls.some(call=>call.options?.input && Buffer.isBuffer(call.options.input)),'archive bytes never buffered into JSON input');
-  const seed=calls.findIndex(call=>call.args.includes('/system/operations/dist/storage/entry.js')&&call.args.includes('restore'));
+  const seed=calls.findIndex(call=>call.args.includes('/system/dist/modules/storage/entry.js')&&call.args.includes('restore'));
   const normalCreate=calls.findIndex(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint'));
   assert(seed>=0&&normalCreate>seed,'restore completes before normal controller creation');
   assert(calls[seed].args.includes('SYSTEM_SEED_CONFIGURATION_BACKUP=/recovery-inputs/bootstrapper.zip'),
@@ -156,7 +160,7 @@ test('bootstrap uses only declared binary streams and restores before normal con
 test('native Seed restore records exact public failures through the Docker boundary and redacts other output',async t=>{
   const {Candidate}=require('./disposable-candidate');
   const input=fixture(t),bin=path.join(input.directory,'bin');fs.mkdirSync(bin);
-  const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+  const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
   const hash='a'.repeat(64),driver=new Candidate({example,daemonImage:'docker:29-dind@sha256:'+hash,
     images:Object.fromEntries(['candidate','wizard','gitlab','runner','nginx'].map(role=>[role,{id:'sha256:'+hash,archive:path.join(input.directory,role+'.tar')}]))});
   const previousPath=process.env.PATH;
@@ -171,7 +175,7 @@ test('native Seed restore records exact public failures through the Docker bound
       const stages=[],events=[];
       const candidate={spec:{restore:input},daemon:'owned-private-daemon',results:stages,now:()=>0,checkpoint:()=>{},stage:Candidate.prototype.stage,
         call:async()=>'',inner:async(args,options)=>{
-          if(args.includes('/system/operations/dist/storage/entry.js')&&args.includes('restore'))return driver.exec(['exec'],options);
+          if(args.includes('/system/dist/modules/storage/entry.js')&&args.includes('restore'))return driver.exec(['exec'],options);
           return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'systembootstrapper/wizard':'';
         }};
       await assert.rejects(()=>recovery.bootstrapRestore(candidate,{storage:{...storageFixture,detach:async()=>events.push('detached')}}),error=>{
@@ -302,7 +306,7 @@ test('original and restored alias checks rerender/reload and restart only the pr
     }});
     assert.deepEqual(events,[
       'recovery-'+phase+'-alias-routing','verified','recovery-'+phase+'-alias-reload',
-      ['exec','-w','/system/nginx','system_bootstrapper_1','node','/system/operations/dist/projects-routing/entry.js','routing','reload','/system','/templates'],'verified',
+      ['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates'],'verified',
       'recovery-'+phase+'-alias-restart',['restart','system_web_1'],'verified'
     ]);
   }
@@ -426,8 +430,11 @@ test('an independent ACME authority survives the host switch and is removed afte
   const deps=dependencies(first,input);
   deps.LocalAcme=class{
     constructor(owner){assert.equal(owner,first);}
+
     async start(){first.events.push('authority-start');}
+
     async renew(second,expected){assert.equal(expected,input.expected.acme);first.events.push('actual-renewal-proof');second.acmeRenewalVerified=true;}
+
     cleanup(){first.events.push('authority-cleanup');return true;}
   };
   await recovery.run(first,()=>'/unused',deps);
@@ -441,6 +448,7 @@ test('authority startup failure cleans the original owned host before removing t
   const deps=dependencies(first,input);
   deps.LocalAcme=class{
     async start(){throw Error('authority-start-failed');}
+
     cleanup(){first.events.push('authority-cleanup');return true;}
   };
   await assert.rejects(()=>recovery.run(first,()=>'/unused',deps),/authority-start-failed/);
@@ -455,7 +463,7 @@ test('failed restored-host cleanup retains authority dependencies and private ar
   assert(!first.events.includes('authority-cleanup'));assert(fs.existsSync(input.configArchive));
 });
 test('Fetch after ACME activation uses authenticated CA-verified HTTPS for all configuration requests',async()=>{
-  const requests=[],logo=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184);
+  const requests=[],logo=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8').slice(0,1184);
   const candidate={secrets:{user:'synthetic-user',password:'synthetic-password'},request:async()=>{throw Error('unsafe HTTP request');},inner:async(args,options)=>{
     if(args[0]==='inspect')return JSON.stringify({bridge:{Gateway:'127.0.0.1'}});
     const input=JSON.parse(options.input);requests.push(input);assert.equal(input.host,'sync.candidate.test');assert.equal(input.certificate,'/ssl/fixture-ca.pem');
@@ -657,7 +665,7 @@ function restoredConfigurationFixture(changes={}) {
   const {Candidate}=require('./disposable-candidate');
   let time=0;
   const stages=[],requests=[];
-  const config=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184)+
+  const config=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8').slice(0,1184)+
     "export SEED_DIR='"+recovery.SEED+"'\nexport RECOVERY_RUNTIME_PROOF=\"literal=one=two \\$HOME\"\n";
   const input={expected:{certificateHash:'a'.repeat(64),accountIdentity:'test-account'}};
   const candidate={spec:{readinessMilliseconds:5000},secrets:{user:'restored-user',password:'restored-password'},
@@ -788,17 +796,17 @@ test('cold Seed capture journals runner stop, actual Harvest, completed manifest
 test('the fresh readonly manifest helper preserves the harvested image check without inheriting controller environment',async t=>{
   const f=coldSeedFixture(t),seed=path.join(f.input.directory,'seed'),snapshot=path.join(seed,'snapshots/completed');
   for(const directory of ['srv','ssl','letsencrypt'])fs.mkdirSync(path.join(snapshot,directory),{recursive:true});
-  const manifest=require('../../system/seed-manifest').create(snapshot);
+  const manifest=require('../../dist/modules/storage/manifest').create(snapshot);
   manifest.gitlabImage='candidate-gitlab:under-test';
   fs.writeFileSync(path.join(snapshot,'manifest.json'),JSON.stringify(manifest));
   fs.symlinkSync('snapshots/completed',path.join(seed,'current'));
   const env={...process.env};delete env.GITLAB_IMAGE;
   const execute=environment=>require('child_process').spawnSync(process.execPath,
-    [path.join(__dirname,'../../system/seed-manifest.js'),'current',seed],{env:environment,encoding:'utf8'});
+    [path.join(__dirname,'../../dist/modules/storage/manifest-entry.js'),'current',seed],{env:environment,encoding:'utf8'});
   assert.notEqual(execute(env).status,0,'a fresh helper really refuses an undeclared harvested image');
   const inner=f.candidate.inner;
   f.candidate.inner=async(args,options)=>{
-    if(!args.includes('/system/system/seed-manifest.js'))return inner(args,options);
+    if(!args.includes('/system/dist/modules/storage/manifest-entry.js'))return inner(args,options);
     for(let index=0;index<args.length-1;index++)if(args[index]==='--env'){
       const match=/^([A-Z_]+)=(.*)$/.exec(args[++index]);if(match)env[match[1]]=match[2];
     }
@@ -823,7 +831,7 @@ test('cold Seed failures identify each command and do not attempt later operatio
 });
 test('fixed Harvest failure codes identify internal phases without exposing arbitrary output',async t=>{
   const {failureReason}=require('./stage-diagnostics');
-  const script=fs.readFileSync(path.join(__dirname,'../../operations/src/storage/copy.ts'),'utf8');
+  const script=fs.readFileSync(path.join(__dirname,'../../src/modules/storage/copy.ts'),'utf8');
   for(const [line,code]of Object.entries(recovery.HARVEST_FAILURE_CODES)){
     assert.equal(failureReason(code),code);
     if(line.startsWith('Harvest phase failed: '))assert(script.includes("phase = '"+line.slice('Harvest phase failed: '.length,-1)+"'"));

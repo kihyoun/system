@@ -517,7 +517,7 @@ only publication transport and disposable host facts use fixture providers.
 Docker/Compose transports are thin Node adapters backed by a test-only Nest module. Preparation copies the
 exact candidate's Node binary, bundled operations, Docker/Compose binaries, musl
 loader and declared C++/GCC libraries with native filesystem APIs. The copied fixture
-runtime also retains the candidate's exact `gitlab/security-release.json` and
+runtime also retains the candidate's exact `config/gitlab/security-release.json` and
 `gitlab/upgrade-child.js` loader inputs beside operations. Read-only mounts
 supply that runtime at an explicit path in both the helper and historical
 controller; no Node installation in the old image is assumed. The existing runtime

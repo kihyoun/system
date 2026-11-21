@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
-const {validate}=require('../../gitlab/publish-npm');
+const {validateNpmPublication:validate}=require('../../dist/modules/release');
 const bytes=Buffer.from('accepted package fixture');
 const revision='a'.repeat(40),tree='b'.repeat(40);
 const env={GITLAB_CI:'true',NPM_PUBLISH_ENABLED:'true',CI_COMMIT_REF_PROTECTED:'true',CI_PIPELINE_SOURCE:'push',CI_COMMIT_BRANCH:'master',CI_DEFAULT_BRANCH:'master',CI_COMMIT_SHA:revision,CI_PIPELINE_ID:'42'};
@@ -17,8 +17,9 @@ console.log('PASS: npm release binds protected source, accepted version, exact p
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const {NpmPublicationService,ReleaseModule}=require('../../operations/dist/release');
-const {NestFactory}=require('../../operations/node_modules/@nestjs/core');
+const {NpmPublicationService,ReleaseModule}=require('../../dist/modules/release');
+const {NestFactory}=require('../../node_modules/@nestjs/core');
+const {PUBLIC_PACKAGE_PAYLOAD}=require('../../dist/common/public-payload');
 for(const value of [null,[],{...receipt,pipelineId:NaN},{...receipt,pipelineId:9007199254740992},{...receipt,version:'02.0.0'},{...receipt,sourceRevision:'invalid'}])assert.throws(()=>validate(value,metadata,env,bytes));
 assert.throws(()=>validate(receipt,metadata,{...env,CI_DEFAULT_BRANCH:undefined,CI_COMMIT_BRANCH:undefined},bytes));
 async function scenario(change={}){
@@ -72,9 +73,10 @@ async function scenario(change={}){
 for(const failure of [undefined,'dirty','filename','source','pipeline','version','multiple']){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'npm-prepare-test-'));
  try{
-  fs.mkdirSync(path.join(root,'operations/assets'),{recursive:true});
+  fs.mkdirSync(path.join(root,'assets'),{recursive:true});
+  for(const file of [...PUBLIC_PACKAGE_PAYLOAD,'assets/public-runtime.json']){fs.mkdirSync(path.dirname(path.join(root,file)),{recursive:true});fs.copyFileSync(path.join(__dirname,'../..',file),path.join(root,file));}
   fs.writeFileSync(path.join(root,'VERSION'),'2.0.0\n');
-  fs.writeFileSync(path.join(root,'operations/package.json'),JSON.stringify({name:receipt.name,version:failure==='version'?'1.0.0':'2.0.0'}));
+  fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({name:receipt.name,version:failure==='version'?'1.0.0':'2.0.0'}));
   const calls=[];
   const processes={run(binary,args,options){calls.push([binary,args]);let stdout='';
    if(binary==='git'){
@@ -89,7 +91,7 @@ for(const failure of [undefined,'dirty','filename','source','pipeline','version'
   }};
   const service=new NpmPublicationService({processes,request:()=>{throw Error('no network');},evidence:()=>{throw Error('no publication');},token:()=>{throw Error('no credentials');}});
   const prepare=()=>service.prepare(root,{...env,CI_JOB_ID:'17',CI_COMMIT_SHA:failure==='source'?'wrong':revision,CI_PIPELINE_ID:failure==='pipeline'?'9007199254740992':'42'});
-  if(failure)assert.throws(prepare);else {assert.deepEqual(prepare(),receipt);assert.equal(JSON.parse(fs.readFileSync(path.join(root,'operations/assets/source.json'))).packageJobId,17);}
+  if(failure)assert.throws(prepare);else {assert.deepEqual(prepare(),receipt);assert.equal(JSON.parse(fs.readFileSync(path.join(root,'assets/source.json'))).packageJobId,17);}
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 }
 console.log('PASS: package preparation exact native source, dirty checkout, safe IDs and single immutable artifact.');

@@ -5,7 +5,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
+verified Node installation, `dist`, `node_modules` and `assets`
 available offline before maintenance.
 
 The recovery inputs remain separate: a Wizard configuration backup, a completed
@@ -105,7 +105,7 @@ and its matching configuration before depending on a replacement host.
 
 ## Creating a completed recovery Seed
 
-Install host integration with `bootstrapper/install-volume-host.js` so scheduled
+Install host integration with `system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` so scheduled
 Certbot renewals use `system-certbot`. For manual renewal and renewal dry-runs,
 use the same wrapper, for example `system-certbot renew --dry-run`. It shares a
 filesystem lease with Harvest. Do not run an unmanaged Certbot command or modify
@@ -149,20 +149,19 @@ promote a `.harvest-*` staging directory to `current`.
 
 ### Run from the Wizard or the host
 
-With the target available, **Harvest** in the authenticated Wizard uses the
-same repository-owned dispatcher as `system/seed-operation.js harvest`. You can instead run
-from a reviewed host checkout using an available, accepted complete controller
-image. Resolve and record its actual image identity, then use the Node executable
-prepared by Quickstart below. A source installation uses its explicitly retained
-Node executable in place of `/opt/system-bootstrapper-runtime/bin/node`:
+With the target available, **Harvest** in the authenticated Wizard uses the same
+shared storage services as the installed `system-bootstrapper harvest` command.
+You can instead select a reviewed host checkout and an available, accepted
+complete controller image explicitly. Resolve and record its actual image
+identity, then run the named command prepared by Quickstart or source installation:
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
+  system-bootstrapper harvest --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --check-only
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
+  system-bootstrapper harvest --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
 ```
 
@@ -178,7 +177,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
+verified Node installation, `dist`, `node_modules` and `assets`
 available offline before maintenance.
 
 The inputs are the completed Seed, matching Wizard `bootstrapper.zip`, recorded
@@ -194,7 +193,7 @@ verified image archives. The former live data directory is not an input.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     /opt/system-bootstrapper-runtime/bin/node bootstrapper/persistence.js
+     system-bootstrapper persistence --checkout "$PWD"
    ```
 
    This step neither starts containers nor requires the backup medium. It must
@@ -211,12 +210,12 @@ verified image archives. The former live data directory is not an input.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
+     system-bootstrapper restore --checkout "$PWD" \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip \
      --check-only
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
+     system-bootstrapper restore --checkout "$PWD" \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip
    ```
@@ -242,11 +241,11 @@ verified image archives. The former live data directory is not an input.
    directory and adds traversal permission to the SSL root while keeping private
    certificate directories and key files unchanged. The retained Seed is unchanged.
    Install Certbot as needed and run
-   `sudo node bootstrapper/install-volume-host.js`. This rebinds webroot renewal
+   `sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"`. This rebinds webroot renewal
    paths to the new live directory and installs the renewal/deploy integration.
-   Set the required image selectors, then start with `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"`.
+   Set the required image selectors, then start with `sudo system-bootstrapper start --checkout "$PWD"`.
    Reprovision optional Review/Beta helpers explicitly if their old immutable
-   image is absent; see the [environment procedure](../project-bootstrap/wizard-environments/README.md).
+   image is absent; see the [environment procedure](../templates/project-bootstrap/wizard-environments/README.md).
    Runner managers/workspaces are recreated from configuration and restored
    GitLab state; old runner directories are not required inputs.
 6. Verify authenticated Fetch, Wizard/GitLab/registry access, restored data and
@@ -296,7 +295,7 @@ alone does not prove that a delayed Docker command has finished.
 
 ## Verification boundaries
 
-`operations/tests/storage-copy.test.cjs` exercises the native services and real rsync with a
+`tests/operations/storage-copy.test.cjs` exercises the native services and real rsync with a
 fixture Docker command, including failed copies, forced shutdown, version mismatch,
 corruption, missing completion markers, active writers, renewal locking and
 interrupted-copy durability. Wizard model regressions cover literal assignments,

@@ -15,7 +15,7 @@ never dirty or untracked files. Source-only legacy imports remain explicit;
 new optional Beta uses the shared System candidate instead of a separate build.
 
 This is the legacy managed-source workflow. An explicitly adopted
-[source-primary repository](../project-bootstrap/wizard-source-primary/README.md)
+[source-primary repository](../templates/project-bootstrap/wizard-source-primary/README.md)
 develops directly through its own merge requests and does not import source.
 Generic `.system-bootstrapper/build-v1/` producers committed by such a repository
 are excluded from legacy source snapshots: managed build activation installs its
@@ -53,7 +53,7 @@ The running interface, routing and Production URL are untouched. Beta and Review
 remain disabled. Source initialization does not start builds or deployment;
 [managed build activation](WIZARD_BUILD.md) is a separate explicit action.
 Review/Beta deployment and
-[Production promotion](../project-bootstrap/wizard-production/README.md) are
+[Production promotion](../templates/project-bootstrap/wizard-production/README.md) are
 separate explicit operations. Importing source does not promote an image.
 
 ## Build the immutable source package
@@ -62,8 +62,8 @@ Verify the committed source layout before building the System image. Historical
 gitlinks are initialized only when the selected commit requires them:
 
 ```sh
-node gitlab/prepare-wizard-source.js
-node project-bootstrap/wizard-source/package.js
+system-bootstrapper source-checkout
+system-bootstrapper source-prepare
 ```
 
 The host CLI `start --checkout /absolute/reviewed/source` invokes preparation before Compose builds the System

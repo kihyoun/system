@@ -4,7 +4,7 @@ Renovate OSS läuft als geplanter GitLab-Job `renovate:discover` im vorhandenen
 Docker-Runner-Pool. Sein geprüftes stabiles Image `44.222.5-full` ist per Digest
 in `.gitlab-ci.yml` festgelegt; aktualisieren Sie es wie andere Abhängigkeiten durch Review.
 Ein dauerhafter Botdienst besteht nicht. Die [Repository-Konfiguration](../renovate.json)
-und [Selbsthosting-Konfiguration](../gitlab/renovate/config.cjs) wählen ausschließlich die
+und [Selbsthosting-Konfiguration](../src/modules/renovate/configuration.ts) wählen ausschließlich die
 vom Betreiber angegebene System-Quellprojekt einschließlich des eingebetteten Wizards,
 niemals GitHub-Spiegel oder automatische Projektentdeckung.
 
@@ -57,8 +57,8 @@ Repository-Branches, MRs und Dashboard-Issues. Projektmitgliedschaft begrenzt de
 Projektzugriff; es ist kein Administratortoken.
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply
+system-bootstrapper renovate setup --config /secure/operator/renovate.json
+system-bootstrapper renovate setup --config /secure/operator/renovate.json --apply
 ```
 
 Der erste Aufruf prüft private Dateibehandlung ohne API-Änderungen. Der zweite gleicht
@@ -74,14 +74,14 @@ Erfassen Sie vor der Aktivierung die Branch-/MR-Bestände für den ersten Lauf. 
 das begrenzte Bot-Token im privaten Zustand und schreibt nichts nach GitLab:
 
 ```sh
-node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
+system-bootstrapper renovate verify --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json
 ```
 
 Aktivieren Sie den Zeitplan nach Prüfung der ausgewählten Repository-Konfiguration:
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --enable
+system-bootstrapper renovate setup --config /secure/operator/renovate.json --apply --enable
 ```
 
 Der Befehl ist wiederholbar. Halten Sie seine Zustandsdatei mit Modus 0600 privat:
@@ -105,7 +105,7 @@ die Dashboards der ausgewählten Projekte, unveränderte Branch-/MR-Bestände un
 nur den erfolgreichen Botjob enthielt:
 
 ```sh
-node gitlab/renovate/verify.js --config /secure/operator/renovate.json \
+system-bootstrapper renovate verify --config /secure/operator/renovate.json \
   --baseline /secure/operator/renovate-first-discovery.json --verify
 ```
 
@@ -120,7 +120,7 @@ Laufzeitimage-/Digest-Änderungen bilden ein Laufzeitpaket. Hauptversionsänderu
 getrennt. Npm verwaltet Manifeste mit ihren npm-Lockfiles; auch deren Aktualisierung
 benötigt Freigabe. Native Dockerfile-, Compose- und GitLab-CI-Manager erfassen Image-
 Referenzen; eng begrenzte Regex-Manager erfassen den Pin `ARG IMAGE=node:...@sha256:...`
-in `system/Dockerfile`, den Docker-CLI-Standard für die Runner-Registrierung und die
+in `containers/controller/Dockerfile`, den Docker-CLI-Standard für die Runner-Registrierung und die
 aktuellen BuildKit-Treiber-Pins für Wizard-Build/-Prüfung. Gruppierung erfolgt pro Repository,
 nicht als projektübergreifende Transaktion. Die npm-Manifeste und Lockfiles des eingebetteten
 Wizards werden gemeinsam mit Sync und dem Operations-CLI erfasst. Maintainer bündeln
@@ -144,7 +144,7 @@ Tokens laufen nach 90 Tagen ab. Planen Sie vorher eine Betreibererinnerung; der
 Einrichtungsbefehl rotiert bei weniger als 15 verbleibenden Tagen oder ausdrücklich mit:
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json --apply --rotate --enable
+system-bootstrapper renovate setup --config /secure/operator/renovate.json --apply --rotate --enable
 ```
 
 Er speichert das neue Token privat, aktualisiert die geschützte Variable und widerruft
@@ -170,7 +170,7 @@ Andernfalls muss ein Administrator die vorgesehene Bot-Benutzer-ID, konfiguriert
 E-Mail-Adresse und Kontoeinschränkungen prüfen und dann ausdrücklich wiederherstellen:
 
 ```sh
-node gitlab/renovate/setup.js --config /secure/operator/renovate.json \
+system-bootstrapper renovate setup --config /secure/operator/renovate.json \
   --apply --recover-user-id 123 --rotate
 ```
 

@@ -7,13 +7,12 @@ auch wenn sie im Production-Image fehlt.
 Verwenden Sie die im Repository festgelegten Node-/npm-Versionen. Führen Sie
 `npm audit --json` in jedem dieser Verzeichnisse aus:
 
-- `operations`
-- `sync`
+- `.`
 - `wizard`
-- `project-bootstrap/templates/angular`
-- `project-bootstrap/templates/react`
-- `project-bootstrap/wizard-build/modern/smoke`
-- `project-bootstrap/wizard-build/recipe/smoke`
+- `templates/project-bootstrap/templates/angular`
+- `templates/project-bootstrap/templates/react`
+- `templates/project-bootstrap/wizard-build/modern/smoke`
+- `templates/project-bootstrap/wizard-build/recipe/smoke`
 
 Das letzte Verzeichnis ist ein aufbewahrtes historisches Rezept. Bewahren Sie dessen
 Quellcode und Rezeptidentität; Änderungen an einem aktuellen verwalteten Build gehören
@@ -43,7 +42,7 @@ Die aktuellen Korrekturen betreffen diese unterschiedlichen Pfade:
 | Angular build/Vite | Build- und Entwicklungsserverwerkzeuge der Angular-Vorlage. | Stabile Angular-build-/CLI-Version `22.2.6` wählt den korrigierten Vite-Zweig. |
 | `fast-uri` | Transitive URI-/Schemaverarbeitung im Angular-Werkzeugsatz. | Eine kompatible Lockfile-Auswahl `3.1.9` korrigiert URI-Normalisierung und Schemabehandlung. |
 
-Die `minimatch`-Overrides sind in Sync und Wizard auf `eslint`, `@eslint/config-array`
+Die `minimatch`-Overrides sind im Root-Backend-Paket und in Wizard auf `eslint`, `@eslint/config-array`
 und `@typescript-eslint/typescript-estree` begrenzt. Deren übergeordnete Releases
 fordern weiterhin den betroffenen 10.x-Zweig. Version 11 entfernt APIs zum Aufbau
 regulärer Ausdrücke; diese Aufrufer verwenden die erhaltenen APIs `Minimatch`/`match`.

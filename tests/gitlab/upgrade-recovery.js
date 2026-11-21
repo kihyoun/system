@@ -1,14 +1,14 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {Upgrade,release,hash,atomic,run,json,INPUT_JSON_MAX_BYTES,CHECKPOINT_JSON_MAX_BYTES}=require('../../gitlab/upgrade');
-const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+const {Upgrade,release,hash,atomic,run,json,INPUT_JSON_MAX_BYTES,CHECKPOINT_JSON_MAX_BYTES}=require('../../dist/modules/gitlab-upgrade/compatibility');
+const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
 const old='sha256:'+'b'.repeat(64),next='sha256:'+'c'.repeat(64);
 function fixture(t){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'upgrade-recovery-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const state=path.join(root,'state'),serviceData=path.join(root,'service'),seed=path.join(root,'seed'),certbot=path.join(root,'certbot');
   for(const directory of [state,serviceData,seed,certbot,path.join(state,'.projects.env')])fs.mkdirSync(directory,{recursive:true});
   for(const name of ['config','data','log']){fs.mkdirSync(path.join(serviceData,name));fs.writeFileSync(path.join(serviceData,name,'original'),'saved-'+name);}
-  const originalConfig=require('../../gitlab/upgrade').imageAssignment(example,release.fromImage);atomic(path.join(state,'.docker.env'),originalConfig);atomic(path.join(state,'sync-auth.env'),'export SYNC_USER=fixture\n');
+  const originalConfig=require('../../dist/modules/gitlab-upgrade/compatibility').imageAssignment(example,release.fromImage);atomic(path.join(state,'.docker.env'),originalConfig);atomic(path.join(state,'sync-auth.env'),'export SYNC_USER=fixture\n');
   let current={Id:'d'.repeat(64),Image:old,State:{Running:false,ExitCode:0,OOMKilled:false}},failRestore=false,refuseStop=false;const events=[];
   const engine=new Upgrade({sourceRevision:'a'.repeat(40),stateDir:'/state',persistentDir:'/operator/platform',checkpointDir:'/state/gitlab-upgrades/operation',evidence:'/state/accepted.json',readyTimeoutSeconds:600},{serviceData,seed,certbot,run(binary,args,options){
     events.push([binary,...args]);if(binary==='docker'){
@@ -16,7 +16,7 @@ function fixture(t){
       if(args[0]==='stop'){if(!refuseStop)current.State.Running=false;return '';}
       throw Error('unexpected Docker fixture operation');
     }
-    if(binary===process.execPath&&args[0]===path.resolve(__dirname,'../../operations/dist/projects-routing/entry.js'))return '';
+    if(binary===process.execPath&&args[0]===path.resolve(__dirname,'../../dist/cli/main.js')&&args[1]==='projects-routing')return '';
     if(binary==='rsync'&&failRestore&&args.includes('--delete'))throw Error('injected-restore-copy-failure');
     return run(binary,args,options);
   }});
@@ -24,7 +24,7 @@ function fixture(t){
   engine.image=reference=>reference===release.fromImage?old:next;engine.verifyMounts=()=>{};
   engine.quiesceScheduling=async()=>{events.push(['scheduling-quiesced']);};
   engine.stop=()=>{events.push(['cold-stop']);current.State={Running:false,ExitCode:0,OOMKilled:false};};
-  engine.start=(reference,restore)=>{events.push(['start',reference]);if(!restore)atomic(engine.config,require('../../gitlab/upgrade').imageAssignment(engine.configuration(),reference));current={...current,Image:reference===release.fromImage?old:next,State:{Running:true,ExitCode:0,OOMKilled:false}};};
+  engine.start=(reference,restore)=>{events.push(['start',reference]);if(!restore)atomic(engine.config,require('../../dist/modules/gitlab-upgrade/compatibility').imageAssignment(engine.configuration(),reference));current={...current,Image:reference===release.fromImage?old:next,State:{Running:true,ExitCode:0,OOMKilled:false}};};
   engine.ready=async(version,id)=>{assert.equal(current.Image,id);events.push(['ready',version]);};
   const plan={fromImageId:old,toImageId:next,sourceRevision:'a'.repeat(40),configurationSha256:hash(originalConfig)};
   return {engine,events,state,serviceData,originalConfig,plan,crash(exitCode=1,oom=true){current.State={Running:false,ExitCode:exitCode,OOMKilled:oom};},refuseStop(){refuseStop=true;},failRestore(){failRestore=true;}};
@@ -121,7 +121,7 @@ test('a completed worker group does not permit adoption while its journal-writin
   const f=fixture(t);f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);f.engine.adopt(migrated.checkpointSha256,'checkpointSha256');
   const owner={...f.engine.owner,pid:99999999,start:'0'};
   for(const lock of f.engine.held)atomic(path.join(lock,'upgrade-owner.json'),JSON.stringify(owner));
-  const {stat}=require('../../gitlab/upgrade-child');
+  const {stat}=require('../../dist/modules/gitlab-upgrade/child-process');
   atomic(path.join(f.state,'.gitlab-upgrade-lock/child.json'),JSON.stringify({format:'system-gitlab-upgrade-child-v1',operation:owner.operation,group:99999999,watchdogPid:process.pid,watchdogStart:stat(process.pid).start,phase:'completed'}));
   assert.throws(()=>f.engine.adopt(migrated.checkpointSha256,'checkpointSha256'),/child-still-running/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(f.state,'.gitlab-upgrade-lock/upgrade-owner.json'),'utf8')).pid,99999999);
@@ -129,7 +129,7 @@ test('a completed worker group does not permit adoption while its journal-writin
 
 test('API scheduling quiescence and final job check precede full GitLab stop and cold checkpoint',async t=>{
   const f=fixture(t);f.engine.lock('a'.repeat(64));
-  f.engine.quiesceScheduling=require('../../gitlab/upgrade').Upgrade.prototype.quiesceScheduling.bind(f.engine);
+  f.engine.quiesceScheduling=require('../../dist/modules/gitlab-upgrade/compatibility').Upgrade.prototype.quiesceScheduling.bind(f.engine);
   f.engine.docker=args=>{assert(args.includes('gitlab-ctl')||args.includes('status'));assert(!args.includes('/bin/sh'));f.events.push(['ingress-services-down']);return args.includes('status')?'down: native-service: 0s':'';};
   f.engine.preflight=async()=>{assert.equal(f.events.at(-1)[0],'ingress-services-down');f.events.push(['final-job-check']);return {};};
   await f.engine.migrate(f.plan);
@@ -138,7 +138,7 @@ test('API scheduling quiescence and final job check precede full GitLab stop and
 
 test('a job assigned before HTTP ingress drains resumes old API without stopping GitLab, backing up or cancelling jobs',async t=>{
   const f=fixture(t);f.engine.lock('a'.repeat(64));
-  f.engine.quiesceScheduling=require('../../gitlab/upgrade').Upgrade.prototype.quiesceScheduling.bind(f.engine);
+  f.engine.quiesceScheduling=require('../../dist/modules/gitlab-upgrade/compatibility').Upgrade.prototype.quiesceScheduling.bind(f.engine);
   f.engine.docker=args=>{assert(args.includes('gitlab-ctl')||args.includes('status'));assert(!args.includes('/bin/sh'));f.events.push(['ingress-services-down']);return args.includes('status')?'down: native-service: 0s':'';};
   f.engine.preflight=async()=>{f.events.push(['job-assignment-discovered']);throw Error('upgrade-jobs-active');};
   f.engine.resumeScheduling=async()=>{f.events.push(['previous-ingress-resumed']);};

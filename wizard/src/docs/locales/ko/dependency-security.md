@@ -5,13 +5,12 @@
 
 저장소에서 선언한 Node/npm 버전을 사용하세요. 다음 각 디렉터리에서 `npm audit --json`을 실행하세요.
 
-- `operations`
-- `sync`
+- `.`
 - `wizard`
-- `project-bootstrap/templates/angular`
-- `project-bootstrap/templates/react`
-- `project-bootstrap/wizard-build/modern/smoke`
-- `project-bootstrap/wizard-build/recipe/smoke`
+- `templates/project-bootstrap/templates/angular`
+- `templates/project-bootstrap/templates/react`
+- `templates/project-bootstrap/wizard-build/modern/smoke`
+- `templates/project-bootstrap/wizard-build/recipe/smoke`
 
 마지막 디렉터리는 보존된 과거 레시피입니다. 해당 소스와 레시피 식별 정보를 유지하세요.
 현재 관리형 빌드의 변경은 새로 지원되는 레시피와 해당 마이그레이션 절차에 반영해야 합니다.
@@ -38,7 +37,7 @@ Registry 감사만으로 비공개 호스팅 제공자의 경고 목록을 읽�
 | Angular build/Vite | Angular 스타터의 빌드 및 개발 서버 도구입니다. | 안정 버전 Angular build/CLI `22.2.6`은 패치된 Vite 계열을 선택합니다. |
 | `fast-uri` | Angular 도구 체인에서 간접 의존성으로 수행하는 URI/스키마 처리입니다. | 호환되는 잠금 파일 선택 버전 `3.1.9`가 URI 정규화와 스킴 처리를 수정합니다. |
 
-`minimatch` 재정의는 Sync와 Wizard의 `eslint`, `@eslint/config-array`,
+`minimatch` 재정의는 루트 백엔드 패키지와 Wizard의 `eslint`, `@eslint/config-array`,
 `@typescript-eslint/typescript-estree`에 한정됩니다. 상위 패키지 릴리스는 여전히 영향을 받는
 10.x 계열을 요청합니다. 버전 11은 정규 표현식 생성 API를 제거하지만, 이 호출자들은
 유지되는 `Minimatch`/`match` API를 사용합니다. 이 재정의를 변경할 때는 선언된 Node

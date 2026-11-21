@@ -1,8 +1,8 @@
 'use strict';
-require('../../operations/node_modules/reflect-metadata');
+require('../../node_modules/reflect-metadata');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
-const { WizardSourceImportService, WizardSourcePrimaryStatusService, WizardSourceOperationService } = require('../../operations/dist/gitlab-provision/wizard-source.service');
+const { WizardSourceImportService, WizardSourcePrimaryStatusService, WizardSourceOperationService } = require('../../dist/modules/gitlab-provision/wizard-source.service');
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const encoded = (value) => Buffer.from(value).toString('base64');
 const file = (content, commit = 'initial', executable = false) => ({ content: encoded(content), last_commit_id: commit, execute_filemode: executable });
@@ -88,7 +88,7 @@ async function main() {
   const coordinator = new WizardSourceOperationService({ensure:async()=>({context:{},configDirectory:'/private',credential:{token:'admin'}})}, {current:async()=>{minted++;return {token:'scoped'};}}, {request:async(_context,token,method,route)=>{routes.push(route);assert.equal(token,route==='projects/7'?'admin':'scoped');return api(rows).request(method,route);}}, importer,status);
   assert.equal((await coordinator.execute('/checkout',statusInput)).build.phase,'candidate-verified'); assert.equal(minted,1);assert.ok(routes.includes('projects/7'));assert.ok(!routes.some(route=>route.includes('team%2Fwizard')));
   rows['projects/7'].only_allow_merge_if_pipeline_succeeds=false; await assert.rejects(()=>coordinator.execute('/checkout',statusInput),/binding changed/);assert.equal(minted,1,'conflicting ownership must not mint credentials');
-  const {recipeWriteProof,reconcileRecipeWrite}=require('../../operations/dist/gitlab-provision/recipe-write-proof');
+  const {recipeWriteProof,reconcileRecipeWrite}=require('../../dist/modules/gitlab-provision/recipe-write-proof');
   const parent='a'.repeat(40), installed='b'.repeat(40), proofRows={
     'projects/7/repository/branches/main':{commit:{id:parent}},
     'projects/7/repository/files/.system-bootstrapper%2Fci.yml?ref=main':file('recipe',installed),

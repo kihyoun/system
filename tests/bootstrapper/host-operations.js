@@ -4,10 +4,10 @@ const assert=require('node:assert/strict');
 const test=require('node:test');
 const path=require('node:path');
 const {spawnSync}=require('node:child_process');
-const {hostFacts,assess,version,logPolicy}=require('../../operations/dist/host-bootstrap/inspection-policy');
-const {HostInspectionService}=require('../../operations/dist/host-bootstrap/inspection.service');
-const {ProcessFailure}=require('../../operations/dist/runtime/process');
-const {inspectHost}=require('../../operations/dist/host-bootstrap/inspection-cli');
+const {hostFacts,assess,version,logPolicy}=require('../../dist/modules/host-bootstrap/inspection-policy');
+const {HostInspectionService}=require('../../dist/modules/host-bootstrap/inspection.service');
+const {ProcessFailure}=require('../../dist/common/runtime/process');
+const {inspectHost}=require('../../dist/modules/host-bootstrap/inspection-cli');
 const root=path.resolve(__dirname,'../..'), image='example/mongo@sha256:'+'a'.repeat(64);
 const facts=(signature='Ubuntu 7.0.0-30.30-generic 7.0.12',flags='avx sse2')=>hostFacts('7.0.0-30-generic',signature,'flags : '+flags,'x86_64',true);
 const linux=(kernel='6.8.0')=>hostFacts(kernel,'','flags : avx','x86_64',false);
@@ -87,12 +87,12 @@ test('bounded log policy inspects exact containers and rejects invalid selectors
 });
 
 test('Nest provider and public CLI preserve JSON, policy environment and diagnostic exit codes',async()=>{
-  const {NestFactory}=require('../../operations/node_modules/@nestjs/core');
-  const {HostBootstrapModule}=require('../../operations/dist/host-bootstrap/host-bootstrap.module');
+  const {NestFactory}=require('../../node_modules/@nestjs/core');
+  const {HostBootstrapModule}=require('../../dist/modules/host-bootstrap/host-bootstrap.module');
   const app=await NestFactory.createApplicationContext(HostBootstrapModule,{logger:false,abortOnError:false});
   try {assert(app.get(HostInspectionService) instanceof HostInspectionService);} finally {await app.close();}
   for(const [args,env,status] of [[[],{SYSTEM_LOG_MAX_SIZE:'64K',SYSTEM_LOG_MAX_FILES:'2'},0],[['--max-files','0'],{},2],[['--unknown'],{},2]]) {
-    const result=spawnSync(process.execPath,['bootstrapper/log-policy.js',...args],{cwd:root,encoding:'utf8',env:{...process.env,...env}});
+    const result=spawnSync(process.execPath,['dist/cli/main.js','host-bootstrap','log-policy',...args],{cwd:root,encoding:'utf8',env:{...process.env,...env}});
     assert.equal(result.status,status,result.stderr);const report=JSON.parse(result.stdout);assert.equal(report.ok,status===0);
     if(!status) assert.deepEqual(report.expected.Config,{'max-size':'64k','max-file':'2'});
   }

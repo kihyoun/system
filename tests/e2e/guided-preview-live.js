@@ -31,7 +31,7 @@ function readInput(filename) {
   const budget=input.timeBudgetMilliseconds??3600000;
   requireValue(Number.isSafeInteger(budget)&&budget>=60000&&budget<=7200000,'guided-preview-bounded-budget-required');
   input.timeBudgetMilliseconds=budget;
-  const desired=require('../../project-bootstrap/preview-setup/settings').settings(input.settings);
+  const desired=require('../../dist/modules/project-lifecycle/preview-settings').settings(input.settings);
   requireValue(desired.version===2,'system-beta-shared-source-settings-required');
   return input;
 }
@@ -58,11 +58,13 @@ class Operator {
     this.spec={operatorAcceptance:true,guidedPreviewAcceptance:true,guidedPreviewSettings:input.settings};
     this.url=input.syncUrl;this.gitlabUrl=input.gitlabUrl;this.evidence={};this.stages=[];this.deadline=now()+input.timeBudgetMilliseconds;
   }
+
   async inner(args,{input,timeout=120000}={}) {
     const remaining=(this.cleanupDeadline||this.deadline)-this.now();requireValue(remaining>0,'guided-preview-overall-timeout');
     const result=this.command('docker',['--host=unix:///var/run/docker.sock',...args],{input,encoding:'utf8',timeout:Math.min(timeout,remaining),maxBuffer:16000000,stdio:['pipe','pipe','pipe']});
     requireValue(!result.error&&result.status===0,'guided-preview-native-command-failed');return result.stdout||'';
   }
+
   async request(url,options={}) {
     // Host is derived from each exact TLS URL. Never relay another host's
     // private authentication header to a redirect or alternative endpoint.
@@ -75,21 +77,25 @@ class Operator {
       {input:JSON.stringify({url,options:{...options,headers},timeoutMilliseconds}),timeout:timeoutMilliseconds+10000});
     try{return JSON.parse(result);}catch{throw Error('guided-preview-http-result-invalid');}
   }
+
   async api(route,token,method='GET',payload) {
     const result=await this.request(this.gitlabUrl+'/api/v4'+route,{method,headers:{'PRIVATE-TOKEN':token,'Content-Type':'application/json'},
       ...(payload===undefined?{}:{body:JSON.stringify(payload)})});
     requireValue(result.status>=200&&result.status<300,'guided-preview-gitlab-api-request-failed');
     if(!result.body)return null;try{return JSON.parse(result.body);}catch{return result.body;}
   }
+
   async rails(script) {
     const result=await this.inner(['exec','-i','system_gitlab_1','gitlab-rails','runner','-'],{input:script,timeout:180000});
     try{return JSON.parse(result.trim().split('\n').at(-1));}catch{throw Error('guided-preview-native-rails-result-invalid');}
   }
+
   async wait(action,milliseconds) {
     const end=Math.min(this.now()+milliseconds,this.cleanupDeadline||this.deadline);
     while(this.now()<end){if(await action())return;await this.sleep(2000);}
     throw Error('guided-preview-native-check-timeout');
   }
+
   report() {
     const report={version:1,operation:this.id,mode:this.mode,controllerImageId:this.input.controllerImageId,stages:this.stages,evidence:this.evidence,
       scope:'Read-only System Beta preflight. Disposable fixture lifecycle is unavailable on operator platforms.',
@@ -97,6 +103,7 @@ class Operator {
     const next=this.input.reportPath+'.'+this.id+'.tmp';
     fs.writeFileSync(next,JSON.stringify(report,null,2)+'\n',{mode:0o600,flag:'wx',flush:true});fs.renameSync(next,this.input.reportPath);
   }
+
   async stage(name,action) {
     const cleanup=['guided-preview-temporary-credential-revoked','guided-preview-production-retained','guided-preview-native-review-stop','guided-preview-native-beta-stop'].includes(name);
     const previousCleanup=this.cleanupDeadline;if(cleanup)this.cleanupDeadline=this.now()+180000;
@@ -105,6 +112,7 @@ class Operator {
     catch{record.state='failed';throw Error(name+'-failed');}
     finally{record.completedAt=new Date().toISOString();this.report();this.cleanupDeadline=previousCleanup;}
   }
+
   async prepare() {
     await this.stage('guided-preview-exact-accepted-controller',async()=>{
       const rows=JSON.parse(await this.inner(['inspect','system_bootstrapper_1']));
@@ -115,6 +123,7 @@ class Operator {
       this.secrets={user:selected.user,password:selected.password};
     });
   }
+
   async plan() {
     const before=await acceptance.production(this,true);
     const login=await this.request(this.url+'/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:this.secrets.user,password:this.secrets.password})});

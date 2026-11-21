@@ -30,10 +30,10 @@ provides the isolated verification commands.
 
 ## Shared operations runtime
 
-The `operations/` package supplies typed feature modules to the authenticated
-Sync API and standalone repository commands. The npm CLI exposes `install`,
-`harvest` and `restore`; other operational entries remain explicit repository
-commands. A Nest context starts no HTTP server and grants no deployment authority.
+The root package supplies feature modules under `src/modules/`, HTTP adapters
+under `src/api/`, CLI adapters under `src/cli/` and shared runtime infrastructure
+under `src/common/`. The public `system-bootstrapper` CLI invokes the same
+services as the authenticated Sync API. React remains a separate `wizard/` frontend. A Nest context starts no HTTP server and grants no deployment authority.
 Services use injected process, configuration and evidence ports.
 
 - `HostLifecycleModule` validates live storage and coordinates host start/stop
@@ -57,8 +57,8 @@ Services use injected process, configuration and evidence ports.
 - `ReleaseModule` binds accepted source/image/job evidence to immutable image,
   GitHub and npm publication. It does not promote the running installation.
 
-The [operation inventory](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md) maps public and
-compatibility entries, their callers, privileges, persistent ownership, native
+The [operation inventory](https://github.com/kihyoun/system/blob/HEAD/docs/OPERATIONS_ARCHITECTURE.md) maps public and
+CLI commands, their callers, privileges, persistent ownership, native
 tools, failure handling and executable tests. Thin entries call prepared compiled
 Nest services shared by the standalone CLI and API; current host preflight,
 backup polling, promotion and recovery no longer delegate to Python programs.
@@ -67,9 +67,10 @@ Prepare the [host runtime](../Prepare-Host.md#prepare-the-host-operations-runtim
 **before** host start/stop, persistence checks, installation or recovery. Fresh
 Quickstart prepares it; source developers build it before using host lifecycle
 commands. Retain Node, compiled operations and dependencies for offline recovery.
-Pre-runtime bootstrapping, OS/Certbot setup, the minimal initial GitLab-token
-Ruby exception, independent child guardians and byte-sensitive historical build
-recipes retain distinct contracts. GitLab's own declarative Ruby configuration
+The initial Quickstart and minimal initial GitLab-token Ruby invocation are
+explicit exceptions under `tools/`. OS/Certbot coordination and independent
+child guardians are native TypeScript services; reserved historical recipe
+bytes remain under `templates/`. GitLab's own declarative Ruby configuration
 remains an upstream service interface.
 Docker/Compose, NGINX, Git and `flock` remain native execution boundaries. These
 boundaries preserve Wizard HTTP endpoints, saved configuration and Harvest/Seed.
@@ -158,7 +159,7 @@ The workflow is:
    default-branch revision receives its own applicable checks; a merge does
    not automatically replace Production.
 5. **Promote the accepted version.** Use the committed
-   [controller promotion tool](../bootstrapper/README.md#promoting-a-tested-successor-controller)
+   [controller promotion tool](BOOTSTRAPPER.md#promoting-a-tested-successor-controller)
    and, for the declared GitLab migration, the
    [upgrade procedure](HANDBOOK.md#migrate-gitlab-through-the-accepted-controller).
    They bind the operation to accepted source/image evidence and preserve
@@ -175,7 +176,7 @@ reverting an image cannot undo a database migration. The accepted checkout,
 images, credentials and recovery inputs must remain accessible while GitLab
 is unavailable, independently of the service being upgraded.
 
-The [declared release profile](../gitlab/security-release.json) and its tests define
+The [declared release profile](../config/gitlab/security-release.json) and its tests define
 the supported migration. A new version or component change still needs its own
 acceptance criteria and successful checks; existing tools do not establish that
 every possible upgrade is safe.
@@ -241,17 +242,16 @@ The container definitions can be reproduced; GitLab repositories, database conte
 
 | Path | Purpose in the existing implementation |
 | --- | --- |
-| `operations/dist/cli.js start/stop --checkout PATH` | Prepared native host lifecycle entry with an explicit reviewed checkout. |
-| `bootstrapper/` | Base image, host initialization, recovery, runtime verification and accepted controller promotion/export tools. |
-| `system/` | Main Compose definition, controller compatibility entries and state initialization. |
-| `gitlab/` | GitLab configuration/Ruby adapters, typed upgrade and publication compatibility entries. |
-| `gitlab-runner/` | Runner Compose format and registration/lifecycle compatibility entries. |
-| `nginx/` | Entry-point reverse-proxy configuration and typed routing adapters. |
-| `nginx-proxy/` | Production, beta, and review proxy configuration. |
-| `operations/` | Shared Nest feature modules, native ports and CLI; [operation inventory](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md). |
-| `project-bootstrap/` | Project CI/source/environment compatibility entries, native GitLab adapters and versioned build recipes. |
-| `sync/` | Modular NestJS API for configuration, project workflows, operations and diagnostics. |
-| `wizard/` | Regular Wizard application source, with original history retained by the import merge. |
+| `src/api/` | Authenticated Sync HTTP adapters for configuration, projects, operations and diagnostics. |
+| `src/cli/` | The named CLI dispatcher and dependency-free pre-installation CA verification entry. |
+| `src/modules/` | Capability modules, injectable services and typed native adapters shared by HTTP, CLI and workers. |
+| `src/common/` | Shared configuration signature, validation and runtime infrastructure. |
+| `config/` | Public Compose definitions, GitLab configuration, release policies and CA provenance. Runtime secrets are separate. |
+| `templates/` | NGINX and project templates, including byte-preserved historical build recipes. |
+| `containers/` | Controller and bootstrapper image definitions. |
+| `tools/` | The two documented bootstrap exceptions: initial Quickstart and initial GitLab administrator token creation. |
+| `wizard/` | Separate React frontend, integrated into the same System source release. |
+| `dist/`, `assets/` | Generated compiled application and verified runtime/source assets; not independently maintained scripts. |
 | `.gitlab-ci.yml` | Short documentation lane; required runtime component, image and disposable platform checks; image publishing and optional GitHub mirror. |
 | [tests/](../tests/README.md) | Component inventory, isolated test commands and explicit live-integration boundaries. |
 | [Prepare-Host.md](../Prepare-Host.md) | Host installation, service-image selection and startup. |

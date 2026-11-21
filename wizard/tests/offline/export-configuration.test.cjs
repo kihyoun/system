@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const {spawnSync} = require('node:child_process');
 const {test} = require('node:test');
 const JSZip = require('jszip');
-const logo = fs.readFileSync('src/api/Helper.tsx', 'utf8').match(/return `([\s\S]*?)`;/)[1];
+const logo = fs.readFileSync('src/common/configuration-signature.tsx', 'utf8').match(/return `([\s\S]*?)`;/)[1];
 const cli = path.resolve('build-tools/export-configuration.cjs');
 
 test('offline adapter executes actual Wizard models and writes a signed private backup without browser or network', async () => {

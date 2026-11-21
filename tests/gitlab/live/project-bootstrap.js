@@ -57,7 +57,7 @@ async function poll(job, token) {
   assert.equal(crypto.createHash('md5').update(config.data.substr(0, 1184)).digest('hex'), 'bd4a8426355824593a5e21ad759830c1');
   // A different operation must never acquire even this known test repository.
   const checkout = path.resolve(__dirname, '../../..');
-  const refused = spawnSync(process.execPath, [path.join(checkout, 'operations/dist/gitlab-provision/entry.js'), 'project', '--checkout', checkout], {input: JSON.stringify({...input, action: 'create', operation: 'unrelated-operation'}), encoding: 'utf8', timeout: 240000});
+  const refused = spawnSync(process.execPath, [path.join(checkout, 'dist/cli/main.js'), 'gitlab-provision', 'project', '--checkout', checkout], {input: JSON.stringify({...input, action: 'create', operation: 'unrelated-operation'}), encoding: 'utf8', timeout: 240000});
   assert.equal(refused.status, 0, 'Local native project check failed');
   const conflict = JSON.parse(refused.stdout.trim().split('\n').pop());
   assert.equal(conflict.conflict, true);

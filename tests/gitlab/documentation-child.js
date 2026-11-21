@@ -1,13 +1,14 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {execFileSync}=require('node:child_process');
-const {DocumentationCheckService}=require('../../operations/dist/ci/documentation.service');
-const {ManagedChildProcess}=require('../../operations/dist/runtime/managed-child');
+const {DocumentationCheckService}=require('../../dist/modules/ci/documentation.service');
+const {ManagedChildProcess}=require('../../dist/common/runtime/managed-child');
 function fixture(t,directory=os.tmpdir()){
  const root=fs.mkdtempSync(path.join(directory,'documentation-native-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const git=(...args)=>execFileSync('git',['-C',root,...args],{encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
- fs.mkdirSync(path.join(root,'gitlab'));fs.copyFileSync(path.join(__dirname,'../../gitlab/check-documentation.js'),path.join(root,'gitlab/check-documentation.js'));
+ // The service copies its compiled dependency-free checker; committed Git only supplies the diff.
+
  git('init','-q','-b','master');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid');
  const commit=()=>{git('add','-A');git('commit','-qm','Fixture');return git('rev-parse','HEAD');};
  fs.writeFileSync(path.join(root,'old'),'historical-only');commit();const old=git('rev-parse','HEAD:old');git('rm','old');
@@ -34,7 +35,7 @@ function fixture(t,directory=os.tmpdir()){
    const selected={};for(let i=0;i<create.length;i++)if(create[i]==='--env'){const [key,...value]=create[++i].split('=');selected[key]=value.join('=');}
    assert.equal(JSON.stringify(selected).includes('sensitive-marker'),false);
    assert.equal(Object.keys(selected).length,7);
-   const program=`const fs=require('fs');fs.mkdirSync('test-results/documentation',{recursive:true});try{const r=require('./checker').check();fs.writeFileSync('test-results/documentation/report.json',JSON.stringify({status:'passed',...r}));}catch(e){fs.writeFileSync('test-results/documentation/report.json',JSON.stringify({status:'failed',reason:e.message}));process.exitCode=1;}`;
+   const program=`const fs=require('fs');fs.mkdirSync('test-results/documentation',{recursive:true});try{const r=require('./runtime/modules/ci/documentation-policy').check();fs.writeFileSync('test-results/documentation/report.json',JSON.stringify({status:'passed',...r}));}catch(e){fs.writeFileSync('test-results/documentation/report.json',JSON.stringify({status:'failed',reason:e.message}));process.exitCode=1;}`;
    try{await native.run(process.execPath,['-e',program],{cwd:received,env:{PATH:process.env.PATH,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',...selected},timeout:10000});status='0';}catch{status='1';}
    return '';
   }

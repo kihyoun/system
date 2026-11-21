@@ -5,12 +5,13 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const {execFileSync} = require('node:child_process');
-const graph = require('../../bootstrapper/upgrade-paths.json');
-const {manifest} = require('../../gitlab/publish-dockerhub');
+const graph = require('../../config/releases/upgrade-paths.json');
+const {createPublicationRuntime} = require('../../dist/modules/release/publication-runtime');
 const recovery = require('./recovery');
-const {terminalContainerState} = require('../../gitlab/upgrade');
+const {terminalContainerState} = require('../../dist/modules/gitlab-upgrade/policy');
 const diagnostics = require('./public-upgrade-diagnostics.json');
-const security = require('../../gitlab/security-release.json');
+const security = require('../../config/gitlab/security-release.json');
+const {manifest} = createPublicationRuntime(security).images;
 const hash = raw => crypto.createHash('sha256').update(raw).digest('hex');
 const required = (value, code) => { if (!value) throw Error(code); };
 const root = path.resolve(__dirname, '../..');
@@ -187,15 +188,18 @@ class NativeCLI {
     this.planDir = this.live + '/recovery/public-upgrades/candidate-' + candidate.id;
     this.storage = this.live + '/public-upgrade-storage.env';
   }
+
   async write(filename, input) {
     await this.candidate.inner(['run', '--rm', '-i', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
       '--entrypoint', '/usr/local/bin/node', '--volume', this.live + ':' + this.live,
-      this.candidate.spec.images.candidate.id, '/system/operations/dist/testing/public-upgrade-entry.js',
+      this.candidate.spec.images.candidate.id, '/system/dist/modules/testing/public-upgrade-entry.js',
       'write', filename], {input});
   }
+
   async createCredential() {
     if (!this.token) this.token = await this.candidate.rails("require 'json';u=User.find_by_username('root');t=u.personal_access_tokens.create!(name:'disposable-public-upgrade',scopes:['api'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token,root_id:u.id)");
   }
+
   async initialize(baseline, expected, beforeMigration = false) {
     const candidate = this.candidate, storage = require('./local-storage'), prepared = candidate.spec.publicUpgrade.source;
     required(beforeMigration ? !candidate.evidence.gitlabUpgrade?.migrationVerified : candidate.evidence.gitlabUpgrade?.registryVerified === true, 'existing-candidate-registry-ci-proof-required');
@@ -204,11 +208,11 @@ class NativeCLI {
     await candidate.call(['exec', '-i', candidate.daemon, 'tar', '-xzf', '-', '-C', this.fixture + '/source'], {inputFile: prepared.archive});
     await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '256m', '--cpus', '0.25',
       '--entrypoint', '/usr/local/bin/node', '--volume', this.fixture + ':' + this.fixture,
-      candidate.spec.images.candidate.id, '/system/operations/dist/testing/public-upgrade-entry.js',
+      candidate.spec.images.candidate.id, '/system/dist/modules/testing/public-upgrade-entry.js',
       'prepare', this.fixture]);
     await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
       '--entrypoint', '/usr/local/bin/node', candidate.spec.images.candidate.id,
-      '/system/operations/dist/testing/public-upgrade-entry.js', 'verify-host']);
+      '/system/dist/modules/testing/public-upgrade-entry.js', 'verify-host']);
     const previous = candidate.spec.publicUpgrade.metadata;
     // Prove the copied interpreter and bundled modules load in the candidate
     // helper and historical controller before changing the running controller.
@@ -216,7 +220,7 @@ class NativeCLI {
     for (const image of [candidate.spec.images.candidate.id, previous.images.controller.imageId]) {
       const output = await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
         '--entrypoint', fixtureRuntime + '/node', ...runtimeVolumes(this.fixture).flatMap(value => ['--volume', value]),
-        image, '-e', "require('/opt/system-public-upgrade/operations/dist/testing/public-upgrade-host-entry.js');process.stdout.write('runtime-ready')"]);
+        image, '-e', "require('/opt/system-public-upgrade/dist/modules/testing/public-upgrade-host-entry.js');process.stdout.write('runtime-ready')"]);
       required(output.trim() === 'runtime-ready', 'public-upgrade-runtime-unavailable');
     }
 
@@ -252,6 +256,7 @@ class NativeCLI {
     }
     await replaceController(candidate, baseline, previous.images.controller.imageId, this.fixture);
   }
+
   async invoke(args) {
     const candidate = this.candidate, storage = require('./local-storage');
     const command = ['run', '--rm', '-i', '--pid', 'host', '--network', 'host', '--memory', '512m', '--cpus', '1',
@@ -288,6 +293,7 @@ class NativeCLI {
       throw failure;
     }
   }
+
   cli(operation, confirmation) {
     const repository = this.candidate.spec.publicUpgrade.metadata.source.repository.replace(/^https:\/\/github.com\//, '').replace(/\.git$/, '');
     return this.invoke(['--operation', operation, '--checkout', this.fixture + '/source', '--persistence-env', this.storage, '--plan-dir', this.planDir,
@@ -297,6 +303,7 @@ class NativeCLI {
       '--token-file', this.fixture + '/token', '--timeout', '600', '--backup-timeout', '900',
       ...(confirmation ? ['--confirm-plan', confirmation] : [])]);
   }
+
   securityIdentity() {
     const ids=require('./gitlab-upgrade').prepared(this.candidate).imageIds;
     return {fromImage:security.fromImage,toImage:security.toImage,fromImageId:ids[security.fromImage],toImageId:ids[security.toImage],
@@ -304,6 +311,7 @@ class NativeCLI {
       helperImage:security.runner.helperImage,helperImageId:ids[security.runner.helperImage],fromHelperImageId:ids[security.runner.fromHelperImage],
       runnerVersion:security.runner.toVersion,jobCaBundleSha256:security.jobCaBundleSha256};
   }
+
   gitlab(operation, confirmation) {
     const repository=this.candidate.spec.publicUpgrade.metadata.source.repository.replace(/^https:\/\/github.com\//,'').replace(/\.git$/,'');
     return this.invoke(['gitlab','--operation',operation,'--checkout',this.fixture+'/source','--persistence-env',this.storage,
@@ -312,6 +320,7 @@ class NativeCLI {
       ...(confirmation?[operation==='rollback'?'--confirm-checkpoint':'--confirm-plan',confirmation]:[]),
       ...(operation==='rollback'&&this.pairedCheckpoint?['--paired-checkpoint',this.pairedCheckpoint]:[])]);
   }
+
   async migrate() {
     const prepared=await this.gitlab('prepare');
     required(prepared.status==='prepared' && typeof prepared.checkpointDir==='string' && prepared.checkpointDir.startsWith(this.live+'/configuration/gitlab-upgrades/'),'public-upgrade-native-GitLab-prerequisite-missing');
@@ -326,6 +335,7 @@ class NativeCLI {
     await waitForServices(this.candidate);
     return result;
   }
+
   async selectMigratedPublic(expected) {
     required(this.preparedMigration && this.gitlabCheckpointDir,'public-upgrade-native-GitLab-prerequisite-missing');
     const branch=await this.candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),this.token.token);
@@ -333,13 +343,16 @@ class NativeCLI {
     await this.invoke(['restore-migrated-public-selection']);
     await replaceController(this.candidate,this.originalBaseline,this.candidate.spec.publicUpgrade.metadata.images.controller.imageId,this.fixture);
   }
+
   rollback(checkpoint) {return this.gitlab('rollback',checkpoint);}
+
   async restoreAfterRollback() {
     await this.restoreOriginal(this.originalFiles);
     await this.finish(this.originalFiles,this.originalBaseline);
     await waitForServices(this.candidate);
     await this.candidate.wait(async()=>{const value=await recovery.syncFetch(this.candidate);return !!value.main?.data;},600000);
   }
+
   async offline() {
     await this.write(this.fixture + '/offline-recovery', 'previous-public-transport-disabled\n');
     for (const role of ['controller', 'wizard']) {
@@ -350,14 +363,18 @@ class NativeCLI {
       required(absent, 'previous-public-image-not-absent-before-recovery');
     }
   }
+
   interruptRecovery() { return this.write(this.fixture + '/fail-recovery-once', 'one-shot\n'); }
+
   async restoreOriginal(files) {
     await this.write(this.live + '/configuration/.docker.env', files['.docker.env']);
     await this.invoke(['restore-original']);
   }
+
   async finish(_files, baseline) {
     await replaceController(this.candidate, baseline, baseline.Image);
   }
+
   async revokeCredential() {
     try {await this.candidate.api('/personal_access_tokens/self', this.token.token, 'DELETE');}
     catch {await this.candidate.rails("User.find_by_username('root').personal_access_tokens.where(name:'disposable-public-upgrade',revoked:false).find_each(&:revoke!);puts '{}'");}

@@ -1,0 +1,161 @@
+name: system
+version: '3'
+x-bounded-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: '${SYSTEM_LOG_MAX_SIZE:-10m}'
+    max-file: '${SYSTEM_LOG_MAX_FILES:-3}'
+services:
+  bootstrapper:
+    logging: *bounded-logging
+    image: ${BOOTSTRAPPER_IMAGE:-system_bootstrapper}
+    restart: always
+    environment:
+      SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER: ${SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER:-}
+      PERSISTENCE_MODE: ${PERSISTENCE_MODE:-volume}
+      PERSISTENT_MOUNT: ${PERSISTENT_MOUNT:-}
+      PERSISTENT_UUID: ${PERSISTENT_UUID:-}
+      SEED_DIR: ${SEED_DIR:-}
+      SEED_MOUNT: ${SEED_MOUNT:-}
+      SEED_UUID: ${SEED_UUID:-}
+      PERSISTENT_DIR: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}
+      SYSTEM_CONFIG_DIR: /state
+      NGINX_IMAGE: ${NGINX_IMAGE:-nginx}
+      WIZARD_IMAGE: ${WIZARD_IMAGE:-systembootstrapper/wizard}
+      SYSTEM_WIZARD_ENVIRONMENT_IMAGE: ${SYSTEM_WIZARD_ENVIRONMENT_IMAGE:-}
+      SYSTEM_WIZARD_CANONICAL_CONTROLLER: ${SYSTEM_WIZARD_CANONICAL_CONTROLLER:-system_bootstrapper_1}
+      GITLAB_HOST: ${GITLAB_HOST:-gitlab.example.com}
+      SYSTEM_LOG_MAX_SIZE: ${SYSTEM_LOG_MAX_SIZE:-10m}
+      SYSTEM_LOG_MAX_FILES: ${SYSTEM_LOG_MAX_FILES:-3}
+      COMPOSE_COMPATIBILITY: "1"
+      GITLAB_IMAGE: ${GITLAB_IMAGE:-gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056}
+      GITLAB_RUNNER_IMAGE: ${GITLAB_RUNNER_IMAGE:-gitlab/gitlab-runner:v19.6.0@sha256:fb454a097fd26ea329b0234d6d82b53ae25f672bd625c278eaaee683a00f2507}
+      GITLAB_SSH_BIND: ${GITLAB_SSH_BIND:-22}
+      GITLAB_REGISTRY_BIND: ${GITLAB_REGISTRY_BIND:-5050}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - configuration:/state
+      - wizardPublic:/wizard-public
+      - type: bind
+        source: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/host/letsencrypt
+        target: /host-letsencrypt
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/runners
+        target: ${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/runners
+        bind:
+          create_host_path: false
+      - templates:/templates
+      - synctemplates:/synctemplates
+      - ssl:/ssl
+      - gitlabConfig:/srv/gitlab/config
+      - gitlabLogs:/srv/gitlab/log
+      - gitlabData:/srv/gitlab/data
+    build:
+      context: ../..
+      dockerfile: containers/controller/Dockerfile
+      # Uncomment following line to create a local System base Image
+      # args:
+      #   - IMAGE=bootstrapper_system
+
+  web:
+    logging: *bounded-logging
+    image: ${NGINX_IMAGE:-nginx}
+    volumes:
+      - templates:/etc/nginx/templates
+      - ssl:/ssl
+    network_mode: "host"
+
+  sync:
+    logging: *bounded-logging
+    image: ${NGINX_IMAGE:-nginx}
+    volumes:
+      - synctemplates:/etc/nginx/templates
+    network_mode: "host"
+
+  wizard:
+    logging: *bounded-logging
+    restart: always
+    image: ${WIZARD_IMAGE:-systembootstrapper/wizard}
+    volumes:
+      - wizardPublic:/usr/share/nginx/wizard-public:ro
+    # build:
+    #   context: ../wizard
+
+  gitlab:
+    logging: *bounded-logging
+    image: '${GITLAB_IMAGE:-gitlab/gitlab-ce:19.6.1-ce.0@sha256:d3727f8b1a1ee6de44916bb9113f3dc40339dba2d6a6ad6ef331d0f239004056}'
+    shm_size: '256m'
+    restart: always
+    hostname: '$GITLAB_HOST'
+    networks:
+      - gitlab
+    volumes:
+      - gitlabConfig:/etc/gitlab
+      - gitlabLogs:/var/log/gitlab
+      - gitlabData:/var/opt/gitlab
+    ports:
+      - '${GITLAB_SSH_BIND:-22}:22'
+      - '${GITLAB_REGISTRY_BIND:-5050}:5050'
+
+volumes:
+  templates:
+    name: system_templates
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/templates"
+  synctemplates:
+    name: system_synctemplates
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/synctemplates"
+  ssl:
+    name: system_ssl
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/ssl"
+  gitlabConfig:
+    name: system_gitlabConfig
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/gitlab/config"
+  gitlabLogs:
+    name: system_gitlabLogs
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/gitlab/logs"
+  gitlabData:
+    name: system_gitlabData
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/gitlab/data"
+  configuration:
+    name: system_configuration
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/configuration"
+  wizardPublic:
+    name: system_wizardPublic
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${PERSISTENT_DIR:?PERSISTENT_DIR must be set}/wizard-public"
+
+networks:
+  gitlab:

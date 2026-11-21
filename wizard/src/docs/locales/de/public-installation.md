@@ -61,7 +61,7 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo node bootstrapper/install.js
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 Wählen Sie Quellcodeversion und beide öffentlichen Image-Digests aus einem freigegebenen
@@ -75,7 +75,7 @@ Nutzen Sie Certbot **ab Version 2.3.0**, das `reconfigure` unterstützt; das Ubu
 Die folgende Host-Integration ruft
 `/usr/bin/certbot` und `certbot.timer` auf; dieses Rezept verwendet daher das Distributions-
 paket statt einer separaten Snap-Installation. Führen Sie
-`bootstrapper/prepare-local.js` nicht aus: Öffentliches DNS und eine vertrauenswürdige HTTPS-Registry ersetzen
+`system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"` nicht aus: Öffentliches DNS und eine vertrauenswürdige HTTPS-Registry ersetzen
 dessen Änderungen an lokaler Hosts-Datei und unsicherer Registry.
 
 ### Öffentlich 2. Arbeitsdatenspeicher wählen und Zertifikatsintegration installieren
@@ -85,8 +85,8 @@ Wiederherstellung die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operat
 vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- und
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
-Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
+Halten Sie die geprüfte Node-Installation, `dist` und
+`node_modules` und `assets` vor Wartungsbeginn offline verfügbar.
 
 Diese Neuinstallation speichert Live-Daten auf dem Systemlaufwerk des Servers. Erstellen Sie einen
 ausdrücklichen Selektor, damit Zertifikatsintegration und Lebenszykluswerkzeuge dasselbe
@@ -100,11 +100,11 @@ PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-sudo node bootstrapper/install-volume-host.js
+sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"
 sudo systemctl stop certbot.timer
 ```
 
-Trotz seines Kompatibilitätsnamens unterstützt `install-volume-host.js` lokalen Speicher.
+Der Befehl `system-bootstrapper host-bootstrap install-volume-host` unterstützt auch lokalen Speicher.
 Es prüft den Arbeitsdatenspeicher, verbindet `/etc/letsencrypt` mit
 `PERSISTENT_DIR/host/letsencrypt` und installiert den Sperr-Wrapper `system-certbot`
 sowie den Zertifikats-Deploy-Hook. Es erzeugt keine Docker- oder Erneuerungsabhängigkeit von
@@ -162,7 +162,7 @@ Server:
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 sudo docker ps
@@ -219,7 +219,7 @@ dem Eingabefeld angezeigte Pfadergänzung ersetzt dieses Präfix nicht. Verwende
 in den `*_HOST`-Feldern Hostnamen ohne Schema. Die erzeugten externen GitLab- und
 Registry-URLs müssen `https://gitlab.example.com` und
 `https://registry.example.com` lauten, ohne `:5050`. Die historische Datei
-`system/.docker.env.example` enthält `/live/...`-Pfade ohne das Mount-Präfix `/ssl`;
+`config/system/.docker.env.example` enthält `/live/...`-Pfade ohne das Mount-Präfix `/ssl`;
 diese Pfade sind im HTTP-Modus inaktiv und dürfen beim Aktivieren von HTTPS nicht unverändert
 übernommen werden. Prüfen Sie **Allgemein → Website** und
 ersetzen Sie die öffentlichen Betreiberbeispiele vor der Veröffentlichung Ihrer Website.
@@ -330,7 +330,7 @@ systemctl list-timers certbot.timer
 ```
 
 `reconfigure` testet gegen den Staging-Dienst der CA und speichert dann die erfolgreiche
-Webroot-Methode für künftige Erneuerungen. `install-volume-host.js` bindet bei einer Wiederherstellung bestehende
+Webroot-Methode für künftige Erneuerungen. `system-bootstrapper host-bootstrap install-volume-host` bindet bei einer Wiederherstellung bestehende
 **webroot**-Pfade neu ein; es wandelt eine Standalone-Zertifikatslinie nicht für Sie in eine
 Webroot-Erneuerung um. Schließen Sie die Einrichtung nicht ab, wenn Neukonfiguration oder Trockenlauf
 fehlschlagen. Meldet eine Sperre eine aktive oder unterbrochene Erneuerung oder Harvest, klären Sie den
@@ -511,8 +511,8 @@ desselben Images und der persistenten Daten neu. Führen Sie vom Host aus die be
 innerhalb des freigegebenen Controllers aus:
 
 ```bash
-sudo docker exec system_bootstrapper_1 node /system/operations/dist/lifecycle/entry.js gitlab-start /system
-sudo docker exec system_bootstrapper_1 node /system/operations/dist/projects-routing/entry.js routing reload /system /templates
+sudo docker exec system_bootstrapper_1 system-bootstrapper lifecycle gitlab-start /system
+sudo docker exec system_bootstrapper_1 system-bootstrapper projects-routing routing reload /system /templates
 ```
 
 Das Neuladen von NGINX erzeugt die HTTPS-/Registry-Upstreams neu, falls sich GitLabs Container-IP
@@ -537,6 +537,6 @@ git ls-remote git@gitlab.example.com:namespace/project.git HEAD
 ```
 
 Dies prüft den Lesezugriff auf Repositorys, nicht die Push-Berechtigung. Die
-[native Laufzeitprüfung](../bootstrapper/README.md#reviewed-replacement-host-initialization)
+[native Laufzeitprüfung](BOOTSTRAPPER.md#reviewed-replacement-host-initialization)
 prüft die anderen Anwendungs-/Speicherzusagen der Plattform; sie ersetzt nicht
 diese SSH- und Firewall-Prüfungen.

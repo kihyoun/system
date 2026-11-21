@@ -270,7 +270,7 @@ Wizard 다이제스트 참조를 가져와 기록된 이미지 ID와 일치하�
 일관성을 입증하지만 파일과 함께 제공된 체크섬은 독립적인 서명이 아닙니다.
 사용자 검사는 게시자의 기본 병합 및 승인 게이트를 비활성화하지 않습니다.
 
-지원되는 각 릴리스에서 `bootstrapper/upgrade-paths.json`을 유지하세요. 실제로
+지원되는 각 릴리스에서 `config/releases/upgrade-paths.json`을 유지하세요. 실제로
 실행한 오름차순 전환, 사전 요구 사항, 순서가 있는 단계와 명명된 후보 테스트만
 추가하고 필수 중간 릴리스를 유지합니다. CLI와 오프라인 Wizard는 같은 메타데이터를
 사용합니다. Docs를 내보내고 영어, 독일어, 한국어 내용을 검토하며 메타데이터/UI 및
@@ -295,10 +295,10 @@ git clone https://github.com/kihyoun/system.git system-upgrade-2
 cd system-upgrade-2
 git checkout --detach v2.0.0
 sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
-test ! -e operations/dist && test ! -e operations/node_modules && test ! -e operations/assets && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets operations/assets
+test ! -e dist && test ! -e node_modules && test ! -e assets && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets assets
 ```
 
 Prepare는 공개 메타데이터/검증 자료와 설치된 릴리스를 검증하고 유지보수 전에
@@ -309,15 +309,15 @@ Prepare는 공개 메타데이터/검증 자료와 설치된 릴리스를 검증
 도우미가 공유 Nest 마이그레이션 서비스를 실행합니다.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+sudo system-bootstrapper gitlab-upgrade \
   --operation prepare --checkout "$PWD" --target 2.0.0 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+sudo system-bootstrapper gitlab-upgrade \
   --operation plan --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+sudo system-bootstrapper gitlab-upgrade \
   --operation promote --checkout "$PWD" --confirm-plan GITLAB_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
@@ -330,14 +330,14 @@ sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upg
 만듭니다. 이 별도 계획을 검토하고 `PAIR_PLAN_SHA256`을 명시적으로 바꾸세요.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+sudo system-bootstrapper upgrade \
   --checkout "$PWD" --target 2.0.0 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
   --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2.0.0 \
   --backup-file /mnt/backup/configuration-before-2.0.0.zip \
   --token-file /root/system-api-token
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+sudo system-bootstrapper upgrade \
   --operation apply --checkout "$PWD" --confirm-plan PAIR_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
@@ -349,11 +349,11 @@ sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
 잠금을 삭제하지 마세요.
 
 ```bash
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+sudo system-bootstrapper upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0
-sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+sudo system-bootstrapper gitlab-upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0

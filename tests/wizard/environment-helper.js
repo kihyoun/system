@@ -3,8 +3,8 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {Runtime, parse, canonicalLegacyRecipe} = require('../../project-bootstrap/wizard-environments/helper');
-const state = require('../../project-bootstrap/wizard-environments/state');
+const {Runtime, parse, canonicalLegacyRecipe} = require('../../dist/modules/project-lifecycle/environment-runtime');
+const state = require('../../dist/modules/project-lifecycle/state');
 const op = 'a'.repeat(48), sha = 'b'.repeat(40), digest = 'registry.example.test/root/wizard@sha256:' + 'c'.repeat(64);
 const request = (pipelineId = 10, jobId = 20, mrIid = 1, action = 'deploy', kind = 'review') =>
   ({action, kind, projectId: 1, pipelineId, jobId, mrIid, sourceCommit: sha, operation: op});
@@ -59,7 +59,7 @@ class Fixture extends Runtime {
 }
 async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
 (async () => {
-  const {EnvironmentProcess} = require('../../operations/dist/project-lifecycle/environment-process');
+  const {EnvironmentProcess} = require('../../dist/modules/project-lifecycle/environment-process');
   const calls=[];
   const transport=new EnvironmentProcess({run:async(binary,args,options)=>{
     calls.push({binary,args,options});
@@ -242,10 +242,10 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   } finally { fixture.destroy(); }
   const proof = new Runtime(request());
   let legacy = canonicalLegacyRecipe();
-  const logo = require('../../sync/dist/Helper').default.textLogo;
+  const logo = require('../../dist/common/configuration-signature').default.textLogo;
   const options = {settings: {review: setting, beta: {...setting, enabled: false}}, settingsHash: '1'.repeat(64),
     helperImage: 'sha256:' + '2'.repeat(64), operation: op, controller: 'system_bootstrapper_1'};
-  proof.environment = {...options, recipeHash: require('../../project-bootstrap/wizard-environments/recipe').generate(logo, options).recipeHash};
+  proof.environment = {...options, recipeHash: require('../../dist/modules/project-lifecycle/environment-recipe.service').generate(logo, options).recipeHash};
   proof.context = {publicSettings: {GITLAB_REGISTRY_URL: 'https://registry.example.test', GITLAB_REGISTRY_DOMAIN_MODE: '2'},
     receipt: {operation: 'registration', repository: {id: 1, path: 'root/wizard', defaultBranch: 'main'},
       wizardWorkflow: {sourceRevision: '3'.repeat(40), importCommit: '4'.repeat(40),
@@ -253,7 +253,7 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   let proofRequests = 0;
   proof.json = async (_args, script) => {
     proofRequests++;
-    assert(_args.includes('/system/operations/dist/project-lifecycle/deployment-evidence-entry.js'));
+    assert(_args.includes('/system/dist/modules/project-lifecycle/deployment-evidence-entry.js'));
     const {input} = JSON.parse(script);
     assert.deepStrictEqual(input.legacyFiles, legacy.files, 'runtime omitted or altered an immutable managed build file');
     assert.strictEqual(input.buildActivationCommit, '6'.repeat(40));
@@ -269,10 +269,10 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   proof.context.receipt.wizardWorkflow.build.recipeHash = 'changed';
   await rejects(() => proof.verify(), /managed build recipe identity changed/);
   assert.strictEqual(proofRequests, 1, 'changed canonical recipe reached external verification');
-  legacy = require('../../project-bootstrap/wizard-build/recipe').generate(logo, 'node24-vite8');
+  legacy = require('../../dist/modules/project-lifecycle/build-recipe.service').generate(logo, 'node24-vite8');
   const modernOptions = {...options, buildRecipeHash: legacy.recipeHash};
   proof.environment = {...modernOptions,
-    recipeHash: require('../../project-bootstrap/wizard-environments/recipe').generate(logo, modernOptions).recipeHash};
+    recipeHash: require('../../dist/modules/project-lifecycle/environment-recipe.service').generate(logo, modernOptions).recipeHash};
   proof.context.receipt.wizardWorkflow.build.recipeHash = legacy.recipeHash;
   await proof.verify();
   assert.strictEqual(proofRequests, 2, 'modern canonical build did not reach complete proof verification');
@@ -280,7 +280,7 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   await rejects(() => proof.verify(), /managed build recipe identity changed/);
   assert.strictEqual(proofRequests, 2, 'mismatched environment/build profile reached external verification');
 
-  const native = require('../../project-bootstrap/wizard-environments/source-primary');
+  const native = require('../../dist/modules/project-lifecycle/source-primary-environment');
   const ciFiles = ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map(path => ({path, sha256: '7'.repeat(64)}));
   const nativeEnvironment = native.sourcePrimaryEnvironment({phase: 'ready', operation: '8'.repeat(48),
     settings: options.settings, settingsHash: state.hash(JSON.stringify(options.settings)), deployments: {}},

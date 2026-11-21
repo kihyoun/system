@@ -49,7 +49,7 @@ Serverfehler werden nicht zurückgegeben.
 **Helper-Image testweise herunterladen** ist eine separate Aktion. Wähle zuerst
 einen laufenden verwalteten Runner-Manager. Vor dem Start zeigt der Dialog die
 genaue unveränderliche Helper-Image-Referenz. Ihr Standard stammt aus
-`gitlab/security-release.json`; Betreiber können
+`config/gitlab/security-release.json`; Betreiber können
 `GITLAB_RUNNER_HELPER_IMAGE` in der Serverkonfiguration setzen. Das Image muss
 einen expliziten SHA-256-Digest behalten. Ein Client kann kein anderes Image und
 keinen Docker-Endpunkt übergeben.
@@ -98,7 +98,7 @@ Führe aus einem Checkout mit dokumentierter Node-Laufzeit und installierten
 Sync-Abhängigkeiten die kontrollierten Tests aus:
 
 ```sh
-npm --prefix sync run build
+npm run build
 node --test tests/sync/system-diagnostics.js
 ```
 

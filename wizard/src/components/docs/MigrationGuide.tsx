@@ -151,7 +151,7 @@ export function migrationCommand(edge: UpgradeTransition, operation: string) {
   // Historical stops run from their own release checkout, which predates the CLI.
   const command =
     Number(edge.to.split('.')[0]) >= 2
-      ? 'sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \\\n  --checkout "$PWD"'
+      ? 'sudo /opt/system-bootstrapper-runtime/bin/node dist/cli/main.js upgrade \\\n  --checkout "$PWD"'
       : 'sudo python3 bootstrapper/upgrade-release.py';
   const base =
     command +
