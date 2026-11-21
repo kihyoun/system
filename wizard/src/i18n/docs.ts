@@ -17,7 +17,7 @@ const docs: Record<string, string> = {
   '1.5 Quick Install': '1.5 Schnellinstallation',
   '1.6 Public releases and changelog': '1.6 Öffentliche Releases und Änderungsprotokoll',
   '8.9 Architecture, origins and vision': '8.9 Architektur, Ursprung und Vision',
-  '8.10 Bundled System candidate Review': '8.10 Review gebündelter System-Kandidaten',
+  '8.10 Optional System candidate Beta': '8.10 Optionale Beta für System-Kandidaten',
   'A fresh Ubuntu 24.04 / 26.04 LTS x86_64 host with sudo, curl, internet, 8 GiB RAM and 40 GiB free disk.':
     'Ein frischer Ubuntu-24.04-/26.04-LTS-x86_64-Host mit sudo, curl, Internet, 8 GiB RAM und 40 GiB freiem Speicher.',
   'One maintained command starts the initial Wizard; you continue platform setup in the browser.':
@@ -30,8 +30,8 @@ const docs: Record<string, string> = {
     'Lesen Sie „Erste Schritte“ für die praktische Installation und Konfiguration der Plattform.',
   'You understand the 2019 origin, source-as-DNA principle, generation model and future vision.':
     'Sie verstehen den Ursprung von 2019, das Quellcode-als-DNA-Prinzip, das Generationenmodell und die Zukunftsvision.',
-  'An accepted candidate, an explicitly reserved Review HTTPS host and the required System checks.':
-    'Ein akzeptierter Kandidat, ein ausdrücklich reservierter Review-HTTPS-Host und die erforderlichen System-Prüfungen.',
+  'An accepted candidate, an explicitly reserved Beta HTTPS host and the required System checks.':
+    'Ein akzeptierter Kandidat, ein ausdrücklich reservierter Beta-HTTPS-Host und die erforderlichen System-Prüfungen.',
   'You can inspect and stop the exact bundled Wizard candidate before deliberate Production promotion.':
     'Sie können den exakt gebündelten Wizard-Kandidaten vor einer bewussten Production-Freigabe prüfen und beenden.',
 

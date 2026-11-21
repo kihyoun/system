@@ -238,7 +238,11 @@ test('recovery evidence distinguishes saved settings from timestamped running im
     verified: false,
   });
   const guide = await zip.file('RECOVERY.md')!.async('string');
-  expect(guide).toContain('bootstrapper/seed-operation.sh restore');
+  expect(guide).toContain(
+    'sudo /absolute/verified/node /absolute/tools/operations/dist/cli.js restore --checkout /absolute/tools --image <accepted-controller-image> --persistence-env /etc/system-bootstrapper/persistence.env --configuration-backup <absolute-path-to-this-ZIP> --check-only',
+  );
+  expect(guide).toContain('Repeat restore without --check-only after reviewing validation');
+  expect(guide).toMatch(/Do not start\s+writers first/);
   expect(guide).toContain('A reference does not preserve an image payload');
   expect(guide).toContain('No matching Seed has been inferred or verified');
   const reopened = new Main();

@@ -442,7 +442,7 @@ const korean: Record<string, string> = {
   '1.5 Quick Install': '1.5 빠른 설치',
   '1.6 Public releases and changelog': '1.6 공개 릴리스 및 변경 이력',
   '8.9 Architecture, origins and vision': '8.9 아키텍처, 기원 및 비전',
-  '8.10 Bundled System candidate Review': '8.10 번들 System 후보 Review',
+  '8.10 Optional System candidate Beta': '8.10 선택적 System 후보 Beta',
   'A fresh Ubuntu 24.04 / 26.04 LTS x86_64 host with sudo, curl, internet, 8 GiB RAM and 40 GiB free disk.':
     'sudo, curl, 인터넷, RAM 8 GiB 및 여유 디스크 공간 40 GiB를 갖춘 새로운 Ubuntu 24.04 / 26.04 LTS x86_64 호스트.',
   'One maintained command starts the initial Wizard; you continue platform setup in the browser.':
@@ -455,8 +455,8 @@ const korean: Record<string, string> = {
     '플랫폼의 실제 설치 및 설정 절차는 시작하기를 읽어 보세요.',
   'You understand the 2019 origin, source-as-DNA principle, generation model and future vision.':
     '2019년의 시작, 소스를 DNA로 보는 원칙, 세대 모델 및 미래 비전을 이해합니다.',
-  'An accepted candidate, an explicitly reserved Review HTTPS host and the required System checks.':
-    '승인된 후보, 명시적으로 예약된 Review HTTPS 호스트 및 필수 System 검사.',
+  'An accepted candidate, an explicitly reserved Beta HTTPS host and the required System checks.':
+    '승인된 후보, 명시적으로 예약된 Beta HTTPS 호스트 및 필수 System 검사.',
   'You can inspect and stop the exact bundled Wizard candidate before deliberate Production promotion.':
     '의도적으로 운영 환경에 승격하기 전에 정확히 번들된 Wizard 후보를 확인하고 중지할 수 있습니다.',
   'Documentation chapters': '문서 장 목록',
