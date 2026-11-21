@@ -425,8 +425,12 @@ network, socket or credentials are inputs to the candidate platform.
 
 After existing runner, registry, cold recovery and ACME scenarios pass,
 `gitlab-upgrade.js` creates additional synthetic pre-upgrade user/project/issue,
-merge-request/discussion and encrypted-variable identities. It invokes the same
-repository upgrade engine as production, using only archive-verified aliases
+merge-request/discussion and encrypted-variable identities. Original-host and
+pre-migration captures use distinct encrypted-variable keys scoped to each
+candidate owner; each expected key stays in the private identity oracle. The first
+proof is never overwritten. Original identities are checked after fresh-host
+recovery; pre-migration identities are checked after migration and rollback.
+It invokes the same repository upgrade engine as production, using only archive-verified aliases
 inside the private daemon. The production CLI does not accept these aliases.
 It checkpoints a cleanly stopped old database, migrates the real state to the
 patched version and verifies those identities. A new runner job pulls and runs
@@ -551,6 +555,12 @@ upgrades. The existing registry job must run on that current manager. The restor
 does not repeat the original host's generic project
 creation and failure pipeline. The original successful pipeline identity remains the
 backup oracle; the restored blob job records its own actual pipeline and job IDs.
+
+The existing `restored`, `upgraded` and `rollback` registry probes put distinct fixed
+phase markers in their CI files. Each probe writes a real commit even when database
+rollback restores an earlier CI file. The three checks retain their existing stages,
+jobs, pipeline authorization and timeouts; the original build tag and successful-pipeline
+oracle remain unchanged.
 
 Both owned hosts apply the prepared-image pull policies after manager creation.
 The guided HTTPS scenario also reapplies its public test-CA job bind and environment.

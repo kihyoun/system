@@ -203,21 +203,22 @@ async function recordIdentity(original){
   const auth=await step('credential',()=>rootToken(original));
   try{
     const projectId=original.evidence?.projectId;
-    if(!Number.isInteger(projectId))throw Error('successful-original-project-required');
+    if(!Number.isInteger(projectId)||typeof original.id!=='string'||!/^[a-f0-9]{24}$/.test(original.id))throw Error('successful-original-project-required');
+    const variableKey='RECOVERY_ENCRYPTED_PROOF_'+original.id.toUpperCase();
     const project=await step('project',()=>original.api('/projects/'+projectId,auth.token));
     const branch=await step('repository-head',()=>original.api('/projects/'+projectId+'/repository/branches/'+encodeURIComponent(project.default_branch),auth.token));
     const pipeline=await step('pipeline',()=>original.api('/projects/'+projectId+'/pipelines/'+original.evidence.pipelineId,auth.token));
     const nonce=crypto.randomBytes(24).toString('hex');
     const issue=await step('issue',()=>original.api('/projects/'+projectId+'/issues',auth.token,'POST',{title:'Backup-only recovery proof',description:nonce}));
     const mergeRequest=await recordReview(original,projectId,project.default_branch,branch.commit.id,issue.iid,nonce,auth.token);
-    await step('encrypted-variable',()=>original.api('/projects/'+projectId+'/variables',auth.token,'POST',{key:'RECOVERY_ENCRYPTED_PROOF',value:nonce,masked:true}));
+    await step('encrypted-variable',()=>original.api('/projects/'+projectId+'/variables',auth.token,'POST',{key:variableKey,value:nonce,masked:true}));
     const user=await step('user',()=>original.api('/users',auth.token,'POST',{username:'recovery_'+original.id.slice(0,8),name:'Recovery fixture',email:'recovery-'+original.id+'@example.invalid',password:crypto.randomBytes(24).toString('hex'),skip_confirmation:true}));
     const repositories=await step('registry-repositories',()=>original.api('/projects/'+projectId+'/registry/repositories',auth.token));
     const repository=repositories.find(item=>item.path.endsWith('/probe'));
     if(!repository||pipeline.status!=='success')throw Error('original-registry-proof-required');
     const tag=await step('registry-tag',()=>registryTag(original,projectId,repository.id,pipeline.sha,auth.token));
     return {rootId:auth.root_id,projectId,path:project.path_with_namespace,branch:project.default_branch,head:branch.commit.id,
-      issueIid:issue.iid,mergeRequest,nonce,userId:user.id,userName:user.username,registryId:repository.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
+      issueIid:issue.iid,mergeRequest,nonce,variableKey,userId:user.id,userName:user.username,registryId:repository.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
   }finally{await step('credential-revoked',()=>revoke(original,auth.token));}
 }
 async function runnerIdentity(candidate) {
@@ -602,10 +603,11 @@ async function verifyServiceIdentity(candidate,expected,authentication){
   const auth=authentication||await rootToken(candidate);
   if(typeof auth.token!=='string'||!auth.token||!Number.isInteger(auth.root_id))throw Error('recovery-test-credential-failed');
   try {
+    if(typeof expected.variableKey!=='string'||!/^RECOVERY_ENCRYPTED_PROOF_[A-F0-9]{24}$/.test(expected.variableKey))throw Error('restored-service-identity-mismatch');
     const project=await candidate.api('/projects/'+expected.projectId,auth.token);
     const branch=await candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),auth.token);
     const issue=await candidate.api('/projects/'+expected.projectId+'/issues/'+expected.issueIid,auth.token);
-    const variable=await candidate.api('/projects/'+expected.projectId+'/variables/RECOVERY_ENCRYPTED_PROOF',auth.token);
+    const variable=await candidate.api('/projects/'+expected.projectId+'/variables/'+encodeURIComponent(expected.variableKey),auth.token);
     const user=await candidate.api('/users/'+expected.userId,auth.token);
     const tag=await checkpoint(candidate,'recovery-restored-registry-tag',()=>registryTag(candidate,expected.projectId,expected.registryId,expected.imageCommit,auth.token));
     if(auth.root_id!==expected.rootId || project.path_with_namespace!==expected.path || branch.commit.id!==expected.head || issue.description!==expected.nonce ||
@@ -636,6 +638,8 @@ async function verifyPrivateWizard(candidate,expected){
 }
 async function verifyRegistryBlob(candidate,input) {
   await candidate.stage('recovery-original-registry-blob-ci',async()=>{
+    const phase=input.phase??'restored';
+    if(!['restored','upgraded','rollback'].includes(phase))throw Error('restored-registry-job-not-successful');
     const baseline=candidate.restoredRunnerIdentity;
     const runnerImageId=input.runnerImageId===undefined?baseline?.imageId:input.runnerImageId;
     if(input.runnerImageId!==undefined&&(!/^sha256:[a-f0-9]{64}$/.test(runnerImageId)||
@@ -643,7 +647,9 @@ async function verifyRegistryBlob(candidate,input) {
     const auth=await rootToken(candidate);
     try {
       const expected=input.expected;
-      const content=`stages: [verify]\nrestored-registry-blob:\n  stage: verify\n  image: {name: system-candidate:under-test, pull_policy: never}\n  tags: [docker]\n  script:\n    - printf '%s' "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin\n    - docker pull "$CI_REGISTRY_IMAGE/probe:${expected.imageCommit}"\n    - docker run --rm --network none "$CI_REGISTRY_IMAGE/probe:${expected.imageCommit}" node -e "if(require('fs').readFileSync('/candidate-proof','utf8')!=='candidate-registry-ok')process.exit(1)"\n`;
+      // A cold rollback restores the earlier CI file too. Distinct fixed phase
+      // markers make each existing probe a real commit, including after rollback.
+      const content=`# Recovery Registry proof: ${phase}\nstages: [verify]\nrestored-registry-blob:\n  stage: verify\n  image: {name: system-candidate:under-test, pull_policy: never}\n  tags: [docker]\n  script:\n    - printf '%s' "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin\n    - docker pull "$CI_REGISTRY_IMAGE/probe:${expected.imageCommit}"\n    - docker run --rm --network none "$CI_REGISTRY_IMAGE/probe:${expected.imageCommit}" node -e "if(require('fs').readFileSync('/candidate-proof','utf8')!=='candidate-registry-ok')process.exit(1)"\n`;
       await candidate.api('/projects/'+expected.projectId+'/repository/files/.gitlab-ci.yml',auth.token,'PUT',{branch:expected.branch,content,commit_message:'Verify restored original registry blob'});
       const commit=await candidate.api('/projects/'+expected.projectId+'/repository/files/.gitlab-ci.yml?ref='+encodeURIComponent(expected.branch),auth.token);
       let pipeline;

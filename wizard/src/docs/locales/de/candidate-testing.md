@@ -431,8 +431,13 @@ noch Netzwerk, Socket oder Zugangsdaten sind Eingaben für die Kandidatenplattfo
 
 Nach erfolgreichen bestehenden Runner-, Registry-, Kaltwiederherstellungs- und ACME-Szenarien
 erstellt `gitlab-upgrade.js` zusätzliche synthetische Benutzer-/Projekt-/Issue-,
-Merge-Request-/Diskussions- und verschlüsselte Variablenidentitäten vor dem Upgrade. Es ruft dieselbe
-Repository-Upgrade-Engine wie Production auf und verwendet ausschließlich archivgeprüfte Aliasse
+Merge-Request-/Diskussions- und verschlüsselte Variablenidentitäten vor dem Upgrade.
+Die Erfassung auf dem ursprünglichen Host und vor der Migration verwendet jeweils einen
+eigenen verschlüsselten Variablenschlüssel pro Kandidatenbesitzer; der erwartete Schlüssel
+bleibt im privaten Identitätsmaßstab. Der erste Nachweis wird nie überschrieben.
+Die ursprünglichen Identitäten werden nach der Wiederherstellung auf dem frischen Host
+geprüft, die vor der Migration erfassten Identitäten nach Migration und Rollback.
+Es ruft dieselbe Repository-Upgrade-Engine wie Production auf und verwendet ausschließlich archivgeprüfte Aliasse
 innerhalb des privaten Daemons. Die Production-CLI akzeptiert diese Aliasse nicht.
 Es erstellt einen Checkpoint der sauber gestoppten alten Datenbank, migriert den echten Zustand auf die
 gepatchte Version und prüft diese Identitäten. Ein neuer Runner-Job lädt einen vor dem Upgrade veröffentlichten
@@ -538,5 +543,12 @@ auf einer Benutzerinstallation. Ein erfolgreicher Plan belegt keine native Abnah
 Der ursprüngliche Host prüft idempotente Runner-Registrierung, eine neue Registry-Build/Push/Pull/Run-Pipeline und eine absichtlich fehlschlagende Pipeline, deren Auslieferungsjob übersprungen bleiben muss. Der wiederhergestellte Host behält native GitLab-Bereitschafts- und Runner-Prüfung bei, vergleicht gespeicherte Runner-Datenbank-ID, Fingerabdruck des Authentifizierungstokens und unveränderliche Image-ID und führt die ursprüngliche Registry-Blob-Pipeline aus. Bei einer Wiederherstellung auf einem frischen Host werden die Manager-Verzeichnisse neu erzeugt; die gültige System-ID des neuen Managers darf von der des ursprünglichen Hosts abweichen. Seine Identität muss bei Konfigurations-Push und Neustart auf dem wiederhergestellten Host sowie bei späteren Upgrades auf demselben Host erhalten bleiben. Der bestehende Registry-Job muss auf diesem aktuellen Manager laufen. Der wiederhergestellte Host wiederholt nicht die allgemeine Projekterstellung und Fehlerpipeline des ursprünglichen Hosts. Dessen erfolgreiche Pipeline-Identität bleibt der Sicherungsmaßstab; der wiederhergestellte Blob-Job zeichnet seine eigenen tatsächlichen Pipeline- und Job-IDs auf.
 
 Beide eigenen Hosts setzen nach dem Erzeugen des Managers die Pull-Regeln für die vorbereiteten Images. Das geführte HTTPS-Szenario richtet außerdem den Job-Mount und die Umgebungsvariablen für seine öffentliche Test-CA erneut ein. Diese verwerfbaren Testadapter lassen die Runner-Vorgaben installierter Systeme unverändert. Migration und Rollback übergeben ihr unabhängig verifiziertes Runner-Image an dieselbe Registry-Prüfung; Runner-ID, Zugang und Manager-Identität auf demselben Host werden weiterhin streng geprüft. Bei fehlgeschlagenen Registry-Jobs werden begrenzte Pipeline-/Job-Metadaten und feste Diagnosecodes gespeichert; unbearbeitete Job-Protokolle und Zugangsdaten werden nicht in Abnahmebelege geschrieben.
+
+Die bestehenden Registry-Prüfungen `restored`, `upgraded` und `rollback` schreiben jeweils
+eine unterschiedliche feste Phasenmarkierung in ihre CI-Datei. Jede Prüfung erzeugt
+dadurch einen echten Commit, auch wenn ein Datenbank-Rollback eine frühere CI-Datei
+wiederherstellt. Die drei Prüfungen behalten ihre bestehenden Phasen, Jobs,
+Pipelineautorisierung und Zeitlimits; der ursprüngliche Build-Tag und der Maßstab
+der erfolgreichen Pipeline bleiben unverändert.
 
 Kalte Wiederherstellung, GitLab-Migration, gepaartes öffentliches Upgrade und Rollback behalten getrennte Zustandsübergangsprüfungen. Unit- und Komponentenverträge decken Ablehnungs- und Bereinigungspfade ab; sie ersetzen weder native Wiederherstellung noch Registry-Authentifizierung oder tatsächliche Migrationsjobs.
