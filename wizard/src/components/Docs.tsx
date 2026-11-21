@@ -241,6 +241,7 @@ function Docs({ navigationVersion = 0 }: { navigationVersion?: number }) {
                   fontWeight: 750,
                   letterSpacing: '-.04em',
                   lineHeight: 1.2,
+                  overflowWrap: 'anywhere',
                   mb: 3,
                   scrollMarginTop: '7rem',
                   outline: 'none',
