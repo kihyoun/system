@@ -186,6 +186,7 @@ async function waitForServices(candidate, milliseconds = 600000, selectedImages 
       rows.every(row => {
         const name = row.Name?.replace(/^\//, '');
         return names.includes(name) && row.State?.Running === true &&
+          row.State.Status !== 'removing' &&
           (!Object.hasOwn(selectedImages, name) || row.Image === selectedImages[name]) &&
           !['Paused', 'Restarting', 'Dead'].some(key => row.State[key]) &&
           (!row.State.Health || row.State.Health.Status === 'healthy');

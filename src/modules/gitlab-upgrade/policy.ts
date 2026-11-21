@@ -174,6 +174,9 @@ export function options(value: unknown): UpgradeOptions {
 export function terminalContainerState(container: Container) {
   const state = container.State || {};
   if (state.OOMKilled === true) return 'oom';
+  // Docker marks a container dead while removing it; only its explicit removal
+  // status establishes this transitional state rather than a terminal failure.
+  if (state.Status === 'removing') return;
   if (state.Dead === true || state.Status === 'dead') return 'dead';
   if (state.Status !== 'exited' || state.Running === true || state.Restarting === true) return;
   const policy = container.HostConfig?.RestartPolicy;

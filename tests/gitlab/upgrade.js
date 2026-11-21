@@ -92,8 +92,12 @@ function nativeProof(args, proof={}) {
   }
   for(const [container,reason]of [
     [{...running,Image:ids.old},'upgrade-current-image-mismatch'],
+    [{...running,Image:ids.old,State:{Status:'removing',Running:false,Dead:true}},'upgrade-current-image-mismatch'],
     [{...running,State:{Status:'dead',Dead:true,ExitCode:137}},'upgrade-service-dead'],
+    [{...running,State:{Status:'dead',Dead:false,ExitCode:137}},'upgrade-service-dead'],
+    [{...running,State:{Dead:true,ExitCode:137}},'upgrade-service-dead'],
     [{...running,State:{Status:'running',Running:true,OOMKilled:true,ExitCode:137}},'upgrade-service-oom'],
+    [{...running,State:{Status:'removing',Running:false,Dead:true,OOMKilled:true,ExitCode:137}},'upgrade-service-oom'],
     [{...running,State:{Status:'exited',ExitCode:23},HostConfig:{RestartPolicy:{Name:'no'}}},'upgrade-service-exited'],
     [{...running,State:{Status:'exited',ExitCode:0},HostConfig:{RestartPolicy:{Name:'on-failure'}}},'upgrade-service-exited'],
     [{...running,State:{Status:'exited',ExitCode:23},RestartCount:3,HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:3}}},'upgrade-service-exited'],
@@ -108,18 +112,21 @@ function nativeProof(args, proof={}) {
   }
   for(const container of [
     {...running,State:{Status:'created',Running:false}},
+    {...running,State:{Status:'removing',Running:false,Dead:true}},
+    {...running,State:{Status:'removing',Running:true,Dead:false}},
     {...running,State:{Status:'restarting',Running:false,Restarting:true}},
     ...['always','unless-stopped'].map(Name=>({...running,State:{Status:'exited',ExitCode:23},HostConfig:{RestartPolicy:{Name}}})),
     {...running,State:{Status:'exited',ExitCode:23},RestartCount:3,HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:0}}},
     {...running,State:{Status:'exited',ExitCode:23},RestartCount:2,HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:3}}}
   ]){
-    let time=0,inspections=0,sleeps=0,current;
+    let time=0,inspections=0,sleeps=0,commands=0,preflights=0,current;
     const ready=new Upgrade(base,{now:()=>time,sleep:async ms=>{sleeps++;time+=ms;},run:(_binary,args)=>{
-      if(!current.State.Running)throw Error('service-not-ready');
+      assert.equal(current.State.Running,true,'HTTP and migration commands require the running replacement.');commands++;
       return args.includes('db:migrate:status')?'up 123 fixture':'';
     }});
-    ready.inspect=()=>{inspections++;current=inspections===1?container:running;return current;};ready.preflight=async()=>{};
+    ready.inspect=()=>{inspections++;current=inspections===1?container:running;return current;};ready.preflight=async()=>{assert.equal(current.State.Running,true);preflights++;};
     await ready.ready(release.toVersion,ids.next);assert.equal(inspections,2);assert.equal(sleeps,1);
+    assert.equal(commands,2);assert.equal(preflights,1,'SQL preflight runs only after replacement is running.');
   }
   for(const scenario of ['inspect-error','preflight-error','preflight-json','preflight-counts','rake-error','rake-output','probe-error','probe-output']){
     let sleeps=0;
@@ -156,10 +163,10 @@ function nativeProof(args, proof={}) {
     };
     await ready.ready(release.toVersion,ids.next);assert.equal(sleeps,1,'Explicit startup/migration states remain retryable.');
   }
-  for(const scenario of ['restarting','http','jobs','background-migrations','database-migrations']){
+  for(const scenario of ['restarting','removing','http','jobs','background-migrations','database-migrations']){
     let time=0,sleeps=0,commands=0;
     const ready=new Upgrade({...base,readyTimeoutSeconds:60},{now:()=>time,sleep:async ms=>{sleeps++;time+=ms;}});
-    ready.inspect=()=>scenario==='restarting'?{...running,State:{Status:'restarting',Running:false,Restarting:true}}:running;
+    ready.inspect=()=>scenario==='restarting'?{...running,State:{Status:'restarting',Running:false,Restarting:true}}:scenario==='removing'?{...running,State:{Status:'removing',Running:false,Dead:true}}:running;
     ready.verifyMounts=()=>{};
     ready.docker=args=>{
       commands++;
@@ -168,13 +175,13 @@ function nativeProof(args, proof={}) {
       assert(args.includes('db:migrate:status'));return 'down 123 private-migration-name';
     };
     await assert.rejects(()=>ready.ready(release.toVersion,ids.next),error=>{
-      assert.equal(error.message,'upgrade-readiness-timeout-'+scenario);
+      assert.equal(error.message,'upgrade-readiness-timeout-'+(scenario==='removing'?'restarting':scenario));
       assert(!JSON.stringify(error).includes('private-'));
       assert(!error.stack.includes('private-'));return true;
     });
     assert.equal(time,60000,'Readiness diagnostics must not extend the existing deadline.');
     assert.equal(sleeps,20);
-    if(scenario==='restarting')assert.equal(commands,0);
+    if(['restarting','removing'].includes(scenario))assert.equal(commands,0,'No HTTP/SQL command may run during removal or restart.');
   }
   const {GitlabPreflightService}=require('../../dist/modules/gitlab-preflight/gitlab-preflight.service');
   const probe=new GitlabPreflightService(new (require('../../dist/modules/gitlab-preflight/gitlab-database.service').GitlabDatabaseService)()), probeCommands=[], probeInputs=[];

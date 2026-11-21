@@ -125,12 +125,15 @@ test('native readiness reports terminal service exits but permits scheduled rest
   const changed=container=>healthy.map((row,index)=>index===0?{...row,...container}:row);
   for(const container of [
     {State:{Status:'dead',Dead:true,ExitCode:137,Error:'private-docker-error'}},
+    {State:{Status:'dead',Dead:false,ExitCode:137}},
+    {State:{Dead:true,ExitCode:137}},
+    {State:{Status:'removing',Dead:true,OOMKilled:true,Running:false,ExitCode:137}},
     {State:{Status:'exited',ExitCode:23},HostConfig:{RestartPolicy:{Name:'no'}}},
     {State:{Status:'exited',ExitCode:0},HostConfig:{RestartPolicy:{Name:'on-failure'}}},
     {State:{Status:'exited',ExitCode:23},RestartCount:2,HostConfig:{RestartPolicy:{Name:'on-failure',MaximumRetryCount:2}}}
   ]){
     inspections=0;sample=()=>changed(container);
-    const reason='public-upgrade-service-'+(container.State.Dead?'dead':'exited');
+    const reason='public-upgrade-service-'+(container.State.OOMKilled?'oom':container.State.Dead||container.State.Status==='dead'?'dead':'exited');
     await assert.rejects(waitForServices(candidate,3000),error=>error.message===reason&&error.noRetry===true&&error.exitCode===container.State.ExitCode);
     assert.equal(inspections,1);assert.equal(require('./stage-diagnostics').failureReason(reason),reason);
   }
@@ -144,6 +147,23 @@ test('native readiness reports terminal service exits but permits scheduled rest
   ]){
     inspections=0;sample=()=>inspections===1?changed(container):healthy;
     await waitForServices(candidate,3000);assert.equal(inspections,2);
+  }
+  const selected=Object.fromEntries(names.map((name,index)=>[name,id(String(index))]));
+  const reconciled=healthy.map(row=>({...row,Image:selected[row.Name.slice(1)]}));
+  for(const image of [selected[names[0]],id('f')]){
+   for(const state of [{Status:'removing',Running:false,Dead:true},{Status:'removing',Running:true,Dead:false}]){
+    const removing=reconciled.map((row,index)=>index===0?{...row,Image:image,State:state}:row);
+    time=0;inspections=0;sample=()=>inspections===1?removing:reconciled;
+    await waitForServices(candidate,3000,selected);
+    assert.equal(inspections,2,'removal of either selected or stale image waits for the selected healthy replacement');
+    assert.equal(time,1000);
+    time=0;inspections=0;sample=()=>removing;
+    await assert.rejects(waitForServices(candidate,2000,selected),/^Error: readiness-timeout$/);
+    assert.equal(inspections,2);assert.equal(time,2000,'permanent removal retains the original readiness budget');
+    time=0;inspections=0;sample=()=>removing.map((row,index)=>index===0?{...row,State:{...row.State,OOMKilled:true,ExitCode:137}}:row);
+    await assert.rejects(waitForServices(candidate,3000,selected),error=>error.message==='public-upgrade-service-oom'&&error.noRetry===true&&error.exitCode===137);
+    assert.equal(inspections,1);assert.equal(time,0,'OOM remains terminal even while Docker reports removal');
+   }
   }
 });
 test('previous public fixture is selected explicitly and redirects stay anonymous on approved TLS origins', async () => {

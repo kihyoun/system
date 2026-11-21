@@ -171,6 +171,7 @@ export class UpgradeRuntimeService {
                 container.RestartCount < policy.MaximumRetryCount))));
       if (
         state.Status === 'created' ||
+        state.Status === 'removing' ||
         state.Restarting === true ||
         state.Status === 'restarting' ||
         restarting

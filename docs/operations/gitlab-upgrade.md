@@ -80,6 +80,12 @@ it does not expose subprocess output or configuration. Inspect the retained
 operation and use its documented recovery path. A readiness failure does not
 release maintenance leases or prove that promotion completed.
 
+Readiness distinguishes Docker's explicit `removing` transition from a terminal
+`dead` state: removal may set `Dead=true` before the old container disappears.
+Removal never satisfies readiness and uses the existing bounded wait. OOM,
+terminal exits and genuine dead states still fail immediately; native GitLab
+readiness continues to require the exact selected image before waiting.
+
 Native command failures use a finite `upgrade-command-<stage>-<kind>` diagnostic.
 The stage distinguishes SQL, private connection-file preparation, package/configuration
 reads, schema status and lifecycle commands. The kind distinguishes a nonzero exit,
