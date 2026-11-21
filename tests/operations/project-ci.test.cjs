@@ -62,16 +62,37 @@ function deliveryFixture(t,mode='success'){
   if(args[0]==='login'){assert.equal(options.input,'private\n');assert.equal(fs.statSync(raw[1]).mode&0o777,0o700);return '';}
   if(args[0]==='buildx'&&args[1]==='create'){builder=args[3];if(mode==='uncertain')throw Error('create uncertain');return builder;}
   if(args[0]==='buildx'&&args[1]==='inspect')return builder;
-  if(args[0]==='image'&&args[1]==='inspect'){if(args[3].includes('RepoDigests'))return deliveryEnv.CI_REGISTRY_IMAGE+'@sha256:'+'f'.repeat(64);return 'sha256:'+(mode==='replaced'&&calls.filter(call=>call.args[0]==='image'&&call.args[1]==='inspect').length>2?'e':'a').repeat(64);}
+  if(args[0]==='image'&&args[1]==='inspect'){if(args[3].includes('RepoDigests'))return (mode==='wrong-registry-digest'?'foreign.example/group/project':deliveryEnv.CI_REGISTRY_IMAGE)+'@sha256:'+'f'.repeat(64);return 'sha256:'+(mode==='replaced'&&calls.filter(call=>call.args[0]==='image'&&call.args[1]==='inspect').length>2?'e':'a').repeat(64);}
   if(args[0]==='push'&&mode==='push-failed')throw Error('push failed');
+  if(args[0]==='image'&&args[1]==='rm'&&mode==='cleanup-failed')throw Error('remove owned image failed');
   return '';
  }};
  return{root,calls,service:new DeliveryService(new DeliverySessionService(port))};
 }
 test('delivery preserves immutable evidence and exact owned cleanup',async t=>{
  const f=deliveryFixture(t);await f.service.build(f.root,deliveryEnv);
- const evidence=JSON.parse(fs.readFileSync(path.join(f.root,'build-evidence.json')));assert.equal(evidence.sourceCommit,deliveryEnv.CI_COMMIT_SHA);assert.equal(evidence.imageRef,deliveryEnv.CI_REGISTRY_IMAGE+'@sha256:'+'f'.repeat(64));assert.equal(evidence.testRunner,'vitest');
- assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'cleanup.json'))).status,'passed');assert(f.calls.some(call=>call.args[0]==='image'&&call.args[1]==='rm'));assert(f.calls.some(call=>call.args[0]==='buildx'&&call.args[1]==='rm'&&call.options.signal===undefined));
+ const evidence=JSON.parse(fs.readFileSync(path.join(f.root,'build-evidence.json')));assert.deepEqual(evidence,{version:1,sourceCommit:deliveryEnv.CI_COMMIT_SHA,pipelineId:2,imageRef:deliveryEnv.CI_REGISTRY_IMAGE+'@sha256:'+'f'.repeat(64),unitTests:true,testRunner:'vitest',lint:true,typecheck:true,productionBuild:true});
+ assert.equal(fs.readFileSync(path.join(f.root,'image.env'),'utf8'),'WIZARD_IMAGE_REF='+evidence.imageRef+'\n');
+ assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'cleanup.json'))).status,'passed');
+ const createdBuilder=f.calls.find(call=>call.args[0]==='buildx'&&call.args[1]==='create').args[3];
+ assert(f.calls.some(call=>JSON.stringify(call.args)===JSON.stringify(['image','rm','sha256:'+'a'.repeat(64)])));
+ assert(f.calls.some(call=>JSON.stringify(call.args)===JSON.stringify(['buildx','rm',createdBuilder])&&call.options.signal===undefined));
+ assert(!f.calls.some(call=>call.args.includes('prune')));
+ assert(!f.calls.some(call=>call.args.includes('system_wizard_1')));
+});
+test('delivery rejects a digest from another registry before recording build evidence',async t=>{
+ const f=deliveryFixture(t,'wrong-registry-digest');await assert.rejects(f.service.build(f.root,deliveryEnv),/Exact candidate digest from job registry required/);
+ assert(!fs.existsSync(path.join(f.root,'build-evidence.json')));assert(!fs.existsSync(path.join(f.root,'image.env')));
+ assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'cleanup.json'))).status,'passed');
+ assert(f.calls.some(call=>call.args[0]==='image'&&call.args[1]==='rm'));
+ assert(f.calls.some(call=>call.args[0]==='buildx'&&call.args[1]==='rm'));
+});
+test('an owned cleanup command failure fails delivery despite successful build evidence',async t=>{
+ const f=deliveryFixture(t,'cleanup-failed');await assert.rejects(f.service.build(f.root,deliveryEnv),/Project delivery cleanup failed: remove owned image failed/);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'build-evidence.json'))).sourceCommit,deliveryEnv.CI_COMMIT_SHA);
+ const cleanup=JSON.parse(fs.readFileSync(path.join(f.root,'cleanup.json')));assert.equal(cleanup.status,'failed');assert.deepEqual(cleanup.errors,['remove owned image failed']);
+ assert(f.calls.some(call=>JSON.stringify(call.args)===JSON.stringify(['image','rm','sha256:'+'a'.repeat(64)])));
+ assert(f.calls.some(call=>call.args[0]==='buildx'&&call.args[1]==='rm'&&call.options.signal===undefined),'Other owned cleanup must continue after the command failure');
 });
 test('delivery source mismatch rejects before native mutation',async t=>{
  const f=deliveryFixture(t);await assert.rejects(f.service.build(f.root,{...deliveryEnv,SYSTEM_WIZARD_EXPECTED_SHA:'e'.repeat(40)}),/binding/);assert.equal(f.calls.length,0);

@@ -250,8 +250,8 @@ the Vite source uses the Node 24/Vite profile. Build verification alone does not
 promote Production. Review/Beta require explicit environment configuration, and
 Production uses the guarded operator plan/apply/rollback workflow. See the
 [managed build guide](https://github.com/kihyoun/system/blob/master/docs/WIZARD_BUILD.md),
-[environment guide](https://github.com/kihyoun/system/blob/master/project-bootstrap/wizard-environments/README.md)
-and [Production guide](https://github.com/kihyoun/system/blob/master/project-bootstrap/wizard-production/README.md).
+[environment guide](https://github.com/kihyoun/system/blob/master/templates/project-bootstrap/wizard-environments/README.md)
+and [Production guide](https://github.com/kihyoun/system/blob/master/templates/project-bootstrap/wizard-production/README.md).
 
 ## Local development
 
@@ -277,7 +277,9 @@ npm run test:ci
 ```
 
 Vitest covers configuration and workflow regressions. Playwright checks the
-rendered interface, navigation, backup download and SPA fallback. Set
+rendered interface, navigation, backup download and SPA fallback. Shared native
+delivery evidence, digest validation and cleanup are covered by the System
+repository's `tests/operations/project-ci.test.cjs` suite. Set
 `WIZARD_BASE_URL` to check an already running isolated candidate instead of
 starting the local preview server.
 
@@ -302,11 +304,13 @@ TypeScript/Vite build and signed configuration-export checks, then Playwright
 against that exact build artifact in a disposable loopback preview. The existing
 `.gitlab-ci.yml` publishing jobs remain available independently. With image
 delivery disabled, the source-primary pipeline needs only its ordinary Node/browser
-runner. It never deploys Production or updates System's Wizard gitlink automatically.
+runner. It never deploys Production or changes System's Wizard source selection automatically.
 
-Source-primary jobs and the managed image/browser builds install the committed
-[Mozilla CA bundle](.system-bootstrapper/build-v1/ca/cacert-2026-10-20.crt)
-using the versioned `node24-vite8-ca-v4` recipe. Its image-only refresh verifies
+Source-primary jobs and managed image/browser builds use the shared native
+`node24-vite8-typed-v6` runtime. The committed System
+[Mozilla CA source](../config/ca/cacert-2026-10-20.crt) is staged at
+the generated project path `.system-bootstrapper/build-v2/bootstrapper/ca/cacert-2026-10-20.crt`.
+The portable `refresh-ca` operation selects this project layout. Its image-only refresh verifies
 the bundle checksum and removes obsolete OpenSSL certificate hash links before
 installing the reviewed trust store. Node uses that store through
 `NODE_OPTIONS=--use-openssl-ca`. The source browser job repeats the refresh after
@@ -376,7 +380,7 @@ receipt; CI variables alone cannot grant ownership. Same-project merge-request
 pipelines offer `deploy:review` / `stop:review`; default-branch push pipelines offer
 `deploy:beta` / `stop:beta`. Candidate jobs remain absent until their opt-in settings
 are present. They preserve the ordinary Production interface and never promote it. See the
-[Production guide](https://github.com/kihyoun/system/blob/master/project-bootstrap/wizard-production/README.md)
+[Production guide](https://github.com/kihyoun/system/blob/master/templates/project-bootstrap/wizard-production/README.md)
 for independent verification and promotion.
 
 Project documentation is maintained in English. See [AGENTS.md](AGENTS.md) for

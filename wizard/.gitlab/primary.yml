@@ -31,7 +31,6 @@ build:source:
     - npm test
     - npm run build
     - npm run test:config-export
-    - npm run test:delivery
   artifacts:
     expire_in: 1 day
     paths: [build/, build-tools/]

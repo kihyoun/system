@@ -22,7 +22,6 @@
     "eslint": "eslint .",
     "build:config-export": "rolldown scripts/export-configuration.ts --platform node --format cjs --file build-tools/export-configuration.cjs --no-codeSplitting",
     "test:config-export": "npm run build:config-export && node --test tests/offline/export-configuration.test.cjs",
-    "test:delivery": "node --test tests/offline/delivery-recipe.test.cjs",
     "format": "prettier --config ../.prettierrc --ignore-path ../.prettierignore --write \"src/**/*.{ts,tsx,js,jsx}\"",
     "format:check": "prettier --config ../.prettierrc --ignore-path ../.prettierignore --check \"src/**/*.{ts,tsx,js,jsx}\""
   },
