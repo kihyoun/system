@@ -534,8 +534,12 @@ A successful plan does not establish native acceptance.
 The original host runs runner registration idempotency, a new registry build/push/pull/run
 pipeline, and a deliberately failing pipeline whose delivery job must stay skipped.
 The restored host retains native GitLab readiness and runner verification, compares the
-saved runner database ID, manager identity hash and immutable image ID, and runs the
-original registry-blob pipeline. It does not repeat the original host's generic project
+saved runner database ID, authentication-token fingerprint and immutable image ID, and runs the
+original registry-blob pipeline. Fresh-host recovery reconstructs manager directories;
+the new manager's valid system ID may differ from the original host. Its identity must
+remain stable across the restored host's configuration Push/restart and later same-host
+upgrades. The existing registry job must run on that current manager. The restored host
+does not repeat the original host's generic project
 creation and failure pipeline. The original successful pipeline identity remains the
 backup oracle; the restored blob job records its own actual pipeline and job IDs.
 

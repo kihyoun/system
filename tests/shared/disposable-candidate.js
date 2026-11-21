@@ -324,8 +324,9 @@ class Candidate {
       await this.stage('recovery-retained-runner-identity',async()=>{
         const expected=this.spec.restore.expected;
         if(!expected?.runnerIdentity||!Number.isSafeInteger(expected.projectId)||!Number.isSafeInteger(expected.registryPipelineId))throw Error('recovery-runner-identity-required');
-        const actual=await require('../e2e/recovery').runnerIdentity(this);
-        if(JSON.stringify(actual)!==JSON.stringify(expected.runnerIdentity))throw Error('recovery-runner-identity-changed');
+        const recovery=require('../e2e/recovery'),actual=await recovery.runnerIdentity(this);
+        recovery.assertRunnerIdentity(expected.runnerIdentity,actual);
+        recovery.assertRunnerIdentity(this.restoredRunnerIdentity,actual,true);
         // Retain the original successful pipeline whose immutable blob was backed up.
         this.evidence={...this.evidence,projectId:expected.projectId,pipelineId:expected.registryPipelineId};
       });
