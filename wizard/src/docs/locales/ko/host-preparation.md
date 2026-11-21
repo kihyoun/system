@@ -133,7 +133,7 @@ Wizard 이미지를 빌드합니다. 복구 기록에 필요한 이미지를 다
 뜻은 아닙니다.
 
 오프라인 복구를 위해 원래 호스트를 잃기 전에 Node 설치와 `operations/dist`,
-`operations/node_modules`를 포함한 일치하는 체크아웃을 보관하세요. `initialize.js`나
+`operations/node_modules`, `operations/assets`를 포함한 일치하는 체크아웃을 보관하세요. `initialize.js`나
 `recover-volume.js`가 저장소를 확인하기 전에 검증된 도구를 복원하세요. 없다면 유지보수
 전에 호환되는 검토된 도구를 별도로 준비하세요. 중지된 플랫폼이나 npm 가용성은 복구의
 전제 조건이 아닙니다. 기록된 서비스 이미지와 소스 식별 정보를 유지하세요.

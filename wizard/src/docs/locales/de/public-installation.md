@@ -86,7 +86,7 @@ vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- un
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
 Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
 
 Diese Neuinstallation speichert Live-Daten auf dem Systemlaufwerk des Servers. Erstellen Sie einen
 ausdrücklichen Selektor, damit Zertifikatsintegration und Lebenszykluswerkzeuge dasselbe

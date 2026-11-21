@@ -6,7 +6,7 @@ vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- un
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
 Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
 
 Die Wiederherstellungseingaben bleiben getrennt: eine
 Wizard-Konfigurationssicherung, ein abgeschlossener Harvest-Seed und frisch
@@ -198,7 +198,7 @@ vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- un
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
 Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
 
 Die Eingaben sind der abgeschlossene Seed, das passende Wizard-`bootstrapper.zip`,
 der aufgezeichnete System-Quellcode mit seinem aufgezeichneten Wizard-Layout sowie

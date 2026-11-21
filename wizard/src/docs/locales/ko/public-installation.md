@@ -82,7 +82,7 @@ Ubuntu 24.04 [패키지는 이 인터페이스를 제공합니다](https://packa
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 이 새 설치는 서버 시스템 디스크에 운영 데이터를 저장합니다.
 인증서 통합과 수명 주기 도구가 같은 작업 디렉터리를 공유하도록 명시적인 선택자를 만드세요.

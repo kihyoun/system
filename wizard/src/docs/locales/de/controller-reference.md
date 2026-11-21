@@ -6,7 +6,7 @@ vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- un
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
 Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
 
 Ein öffentliches **Controller-Release** ist das vollständige Image aus
 `system/Dockerfile`: Orchestrierungscode, Sync-Dienst, paketierter Wizard-Quellcode
@@ -784,10 +784,10 @@ Bereite die Laufzeit eines ausdrücklich ausgewählten akzeptierten Releases vor
 sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
 ```
 
-Rufe die beibehaltene CLI mit einem ausdrücklich geprüften Checkout auf. Dieser Modus installiert nur die Node-/CLI-Laufzeit; er startet die Plattform nicht und stellt sie nicht wieder her. Bewahre beim Vorbereiten einer Offline-Wiederherstellung die kompilierten Operations-Dateien des Checkouts auf.
+Rufe die beibehaltene CLI mit einem ausdrücklich geprüften Checkout auf. Dieser Modus installiert nur die Node-/CLI-Laufzeit; er startet die Plattform nicht und stellt sie nicht wieder her. Bewahre beim Vorbereiten einer Offline-Wiederherstellung die kompilierten Operations-Dateien, gebündelten Abhängigkeiten und Richtlinienressourcen des Checkouts auf. Führe vor dem Aufruf von Checkout-Einstiegen das vollständige [Verfahren zur Laufzeitbereitstellung](../Prepare-Host.md#prepare-the-host-operations-runtime) durch; `--runtime-only` allein installiert das Paket unter `/opt/system-bootstrapper-runtime/cli`.
 
 Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery
 müssen das Laufzeitverzeichnis sowie `operations/dist` und
-`operations/node_modules` erhalten bleiben. Die Werkzeuge nutzen den gespeicherten
+`operations/node_modules` und `operations/assets` erhalten bleiben. Die Werkzeuge nutzen den gespeicherten
 absoluten Node-Pfad ohne nvm, Shell-Profil oder npm-Zugriff. Die Datei
 `/opt/system-bootstrapper-runtime/node-executable` enthält diesen Pfad.

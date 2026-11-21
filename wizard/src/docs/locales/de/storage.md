@@ -6,7 +6,7 @@ vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- un
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
 Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
 
 Die Plattform unterscheidet zwei Speicherrollen:
 
@@ -207,7 +207,7 @@ vor. Quickstart bereitet Node und operations automatisch vor. Manuelle Quell- un
 Ersatzhostwege müssen sie zuerst vorbereiten oder wiederherstellen; `--install-host`
 installiert native Host-Abhängigkeiten, nicht die fehlende Betriebslaufzeit.
 Halten Sie die geprüfte Node-Installation, `operations/dist` und
-`operations/node_modules` vor Wartungsbeginn offline verfügbar.
+`operations/node_modules` und `operations/assets` vor Wartungsbeginn offline verfügbar.
 
 1. Stoppen Sie schreibende Prozesse sauber, bevor Sie Speicher abtrennen. Behalten
    Sie das Volume beim Löschen der VM ausdrücklich; formatieren Sie es nicht und

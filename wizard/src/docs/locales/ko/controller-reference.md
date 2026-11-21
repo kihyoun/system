@@ -5,7 +5,7 @@
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 공개 **컨트롤러 릴리스**는 `system/Dockerfile`에서 빌드한 전체 이미지로, 오케스트레이션
 코드, Sync 서비스, 패키징된 Wizard 소스 및 런타임 도구를 포함합니다. 별도로 빌드한
@@ -714,10 +714,10 @@ Docker 기본 동작 테스트는 소켓 없는 구성 요소 테스트와 별�
 sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
 ```
 
-보관한 CLI를 명시적으로 검토한 체크아웃과 함께 호출하세요. 이 모드는 Node/CLI 런타임만 설치하며 플랫폼을 시작하거나 복원하지 않습니다. 오프라인 복구 환경을 준비할 때 체크아웃의 컴파일된 operations를 보관하세요.
+보관한 CLI를 명시적으로 검토한 체크아웃과 함께 호출하세요. 이 모드는 Node/CLI 런타임만 설치하며 플랫폼을 시작하거나 복원하지 않습니다. 오프라인 복구 환경을 준비할 때 체크아웃의 컴파일된 operations, 번들된 의존성과 정책 리소스를 보관하세요. 체크아웃 진입점을 호출하기 전에 전체 [런타임 배치 절차](../Prepare-Host.md#prepare-the-host-operations-runtime)를 따르세요. `--runtime-only`만 실행하면 패키지를 `/opt/system-bootstrapper-runtime/cli` 아래에 설치합니다.
 
 기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
-런타임 디렉터리와 `operations/dist`, `operations/node_modules`를
+런타임 디렉터리와 `operations/dist`, `operations/node_modules`, `operations/assets`를
 보존하세요. 도구는 저장된 Node 실행 파일의 절대 경로를 사용하므로 복구 중에는
 nvm, 셸 프로필이나 npm 네트워크 접근이 필요하지 않습니다. 실행 파일 경로는
 `/opt/system-bootstrapper-runtime/node-executable`에 기록됩니다.

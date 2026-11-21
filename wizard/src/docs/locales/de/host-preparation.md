@@ -145,7 +145,7 @@ dies nicht abschaltet. Ein Image aus einem Recovery-Nachweis darf dadurch nicht
 neu gebaut und ersetzt werden.
 
 Behalten Sie für Offline-Recovery die Node-Installation und den passenden Checkout
-mit `operations/dist` und `operations/node_modules`, bevor der ursprüngliche Host
+mit `operations/dist` und `operations/node_modules` und `operations/assets`, bevor der ursprüngliche Host
 verloren geht. Stellen Sie diese geprüften Werkzeuge wieder her, bevor
 `initialize.js` oder `recover-volume.js` den Speicher prüft. Fehlen sie, bereiten
 Sie kompatible geprüfte Werkzeuge getrennt vor der Wartung vor. Weder die gestoppte

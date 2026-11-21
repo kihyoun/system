@@ -5,7 +5,7 @@
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 복구 입력은 별도로 유지됩니다. Wizard 구성 백업, 완료된 Harvest Seed 및 기록된
 Wizard 트리가 포함된 System 소스가 필요합니다. 새 모노레포 릴리스는 일반 `wizard/`
@@ -163,7 +163,7 @@ Seed에 추가하지 않습니다.
 Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/교체 호스트 경로는
 먼저 이를 준비하거나 복원해야 합니다. `--install-host`는 네이티브 호스트 의존성을
 설치하며 누락된 운영 런타임은 설치하지 않습니다. 유지보수 전에 검증된 Node 설치,
-`operations/dist`, `operations/node_modules`를 오프라인으로 사용할 수 있게 보관하세요.
+`operations/dist`, `operations/node_modules`, `operations/assets`를 오프라인으로 사용할 수 있게 보관하세요.
 
 입력은 완료 Seed, 일치하는 Wizard `bootstrapper.zip`, 기록된 Wizard 레이아웃을 포함한
 System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브입니다. 이전 라이브
