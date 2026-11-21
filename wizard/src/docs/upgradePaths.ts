@@ -6,6 +6,13 @@ export type UpgradeTransition = {
   kind: string;
   services: string[];
   databaseMigration: boolean;
+  gitlabPrerequisite?: {
+    kind: string;
+    fromVersion: string;
+    toVersion: string;
+    completedBefore: string;
+    rollback: string;
+  };
   serviceImagesPreserved: boolean;
   minimumFreeGiB: number;
   requiredStage: string;

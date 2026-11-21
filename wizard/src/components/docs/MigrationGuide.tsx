@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Alert, Box, Checkbox, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Checkbox, Link, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useI18n } from '../../i18n';
 import {
   upgradeGraph,
@@ -26,9 +26,13 @@ const messages = {
     unnecessary: 'Both versions are identical. No release upgrade is necessary.',
     intermediate: 'Required release stops, in order:',
     interruption:
-      'Matching cold backup pauses GitLab. The controller/Sync and Wizard restart during the update; changed Compose policies can also recreate core containers, including GitLab, proxies and runner managers. Wait for active CI jobs first. Service and database images stay selected. There is no guaranteed downtime duration.',
+      'Matching cold backup pauses GitLab. The controller/Sync and Wizard restart during the update; changed Compose policies can also recreate core containers, including GitLab, proxies and runner managers. Wait for active CI jobs first. There is no guaranteed downtime duration.',
+    databasePrerequisite:
+      'This transition changes GitLab and Runner images and migrates the database. First complete the documented native GitLab upgrade and retain its separate cold checkpoint. Pass that checkpoint directory to the paired release plan below. Paired recovery restores only the controller and Wizard; database rollback requires its own cold restore and discards later writes.',
+    preservedImages: 'This transition preserves the selected service and database images.',
+    gitlabGuide: 'GitLab migration and cold-checkpoint procedure',
     prerequisites:
-      'Use an unmodified official release on supported Ubuntu x86_64, your own installation API token, idle operations and completed GitLab background migrations. Fetch the exact target tag and its recursive Wizard submodule. Preserve domains, storage and project settings.',
+      'Use an unmodified official release on supported Ubuntu x86_64, your own installation API token, idle operations and completed GitLab background migrations. Fetch the exact target tag and prepare its offline Node/CLI runtime. Current releases include Wizard sources in the System tree; initialize submodules only for historical releases that declare them. Preserve domains, storage and project settings.',
     backup:
       'Attach the explicitly selected backup filesystem. Choose a new configuration ZIP path on that filesystem. Apply first retains the previous controller/Wizard payloads, then creates and verifies a matching completed Seed and exact configuration backup. Missing media fails without fallback. Keep both recovery inputs independently accessible.',
     preflight:
@@ -67,9 +71,13 @@ const messages = {
     unnecessary: 'Beide Versionen sind gleich. Ein Release-Upgrade ist nicht erforderlich.',
     intermediate: 'Verpflichtende Release-Zwischenstopps in dieser Reihenfolge:',
     interruption:
-      'Die passende kalte Sicherung pausiert GitLab. Controller/Sync und Wizard starten beim Update neu; geänderte Compose-Richtlinien können auch Kern-Container einschließlich GitLab, Proxys und Runner-Manager neu erstellen. Laufende CI-Jobs müssen vorher enden. Service- und Datenbank-Images bleiben ausgewählt. Es gibt keine garantierte Ausfallzeit.',
+      'Die passende kalte Sicherung pausiert GitLab. Controller/Sync und Wizard starten beim Update neu; geänderte Compose-Richtlinien können auch Kern-Container einschließlich GitLab, Proxys und Runner-Manager neu erstellen. Laufende CI-Jobs müssen vorher enden. Es gibt keine garantierte Ausfallzeit.',
+    databasePrerequisite:
+      'Dieser Übergang ändert GitLab- und Runner-Images und migriert die Datenbank. Zuerst das dokumentierte native GitLab-Upgrade abschließen und dessen separaten kalten Checkpoint behalten. Sein Verzeichnis beim anschließenden Release-Plan unten angeben. Die Paar-Wiederherstellung setzt nur Controller und Wizard zurück; ein Datenbank-Rollback benötigt die eigene kalte Wiederherstellung und verwirft spätere Schreibvorgänge.',
+    preservedImages: 'Dieser Übergang behält die ausgewählten Service- und Datenbank-Images bei.',
+    gitlabGuide: 'GitLab-Migration und kalter Checkpoint',
     prerequisites:
-      'Ein unverändertes offizielles Release auf unterstütztem Ubuntu x86_64, ein API-Token der eigenen Installation, freie Betriebsabläufe und abgeschlossene GitLab-Hintergrundmigrationen sind erforderlich. Das genaue Ziel-Tag samt rekursivem Wizard-Submodul auschecken. Domains, Speicher- und Projekteinstellungen beibehalten.',
+      'Ein unverändertes offizielles Release auf unterstütztem Ubuntu x86_64, ein API-Token der eigenen Installation, freie Betriebsabläufe und abgeschlossene GitLab-Hintergrundmigrationen sind erforderlich. Das genaue Ziel-Tag auschecken und dessen offline verfügbaren Node-/CLI-Laufzeit vorbereiten. Aktuelle Releases enthalten den Wizard im System-Quellbaum; Submodule nur für ältere Releases initialisieren, die diese vorsehen. Domains, Speicher- und Projekteinstellungen beibehalten.',
     backup:
       'Das ausdrücklich gewählte Sicherungsdateisystem einhängen und dort einen neuen ZIP-Pfad wählen. Apply sichert zuerst die bisherigen Controller-/Wizard-Images und erzeugt und prüft danach einen passenden abgeschlossenen Seed samt exakter Konfigurationssicherung. Fehlende Medien führen zu einem Fehler ohne Ausweichverzeichnis. Beide Wiederherstellungseingaben unabhängig verfügbar halten.',
     preflight:
@@ -108,9 +116,13 @@ const messages = {
     unnecessary: '두 버전이 같습니다. 릴리스 업그레이드가 필요하지 않습니다.',
     intermediate: '다음 순서로 필수 중간 릴리스를 거쳐야 합니다:',
     interruption:
-      '일치하는 콜드 백업을 만들 때 GitLab이 일시 중지됩니다. 업데이트 중 컨트롤러/Sync와 Wizard가 재시작됩니다. Compose 정책 변경으로 GitLab, 프록시 및 Runner 관리자를 포함한 핵심 컨테이너도 다시 생성될 수 있습니다. 실행 중인 CI 작업이 끝날 때까지 기다리세요. 서비스와 데이터베이스 이미지 선택은 유지됩니다. 중단 시간은 보장되지 않습니다.',
+      '일치하는 콜드 백업을 만들 때 GitLab이 일시 중지됩니다. 업데이트 중 컨트롤러/Sync와 Wizard가 재시작됩니다. Compose 정책 변경으로 GitLab, 프록시 및 Runner 관리자를 포함한 핵심 컨테이너도 다시 생성될 수 있습니다. 실행 중인 CI 작업이 끝날 때까지 기다리세요. 중단 시간은 보장되지 않습니다.',
+    databasePrerequisite:
+      '이 전환은 GitLab과 Runner 이미지를 변경하고 데이터베이스를 마이그레이션합니다. 먼저 문서화된 기본 GitLab 업그레이드를 완료하고 별도의 콜드 체크포인트를 보관하세요. 아래 릴리스 계획에 해당 체크포인트 디렉터리를 전달하세요. 쌍 복구는 컨트롤러와 Wizard만 복원합니다. 데이터베이스 롤백에는 별도의 콜드 복원이 필요하며 체크포인트 이후 기록은 삭제됩니다.',
+    preservedImages: '이 전환은 선택된 서비스와 데이터베이스 이미지를 유지합니다.',
+    gitlabGuide: 'GitLab 마이그레이션 및 콜드 체크포인트 절차',
     prerequisites:
-      '지원되는 Ubuntu x86_64의 변경되지 않은 공식 릴리스, 이 설치의 API 토큰, 유휴 작업 상태, 완료된 GitLab 백그라운드 마이그레이션이 필요합니다. 정확한 대상 태그와 재귀적 Wizard 서브모듈을 가져오세요. 도메인, 저장소와 프로젝트 설정을 유지하세요.',
+      '지원되는 Ubuntu x86_64의 변경되지 않은 공식 릴리스, 이 설치의 API 토큰, 유휴 작업 상태, 완료된 GitLab 백그라운드 마이그레이션이 필요합니다. 정확한 대상 태그를 가져오고 오프라인 Node/CLI 런타임을 준비하세요. 현재 릴리스는 System 소스 트리에 Wizard를 포함합니다. 서브모듈을 선언한 과거 릴리스에서만 서브모듈을 초기화하세요. 도메인, 저장소와 프로젝트 설정을 유지하세요.',
     backup:
       '명시적으로 선택한 백업 파일시스템을 연결하고 그 안에 새 구성 ZIP 경로를 선택하세요. Apply는 먼저 이전 컨트롤러/Wizard 이미지 파일을 보관한 후 일치하는 완료된 Seed와 정확한 구성 백업을 생성하고 검증합니다. 미디어가 없으면 대체 경로 없이 실패합니다. 두 복구 입력을 독립적으로 보관하세요.',
     preflight:
@@ -136,8 +148,14 @@ const messages = {
 };
 
 export function migrationCommand(edge: UpgradeTransition, operation: string) {
+  // Historical stops run from their own release checkout, which predates the CLI.
+  const command =
+    Number(edge.to.split('.')[0]) >= 2
+      ? 'sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \\\n  --checkout "$PWD"'
+      : 'sudo python3 bootstrapper/upgrade-release.py';
   const base =
-    'sudo python3 bootstrapper/upgrade-release.py \\\n  --persistence-env /root/system-storage.env \\\n  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-' +
+    command +
+    ' \\\n  --persistence-env /root/system-storage.env \\\n  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-' +
     edge.to;
   if (operation === 'preflight')
     return (
@@ -146,7 +164,11 @@ export function migrationCommand(edge: UpgradeTransition, operation: string) {
       edge.to +
       ' \\\n  --backup-file /mnt/backup/configuration-before-' +
       edge.to +
-      '.zip \\\n  --token-file /root/system-api-token'
+      '.zip \\\n  --token-file /root/system-api-token' +
+      (edge.gitlabPrerequisite
+        ? ' \\\n  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/gitlab-upgrades/to-' +
+          edge.to
+        : '')
     );
   return (
     base +
@@ -230,6 +252,22 @@ export default function MigrationGuide({ graph = upgradeGraph }: { graph?: Upgra
               <Typography>
                 {text.capacity} {edge.minimumFreeGiB} {text.gib}
               </Typography>
+              {edge.gitlabPrerequisite ? (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  {text.databasePrerequisite}{' '}
+                  <strong>
+                    GitLab {edge.gitlabPrerequisite.fromVersion} →{' '}
+                    {edge.gitlabPrerequisite.toVersion}
+                  </strong>{' '}
+                  <Link
+                    href={`https://github.com/kihyoun/system/blob/v${edge.to}/gitlab/UPGRADE.md`}
+                  >
+                    {text.gitlabGuide}
+                  </Link>
+                </Alert>
+              ) : edge.serviceImagesPreserved ? (
+                <Typography sx={{ mt: 2 }}>{text.preservedImages}</Typography>
+              ) : null}
               <Box component="ol" sx={{ pl: 3 }}>
                 {edge.steps.map((step, index) => (
                   <Box component="li" key={step} sx={{ my: 2 }}>

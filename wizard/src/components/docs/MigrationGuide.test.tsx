@@ -12,6 +12,9 @@ describe('Offline migration guide', () => {
   it('requires manual source selection and never contacts Sync', () => {
     const network = vi.spyOn(globalThis, 'fetch');
     render(<MigrationGuide />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Target version' }), {
+      target: { value: '1.2.0' },
+    });
     expect(screen.getAllByRole('status')[0]).toHaveTextContent('Unknown release');
     fireEvent.change(screen.getByRole('combobox', { name: 'Installed version' }), {
       target: { value: '1.1.3' },
@@ -32,6 +35,10 @@ describe('Offline migration guide', () => {
     ]);
     expect(screen.getAllByRole('button', { name: 'Copy bash example' })).toHaveLength(4);
     expect(document.querySelector('pre')).toHaveTextContent('--target 1.2.0');
+    expect(document.querySelector('pre')).toHaveTextContent(
+      'python3 bootstrapper/upgrade-release.py',
+    );
+    expect(document.querySelector('pre')).not.toHaveTextContent('--gitlab-checkpoint');
     expect(network).not.toHaveBeenCalled();
     network.mockRestore();
   });
@@ -39,7 +46,7 @@ describe('Offline migration guide', () => {
   it('distinguishes same release, unsupported downgrade and unknown source', () => {
     render(<MigrationGuide />);
     const source = screen.getByRole('combobox', { name: 'Installed version' });
-    fireEvent.change(source, { target: { value: '1.2.0' } });
+    fireEvent.change(source, { target: { value: '2.0.0' } });
     expect(screen.getAllByRole('status')[0]).toHaveTextContent('No release upgrade is necessary');
     fireEvent.change(screen.getByRole('combobox', { name: 'Target version' }), {
       target: { value: '1.1.3' },
@@ -51,7 +58,7 @@ describe('Offline migration guide', () => {
   });
 
   it('composes every mandatory intermediate release in CLI order', () => {
-    const first = upgradeGraph.transitions[0];
+    const first = upgradeGraph.transitions.find((edge) => edge.to === '1.2.0')!;
     const graph = {
       ...upgradeGraph,
       versions: ['1.1.3', '1.2.0', '1.3.0'],
@@ -92,9 +99,16 @@ describe('Offline migration guide', () => {
         </I18nProvider>,
       );
       fireEvent.change(screen.getByRole('combobox', { name: source }), {
-        target: { value: '1.1.3' },
+        target: { value: '1.2.0' },
       });
-      expect(screen.getByRole('combobox', { name: target })).toHaveValue('1.2.0');
+      expect(screen.getByRole('combobox', { name: target })).toHaveValue('2.0.0');
       expect(screen.getAllByRole('status')[0]).toHaveTextContent(supported);
+      expect(screen.getByRole('alert')).toHaveTextContent('GitLab 19.5.3 → 19.6.1');
+      expect(document.querySelector('pre')).toHaveTextContent('--gitlab-checkpoint');
+      expect(document.querySelector('pre')).toHaveTextContent('operations/dist/cli.js upgrade');
+      expect(screen.getByRole('alert').querySelector('a')).toHaveAttribute(
+        'href',
+        'https://github.com/kihyoun/system/blob/v2.0.0/gitlab/UPGRADE.md',
+      );
     });
 });
