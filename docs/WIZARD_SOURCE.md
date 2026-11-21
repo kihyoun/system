@@ -107,11 +107,11 @@ After compiling Sync and generating the snapshot, run:
 ```sh
 node tests/wizard/source-package.js
 node tests/wizard/source-workflow.js
-ruby tests/wizard/source-import.rb
+node tests/gitlab/source-import.js
 ```
 
 The package test creates disposable Git repositories. The workflow test uses a
-temporary private configuration and stubbed Rails transport. The Ruby adapter
+temporary private configuration and stubbed transport. The native import/status
 test uses an in-memory GitLab API fixture. These tests never contact the running
 GitLab or mutate the platform. Run the Wizard checks with the Node/npm versions
 declared in `wizard/package.json`: `npm ci`, `npm run lint`, `npm test`,

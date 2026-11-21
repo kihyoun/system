@@ -205,3 +205,11 @@ Source installation validation and source-primary pipeline policy are typed
 operations capabilities. Build the operations package before using these
 entrypoints; the accepted controller/helper packages its compiled runtime.
 Historical recipe generators remain format adapters, preserving reserved bytes.
+
+Source import and native build status share `WizardSourceOperationService` in the
+operations runtime. Sync invokes the `wizard-source` credential CLI command with
+its saved binding over stdin. The service checks the exact project ID, namespace,
+path and ownership before obtaining a project-scoped credential. Import uses one
+create-only Git commit with a guarded CI-file update; a retry verifies the complete
+import marker and file contents before accepting an earlier commit. Status reads
+required native jobs and artifacts independently of optional mirror publication.

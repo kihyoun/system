@@ -135,6 +135,8 @@ export async function rails(input: any): Promise<any> {
       return await runNativeActivation(input);
     if (['namespaces', 'availability', 'create', 'pipeline'].includes(input.action))
       return await runNativeProject(input);
+    if (['wizard-source', 'wizard-source-primary-status'].includes(input.action))
+      return await runNativeWizardSource(input);
     if (input.action === 'token-expiry-status') return await runNativeTokenMetadata(input);
     if (String(input.action).startsWith('preview-setup-'))
       return await runNativeProject(input, 'preview');
@@ -276,17 +278,43 @@ function runNativeTokenMetadata(input: any): Promise<any> {
     child.stdin.end(JSON.stringify(input));
   });
 }
+function runNativeWizardSource(input: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      process.execPath,
+      [
+        path.resolve(__dirname, '../../operations/dist/gitlab-provision/entry.js'),
+        'wizard-source',
+        '--checkout',
+        path.resolve(__dirname, '../..'),
+      ],
+      { timeout: 240000, maxBuffer: 2 * 1024 * 1024 },
+      (error, stdout) => {
+        if (error) {
+          reject(new Error('Wizard repository operation failed; retry with the saved binding.'));
+          return;
+        }
+        try {
+          const value = JSON.parse(stdout);
+          if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error();
+          resolve(value);
+        } catch {
+          reject(new Error('Wizard repository operation failed; retry with the saved binding.'));
+        }
+      },
+    );
+    child.stdin.on('error', () => undefined);
+    child.stdin.end(JSON.stringify(input));
+  });
+}
 function runRails(input: any): Promise<any> {
   return new Promise((resolve, reject) => {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
     const modules: { [key: string]: string } = {
-      'wizard-source': 'wizard-source/import.rb',
-
       'wizard-build': 'wizard-build/activate.rb',
       'wizard-build-status': 'wizard-build/activate.rb',
       'wizard-environments': 'wizard-environments/activate.rb',
       'wizard-environments-status': 'wizard-environments/activate.rb',
-      'wizard-source-primary-status': 'wizard-source-primary/status.rb',
     };
     const importer = modules[input.action]
       ? fs.readFileSync(

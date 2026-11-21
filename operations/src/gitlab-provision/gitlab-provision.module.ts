@@ -1,3 +1,8 @@
+import {
+  WizardSourceImportService,
+  WizardSourcePrimaryStatusService,
+  WizardSourceOperationService,
+} from './wizard-source.service';
 import { GitlabTokenMetadataService } from './token-metadata.service';
 import { GitlabRunnerCredentialService } from './runner-credential.service';
 import { PreviewSetupService } from './preview-setup.service';
@@ -28,6 +33,9 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     PreviewSetupService,
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
+    WizardSourceImportService,
+    WizardSourcePrimaryStatusService,
+    WizardSourceOperationService,
     GitlabTokenMetadataService,
     GitlabRunnerCredentialService,
     GitlabRunnerRequestService,
@@ -49,6 +57,9 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     PreviewSetupService,
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
+    WizardSourceImportService,
+    WizardSourcePrimaryStatusService,
+    WizardSourceOperationService,
     GitlabTokenMetadataService,
     GitlabRunnerCredentialService,
     GitlabRunnerRequestService,
