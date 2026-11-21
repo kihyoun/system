@@ -71,7 +71,7 @@ test('controller override retains fixture adapters while native Compose owns ima
   assert(selected.volumes.every(value => value.startsWith('/recovered-data/platform/fixture')));
   assert.equal(JSON.stringify(baseline), before);
 });
-test('native upgrade waits for Docker health after recreation and refuses OOM without retrying', async () => {
+test('native upgrade waits for selected images and Docker health after recreation and refuses OOM without retrying', async () => {
   const {Candidate} = require('./disposable-candidate');
   let time = 0, inspections = 0;
   const names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'];
@@ -93,6 +93,22 @@ test('native upgrade waits for Docker health after recreation and refuses OOM wi
     inspections = 0; sample = () => value;
     await assert.rejects(waitForServices(candidate, 2000), /^Error: readiness-timeout$/);
     assert.equal(inspections, 2);
+  }
+  const selected = Object.fromEntries(names.map((name, index) => [name, id(String(index))]));
+  const reconciled = healthy.map(row => ({...row, Image: selected[row.Name.slice(1)]}));
+  for (const name of names) {
+    const stale = reconciled.map(row => row.Name === '/' + name ? {...row, Image: id('f')} : row);
+    inspections = 0; sample = () => inspections === 1 ? stale : reconciled;
+    await waitForServices(candidate, 3000, selected);
+    assert.equal(inspections, 2, 'healthy previous-generation ' + name + ' must not satisfy image readiness');
+    inspections = 0; sample = () => stale;
+    await assert.rejects(waitForServices(candidate, 2000, selected), /^Error: readiness-timeout$/);
+    assert.equal(inspections, 2);
+  }
+  for (const invalid of [{unknown: id('a')}, {system_wizard_1: 'private-value'}]) {
+    inspections = 0;
+    await assert.rejects(waitForServices(candidate, 3000, invalid), /public-upgrade-selected-images-differ/);
+    assert.equal(inspections, 0, 'invalid expected identities refuse before Docker');
   }
   inspections = 0; sample = () => healthy.map(row => ({...row, State: {...row.State, OOMKilled: true}}));
   await assert.rejects(waitForServices(candidate, 3000), error => error.message === 'public-upgrade-service-oom' && error.noRetry);

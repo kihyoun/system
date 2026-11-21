@@ -164,8 +164,10 @@ function controllerFixture(baseline, fixture) {
     extra_hosts: baseline.HostConfig.ExtraHosts || []}}};
 }
 
-async function waitForServices(candidate, milliseconds = 600000) {
+async function waitForServices(candidate, milliseconds = 600000, selectedImages = {}) {
   const names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'];
+  required(Object.entries(selectedImages).every(([name, image]) =>
+    names.includes(name) && /^sha256:[a-f0-9]{64}$/.test(image)), 'public-upgrade-selected-images-differ');
   await candidate.wait(async () => {
     const rows = JSON.parse(await candidate.inner(['inspect', ...names]));
     for (const row of rows) {
@@ -174,9 +176,13 @@ async function waitForServices(candidate, milliseconds = 600000) {
         ...(Number.isInteger(row.State.ExitCode) && row.State.ExitCode >= 0 && row.State.ExitCode <= 255 ? {exitCode: row.State.ExitCode} : {})});
     }
     return rows.length === names.length && new Set(rows.map(row => row.Name)).size === names.length &&
-      rows.every(row => names.includes(row.Name?.replace(/^\//, '')) && row.State?.Running === true &&
-        !['Paused', 'Restarting', 'Dead'].some(key => row.State[key]) &&
-        (!row.State.Health || row.State.Health.Status === 'healthy'));
+      rows.every(row => {
+        const name = row.Name?.replace(/^\//, '');
+        return names.includes(name) && row.State?.Running === true &&
+          (!Object.hasOwn(selectedImages, name) || row.Image === selectedImages[name]) &&
+          !['Paused', 'Restarting', 'Dead'].some(key => row.State[key]) &&
+          (!row.State.Health || row.State.Health.Status === 'healthy');
+      });
   }, milliseconds);
 }
 
@@ -252,6 +258,12 @@ class NativeCLI {
       await this.invoke(['freeze-publication']);
     }
     await replaceController(candidate, baseline, previous.images.controller.imageId, this.fixture);
+    // The previous controller reconciles its services asynchronously. Healthy
+    // containers from the restored candidate are not the selected public pair.
+    await waitForServices(candidate, 600000, {
+      system_bootstrapper_1: previous.images.controller.imageId,
+      system_wizard_1: previous.images.wizard.imageId
+    });
   }
 
   async invoke(args) {
@@ -329,7 +341,10 @@ class NativeCLI {
     await this.invoke(['save-migrated-public-selection']);
     await this.invoke(['candidate-pair-selectors']);
     await replaceController(this.candidate,this.originalBaseline,this.originalBaseline.Image,this.fixture);
-    await waitForServices(this.candidate);
+    await waitForServices(this.candidate,600000,{
+      system_bootstrapper_1:this.originalBaseline.Image,
+      system_wizard_1:this.candidate.spec.images.wizard.id
+    });
     return result;
   }
 
@@ -339,6 +354,10 @@ class NativeCLI {
     required(/^[a-f0-9]{40}$/.test(branch.commit?.id||''),'public-upgrade-existing-head-required');this.baselineHead=branch.commit.id;
     await this.invoke(['restore-migrated-public-selection']);
     await replaceController(this.candidate,this.originalBaseline,this.candidate.spec.publicUpgrade.metadata.images.controller.imageId,this.fixture);
+    await waitForServices(this.candidate,600000,{
+      system_bootstrapper_1:this.candidate.spec.publicUpgrade.metadata.images.controller.imageId,
+      system_wizard_1:this.candidate.spec.publicUpgrade.metadata.images.wizard.imageId
+    });
   }
 
   rollback(checkpoint) {return this.gitlab('rollback',checkpoint);}
@@ -346,7 +365,6 @@ class NativeCLI {
   async restoreAfterRollback() {
     await this.restoreOriginal(this.originalFiles);
     await this.finish(this.originalFiles,this.originalBaseline);
-    await waitForServices(this.candidate);
     await this.candidate.wait(async()=>{const value=await recovery.syncFetch(this.candidate);return !!value.main?.data;},600000);
   }
 
@@ -370,6 +388,10 @@ class NativeCLI {
 
   async finish(_files, baseline) {
     await replaceController(this.candidate, baseline, baseline.Image);
+    await waitForServices(this.candidate,600000,{
+      system_bootstrapper_1:baseline.Image,
+      system_wizard_1:this.candidate.spec.images.wizard.id
+    });
   }
 
   async revokeCredential() {
@@ -469,7 +491,6 @@ async function prepareGitlabMigration(candidate,expected) {
   native.originalFiles=await configuration(candidate);
   native.originalBaseline=JSON.parse(await candidate.inner(['inspect','system_bootstrapper_1']))[0];
   await native.initialize(native.originalBaseline,expected,true);
-  await waitForServices(candidate);
   native.preparedMigration=true;
   candidate.publicUpgradeNative=native;
   return native;
