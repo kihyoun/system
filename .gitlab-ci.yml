@@ -295,6 +295,7 @@ test:platform-candidate:
   resource_group: system-disposable-candidate
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
+    GIT_DEPTH: "0"
     GIT_SUBMODULE_STRATEGY: none
     RUNNER_SCRIPT_TIMEOUT: 115m
     RUNNER_AFTER_SCRIPT_TIMEOUT: 2m
