@@ -245,10 +245,36 @@ Merge Requests mit Laufzeitänderungen und Builds des Standardbranches führen d
 erforderlichen Job `test:codeql` parallel zu den Komponentenprüfungen aus. Er prüft
 den versionierten System-Quellcode und den exakten eingebetteten Wizard-Baum (oder historischen Gitlink-Snapshot) mit CodeQL 2.27.4
 und dessen offizieller Standard-Code-Scanning-Suite für JavaScript/TypeScript.
-Keine Regeln, Pfade oder alten Befunde werden unterdrückt. Das festgelegte
+Jeder ausgegebene Befund, auch unterdrückte oder Baseline-Ergebnisse, lässt den Job
+fehlschlagen; es gibt keine Ausnahmen für Abfragen oder Schweregrade. Das festgelegte
 öffentliche CLI-Bundle wird vor der Verwendung anhand seiner Prüfsumme geprüft.
 Der Scan-Kindcontainer hat weder Netzwerk noch Docker-Socket oder Zugangsdaten
 und kann keine Anwendungs-Builds ausführen.
+
+Der Scan analysiert die kanonischen eigenen Quellen statt dieser drei generierten
+Kopien derselben portablen Laufzeit:
+
+```text
+project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs
+wizard/.system-bootstrapper/build-v2/runtime/project-ci.cjs
+wizard/.gitlab/runtime/project-ci.cjs
+```
+
+Vor dem Auslassen verlangt die Vorbereitung alle drei regulären versionierten
+Dateien, identische Bytes und übereinstimmende Lizenzbegleiter sowie den
+aufgezeichneten Producer-Hash. Unvollständige, geänderte oder verlinkte Artefakte
+werden abgelehnt. Pfade und Hashes bleiben in `scan-source.json` getrennt von
+den analysierten Dateien erhalten. Alle eigenen Quellen und historischen
+Rezeptquellen werden weiterhin analysiert; ein zusätzlicher Bundlepfad erhält
+diese Ausnahme nicht. Der erforderliche Job `test:wizard-browser` führt den
+Generator unabhängig mit `--check` gegen die kompilierten gemeinsamen Quellen,
+alle drei Kopien, Producer-Metadaten und Lizenzhinweise aus.
+
+Damit entfällt bewusst die doppelte SAST-Prüfung generierten Codes und eingebetteter
+Fremdbibliotheken. Der eingebettete Bibliothekscode wird durch diese Bundles nicht
+erneut analysiert. Exakte Regenerierung belegt Übereinstimmung, keine Freiheit von
+Sicherheitslücken; behalten Sie [Abhängigkeitsaudits](../docs/DEPENDENCY_SECURITY.md)
+für die festgelegten Abhängigkeiten bei.
 
 Für die CodeQL CLI gelten eigene [Lizenzbedingungen](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md).
 Die kostenlose automatisierte Nutzung setzt eine auf GitHub gehostete und gepflegte

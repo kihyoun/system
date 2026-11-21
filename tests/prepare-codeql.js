@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
 const {validate, verifyCommitted} = require('../project-bootstrap/wizard-source/package');
+const {verifiedGeneratedArtifacts} = require('./codeql/generated-artifacts');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function included(name) {
   return /^[A-Za-z0-9._/-]+$/.test(name) && !name.split('/').some(part => part === '..' || part === '.git') &&
@@ -48,7 +49,7 @@ function prepare(root) {
     git('archive', '--format=tar', '--output=' + archive, 'HEAD', '--', ...entries.map(entry => entry.name));
     execFileSync('tar', ['-xf', archive, '-C', source]);
     // Deployment snapshots intentionally omit historical managed build recipes.
-    // Static analysis scans all public committed Wizard blobs at that same pin.
+    // Static analysis starts with public committed Wizard blobs at that same pin.
     const shared = snapshot.sourceLayout === 'system-monorepo-v1';
     const wizard = shared ? root : path.join(root, 'wizard');
     const wizardTree = shared ? snapshot.wizardSourceTree : snapshot.sourceRevision;
@@ -63,10 +64,16 @@ function prepare(root) {
     at(wizard, 'archive', '--format=tar', '--output=' + wizardArchive, wizardTree, '--', ...wizardFiles.map(file => file.name));
     fs.mkdirSync(path.join(source, 'wizard'));
     execFileSync('tar', ['-xf', wizardArchive, '-C', path.join(source, 'wizard')]);
-    const files = [...entries.map(entry => entry.name), ...wizardFiles.map(file => 'wizard/' + file.name)].sort();
+    const committed = [...entries, ...wizardFiles.map(entry => ({...entry, name: 'wizard/' + entry.name}))];
+    // Validate committed bytes before omitting the exact generated inventory.
+    // The browser build separately runs the generator's reproducibility check.
+    const excludedGenerated = verifiedGeneratedArtifacts(source, committed);
+    const excluded = new Set(excludedGenerated.map(entry => entry.path));
+    for (const name of excluded) fs.unlinkSync(path.join(source, name));
+    const files = committed.map(entry => entry.name).filter(name => !excluded.has(name)).sort();
     const manifest = {revision, ...(shared ? {sourceLayout: snapshot.sourceLayout,
       sourceRevision: snapshot.sourceRevision, wizardSourceTree: snapshot.wizardSourceTree} :
-      {wizardRevision: snapshot.sourceRevision}), files};
+      {wizardRevision: snapshot.sourceRevision}), files, excludedGenerated};
     fs.writeFileSync(path.join(source, 'scan-source.json'), JSON.stringify(manifest) + '\n');
     execFileSync('tar', ['-cf', archive, '-C', temporary, 'source']);
     const names = execFileSync('tar', ['-tf', archive], {encoding: 'utf8', maxBuffer: 4 * 1024 * 1024})

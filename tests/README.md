@@ -264,9 +264,33 @@ Runtime merge requests and default-branch builds run the required `test:codeql`
 job alongside the component checks. It scans the committed System source and
 exact embedded Wizard tree (or the historical gitlink snapshot) using CodeQL
 2.27.4 and its official default JavaScript/
-TypeScript code-scanning suite. No rules, paths or old findings are suppressed.
+TypeScript code-scanning suite. Every emitted finding, including suppressed or
+baseline results, fails the job; no query or severity exemptions are applied.
 The pinned public CLI bundle is checksum-verified before use. The scan child has
 no network, Docker socket or credentials and cannot run application builds.
+
+The scan analyzes canonical authored sources rather than these three generated
+copies of the same portable runtime:
+
+```text
+project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs
+wizard/.system-bootstrapper/build-v2/runtime/project-ci.cjs
+wizard/.gitlab/runtime/project-ci.cjs
+```
+
+Preparation requires all three committed regular files, identical bytes and
+matching license companions, and the recorded producer hash before omitting
+them. A partial, changed or linked artifact fails closed. Their paths and hashes
+are retained separately from the analyzed files in `scan-source.json`.
+All authored sources and historical recipe sources remain analyzed; an additional
+bundle path does not acquire this exception. The required `test:wizard-browser`
+job independently runs the generator with `--check` against compiled shared
+sources, all three copies, producer metadata and notices.
+
+This deliberately removes duplicate generated/vendor-code SAST coverage. Inlined
+third-party dependency code is not analyzed again through those bundles. Exact
+regeneration proves correspondence, not absence of vulnerabilities; retain
+[dependency audits](../docs/DEPENDENCY_SECURITY.md) for the pinned dependencies.
 
 The CodeQL CLI has its own [license terms](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md).
 Free automated use requires an open-source codebase hosted and maintained on

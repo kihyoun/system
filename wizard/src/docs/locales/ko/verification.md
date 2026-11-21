@@ -227,9 +227,32 @@ attestation 검증을 주장하지 않습니다. 다른 후보 이미지 메타�
 런타임 Merge Request와 기본 브랜치 빌드는 구성 요소 검사와 나란히 필수
 `test:codeql` 작업을 실행합니다. CodeQL 2.27.4와 공식 기본 JavaScript/TypeScript
 코드 스캐닝 모음으로 커밋된 System 소스와 정확한 내장 Wizard 트리(또는 과거 gitlink 스냅샷)를 검사합니다.
-규칙, 경로 또는 이전 발견 사항을 억제하지 않습니다. 고정된 공개 CLI 번들은
+억제되거나 기준선에 있는 결과를 포함해 출력된 모든 발견 사항은 작업을 실패시킵니다.
+쿼리나 심각도에 대한 예외는 적용하지 않습니다. 고정된 공개 CLI 번들은
 사용 전에 체크섬을 검증합니다. 검사 자식 컨테이너에는 네트워크, Docker 소켓
 또는 자격 증명이 없으며 애플리케이션 빌드를 실행할 수 없습니다.
+
+동일한 휴대용 런타임의 다음 세 가지 생성된 복사본 대신 원본 자체 작성 소스를
+분석합니다.
+
+```text
+project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs
+wizard/.system-bootstrapper/build-v2/runtime/project-ci.cjs
+wizard/.gitlab/runtime/project-ci.cjs
+```
+
+제외하기 전에 준비 과정은 커밋된 일반 파일 세 개 모두, 동일한 바이트와 일치하는
+라이선스 파일, 기록된 Producer 해시를 요구합니다. 일부가 없거나 변경되었거나 링크인
+아티팩트는 거부합니다. 경로와 해시는 `scan-source.json`에서 분석 파일과 별도로
+보존합니다. 자체 작성 소스와 과거 레시피 소스는 모두 계속 분석하며, 추가 번들 경로에는
+이 예외를 적용하지 않습니다. 필수 `test:wizard-browser` 작업은 컴파일된 공유 소스,
+세 복사본, Producer 메타데이터와 라이선스 고지를 대상으로 생성기의 `--check`를
+독립적으로 실행합니다.
+
+이것은 생성된 코드와 포함된 외부 라이브러리 코드에 대한 중복 SAST 검사를 의도적으로
+제거하는 범위 경계입니다. 포함된 타사 의존성 코드는 이 번들을 통해 다시 분석하지
+않습니다. 정확한 재생성은 일치함을 입증할 뿐 취약점이 없음을 입증하지 않습니다.
+고정된 의존성에 대한 [의존성 감사](../docs/DEPENDENCY_SECURITY.md)는 유지하세요.
 
 CodeQL CLI에는 별도의 [라이선스 조건](https://github.com/github/codeql-cli-binaries/blob/main/LICENSE.md)이 적용됩니다.
 무료 자동 분석은 GitHub에 호스팅되고 유지 관리되는 오픈 소스 코드베이스를
