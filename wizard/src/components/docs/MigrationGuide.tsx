@@ -215,7 +215,7 @@ export default function MigrationGuide({ graph = upgradeGraph }: { graph?: Upgra
               control.change(event.target.value);
               setChecked({});
             }}
-            slotProps={{ select: { native: true } }}
+            slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
           >
             <option value="">{text.unknownVersion}</option>
             {graph.versions.map((version) => (

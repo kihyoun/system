@@ -9,6 +9,35 @@ beforeEach(() => {
 });
 
 describe('Offline migration guide', () => {
+  for (const [locale, sourceLabel, targetLabel, unknown] of [
+    ['en', 'Installed version', 'Target version', 'Unknown / other version'],
+    ['de', 'Installierte Version', 'Zielversion', 'Unbekannte / andere Version'],
+    ['ko', '설치된 버전', '대상 버전', '알 수 없는 버전 / 다른 버전'],
+  ])
+    it(`keeps ${locale} selection labels clear of the unknown-version option`, () => {
+      localStorage.setItem(localeStorageKey, locale);
+      render(
+        <I18nProvider>
+          <MigrationGuide />
+        </I18nProvider>,
+      );
+      for (const label of [sourceLabel, targetLabel]) {
+        const control = screen.getByRole('combobox', { name: label }) as HTMLSelectElement;
+        expect(control.tagName).toBe('SELECT');
+        expect(Array.from(control.options, (option) => option.value)).toEqual([
+          '',
+          ...upgradeGraph.versions,
+        ]);
+        fireEvent.change(control, { target: { value: '' } });
+        expect(control.selectedOptions[0]).toHaveTextContent(unknown);
+        expect(screen.getByText(label, { selector: 'label' })).toHaveAttribute(
+          'data-shrink',
+          'true',
+        );
+        expect(screen.getByLabelText(label)).toBe(control);
+      }
+    });
+
   it('requires manual source selection and never contacts Sync', () => {
     const network = vi.spyOn(globalThis, 'fetch');
     render(<MigrationGuide />);
@@ -58,33 +87,31 @@ describe('Offline migration guide', () => {
   });
 
   it('composes every mandatory intermediate release in CLI order', () => {
-    const first = upgradeGraph.transitions.find((edge) => edge.to === '1.2.0')!;
-    const graph = {
-      ...upgradeGraph,
-      versions: ['1.1.3', '1.2.0', '1.3.0'],
-      transitions: [
-        first,
-        {
-          ...first,
-          from: '1.2.0',
-          to: '1.3.0',
-          requiredStage: 'public-release-upgrade-1-2-0-to-1-3-0',
-        },
-      ],
-    };
-    expect(upgradePath('1.1.3', '1.3.0', graph).transitions.map((edge) => edge.to)).toEqual([
+    expect(upgradePath('1.1.3', '2.0.0').transitions.map((edge) => edge.to)).toEqual([
       '1.2.0',
-      '1.3.0',
+      '2.0.0',
     ]);
-    render(<MigrationGuide graph={graph} />);
+    render(<MigrationGuide />);
     fireEvent.change(screen.getByRole('combobox', { name: 'Installed version' }), {
       target: { value: '1.1.3' },
     });
     expect(screen.getAllByRole('heading', { level: 3 }).map((node) => node.textContent)).toEqual([
       '1.1.3 → 1.2.0',
-      '1.2.0 → 1.3.0',
+      '1.2.0 → 2.0.0',
     ]);
     expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(12);
+    const examples = document.querySelectorAll('pre');
+    expect(examples[0]).toHaveTextContent('python3 bootstrapper/upgrade-release.py');
+    expect(examples[0]).toHaveTextContent('--target 1.2.0');
+    expect(examples[4]).toHaveTextContent('operations/dist/cli.js upgrade');
+    expect(examples[4]).toHaveTextContent('--target 2.0.0');
+    const prerequisite = screen.getByRole('checkbox', { name: '1.1.3 → 1.2.0: Prerequisites' });
+    fireEvent.click(prerequisite);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Target version' }), {
+      target: { value: '1.2.0' },
+    });
+    expect(prerequisite).not.toBeChecked();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(6);
   });
 
   for (const [locale, source, target, supported] of [
