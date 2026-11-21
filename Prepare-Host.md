@@ -139,7 +139,7 @@ sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bi
 ```
 
 Keep `SYSTEM_NODE_BIN` for subsequent `sudo env "PATH=..."` calls to the CLI `stop` command,
-`bootstrapper/persistence.js` and Python host tools: sudo normally discards the
+`bootstrapper/persistence.js` and other native host commands: sudo normally discards the
 interactive nvm PATH. Alternatively use the retained dedicated runtime prepared
 by the accepted-image path. A source build still constructs controller/Wizard
 images during startup unless an existing accepted release profile disables builds;

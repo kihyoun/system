@@ -60,15 +60,17 @@ Services use injected process, configuration and evidence ports.
 The [operation inventory](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md) maps public and
 compatibility entries, their callers, privileges, persistent ownership, native
 tools, failure handling and executable tests. Thin entries call prepared compiled
-services; remaining host Python preflight/recovery responsibilities are explicitly
-identified there rather than described as fully migrated adapters.
+Nest services shared by the standalone CLI and API; current host preflight,
+backup polling, promotion and recovery no longer delegate to Python programs.
 
 Prepare the [host runtime](../Prepare-Host.md#prepare-the-host-operations-runtime)
 **before** host start/stop, persistence checks, installation or recovery. Fresh
 Quickstart prepares it; source developers build it before using host lifecycle
 commands. Retain Node, compiled operations and dependencies for offline recovery.
-Pre-runtime bootstrapping, OS/Certbot setup, GitLab-native Ruby, independent child
-guardians and byte-sensitive historical build recipes retain distinct contracts.
+Pre-runtime bootstrapping, OS/Certbot setup, the minimal initial GitLab-token
+Ruby exception, independent child guardians and byte-sensitive historical build
+recipes retain distinct contracts. GitLab's own declarative Ruby configuration
+remains an upstream service interface.
 Docker/Compose, NGINX, Git and `flock` remain native execution boundaries. These
 boundaries preserve Wizard HTTP endpoints, saved configuration and Harvest/Seed.
 

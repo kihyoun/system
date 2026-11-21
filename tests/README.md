@@ -1,7 +1,7 @@
 # Component and platform tests
 
-Tests are grouped by the infrastructure component they exercise. JavaScript,
-Bash, Python and Ruby are retained where useful. The isolated runner executes
+Tests are grouped by the infrastructure component they exercise. Native
+TypeScript services are exercised through Node fixtures. The isolated runner executes
 only the explicit [manifest](manifest.json); it never discovers `live/` scripts
 or starts a platform automatically.
 
@@ -27,11 +27,12 @@ It excludes
 Git metadata, private/ignored/untracked files and working-copy edits. Commit the
 intended code before packaging; no fallback sends the entire checkout.
 
-The image combines digest-pinned Node 24.22.0/npm 11.19.1 and Ruby 3.4.11 on
-Debian Bookworm/glibc, with Python and shell tools. It installs the committed Sync
-lockfile and runs `npm run build`, whose prebuild checks ESLint without autofix.
-Runtime and shared-library versions are printed during construction. This Ruby
-fixture runtime is separate from GitLab's embedded Rails runtime.
+The image uses digest-pinned Node 24.22.0/npm 11.19.1 on Debian Bookworm/glibc,
+with Python for independent ZIP/TOML fixture oracles and shell/native utilities
+for process and historical-format checks. No Ruby test runtime is installed.
+It installs the committed Sync lockfile and runs `npm run build`, whose prebuild
+checks ESLint without autofix. Runtime and shared-library versions are printed
+during construction. These fixture dependencies do not implement platform operations.
 
 Candidate image preparation also runs
 `tests/wizard/configuration-routing-export.js` with the built Wizard's actual

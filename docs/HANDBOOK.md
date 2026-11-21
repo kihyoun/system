@@ -30,7 +30,7 @@ Choose the complete installation path for your environment:
 
 ### Quick Install on a fresh Ubuntu host
 
-On Ubuntu 24.04 / 26.04 LTS x86_64 with sudo access, curl, Python 3, internet,
+On Ubuntu 24.04 / 26.04 LTS x86_64 with sudo access, curl, internet,
 at least 8 GiB RAM, 40 GiB free for data plus 1 GiB for source and free ports
 80/443, run this command in the host’s terminal:
 

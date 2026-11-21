@@ -11,7 +11,7 @@ project autodiscovery.
 ## Operator setup
 
 Use a reviewed checkout after merging the configuration into the protected default
-branch of the System project. Python 3 with normal HTTPS CA trust is sufficient.
+branch of the System project. Prepare the pinned Node/operations runtime with normal HTTPS CA trust.
 Keep a GitLab administrator API token in a mode-0600 file outside the checkout.
 It is used only by the operator provisioning command; it never enters CI. Use a
 real operator-controlled email address for the dedicated account.

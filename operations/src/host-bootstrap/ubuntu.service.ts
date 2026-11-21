@@ -32,7 +32,6 @@ export class UbuntuHostService {
       'git',
       'ca-certificates',
       'curl',
-      'python3',
     ]);
     const keys = path.join(this.systemRoot, 'etc/apt/keyrings');
     fs.mkdirSync(keys, { recursive: true, mode: 0o755 });
