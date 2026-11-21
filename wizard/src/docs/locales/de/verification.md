@@ -96,6 +96,12 @@ Erhalt des Hauptfehlers und Diagnose nicht erreichbarer Daemons ab. Wiederherste
 verträge decken vollständige Nutzdatenprüfung vor destruktivem Kopieren, GitLab-Image-
 Identität, sauberes Herunterfahren, Zertifikats-Leases und dauerhafte Wiederherstellungsmarker ab.
 
+Der Image-Build bewahrt begrenzte Standard- und Fehlerausgabe im Job-Artefakt
+`build.log` auf und schwärzt bekannte Zugangsdaten aus der privaten Umgebung.
+Fehlgeschlagene Builds zeigen außerdem das Ende dieser Diagnose im Job-Log;
+die Bereinigung erhält den ursprünglichen Buildfehler. Private Konfiguration
+gelangt nicht in die aus versionierten Quellen erzeugten Build-Kontexte.
+
 ## GitLab-CI-Grenzen
 
 Die Root-Pipeline verwendet bei Merge Requests und auf dem Standardbranch zwei Kategorien:
