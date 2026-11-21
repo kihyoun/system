@@ -14,7 +14,8 @@ function included(name) {
   // Committed source is necessary, but runtime/private/generated paths still
   // do not belong in the test context. The one validated snapshot is added below.
   if (name === snapshotPath || /(^|\/)(node_modules|dist|test-results|\.test-context|\.projects\.env)(\/|$)/.test(name)) return false;
-  if (/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper_initial_root_password)$/.test(name)) return false;
+  if (name !== 'operations/src/mirror/credentials.service.ts' && /(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper\.zip|bootstrapper_initial_root_password)$/.test(name)) return false;
+  if (/\.(key|pem|p12|pfx)$/.test(name)) return false;
   if (name === 'system/wizard-image-recovery.js') return true;
   if (['bootstrapper/record-source-installation.js', 'bootstrapper/upgrade-paths.json'].includes(name)) return true;
   // Public trust data is required by the offline CA-refresh checks. Keep this
@@ -29,10 +30,10 @@ function included(name) {
     ['sync/package.json','sync/package-lock.json','sync/tsconfig.json','sync/eslint.config.mjs'].includes(name) ||
     name.startsWith('project-bootstrap/') || name.startsWith('tests/') ||
     /^gitlab\/[^/]+\.(js|sh|rb|json)$/.test(name) || name === 'gitlab/gitlab.rb' ||
-    /^bootstrapper\/[^/]+\.(sh|py)$/.test(name) || /^gitlab-runner\/[^/]+\.(js|sh|rb)$/.test(name) || /^nginx\/[^/]+\.(js|sh)$/.test(name) ||
+    /^bootstrapper\/[^/]+\.(js|sh|py)$/.test(name) || /^gitlab-runner\/[^/]+\.(js|sh|rb)$/.test(name) || /^nginx\/[^/]+\.(js|sh)$/.test(name) ||
     name.startsWith('nginx/.templates/') || name === 'nginx-proxy/docker-compose.yml' ||
     ['.gitlab-ci.yml','VERSION','tests/prepare-candidate.js','bootstrapper/persistence.js','bootstrapper/seed-operation.js',
-      'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','system/Dockerfile','system/.docker.env.example','system/.seed.env',
+      'gitlab/docker-compose.omnibus.yml','gitlab-runner/docker-compose.yml','system/Dockerfile','bootstrapper/Dockerfile','system/.docker.env.example','system/.seed.env',
       'system/docker-compose.yml',
       'system/persistence-init.js','system/wizard-public.js',
       'system/seed-manifest.js','system/seed-operation.js','system/coordinated-backup.js'].includes(name);
@@ -44,11 +45,14 @@ function prepareContext(root) {
   const snapshot = validate(JSON.parse(fs.readFileSync(path.join(root,snapshotPath),'utf8')));
   verifyCommitted(root,snapshot);
   const identity = snapshot.version === 2 ? sourceMetadata(snapshot) : {wizardRevision:snapshot.sourceRevision};
-  const files = git('ls-tree','-rz','HEAD').toString().split('\0').filter(Boolean).map(entry => {
+  const entries = git('ls-tree','-rz','HEAD').toString().split('\0').filter(Boolean).map(entry => {
     const match = /^(\d+) (\w+) ([a-f0-9]{40})\t(.+)$/.exec(entry);
     if (!match) throw Error('Unexpected committed tree entry.');
     return {mode:match[1],type:match[2],name:match[4]};
-  }).filter(file=>included(file.name));
+  });
+  if (entries.some(file => file.name.startsWith('operations/src/') && /\.[cm]?[jt]sx?$/.test(file.name) && !included(file.name)))
+    throw Error('Operations source path conflicts with a private-data exclusion.');
+  const files = entries.filter(file=>included(file.name));
   if (!files.some(file=>file.name==='tests/Dockerfile') || !files.some(file=>file.name==='sync/package.json')) throw Error('The committed test build inputs are incomplete.');
   if (files.some(file=>file.type!=='blob' || !['100644','100755'].includes(file.mode))) throw Error('Test context links and nested submodules are not supported.');
   const output = path.join(root,'.test-context');

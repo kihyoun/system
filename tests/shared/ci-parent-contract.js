@@ -5,6 +5,7 @@ const os=require('node:os');
 const path=require('node:path');
 const {createHash}=require('node:crypto');
 const {ContainerCheckService}=require('../../operations/dist/ci/container-check.service');
+const {ManagedChildProcess}=require('../../operations/dist/runtime/managed-child');
 function fixture(t, browser=false){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'container-check-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -29,6 +30,34 @@ test('collision refuses build and does not clean existing resources',async t=>{
  await assert.rejects(new ContainerCheckService({async run(binary,args){calls.push(args);return 'system-tests-1-2';}})
   .execute('isolated',root,env,'sync'),/already-exists/);
  assert.equal(calls.length,1);
+});
+test('build failure retains redacted stderr and the original status while cleaning',async t=>{
+ const {root,env}=fixture(t),calls=[],failure=Error('build-exit-two');
+ env.CI_JOB_TOKEN='private-job-token';
+ const printed=[],previous=console.error;console.error=value=>printed.push(value);t.after(()=>{console.error=previous;});
+ const adapter={async run(binary,args,options){calls.push(args);
+  if(args[0]==='build'){
+   const bytes=Buffer.from('Compiler 한국어: missing module\nprivate-job-token https://user:password@example.invalid/\n');
+   options.output(bytes.subarray(0,14));options.output(bytes.subarray(14));throw failure;
+  }return '';
+ }};
+ await assert.rejects(new ContainerCheckService(adapter).execute('isolated',root,env,'sync'),e=>e===failure);
+ const log=fs.readFileSync(path.join(root,'test-results/cleanup/build.log'),'utf8');
+ assert.match(log,/Compiler 한국어: missing module/);assert.match(log,/\[REDACTED\]/);
+ assert.equal(log.includes('private-job-token'),false);assert.equal(log.includes('user:password'),false);
+ assert.equal(printed.join('').includes('private-job-token'),false);
+ assert.equal(calls.some(args=>args.includes('create')),false);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(root,'test-results/cleanup/on-exit.json'))).status,'passed');
+ // Exercise the real process adapter stopping mid-credential at its byte bound.
+ const native=new ManagedChildProcess(),limit=1024*1024;
+ const bounded={async run(binary,args,options){if(args[0]==='build')return native.run(process.execPath,['-e',
+  'process.stdout.write("x".repeat('+String(limit-env.CI_JOB_TOKEN.length+1)+')+process.env.CI_JOB_TOKEN.slice(0,-1));setTimeout(()=>process.stdout.write(process.env.CI_JOB_TOKEN.slice(-1)),100);'
+ ],options);return '';}};
+ await assert.rejects(new ContainerCheckService(bounded).execute('isolated',root,env,'sync'));
+ const boundedLog=fs.readFileSync(path.join(root,'test-results/cleanup/build.log'),'utf8');
+ assert.equal(boundedLog.includes(env.CI_JOB_TOKEN.slice(0,-1)),false);
+ assert.ok(Buffer.byteLength(boundedLog)<=limit);
+ assert.equal(printed.join('').includes(env.CI_JOB_TOKEN.slice(0,-1)),false);
 });
 test('failed browser wait still exports reports and retains original failure',async t=>{
  const {root,env}=fixture(t,true),calls=[],failure=Error('wait-lost');

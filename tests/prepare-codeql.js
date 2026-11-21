@@ -9,7 +9,8 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function included(name) {
   return /^[A-Za-z0-9._/-]+$/.test(name) && !name.split('/').some(part => part === '..' || part === '.git') &&
     !/(^|\/)(node_modules|dist|test-results|\.test-context|\.candidate-context|\.codeql-context|\.projects\.env)(\/|$)/.test(name) &&
-    !/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper\.zip|bootstrapper_initial_root_password)$/.test(name) &&
+    (name === 'operations/src/mirror/credentials.service.ts' || !/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper\.zip|bootstrapper_initial_root_password)$/.test(name)) &&
+    !/\.(key|pem|p12|pfx)$/.test(name) &&
     name !== 'project-bootstrap/wizard-source/snapshot.json';
 }
 function prepare(root) {
@@ -23,11 +24,14 @@ function prepare(root) {
   const revision = git('rev-parse', 'HEAD').toString().trim();
   const snapshot = validate(JSON.parse(fs.readFileSync(path.join(root, 'project-bootstrap/wizard-source/snapshot.json'), 'utf8')));
   verifyCommitted(root, snapshot);
-  const entries = git('ls-tree', '-rz', 'HEAD').toString().split('\0').filter(Boolean).map(entry => {
+  const sourceEntries = git('ls-tree', '-rz', 'HEAD').toString().split('\0').filter(Boolean).map(entry => {
     const match = /^(\d+) (\w+) [a-f0-9]{40}\t(.+)$/.exec(entry);
     if (!match) throw Error('Unexpected committed source entry.');
     return {mode: match[1], type: match[2], name: match[3]};
-  }).filter(entry => entry.name !== 'wizard' && !entry.name.startsWith('wizard/') && included(entry.name));
+  });
+  if (sourceEntries.some(entry => entry.name.startsWith('operations/src/') && /\.[cm]?[jt]sx?$/.test(entry.name) && !included(entry.name)))
+    throw Error('Operations source path conflicts with a private-data exclusion.');
+  const entries = sourceEntries.filter(entry => entry.name !== 'wizard' && !entry.name.startsWith('wizard/') && included(entry.name));
   if (entries.some(entry => entry.type !== 'blob' || !['100644', '100755'].includes(entry.mode)))
     throw Error('Static scan context refuses source links and nested submodules.');
   for (const required of ['tests/codeql/Dockerfile', 'operations/src/ci/codeql.service.ts', 'tests/codeql/check-sarif.js'])

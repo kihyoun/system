@@ -113,6 +113,11 @@ primary failure preservation and unreachable-daemon diagnostics. Recovery
 contracts cover full-payload validation before destructive copies, GitLab image
 identity, clean shutdown, certificate leases and durable restore markers.
 
+Image construction retains bounded stdout/stderr in the job's `build.log`
+artifact, redacting known private environment credentials. Failed builds also
+print the diagnostic tail in the job trace; cleanup preserves the original
+build failure. No private configuration enters the committed build contexts.
+
 ## GitLab CI boundaries
 
 The root pipeline uses two categories on merge requests and the default branch:

@@ -39,6 +39,17 @@ test('archive mismatch refuses Docker execution',async t=>{
  await assert.rejects(new CodeqlParentService({async run(){calls++;return '';}}).execute(root,env),/checksum-mismatch/);
  assert.equal(calls,0);
 });
+test('scanner build failure exports compiler diagnostics without private parent tokens',async t=>{
+ const {root,env}=fixture(t),failure=Error('compiler-exit-two');env.ACCESS_TOKEN='private-scanner-token';
+ const previous=console.error;console.error=()=>{};t.after(()=>{console.error=previous;});
+ const adapter={async run(binary,args,options){if(args.includes('build')){
+  options.output(Buffer.from('Cannot find module ./credentials.service\nprivate-scanner-token\n'));throw failure;
+ }return '';}};
+ await assert.rejects(new CodeqlParentService(adapter).execute(root,env),e=>e===failure);
+ const log=fs.readFileSync(path.join(root,'test-results/codeql/build.log'),'utf8');
+ assert.match(log,/Cannot find module/);assert.equal(log.includes('private-scanner-token'),false);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(root,'test-results/codeql/cleanup-on-exit.json'))).status,'passed');
+});
 test('wait failure preserves original error and still collects evidence and cleans',async t=>{
  const {root,env}=fixture(t),calls=[],failure=Error('daemon-disconnected');
  const adapter={async run(binary,args,options){calls.push({args,options});if(args[0]==='wait')throw failure;return '';}};

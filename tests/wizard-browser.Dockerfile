@@ -13,6 +13,7 @@ COPY operations/src ./operations/src
 COPY operations/tsconfig.json ./operations/tsconfig.json
 COPY operations/scripts/bundle-project-ci.mjs ./operations/scripts/bundle-project-ci.mjs
 COPY LICENSE ./LICENSE
+COPY project-bootstrap/wizard-build/typed-v6/runtime ./project-bootstrap/wizard-build/typed-v6/runtime
 RUN node operations/node_modules/typescript/bin/tsc -p operations/tsconfig.json
 RUN node operations/dist/host-bootstrap/entry.js refresh-ca --checkout /candidate && node bootstrapper/ca/check.js
 WORKDIR /candidate/wizard

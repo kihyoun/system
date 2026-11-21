@@ -17,6 +17,8 @@ try {
   init(root);
   for (const [name, data] of Object.entries({'package.json':'{}', 'package-lock.json':'{}', 'src/api/Helper.tsx':'public', '.gitlab-ci.yml':'stages: [test]', 'playwright.config.ts':'native config', 'tests/browser/public.spec.ts':'native suite', 'tests/browser/run.sh':'#!/bin/sh\n', 'private.env':'never copied', '.system-bootstrapper/build-v1/reserved':'never copied'})) write('wizard/'+name, data);
   const binary = Buffer.from([0, 255, 128, 13, 10]); write('wizard/public/image.png', binary);
+  const runtimeNames = ['project-ci.cjs', 'LICENSES.txt'];
+  for (const name of runtimeNames) write('wizard/.system-bootstrapper/build-v2/runtime/'+name, fs.readFileSync(path.join(__dirname, '../../project-bootstrap/wizard-build/typed-v6/runtime', name)));
   const wizard = path.join(root, 'wizard'); init(wizard);
   git(wizard, 'add', '.'); git(wizard, 'update-index', '--chmod=+x', 'tests/browser/run.sh'); git(wizard, 'commit', '-m', 'Source');
   const wizardRevision = git(wizard, 'rev-parse', 'HEAD');
@@ -29,6 +31,9 @@ try {
   write('bootstrapper/unrelated-host-file', 'unrelated host file must not enter');
   for(const file of ['package.json','package-lock.json','tsconfig.json','src/host-bootstrap/entry.ts'])write('operations/'+file,'committed tooling');
   write('operations/operator-private.pem','excluded');
+  const buildInputs = ['LICENSE', 'operations/scripts/bundle-project-ci.mjs', ...runtimeNames.map(name => 'project-bootstrap/wizard-build/typed-v6/runtime/'+name)];
+  for (const name of buildInputs) write(name, fs.readFileSync(path.join(__dirname, '../..', name)));
+  git(root, 'add', 'LICENSE', 'project-bootstrap');
   git(root, 'add', 'tests', 'bootstrapper', 'operations', '.prettierrc', '.prettierignore');
   git(root, 'update-index', '--add', '--cacheinfo', '160000,'+wizardRevision+',wizard'); git(root, 'commit', '-m', 'System');
   const snapshot = pack(root);
@@ -38,10 +43,12 @@ try {
   write('operations/src/host-bootstrap/entry.ts','dirty tooling');
   const result = prepareWizardBrowser(root);
   const archive = path.join(root, '.wizard-browser-context/context.tar');
-  const read = name => execFileSync('tar', ['-xOf', archive, name]);
+  const read = name => execFileSync('tar', ['-xOf', archive, name], {maxBuffer:8*1024*1024});
   assert.equal(read('tests/wizard-browser.Dockerfile').toString(), 'FROM scratch\n');
   assert.equal(read('operations/src/host-bootstrap/entry.ts').toString(),'committed tooling');
   assert(!result.files.includes('operations/operator-private.pem'));
+  for (const name of buildInputs) assert(read(name).equals(fs.readFileSync(path.join(__dirname, '../..', name))), 'preserve browser generator input bytes: '+name);
+  for (const name of runtimeNames) assert(read('wizard/.system-bootstrapper/build-v2/runtime/'+name).equals(fs.readFileSync(path.join(__dirname, '../../project-bootstrap/wizard-build/typed-v6/runtime', name))), 'verify pinned Wizard runtime bytes: '+name);
   assert.equal(read('wizard/tests/browser/public.spec.ts').toString(), 'native suite');
   assert(read('wizard/public/image.png').equals(binary));
   assert(execFileSync('tar', ['-tvf', archive, 'wizard/tests/browser/run.sh'], {encoding:'utf8'}).includes('rwxr-xr-x'));

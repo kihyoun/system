@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ManagedChildProcess, type LifecycleProcess } from '../runtime/managed-child';
+import { dockerBuild } from './docker-build';
 
 type Check = 'isolated' | 'wizard-browser' | 'candidate-image';
 const components = [
@@ -150,7 +151,8 @@ export class ContainerCheckService {
     fs.writeFileSync(path.join(config, 'config.json'), '{}\n', { mode: 0o600 });
     let primary: unknown;
     try {
-      await run(
+      await dockerBuild(
+        this.process,
         [
           'build',
           ...labelArgs,
@@ -164,8 +166,8 @@ export class ContainerCheckService {
           image,
           '-',
         ],
-        browser ? 480000 : null,
-        archive,
+        { cwd: root, env, timeout: browser ? 480000 : null, inputFile: archive, signal },
+        path.join(report, 'build.log'),
       );
       if (candidate) {
         const imageId = (await run(['image', 'inspect', '--format', '{{.Id}}', image])).trim();

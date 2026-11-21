@@ -11,8 +11,10 @@ const allowed=['bootstrapper','system','sync','operations','gitlab','gitlab-runn
 function included(name) {
   if (['tools/quickstart/quickstart.sh', 'tools/gitlab/bootstrap-token.rb'].includes(name)) return true;
   if(!/^[A-Za-z0-9._/-]+$/.test(name) || name.split('/').some(x=>x==='..'||x==='.git')) return false;
-  if(name===snapshotPath || /(^|\/)(node_modules|dist|test-results|\.test-context|\.candidate-context|\.projects\.env|\.hosts|seed|ssl|configuration)(\/|$)/.test(name)) return false;
-  if(/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper\.zip|bootstrapper_initial_root_password)$/.test(name) || /\.(key|pem|p12|pfx)$/.test(name)) return false;
+  if(name===snapshotPath || /(^|\/)(node_modules|dist|test-results|\.test-context|\.candidate-context|\.projects\.env|\.hosts|seed|ssl)(\/|$)/.test(name)) return false;
+  // This authored feature directory shares a name with private runtime state.
+  if(!/^operations\/src\/configuration\/[^/]+\.ts$/.test(name) && /(^|\/)configuration(\/|$)/.test(name)) return false;
+  if((name !== 'operations/src/mirror/credentials.service.ts' && /(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper\.zip|bootstrapper_initial_root_password)$/.test(name)) || /\.(key|pem|p12|pfx)$/.test(name)) return false;
   // Only this isolated test transport runs inside the accepted controller image.
   if(name==='tests/e2e/acme-host-runtime.js') return true;
   return allowed.includes(name.split('/')[0]) || ['.dockerignore','LICENSE','.prettierrc','.prettierignore'].includes(name);
@@ -33,6 +35,8 @@ function prepareCandidate(root) {
   });
   if(entries.some(file=>file.name.startsWith('sync/src/') && /\.[cm]?[jt]sx?$/.test(file.name) && !included(file.name)))
     throw Error('Sync source path conflicts with a private-data exclusion.');
+  if(entries.some(file=>file.name.startsWith('operations/src/') && /\.[cm]?[jt]sx?$/.test(file.name) && !included(file.name)))
+    throw Error('Operations source path conflicts with a private-data exclusion.');
   const files=entries.filter(file=>included(file.name));
   if(files.some(file=>file.type!=='blob'||!['100644','100755'].includes(file.mode))) throw Error('Candidate context refuses links and nested submodules.');
   const wizardInputs=snapshot.version===2

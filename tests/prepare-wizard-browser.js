@@ -6,9 +6,12 @@ const path = require('path');
 const crypto = require('crypto');
 const {execFileSync} = require('child_process');
 const {validate, verifyCommitted} = require('../project-bootstrap/wizard-source/package');
+const {included: includedSource} = require('./prepare-candidate');
 const recipe = 'tests/wizard-browser.Dockerfile';
 // Exact public build inputs only; never copy a host trust store or private CAs.
-const systemInputs = [recipe, '.prettierrc', '.prettierignore', 'bootstrapper/ca/cacert-2026-10-20.crt',
+const runtimeInputs = ['project-ci.cjs', 'LICENSES.txt'];
+const systemInputs = [recipe, '.prettierrc', '.prettierignore', 'LICENSE', 'operations/scripts/bundle-project-ci.mjs',
+  ...runtimeInputs.map(name => 'project-bootstrap/wizard-build/typed-v6/runtime/'+name), 'bootstrapper/ca/cacert-2026-10-20.crt',
   'bootstrapper/ca/provenance.json', 'bootstrapper/ca/check.js'];
 function prepareWizardBrowser(root) {
   root = path.resolve(root);
@@ -21,13 +24,27 @@ function prepareWizardBrowser(root) {
   if (snapshot.version === 2 ? !tree || tree[1] !== snapshot.wizardSourceTree || revision !== snapshot.sourceRevision : !pin || pin[1] !== snapshot.sourceRevision) throw Error('Browser snapshot must match the committed Wizard source layout.');
   verifyCommitted(root, snapshot);
   const provenance = snapshot.version === 2 ? {sourceLayout: snapshot.sourceLayout, sourceRevision: snapshot.sourceRevision, wizardSourceTree: snapshot.wizardSourceTree} : {wizardRevision: snapshot.sourceRevision};
-  const operationInputs = git('ls-tree','-r','--name-only','HEAD','operations').toString().split('\n').filter(name => /^(?:operations\/src\/.*\.ts|operations\/(?:package(?:-lock)?\.json|tsconfig\.json))$/.test(name));
+  const operationEntries = git('ls-tree','-r','--name-only','HEAD','operations').toString().split('\n');
+  if (operationEntries.some(name => name.startsWith('operations/src/') && /\.[cm]?[jt]sx?$/.test(name) && !includedSource(name)))
+    throw Error('Operations source path conflicts with a private-data exclusion.');
+  const operationInputs = operationEntries.filter(name => /^(?:operations\/src\/.*\.ts|operations\/(?:package(?:-lock)?\.json|tsconfig\.json))$/.test(name) && includedSource(name));
   const inputs = [...systemInputs,...operationInputs];
   const committed = inputs.map(name => {
     const entry = git('ls-tree', 'HEAD', name).toString().trim();
     if (!/^100(?:644|755) blob [a-f0-9]{40}\t/.test(entry)) throw Error('Browser build input must be a committed regular file: '+name);
     return {name, mode:entry.slice(0, 6), content:git('show', 'HEAD:'+name)};
   });
+  // Deployment snapshots omit managed recipes. The bundler check also verifies
+  // these exact public runtime blobs at the same committed Wizard identity.
+  const wizardRoot = snapshot.version === 2 ? root : path.join(root, 'wizard');
+  const wizardRef = snapshot.version === 2 ? tree[1] : pin[1];
+  const wizardGit = (...args) => execFileSync('git', ['-c', 'safe.directory='+wizardRoot, '-C', wizardRoot, ...args], {maxBuffer:32*1024*1024});
+  for (const filename of runtimeInputs) {
+    const name = '.system-bootstrapper/build-v2/runtime/'+filename;
+    const entry = wizardGit('ls-tree', wizardRef, name).toString().trim();
+    if (!/^100(?:644|755) blob [a-f0-9]{40}\t/.test(entry)) throw Error('Browser build input must be a committed regular file: wizard/'+name);
+    committed.push({name:'wizard/'+name, mode:entry.slice(0,6), content:wizardGit('show', wizardRef+':'+name)});
+  }
   for (const required of ['package.json', 'package-lock.json', 'playwright.config.ts']) {
     if (!snapshot.files.some(file => file.path === required)) throw Error('Incomplete Wizard browser inputs: '+required);
   }
@@ -44,7 +61,7 @@ function prepareWizardBrowser(root) {
     };
     for (const file of committed) write(file.name, file.content, file.mode);
     for (const file of snapshot.files) write('wizard/'+file.path, Buffer.from(file.content, 'base64'), file.mode);
-    const files = [...inputs, ...snapshot.files.map(file => 'wizard/'+file.path)].sort();
+    const files = [...committed.map(file => file.name), ...snapshot.files.map(file => 'wizard/'+file.path)].sort();
     const archive = path.join(temporary, 'context.tar');
     execFileSync('tar', ['-cf', archive, '-C', temporary, ...files]);
     const actual = execFileSync('tar', ['-tf', archive], {encoding:'utf8', maxBuffer:2*1024*1024}).split('\n').filter(Boolean).sort();

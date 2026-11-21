@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ManagedChildProcess, type LifecycleProcess } from '../runtime/managed-child';
+import { dockerBuild } from './docker-build';
 
 /** Trusted Docker boundary: only the committed source archive enters the scanner. */
 @Injectable()
@@ -98,7 +99,8 @@ export class CodeqlParentService {
     fs.mkdirSync(config, { mode: 0o700 });
     let primary: unknown;
     try {
-      await run(
+      await dockerBuild(
+        this.process,
         [
           '--config',
           config,
@@ -111,8 +113,8 @@ export class CodeqlParentService {
           image,
           '-',
         ],
-        900000,
-        archive,
+        { cwd: root, env, timeout: 900000, inputFile: archive, signal },
+        path.join(report, 'build.log'),
       );
       await run([
         '--config',
