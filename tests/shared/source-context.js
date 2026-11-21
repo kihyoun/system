@@ -119,8 +119,28 @@ try {
   git('rm','sync/src/configuration/conflicting.module.ts');
   git('commit','-m','Remove conflicting source path');
   prepareCandidate(root);
+  // The new Wizard is a regular source tree with a static NGINX image. Only
+  // historical gitlinks need start.sh; current candidates must carry their
+  // actual Docker build and web-server inputs instead.
+  git('rm','--cached','wizard');
+  fs.rmSync(path.join(root,'wizard/.git'),{recursive:true,force:true});
+  fs.rmSync(path.join(root,'wizard/start.sh'));
+  for(const name of ['Dockerfile','nginx/nginx.conf','package-lock.json'])write('wizard/'+name,'committed monorepo input\n');
+  git('add','wizard');git('commit','-m','Integrate static Wizard source tree');
+  write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(pack(root)));
+  const monorepo=prepareCandidate(root);
+  assert.equal(monorepo.sourceLayout,'system-monorepo-v1');
+  assert(!monorepo.files.includes('wizard/start.sh'));
+  for(const name of ['Dockerfile','nginx/nginx.conf','package.json','package-lock.json'])assert(monorepo.files.includes('wizard/'+name));
+  git('rm','wizard/nginx/nginx.conf');git('commit','-m','Remove required current Wizard runtime input');
+  write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(pack(root)));
+  assert.throws(()=>prepareCandidate(root),/Incomplete full-System candidate source/);
+  write('wizard/nginx/nginx.conf','committed monorepo input\n');git('add','wizard/nginx/nginx.conf');git('commit','-m','Restore current Wizard runtime input');
+  write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(pack(root)));
+  prepareCandidate(root);
   git('update-index','--add','--cacheinfo','120000,'+git('hash-object','sync/package.json')+',tests/unsafe-link');
   git('commit','-m','Reject links');
+  write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(pack(root)));
   assert.throws(()=>prepareContext(root),/links and nested submodules/);
   assert.throws(()=>prepareCodeql(root),/links and nested submodules/);
   console.log('PASS: committed-only context, ignored/private/dirty exclusions, verified snapshot, executable bytes, stale snapshot and link refusal.');

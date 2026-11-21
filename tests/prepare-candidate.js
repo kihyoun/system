@@ -35,7 +35,10 @@ function prepareCandidate(root) {
     throw Error('Sync source path conflicts with a private-data exclusion.');
   const files=entries.filter(file=>included(file.name));
   if(files.some(file=>file.type!=='blob'||!['100644','100755'].includes(file.mode))) throw Error('Candidate context refuses links and nested submodules.');
-  if(!files.some(file=>file.name==='system/Dockerfile') || !snapshot.files.some(file=>file.path==='start.sh')) throw Error('Incomplete full-System candidate source.');
+  const wizardInputs=snapshot.version===2
+    ? ['Dockerfile','nginx/nginx.conf','package.json','package-lock.json']
+    : ['start.sh'];
+  if(!files.some(file=>file.name==='system/Dockerfile') || !wizardInputs.every(name=>snapshot.files.some(file=>file.path===name))) throw Error('Incomplete full-System candidate source.');
   const output=path.join(root,'.candidate-context');
   if(fs.existsSync(output)&&(!fs.lstatSync(output).isDirectory()||fs.lstatSync(output).isSymbolicLink())) throw Error('Candidate context output must be a real directory.');
   fs.mkdirSync(output,{recursive:true});
