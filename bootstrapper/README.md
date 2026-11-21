@@ -786,4 +786,3 @@ Keep that directory and the checkout's `operations/dist`,
 saved absolute Node executable directly; they do not source a shell profile,
 invoke nvm or contact npm during recovery. The file
 `/opt/system-bootstrapper-runtime/node-executable` records the executable path.
-

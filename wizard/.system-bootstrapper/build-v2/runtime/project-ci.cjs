@@ -68,12 +68,12 @@ var require_Reflect = /* @__PURE__ */ __commonJSMin((() => {
 	Licensed under the Apache License, Version 2.0 (the "License"); you may not use
 	this file except in compliance with the License. You may obtain a copy of the
 	License at http://www.apache.org/licenses/LICENSE-2.0
-	
+
 	THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 	KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
 	WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
 	MERCHANTABLITY OR NON-INFRINGEMENT.
-	
+
 	See the Apache Version 2.0 License for specific language governing permissions
 	and limitations under the License.
 	***************************************************************************** */
@@ -10814,7 +10814,7 @@ var init_source = __esmMin((() => {
 		}
 		/**
 		Scan check MPEG 1 or 2 Layer 3 header, or 'layer 0' for ADTS (MPEG sync-word 0xFFE).
-		
+
 		@param {number} offset - Offset to scan for sync-preamble.
 		@returns {{ext: string, mime: string} | undefined} The detected file type, if any.
 		*/
@@ -23664,7 +23664,8 @@ var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 				} finally {
 					if (inputFd !== void 0) node_fs_1.default.closeSync(inputFd);
 				}
-				let output = "", bytes = 0, uncertain = false, spawnError = false;
+				const output = [];
+				let bytes = 0, uncertain = false, spawnError = false;
 				let forced;
 				const kill = (signal) => {
 					if (child.pid) try {
@@ -23684,7 +23685,7 @@ var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 					bytes += value.length;
 					if (bytes > (options.maxBuffer ?? 1048576)) cancel();
 					else {
-						output += value.toString();
+						output.push(value);
 						try {
 							options.output?.(value);
 						} catch {
@@ -23712,7 +23713,7 @@ var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 					options.signal?.removeEventListener("abort", cancel);
 					if (uncertain) kill("SIGKILL");
 					if (spawnError || status !== 0 || signal || uncertain) reject(new process_1.ProcessFailure(binary, status, signal, uncertain || spawnError || signal !== null || status === null));
-					else resolve(output);
+					else resolve(Buffer.concat(output).toString("utf8"));
 				});
 			});
 		}

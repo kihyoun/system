@@ -68,12 +68,12 @@ var require_Reflect = /* @__PURE__ */ __commonJSMin((() => {
 	Licensed under the Apache License, Version 2.0 (the "License"); you may not use
 	this file except in compliance with the License. You may obtain a copy of the
 	License at http://www.apache.org/licenses/LICENSE-2.0
-	
+
 	THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 	KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
 	WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
 	MERCHANTABLITY OR NON-INFRINGEMENT.
-	
+
 	See the Apache Version 2.0 License for specific language governing permissions
 	and limitations under the License.
 	***************************************************************************** */
@@ -10814,7 +10814,7 @@ var init_source = __esmMin((() => {
 		}
 		/**
 		Scan check MPEG 1 or 2 Layer 3 header, or 'layer 0' for ADTS (MPEG sync-word 0xFFE).
-		
+
 		@param {number} offset - Offset to scan for sync-preamble.
 		@returns {{ext: string, mime: string} | undefined} The detected file type, if any.
 		*/

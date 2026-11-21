@@ -1,6 +1,6 @@
 {
   "version": 2,
   "runtime": ".gitlab/runtime/project-ci.cjs",
-  "runtimeSha256": "875a305cad4dd23c996c0fc09b0aa6ed976998137223349a771ca0fb0057f112",
+  "runtimeSha256": "b74d595b9e36e38ca2a53f775882c64452c6f88a5b5d0978c7bdd2ffdbd647da",
   "buildProfile": "node24-vite8-typed-v6"
 }
