@@ -3,8 +3,8 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const {execFileSync}=require('node:child_process');
 const {DocumentationCheckService}=require('../../operations/dist/ci/documentation.service');
 const {ManagedChildProcess}=require('../../operations/dist/runtime/managed-child');
-function fixture(t){
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'documentation-native-'));
+function fixture(t,directory=os.tmpdir()){
+ const root=fs.mkdtempSync(path.join(directory,'documentation-native-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const git=(...args)=>execFileSync('git',['-C',root,...args],{encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
  fs.mkdirSync(path.join(root,'gitlab'));fs.copyFileSync(path.join(__dirname,'../../gitlab/check-documentation.js'),path.join(root,'gitlab/check-documentation.js'));
@@ -63,6 +63,20 @@ test('actual whitespace failure exports diagnostics; cleanup never masks failure
  await assert.rejects(f.service.execute(f.root,f.env),error=>error.status===7);
  assert.match(JSON.parse(fs.readFileSync(path.join(f.root,'test-results/documentation/report.json'))).reason,/diff --check failed/);
  assert.equal(f.calls.some(a=>a[1]==='rm'),false);
+});
+test('Git snapshot export handles common objects on another filesystem',async t=>{
+ const directory='/dev/shm';
+ try{
+  fs.accessSync(directory,fs.constants.W_OK);
+  if(fs.statSync(directory).dev===fs.statSync(os.tmpdir()).dev)return t.skip('distinct writable filesystem unavailable');
+ }catch{return t.skip('distinct writable filesystem unavailable');}
+ const f=fixture(t,directory),worktree=fs.mkdtempSync(path.join(os.tmpdir(),'documentation-worktree-'));
+ t.after(()=>fs.rmSync(worktree,{recursive:true,force:true}));
+ f.git('worktree','add','--quiet','--detach',worktree,f.env.CI_COMMIT_SHA);
+ assert.notEqual(fs.statSync(f.root).dev,fs.statSync(worktree).dev);
+ await f.service.execute(worktree,f.env);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(worktree,'test-results/documentation/report.json'))).status,'passed');
+ assert.equal(fs.readdirSync(path.join(f.root,'.git/objects')).some(name=>name.startsWith('documentation-check-')),false);
 });
 test('invalid identities or diff bases refuse child; cleanup distinguishes absence from failure',async t=>{
  const f=fixture(t);

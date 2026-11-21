@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { ManagedChildProcess, type LifecycleProcess } from '../runtime/managed-child';
@@ -97,7 +96,11 @@ export class DocumentationCheckService {
     } else if (!base && ['push', 'merge_request_event'].includes(env.CI_PIPELINE_SOURCE || ''))
       throw Error('missing-documentation-base');
     if ((await list()).trim()) throw Error('documentation-resource-already-exists');
-    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'documentation-check-'));
+    // Git creates pack temporaries in its object directory before renaming them
+    // beside the output prefix. Keep that rename on the same filesystem, even
+    // when the checkout or a linked worktree's common Git directory is mounted.
+    const objects = path.resolve(root, (await git(['rev-parse', '--git-path', 'objects'])).trim());
+    const temporary = fs.mkdtempSync(path.join(objects, 'documentation-check-'));
     fs.chmodSync(temporary, 0o700);
     const candidate = path.join(temporary, 'candidate'),
       config = path.join(temporary, 'docker-config');
