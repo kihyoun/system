@@ -14,9 +14,23 @@ import {
   type UpgradePlan,
   type OperationReceipt,
   type OperationStatus,
+  type Container,
 } from './types';
-import { atomic, jsonBytes, json, hash, runnerAssignment } from './policy';
+import { atomic, jsonBytes, hash, runnerAssignment } from './policy';
 import { upgradeStatus } from './status';
+
+/** Docker may render equivalent --mount and Compose mounts with different Mode strings. */
+function mountedState(value: Container['Mounts']) {
+  return value
+    ?.map((mount) => ({
+      Destination: mount.Destination,
+      Type: mount.Type,
+      Source: mount.Source || '',
+      Name: mount.Name || '',
+      RW: mount.RW,
+    }))
+    .sort((left, right) => left.Destination.localeCompare(right.Destination));
+}
 
 @Injectable()
 export class UpgradeWorkflowService {
@@ -91,7 +105,10 @@ export class UpgradeWorkflowService {
             recoveryMount.Type !== 'bind' ||
             recoveryMount.RW !== false ||
             recoveryMount.Source !== recovery)) ||
-        !isDeepStrictEqual(mounts, execution.controller.Mounts) ||
+        !isDeepStrictEqual(
+          mountedState(mounts),
+          mountedState(execution.controller.Mounts as Container['Mounts']),
+        ) ||
         controller.State.Running !== true ||
         !isDeepStrictEqual(
           {

@@ -113,6 +113,9 @@ test('public prerequisite runs the accepted helper while preserving the previous
    dependencies={run,publicExecution:{containerId:helperId,preparationSha256,controller:original}};
   assert.throws(()=>service.create(input,{run}).evidence(),/upgrade-tested-controller-required/);
   assert.equal(service.create(input,dependencies).evidence().candidateImage,candidate);
+  currentHelper={...helper,Mounts:helper.Mounts.map(mount=>({...mount,Mode:'rw'}))};
+  assert.equal(service.create(input,dependencies).evidence().candidateImage,candidate,'Compose and --mount render equivalent Mode fields differently');
+  currentHelper=helper;
   for(const patch of [
    {Image:old},{Id:'4'.repeat(64)},{State:{Running:false}},
    {Config:{...helper.Config,Hostname:'foreign-host'}},
@@ -198,7 +201,7 @@ test('host prerequisite prepares public recovery payloads and launches only the 
    Mounts:[{Type:'bind',Source:path.join(root,'configuration'),Destination:'/state',RW:true}],
    Config:{Labels:{'com.docker.compose.project':'system','com.docker.compose.service':'bootstrapper'},
     Env:['NODE_OPTIONS=--require=/state/private-module.js','NODE_PATH=/state/modules','LD_PRELOAD=/state/private.so','PATH=/state/bin',
-     'PERSISTENT_DIR='+root,"GITLAB_OMNIBUS_CONFIG=private setting",'SYSTEM_CONFIG_DIR=/state']},
+     'PERSISTENT_DIR='+root,"GITLAB_OMNIBUS_CONFIG=private setting\nsecond line",'SYSTEM_CONFIG_DIR=/state']},
    HostConfig:{RestartPolicy:{Name:'always'}}},
   metadata={version:'2.0.0',images:{controller:{reference:'example/system@'+candidate,imageId:candidate}}},
   previous={version:'1.2.0',images:{controller:{imageId:controller.Image}}},
@@ -206,12 +209,12 @@ test('host prerequisite prepares public recovery payloads and launches only the 
   accepted={metadata,security:release,release:{sourceRevision:base.sourceRevision},graph,
    proofBytes:Buffer.from('public proof'),raw:Buffer.from('public metadata'),evidence:{}},
   calls=[],helper='d'.repeat(64),
-  host={rootUser:()=>true,environment:{PATH:process.env.PATH},run:(binary,args)=>{
+  host={rootUser:()=>true,environment:{PATH:process.env.PATH},run:(binary,args,environment)=>{
    assert.equal(binary,'docker');assert.equal(args[0],'--host=unix:///var/run/docker.sock');calls.push(args.slice(1));
    const command=args[1];
    if(command==='pull')return '';
    if(command==='image')return JSON.stringify([{Id:candidate}]);
-   if(command==='create')return helper;
+   if(command==='create'){assert.equal(environment.GITLAB_OMNIBUS_CONFIG,'private setting\nsecond line');return helper;}
    if(command==='rm')return helper;
    if(command==='inspect')return JSON.stringify([args.at(-1)==='system_bootstrapper_1'?controller:
     {Id:helper,Image:candidate,State:{Running:false,ExitCode:0},Config:{Labels:{'system.gitlab.prerequisite':bytesSha(fs.readFileSync(path.join(directory,'preparation.json')))}}}]);
@@ -227,7 +230,7 @@ test('host prerequisite prepares public recovery payloads and launches only the 
    const launch=JSON.parse(fs.readFileSync(path.join(directory,path.basename(create.at(-3)))));
    assert.equal(launch.containerId,helper);assert.deepEqual(launch.controller,prerequisiteController(controller));
    const envFile=create[create.indexOf('--env-file')+1],env=fs.readFileSync(envFile,'utf8');
-   assert(env.includes('GITLAB_OMNIBUS_CONFIG=private setting'));
+   assert(!env.includes('GITLAB_OMNIBUS_CONFIG'));assert(create.includes('GITLAB_OMNIBUS_CONFIG'));
    assert(!/NODE_OPTIONS|NODE_PATH|LD_PRELOAD|PATH=/.test(env));assert.equal(fs.statSync(envFile).mode&0o777,0o600);
    assert(!create.join(' ').includes('private setting'));
    return JSON.stringify({planSha256:'e'.repeat(64)})+'\n';

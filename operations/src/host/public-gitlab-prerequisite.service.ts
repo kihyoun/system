@@ -271,15 +271,27 @@ export class PublicGitlabPrerequisiteService {
     const values = record(controller.Config).Env;
     ensure(
       Array.isArray(values) &&
-        values.every((value) => typeof value === 'string' && !/[\r\n\0]/.test(value)),
+        values.every((value) => typeof value === 'string' && !/\0/.test(value)),
       'public-gitlab-controller-environment-invalid',
     );
     const allowed =
       /^(?:PERSISTENCE_MODE|PERSISTENT_(?:DIR|MOUNT|UUID)|SEED_(?:DIR|MOUNT|UUID)|GITLAB_[A-Z0-9_]+|NGINX_IMAGE|WIZARD_IMAGE|SYSTEM_(?:WIZARD_ENVIRONMENT_IMAGE|LOG_MAX_SIZE|LOG_MAX_FILES|PUBLIC_UPGRADE_FIXTURE))=/;
-    writePrivate(
-      environmentFile,
-      Buffer.from(values.filter((value) => allowed.test(String(value))).join('\n') + '\n'),
+    const selected = values.filter((value) => allowed.test(String(value))),
+      omnibus = selected.filter((value) => String(value).startsWith('GITLAB_OMNIBUS_CONFIG=')),
+      lines = selected.filter((value) => !String(value).startsWith('GITLAB_OMNIBUS_CONFIG=')),
+      environment = { ...this.host.environment };
+    ensure(
+      omnibus.length <= 1 && lines.every((value) => !/[\r\n]/.test(String(value))),
+      'public-gitlab-controller-environment-invalid',
     );
+    // Docker's env-file format has no multiline values. Inherit this one named
+    // value from the private process environment, preserving operator Omnibus
+    // configuration without exposing its contents in argv or interpreting it.
+    if (omnibus.length) {
+      environment.GITLAB_OMNIBUS_CONFIG = String(omnibus[0]).slice('GITLAB_OMNIBUS_CONFIG='.length);
+      args.push('--env', 'GITLAB_OMNIBUS_CONFIG');
+    }
+    writePrivate(environmentFile, Buffer.from(lines.join('\n') + '\n'));
     args.push(
       '--env-file',
       environmentFile,
@@ -290,7 +302,9 @@ export class PublicGitlabPrerequisiteService {
       input.operation,
       input.confirmation || '',
     );
-    const id = this.docker(args).trim();
+    const id = this.host
+      .run('docker', ['--host=unix:///var/run/docker.sock', ...args], environment, 180000)
+      .trim();
     ensure(/^[a-f0-9]{64}$/.test(id), 'public-gitlab-helper-create-uncertain');
     writePrivate(
       launch,
