@@ -77,8 +77,13 @@ try {
   git(root, 'update-index', '--cacheinfo', '100644,'+trustBlob+',config/ca/provenance.json'); git(root, 'commit', '-m', 'Restore trust blob');
   git(root, 'rm', '--cached', 'config/ca/provenance.json'); git(root, 'commit', '-m', 'Refuse missing trust');
   assert.throws(() => prepareWizardBrowser(root), /committed regular file/);
-  const second = 'b'.repeat(40); git(root, 'update-index', '--cacheinfo', '160000,'+second+',wizard'); git(root, 'commit', '-m', 'Changed pin');
-  assert.throws(() => prepareWizardBrowser(root), /match the committed/);
+  write('wizard/README.md', '# A different committed Wizard source\n');
+  git(wizard, 'add', 'README.md'); git(wizard, 'commit', '-m', 'New Wizard source');
+  const second = git(wizard, 'rev-parse', 'HEAD');
+  git(root, 'update-index', '--cacheinfo', '160000,'+second+',wizard'); git(root, 'commit', '-m', 'Changed pin');
+  const previousArchive = fs.readFileSync(archive);
+  assert.throws(() => prepareWizardBrowser(root), /differs from committed source objects/);
+  assert(fs.readFileSync(archive).equals(previousArchive), 'stale source refuses before changing the previous context');
   console.log('PASS: browser context preserves committed full suite, exact reviewed public trust, executable/binary inputs and provenance; excludes dirty/private/reserved files and rejects forged/stale snapshots, trust links and missing trust inputs.');
 } finally {
   fs.rmSync(root, {recursive:true, force:true});
