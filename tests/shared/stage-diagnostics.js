@@ -3,7 +3,8 @@
 // alone would also admit a credential shaped like a hyphenated error string.
 const publicUpgrade = require('../e2e/public-upgrade-diagnostics.json');
 const REASONS = new Set([
-  ...['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover'].flatMap(operation =>
+  ...['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover',
+    'gitlab-prepare', 'gitlab-plan', 'gitlab-promote', 'gitlab-status', 'gitlab-abort', 'gitlab-rollback'].flatMap(operation =>
     [...Object.values(publicUpgrade.errors), ...Object.values(publicUpgrade.dockerOperations),
       ...Object.values(publicUpgrade.exceptionTypes), publicUpgrade.fallback]
       .map(code => 'public-upgrade-native-' + operation + '-' + code)),
@@ -21,6 +22,12 @@ const REASONS = new Set([
   'public-upgrade-native-apply-failed',
   'public-upgrade-native-status-failed',
   'public-upgrade-native-recover-failed',
+  'public-upgrade-native-gitlab-prepare-failed',
+  'public-upgrade-native-gitlab-plan-failed',
+  'public-upgrade-native-gitlab-promote-failed',
+  'public-upgrade-native-gitlab-status-failed',
+  'public-upgrade-native-gitlab-abort-failed',
+  'public-upgrade-native-gitlab-rollback-failed',
   'seed-target-unavailable',
   'storage-operation-busy',
   'restore-target-not-empty',

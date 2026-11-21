@@ -428,8 +428,9 @@ test('native helper diagnostics identify only the declared phase and preserve bo
   const candidate={id:'a'.repeat(24),spec:{restore:{base:'/recovered-data/platform'},images:{candidate:{id:id('7')}}},
     inner:async()=>{throw Object.assign(Error('private credential and upstream stderr'),{exitCode:1,systemCode:'ENOENT'});}};
   const native=new NativeCLI(candidate);
-  for(const operation of ['initialize','restore-original','plan','apply','status','recover']){
-    await assert.rejects(()=>native.invoke(['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation]),error=>{
+  for(const operation of ['initialize','restore-original','plan','apply','status','recover','gitlab-prepare','gitlab-plan','gitlab-promote','gitlab-status','gitlab-abort','gitlab-rollback']){
+    const args=operation.startsWith('gitlab-')?['gitlab','--operation',operation.slice(7)]:['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation];
+    await assert.rejects(()=>native.invoke(args),error=>{
       assert.equal(error.message,'public-upgrade-native-'+operation+'-failed');
       assert.equal(failureReason(error.message),error.message);
       assert.equal(error.exitCode,1);assert.equal(error.systemCode,'ENOENT');
@@ -462,25 +463,31 @@ test('fixed native diagnostic markers survive the real Docker sanitizer and nati
       daemonImage:'docker@'+id('8'),images,restore:{base:'/recovered-data/platform'}});
     candidate.daemon='owned-disposable-daemon';
     const native=new NativeCLI(candidate);
-    const phases=['initialize','restore-original','plan','apply','status','recover'];
+    const phases=['initialize','restore-original','plan','apply','status','recover','gitlab-prepare','gitlab-plan','gitlab-promote','gitlab-status','gitlab-abort','gitlab-rollback'];
     const codes=['docker-command-failed','release-changed-after-plan','image-archive-failed-or-timed-out',
+      'public-gitlab-prerequisite-not-declared','public-gitlab-retained-input-mismatch','public-gitlab-installed-controller-mismatch',
+      'public-gitlab-helper-runtime-overlay-refused','public-gitlab-helper-authority-mismatch','public-gitlab-helper-outcome-uncertain',
       ...Object.values(diagnostics.dockerOperations)];
     // Cover every distinct sanitizer code and phase without their redundant Cartesian product.
     for(let index=0;index<Math.max(phases.length,codes.length);index++){
       const operation=phases[index%phases.length],code=codes[index%codes.length];
       process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR='private-token\n'+diagnostics.marker+code+'\nprivate-stderr';
-      await assert.rejects(()=>native.invoke(['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation]),error=>{
+      const args=operation.startsWith('gitlab-')?['gitlab','--operation',operation.slice(7)]:['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation];
+      await assert.rejects(()=>native.invoke(args),error=>{
         assert.equal(error.message,'public-upgrade-native-'+operation+'-'+code);
         assert.equal(failureReason(error.message),error.message);
         assert.equal(error.exitCode,7);assert(!JSON.stringify(error).includes('private'));return true;
       });
     }
     for(const message of [diagnostics.marker+'private-token',diagnostics.marker+'docker-command-failed private-token',
-      'prefix '+diagnostics.marker+'docker-command-failed',diagnostics.marker+'docker-data-sample-failed private-token']){
+      'prefix '+diagnostics.marker+'docker-command-failed',diagnostics.marker+'docker-data-sample-failed private-token',
+      diagnostics.marker+'public-gitlab-retained-input-mismatch private-token']){
       process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR=message;
       await assert.rejects(()=>native.invoke(['--operation','plan']),error=>error.message==='public-upgrade-native-plan-failed'&&error.exitCode===7);
     }
     assert.equal(failureReason('public-upgrade-native-plan-private-token'),'stage-error');
+    assert.equal(failureReason('public-upgrade-native-gitlab-prepare-private-token'),'stage-error');
+    await assert.rejects(()=>native.invoke(['gitlab','--operation','private-token']),/^Error: public-upgrade-native-operation-invalid$/);
   }finally{
     process.env.PATH=previousPath;
     if(previousError===undefined)delete process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR;else process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR=previousError;

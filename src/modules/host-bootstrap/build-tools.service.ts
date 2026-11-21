@@ -13,6 +13,8 @@ export const RUNTIME_PACKAGES = [
   'bash=5.3.9-r1',
   'git=2.54.1-r0',
   'unzip=6.0-r16',
+  'coreutils=9.11-r0',
+  'findmnt=2.42.3-r1',
   'curl=8.23.0-r0',
   'zlib=1.4-r0',
 ];

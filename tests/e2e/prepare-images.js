@@ -93,6 +93,9 @@ async function prepare(){
   const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',timeout:600000,...options});
   let fd=fs.openSync(archive,'r');
   try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.source-tree='+sourceTree,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','containers/controller/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
+  run(['run','--rm','--network','none','--memory','128m','--cpus','0.25',
+    '--entrypoint','/usr/local/bin/node',tags.candidate,
+    '/system/dist/modules/testing/public-upgrade-entry.js','verify-host']);
   require('../bootstrapper/log-rotation-docker').run({helperImage:tags.candidate});
   run(['pull',defaults.nginx]);
   require('../persistence/http01-nginx-probe').run({helperImage:tags.candidate,nginxImage:defaults.nginx});

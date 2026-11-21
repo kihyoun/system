@@ -33,17 +33,26 @@ export class PublicUpgradeRuntimeService {
   }
 
   verifyHost(): void {
-    for (const [binary, args] of [
-      ['git', ['--version']],
-      ['docker', ['--version']],
-      ['unzip', ['-v']],
-    ] as const) {
-      const result = spawnSync(binary, [...args], { timeout: 10000, encoding: 'utf8' });
-      if (result.error || result.status !== 0)
-        throw Error('candidate-public-host-runtime-unavailable');
-    }
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'public-host-runtime-'));
     try {
+      // Exercise the interfaces used by shared host/storage services, not just
+      // command presence: BusyBox accepts some names but not the GNU options.
+      for (const [binary, args] of [
+        ['git', ['--version']],
+        ['docker', ['--version']],
+        ['unzip', ['-v']],
+        ['mountpoint', ['-q', '--', '/']],
+        ['realpath', ['-e', '--', directory]],
+        ['realpath', ['-m', '--', path.join(directory, 'absent')]],
+        ['findmnt', ['-rn', '-o', 'TARGET', '--target', directory]],
+        ['stat', ['-f', '-c', '%T', '--', directory]],
+        ['df', ['-B1', '--output=avail', '--', directory]],
+        ['du', ['-sb', '--', directory]],
+      ] as const) {
+        const result = spawnSync(binary, [...args], { timeout: 10000, encoding: 'utf8' });
+        if (result.error || result.status !== 0)
+          throw Error('candidate-public-host-runtime-unavailable');
+      }
       const release = fileLock(path.join(directory, 'lease'));
       release();
     } finally {

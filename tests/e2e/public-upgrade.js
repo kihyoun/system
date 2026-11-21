@@ -210,9 +210,6 @@ class NativeCLI {
       '--entrypoint', '/usr/local/bin/node', '--volume', this.fixture + ':' + this.fixture,
       candidate.spec.images.candidate.id, '/system/dist/modules/testing/public-upgrade-entry.js',
       'prepare', this.fixture]);
-    await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
-      '--entrypoint', '/usr/local/bin/node', candidate.spec.images.candidate.id,
-      '/system/dist/modules/testing/public-upgrade-entry.js', 'verify-host']);
     const previous = candidate.spec.publicUpgrade.metadata;
     // Prove the copied interpreter and bundled modules load in the candidate
     // helper and historical controller before changing the running controller.
@@ -275,7 +272,7 @@ class NativeCLI {
     const hooks=['initialize','restore-original','freeze-publication','gitlab-previous-selectors','save-migrated-public-selection','candidate-pair-selectors','restore-migrated-public-selection'];
     const requested = args[0] === 'gitlab' ? args[args.indexOf('--operation')+1] : args[0] === '--operation' ? args[1] : args[0];
     required(args[0]==='gitlab' ? ['prepare','plan','promote','status','abort','rollback'].includes(requested) : [...hooks,'plan','apply','status','recover'].includes(requested), 'public-upgrade-native-operation-invalid');
-    const operation=args[0]==='gitlab' ? ({prepare:'plan',plan:'plan',promote:'apply',status:'status',abort:'recover',rollback:'recover'})[requested] : hooks.includes(requested) && requested!=='restore-original' ? 'initialize' : requested;
+    const operation=args[0]==='gitlab' ? 'gitlab-'+requested : hooks.includes(requested) && requested!=='restore-original' ? 'initialize' : requested;
     const failureCodes = Object.fromEntries([...new Set([
       ...Object.values(diagnostics.errors), ...Object.values(diagnostics.dockerOperations),
       ...Object.values(diagnostics.exceptionTypes), diagnostics.fallback
