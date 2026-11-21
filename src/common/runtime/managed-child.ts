@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
-import { ProcessFailure } from './process';
+import { ProcessFailure, selectControlledFailureCode } from './process';
 export interface ChildOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
@@ -11,6 +11,8 @@ export interface ChildOptions {
   /** null is reserved for foreground services, which have no wall-clock deadline. */
   timeout: number | null;
   maxBuffer?: number;
+  /** Exact source-owned lines mapped only on a settled, unambiguous failure. */
+  controlledFailureCodes?: Readonly<Record<string, string>>;
   inherit?: boolean;
   /** Receives bounded stdout/stderr for an owned diagnostic artifact. */
   output?: (chunk: Buffer) => void;
@@ -51,6 +53,7 @@ export class ManagedChildProcess implements LifecycleProcess {
         if (inputFd !== undefined) fs.closeSync(inputFd);
       }
       const output: Buffer[] = [];
+      const stderr: Buffer[] = [];
       let bytes = 0,
         uncertain = false,
         spawnError = false;
@@ -85,12 +88,14 @@ export class ManagedChildProcess implements LifecycleProcess {
       child.stderr?.on('data', (value: Buffer) => {
         bytes += value.length;
         if (bytes > (options.maxBuffer ?? 1024 * 1024)) cancel();
-        else
+        else {
+          if (options.controlledFailureCodes) stderr.push(value);
           try {
             options.output?.(value);
           } catch {
             cancel();
           }
+        }
       });
       child.on('error', () => {
         spawnError = true;
@@ -112,6 +117,13 @@ export class ManagedChildProcess implements LifecycleProcess {
               status,
               signal,
               uncertain || spawnError || signal !== null || status === null,
+              !uncertain && !spawnError && signal === null && status !== null && status > 0
+                ? selectControlledFailureCode(
+                    Buffer.concat(output).toString('utf8'),
+                    Buffer.concat(stderr).toString('utf8'),
+                    options.controlledFailureCodes,
+                  )
+                : undefined,
             ),
           );
         else resolve(Buffer.concat(output).toString('utf8'));

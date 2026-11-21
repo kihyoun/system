@@ -3,7 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { HostInstallService, requireValue as ensure, writePrivate } from './install';
+import {
+  HostInstallService,
+  HostPolicyError,
+  requireValue as ensure,
+  writePrivate,
+} from './install';
+import { ProcessFailure } from '../../common/runtime/process';
 import { RuntimeVerificationService } from '../host-bootstrap/runtime-verification.service';
 import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
 import { HostReleaseAuthorityService } from './release-authority.service';
@@ -18,6 +24,41 @@ import type { PublicPrerequisiteExecution } from '../gitlab-upgrade/types';
 import { upgradeStatus } from '../gitlab-upgrade/status';
 
 type Row = Record<string, unknown>;
+const helperFailureCodes = Object.fromEntries(
+  [
+    'upgrade-readiness-timeout',
+    'upgrade-readiness-timeout-restarting',
+    'upgrade-readiness-timeout-http',
+    'upgrade-readiness-timeout-jobs',
+    'upgrade-readiness-timeout-background-migrations',
+    'upgrade-readiness-timeout-database-migrations',
+    'upgrade-readiness-response-invalid',
+    'upgrade-jobs-active',
+    'upgrade-pending-migrations',
+    'upgrade-migration-status-invalid',
+    'upgrade-preflight-refused',
+    'upgrade-preflight-identity-mismatch',
+    'upgrade-current-image-mismatch',
+    'upgrade-service-state-invalid',
+    'upgrade-service-oom',
+    'upgrade-service-dead',
+    'upgrade-service-exited',
+    'upgrade-operation-failed',
+    'upgrade-running-gitlab-required',
+    'upgrade-persistent-mount-mismatch',
+    'upgrade-owned-gitlab-required',
+    'gitlab-preflight-container-identity-required',
+    'gitlab-preflight-package-identity-invalid',
+    'gitlab-database-topology-invalid',
+    'gitlab-database-container-identity-required',
+    'gitlab-preflight-service-user-invalid',
+    'gitlab-preflight-private-directory-invalid',
+    'gitlab-database-session-invalid',
+    'gitlab-database-session-options-invalid',
+    'gitlab-database-application-name-invalid',
+  ].map((code) => ['System Bootstrapper: ' + code, code]),
+);
+const helperFailureValues = new Set(Object.values(helperFailureCodes));
 export function prerequisiteMountTarget(destination: unknown): void {
   ensure(
     typeof destination === 'string' &&
@@ -325,16 +366,52 @@ export class PublicGitlabPrerequisiteService {
         }),
       ),
     );
-    const output = await this.runtime.child.run(
-      'docker',
-      ['--host=unix:///var/run/docker.sock', 'start', '--attach', id],
-      {
-        cwd: input.checkout,
-        env: this.host.environment,
-        signal: input.signal,
-        timeout: (input.timeout * 2 + 2400) * 1000,
-      },
-    );
+    let output: string;
+    try {
+      output = await this.runtime.child.run(
+        'docker',
+        ['--host=unix:///var/run/docker.sock', 'start', '--attach', id],
+        {
+          cwd: input.checkout,
+          env: this.host.environment,
+          signal: input.signal,
+          timeout: (input.timeout * 2 + 2400) * 1000,
+          controlledFailureCodes: helperFailureCodes,
+        },
+      );
+    } catch (error) {
+      if (
+        error instanceof ProcessFailure &&
+        error.binary === 'docker' &&
+        !error.uncertain &&
+        error.signal === null &&
+        Number.isInteger(error.status) &&
+        error.status !== null &&
+        error.status > 0 &&
+        error.status <= 255 &&
+        error.controlledCode !== undefined &&
+        helperFailureValues.has(error.controlledCode)
+      ) {
+        const observed = this.inspect(id),
+          state = record(observed.State);
+        ensure(
+          observed.Id === id &&
+            observed.Image === image &&
+            record(record(observed.Config).Labels)['system.gitlab.prerequisite'] === sha &&
+            state.Status === 'exited' &&
+            state.Running === false &&
+            state.ExitCode === error.status &&
+            state.OOMKilled !== true &&
+            state.Dead !== true &&
+            state.Paused !== true &&
+            state.Restarting !== true,
+          'public-gitlab-helper-outcome-uncertain',
+        );
+        // Keep the failed helper, launch record and checkpoint available for recovery.
+        throw new HostPolicyError(error.controlledCode);
+      }
+      throw error;
+    }
     const observed = this.inspect(id);
     ensure(
       observed.Id === id &&

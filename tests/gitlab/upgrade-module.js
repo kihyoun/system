@@ -192,10 +192,13 @@ test('shared native GitLab status reads durable receipts without requiring any l
 });
 test('host prerequisite prepares public recovery payloads and launches only the pinned helper with private bounded inputs',async t=>{
  const {PublicGitlabPrerequisiteService,prerequisiteController}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
+ const {HostPolicyError}=require('../../dist/modules/host/install');
+ const {ProcessFailure}=require('../../dist/common/runtime/process');
  const {release}=require('../../dist/modules/gitlab-upgrade/types');
  const {bytesSha}=require('../../dist/modules/host/release-selection.service');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'public-prerequisite-host-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ let helperObservation;
  const directory=path.join(root,'configuration/gitlab-prerequisites/to-2-0-0'),candidate='sha256:'+'a'.repeat(64),
   controller={Id:'b'.repeat(64),Name:'/system_bootstrapper_1',Image:'sha256:'+'c'.repeat(64),State:{Running:true},
    Mounts:[{Type:'bind',Source:path.join(root,'configuration'),Destination:'/state',RW:true}],
@@ -217,12 +220,17 @@ test('host prerequisite prepares public recovery payloads and launches only the 
    if(command==='create'){assert.equal(environment.GITLAB_OMNIBUS_CONFIG,'private setting\nsecond line');return helper;}
    if(command==='rm')return helper;
    if(command==='inspect')return JSON.stringify([args.at(-1)==='system_bootstrapper_1'?controller:
-    {Id:helper,Image:candidate,State:{Running:false,ExitCode:0},Config:{Labels:{'system.gitlab.prerequisite':bytesSha(fs.readFileSync(path.join(directory,'preparation.json')))}}}]);
+    helperObservation||{Id:helper,Image:candidate,State:{Running:false,ExitCode:0},Config:{Labels:{'system.gitlab.prerequisite':bytesSha(fs.readFileSync(path.join(directory,'preparation.json')))}}}]);
    throw Error('unexpected host Docker command');
   }},
   config={_root:root,_main:path.join(root,'configuration/.docker.env')},
   runtime={settings:async()=>config,child:{run:async(binary,args,options)=>{
    assert.equal(binary,'docker');assert.deepEqual(args,['--host=unix:///var/run/docker.sock','start','--attach',helper]);
+   for(const suffix of ['','-restarting','-http','-jobs','-background-migrations','-database-migrations']){
+    const code='upgrade-readiness-timeout'+suffix;
+    assert.equal(options.controlledFailureCodes['System Bootstrapper: '+code],code);
+   }
+   assert.equal(options.controlledFailureCodes['System Bootstrapper: private-token'],undefined);
    assert(options.timeout>0);const create=calls.findLast(args=>args[0]==='create');
    assert.deepEqual(create.slice(0,3),['create','--pull','never']);
    assert(create.includes('container:'+controller.Id));assert(create.includes('host'));
@@ -253,6 +261,34 @@ test('host prerequisite prepares public recovery payloads and launches only the 
  await assert.rejects(()=>service.execute({...input,operation:'plan'}),/attachment outcome uncertain/);
  assert.equal(calls.filter(args=>args[0]==='rm').length,removed,'an uncertain helper stays available for inspection');
  assert.equal(fs.readdirSync(directory).filter(name=>/^launch-/.test(name)).length,2);
+ const observedFailure=()=>({Id:helper,Image:candidate,State:{Status:'exited',Running:false,ExitCode:1},Config:{Labels:{'system.gitlab.prerequisite':bytesSha(fs.readFileSync(path.join(directory,'preparation.json')))}}});
+ for(const suffix of ['','-restarting','-http','-jobs','-background-migrations','-database-migrations']){
+  const code='upgrade-readiness-timeout'+suffix;helperObservation=observedFailure();
+  runtime.child.run=async()=>{throw new ProcessFailure('docker',1,null,false,code);};
+  await assert.rejects(()=>service.execute({...input,operation:'plan'}),error=>error instanceof HostPolicyError&&error.code===code);
+  assert.equal(calls.filter(args=>args[0]==='rm').length,removed,'a verified failed helper is retained with its checkpoint');
+ }
+ const controlled=new ProcessFailure('docker',1,null,false,'upgrade-readiness-timeout-http');
+ for(const change of [
+  {Id:'f'.repeat(64)},{Image:'sha256:'+'f'.repeat(64)},
+  {Config:{Labels:{'system.gitlab.prerequisite':'foreign'}}},
+  {State:{Status:'running',Running:true,ExitCode:1}},
+  {State:{Status:'exited',Running:false,ExitCode:2}},
+  {State:{Status:'exited',Running:false,ExitCode:0}},
+  {State:{Status:'exited',Running:false,ExitCode:1,OOMKilled:true}},
+ ]){
+  helperObservation={...observedFailure(),...change};runtime.child.run=async()=>{throw controlled;};
+  await assert.rejects(()=>service.execute({...input,operation:'plan'}),error=>error instanceof HostPolicyError&&error.code==='public-gitlab-helper-outcome-uncertain');
+ }
+ helperObservation=observedFailure();
+ for(const failure of [new ProcessFailure('docker',1,null,false,'private-token'),new ProcessFailure('docker',1,null,true,'upgrade-readiness-timeout-http'),new ProcessFailure('docker',1,'SIGTERM',false,'upgrade-readiness-timeout-http'),new ProcessFailure('docker',0,null,false,'upgrade-readiness-timeout-http'),new ProcessFailure('other',1,null,false,'upgrade-readiness-timeout-http')]){
+  runtime.child.run=async()=>{throw failure;};
+  const inspections=calls.filter(args=>args[0]==='inspect').length;
+  await assert.rejects(()=>service.execute({...input,operation:'plan'}),error=>error===failure);
+  assert.equal(calls.filter(args=>args[0]==='inspect').length,inspections+1,'uncertain/unmapped failures never promote marker or inspect helper outcome');
+ }
+ assert.equal(calls.filter(args=>args[0]==='rm').length,removed);
+ assert(fs.existsSync(path.join(directory,'preparation.json')),'preparation/checkpoints remain available after failed attachment');
  const inspectionCount=calls.filter(args=>args[0]==='inspect').length;
  assert.equal((await service.execute({...input,operation:'status'})).phase,'not-checkpointed');
  assert.equal(calls.filter(args=>args[0]==='inspect').length,inspectionCount,'status needs no live controller');

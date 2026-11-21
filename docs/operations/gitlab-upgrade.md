@@ -65,6 +65,15 @@ public errors. The shared `GitlabPreflightService` reads package identity and ge
 configuration uses the shared literal parser, and in-container service control
 uses native argument arrays rather than generated shell programs.
 
+If the bounded readiness wait expires, its error retains the last unmet gate:
+`upgrade-readiness-timeout-restarting`, `-http`, `-jobs`,
+`-background-migrations` or `-database-migrations`. A healthy Docker container
+alone does not satisfy these checks. The public helper preserves only approved
+fixed error codes after verifying the failed helper's identity and exit status;
+it does not expose subprocess output or configuration. Inspect the retained
+operation and use its documented recovery path. A readiness failure does not
+release maintenance leases or prove that promotion completed.
+
 GitLab and runner startup use the shared lifecycle service through thin adapters
 under the watchdog. The child verifies the inherited operation against all
 shared owner records and its live parent identity, preserves the watchdog's

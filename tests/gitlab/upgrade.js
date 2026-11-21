@@ -120,6 +120,26 @@ function nativeProof(args, proof={}) {
     };
     await ready.ready(release.toVersion,ids.next);assert.equal(sleeps,1,'Explicit startup/migration states remain retryable.');
   }
+  for(const scenario of ['restarting','http','jobs','background-migrations','database-migrations']){
+    let time=0,sleeps=0,commands=0;
+    const ready=new Upgrade({...base,readyTimeoutSeconds:60},{now:()=>time,sleep:async ms=>{sleeps++;time+=ms;}});
+    ready.inspect=()=>scenario==='restarting'?{...running,State:{Status:'restarting',Running:false,Restarting:true}}:running;
+    ready.verifyMounts=()=>{};
+    ready.docker=args=>{
+      commands++;
+      if(args.includes('curl')){if(scenario==='http')throw Object.assign(Error('private-http-response'),{exitCode:22});return '';}
+      if(isNativeProbe(args))return nativeProof(args,{runningJobs:scenario==='jobs'?1:0,unfinishedBackgroundMigrations:scenario==='background-migrations'?1:0});
+      assert(args.includes('db:migrate:status'));return 'down 123 private-migration-name';
+    };
+    await assert.rejects(()=>ready.ready(release.toVersion,ids.next),error=>{
+      assert.equal(error.message,'upgrade-readiness-timeout-'+scenario);
+      assert(!JSON.stringify(error).includes('private-'));
+      assert(!error.stack.includes('private-'));return true;
+    });
+    assert.equal(time,60000,'Readiness diagnostics must not extend the existing deadline.');
+    assert.equal(sleeps,20);
+    if(scenario==='restarting')assert.equal(commands,0);
+  }
   const {GitlabPreflightService}=require('../../dist/modules/gitlab-preflight/gitlab-preflight.service');
   const probe=new GitlabPreflightService(new (require('../../dist/modules/gitlab-preflight/gitlab-database.service').GitlabDatabaseService)()), probeCommands=[], probeInputs=[];
   const topology='production:\n  main: &db\n    adapter: postgresql\n    username: gitlab\n    database: main_data\n    host: /var/opt/gitlab/postgresql\n  ci:\n    <<: *db\n    database: ci_data\n    database_tasks: false\n';

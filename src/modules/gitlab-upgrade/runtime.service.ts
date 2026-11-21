@@ -135,6 +135,9 @@ export class UpgradeRuntimeService {
 
   async ready(session: UpgradeSession, version: string, image: string): Promise<void> {
     const until = session.now() + session.options.readyTimeoutSeconds * 1000;
+    let lastRetry:
+      'restarting' | 'http' | 'jobs' | 'background-migrations' | 'database-migrations' =
+      'restarting';
     while (session.now() < until) {
       const container = session.inspect('system_gitlab_1');
       if (container.Image !== image)
@@ -172,6 +175,7 @@ export class UpgradeRuntimeService {
         state.Status === 'restarting' ||
         restarting
       ) {
+        lastRetry = 'restarting';
         await session.sleep(3000);
         continue;
       }
@@ -180,6 +184,7 @@ export class UpgradeRuntimeService {
       // Only curl's explicit HTTP/connection startup states are retryable. A
       // failed Docker exec, missing executable or malformed response is fatal.
       if (!(await gitLabReadiness(this.control(session), 'system_gitlab_1'))) {
+        lastRetry = 'http';
         await session.sleep(3000);
         continue;
       }
@@ -193,6 +198,8 @@ export class UpgradeRuntimeService {
           )
         )
           throw error;
+        lastRetry =
+          (error as Error).message === 'upgrade-jobs-active' ? 'jobs' : 'background-migrations';
         await session.sleep(3000);
         continue;
       }
@@ -203,12 +210,13 @@ export class UpgradeRuntimeService {
       const migrations = [...status.matchAll(/^\s*(up|down)\s+\d+/gm)];
       if (!migrations.length) throw Error('upgrade-migration-status-invalid');
       if (migrations.some((row) => row[1] === 'down')) {
+        lastRetry = 'database-migrations';
         await session.sleep(3000);
         continue;
       }
       return;
     }
-    throw Error('upgrade-readiness-timeout');
+    throw Error('upgrade-readiness-timeout-' + lastRetry);
   }
 
   start(session: UpgradeSession, reference: string, restore = false): void {

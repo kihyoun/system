@@ -32,6 +32,28 @@ export class ProcessFailure extends Error {
     this.name = 'ProcessFailure';
   }
 }
+/** Return one unambiguous opted-in code from exact complete output lines. */
+export function selectControlledFailureCode(
+  stdout: string,
+  stderr: string,
+  codes?: Readonly<Record<string, string>>,
+): string | undefined {
+  if (!codes) return;
+  const lines = new Set((stdout + '\n' + stderr).split(/\r?\n/));
+  const matched = new Set(
+    Object.entries(codes)
+      .filter(
+        ([line, code]) =>
+          line.length > 0 &&
+          line.length <= 256 &&
+          typeof code === 'string' &&
+          /^[a-z][a-z0-9-]{0,63}$/.test(code) &&
+          lines.has(line),
+      )
+      .map(([, code]) => code),
+  );
+  return matched.size === 1 ? [...matched][0] : undefined;
+}
 export class NativeProcessRunner implements ProcessRunner {
   run(binary: string, args: readonly string[], options: ProcessOptions = {}): ProcessResult {
     const result = spawnSync(binary, [...args], {
@@ -52,20 +74,11 @@ export class NativeProcessRunner implements ProcessRunner {
         result.status !== null &&
         result.status > 0
       ) {
-        const lines = new Set((result.stdout + '\n' + result.stderr).split(/\r?\n/));
-        const matched = new Set(
-          Object.entries(options.controlledFailureCodes ?? {})
-            .filter(
-              ([line, code]) =>
-                line.length > 0 &&
-                line.length <= 256 &&
-                typeof code === 'string' &&
-                /^[a-z][a-z0-9-]{0,63}$/.test(code) &&
-                lines.has(line),
-            )
-            .map(([, code]) => code),
+        controlledCode = selectControlledFailureCode(
+          result.stdout,
+          result.stderr,
+          options.controlledFailureCodes,
         );
-        if (matched.size === 1) controlledCode = [...matched][0];
       }
       throw new ProcessFailure(
         binary,

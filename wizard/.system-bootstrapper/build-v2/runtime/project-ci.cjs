@@ -23586,6 +23586,7 @@ var require_application_service = /* @__PURE__ */ __commonJSMin(((exports, modul
 var require_process = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	exports.nativeProcess = exports.NativeProcessRunner = exports.ProcessFailure = void 0;
+	exports.selectControlledFailureCode = selectControlledFailureCode;
 	const node_child_process_1 = require("node:child_process");
 	var ProcessFailure = class extends Error {
 		binary;
@@ -23605,6 +23606,13 @@ var require_process = /* @__PURE__ */ __commonJSMin(((exports) => {
 		}
 	};
 	exports.ProcessFailure = ProcessFailure;
+	/** Return one unambiguous opted-in code from exact complete output lines. */
+	function selectControlledFailureCode(stdout, stderr, codes) {
+		if (!codes) return;
+		const lines = new Set((stdout + "\n" + stderr).split(/\r?\n/));
+		const matched = new Set(Object.entries(codes).filter(([line, code]) => line.length > 0 && line.length <= 256 && typeof code === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(code) && lines.has(line)).map(([, code]) => code));
+		return matched.size === 1 ? [...matched][0] : void 0;
+	}
 	var NativeProcessRunner = class {
 		run(binary, args, options = {}) {
 			const result = (0, node_child_process_1.spawnSync)(binary, [...args], {
@@ -23618,11 +23626,7 @@ var require_process = /* @__PURE__ */ __commonJSMin(((exports) => {
 			});
 			if (result.error || result.status !== 0 || result.signal !== null) {
 				let controlledCode;
-				if (options.controlledFailureCodes && !result.error && result.signal === null && result.status !== null && result.status > 0) {
-					const lines = new Set((result.stdout + "\n" + result.stderr).split(/\r?\n/));
-					const matched = new Set(Object.entries(options.controlledFailureCodes ?? {}).filter(([line, code]) => line.length > 0 && line.length <= 256 && typeof code === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(code) && lines.has(line)).map(([, code]) => code));
-					if (matched.size === 1) controlledCode = [...matched][0];
-				}
+				if (options.controlledFailureCodes && !result.error && result.signal === null && result.status !== null && result.status > 0) controlledCode = selectControlledFailureCode(result.stdout, result.stderr, options.controlledFailureCodes);
 				throw new ProcessFailure(binary, result.status, result.signal, !!result.error || result.status === null || result.signal !== null, controlledCode);
 			}
 			return {
@@ -23675,6 +23679,7 @@ var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 					if (inputFd !== void 0) node_fs_1.default.closeSync(inputFd);
 				}
 				const output = [];
+				const stderr = [];
 				let bytes = 0, uncertain = false, spawnError = false;
 				let forced;
 				const kill = (signal) => {
@@ -23706,10 +23711,13 @@ var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 				child.stderr?.on("data", (value) => {
 					bytes += value.length;
 					if (bytes > (options.maxBuffer ?? 1048576)) cancel();
-					else try {
-						options.output?.(value);
-					} catch {
-						cancel();
+					else {
+						if (options.controlledFailureCodes) stderr.push(value);
+						try {
+							options.output?.(value);
+						} catch {
+							cancel();
+						}
 					}
 				});
 				child.on("error", () => {
@@ -23722,7 +23730,7 @@ var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 					if (forced) clearTimeout(forced);
 					options.signal?.removeEventListener("abort", cancel);
 					if (uncertain) kill("SIGKILL");
-					if (spawnError || status !== 0 || signal || uncertain) reject(new process_1.ProcessFailure(binary, status, signal, uncertain || spawnError || signal !== null || status === null));
+					if (spawnError || status !== 0 || signal || uncertain) reject(new process_1.ProcessFailure(binary, status, signal, uncertain || spawnError || signal !== null || status === null, !uncertain && !spawnError && signal === null && status !== null && status > 0 ? (0, process_1.selectControlledFailureCode)(Buffer.concat(output).toString("utf8"), Buffer.concat(stderr).toString("utf8"), options.controlledFailureCodes) : void 0));
 					else resolve(Buffer.concat(output).toString("utf8"));
 				});
 			});

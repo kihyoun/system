@@ -21,7 +21,7 @@ test('managed process passes exact binary file through stdin and refuses links',
  await assert.rejects(child.run(process.execPath,['-e','process.exit(0)'],{...options,inputFile:path.join(root,'link')}));
  await assert.rejects(child.run(process.execPath,['-e','process.exit(0)'],{...options,input:'ambiguous'}),/ambiguous-process-input/);
 });
-test('native process exposes only one opted-in fixed refusal code on a settled failure',()=>{
+test('native and managed processes expose only one opted-in fixed refusal code on a settled failure',async()=>{
  const runner=new NativeProcessRunner(),message='Seed operation failed: seed-target-unavailable.';
  const controlledFailureCodes={[message]:'seed-target-unavailable','Seed operation failed: storage-operation-busy.':'storage-operation-busy'};
  const invoke=(output,options={},tail='process.exitCode=1;')=>runner.run(process.execPath,['-e','process.stderr.write('+JSON.stringify(output)+');'+tail],options);
@@ -41,4 +41,33 @@ test('native process exposes only one opted-in fixed refusal code on a settled f
  const timeout=refusal(message+'\n',{controlledFailureCodes,timeout:200},'setInterval(()=>{},1000);');
  assert.equal(timeout.controlledCode,undefined);assert.equal(timeout.uncertain,true);
  const success=invoke(message,{controlledFailureCodes},'process.exitCode=0;');assert.equal(success.status,0);assert.equal(success.stderr,message);
+ const child=new ManagedChildProcess(),options={cwd:process.cwd(),env:process.env,timeout:5000};
+ const managed=(output,extra={},tail='process.exitCode=1;')=>child.run(process.execPath,['-e','process.stderr.write('+JSON.stringify(output)+');'+tail],{...options,...extra});
+ const managedRefusal=async(output,extra={},tail)=>{let failure;await assert.rejects(managed(output,extra,tail),error=>{failure=error;return error instanceof ProcessFailure;});
+  assert.equal(failure.message,'external-command-failed');assert.equal(failure.code,'external-command-failed');
+  assert(!JSON.stringify(failure).includes('private-child-output'));assert(!failure.stack.includes('private-child-output'));
+  for(const key of ['stdout','stderr','argv','args','env','output'])assert(!Object.hasOwn(failure,key));return failure;};
+ assert.equal((await managedRefusal(message+'\nprivate-child-output\n')).controlledCode,undefined);
+ const managedMatch=await managedRefusal(message+'\r\nprivate-child-output\n',{controlledFailureCodes});
+ assert.equal(managedMatch.controlledCode,'seed-target-unavailable');assert.equal(managedMatch.status,1);assert.equal(managedMatch.uncertain,false);
+ for(const output of ['prefix '+message+'\n',message+' suffix\n','private-child-output',message+'\nSeed operation failed: storage-operation-busy.\n'])
+  assert.equal((await managedRefusal(output,{controlledFailureCodes})).controlledCode,undefined);
+ for(const code of ['private invalid code',{toString:()=> 'private-child-output'}])
+  assert.equal((await managedRefusal(message,{controlledFailureCodes:{[message]:code}})).controlledCode,undefined);
+ const fragmented=await managedRefusal(message.slice(0,12),{controlledFailureCodes},'setTimeout(()=>{process.stderr.write('+JSON.stringify(message.slice(12)+'\n')+');process.exitCode=1;},10);');
+ assert.equal(fragmented.controlledCode,'seed-target-unavailable','chunk boundaries do not alter exact-line matching');
+ const stdoutCode=await managedRefusal('',{controlledFailureCodes},'process.stdout.write('+JSON.stringify(message+'\n')+');process.exitCode=1;');
+ assert.equal(stdoutCode.controlledCode,'seed-target-unavailable');
+ const splitAmbiguous=await managedRefusal(message+'\n',{controlledFailureCodes},'process.stdout.write("Seed operation failed: storage-operation-busy.\\n");process.exitCode=1;');
+ assert.equal(splitAmbiguous.controlledCode,undefined,'stdout and stderr participate in the same unambiguous selection');
+ const managedSignal=await managedRefusal(message+'\n',{controlledFailureCodes},'process.kill(process.pid,"SIGTERM");');
+ assert.equal(managedSignal.controlledCode,undefined);assert.equal(managedSignal.uncertain,true);
+ const managedTimeout=await managedRefusal(message+'\n',{controlledFailureCodes,timeout:200},'setInterval(()=>{},1000);');
+ assert.equal(managedTimeout.controlledCode,undefined);assert.equal(managedTimeout.uncertain,true);
+ const overflow=await managedRefusal(message+'\n'+'private-child-output'.repeat(256),{controlledFailureCodes,maxBuffer:128});
+ assert.equal(overflow.controlledCode,undefined);assert.equal(overflow.uncertain,true);
+ const controller=new AbortController();controller.abort();
+ const canceled=await managedRefusal(message+'\n',{controlledFailureCodes,signal:controller.signal});
+ assert.equal(canceled.controlledCode,undefined);assert.equal(canceled.uncertain,true);
+ assert.equal(await managed(message,{controlledFailureCodes},'process.stdout.write("success");process.exitCode=0;'),'success');
 });
