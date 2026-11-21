@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { ManagedRecipeOperationService } from './managed-recipe-operation.service';
 import { WizardSourceOperationService } from './wizard-source.service';
 import { GitlabTokenMetadataService } from './token-metadata.service';
 import 'reflect-metadata';
@@ -41,6 +42,7 @@ export async function main(args: string[]): Promise<void> {
       'renew-project',
       'token-metadata',
       'wizard-source',
+      'managed-recipe',
     ].includes(command)
   )
     throw Error('Unsupported GitLab credential action.');
@@ -77,9 +79,10 @@ export async function main(args: string[]): Promise<void> {
       'renew-project',
       'token-metadata',
       'wizard-source',
+      'managed-recipe',
     ].includes(command) &&
       values['--administrator-token-file']) ||
-    (['activate', 'preview', 'project', 'wizard-source'].includes(command) &&
+    (['activate', 'preview', 'project', 'wizard-source', 'managed-recipe'].includes(command) &&
       values['--config-directory']) ||
     (command === 'reconcile-initial' && !values['--administrator-token-file']) ||
     (command === 'renew-project' &&
@@ -97,12 +100,25 @@ export async function main(args: string[]): Promise<void> {
   let app: INestApplicationContext | undefined;
   try {
     app = await NestFactory.createApplicationContext(GitlabProvisionModule, { logger: false });
-    if (['activate', 'preview', 'project', 'token-metadata', 'wizard-source'].includes(command)) {
+    if (['activate', 'preview', 'project', 'token-metadata', 'wizard-source', 'managed-recipe'].includes(command)) {
       let input = Buffer.alloc(0);
       for await (const chunk of process.stdin) {
         input = Buffer.concat([input, Buffer.from(chunk)]);
-        if (input.length > (command === 'wizard-source' ? 64 : 2) * 1024 * 1024)
+        if (
+          input.length >
+          (['wizard-source', 'managed-recipe'].includes(command) ? 64 : 2) * 1024 * 1024
+        )
           throw Error('GitLab operation input is too large.');
+      }
+      if (command === 'managed-recipe') {
+        console.log(
+          JSON.stringify(
+            await app
+              .get(ManagedRecipeOperationService)
+              .execute(values['--checkout'], JSON.parse(input.toString('utf8')), abort.signal),
+          ),
+        );
+        return;
       }
       if (command === 'wizard-source') {
         console.log(

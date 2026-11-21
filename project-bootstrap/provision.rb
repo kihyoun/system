@@ -14,6 +14,7 @@ begin
   raise BootstrapError, 'Token metadata requires the native credential entrypoint' if input['action'] == 'token-expiry-status'
   raise BootstrapError, 'Use native preview setup' if input['action'].start_with?('preview-setup-')
   raise BootstrapError, 'Wizard source operations require the native entrypoint' if ['wizard-source', 'wizard-source-primary-status'].include?(input['action'])
+  raise BootstrapError, 'Managed environments require the native entrypoint' if ['wizard-environments', 'wizard-environments-status'].include?(input['action'])
   admin = User.find_by_username('root')
   raise BootstrapError, 'No active administrator' unless admin&.admin? && admin.active?
   # Only clean expired credentials: concurrent lookups must not revoke one another.
@@ -53,10 +54,7 @@ begin
     code, project = api.call(Net::HTTP::Get, 'projects/' + encoded)
   end
   raise BootstrapError, 'Project lookup failed' unless [200, 404].include?(code)
-  if ['wizard-environments', 'wizard-environments-status'].include?(input['action'])
-    raise BootstrapError, 'Wizard repository missing' unless code == 200
-    result = WizardEnvironmentsAdapter.new(api, input, project).call
-  elsif ['wizard-build', 'wizard-build-status'].include?(input['action'])
+  if ['wizard-build', 'wizard-build-status'].include?(input['action'])
     raise BootstrapError, 'Wizard repository missing' unless code == 200
     result = WizardBuildActivation.new(api, input, project).call
   else

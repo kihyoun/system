@@ -137,6 +137,8 @@ export async function rails(input: any): Promise<any> {
       return await runNativeProject(input);
     if (['wizard-source', 'wizard-source-primary-status'].includes(input.action))
       return await runNativeWizardSource(input);
+    if (['wizard-environments', 'wizard-environments-status'].includes(input.action))
+      return await runNativeWizardSource(input, 'managed-recipe');
     if (input.action === 'token-expiry-status') return await runNativeTokenMetadata(input);
     if (String(input.action).startsWith('preview-setup-'))
       return await runNativeProject(input, 'preview');
@@ -278,19 +280,22 @@ function runNativeTokenMetadata(input: any): Promise<any> {
     child.stdin.end(JSON.stringify(input));
   });
 }
-function runNativeWizardSource(input: any): Promise<any> {
+function runNativeWizardSource(input: any, command = 'wizard-source'): Promise<any> {
   return new Promise((resolve, reject) => {
     let launched = false;
     const failure = () =>
       Object.assign(
         new Error('GitLab operation completion was not confirmed; inspect the recorded operation.'),
-        { uncertain: launched && input.action === 'wizard-source', action: input.action },
+        {
+          uncertain: launched && ['wizard-source', 'wizard-environments'].includes(input.action),
+          action: input.action,
+        },
       );
     const child = execFile(
       process.execPath,
       [
         path.resolve(__dirname, '../../operations/dist/gitlab-provision/entry.js'),
-        'wizard-source',
+        command,
         '--checkout',
         path.resolve(__dirname, '../..'),
       ],
@@ -322,8 +327,6 @@ function runRails(input: any): Promise<any> {
     const modules: { [key: string]: string } = {
       'wizard-build': 'wizard-build/activate.rb',
       'wizard-build-status': 'wizard-build/activate.rb',
-      'wizard-environments': 'wizard-environments/activate.rb',
-      'wizard-environments-status': 'wizard-environments/activate.rb',
     };
     const importer = modules[input.action]
       ? fs.readFileSync(

@@ -145,3 +145,14 @@ owned CI helper lifecycle with separate work and cleanup budgets. The legacy
 System Review entry accepts only Stop; attempts to create new Review bindings
 fail before taking a canonical lock. Retained Review binding and resource checks
 remain available solely for owned cleanup.
+
+Retained managed application repositories use `ManagedEnvironmentService` through
+Sync and the `managed-recipe` operations CLI. It preserves the legacy per-project
+PostgreSQL advisory key, verifies the recorded build and prior recipe, and refuses
+settings updates while a deployment is active or pending. Commit requests retain
+private bounded content/parent proofs under the GitLab config volume until their
+results are verified. Refresh the same reservation after an interrupted response;
+missing proof keeps the mutation barrier and does not authorize another write.
+The recipe commit never starts a pipeline and leaves reserved historical build
+files unchanged. `node tests/gitlab/environment-upgrade.js` exercises this contract
+with an injected repository and lock provider.

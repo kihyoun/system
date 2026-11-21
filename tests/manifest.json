@@ -43,7 +43,7 @@
   {"component":"shared","file":"shared/recovery-candidate-contract.js","timeoutSeconds":20},
   {"component":"shared","file":"shared/local-storage-contract.js","timeoutSeconds":20},
   {"component":"shared","file":"shared/wizard-pin-fixture-contract.js","timeoutSeconds":15},
-  {"component":"gitlab","file":"gitlab/environment-upgrade.rb","timeoutSeconds":25},
+  {"component":"gitlab","file":"gitlab/environment-upgrade.js","timeoutSeconds":25},
   {"component":"wizard","file":"wizard/environment-recipe.js","timeoutSeconds":25},
   {"component":"wizard","file":"wizard/environment-helper.js","timeoutSeconds":35},
   {"component":"wizard","file":"wizard/system-review.js","timeoutSeconds":20},

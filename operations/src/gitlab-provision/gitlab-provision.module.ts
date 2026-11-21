@@ -1,3 +1,5 @@
+import { ManagedEnvironmentService } from './managed-environment.service';
+import { ManagedRecipeOperationService } from './managed-recipe-operation.service';
 import {
   WizardSourceImportService,
   WizardSourcePrimaryStatusService,
@@ -33,6 +35,8 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     PreviewSetupService,
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
+    ManagedEnvironmentService,
+    ManagedRecipeOperationService,
     WizardSourceImportService,
     WizardSourcePrimaryStatusService,
     WizardSourceOperationService,
@@ -57,6 +61,8 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     PreviewSetupService,
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
+    ManagedEnvironmentService,
+    ManagedRecipeOperationService,
     WizardSourceImportService,
     WizardSourcePrimaryStatusService,
     WizardSourceOperationService,
