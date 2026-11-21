@@ -196,7 +196,25 @@ function runNativeProject(input: any, command = 'project'): Promise<any> {
             !Object.keys(result).length
           )
             throw Error('terminal');
-          resolve(result);
+          const { diagnostic, ...publicResult } = result;
+          if (Object.hasOwn(result, 'diagnostic')) {
+            if (
+              !diagnostic ||
+              typeof diagnostic !== 'object' ||
+              Array.isArray(diagnostic) ||
+              Object.keys(diagnostic).length !== 2 ||
+              diagnostic.phase !== 'managed-ci-commit' ||
+              !Number.isInteger(diagnostic.httpStatus) ||
+              diagnostic.httpStatus < 100 ||
+              diagnostic.httpStatus > 599 ||
+              diagnostic.httpStatus === 201 ||
+              result.state !== 'failed' ||
+              result.message !== 'CI installation failed; retry Save'
+            )
+              throw Error('terminal');
+            console.log('BOOTSTRAPPER_PROJECT_CI_COMMIT_HTTP:' + diagnostic.httpStatus);
+          }
+          resolve(publicResult);
         } catch {
           reject(failure());
         }

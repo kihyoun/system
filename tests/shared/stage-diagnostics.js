@@ -327,5 +327,7 @@ const REASONS = new Set([
   'harvest-phase-manifest-create',
   'harvest-phase-snapshot-publish',
 ]);
-function failureReason(value) { return REASONS.has(value) ? value : 'stage-error'; }
+function failureReason(value) {
+  return REASONS.has(value)||typeof value==='string'&&/^system-beta-registration-ci-installation-failed-http-[1-5][0-9]{2}$/.test(value)&&!value.endsWith('-201') ? value : 'stage-error';
+}
 module.exports={failureReason};

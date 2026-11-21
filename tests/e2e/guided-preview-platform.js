@@ -176,7 +176,11 @@ async function prepare(candidate,acme,dependencies={}){
   requireValue(acme&&acme.original===candidate&&acme.ready===true,'guided-preview-existing-acme-authority-required');
   const execute=dependencies.node||node,probe=dependencies.tlsProbe||recovery.tlsProbe;
   const domains=issuanceDomains([HOSTS.gitlab,HOSTS.beta]);
-  await candidate.stage('guided-preview-bootstrap-tls',()=>bootstrapTls(candidate,domains,execute));
+  await candidate.stage('guided-preview-bootstrap-tls',async()=>{
+    // Complete asynchronous registration before changing its GitLab transport.
+    await (dependencies.waitForRegistration||require('./wizard-registration').waitForRegistration)(candidate);
+    await bootstrapTls(candidate,domains,execute);
+  });
   candidate.guidedAcmeIdentity=await acme.issue(candidate,{domains});
   await candidate.stage('guided-preview-public-trust',async()=>{
     candidate.guidedTrust=await installTrust(candidate,{node:execute});await configureRunner(candidate);

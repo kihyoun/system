@@ -26,6 +26,7 @@ process.stdin.on('end', () => {
  const input = JSON.parse(text);
  require('fs').appendFileSync(${JSON.stringify(path.join(root, 'native-requests.jsonl'))}, JSON.stringify(input) + '\\n');
  if(input.projectKey==='uncertain')return process.exit(1);
+ if(input.projectKey==='diagnostic')return console.log(JSON.stringify({state:'failed',message:'CI installation failed; retry Save',...input.fixtureResult}));
  const result = input.action === 'pipeline' ? {pipeline: {id: 123, webUrl: 'http://gitlab.localhost/pipeline', status: 'pending'}} :
  input.action === 'namespaces' ? {namespaces: [{id: 1, path: 'root'}]} :
  input.action === 'availability' ? {availability: input.projectKey === 'occupied' ? 'occupied' : 'available'} :
@@ -98,7 +99,7 @@ async function nativeProvisionContracts() {
   const payload={action:'create',projectKey:'application',namespaceId:'7',operation:'owned-operation',template:'angular',templateVersion:1,ci:'original generated CI',files:[{action:'create',file_path:'starter.ts',content:'initial starter'}]};
   const binding={id:42,namespaceId:7,path:'team/application',webUrl:'https://gitlab.example.test/team/application',defaultBranch:'main',pipelineUrl:'https://gitlab.example.test/team/application/-/pipelines',ciPath:'.system-bootstrapper/ci.yml',template:'angular',templateVersion:1,generatedCi:payload.ci,deploymentState:'awaiting-pipeline'};
   function fixture(){
-    const state={exists:true,project:{id:42,path_with_namespace:'team/application',namespace:{id:7},visibility:'private',description:'System Bootstrapper operation owned-operation',default_branch:'main',ci_config_path:'.system-bootstrapper/ci.yml',web_url:binding.webUrl},files:{'.system-bootstrapper/ci.yml':'user-edited CI with product checks','src/app.ts':'user application source'},requests:[],pipelines:[],lose:null,loseMethod:null,createStatus:201,namespacePath:'team',projectKey:'application',controllerId:9,member:null,memberWriteStatus:null,memberWriteApplied:true,branchProtection:{name:'main',push_access_levels:[{access_level:40}],merge_access_levels:[{access_level:40}]}};
+    const state={exists:true,project:{id:42,path_with_namespace:'team/application',namespace:{id:7},visibility:'private',description:'System Bootstrapper operation owned-operation',default_branch:'main',ci_config_path:'.system-bootstrapper/ci.yml',web_url:binding.webUrl},files:{'.system-bootstrapper/ci.yml':'user-edited CI with product checks','src/app.ts':'user application source'},requests:[],pipelines:[],lose:null,loseMethod:null,createStatus:201,commitStatus:201,namespacePath:'team',projectKey:'application',controllerId:9,member:null,memberWriteStatus:null,memberWriteApplied:true,branchProtection:{name:'main',push_access_levels:[{access_level:40}],merge_access_levels:[{access_level:40}]}};
     const credentials={async ensure(){return {context:{checkout:'/checkout',containerId:'a'.repeat(64)},credential:{token:'private-api-token'},account:{id:state.controllerId}};}};
     const api={async request(context,token,method,route,body){
       assert.equal(token,'private-api-token');assert.equal(context.checkout,'/checkout');
@@ -118,6 +119,7 @@ async function nativeProvisionContracts() {
       }
       else if(method==='POST'&&route==='projects/42/repository/commits'){
         assert(state.member?.access_level>=state.branchProtection.push_access_levels[0].access_level,'protected default branch requires explicit controller membership');
+        if(state.commitStatus!==201)return {status:state.commitStatus,value:{message:'private-upstream-refusal',token:'private-upstream-token'}};
         for(const action of body.actions){assert.equal(action.action,'create');assert(!Object.hasOwn(state.files,action.file_path),'never overwrite user files');state.files[action.file_path]=action.content;}
         status=201;
       }else if(method==='GET'&&route.startsWith('projects/42/repository/files/')){
@@ -147,6 +149,16 @@ async function nativeProvisionContracts() {
     f=fixture();f.state.exists=false;delete f.state.files['.system-bootstrapper/ci.yml'];f.state.lose=route;
     await assert.rejects(()=>f.invoke(),error=>error.uncertain===true&&!error.message.includes('private'));
     assert.equal((await f.invoke()).repository.id,42);assert.equal(f.state.requests.filter(row=>row.method==='POST'&&row.route==='projects/42/repository/commits').length,1);
+  }
+  for(const status of [200,400,401,403,404,409,422,500,502,503,504,599,0,600,400.5,'private-status']){
+    f=fixture();delete f.state.files['.system-bootstrapper/ci.yml'];f.state.commitStatus=status;
+    before=structuredClone(f.state.files);const protection=structuredClone(f.state.branchProtection);
+    const result=await f.invoke();
+    assert.deepEqual(result,{state:'failed',message:'CI installation failed; retry Save',
+      ...(Number.isInteger(status)&&status>=100&&status<=599?{diagnostic:{phase:'managed-ci-commit',httpStatus:status}}:{})});
+    assert.deepEqual(f.state.files,before);assert.deepEqual(f.state.branchProtection,protection);
+    assert.equal(f.state.requests.filter(row=>row.route==='projects/42/repository/commits').length,1);
+    assert(!JSON.stringify(result).includes('private-'));assert(!f.state.requests.some(row=>row.method==='PUT'&&row.route==='projects/42'));
   }
   // The permanent controller administrator is distinct from the personal
   // namespace owner and needs direct membership to push protected main.
@@ -204,6 +216,34 @@ async function nativeProvisionContracts() {
 let child;
 (async () => {
   await nativeProvisionContracts();
+  const output=[],originalLog=console.log;
+  console.log=(...values)=>output.push(values.join(' '));
+  try{
+    for(const httpStatus of [100,200,400,403,409,422,500,599]){
+      output.length=0;
+      const result=await bootstrap.rails({action:'create',projectKey:'diagnostic',fixtureResult:{diagnostic:{phase:'managed-ci-commit',httpStatus}}});
+      assert.deepEqual(result,{state:'failed',message:'CI installation failed; retry Save'});
+      assert.deepEqual(output,['BOOTSTRAPPER_PROJECT_CI_COMMIT_HTTP:'+httpStatus]);
+    }
+    for(const fixtureResult of [
+      {diagnostic:null},{diagnostic:'private-diagnostic'},
+      ...[99,600,201,400.5,'400','400\nprivate-secret'].map(httpStatus=>({diagnostic:{phase:'managed-ci-commit',httpStatus}})),
+      {diagnostic:{phase:'private-phase',httpStatus:400}},
+      {diagnostic:{phase:'managed-ci-commit',httpStatus:400,body:'private-upstream-body'}},
+      {state:'complete',diagnostic:{phase:'managed-ci-commit',httpStatus:400}},
+      {message:'private-upstream-message',diagnostic:{phase:'managed-ci-commit',httpStatus:400}},
+    ]){
+      output.length=0;
+      await assert.rejects(()=>bootstrap.rails({action:'create',projectKey:'diagnostic',fixtureResult}),error=>error.uncertain===true&&!error.message.includes('private-'));
+      assert.deepEqual(output,[],'Invalid internal diagnostics must never become a log line.');
+    }
+    output.length=0;
+    const failed=await wait(bootstrap.createProject({...input('diagnostic'),fixtureResult:{diagnostic:{phase:'managed-ci-commit',httpStatus:400}}}));
+    assert.equal(failed.state,'failed');assert.equal(failed.message,'CI installation failed; retry Save');
+    assert(!Object.hasOwn(failed,'diagnostic'));assert.deepEqual(output,['BOOTSTRAPPER_PROJECT_CI_COMMIT_HTTP:400']);
+    const retained=bootstrap.readReceipt(fs.readFileSync(path.join(root,'system/.projects.env/.diagnostic.env'),'utf8'));
+    assert.equal(retained.state,'pending');assert(!Object.hasOwn(retained,'diagnostic'));assert.equal(retained.repository,undefined);
+  }finally{console.log=originalLog;}
   for (const key of ['', 'A', 'a-b', 'ä', 'a b', '../x', null]) {
     assert(!bootstrap.validProjectKey(key));
     assert.throws(() => bootstrap.createProject(input(key)));

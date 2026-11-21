@@ -7,6 +7,7 @@ const evidence=require('../../gitlab/guided-preview-evidence'),state=require('..
 const image='sha256:'+'a'.repeat(64),source='b'.repeat(40),operation='c'.repeat(48);
 function fixture(t,failPage=false,options={}){
   const repository={id:7,namespaceId:3,path:'root/wizard',defaultBranch:'main'},containers=new Map(),calls=[],stages=[];
+  const runnerLogs=options.registrationLogs||'';
   let environment,binding,revoked=false,proofs=0,registrationReady=false,sourcePrepared=false,sourcePipelineReads=0;
   const pipelines=[{id:4,sha:'a'.repeat(40),ref:'main',source:'push',status:'skipped'}];
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'system-beta-native-'));
@@ -58,7 +59,7 @@ function fixture(t,failPage=false,options={}){
       return {};},
     request:async(url,requestOptions={})=>{let result;
       if(url.endsWith('/login'))result={accessToken:'fixture'};
-      else if(url.endsWith('/status')){assert.equal(requestOptions.method,'GET');assert.equal(requestOptions.headers.Authorization,'Bearer fixture');calls.push({route:'/status'});result={status:statuses.length>1?statuses.shift():statuses[0]};registrationReady=result.status.defaultWizardSetupInProgress===false&&result.status.defaultWizardProject?.state==='registered';}
+      else if(url.endsWith('/status')){assert.equal(requestOptions.method,'GET');assert.equal(requestOptions.headers.Host,'sync.candidate.test');assert.equal(requestOptions.headers.Authorization,'Bearer fixture');calls.push({route:'/status'});result={status:statuses.length>1?statuses.shift():statuses[0]};registrationReady=result.status.defaultWizardSetupInProgress===false&&result.status.defaultWizardProject?.state==='registered';}
       else if(url.endsWith('/preflight')){assert(pipelines.some(row=>row.id===5),'setup ran before the fixture source pipeline settled');calls.push({route:'/preflight'});result={version:2,productionChanged:false,manualDeployment:true,source:{id:7,sourceRevision:source},previewHash:'f'.repeat(64)};}
       else if(url.endsWith('/apply')){environment={managementMode:'system-monorepo',operation,settings:{review:{enabled:false},beta:{enabled:true}},deployments:{}};if(options.setupPipeline)pipelines.push({id:6,sha:source,ref:'system-candidate-'+candidate.id,source:'push',...options.setupPipeline});result={state:'complete'};}
       else if(url.endsWith('/preview-setup'))result={version:2,phase:'ready',operation,productionChanged:false,manualDeployment:true};
@@ -67,6 +68,7 @@ function fixture(t,failPage=false,options={}){
       else throw Error('unexpected URL');return {status:200,body:JSON.stringify(result)};},
     inner:async(args,options)=>{
       calls.push({args,options});
+      if(args[0]==='logs')return runnerLogs;
       if(args[0]==='exec')return '';
       if(args[0]==='network')return '';
       if(args[0]==='container'){const filter=args[args.indexOf('--filter')+1];if(filter.startsWith('label='))return [...containers.keys()].join('\n');return containers.has(filter.slice(7,-1))?filter.slice(7,-1):'';}
@@ -87,9 +89,13 @@ function fixture(t,failPage=false,options={}){
 }
 test('shared candidate native lifecycle settles the skipped source push before proving setup creates no pipelines or builds',async t=>{
   const f=fixture(t,false,{sourcePipelineDelay:2,statuses:[{defaultWizardSetupInProgress:true,defaultWizardProject:{state:'not-started'}},{defaultWizardSetupInProgress:false,defaultWizardProject:{state:'registered'}}]});
+  f.candidate.url='http://candidate.invalid';
+  await require('../e2e/wizard-registration').waitForRegistration(f.candidate);
+  assert.equal(f.proofs,0,'initial registration readiness must not mutate or inspect the production receipt');
+  f.candidate.url='https://sync.candidate.test';
   await adapter.run(f.candidate);evidence.validate(f.candidate.evidence.guidedPreview,f.stages);
   assert.equal(f.stages[0].name,'system-beta-production-baseline');assert.equal(f.stages[0].status,'passed');
-  assert.equal(f.calls.filter(row=>row.route==='/status').length,2);assert(f.proofs>1);
+  assert.equal(f.calls.filter(row=>row.route==='/status').length,3);assert(f.proofs>1);
   assert(f.revoked);assert.equal(f.containers.size,0);assert(!f.environment.deployments.beta.active);
   assert(!f.calls.some(row=>row.method==='POST'&&/pipelines|merge_requests|repository\/commits/.test(row.route)));
   assert(!f.calls.some(row=>row.args?.includes('build')));
@@ -129,15 +135,21 @@ test('failed DefaultWizard registration stops the baseline before proof or mutat
     ['GitLab rejected project creation (HTTP 403); check namespace permissions, reserved names or a competing creation.','project-rejected'],
     ['Default branch not ready; retry Save','default-branch-missing'],
     ['CI installation failed; retry Save','ci-installation-failed'],
+    ['CI installation failed; retry Save','ci-installation-failed-http-400','unrelated private-fixture-token\nBOOTSTRAPPER_PROJECT_CI_COMMIT_HTTP:400\n'],
+    ['CI installation failed; retry Save','ci-installation-failed','BOOTSTRAPPER_PROJECT_CI_COMMIT_HTTP:403 private-fixture-token\n'],
+    ['CI installation failed; retry Save','ci-installation-failed','BOOTSTRAPPER_PROJECT_CI_COMMIT_HTTP:403\nBOOTSTRAPPER_PROJECT_CI_COMMIT_HTTP:400\n'],
     ['Repository ready; routing failed. Retry Save.','routing-failed'],
     ['private-token-secret: Namespace lookup failed','unknown-failure'],
   ];
-  for(const [index,[message,reason]]of cases.entries())await t.test(reason+': '+index,async t=>{
-    const f=fixture(t,false,{statuses:[{defaultWizardSetupInProgress:true,defaultWizardProject:{state:'failed',message}}]});
+  for(const [index,[message,reason,registrationLogs]]of cases.entries())await t.test(reason+': '+index,async t=>{
+    const f=fixture(t,false,{registrationLogs,statuses:[{defaultWizardSetupInProgress:true,defaultWizardProject:{state:'failed',message}}]});
     const code='system-beta-registration-'+reason;
     await assert.rejects(()=>adapter.run(f.candidate),error=>error.message===code&&error.noRetry===true);
     assert.equal(diagnostics.failureReason(code),code);assert.equal(f.proofs,0);assert.equal(f.environment,undefined);assert(!f.revoked);
-    assert.deepEqual(f.calls,[{route:'/status'}]);assert.deepEqual(f.stages,[{name:'system-beta-production-baseline',status:'failed'}]);
+    const expected=[{route:'/status'}];
+    if(message==='CI installation failed; retry Save')expected.push({args:['logs','--tail','200','system_bootstrapper_1'],options:{timeout:10000,maxBuffer:65536}});
+    assert.deepEqual(f.calls,expected);assert.deepEqual(f.stages,[{name:'system-beta-production-baseline',status:'failed'}]);
+    assert(!code.includes('private-fixture-token'));
   });
 });
 test('registered status cannot bypass missing, malformed or incomplete native production receipts',async t=>{

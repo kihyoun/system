@@ -182,7 +182,14 @@ export class ProjectProvisionService {
             ...((input.files as unknown[]) || []),
           ],
         });
-        ensure(commit.status === 201, 'CI installation failed; retry Save');
+        if (commit.status !== 201)
+          return {
+            state: 'failed',
+            message: 'CI installation failed; retry Save',
+            ...(Number.isInteger(commit.status) && commit.status >= 100 && commit.status <= 599
+              ? { diagnostic: { phase: 'managed-ci-commit', httpStatus: commit.status } }
+              : {}),
+          };
       } else
         ensure(
           Buffer.from(text(row(file.value).content), 'base64').toString('utf8') === input.ci,

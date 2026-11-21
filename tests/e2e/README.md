@@ -42,6 +42,15 @@ GitLab, Sync, Wizard and System Beta use exact-host TLS through the existing
 local ACME authority. The registry retains the private HTTP endpoint on port
 5050; this scenario does not claim HTTPS registry verification.
 
+Before changing GitLab's TLS configuration, the original candidate waits for
+its asynchronous default Wizard registration to finish. The HTTPS Beta baseline
+checks registration again. A rejected managed-CI commit preserves its original
+public error message; Sync logs only a validated numeric HTTP-status marker.
+The candidate reads a bounded log suffix only for that failure and retains the
+fixed status code, never the upstream response or unrelated log contents.
+Neither readiness nor diagnostics retries a failed registration or starts a
+pipeline.
+
 The v2 evidence boundary is `native-lifecycle-with-contract-verifier`. Real native
 setup reserves Beta in the shared project; real binding, Docker deployment,
 image ownership, TLS, stop and cleanup run on the owned platform. Pipeline

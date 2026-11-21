@@ -33,7 +33,7 @@ function platform(){
     rails:async(script)=>{calls.push({rails:script});return {id:9,tags:['docker','wizard-source-primary']};}};
   const authority={original:candidate,ready:true,issue:async(actual,options)=>{
     assert.equal(actual,candidate);calls.push({issue:options});return {serial:'AA',account:'fixture',keyHash:'retained',certificateHash:'leaf'};}};
-  const dependencies={node:async(actual,action,input)=>{
+  const dependencies={waitForRegistration:async actual=>{assert.equal(actual,candidate);calls.push({registration:true});},node:async(actual,action,input)=>{
     assert.equal(actual,candidate);calls.push({node:action.toString(),input});
     if(input.root)return {root:'-----BEGIN CERTIFICATE-----\npublic fixture root\n-----END CERTIFICATE-----\n',
       bundle:'public Mozilla bundle plus fixture root\n',rootSha256:'f'.repeat(64),publicBundleSha256:'0'.repeat(64)};
@@ -44,6 +44,7 @@ function platform(){
 test('fixture TLS uses one existing authority and extends its exact owned SANs',async()=>{
   const f=platform(),result=await fixture.prepare(f.candidate,f.authority,f.dependencies);
   assert.deepEqual(result.domains,['wizard.candidate.test','sync.candidate.test','alias.candidate.test','app.candidate.test','oldapp.candidate.test','gitlab.candidate.test','beta.candidate.test']);
+  assert.equal(f.calls[0].registration,true,'registration completes before TLS file writes, issuance or GitLab recreation');
   assert.equal(f.calls.filter(call=>call.issue).length,1);
   assert.equal(f.candidate.guidedAcmeIdentity.serial,'AA');
   assert.equal(f.calls.filter(call=>call.probe).length,3);
@@ -225,6 +226,10 @@ test('invalid fixture ownership/settings fail before mutations and bootstrap pri
   ]){
     const f=platform();change(f);await assert.rejects(()=>fixture.prepare(f.candidate,f.authority,f.dependencies));assert.equal(f.calls.length,0);
   }
+  const registration=platform();
+  registration.dependencies.waitForRegistration=async()=>{throw Error('registration-incomplete');};
+  await assert.rejects(()=>fixture.prepare(registration.candidate,registration.authority,registration.dependencies),/registration-incomplete/);
+  assert.equal(registration.calls.length,0,'registration failure must precede certificate writes and GitLab recreation');
   const f=platform(),original=f.candidate.inner;
   f.candidate.inner=async(args,options)=>{
     if(args.some(value=>value.endsWith('/openssl')))throw Error('issuance-bootstrap-failed');return original(args,options);

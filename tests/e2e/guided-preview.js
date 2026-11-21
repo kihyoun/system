@@ -5,6 +5,7 @@ const environmentState=require('../../project-bootstrap/wizard-environments/stat
 const evidenceContract=require('../../gitlab/guided-preview-evidence');
 const platform=require('./guided-preview-platform');
 const {execute}=require('./system-beta-fixture-helper');
+const {syncSession,waitForRegistration}=require('./wizard-registration');
 function requireValue(value,code){if(!value)throw Object.assign(Error(code),{noRetry:true});}
 function settings(candidate){
   requireValue(candidate.spec.fullAcceptance===true&&candidate.spec.guidedPreviewAcceptance===true&&/^[a-f0-9]{24}$/.test(candidate.id),'system-beta-owned-disposable-platform-required');
@@ -25,30 +26,6 @@ async function production(candidate){
   requireValue(/^sha256:[a-f0-9]{64}$/.test(value.runningImage),'system-beta-production-image-required');return value;
 }
 function unchanged(before,after){requireValue(before.mainSha256===after.mainSha256&&before.runningImage===after.runningImage,'guided-preview-production-changed');}
-function syncSession(candidate) {
-  let accessToken,issuedAt=0;
-  const now=()=>candidate.now?candidate.now():Date.now();
-  const login=async()=>{
-    const response=await candidate.request(candidate.url+'/login',{method:'POST',headers:{Host:new URL(candidate.url).host,'Content-Type':'application/json'},
-      body:JSON.stringify({username:candidate.secrets.user,password:candidate.secrets.password})});
-    requireValue(response.status===200,'guided-preview-sync-login-failed');
-    let value;try{value=JSON.parse(response.body);}catch{throw Error('guided-preview-sync-login-failed');}
-    requireValue(typeof value.accessToken==='string'&&value.accessToken.length>0,'guided-preview-sync-login-failed');
-    accessToken=value.accessToken;issuedAt=now();
-  };
-  return async(route,payload)=>{
-    // Sync JWTs expire after 20 minutes. Long native setup may spend most of
-    // that time in Rails or CI; renew before requests without replaying writes.
-    if(!accessToken||now()-issuedAt>=15*60000)await login();
-    const send=()=>candidate.request(candidate.url+route,{method:payload===undefined?'GET':'POST',headers:{Host:new URL(candidate.url).host,
-      Authorization:'Bearer '+accessToken,'Content-Type':'application/json'},...(payload===undefined?{}:{body:JSON.stringify(payload)})});
-    let response=await send();
-    // The native JWT guard returns 403 for an expired token, 401 if absent.
-    if(payload===undefined&&[401,403].includes(response.status)){await login();response=await send();}
-    requireValue(response.status>=200&&response.status<300,'guided-preview-sync-request-failed');
-    try{return JSON.parse(response.body);}catch{throw Error('guided-preview-sync-result-invalid');}
-  };
-}
 async function verifierContract(){
   // A contract fixture deliberately runs outside GitLab; only native lifecycle
   // observations below establish deployment and TLS behavior.
@@ -125,25 +102,7 @@ async function publishImages(candidate,repository,token){
 async function run(candidate){
   const desired=settings(candidate),sync=syncSession(candidate);
   const before=await candidate.stage('system-beta-production-baseline',async()=>{
-    await candidate.wait(async()=>{
-      const response=await sync('/status'),status=response.status||response;
-      if(status.defaultWizardProject?.state==='failed'){
-        const message=status.defaultWizardProject.message;
-        const known=new Map([
-          ['Namespace lookup failed','namespace-unavailable'],
-          ['The local administrator namespace could not be found.','namespace-unavailable'],
-          ['Repository already exists in the selected namespace.','project-rejected'],
-          ['Default branch not ready; retry Save','default-branch-missing'],
-          ['CI installation failed; retry Save','ci-installation-failed'],
-          ['Repository ready; routing failed. Retry Save.','routing-failed'],
-          ...[400,401,403,404,409,422,500,502,503,504].map(code=>[
-            `GitLab rejected project creation (HTTP ${code}); check namespace permissions, reserved names or a competing creation.`,
-            'project-rejected']),
-        ]);
-        requireValue(false,'system-beta-registration-'+(known.get(message)||'unknown-failure'));
-      }
-      return status.defaultWizardSetupInProgress===false&&status.defaultWizardProject?.state==='registered';
-    },candidate.spec.readinessMilliseconds||600000);
+    await waitForRegistration(candidate,sync);
     return production(candidate);
   });
   const evidence={version:2,sourceLayout:'system-monorepo-v1',fixtureNamespace:'system-beta-contract-fixture-v1',
