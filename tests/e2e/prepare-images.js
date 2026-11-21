@@ -29,6 +29,12 @@ function ciIdentity(env=process.env){
   if(!Object.values(identity).every(value=>Number.isSafeInteger(value)&&value>0))throw Error('Exact positive CI project, pipeline and candidate job identities required.');
   return identity;
 }
+function wizardDockerfile(files) {
+  const dockerfiles=files.filter(file=>/\/Dockerfile$/.test(file.path));
+  if(dockerfiles.length!==1||files.filter(file=>file.path===dockerfiles[0].path+'.dockerignore').length!==1)
+    throw Error('Complete managed Wizard Docker recipe required.');
+  return dockerfiles[0].path;
+}
 function guidedSettings() {
   return require('../../project-bootstrap/preview-setup/settings').settings({
     version:2,namespace:'root',wizard:{mode:'existing',project:'wizard'},
@@ -97,13 +103,13 @@ async function prepare(){
   const logo=fs.readFileSync(path.join(root,'system/.docker.env.example'),'utf8').slice(0,1184);
   const recipe=recipes.forSource?recipes.forSource(logo,snapshot.sourceRevision):recipes.generate(logo);
   const buildFiles=recipe.files;
-  if(buildFiles.filter(file=>/\/Dockerfile(?:\.dockerignore)?$/.test(file.path)).length!==2)throw Error('Complete managed Wizard Docker recipe required.');
+  const dockerfile=wizardDockerfile(buildFiles);
   for(const file of buildFiles){const filename=path.join(context,file.path);fs.mkdirSync(path.dirname(filename),{recursive:true});fs.writeFileSync(filename,file.content);}
   run(['build','--provenance=false','--sbom=false','--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,
     '--label','org.system-bootstrapper.source-tree='+sourceTree,
     '--label','org.opencontainers.image.revision='+snapshot.sourceRevision,
     '--label','org.system-bootstrapper.source-revision='+process.env.CI_COMMIT_SHA,
-    '-f',path.join(context,'.system-bootstrapper/build-v1/Dockerfile'),'-t',tags.wizard,context]);
+    '-f',path.join(context,dockerfile),'-t',tags.wizard,context]);
   let configurationExporter;
   if(recoveryAcceptance){
     const filename=path.join(output,'export-configuration.cjs');const descriptor=fs.openSync(filename,'wx',0o600);
@@ -140,5 +146,5 @@ function preparationFailure(error){
     'public-upgrade-candidate-archive-config-invalid','public-upgrade-exact-source-required','previous-public-source-identity-mismatch']);
   return 'Candidate image preparation failed: '+(known.has(error?.message)?error.message:'candidate-preparation-failed')+'; see public build log.';
 }
-module.exports={defaults,identifiers,ciIdentity,guidedSettings,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust,preparationFailure};
+module.exports={defaults,identifiers,ciIdentity,wizardDockerfile,guidedSettings,privateWizardAcceptance,acmeAcceptance,verifyPreparedTrust,preparationFailure};
 if(require.main===module)prepare().catch(error=>{console.error(preparationFailure(error));process.exitCode=1;});

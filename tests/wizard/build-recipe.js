@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const root = path.resolve(__dirname, '../..');
 const logo = require(path.join(root, 'sync/dist/Helper')).default.textLogo;
 const recipe = require(path.join(root, 'project-bootstrap/wizard-build/recipe')).generate(logo);
+const {wizardDockerfile} = require('../e2e/prepare-images');
+assert.equal(wizardDockerfile(recipe.files), '.system-bootstrapper/build-v1/Dockerfile');
 assert.equal(recipe.version, 1);
 assert.equal(recipe.ci[807], '$');
 assert.equal(crypto.createHash('md5').update(recipe.ci.slice(0, 1184)).digest('hex'), 'bd4a8426355824593a5e21ad759830c1');
@@ -102,6 +104,9 @@ assert(quickstartSmoke.includes("name: 'How it works'") && quickstartSmoke.inclu
 assert(quickstartSmoke.includes("name: 'Docs'") && quickstartSmoke.includes('cubeSignature: true'));
 console.log('Quick Install browser profile: source-selected version, unchanged CI/toolchain/CA files and seven exact historical recipe hashes passed.');
 const typed = recipes.generate(logo, 'node24-vite8-typed-v6');
+assert.equal(wizardDockerfile(typed.files), '.system-bootstrapper/build-v2/Dockerfile');
+assert.throws(() => wizardDockerfile(typed.files.filter(file => !file.path.endsWith('/Dockerfile.dockerignore'))), /Complete managed Wizard Docker recipe/);
+assert.throws(() => wizardDockerfile([...typed.files, recipe.files.find(file => file.path.endsWith('/Dockerfile'))]), /Complete managed Wizard Docker recipe/);
 assert.equal(recipes.select(logo, typed.recipeHash).recipeHash, typed.recipeHash);
 assert(typed.files.every(file => file.path.startsWith('.system-bootstrapper/build-v2/') && !file.path.endsWith('.sh')));
 assert(typed.ci.includes('project-ci.cjs prepare-runtime') && typed.ci.includes('project-ci.cjs build') && typed.ci.includes('project-ci.cjs verify'));
