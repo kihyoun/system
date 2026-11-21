@@ -6,8 +6,8 @@ const german: Record<string, string> = {
   '9.3 Native guided preview acceptance': '9.3 Native Abnahme der geführten Vorschau',
   'A retained installation identity, matching native controller/source, TLS hosts and runner prerequisites are available.':
     'Eine aufbewahrte Installationsidentität, passende native Controller-/Quellstände, TLS-Hosts und Runner-Voraussetzungen sind verfügbar.',
-  'Native acceptance verifies import, MR and merged-default checks plus Review/Beta lifecycles while Production stays unchanged.':
-    'Die native Abnahme prüft Import, MR und Standardbranch nach dem Merge sowie Review-/Beta-Lebenszyklen bei unverändertem Production-Stand.',
+  'Native shared Beta setup/binding, HTTPS deploy/stop and unchanged Production are verified; pipeline authorization uses an explicit contract verifier, without native MR/default-branch pipelines or System Review.':
+    'Native Einrichtung und Bindung der gemeinsamen Beta, HTTPS-Bereitstellung und -Stopp sowie unveränderte Production werden geprüft; die Pipelineautorisierung verwendet einen ausdrücklichen Vertragsprüfer, ohne native MR-/Standardbranch-Pipelines oder System Review.',
   'Healthy GitLab, registry and runners; selected source projects, exact preview DNS names and certificates.':
     'Betriebsbereites GitLab, Registry und Runner; ausgewählte Quellprojekte, exakte DNS-Namen und Zertifikate für die Vorschau.',
   'Explicit setup creates verified preview bindings while the accepted Production image remains selected.':

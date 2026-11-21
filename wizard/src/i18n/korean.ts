@@ -788,8 +788,8 @@ const korean: Record<string, string> = {
   '9.3 Native guided preview acceptance': '9.3 네이티브 안내형 미리보기 인수 검사',
   'A retained installation identity, matching native controller/source, TLS hosts and runner prerequisites are available.':
     '보존된 설치 식별 정보, 일치하는 네이티브 컨트롤러/소스, TLS 호스트 및 Runner 준비 사항을 갖추었습니다.',
-  'Native acceptance verifies import, MR and merged-default checks plus Review/Beta lifecycles while Production stays unchanged.':
-    '네이티브 인수 검사는 운영 환경을 유지하면서 가져오기, MR 및 병합 후 기본 브랜치 검사와 Review/Beta 수명 주기를 검증합니다.',
+  'Native shared Beta setup/binding, HTTPS deploy/stop and unchanged Production are verified; pipeline authorization uses an explicit contract verifier, without native MR/default-branch pipelines or System Review.':
+    '네이티브 공유 Beta 설정과 바인딩, HTTPS 배포와 중지, 운영 환경 유지를 검증합니다. 파이프라인 권한 검증에는 명시적인 계약 검증기를 사용하며 네이티브 MR/기본 브랜치 파이프라인이나 System Review는 포함하지 않습니다.',
   'Healthy GitLab, registry and runners; selected source projects, exact preview DNS names and certificates.':
     '정상 상태의 GitLab, 레지스트리 및 Runner. 선택한 소스 프로젝트와 정확한 미리보기 DNS 이름 및 인증서.',
   'Explicit setup creates verified preview bindings while the accepted Production image remains selected.':

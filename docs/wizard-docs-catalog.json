@@ -303,7 +303,7 @@
     ],
     "guided-preview-acceptance": [
       "A retained installation identity, matching native controller/source, TLS hosts and runner prerequisites are available.",
-      "Native acceptance verifies import, MR and merged-default checks plus Review/Beta lifecycles while Production stays unchanged."
+      "Native shared Beta setup/binding, HTTPS deploy/stop and unchanged Production are verified; pipeline authorization uses an explicit contract verifier, without native MR/default-branch pipelines or System Review."
     ],
     "dependency-security": [
       "The declared Node/npm toolchains, committed lockfiles and the affected application/build checks.",
