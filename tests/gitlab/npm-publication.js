@@ -31,7 +31,7 @@ async function scenario(change={}){
   evidence:async()=>({projectId:1,pipelineId:42,sourceRevision:revision,jobs:change.jobs?change.jobs(jobs):jobs,artifact:async(id,file)=>change.corruptArtifact?Buffer.from('foreign'):files[file]}),
   token:()=>change.token??'npm_testCredential',
   request:async(url,options)=>{
-   requests.push(url);assert.equal(options.redirect,'error');assert.match(url,/^https:\/\/registry.npmjs.org\/%40systembootstrapper%2Fcli\/2.0.0$/);
+   requests.push(url);assert.equal(options.redirect,'error');assert.match(url,/^https:\/\/registry\.npmjs\.org\/%40systembootstrapper%2Fcli\/2\.0\.0$/);
    if(change.unavailable)return {ok:false,status:503};
    if(!published&&!change.exists)return {ok:false,status:404};
    return {ok:true,status:200,json:async()=>({name:receipt.name,version:receipt.version,dist:{integrity:change.different?'sha512-different':receipt.integrity}})};

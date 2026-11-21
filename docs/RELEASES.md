@@ -134,7 +134,7 @@ The following example belongs to the **historical 1.2.0 checkout**. Its Python
 entry remains in that exact tag; it is not part of the 2.0 runtime. Use the
 version-specific commands for each required stop. For 2.0, prepare the native
 CLI runtime and complete the separately reviewed
-[GitLab migration](../gitlab/UPGRADE.md) before the paired release phase.
+[GitLab migration](#native-upgrade-from-120-to-200) before the paired release phase.
 
 1. Obtain the selected target release source and its exact Wizard gitlink. Keep
    the old checkout and recovery inputs separately available. Use the version

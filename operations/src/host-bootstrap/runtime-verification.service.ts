@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { BOOTSTRAPPER_CUBE } from '../cli/presentation';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -67,9 +68,7 @@ const sha = (raw: Buffer | string) => crypto.createHash('sha256').update(raw).di
 const now = () => new Date().toISOString();
 export function cube(raw: Buffer): void {
   ensure(
-    raw[807] === 36 &&
-      crypto.createHash('md5').update(raw.subarray(0, 1184)).digest('hex') ===
-        'bd4a8426355824593a5e21ad759830c1',
+    raw[807] === 36 && raw.subarray(0, 1184).equals(Buffer.from(BOOTSTRAPPER_CUBE, 'ascii')),
     'cube-signature-mismatch',
   );
 }

@@ -37,9 +37,10 @@ test('bounded command transport redacts errors, bounds both streams and kills on
  for(const stream of ['stdout','stderr','combined']){const program=stream==='combined'?'process.stdout.write("x".repeat(1100000));process.stderr.write("x".repeat(1100000));setInterval(()=>{},1000)':`process.${stream}.write('x'.repeat(2100000));setInterval(()=>{},1000)`;await assert.rejects(transport.run([process.execPath,'-e',program],3000),error=>error instanceof ObservationFailure&&error.reason==='output-limit');}
  for(const cancel of [false,true]){
   const marker=path.join(folder,cancel?'cancelled-survived':'timeout-survived'),pidfile=marker+'.pid';
-  const child=`setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'survived'),1200)`;
-  const parent=`const child=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:'ignore'});require('node:fs').writeFileSync(${JSON.stringify(pidfile)},String(child.pid));setInterval(()=>{},1000)`;
-  const abort=new AbortController(),started=performance.now();const operation=transport.run([process.execPath,'-e',parent],cancel?3000:250,abort.signal),failure=assert.rejects(operation,error=>error.reason===(cancel?'cancelled':'command-timeout'));
+  const child=marker+'.child.cjs',parent=marker+'.parent.cjs';
+  fs.writeFileSync(child,"setTimeout(()=>require('node:fs').writeFileSync(process.argv[2],'survived'),1200)");
+  fs.writeFileSync(parent,"const child=require('node:child_process').spawn(process.execPath,[process.argv[2],process.argv[3]],{stdio:'ignore'});require('node:fs').writeFileSync(process.argv[4],String(child.pid));setInterval(()=>{},1000)");
+  const abort=new AbortController(),started=performance.now();const operation=transport.run([process.execPath,parent,child,marker,pidfile],cancel?3000:250,abort.signal),failure=assert.rejects(operation,error=>error.reason===(cancel?'cancelled':'command-timeout'));
   if(cancel){for(let i=0;i<100&&!fs.existsSync(pidfile);i++)await wait(10);assert(fs.existsSync(pidfile));abort.abort();}
   await failure;assert(performance.now()-started<2000);await wait(1250);assert(!fs.existsSync(marker));
  }

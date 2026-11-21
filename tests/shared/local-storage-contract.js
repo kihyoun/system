@@ -81,7 +81,8 @@ test('public upgrade reuses the owned device while its configured backup target 
 
 test('a failed payload refusal cannot publish acceptance or leave the corruption injected by its fixture',async()=>{
   const calls=[],candidate={daemon:'owned',stage:async(_name,action)=>action(),call:async args=>{calls.push(args);return args.includes('readlink')?'snapshots/completed':'';},inner:async args=>{
-    if(args.at(-1)==='seed.sh'&&calls.some(call=>call.at(-1).includes('printf corrupt')))throw Error('docker-exec-failed');
+    assert.deepEqual(args.slice(-3),['/system/operations/dist/storage/entry.js','launch','restore']);
+    if(calls.some(call=>call.at(-1).includes('printf corrupt')))throw Error('docker-exec-failed');
     throw Error('restore-target-not-empty');
   }};
   await assert.rejects(()=>storage.refuseInvalidRestore(candidate,'/recovered-data/platform'),/docker-exec-failed/);
@@ -99,7 +100,10 @@ test('fresh restore checks the same live lease even before a GitLab container ex
   const calls=[],candidate={inner:async args=>{
     calls.push(args);
     if(args[0]==='ps')return '';
-    if(args.at(-1)==='seed.sh')throw Error('storage-operation-busy');
+    if(args.includes('/system/operations/dist/storage/entry.js')){
+      assert.deepEqual(args.slice(-3),['/system/operations/dist/storage/entry.js','launch','restore']);
+      throw Error('storage-operation-busy');
+    }
     return '';
   }};
   await storage.refuseLockedLive(candidate,'restore');

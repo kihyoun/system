@@ -15,6 +15,8 @@ function included(name) {
   // do not belong in the test context. The one validated snapshot is added below.
   if (name === snapshotPath || /(^|\/)(node_modules|dist|test-results|\.test-context|\.projects\.env)(\/|$)/.test(name)) return false;
   if (name !== 'operations/src/mirror/credentials.service.ts' && /(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper\.zip|bootstrapper_initial_root_password)$/.test(name)) return false;
+  // This exact public Pebble test CA is pinned by the ACME fixture validator.
+  if (name === 'tests/e2e/acme-fixture/pebble.minica.pem') return true;
   if (/\.(key|pem|p12|pfx)$/.test(name)) return false;
   if (name === 'system/wizard-image-recovery.js') return true;
   if (['bootstrapper/record-source-installation.js', 'bootstrapper/upgrade-paths.json'].includes(name)) return true;
@@ -69,9 +71,19 @@ function prepareContext(root) {
     const cleanSnapshot = {version:snapshot.version,sourceRevision:snapshot.sourceRevision,...sourceMetadata(snapshot),manifestHash:snapshot.manifestHash,
       files:snapshot.files.map(({path,mode,sha256,content})=>({path,mode,sha256,content}))};
     fs.writeFileSync(stagedSnapshot,JSON.stringify(cleanSnapshot));
-    execFileSync('tar',['-cf',archive,'-C',temporary,...files.map(file=>file.name),snapshotPath],{stdio:['ignore','pipe','pipe']});
+    const additions = [snapshotPath];
+    // Isolated contracts exercise the same public Wizard producer and helpers
+    // as deployment. Stage only the provenance-checked snapshot, never its checkout.
+    for (const file of cleanSnapshot.files) {
+      const name = 'wizard/'+file.path;
+      const filename = path.join(temporary,name);
+      fs.mkdirSync(path.dirname(filename),{recursive:true});
+      fs.writeFileSync(filename,Buffer.from(file.content,'base64'),{mode:file.mode==='100755'?0o755:0o644});
+      additions.push(name);
+    }
+    execFileSync('tar',['-cf',archive,'-C',temporary,...files.map(file=>file.name),...additions],{stdio:['ignore','pipe','pipe']});
     const names = execFileSync('tar',['--list','--file',archive],{encoding:'utf8',maxBuffer:1024*1024}).split(/\r?\n/).filter(name=>name && !name.endsWith('/'));
-    const expected = [...files.map(file=>file.name),snapshotPath].sort();
+    const expected = [...files.map(file=>file.name),...additions].sort();
     if (JSON.stringify(names.sort()) !== JSON.stringify(expected)) throw Error('The test archive does not match the selected committed inputs.');
     const archiveHash = sha256(fs.readFileSync(archive));
     fs.writeFileSync(path.join(temporary,'revision'),revision+'\n');

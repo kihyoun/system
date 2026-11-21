@@ -22,12 +22,18 @@ const request=(route,method='GET',token,body)=>new Promise((resolve,reject)=>{co
   for(const [route,method] of [['/config/zip','POST'],['/command/restart','PATCH'],['/command/harvest','PATCH'],['/command/seed','PATCH'],['/projects','POST'],['/projects/wizard/source','POST'],['/config/main','DELETE'],['/projects/wizard/environments/status','GET']])assert.equal((await request(route,method,token,'{}')).status,409,route+' must respect the live-state storage lease');
   fs.rmdirSync(path.join(state,'.storage-operation-lock'));assert.notEqual((await request('/config/zip','POST',token,'{}')).status,409);
   const calls=path.join(root,'system','calls');
-  fs.writeFileSync(path.join(root,'system','stop-intermediate.sh'),'#!/bin/sh\necho stop >> calls\n');
-  fs.writeFileSync(path.join(root,'system','seed.sh'),'#!/bin/sh\necho native-restore >> calls\nexit 1\n');
+  fs.mkdirSync(path.join(root,'operations/dist/storage'),{recursive:true});
+  fs.mkdirSync(path.join(root,'operations/dist/lifecycle'),{recursive:true});
+  fs.writeFileSync(path.join(root,'operations/dist/lifecycle/entry.js'), 'require("node:fs").appendFileSync('+JSON.stringify(calls)+', "stop\\n");process.exit(1);\n');
+  const restore=path.join(root,'operations/dist/storage/entry.js');
+  // Stub only the native operation boundary: the real HTTP service must invoke
+  // the complete restore lease without separately stopping intermediate services.
+  const nativeRestore='const assert=require("node:assert/strict"),fs=require("node:fs");assert.deepEqual(process.argv.slice(2),["launch","restore"]);assert.equal(process.cwd(),'+JSON.stringify(path.join(root,'system'))+');fs.appendFileSync('+JSON.stringify(calls)+',"native-restore\\n");\n';
+  fs.writeFileSync(restore,nativeRestore+'process.exit(1);\n');
   assert.equal((await request('/command/seed','PATCH',token,'{}')).status,500);
   assert.equal(fs.readFileSync(calls,'utf8'),'native-restore\n','a refused Seed must not stop any service');
   assert.equal((await request('/status','GET',token)).status,200,'failed restore preserves Sync');
-  fs.writeFileSync(path.join(root,'system','seed.sh'),'#!/bin/sh\necho native-restore >> calls\n');
+  fs.writeFileSync(restore,nativeRestore);
   fs.unlinkSync(calls);
   const restored=await request('/command/seed','PATCH',token,'{}');
   assert.equal(restored.status,200);assert.equal(JSON.parse(restored.body).status.needRestart,true);

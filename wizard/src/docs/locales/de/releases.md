@@ -141,7 +141,7 @@ Das folgende Beispiel gehört zum **historischen Checkout 1.2.0**. Sein Python-
 Einstiegspunkt bleibt in diesem genauen Tag erhalten; er gehört nicht zur Laufzeit
 von 2.0. Für jeden erforderlichen Zwischenstopp die versionsspezifischen Befehle
 verwenden. Für 2.0 die native CLI-Laufzeit vorbereiten und die separat geprüfte
-[GitLab-Migration](../gitlab/UPGRADE.md) vor der anschließenden Release-Paarphase abschließen.
+[GitLab-Migration](#native-upgrade-from-120-to-200) vor der anschließenden Release-Paarphase abschließen.
 
 1. Den Quellcode des ausgewählten Ziel-Releases samt genauem Wizard-Gitlink
    beziehen. Den alten Checkout und die Wiederherstellungseingaben unabhängig

@@ -57,7 +57,9 @@ test('Cube signature and immutable saved byte baseline reject mutation',t=>{
  const f=verificationFixture(t),service=new RuntimeVerificationService(),baseline={configurationFiles:service.files(f.selected),expectedRunnerCount:1,runnerManagerIdentitySha256:{},imageMode:'public-images-v1'};
  service.assertBaseline(f.selected,baseline);
  const original=fs.readFileSync(f.selected._main);fs.writeFileSync(f.selected._main,Buffer.concat([original,Buffer.from('\nchanged')]));assert.throws(()=>service.assertBaseline(f.selected,baseline),/configuration-changed/);
- const broken=Buffer.from(original);broken[807]=32;fs.writeFileSync(f.selected._main,broken);baseline.configurationFiles=service.files(f.selected);assert.throws(()=>service.assertBaseline(f.selected,baseline),/cube-signature/);
+ for(const offset of [0,16,807,1183]){
+  const broken=Buffer.from(original);broken[offset]^=1;fs.writeFileSync(f.selected._main,broken);baseline.configurationFiles=service.files(f.selected);assert.throws(()=>service.assertBaseline(f.selected,baseline),/cube-signature/);
+ }
 });
 test('runner contact verification distinguishes absent token, stale, fresh, offline and unrelated identities',async t=>{
  const f=verificationFixture(t);let probes=0,refresh=false,contact={status:'online',system_id:'synthetic-manager',contacted_at:'2000-01-01T00:00:00Z'};

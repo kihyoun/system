@@ -10,7 +10,7 @@ function included(name) {
   return /^[A-Za-z0-9._/-]+$/.test(name) && !name.split('/').some(part => part === '..' || part === '.git') &&
     !/(^|\/)(node_modules|dist|test-results|\.test-context|\.candidate-context|\.codeql-context|\.projects\.env)(\/|$)/.test(name) &&
     (name === 'operations/src/mirror/credentials.service.ts' || !/(^|\/)(private\.env|\.docker\.env|\.env(?:\.[^/]+)?|credentials(?:\.[^/]+)?|bootstrapper\.json|bootstrapper\.zip|bootstrapper_initial_root_password)$/.test(name)) &&
-    !/\.(key|pem|p12|pfx)$/.test(name) &&
+    (name === 'tests/e2e/acme-fixture/pebble.minica.pem' || !/\.(key|pem|p12|pfx)$/.test(name)) &&
     name !== 'project-bootstrap/wizard-source/snapshot.json';
 }
 function prepare(root) {

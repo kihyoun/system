@@ -26,6 +26,7 @@ COPY operations/scripts ./operations/scripts
 COPY gitlab/guided-preview-evidence.js gitlab/guided-preview-evidence-v1.js gitlab/job-diagnostics.js ./gitlab/
 COPY LICENSE .prettierrc .prettierignore ./
 COPY project-bootstrap ./project-bootstrap
+COPY wizard ./wizard
 RUN cd operations && npm run build
 RUN node operations/dist/host-bootstrap/entry.js refresh-ca --checkout /candidate && node bootstrapper/ca/check.js
 COPY gitlab/*.js gitlab/*.rb gitlab/*.json gitlab/docker-compose.omnibus.yml ./gitlab/

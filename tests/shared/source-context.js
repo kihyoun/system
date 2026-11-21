@@ -25,12 +25,17 @@ try {
   const runtimeNames = ['project-ci.cjs', 'LICENSES.txt'];
   for (const name of runtimeNames) write('wizard/.system-bootstrapper/build-v2/runtime/'+name, fs.readFileSync(path.join(source, 'project-bootstrap/wizard-build/typed-v6/runtime', name)));
   write('wizard/src/api/Helper.tsx',Buffer.from(sourceSnapshot.files.find(file=>file.path==='src/api/Helper.tsx').content,'base64'));
+  for (const name of ['.gitlab/runtime/project-ci.cjs', '.gitlab/runtime/LICENSES.txt', '.gitlab/producer-v2.json', '.gitlab/primary.yml']) write('wizard/'+name, Buffer.from(sourceSnapshot.files.find(file=>file.path===name).content,'base64'));
+  write('wizard/.env', 'committed-private-wizard-marker\n');
+  write('wizard/credentials.json', 'committed-private-wizard-marker\n');
+  write('wizard/private.pem', 'committed-private-wizard-marker\n');
   write('wizard/.gitlab-ci.yml','stages: [test]\n');
   write('wizard/start.sh','#!/bin/sh\nexit 0\n');
+  write('wizard/public/fixture.bin', Buffer.from([0,255,128,13,10]));
   write('wizard/.system-bootstrapper/build-v1/smoke/check.js','public historical build check\n');
   const wizardGit = (...args) => execFileSync('git',['-C',path.join(root,'wizard'),...args],{stdio:['ignore','pipe','pipe']}).toString().trim();
   wizardGit('init'); wizardGit('config','user.name','Fixture'); wizardGit('config','user.email','fixture@example.invalid');
-  wizardGit('add','.'); wizardGit('commit','-m','Committed Wizard fixture');
+  wizardGit('add','.'); wizardGit('update-index','--chmod=+x','start.sh'); wizardGit('commit','-m','Committed Wizard fixture');
   const wizardRevision=wizardGit('rev-parse','HEAD');
   write('tests/Dockerfile','FROM scratch\n');
   write('tests/e2e/acme-host-runtime.js','committed native ACME transport\n');
@@ -64,17 +69,24 @@ try {
     ...['configuration.module.ts', 'configuration.service.ts', 'entry.ts'].map(name => 'operations/src/configuration/'+name),
     'operations/src/mirror/credentials.service.ts', 'bootstrapper/ca/cacert-2026-10-20.crt', 'bootstrapper/ca/provenance.json', 'bootstrapper/ca/check.js',
     ...runtimeNames.map(name => 'project-bootstrap/wizard-build/typed-v6/runtime/'+name)];
+  const fixtureTrust = 'tests/e2e/acme-fixture/pebble.minica.pem';
+  const fixtureTrustBytes = fs.readFileSync(path.join(source, fixtureTrust));
+  write(fixtureTrust, fixtureTrustBytes);
   const committedInputs = new Map([...runtimeInputs, ...browserInputs].map(name => [name, fs.readFileSync(path.join(source, name))]));
   for (const [name, content] of committedInputs) write(name, content);
   const privateInputs = ['project-bootstrap/private.env', 'operations/src/mirror/credentials.json',
     'operations/operator-private.pem', 'bootstrapper/bootstrapper.zip',
-    'bootstrapper/credentials.js', 'system/.env', 'tests/credentials.json'];
+    'bootstrapper/credentials.js', 'system/.env', 'tests/credentials.json', 'tests/e2e/acme-fixture/operator.pem', 'tests/e2e/acme-fixture/pebble.minica.key'];
   for (const name of privateInputs) write(name, 'committed-private-marker\n');
   write('project-bootstrap/private.env','must not enter the context\n');
   git('add','.'); git('update-index','--chmod=+x','tests/fixture.sh');
   git('update-index','--add','--cacheinfo','160000,'+wizardRevision+',wizard');
   git('commit','-m','Source fixture');
   const snapshot=pack(root);
+  write(fixtureTrust, 'dirty-private-trust-marker');
+  write('wizard/.gitlab/runtime/project-ci.cjs', 'dirty-private-wizard-marker');
+  write('wizard/.gitlab/producer-v2.json', 'dirty-private-wizard-marker');
+  write('wizard/untracked-secret.ts', 'untracked-private-wizard-marker');
   for (const name of ['.docker.env','system/.docker.env','tests/credentials.json','project-bootstrap/untracked-secret.txt','seed/data','test-results/old.xml']) write(name,'untracked-private-marker');
   write('sync/src/public.ts','dirty-private-marker');
   for (const name of ['bootstrapper/install.js', 'operations/src/mirror/credentials.service.ts', 'LICENSE', 'operations/scripts/bundle-project-ci.mjs']) write(name, 'dirty-private-marker');
@@ -100,6 +112,16 @@ try {
   assert(execFileSync('tar',['-xOf',archive,'tests/binary.png']).equals(binary),'preserve binary source bytes');
   const cleanSnapshot = JSON.parse(execFileSync('tar',['-xOf',archive,'project-bootstrap/wizard-source/snapshot.json'],{encoding:'utf8',maxBuffer:8*1024*1024}));
   assert(!Object.hasOwn(cleanSnapshot,'unrecognizedSecret'));
+  assert(execFileSync('tar', ['-tvf', archive, 'wizard/start.sh'], {encoding:'utf8'}).includes('rwxr-xr-x'), 'Isolated Wizard preserves executable snapshot modes');
+  assert.deepEqual(result.files.filter(name=>name.startsWith('wizard/')).sort(), snapshot.files.map(file=>'wizard/'+file.path).sort(), 'Isolated Wizard source is exactly the validated snapshot');
+  for (const file of snapshot.files) {
+    assert(execFileSync('tar', ['-xOf', archive, 'wizard/'+file.path], {maxBuffer:8*1024*1024}).equals(Buffer.from(file.content,'base64')), 'Isolated Wizard byte closure: '+file.path);
+  }
+  assert(!result.files.some(name=>/^wizard\/(?:\.env|credentials\.json|private\.pem|untracked-secret\.ts|\.git\/|\.system-bootstrapper\/build-v[12]\/)/.test(name)), 'Wizard private, untracked and reserved recipe paths stay excluded');
+  assert(execFileSync('tar', ['-xOf', archive, fixtureTrust]).equals(fixtureTrustBytes), 'Use only the committed public ACME fixture trust');
+  assert.equal(crypto.createHash('sha256').update(fixtureTrustBytes).digest('hex'), '0c502e52627ff7de972c7e9e065640103b4589b4e2d23d3fcf21bef1e3c8c67c');
+  const isolatedDockerfile = fs.readFileSync(path.join(source,'tests/Dockerfile'),'utf8');
+  assert.match(isolatedDockerfile, /^COPY wizard\/? \.\/wizard\/?$/m, 'The isolated image copies its staged Wizard sources');
   const mode = execFileSync('tar',['-tvf',archive,'tests/fixture.sh'],{encoding:'utf8'});
   assert(mode.includes('rwxr-xr-x'),'preserve executable mode');
   assert.equal(fs.readFileSync(path.join(root,'.test-context/revision'),'utf8').trim(),git('rev-parse','HEAD'));
@@ -116,6 +138,7 @@ try {
   assert.equal(candidate.wizardRevision,snapshot.sourceRevision);
   const staticContext = prepareCodeql(root);
   const staticArchive = path.join(root, '.codeql-context/context.tar');
+  assert(execFileSync('tar', ['-xOf', staticArchive, 'source/'+fixtureTrust]).equals(fixtureTrustBytes), 'Static context preserves the exact public fixture certificate');
   assert.equal(execFileSync('tar', ['-xOf', staticArchive, 'source/sync/src/public.ts'], {encoding:'utf8'}), 'committed source\n');
   assert(staticContext.files.includes('tests/fixture.sh'), 'Static analysis includes committed test sources');
   assert(staticContext.files.includes('wizard/src/api/Helper.tsx'), 'Static analysis includes the exact Wizard pin');
@@ -184,6 +207,12 @@ try {
   write('wizard/nginx/nginx.conf','committed monorepo input\n');git('add','wizard/nginx/nginx.conf');git('commit','-m','Restore current Wizard runtime input');
   write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(pack(root)));
   prepareCandidate(root);
+  const trustBlob = git('rev-parse', 'HEAD:'+fixtureTrust);
+  git('update-index', '--cacheinfo', '120000,'+trustBlob+','+fixtureTrust); git('commit', '-m', 'Reject fixture certificate links');
+  write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(pack(root)));
+  assert.throws(()=>prepareContext(root),/links and nested submodules/);
+  assert.throws(()=>prepareCodeql(root),/links and nested submodules/);
+  git('update-index', '--cacheinfo', '100644,'+trustBlob+','+fixtureTrust); git('commit', '-m', 'Restore public fixture certificate');
   git('update-index','--add','--cacheinfo','120000,'+git('hash-object','sync/package.json')+',tests/unsafe-link');
   git('commit','-m','Reject links');
   write('project-bootstrap/wizard-source/snapshot.json',JSON.stringify(pack(root)));
