@@ -5,7 +5,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist` and `operations/node_modules`
+verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
 available offline before maintenance.
 
 A public **controller release** is the complete image built from
@@ -778,11 +778,11 @@ sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
 
 Invoke the retained CLI with an explicit reviewed checkout. This mode installs
 only the Node/CLI runtime; it does not start or restore the platform. Retain the
-checkout's compiled operations when preparing an offline recovery environment.
+checkout's compiled operations, bundled dependencies and policy assets when preparing an offline recovery environment. Follow the complete [runtime materialization procedure](../Prepare-Host.md#prepare-the-host-operations-runtime) before invoking checkout entrypoints; `--runtime-only` alone installs the package under `/opt/system-bootstrapper-runtime/cli`.
 
 The preparation refuses an existing runtime directory instead of overwriting it.
-Keep that directory and the checkout's `operations/dist` and
-`operations/node_modules` for offline recovery. Compatibility tools select the
+Keep that directory and the checkout's `operations/dist`,
+`operations/node_modules` and `operations/assets` for offline recovery. Compatibility tools select the
 saved absolute Node executable directly; they do not source a shell profile,
 invoke nvm or contact npm during recovery. The file
 `/opt/system-bootstrapper-runtime/node-executable` records the executable path.

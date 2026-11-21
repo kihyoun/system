@@ -147,7 +147,7 @@ images during startup unless an existing accepted release profile disables build
 it is not permission to rebuild an image required by a recovery receipt.
 
 For offline recovery retain the Node installation and matching checkout with
-`operations/dist` and `operations/node_modules` before losing the original host.
+`operations/dist`, `operations/node_modules` and `operations/assets` before losing the original host.
 Restore those verified tools before `initialize.js` or `recover-volume.js` checks
 storage. If they are absent, prepare compatible reviewed tools separately before
 maintenance; neither the stopped platform nor npm availability is a recovery

@@ -5,7 +5,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist` and `operations/node_modules`
+verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
 available offline before maintenance.
 
 Choose the complete installation path for your environment:
@@ -135,7 +135,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist` and `operations/node_modules`
+verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
 available offline before maintenance.
 
 Fresh Ubuntu/WSL installations use local working data at
@@ -523,7 +523,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist` and `operations/node_modules`
+verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
 available offline before maintenance.
 
 This fresh installation keeps live data on the server's system disk. Create an
@@ -1255,7 +1255,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist` and `operations/node_modules`
+verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
 available offline before maintenance.
 
 This section is the explicit volume-backed reuse path. For fresh local working

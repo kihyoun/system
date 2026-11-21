@@ -5,7 +5,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist` and `operations/node_modules`
+verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
 available offline before maintenance.
 
 The recovery inputs remain separate: a Wizard configuration backup, a completed
@@ -178,7 +178,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist` and `operations/node_modules`
+verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
 available offline before maintenance.
 
 The inputs are the completed Seed, matching Wizard `bootstrapper.zip`, recorded

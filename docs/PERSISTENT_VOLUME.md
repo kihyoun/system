@@ -5,7 +5,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist` and `operations/node_modules`
+verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
 available offline before maintenance.
 
 The platform has two storage roles:
@@ -177,7 +177,7 @@ complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operatio
 Fresh Quickstart prepares Node and operations automatically. Manual/source and
 replacement-host paths must prepare or restore them first; `--install-host`
 installs native host dependencies, not the missing operations runtime. Keep the
-verified Node installation, `operations/dist` and `operations/node_modules`
+verified Node installation, `operations/dist`, `operations/node_modules` and `operations/assets`
 available offline before maintenance.
 
 1. Stop writers cleanly before detaching storage. Retain the volume explicitly
