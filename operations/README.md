@@ -118,7 +118,10 @@ node operations/scripts/bundle-project-ci.mjs --check
 node --test operations/tests/project-ci.test.cjs
 ```
 
-The check compares both runtime bytes and license notices. Source producers must
+The generator updates both the Wizard capsule and the current typed build recipe;
+the check compares both copies, producer identity and license notices. Before
+changing an already published recipe, introduce a new versioned profile instead
+of rewriting the historical profile's bytes. Source producers must
 include these exact committed files in their approved source manifest; copying a
 bundle from another candidate does not establish matching source provenance.
 

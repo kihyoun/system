@@ -23664,7 +23664,8 @@ var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 				} finally {
 					if (inputFd !== void 0) node_fs_1.default.closeSync(inputFd);
 				}
-				let output = "", bytes = 0, uncertain = false, spawnError = false;
+				const output = [];
+				let bytes = 0, uncertain = false, spawnError = false;
 				let forced;
 				const kill = (signal) => {
 					if (child.pid) try {
@@ -23684,7 +23685,7 @@ var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 					bytes += value.length;
 					if (bytes > (options.maxBuffer ?? 1048576)) cancel();
 					else {
-						output += value.toString();
+						output.push(value);
 						try {
 							options.output?.(value);
 						} catch {
@@ -23712,7 +23713,7 @@ var require_managed_child = /* @__PURE__ */ __commonJSMin(((exports, module, thi
 					options.signal?.removeEventListener("abort", cancel);
 					if (uncertain) kill("SIGKILL");
 					if (spawnError || status !== 0 || signal || uncertain) reject(new process_1.ProcessFailure(binary, status, signal, uncertain || spawnError || signal !== null || status === null));
-					else resolve(output);
+					else resolve(Buffer.concat(output).toString("utf8"));
 				});
 			});
 		}

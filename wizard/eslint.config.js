@@ -4,7 +4,10 @@ import hooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['build/**', 'node_modules/**', 'public/**', 'cypress/**', '.system-bootstrapper/**', 'build-tools/**'] },
+  // This generated offline capsule includes vendored Nest dependencies. Its
+  // producer hashes and offline behavior are checked by the operations gates;
+  // keep authored .gitlab launchers under the normal frontend lint rules.
+  { ignores: ['build/**', 'node_modules/**', 'public/**', 'cypress/**', '.system-bootstrapper/**', 'build-tools/**', '.gitlab/runtime/project-ci.cjs'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

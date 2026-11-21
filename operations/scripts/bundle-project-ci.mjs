@@ -29,8 +29,10 @@ try{
  const content='// Generated from compiled shared operations; run operations/scripts/bundle-project-ci.mjs.\n'+output[0].code;
  const file=path.join(root,'wizard/.gitlab/runtime/project-ci.cjs');
  const noticeFile=path.join(path.dirname(file),'LICENSES.txt');
+ const recipeRuntime=path.join(root,'project-bootstrap/wizard-build/typed-v6/runtime');
  const producerFile=path.join(root,'wizard/.gitlab/producer-v2.json');
  const producer=JSON.stringify({version:2,runtime:'.gitlab/runtime/project-ci.cjs',runtimeSha256:crypto.createHash('sha256').update(content).digest('hex'),buildProfile:'node24-vite8-typed-v6'},null,2)+'\n';
- if(process.argv.includes('--check')){if(fs.readFileSync(file,'utf8')!==content||fs.readFileSync(noticeFile,'utf8')!==notices||fs.readFileSync(producerFile,'utf8')!==producer)throw Error('Portable project CI runtime differs from compiled operations');console.log('Portable project CI runtime matches compiled operations.');}
- else{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,content);fs.writeFileSync(noticeFile,notices);fs.writeFileSync(producerFile,producer);console.log('Bundled shared project CI runtime.');}
+ const outputs=[[file,content],[noticeFile,notices],[producerFile,producer],[path.join(recipeRuntime,'project-ci.cjs'),content],[path.join(recipeRuntime,'LICENSES.txt'),notices]];
+ if(process.argv.includes('--check')){if(outputs.some(([name,value])=>fs.readFileSync(name,'utf8')!==value))throw Error('Portable project CI runtime differs from compiled operations');console.log('Portable project CI runtime matches compiled operations.');}
+ else{for(const [name,value] of outputs){fs.mkdirSync(path.dirname(name),{recursive:true});fs.writeFileSync(name,value);}console.log('Bundled shared project CI runtime.');}
 }finally{await bundle.close();}
