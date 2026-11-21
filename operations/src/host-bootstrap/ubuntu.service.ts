@@ -24,15 +24,7 @@ export class UbuntuHostService {
     const run = (binary: string, args: string[]) =>
       this.process.run(binary, args, { cwd: this.systemRoot, env, signal, timeout: 1800000 });
     await run('apt-get', ['update']);
-    await run('apt-get', [
-      'install',
-      '-y',
-      'zsh',
-      'unzip',
-      'git',
-      'ca-certificates',
-      'curl',
-    ]);
+    await run('apt-get', ['install', '-y', 'zsh', 'unzip', 'git', 'ca-certificates', 'curl']);
     const keys = path.join(this.systemRoot, 'etc/apt/keyrings');
     fs.mkdirSync(keys, { recursive: true, mode: 0o755 });
     const key = path.join(keys, 'docker.asc');
