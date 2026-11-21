@@ -79,6 +79,7 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
         '  persistence         Verify and prepare selected persistent storage\n\n' +
         '  promotion-abort     Recover an interrupted promotion from its retained checkpoint\n\n' +
         '  promote             Promote or inspect an accepted controller successor\n' +
+        '  gitlab-upgrade      Prepare, migrate or recover the declared GitLab prerequisite\n' +
         '  controller-update   Update or recover an accepted controller/Wizard pair\n' +
         '  upgrade             Plan, apply or recover an official public release upgrade\n\n' +
         '  recovery-export     Retain the accepted running controller image and source\n' +
@@ -90,11 +91,14 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     );
     return;
   }
-  if (['controller-update', 'upgrade', 'recovery', 'promote'].includes(args[0])) {
+  if (['controller-update', 'upgrade', 'recovery', 'promote', 'gitlab-upgrade'].includes(args[0])) {
     const checkout = args.indexOf('--checkout');
     if (checkout < 1 || !args[checkout + 1]?.startsWith('/'))
       throw new Error('explicit-host-checkout-required');
-    if (args[0] === 'promote') {
+    if (args[0] === 'gitlab-upgrade') {
+      const { publicGitlabMain } = await import('./host/public-gitlab-prerequisite-entry.js');
+      await publicGitlabMain([...args.slice(1)]);
+    } else if (args[0] === 'promote') {
       const { promotionMain } = await import('./host/promotion-entry.js');
       await promotionMain([...args.slice(1)]);
     } else if (args[0] === 'controller-update') {

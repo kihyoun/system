@@ -35,7 +35,8 @@
    작업 임대가 없어야 합니다. 커밋된 GitLab 검사를 실행하세요.
 
    ```bash
-   sudo docker exec -i system_gitlab_1 gitlab-rails runner - < gitlab/upgrade-preflight.rb
+   GITLAB_CONTAINER_ID="$(sudo docker inspect --format '{{.Id}}' system_gitlab_1)"
+   sudo docker exec system_bootstrapper_1 node /system/operations/dist/gitlab-preflight/entry.js "$GITLAB_CONTAINER_ID"
    ```
 
    JSON에 승인된 CE 버전, `runningJobs: 0`, `unfinishedBackgroundMigrations: 0`이

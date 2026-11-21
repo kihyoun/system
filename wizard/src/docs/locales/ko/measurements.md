@@ -82,7 +82,7 @@ UTC 타임스탬프와 경과 초를 사용하여 첫 SSH 명령부터 선언된
    운영자 입력, 대기 및 재시도 내내 계속 측정하세요. 각 이정표의 UTC와 경과 시간을
    비공개로 기록하고 검사 실패 후 시계를 초기화하지 마세요.
 3. 새 초기화는 검토된 릴리스 체크아웃의 `bootstrapper/install.js`,
-   `bootstrapper/install-release.py` 및 `bootstrapper/install-volume-host.js`를
+   `system-bootstrapper install` 및 `bootstrapper/install-volume-host.js`를
    사용하여 [공개 HTTPS 안내](#public-server-own-domain-and-https)를 따르세요.
    릴리스의 불변 컨트롤러와 이에 맞는 Wizard 이미지를 선택하세요. Wizard 가져오기,
    백업 및 보내기로 구성하고 이번 실행의 수를 재현하려면 관리자를 4개로 설정하세요.

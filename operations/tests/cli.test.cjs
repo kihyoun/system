@@ -20,6 +20,7 @@ test('help and version work without host tools, configuration or services', () =
   assert.match(help.stdout, /gitlab-credentials/);
   assert.match(help.stdout, /controller-update/);
   assert.match(help.stdout, /promote/);
+  assert.match(help.stdout, /gitlab-upgrade/);
   assert.match(help.stdout, /upgrade/);
   const version = run(['--version']);
   assert.equal(version.status, 0, version.stderr);
@@ -56,7 +57,7 @@ test('host commands require explicit source and image before any native command'
     checkout:'/source',image:'pin',persistenceEnv:'/etc/system-bootstrapper/persistence.env',configurationBackup:'/backup.zip',checkOnly:true,forward:[]
   });
   assert.throws(()=>parseHostArguments(['harvest','--image','one','--image','two']),/duplicate-option/);
-  for (const action of ['controller-update','upgrade','recovery','promote']) {
+  for (const action of ['controller-update','upgrade','recovery','promote','gitlab-upgrade']) {
     const missing=run([action]);assert.equal(missing.status,1);assert.equal(missing.stdout,'');assert.match(missing.stderr,/explicit-host-checkout-required/);
     const invalid=run([action,'--checkout','/source','--force']);assert.equal(invalid.status,1);assert.equal(invalid.stdout,'');assert.match(invalid.stderr,/operation-failed/);
   }

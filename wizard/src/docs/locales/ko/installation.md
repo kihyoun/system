@@ -137,7 +137,7 @@ Harvest 또는 Seed 복원을 사용하려면 독립적인 백업 저장소를 �
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  python3 bootstrapper/install-release.py \
+  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```

@@ -96,7 +96,7 @@ sind Beobachtungen, keine Garantie für Installationszeiten.
    Fehlern, die innerhalb des Versuchs behoben werden. Erfassen Sie UTC
    und verstrichene Zeit jedes Meilensteins privat; setzen Sie die Uhr nach einer fehlgeschlagenen Prüfung nicht zurück.
 3. Folgen Sie bei einer Neuinitialisierung der [öffentlichen HTTPS-Anleitung](#public-server-own-domain-and-https)
-   mit `bootstrapper/install.js`, `bootstrapper/install-release.py` und
+   mit `bootstrapper/install.js`, `system-bootstrapper install` und
    `bootstrapper/install-volume-host.js` aus dem geprüften Release-Checkout.
    Verwenden Sie die unveränderlichen Controller- und passenden Wizard-Image-Auswahlen des Releases.
    Konfigurieren Sie über Wizard-Abrufen, Sichern und Übertragen; stellen Sie vier Manager ein, wenn Sie

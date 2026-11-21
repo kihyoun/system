@@ -237,7 +237,7 @@ PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  python3 bootstrapper/install-release.py \
+  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```
@@ -254,7 +254,7 @@ HTTPS를 사용하는 호스트에는 Certbot을 별도로 설치한 뒤
 구성하세요. 로컬 모드에는 추가 마운트 의존성이 필요하지 않습니다. Docker, 정상 서비스 시작,
 인증서 갱신 중 어느 것도 외부 Seed 대상에 의존하지 않습니다.
 
-`install-release.py`는 깨끗한 체크아웃과 고정된 Wizard 리비전을 가져온 공개 이미지 식별
+`system-bootstrapper install`는 깨끗한 체크아웃과 고정된 Wizard 리비전을 가져온 공개 이미지 식별
 정보와 대조해 검증합니다. 재설치를 업그레이드로 취급하지 않고, 기존 기본 구성이나 GitLab
 데이터가 있으면 거부합니다. 비공개 `configuration/.release-images.env`에는 두 릴리스
 이미지 선택자만 기록하고 빌드를 비활성화하여 기본 시작을 호출합니다. 이후 일반적인

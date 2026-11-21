@@ -1,7 +1,7 @@
 # Configuration import
 
-`ConfigurationModule` exports `ConfigurationService` for ZIP Push. The retained
-`system/push.sh` only holds the existing process-lifetime routing flock and maps
+`ConfigurationModule` exports `ConfigurationService` for ZIP Push. The native
+`operations/dist/configuration/entry.js push` entry holds the routing flock and maps
 paths to the standalone Nest entry point. The service validates ZIP metadata
 before extraction, checks the complete proposed alias set and optional impact
 fingerprint, preserves the server-owned Wizard receipt and atomically replaces

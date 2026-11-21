@@ -18,9 +18,8 @@ docker run --rm --network none system-component-tests sync
 ```
 
 Do not mount the Docker socket, private configuration, host network or platform
-volumes into this child. When Node is absent from the trusted host,
-`bash project-bootstrap/wizard-source/prepare.sh` provides the source-packaging
-fallback. The context contains only allowlisted blobs from the current committed
+volumes into this child. Prepare the pinned Node runtime and operations package before source packaging;
+the initial Quickstart is the only pre-Node shell entry. The context contains only allowlisted blobs from the current committed
 Git tree, including the ordinary `wizard/` tree for `system-monorepo-v1`.
 Historical gitlink sources additionally require the validated separate Wizard
 snapshot and exact recursive submodules (`git submodule update --init --recursive`).
@@ -140,7 +139,7 @@ conditional and Production promotion remains manual.
 
 `check:documentation` uses the platform's existing trusted `docker` runner pool;
 no separate documentation runner or coordinator registration is required. Its
-committed `tests/ci-documentation.sh` parent uses that runner's Docker authority
+committed `node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR"` parent uses that runner's Docker authority
 to launch a short-lived, digest-pinned Node child as user 1000 with no network,
 host socket, bind mounts, extra capabilities or inherited CI credentials. This
 isolates the actual checker, not the trusted parent: arbitrary unreviewed code
@@ -181,7 +180,7 @@ stale artifacts fail before Docker execution.
 
 Eight component matrix jobs run before publishing. Each is a trusted parent
 using the pinned Docker CLI, `services: []` and the existing `docker` runner tag.
-It calls `sh tests/ci-isolated.sh <component>`, builds from the verified stdin
+It calls `node operations/dist/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"`, builds from the verified stdin
 archive, then runs a socket-free/network-disabled child with no inherited CI
 credentials. Reports leave through `docker cp`, since a job's checkout path
 need not exist on the Docker host.
@@ -271,7 +270,7 @@ project's MIT license does not grant a CodeQL license, and this job purchases no
 subscription. Runner compute and storage remain the operator's responsibility.
 
 `node tests/prepare-codeql.js` packages committed inputs after the ordinary Wizard
-source preparation. `sh tests/ci-codeql.sh` runs that verified context on the
+source preparation. `node operations/dist/ci/entry.js codeql-parent "$CI_PROJECT_DIR"` runs that verified context on the
 selected trusted Docker runner with its ordinary CI identity variables. The
 child is bounded to 6 GiB RAM and two CPUs; image preparation and scanning each
 have a 15-minute ceiling. This static job does not start a disposable platform.
@@ -285,7 +284,9 @@ heuristics are not equivalent to this default security gate.
 Scripts under `*/live/` require an operator-prepared disposable platform. Several
 use fixed `system_*` names, localhost routes, prepared payloads and private
 credentials. They must not target Production or a workstation installation.
-Ruby audits run inside GitLab's embedded Rails; Python drivers require Python 3.
+Native audits run inside the reviewed controller and reuse the existing ready
+automation credential without bootstrapping or renewing it. Runner mutation
+requires an explicit disposable-project opt-in and an immutable job image.
 The isolated runner never executes these by glob discovery.
 
 `wizard/live/build.js` requires `SYSTEM_WIZARD_LIVE_ACCEPTANCE=true` and an explicit
@@ -305,27 +306,20 @@ Review/Beta, Production promotion or rollback. Use the corresponding
 [Production](../project-bootstrap/wizard-production/README.md) procedures for
 those explicit operations.
 
-Host release regression coverage uses injected native-service adapters in
-`bootstrapper/runtime-fixture.cjs`: Docker/Git responses and remote readiness
-ports come from the owning fixture, while the shared runtime service validates
-health, selected images, configuration hashes and retained runner identities.
-The worker retains only the Nest provider graph; every native callback uses the
-current request's fixture. Rejected read-only checks reuse that graph. The
-sequence fixture uses a separate shared provider context, so nested runtime
-checks never share an in-flight channel. The controller-only lifecycle still
-exercises the actual production update/rollback entry adapters; fault matrices
-invoke the same services with request-scoped test I/O and preserve callback
-exception identity.
+Host release regression coverage invokes compiled shared Nest services through
+`tests/bootstrapper/paired-native-fixture.cjs` and the existing
+`operations/tests/host-*.test.cjs` suites. Docker/Git and readiness ports are
+controlled fixtures; real filesystem, Git, process ownership and advisory locks
+remain exercised locally. Fault matrices cover source/image authority,
+pre-mutation refusals, interrupted ownership, configuration drift, cold-checkpoint
+and recovery failures without building another platform for each refusal.
 
-`bootstrapper/public-controller-update.py` checks controller-only preflight,
-update and API-independent rollback in one retained installation fixture. Paired
-updates, interrupted ownership, configuration drift and failed recovery remain
-separate scenarios. The complete quiescent-controller state matrix runs directly
-in `operations/tests/host-runtime-inspection.test.cjs`; the host coordinator keeps
-representative live-controller and missing-controller rejection checks. Public
-upgrade fixtures select the matching release checkout version, including
-historical publications, rather than inferring a database-migration proof from a
-newer checkout.
+`tests/bootstrapper/public-controller-update.cjs` and `public-upgrade.cjs` cover
+paired update, plan/apply/recovery and API-independent rollback through the shared
+services. The complete quiescent-controller matrix lives in
+`operations/tests/host-runtime-inspection.test.cjs`. Public upgrade fixtures select
+the matching release checkout version, including historical publications; they
+never infer database-migration proof from a newer checkout.
 
 The paired pin-preservation scenario also rolls back its exact retained pair,
 so it does not build an identical successful update in a separate rollback

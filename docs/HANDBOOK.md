@@ -169,7 +169,7 @@ Then run this command from the project's root directory:
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  python3 bootstrapper/install-release.py \
+  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```
@@ -600,7 +600,7 @@ server, start the fresh installation:
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  python3 bootstrapper/install-release.py \
+  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 sudo docker ps
@@ -1077,7 +1077,7 @@ are observations, not an installation-time guarantee.
    failures that are resolved within the attempt. Record each milestone's UTC
    and elapsed time privately; do not reset the clock after a failed probe.
 3. For fresh initialization, follow the [public HTTPS walkthrough](#public-server-own-domain-and-https)
-   using `bootstrapper/install.js`, `bootstrapper/install-release.py` and
+   using `bootstrapper/install.js`, `system-bootstrapper install` and
    `bootstrapper/install-volume-host.js` from the reviewed release checkout.
    Use the release's immutable controller and matching Wizard image selections.
    Configure through Wizard Fetch, Backup and Push; set four managers if
@@ -1150,7 +1150,8 @@ Perform each run as follows; preserve receipts outside the source checkout:
    including environment leases, must be absent. Run the committed GitLab check:
 
    ```bash
-   sudo docker exec -i system_gitlab_1 gitlab-rails runner - < gitlab/upgrade-preflight.rb
+   GITLAB_CONTAINER_ID="$(sudo docker inspect --format '{{.Id}}' system_gitlab_1)"
+   sudo docker exec system_bootstrapper_1 node /system/operations/dist/gitlab-preflight/entry.js "$GITLAB_CONTAINER_ID"
    ```
 
    Its JSON must show the accepted CE version, `runningJobs: 0` and
@@ -1552,22 +1553,33 @@ continues to be managed through Push/Fetch and Open/Backup.
 
 ### 2.4 Local functional test
 
-For an explicitly disposable local test instance, `tests/gitlab-runner/live/runner.py` creates
-a private test project and pipeline, checks the runner and downloads the generated
-result file. It creates a separate temporary test access token with the `api`
-scope and revokes it afterwards. This is a test helper; actual runner setup only
-requires `create_runner`.
+For an explicitly disposable test instance, the native runner audit creates a
+private, uniquely marked smoke project and pipeline, checks the actual runner,
+downloads its result and verifies authenticated Fetch. It reads the existing
+ready automation credential without minting a Rails token or renewing credentials.
+The audit creates a short-lived project token, revokes that exact token and requests
+deletion only of its own marked project; GitLab deletion is asynchronous.
+
+Run inside the reviewed controller after normal setup, with an immutable job image
+you have selected and made available to its runner:
+
+```bash
+sudo docker exec -w /system system_bootstrapper_1 node tests/gitlab-runner/live/runner.js \
+  --allow-disposable-project \
+  --job-image 'alpine@sha256:REPLACE_WITH_64_HEX_DIGEST' --timeout 720
+```
+
+This opt-in operation must not target Production. A private metadata-only receipt
+under the controller state records the exact owned project and cleanup status.
+After an interrupted audit, inspect the reported receipt and use the same entry
+with `--allow-disposable-project --cleanup-record /state/live-runner-audit-OPERATION.json`.
+Cleanup never deletes a project whose identity or ownership marker changed.
+The existing disposable candidate also verifies real runner/registry job execution;
+this optional manual audit adds no pipeline stage.
 
 If runner setup fails, platform startup continues so you can correct the
 configuration in the Wizard. Check the Bootstrapper output, correct the settings
 and try **Register** again.
-
-```bash
-sudo python3 tests/gitlab-runner/live/runner.py
-```
-
-Prerequisites are running local services, Docker access, and the addresses
-`gitlab.localhost` and `sync.localhost` on the local HTTP proxy.
 
 ## 3. Configuring applications and environments
 
@@ -1797,7 +1809,7 @@ credentials. See [publisher configuration](../Prepare-Host.md#publish-your-own-p
 
 Public publication does not promote Production or back up service data. A new
 operator selects that accepted source plus the two digest references and uses
-`bootstrapper/install-release.py` through the fresh-install handbook path.
+`system-bootstrapper install` through the fresh-install handbook path.
 Existing installations retain their saved selectors and require the appropriate
 reviewed promotion/migration procedure instead.
 
@@ -1998,7 +2010,7 @@ internal runtime test. Other pipeline failures block promotion.
 First run the source/CI input check:
 
 ```bash
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --operation promote \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
@@ -2031,12 +2043,12 @@ If this **controller** operation is interrupted, use its same checkpoint with
 the committed status and, when appropriate, abort actions:
 
 ```bash
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID
 
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \

@@ -74,7 +74,7 @@ Installieren Sie einen frischen Host mit der [Schnellinstallation](QUICKSTART.md
 ihre Laufzeit vorbereitet. Schließen Sie beim ausdrücklichen Weg zuerst die
 [Host-Laufzeitvorbereitung](../Prepare-Host.md#prepare-the-host-operations-runtime) ab und
 übergeben Sie dann `images.controller.reference` und `images.wizard.reference` aus dem Manifest an
-`bootstrapper/install-release.py --controller ... --wizard ... --release-metadata ...`.
+`system-bootstrapper install --controller ... --wizard ... --release-metadata ...`.
 Das native Installationsprogramm prüft exakte Quellcode- und geladene Image-Identitäten.
 Referenzen allein bewahren keine Image-Inhalte: Halten Sie geprüfte Image-Archive vor
 oder stellen Sie die Wiederherstellbarkeit öffentlicher/privater Registries während des benötigten Zeitraums sicher.
@@ -136,6 +136,12 @@ CLI-Vorprüfung es akzeptiert. Unbekannte Releases, abweichende Quellcode-/Image
 Identitäten, private Wizard-Images, Downgrades und nicht deklarierte Service- oder
 Datenbankübergänge scheitern vor Wartungsbeginn. Kompatible Produktversionsnummern
 ersparen keinen vorgeschriebenen Datenbank-Zwischenstopp.
+
+Das folgende Beispiel gehört zum **historischen Checkout 1.2.0**. Sein Python-
+Einstiegspunkt bleibt in diesem genauen Tag erhalten; er gehört nicht zur Laufzeit
+von 2.0. Für jeden erforderlichen Zwischenstopp die versionsspezifischen Befehle
+verwenden. Für 2.0 die native CLI-Laufzeit vorbereiten und die separat geprüfte
+[GitLab-Migration](../gitlab/UPGRADE.md) vor der anschließenden Release-Paarphase abschließen.
 
 1. Den Quellcode des ausgewählten Ziel-Releases samt genauem Wizard-Gitlink
    beziehen. Den alten Checkout und die Wiederherstellungseingaben unabhängig
@@ -272,10 +278,11 @@ prüfen und nur diese beiden Auswahlen über den normalen Konfigurationsablauf
 wiederherstellen. Keine anderen aktuellen Einstellungen ersetzen und die
 Wiederherstellungseingaben nicht löschen.
 
-Der öffentliche Graph enthält derzeit nur Controller-/Wizard-Übergänge. Ein
-Image-Rollback macht keine Datenbankmigration rückgängig. Künftige deklarierte
-Service-Übergänge müssen die bestehende [GitLab-Migration und kalte Checkpoint-Wiederherstellung](HANDBOOK.md#5-evolving-a-running-system)
-mit verpflichtenden Zwischenversionen und unabhängig verfügbaren Eingaben nutzen;
+Der aktuelle Graph deklariert außerdem **1.2.0 → 2.0.0** mit einer GitLab-
+Datenbankmigration vor dem Controller-/Wizard-Paarupdate. Ein Image-Rollback
+macht keine Datenbankmigration rückgängig. Deklarierte Service-Übergänge nutzen die
+[GitLab-Migration und kalte Checkpoint-Wiederherstellung](HANDBOOK.md#5-evolving-a-running-system)
+mit verpflichtenden Zwischenversionen und unabhängig verfügbaren Eingaben;
 die öffentliche CLI lehnt nicht implementierte Übergangstypen ab. Die vollständige
 [Konfigurations- und Seed-Wiederherstellung](RECOVERY_CONTRACT.md) bleibt der Weg
 für frischen Livespeicher. Zwischen-Releases werden in Reihenfolge angezeigt;
@@ -309,3 +316,100 @@ Wiederherstellungstests ausführen und den gezielten Übergang vom bisherigen
 aus öffentlichen Metadaten statt privaten Pins. Ohne passende erfolgreiche
 Laufzeitnachweise lehnt der Publisher den Übergang ab; geänderte Metadaten
 erzeugen keine Kompatibilität.
+
+### Natives Upgrade von 1.2.0 auf 2.0.0
+
+Eine saubere offizielle Installation von 1.2.0 auf unterstütztem Ubuntu x86_64
+mit passender Konfigurations-/Seed-Sicherung verwenden. Laufende Jobs und offene
+Hintergrundmigrationen abwarten. Das bisherige akzeptierte Release und seine
+Wiederherstellungswerkzeuge unabhängig verfügbar halten. Eigene Speicherpfade,
+Domains und das private API-Token der Installation wählen. Alle folgenden Pfade
+sind Beispiele und müssen durch das tatsächliche Persistenzverzeichnis und das
+eingehängte Sicherungsdateisystem ersetzt werden.
+
+Das genaue Ziel beziehen und seine geprüfte Offline-Laufzeit vor Wartungsbeginn
+vorbereiten. Der aktuelle Wizard liegt im System-Quellbaum; dieses Tag benötigt
+kein Wizard-Submodul.
+
+```bash
+git clone https://github.com/kihyoun/system.git system-upgrade-2
+cd system-upgrade-2
+git checkout --detach v2.0.0
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
+```
+
+Prepare prüft öffentliche Metadaten/Nachweise und das installierte Release und
+lädt vor der Wartung den akzeptierten Helfer sowie alle sechs genauen GitLab-/
+Runner-/Helper-Images. Es aktualisiert keine Services. Ein Herausgeber-Konto oder
+privates Pipeline-Artefakt wird nicht benötigt. Plan gibt den GitLab-Plan-Hash aus;
+diesen prüfen und vor Promote `GITLAB_PLAN_SHA256` ersetzen. Der akzeptierte
+Ziel-Helfer führt die gemeinsamen Nest-Migrationsdienste aus, während der bisherige
+Controller ausgewählt bleibt.
+
+```bash
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+  --operation prepare --checkout "$PWD" --target 2.0.0 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+  --operation plan --checkout "$PWD" \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+  --operation promote --checkout "$PWD" --confirm-plan GITLAB_PLAN_SHA256 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+```
+
+Die zurückgegebenen Werte `checkpointDir` und `checkpointSha256` behalten. Der
+erste ist das Host-Verzeichnis für den folgenden Paar-Plan. Den GitLab-Vorgang vor
+dem Fortsetzen mit Status prüfen. Der Paar-Plan prüft den abgeschlossenen Checkpoint,
+die tatsächlich migrierten Images/die Version und veröffentlichte Übergangsnachweise.
+Apply behält die Rückfall-Images für Controller/Wizard und erstellt die koordinierte
+passende Sicherung. Diesen eigenen Plan prüfen und `PAIR_PLAN_SHA256` ausdrücklich ersetzen.
+
+```bash
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+  --checkout "$PWD" --target 2.0.0 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
+  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2.0.0 \
+  --backup-file /mnt/backup/configuration-before-2.0.0.zip \
+  --token-file /root/system-api-token
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+  --operation apply --checkout "$PWD" --confirm-plan PAIR_PLAN_SHA256 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
+  --token-file /root/system-api-token
+```
+
+Der Abschluss verlangt dieselbe native Prüfung wie oben. Vorbereitungsverzeichnis,
+beide Checkpoints, Konfigurations-ZIP und Seed behalten. Nach Unterbrechungen zuerst
+den Status prüfen; niemals zum Wiederholen eine Lease löschen.
+
+```bash
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+  --operation status --checkout "$PWD" \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+  --operation status --checkout "$PWD" \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+```
+
+Bei einer Paar-Unterbrechung `system-bootstrapper upgrade --operation recover`
+mit demselben Planverzeichnis, privaten Token und `--confirm-plan PAIR_PLAN_SHA256`
+verwenden. Es stellt das vorherige Controller-/Wizard-Paar wieder her und setzt
+GitLab ausdrücklich nicht zurück. Falls auch ein Datenbank-Rollback benötigt wird,
+zuerst diese Paar-Wiederherstellung abschließen und dann
+`system-bootstrapper gitlab-upgrade --operation rollback` mit demselben
+Vorbereitungsverzeichnis, `--confirm-checkpoint GITLAB_CHECKPOINT_SHA256` und
+`--paired-checkpoint /var/lib/system-bootstrapper/platform/recovery/controller-updates/to-2.0.0`
+verwenden. Der Helfer prüft die abgeschlossene Paar-Wiederherstellung, bevor er den
+neu erstellten alten Controller akzeptiert. Solange kein abgeschlossener GitLab-
+Checkpoint existiert, setzt das separate
+`--operation abort --confirm-plan GITLAB_PLAN_SHA256` die alte Generation fort.
+Datenbank-Rollback verwirft Schreibvorgänge nach dem kalten Checkpoint. Offline-
+Laufzeit und akzeptiertes Helfer-Image behalten; die Wiederherstellung lädt oder
+baut sie nicht neu.

@@ -166,7 +166,7 @@ export function migrationCommand(edge: UpgradeTransition, operation: string) {
       edge.to +
       '.zip \\\n  --token-file /root/system-api-token' +
       (edge.gitlabPrerequisite
-        ? ' \\\n  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/gitlab-upgrades/to-' +
+        ? ' \\\n  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-' +
           edge.to
         : '')
     );

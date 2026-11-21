@@ -31,12 +31,13 @@ zur begrenzten Protokollierung, die erhaltene Konfiguration und die Grenzen grö
 
 ## Neuinstallation aus öffentlichen Images
 
-`install-release.py` ist der kompatible Host-Einstiegspunkt für eine leere Installation.
-Es führt die kompilierte Implementierung `operations/dist/host/entry.js` aus. Bereiten
+`system-bootstrapper install --checkout /absolute/reviewed/source` ist der native
+Host-Einstiegspunkt für eine leere Installation. Er löst `HostInstallService` im
+gemeinsamen eigenständigen Nest-Anwendungskontext auf. Bereiten
 Sie Node.js 24.22.0 und das gebaute Operations-Paket vor Installation oder Offline-
 Wartung vor; dieser Einstiegspunkt lädt keine Abhängigkeiten und kompiliert keinen Code.
-Der entsprechende direkte Aufruf ist `node operations/dist/host/entry.js` mit
-denselben Optionen. Es erwartet
+Der untergeordnete Einstiegspunkt `node operations/dist/host/entry.js` akzeptiert
+dieselben Image-Optionen und leitet den Checkout aus dem Aufrufverzeichnis ab. Die CLI erwartet
 `--controller IMAGE@sha256:...` und `--wizard IMAGE@sha256:...` sowie optional
 `--persistence-env FILE`. `--install-host` installiert Docker/Compose bei Bedarf über das
 versionierte Host-Installationsprogramm. Das [Handbuch](../docs/HANDBOOK.md) beschreibt
@@ -294,20 +295,20 @@ Ein ausgelassener Image-Tag hat Dockers normale Bedeutung `:latest`, sodass der 
 Registry-Ports, Digest-Referenzen und exakte Image-ID-Prüfungen bleiben verschieden.
 
 Ein älteres Prüfsummenmanifest mit zwei Listen kann ausdrücklich geprüft werden mit
-`python3 bootstrapper/recovery.py verify --directory /path/to/recovery --checksums-only`.
+`/opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js recovery verify --checkout "$PWD" --directory /path/to/recovery --checksums-only`.
 Diese Kompatibilitätsprüfung kann weder Images laden noch Dienste starten; vervollständigen Sie zuerst die Quellcode-
 und Alias-Deklarationen über den normalen geprüften Betreiberablauf.
 
 ## Öffentlichen Controller bei bereits aktuellen Diensten aktualisieren
 
-Für ein unterstütztes unverändertes offizielles Release `upgrade-release.py` mit dem
+Für ein unterstütztes unverändertes offizielles Release `system-bootstrapper upgrade` mit dem
 [öffentlichen Upgrade-Leitfaden](../docs/RELEASES.md#upgrade-and-rollback) verwenden.
 Der Befehl lädt öffentliche Nachweise, prüft den genauen Übergang, koordiniert
 eine passende Sicherung und verlangt vor dem Paar-Updater den geprüften Plan-SHA-256.
 Nur das API-Token der eigenen Installation ist nötig. Status und Wiederherstellung
 verwenden denselben gespeicherten Planpfad; eine Veröffentlichung startet kein Upgrade.
 
-Verwenden Sie `update-controller.py`, wenn eine bestehende öffentliche Release-Installation bereits
+Verwenden Sie `system-bootstrapper controller-update`, wenn eine bestehende öffentliche Release-Installation bereits
 die vom aktuellen Sicherheitsprofil freigegebenen GitLab- und Runner-Images ausführt und
 **kein Archivmanifest `recovery/images.json` besitzt**. Dieser ausdrückliche Weg lehnt ein
 bestehendes Manifest einschließlich eines ins Leere zeigenden Links ab; er erfindet oder ersetzt
@@ -336,7 +337,7 @@ Quellcodelabel und Kandidatenjoblabel. Das öffentliche Wizard-Image wird nur ge
 wenn die unten beschriebene ausdrückliche Paaroption gewählt ist.
 
 ```sh
-sudo python3 bootstrapper/update-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/accepted-release/release.json \
   --evidence /root/accepted-release/candidate-results.json \
@@ -376,10 +377,10 @@ erhält die exakte Konfiguration nach der Aktualisierung für diesen späteren A
 Prüfen Sie eine unterbrochene oder abgeschlossene Aktualisierung oder rollen Sie sie mit demselben Checkout zurück:
 
 ```sh
-sudo python3 bootstrapper/update-controller.py --operation status \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example
-sudo python3 bootstrapper/update-controller.py --operation rollback \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" --operation rollback \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example \
   --token-file /root/private-gitlab-api-token
@@ -561,7 +562,7 @@ Führen Sie anschließend die Vorabprüfung der freigegebenen Reparatur aus dere
 sauberem, geprüftem Checkout aus:
 
 ```sh
-sudo python3 bootstrapper/update-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" \
   --repair-stopped-controller \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/accepted-release/release.json \
@@ -600,7 +601,7 @@ Seed-/Konfigurationssicherung auf, bis das reparierte Release freigegeben ist.
 
 ## Einen getesteten Nachfolger-Controller freigeben
 
-`promote-controller.py` verarbeitet die eingefrorenen Artefakte `release.json` und
+`system-bootstrapper promote` verarbeitet die eingefrorenen Artefakte `release.json` und
 `candidate-results.json`, die derselbe erfolgreiche vollständige Kandidaten-
 job veröffentlicht hat. Es prüft ihre exakten Bytes über die konfigurierte GitLab-API, den geschützten
 Standardbranch und Quellcodebaum/-Gitlink, alle erforderlichen internen Jobs und die exakte
@@ -621,7 +622,7 @@ prüfsumme belegen seine Identität. Dadurch kann ein neuer Host den Controller 
 bevor die eigene GitLab-Registry des Controllers läuft.
 
 ```sh
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -671,7 +672,7 @@ Generation. Ein neuerer freigegebener Kandidat kann diesen vorbereiteten Control
 denselben Einstiegspunkt ersetzen, ohne gespeicherte Selektoren oder Wiederherstellungsmanifest zu bearbeiten:
 
 ```sh
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -714,10 +715,10 @@ Checkpoint ist kein Parameter für dessen Rollback-Aktion.
 Prüfen oder brechen Sie einen unterbrochenen Controller-Vorgang mit dem versionierten Einstiegspunkt ab:
 
 ```sh
-sudo python3 bootstrapper/promote-controller.py --operation status \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
-sudo python3 bootstrapper/promote-controller.py --operation abort \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
 ```
@@ -767,7 +768,7 @@ Ein erneuter Versuch erzeugt ein weiteres Vorgangsarchiv, statt es zu überschre
 Löschen Sie den Host erst, wenn Exporter und `recover-volume.js --verify` erfolgreich sind.
 
 Isolierte Vertragsprüfungen laufen mit `node --test tests/bootstrapper/native-initialization.js` und
-`python3 tests/bootstrapper/successor-host-tools.py`. Der ausdrückliche kleine Docker-
+`node --test operations/tests/host-module.test.cjs`. Der ausdrückliche kleine Docker-
 Grundmechanismustest ist von der socketfreien Komponentensuite getrennt:
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`.
 Er verwendet einen einzigen exakt markierten, begrenzten, verwerfbaren lokalen Container und niemals eine laufende

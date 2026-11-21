@@ -28,11 +28,13 @@ Docker 데몬 호스트에서 [기본 호스트 호환성 검사 및 로그 정�
 
 ## 공개 이미지로 새로 설치하기
 
-`install-release.py`는 빈 설치를 위한 호환 호스트 진입점입니다.
-컴파일된 `operations/dist/host/entry.js` 구현을 실행합니다. 설치 또는 오프라인
+`system-bootstrapper install --checkout /absolute/reviewed/source`는 빈 설치를 위한
+기본 호스트 진입점입니다. 공유 독립형 Nest 애플리케이션 컨텍스트에서
+`HostInstallService`를 가져옵니다. 설치 또는 오프라인
 유지보수 전에 Node.js 24.22.0과 빌드된 operations 패키지를 준비하세요.
 이 진입점은 의존성을 다운로드하거나 코드를 컴파일하지 않습니다.
-동일한 플래그를 사용하는 직접 호출은 `node operations/dist/host/entry.js`입니다.
+하위 진입점 `node operations/dist/host/entry.js`는 같은 이미지 플래그를 받고
+호출 디렉터리에서 체크아웃을 결정합니다. CLI는
 `--controller IMAGE@sha256:...`와 `--wizard IMAGE@sha256:...`를 받고 선택적으로
 `--persistence-env FILE`을 받습니다. `--install-host`는 필요할 때 커밋된 호스트 설치
 프로그램으로 Docker/Compose를 설치합니다. [핸드북](../docs/HANDBOOK.md)은 이 플래그를
@@ -271,20 +273,20 @@ sudo node bootstrapper/verify-runtime.js check \
 계속 구분됩니다.
 
 이전 두 목록 체크섬 매니페스트는
-`python3 bootstrapper/recovery.py verify --directory /path/to/recovery --checksums-only`로
+`/opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js recovery verify --checkout "$PWD" --directory /path/to/recovery --checksums-only`로
 명시적으로 감사할 수 있습니다. 이 호환성 감사는 이미지를 로드하거나 서비스를 시작할 수
 없습니다. 먼저 일반 검토된 운영자 작업 흐름으로 소스와 별칭 선언을 완성하세요.
 
 ## 서비스가 이미 최신인 공개 컨트롤러 업데이트하기
 
-지원되는 변경되지 않은 공식 릴리스는 `upgrade-release.py`와
+지원되는 변경되지 않은 공식 릴리스는 `system-bootstrapper upgrade`와
 [공개 업그레이드 안내](../docs/RELEASES.md#upgrade-and-rollback)를 사용하세요. 공개
 검증 자료를 내려받고 정확한 전환을 검증하며 일치하는 백업을 조정한 후 아래의
 쌍 업데이터를 호출하기 전에 검토된 계획 SHA-256을 요구합니다. 자신의 설치 API
 토큰만 필요합니다. 상태와 복구는 같은 보관된 계획 디렉터리를 사용하며 릴리스
 게시는 업그레이드를 시작하지 않습니다.
 
-`update-controller.py`는 기존 공개 릴리스 설치가 현재 보안 프로필에서 승인한
+`system-bootstrapper controller-update`는 기존 공개 릴리스 설치가 현재 보안 프로필에서 승인한
 GitLab 및 Runner 이미지를 이미 실행하고 있으며 **`recovery/images.json` 아카이브
 매니페스트가 없을 때** 사용하세요. 이 명시적 경로는 끊어진 링크를 포함한 기존
 매니페스트를 거부하며 만들어 내거나 교체하지 않습니다. 아카이브 기반 설치는 아래의
@@ -309,7 +311,7 @@ GitLab은 이미 후보의 승인된 **대상** 이미지/버전과 일치해야
 가져오지 않습니다.
 
 ```sh
-sudo python3 bootstrapper/update-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/accepted-release/release.json \
   --evidence /root/accepted-release/candidate-results.json \
@@ -346,10 +348,10 @@ Wizard 별칭 활성화 같은 이후 구성 변경에는 업데이트 후 일�
 동일한 체크아웃으로 중단되거나 완료된 업데이트를 점검하거나 롤백하세요.
 
 ```sh
-sudo python3 bootstrapper/update-controller.py --operation status \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example
-sudo python3 bootstrapper/update-controller.py --operation rollback \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" --operation rollback \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /var/lib/system-bootstrapper/platform/recovery/controller-updates/example \
   --token-file /root/private-gitlab-api-token
@@ -506,7 +508,7 @@ sudo env PERSISTENT_DIR=/var/lib/system-bootstrapper/platform \
 그런 다음 변경 사항이 없는 검토된 체크아웃에서 승인된 복구를 사전 점검하세요.
 
 ```sh
-sudo python3 bootstrapper/update-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js controller-update --checkout "$PWD" \
   --repair-stopped-controller \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/accepted-release/release.json \
@@ -540,7 +542,7 @@ Sync API에 유휴 대기열 확인을 요청하는 대신 기존 컨트롤러�
 
 ## 검증된 후속 컨트롤러 승격하기
 
-`promote-controller.py`는 같은 성공한 전체 후보 작업이 게시한 고정된 `release.json` 및
+`system-bootstrapper promote`는 같은 성공한 전체 후보 작업이 게시한 고정된 `release.json` 및
 `candidate-results.json` 아티팩트를 사용합니다. 구성된 GitLab API를 통해 정확한
 바이트, 보호된 기본 브랜치와 소스 트리/gitlink, 모든 필수 내부 작업 및 정확한 후보
 작업 ID를 검증합니다. 구성된 필수 병합 관문은 활성화되어 있어야 합니다. 허용되는 유일한
@@ -558,7 +560,7 @@ Sync API에 유휴 대기열 확인을 요청하는 대신 기존 컨트롤러�
 레지스트리가 시작되기 전에 컨트롤러를 시작할 수 있습니다.
 
 ```sh
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -606,7 +608,7 @@ GitLab이 이전 검토 이미지를 실행하는 동안 컨트롤러 준비가 
 복구 매니페스트를 편집하지 않고 같은 진입점으로 준비된 컨트롤러를 교체할 수 있습니다.
 
 ```sh
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -645,10 +647,10 @@ sudo python3 bootstrapper/promote-controller.py \
 커밋된 진입점으로 중단된 컨트롤러 작업을 점검하거나 중단하세요.
 
 ```sh
-sudo python3 bootstrapper/promote-controller.py --operation status \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
-sudo python3 bootstrapper/promote-controller.py --operation abort \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/example
 ```
@@ -696,7 +698,7 @@ sudo python3 bootstrapper/record-recovery-images.py \
 `recover-volume.js --verify`가 통과할 때까지 호스트를 삭제하지 마세요.
 
 격리 계약은 `node --test tests/bootstrapper/native-initialization.js`와
-`python3 tests/bootstrapper/successor-host-tools.py`로 실행합니다. 명시적인 작은
+`node --test operations/tests/host-module.test.cjs`로 실행합니다. 명시적인 작은
 Docker 기본 동작 테스트는 소켓 없는 구성 요소 테스트와 별도입니다.
 `node tests/bootstrapper/paused-controller-docker.js --allow-local-daemon`을 사용합니다.
 정확한 레이블이 있고 제한된 폐기 가능 로컬 컨테이너 하나만 사용하며 라이브 GitLab

@@ -30,7 +30,7 @@ Job-Artefakt, Docker-Hub-Anmeldung noch lokale Versionsliste sind erforderlich.
 
 Das Installationsprogramm prüft Betriebssystem, Architektur, Berechtigungen, Ressourcen,
 Ports und vorhandene Installationspfade, bevor es Hostpakete ändert. Es übergibt die
-Abhängigkeiten an `bootstrapper/install.js` und den Start an `bootstrapper/install-release.py`;
+Abhängigkeiten an `bootstrapper/install.js` und den Start an `system-bootstrapper install`;
 es baut weder Ersatz-Images noch startet es GitLab vor der Browserkonfiguration.
 Das native Release-Installationsprogramm prüft erneut unveränderten Quellcode, Image-Labels,
 unveränderliche Digests, akzeptierte Image-IDs, denselben Kandidatenversuch und frischen persistenten Zustand.

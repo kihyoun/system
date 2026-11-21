@@ -103,7 +103,7 @@ Images ohne Publikationszugangsdaten abgerufen werden können. Siehe
 
 Die öffentliche Veröffentlichung schaltet keine Produktionsumgebung um und
 sichert keine Dienstdaten. Ein neuer Betreiber wählt den freigegebenen Quellcode
-und die beiden Digest-Referenzen und verwendet `bootstrapper/install-release.py`
+und die beiden Digest-Referenzen und verwendet `system-bootstrapper install`
 über den Neuinstallationsweg des Handbuchs. Vorhandene Installationen behalten
 ihre gespeicherten Auswahlwerte und benötigen stattdessen das passende geprüfte
 Freigabe-/Migrationsverfahren.
@@ -331,7 +331,7 @@ ihn nicht. Andere Pipeline-Fehler blockieren die Freigabe.
 Führen Sie zuerst die Quellcode-/CI-Eingabeprüfung aus:
 
 ```bash
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --operation promote \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
@@ -367,12 +367,12 @@ Wird dieser **Controller**-Vorgang unterbrochen, verwenden Sie denselben Prüfpu
 mit den eingecheckten Status- und gegebenenfalls Abbruchaktionen:
 
 ```bash
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID
 
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \

@@ -27,7 +27,7 @@ required. Public registries and GitHub may enforce anonymous request limits.
 
 The installer checks OS, architecture, privileges, resources, ports and existing
 installation paths before changing host packages. It delegates dependencies to
-`bootstrapper/install.js` and startup to `bootstrapper/install-release.py`; it
+`bootstrapper/install.js` and startup to `system-bootstrapper install`; it
 neither builds replacement images nor starts GitLab before browser configuration.
 The native release installer rechecks clean source, image labels, immutable digests,
 accepted image IDs, same candidate attempt and fresh persistent state.

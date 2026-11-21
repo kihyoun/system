@@ -80,7 +80,7 @@ Hub 참조를 연결합니다. 기존의 충돌 별칭은 거부하며, 익명 �
 
 공개 게시는 운영 환경을 승격하거나 서비스 데이터를 백업하지 않습니다. 새 운영자는
 승인된 소스와 두 다이제스트 참조를 선택하고 새 설치 핸드북 경로에서
-`bootstrapper/install-release.py`를 사용합니다. 기존 설치는 저장된 선택자를 유지하며 대신
+`system-bootstrapper install`를 사용합니다. 기존 설치는 저장된 선택자를 유지하며 대신
 해당하는 검토된 승격/마이그레이션 절차가 필요합니다.
 
 안내형 미리보기와 GitLab 마이그레이션을 함께 실행할 때
@@ -259,7 +259,7 @@ GitLab을 중지할 때 CI 작업이 살아남으리라 의존하지 말고, 호
 먼저 소스/CI 입력 검사를 실행하세요.
 
 ```bash
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --operation promote \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
@@ -289,12 +289,12 @@ Registry를 사용할 수 있기 전에 아카이브에서 나중에 콜드 시�
 중단 작업을 사용하세요.
 
 ```bash
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID
 
-sudo python3 bootstrapper/promote-controller.py \
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js promote --checkout "$PWD" \
   --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \

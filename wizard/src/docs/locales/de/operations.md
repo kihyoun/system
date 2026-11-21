@@ -44,7 +44,8 @@ Führe jeden Durchlauf wie folgt aus; bewahre Belege außerhalb des Quellcode-Ch
    eingecheckte GitLab-Prüfung aus:
 
    ```bash
-   sudo docker exec -i system_gitlab_1 gitlab-rails runner - < gitlab/upgrade-preflight.rb
+   GITLAB_CONTAINER_ID="$(sudo docker inspect --format '{{.Id}}' system_gitlab_1)"
+   sudo docker exec system_bootstrapper_1 node /system/operations/dist/gitlab-preflight/entry.js "$GITLAB_CONTAINER_ID"
    ```
 
    Ihr JSON muss die akzeptierte CE-Version, `runningJobs: 0` und

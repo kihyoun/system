@@ -14,14 +14,13 @@ System commit and `wizardSourceTree` for the Wizard tree. Historical receipts ke
 `wizardSourceRevision` as a separate commit. Mixed source layouts are rejected.
 The existing installation receipt schema and statuses are retained.
 
-`bootstrapper/install-release.py` is a transport compatibility entry for the same
-compiled implementation. Python update consumers use fixed helper RPC and typed native ports.
-Source/image acceptance and the destructive update sequence are TypeScript;
-remaining Python preflight and backup checks are described below. The documented CLI flags remain accepted. No arbitrary code or
-shell command is accepted by the compatibility RPC.
+`system-bootstrapper install --checkout /absolute/reviewed/source` invokes the
+same compiled implementation through a standalone Nest context. Native CLI
+handlers validate flags and delegate to shared services; source/image acceptance,
+preflight, backup polling, update and recovery all remain TypeScript operations.
 
 Prepare the supported Node runtime and compiled operations package before offline
-maintenance. Neither compatibility entry installs packages or compiles sources.
+maintenance. Maintenance commands never install packages or compile sources.
 Fresh Quickstart prepares pinned Node through its isolated nvm installation and
 copies the compiled package from the accepted controller image. Manual release
 hosts use `tools/quickstart/quickstart.sh --runtime-only vMAJOR.MINOR.PATCH`; the retained absolute Node path
@@ -41,11 +40,10 @@ bounded at 15 seconds, command timeout at the existing maximum of 1800 seconds,
 and group cleanup at 10 seconds. Captured output is bounded to 4 MiB. A canceled
 or failed guardian leaves its journal for the existing adoption checks.
 `ControllerLeaseModule` provides the same durable lease service to native host
-operations and the transitional release adapter. Its dedicated private worker
+operations and their standalone CLI adapters. Its dedicated private worker
 retains the native coordinator identity; a critical failure detaches and closes
-that coordinator while an active guardian retains the inherited lock. Existing
-real process-interruption tests run with
-`python3 tests/bootstrapper/successor-host-tools.py HostChildInterruption`.
+that coordinator while an active guardian retains the inherited lock. Existing real process-interruption checks exercise the shared guardian and
+lease services through the operations component test entry.
 
 `RecoveryManifestService` verifies retained archive checksums, unique aliases,
 recorded Git objects and saved selectors. A newer host-tools checkout does not
@@ -57,8 +55,7 @@ archive records. Checksums-only legacy manifests cannot start services.
 public digests from the accepted manifest. Docker's native compressed-archive
 reader streams `load --input` directly, avoiding an intermediate uncompressed
 file or a separate gzip child. Its 900-second load bound never exceeds a supplied
-remaining operation deadline. A failed load cannot proceed to tagging. Existing
-Python recovery callers forward to these services.
+remaining operation deadline. A failed load cannot proceed to tagging. The native recovery CLI invokes these same services.
 `RecoveryArchiveService.save` streams the selected immutable controller image ID
 through gzip into an exclusive private file. It publishes the archive only after
 the export process succeeds and the file has been synced, then returns its size,
@@ -76,8 +73,7 @@ current checkout, and checks allowed commit ancestry with Git replacement object
 disabled. `validateUpgradeGraph` and `upgradePath` share the reviewed ordered
 version graph and explicit prerequisite/backup/preflight/apply/verify/recovery
 steps. Unknown versions, reverse paths, duplicate edges, unsupported database
-migration claims and incomplete preservation promises are refused. The Python
-source/graph APIs forward to these implementations.
+migration claims and incomplete preservation promises are refused. Host operation adapters use these implementations directly.
 
 `RuntimeInspectionService` checks canonical container identities and health, with
 an explicit failed-controller exception restricted to a quiescent owned container
@@ -113,7 +109,7 @@ identifiers never replace those outer publication identities.
 The 1.2.0 → 2.0.0 graph explicitly includes the GitLab 19.5.3 → 19.6.1 database
 migration and Runner transition. Complete the native GitLab upgrade with its
 retained cold checkpoint before planning the paired Controller/Wizard phase, then
-pass `--gitlab-checkpoint` to `bootstrapper/upgrade-release.py --operation plan`.
+pass `--gitlab-checkpoint` to `system-bootstrapper upgrade --operation plan`.
 The plan and apply revalidate the checkpoint inventory, successful native receipt,
 source identity, running GitLab/Runner image IDs and GitLab version. The paired
 recovery command restores the application pair; it does not rewind GitLab. Keep
@@ -132,24 +128,23 @@ backup, paired apply and final data verification. `UpgradeLifecycleService`
 persists phase transitions and interruption state. These services resolve through
 `HostModule`, with explicit typed ports for native tools and installation context.
 
-The existing `promote.py`, `update-controller.py` and `upgrade-release.py` command
-interfaces remain compatible. Their private framed transport invokes only fixed
-native port methods; it does not accept arbitrary source code. Python retains
-pre-mutation authority setup, public installed-release inspection, backup-mount
-preflight, coordinated backup polling and the public status/recover command wrapper.
-The shared native lease service owns lock acquisition/adoption; the native archive
-service owns streaming. `RecoveryExportService.execute` validates candidate authority,
-acquires the shared lease, checks running image and saved selection identities,
-exports the immutable controller image and publishes the validated manifest with
-its exact previous bytes retained. The standalone `recovery-export-entry.js` maps
-CLI flags to that same service.
-These retained checks remain part of the safety boundary. Critical interruptions
-retain checkpoints and owned leases for inspection or adoption; recovery never
-silently rewinds GitLab data. Native adapters retain their existing budgets.
+The native `promote`, `controller-update`, `upgrade`, `recovery-export` and
+`recovery` CLI commands share these services. Installed-release inspection,
+public host/mount preflight, backup-status polling, pre-mutation authority checks
+and status/recover handling are part of the same TypeScript runtime. No shell or
+arbitrary source is accepted over private operation channels.
+`RecoveryExportService.execute` validates candidate authority, acquires the
+shared lease, checks running image and saved selection identities, exports the
+immutable controller image and publishes the validated manifest with its exact
+previous bytes retained. Its standalone entry and the CLI map flags to that same
+service. Critical interruptions retain checkpoints and owned leases for
+inspection or adoption; recovery never silently rewinds GitLab data. Native
+adapters retain their existing budgets.
 
-Regression coverage uses `tests/bootstrapper/public-controller-update.py`,
-`tests/bootstrapper/public-upgrade.py` and the cold-maintenance/staged-promotion
-cases in `tests/bootstrapper/successor-host-tools.py`. They exercise the compiled
-Nest services through the compatibility entries while replacing native external
-tools with controlled fixtures, including failed health checks, immutable image
-mismatches, interrupted updates and offline rollback.
+Regression coverage uses `tests/bootstrapper/public-controller-update.cjs`,
+`tests/bootstrapper/public-upgrade.cjs` and the host suites under
+`operations/tests/`. These checks exercise compiled Nest services with controlled
+external-tool fixtures, including failed health checks, immutable image
+mismatches, interrupted updates and offline rollback. Real database migration,
+registry/runner execution and cold restore remain acceptance stages in the
+existing disposable platform candidate, not claims made by these fixtures.

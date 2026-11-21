@@ -262,7 +262,7 @@ PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  python3 bootstrapper/install-release.py \
+  /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```
@@ -280,7 +280,7 @@ Installieren Sie auf HTTPS-Hosts Certbot separat und führen Sie dann
 Erneuerungsintegration aus. Der lokale Modus benötigt keine zusätzliche Mount-Abhängigkeit. Weder Docker
 noch normaler Dienststart oder Zertifikatserneuerung hängen von einem externen Seed-Ziel ab.
 
-`install-release.py` prüft den sauberen Checkout und die festgelegte Wizard-Version
+`system-bootstrapper install` prüft den sauberen Checkout und die festgelegte Wizard-Version
 gegen die Identitäten der geladenen öffentlichen Images. Es lehnt eine bestehende Haupt-
 konfiguration oder GitLab-Daten ab, statt eine Neuinstallation als Upgrade zu behandeln.
 Es verzeichnet nur die beiden Release-Image-Selektoren in der privaten Datei

@@ -1,8 +1,8 @@
 # Controller and runner lifecycle
 
-`LifecycleModule` exports the controller and runner services. The existing
-`system/start*.sh`, `system/stop*.sh` and runner start/stop/register commands are
-compatibility adapters to a standalone Nest context. The runner adapters retain
+`LifecycleModule` exports the controller and runner services. The native
+`operations/dist/lifecycle/entry.js ACTION CHECKOUT` entry maps controller and
+runner start/stop/register commands to a standalone Nest context. Runner actions retain
 the native registration flock. The services share the persistent storage/startup
 barrier and verify inherited startup ownership before reusing it.
 

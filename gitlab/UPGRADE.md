@@ -19,9 +19,9 @@ The existing `node gitlab/upgrade.js` commands use the controller-side
 [GitLabUpgradeModule](../operations/src/gitlab-upgrade/README.md). Prepare the
 committed operations runtime before entering maintenance. The module shares its
 validated session service with programmatic callers and retains the existing
-private owner, checkpoint and guardian journal formats. The native watchdog and
-Ruby database adapter remain separate; neither a package download nor a runtime
-build is part of recovery.
+private owner, checkpoint and guardian journal formats. The native watchdog remains a separate process; shared native PostgreSQL probes
+inspect database state. Neither a package download nor a runtime build is part
+of recovery.
 
 ## Supported transition
 
@@ -68,7 +68,27 @@ verification; its duration depends on data size and pending work. No fixed
 completion time is promised. Rollback loses writes after the checkpoint and
 requires restoring data, secrets, configuration and matching images together.
 
-## Manual production operation
+## Official public release upgrade
+
+For an unchanged official 1.2.0 installation, follow the
+[native public 2.0.0 procedure](../docs/RELEASES.md#native-upgrade-from-120-to-200).
+The public CLI validates published provenance and the installed release, retains
+preparation inputs and pulls the accepted target helper before maintenance. It
+runs the same GitLab upgrade services in a one-shot container while retaining
+the old controller. Its full helper image/container identity, original controller,
+mounts and operation ownership are checked before mutation. It does not require
+access to the publisher's private GitLab pipeline artifacts. The default internal
+upgrade path still requires the running tested candidate; this explicit helper
+is not a general bypass for an arbitrary controller or image.
+
+After GitLab promotion, pass the returned host checkpoint directory to the paired
+release plan. Pair recovery does not rewind the database. If a later database
+rollback is required, complete paired recovery first and supply its completed
+checkpoint explicitly to the retained GitLab preparation. Keep the accepted helper,
+offline CLI, both checkpoints and matching configuration/Seed backups. Status can
+inspect the retained operation even if the original controller has been replaced.
+
+## Manual accepted-source production operation
 
 Run the host-side controller-promotion workflow first to stage the exact tested
 full System image. The GitLab upgrade command executes inside that controller,
@@ -130,7 +150,7 @@ Harvest/Seed, certificate and Wizard environment leases before checking that
 Sync and GitLab have no active work. It then drains and stops GitLab’s internal
 NGINX, Workhorse and Puma HTTP services. With API ingress confirmed down, native
 and external managers cannot claim new jobs or register another runner. A final
-Rails job check detects an assignment already in flight: in that case the old
+native database job check detects an assignment already in flight: in that case the old
 HTTP service is resumed without stopping the database, cancelling jobs or taking
 a checkpoint. Existing runner paused states remain unchanged. Sync blocks
 mutations while retaining login,

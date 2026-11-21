@@ -65,7 +65,7 @@ Wizard 트리와 비교하세요. 이 레이아웃에는 별도 Wizard 복제, �
 새 호스트는 런타임을 준비하는 [빠른 시작](QUICKSTART.md)으로 설치하세요. 명시적 경로는
 먼저 [호스트 런타임 준비](../Prepare-Host.md#prepare-the-host-operations-runtime)를 완료한 뒤 매니페스트의
 `images.controller.reference`와 `images.wizard.reference`를
-`bootstrapper/install-release.py --controller ... --wizard ... --release-metadata ...`에 전달하세요.
+`system-bootstrapper install --controller ... --wizard ... --release-metadata ...`에 전달하세요.
 네이티브 설치 프로그램은 정확한 소스와 다운로드한 이미지 식별 정보를 검증합니다.
 참조만으로 이미지 내용을 보존할 수는 없습니다. 검증된 이미지 아카이브를 보관하거나,
 필요한 복구 기간 동안 공개/비공개 레지스트리를 복구할 수 있도록 준비하세요.
@@ -120,6 +120,11 @@ Wizard Docs의 릴리스 장에서는 Sync 없이 설치 버전과 대상 버전
 식별 정보, 비공개 Wizard 이미지 대체, 다운그레이드와 선언되지 않은 서비스 및
 데이터베이스 전환은 유지보수 전에 실패합니다. 호환되는 제품 버전 번호만으로
 필수 데이터베이스 중간 단계를 생략할 수 없습니다.
+
+다음 예시는 **과거 1.2.0 체크아웃**에 해당합니다. Python 진입점은 해당 태그에
+그대로 남아 있으며 2.0 런타임에는 포함되지 않습니다. 각 필수 중간 단계에는
+해당 버전의 명령을 사용하세요. 2.0에서는 기본 CLI 런타임을 준비하고 별도로
+검토된 [GitLab 마이그레이션](../gitlab/UPGRADE.md)을 완료한 뒤 릴리스 쌍 단계를 진행하세요.
 
 1. 선택한 대상 릴리스 소스와 정확한 Wizard Git 링크를 가져옵니다. 이전
    체크아웃과 복구 입력을 별도로 보관합니다. 공개 메타데이터와 게시자를
@@ -241,10 +246,11 @@ Wizard 다이제스트 참조를 가져와 기록된 이미지 ID와 일치하�
 일반 구성 절차로 이 두 선택만 복원하세요. 다른 현재 설정을 덮어쓰거나 보관된
 복구 입력을 삭제하지 마세요.
 
-현재 공개 그래프에는 컨트롤러/Wizard 전환만 있습니다. 컨테이너 롤백은
-데이터베이스 마이그레이션을 되돌릴 수 없습니다. 향후 선언될 서비스 전환은 기존
+현재 그래프는 컨트롤러/Wizard 쌍 업데이트 전에 GitLab 데이터베이스를
+마이그레이션하는 **1.2.0 → 2.0.0** 전환도 선언합니다. 컨테이너 롤백은 데이터베이스
+마이그레이션을 되돌릴 수 없습니다. 선언된 서비스 전환은 기존
 [GitLab 마이그레이션 및 콜드 체크포인트 복구](HANDBOOK.md#5-evolving-a-running-system)
-절차의 필수 중간 버전과 독립적으로 보관한 복구 입력을 사용해야 하며, 공개 CLI는
+절차의 필수 중간 버전과 독립적으로 보관한 복구 입력을 사용하며, 공개 CLI는
 구현되지 않은 전환 종류를 거부합니다. 전체 [구성과 Seed 복구](RECOVERY_CONTRACT.md)는
 새 라이브 저장소로 복구하는 절차입니다. 중간 릴리스가 있는 경로는 순서대로
 표시됩니다. Apply는 먼저 첫 중간 릴리스의 체크아웃, 새 백업과 별도 승인 계획을
@@ -272,3 +278,91 @@ Wizard 다이제스트 참조를 가져와 기록된 이미지 ID와 일치하�
 이전 이미지는 관리자 전용 고정값이 아니라 공개 메타데이터에서 가져옵니다.
 게시자는 일치하는 성공한 런타임 전환 증거가 없으면 해당 경로를 거부합니다.
 메타데이터를 바꾸는 것만으로 호환성이 생기지 않습니다.
+
+### 1.2.0에서 2.0.0으로 기본 업그레이드
+
+지원되는 Ubuntu x86_64의 변경되지 않은 공식 1.2.0 설치와 일치하는 구성/Seed
+백업을 사용하세요. 실행 중인 작업과 미완료 백그라운드 마이그레이션을 기다리세요.
+이전 승인 릴리스와 복구 도구를 별도로 보관하고 자신의 저장소, 도메인 및 비공개
+설치 API 토큰을 선택하세요. 아래 경로는 예시입니다. 모든 명령에 실제 영구 저장소
+루트와 마운트된 백업 파일시스템을 적용하세요.
+
+정확한 대상 버전을 가져오고 중단 전에 검증된 오프라인 런타임을 준비하세요.
+현재 Wizard는 System 소스 트리에 포함되므로 이 태그에는 Wizard 서브모듈이 필요 없습니다.
+
+```bash
+git clone https://github.com/kihyoun/system.git system-upgrade-2
+cd system-upgrade-2
+git checkout --detach v2.0.0
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
+```
+
+Prepare는 공개 메타데이터/검증 자료와 설치된 릴리스를 검증하고 유지보수 전에
+승인된 도우미와 여섯 개의 정확한 GitLab/Runner/Helper 이미지를 가져옵니다.
+서비스를 업그레이드하지는 않습니다. 게시자 계정이나 비공개 파이프라인 아티팩트는
+필요하지 않습니다. Plan이 출력한 GitLab 계획 해시를 검토하고 Promote 전에
+`GITLAB_PLAN_SHA256`을 바꾸세요. 이전 컨트롤러 선택을 유지하면서 승인된 대상
+도우미가 공유 Nest 마이그레이션 서비스를 실행합니다.
+
+```bash
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+  --operation prepare --checkout "$PWD" --target 2.0.0 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+  --operation plan --checkout "$PWD" \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+  --operation promote --checkout "$PWD" --confirm-plan GITLAB_PLAN_SHA256 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+```
+
+반환된 `checkpointDir`와 `checkpointSha256`을 보관하세요. 첫 번째 값은 아래 쌍
+계획에 전달할 호스트 디렉터리입니다. 계속하기 전에 Status로 GitLab 작업을 확인하세요.
+쌍 계획은 완료된 체크포인트, 실제 마이그레이션 이미지/버전과 공개 전환 증거를
+검증합니다. Apply는 컨트롤러/Wizard 복구 이미지를 보관하고 일치하는 조정된 백업을
+만듭니다. 이 별도 계획을 검토하고 `PAIR_PLAN_SHA256`을 명시적으로 바꾸세요.
+
+```bash
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+  --checkout "$PWD" --target 2.0.0 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
+  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2.0.0 \
+  --backup-file /mnt/backup/configuration-before-2.0.0.zip \
+  --token-file /root/system-api-token
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+  --operation apply --checkout "$PWD" --confirm-plan PAIR_PLAN_SHA256 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
+  --token-file /root/system-api-token
+```
+
+완료에는 위에 설명된 동일한 기본 검증이 필요합니다. 준비 디렉터리, 두 체크포인트,
+구성 ZIP과 Seed를 보관하세요. 중단 후에는 상태를 먼저 확인하세요. 재시도를 위해
+잠금을 삭제하지 마세요.
+
+```bash
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js upgrade \
+  --operation status --checkout "$PWD" \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js gitlab-upgrade \
+  --operation status --checkout "$PWD" \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+```
+
+쌍 업데이트가 중단되면 `system-bootstrapper upgrade --operation recover`를 같은 계획
+디렉터리, 비공개 토큰 및 `--confirm-plan PAIR_PLAN_SHA256`과 함께 사용하세요.
+이전 컨트롤러/Wizard 쌍을 복구하며 GitLab은 되돌리지 않습니다. 데이터베이스 롤백도
+필요하면 먼저 쌍 복구를 완료한 뒤 `system-bootstrapper gitlab-upgrade --operation rollback`을
+같은 준비 디렉터리, `--confirm-checkpoint GITLAB_CHECKPOINT_SHA256` 및
+`--paired-checkpoint /var/lib/system-bootstrapper/platform/recovery/controller-updates/to-2.0.0`과 함께
+사용하세요. 도우미는 재생성된 이전 컨트롤러를 허용하기 전에 완료된 쌍 복구를
+검증합니다. 완료된 GitLab 체크포인트가 없으면 별도의
+`--operation abort --confirm-plan GITLAB_PLAN_SHA256`으로 이전 세대를 재개하세요.
+데이터베이스 롤백은 콜드 체크포인트 이후 기록을 삭제합니다. 오프라인 런타임과 승인된
+도우미 이미지를 보존하세요. 복구 중에는 다운로드하거나 다시 빌드하지 않습니다.

@@ -273,7 +273,15 @@ the Wizard generator. It creates or resumes its `bootstrapdemo` project, checks
 concurrent/repeated Save and Fetch, and leaves that project for inspection. Do
 not point it at an unrelated existing key. Template live checks are in
 `tests/gitlab/live/application-templates.js` and
-`tests/gitlab/live/application-templates-audit.rb`.
+`tests/gitlab/live/application-templates-audit.js --projects-file /tmp/template-live-results.json --timeout 720`.
+Run the audit inside the reviewed controller after normal setup. It reads the
+existing ready automation credential and verifies the exact private repositories,
+starter files, unique initial pipeline and successful Review/Production environments.
+It never retries failed jobs automatically. The separate
+`tests/gitlab/live/project-bootstrap-audit.js --project root/bootstrapdemo` checks
+private project identity, the managed CI path, exact Cube and official CI lint.
+Neither audit initializes credentials or invokes Rails; supply your own explicit
+test project path or metadata file.
 
 `tests/wizard/default-wizard.js` and
 `tests/nginx/typed-routing.js` cover managed registration and single-route
