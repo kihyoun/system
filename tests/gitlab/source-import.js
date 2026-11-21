@@ -103,11 +103,13 @@ async function main() {
   await assert.rejects(()=>recipeWriteProof(7,'projects/8/repository/commits',{},read),/route-invalid/);
   await assert.rejects(()=>recipeWriteProof(7,'projects/7/repository/commits',{branch:'main',actions:[{action:'create',file_path:'README.md',content:'foreign'}]},read),/proof-invalid/);
   const operation='d'.repeat(48), pipelineProof=await recipeWriteProof(7,'projects/7/pipeline',{ref:'main',variables:[{key:'SYSTEM_WIZARD_OPERATION',value:operation},{key:'SYSTEM_WIZARD_EXPECTED_SHA',value:installed}]},read);
-  const listRoute='projects/7/pipelines?ref=main&source=api&per_page=100&page=1';proofRows[listRoute]=[];
+  const listRoute='projects/7/pipelines?ref=main&sha='+installed+'&source=api&per_page=100&page=1';proofRows[listRoute]=[];
   assert.equal(await reconcileRecipeWrite(7,pipelineProof,read),false);
   proofRows[listRoute]=[{id:12,sha:installed,ref:'main',source:'api'}];proofRows['projects/7/pipelines/12/variables']=[{key:'SYSTEM_WIZARD_OPERATION',value:operation}];
   assert.equal(await reconcileRecipeWrite(7,pipelineProof,read),true);
   proofRows[listRoute].push({...proofRows[listRoute][0]});await assert.rejects(()=>reconcileRecipeWrite(7,pipelineProof,read),/reconciliation-conflict/);
+  proofRows[listRoute]=Array.from({length:21},(_,index)=>({id:index+100,sha:installed,ref:'main',source:'api'}));
+  let inspected=0;await assert.rejects(()=>reconcileRecipeWrite(7,pipelineProof,async route=>{if(route.endsWith('/variables')){inspected++;return {status:200,value:[]};}return read(route);}),/reconciliation-limit/);assert.equal(inspected,20);
   console.log('Wizard source import/status: atomic CAS, binary modes, lost responses, ownership, native evidence and mirror isolation passed.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

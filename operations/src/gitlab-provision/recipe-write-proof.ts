@@ -93,9 +93,14 @@ export function validateRecipeProof(value: Row): void {
 export async function reconcileRecipeWrite(
   projectId: number,
   proof: Row,
-  get: RecipeReadPort,
+  read: RecipeReadPort,
 ): Promise<boolean> {
   validateRecipeProof(proof);
+  const deadline = Date.now() + 60000;
+  const get: RecipeReadPort = (route) => {
+    if (Date.now() >= deadline) throw Error('gitlab-recipe-reconciliation-budget-exceeded');
+    return read(route);
+  };
   const prefix = `projects/${projectId}/`;
   if (proof.kind === 'commit') {
     let installed: string | undefined;
@@ -127,18 +132,22 @@ export async function reconcileRecipeWrite(
       throw Error('gitlab-recipe-parent-reconciliation-conflict');
     return true;
   }
-  let matches = 0;
+  let matches = 0,
+    inspected = 0;
   for (let page = 1; page <= 20; page++) {
     const response = await get(
       prefix +
         'pipelines?ref=' +
         encodeURIComponent(text(proof.branch)) +
+        '&sha=' +
+        text(proof.commit) +
         '&source=api&per_page=100&page=' +
         page,
     );
     if (response.status !== 200 || !Array.isArray(response.value))
       throw Error('gitlab-recipe-pipeline-reconciliation-failed');
     for (const item of response.value) {
+      if (++inspected > 20) throw Error('gitlab-recipe-pipeline-reconciliation-limit');
       const pipeline = row(item);
       if (!Number.isSafeInteger(pipeline.id) || Number(pipeline.id) < 1)
         throw Error('gitlab-recipe-pipeline-reconciliation-failed');
