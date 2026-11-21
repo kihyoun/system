@@ -30,8 +30,8 @@ names before targeted recovery, never prune unrelated platform resources.
 The Sync module exposes preview, activation and status functions. The server
 preserves the source-import receipt and stores a separate version-1 `build`
 object. It requires the exact previewed recipe hash, completed managed source
-registration and a configured local registry. Temporary GitLab API credentials
-remain inside the existing Rails adapter and are revoked by its outer ensure.
+registration and a configured local registry. A verified project-scoped credential is obtained through the shared credential
+service; private token journals remain in the GitLab configuration volume.
 
 The adapter checks repository ownership, source marker, default branch and
 expected disabled scaffold. Recipe installation is one guarded `[skip ci]`
@@ -63,7 +63,7 @@ claims while retaining operation/pipeline identities for investigation.
 
 ## Verification gates
 
-Fixtures are `tests/gitlab/wizard-build.rb`, `tests/wizard/build-recipe.js` and
+Fixtures are `tests/gitlab/wizard-build.js`, `tests/wizard/build-recipe.js` and
 `tests/wizard/build-workflow.js`; the shared test manifest selects the isolated
 checks. Fresh lockfile installation, actual selected-toolchain checks, candidate
 HTTP/browser checks and real GitLab/runner/registry execution are separate
@@ -189,3 +189,16 @@ reviewed successor profile is provided. Existing build-v1 recipe selections and
 hashes remain exact. Environment reservations bound to v6 produce manual Review
 and Beta jobs through the same runtime; historical environment-v1 selections read
 the archived scripts in `wizard-environments/historical`.
+
+Managed build activation and status use `ManagedBuildService` through the shared
+`managed-recipe` operations command and Sync API. The native session retains the
+historical project-and-operation PostgreSQL advisory key. Git commits use guarded
+file updates; pipeline creation first records its operation checkpoint. Private
+write proofs survive lost responses without replaying the request. Status verifies
+the same reserved recipe, required jobs and artifact digest; it never starts a
+pipeline. Reconciliation searches only the exact commit and inspects at most 20
+pipeline variable sets, refusing an ambiguous or exhausted lookup.
+
+Run `node tests/gitlab/wizard-build.js` after building operations to check atomic
+installation, interrupted requests, source/pipeline races and both historical Jest
+and current Vitest evidence contracts without a live GitLab instance.

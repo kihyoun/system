@@ -11,7 +11,7 @@
   {"component":"gitlab","file":"gitlab/application-templates.js","timeoutSeconds":20},
   {"component":"gitlab","file":"gitlab/project-bootstrap.js","timeoutSeconds":45,"port":8071},
   {"component":"gitlab","file":"gitlab/source-import.js","timeoutSeconds":20},
-  {"component":"gitlab","file":"gitlab/wizard-build.rb","timeoutSeconds":20},
+  {"component":"gitlab","file":"gitlab/wizard-build.js","timeoutSeconds":20},
   {"component":"sync","file":"sync/config-suggestions.js","timeoutSeconds":15},
   {"component":"sync","file":"sync/config-suggestions-api.js","timeoutSeconds":30,"port":8071},
   {"component":"sync","file":"sync/push-restart-api.js","timeoutSeconds":30,"port":8071},

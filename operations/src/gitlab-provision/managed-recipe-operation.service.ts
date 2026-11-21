@@ -1,3 +1,4 @@
+import { ManagedBuildService } from './managed-build.service';
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { GitlabCredentialService } from './credential.service';
@@ -14,13 +15,21 @@ export class ManagedRecipeOperationService {
     private readonly api: GitlabNativeApiService,
     private readonly sessions: GitlabActivationSessionService,
     private readonly environments: ManagedEnvironmentService,
+    private readonly builds: ManagedBuildService,
   ) {}
   async execute(checkout: string, value: unknown, signal?: AbortSignal) {
     const input = row(value),
       repository = row(input.repository),
-      reservation = row(input.environments);
+      building = ['wizard-build', 'wizard-build-status'].includes(String(input.action)),
+      reservation = row(building ? input.build : input.environments),
+      service = building ? this.builds : this.environments;
     ensure(
-      ['wizard-environments', 'wizard-environments-status'].includes(text(input.action)) &&
+      [
+        'wizard-build',
+        'wizard-build-status',
+        'wizard-environments',
+        'wizard-environments-status',
+      ].includes(text(input.action)) &&
         Number.isSafeInteger(repository.id) &&
         Number(repository.id) > 0 &&
         Number.isSafeInteger(input.namespaceId) &&
@@ -40,7 +49,7 @@ export class ManagedRecipeOperationService {
       result.status === 200 && row(project.namespace).id === input.namespaceId,
       'Bound Wizard project identity changed',
     );
-    this.environments.validate(input, project);
+    service.validate(input, project);
     const credential = await this.projects.current(
       authority.context,
       authority.configDirectory,
@@ -57,8 +66,8 @@ export class ManagedRecipeOperationService {
       Number(repository.id),
       operation,
       credential.token,
-      'environment',
+      building ? 'build' : 'environment',
     );
-    return this.environments.execute(input, project, session);
+    return service.execute(input, project, session);
   }
 }

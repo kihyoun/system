@@ -1,3 +1,4 @@
+import { ManagedBuildService } from './managed-build.service';
 import { ManagedEnvironmentService } from './managed-environment.service';
 import { ManagedRecipeOperationService } from './managed-recipe-operation.service';
 import {
@@ -35,6 +36,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     PreviewSetupService,
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
+    ManagedBuildService,
     ManagedEnvironmentService,
     ManagedRecipeOperationService,
     WizardSourceImportService,
@@ -61,6 +63,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     PreviewSetupService,
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
+    ManagedBuildService,
     ManagedEnvironmentService,
     ManagedRecipeOperationService,
     WizardSourceImportService,

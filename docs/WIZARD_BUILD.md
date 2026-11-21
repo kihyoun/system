@@ -148,7 +148,7 @@ continuation, failure/status presentation, ownership and mutation guards:
 ```sh
 node tests/wizard/build-recipe.js
 node tests/wizard/build-workflow.js
-ruby tests/gitlab/wizard-build.rb
+node tests/gitlab/wizard-build.js
 ```
 
 These fixtures do not contact the running GitLab. Complete integration checks

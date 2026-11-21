@@ -683,6 +683,32 @@ async function bindingRefresh(f) {
     current=session();loseProofAfterWrite=true;await assert.rejects(()=>current.withAdvisoryLock('42',()=>current.request('PUT','projects/7/variables/WIZARD_REVIEW_HOST',body)),/backend-ownership-lost/);
     assert(JSON.parse(fs.readFileSync(path.join(lockDirectory,'system-bootstrapper-auth/project-7.json'))).pending,'successful response without lock proof must retain pending write');
 
+    // Recipe writes use the same native lock holder and retain only bounded readback proofs.
+    const recipeParent='a'.repeat(40),recipeCommit='b'.repeat(40),recipeOperation='c'.repeat(48),recipeRows={
+      'projects/7/repository/branches/main':{commit:{id:recipeParent}},
+      'projects/7/repository/files/.system-bootstrapper%2Fci.yml?ref=main':{content:Buffer.from('recipe').toString('base64'),last_commit_id:recipeCommit},
+      ['projects/7/repository/commits/'+recipeCommit]:{parent_ids:[recipeParent]},
+      ['projects/7/pipelines?ref=main&sha='+recipeCommit+'&source=api&per_page=100&page=1']:[],
+    };
+    let recipePosts=0;
+    api.request=async(context,token,method,route,body)=>{
+      assert.equal(token,'project-private-token');
+      if(method==='GET')return {status:recipeRows[route]?200:404,value:recipeRows[route]||{}};
+      recipePosts++;const journal=JSON.parse(fs.readFileSync(path.join(lockDirectory,'system-bootstrapper-auth/project-build-7.json')));
+      assert(journal.pending);assert.equal(journal.phase,'held');assert(!JSON.stringify(journal.pending).includes('"content"'));
+      throw Error('lost recipe response');
+    };
+    const recipeSession=()=>service().create(nativeApiContext,lockDirectory,7,'b'.repeat(64),'project-private-token','build');
+    current=recipeSession();await assert.rejects(()=>current.withAdvisoryLock('42',()=>current.request('POST','projects/7/repository/commits',{branch:'main',actions:[{action:'update',file_path:'.system-bootstrapper/ci.yml',content:'recipe',last_commit_id:recipeParent}]})),/lost recipe response/);
+    assert.equal(recipePosts,1);current=recipeSession();await current.withAdvisoryLock('42',async()=>{});assert.equal(recipePosts,1);
+    const pipelineBody={ref:'main',variables:[{key:'SYSTEM_WIZARD_OPERATION',value:recipeOperation},{key:'SYSTEM_WIZARD_EXPECTED_SHA',value:recipeCommit}]};
+    current=recipeSession();await assert.rejects(()=>current.withAdvisoryLock('42',()=>current.request('POST','projects/7/pipeline',pipelineBody)),/lost recipe response/);
+    const cancelCount=cancels;current=recipeSession();await current.withAdvisoryLock('42',async()=>{await assert.rejects(()=>current.request('POST','projects/7/pipeline',pipelineBody),/held-lock-required/);});
+    assert.equal(cancels,cancelCount);assert.equal(recipePosts,2,'missing pipeline proof must never replay POST');
+    recipeRows['projects/7/pipelines?ref=main&sha='+recipeCommit+'&source=api&per_page=100&page=1']=[{id:19,sha:recipeCommit,ref:'main',source:'api'}];
+    recipeRows['projects/7/pipelines/19/variables']=[{key:'SYSTEM_WIZARD_OPERATION',value:recipeOperation}];
+    current=recipeSession();await current.withAdvisoryLock('42',async()=>{});assert.equal(cancels,cancelCount+1);assert.equal(recipePosts,2);
+
   } finally {fs.rmSync(lockDirectory,{recursive:true,force:true});}
   // Shared typed activation: the same reservation survives uncertain writes.
   const {SourcePrimaryActivationService} = require('../../operations/dist/gitlab-provision/source-primary-activation.service');

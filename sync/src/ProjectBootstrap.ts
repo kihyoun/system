@@ -4,7 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import md5 from 'md5';
 import { applicationTemplates, prepareApplication } from './ApplicationTemplates';
-import { spawn, execFile } from 'child_process';
+import { execFile } from 'child_process';
 
 export const validProjectKey = (key: any) => typeof key === 'string' && /^[a-z0-9]+$/.test(key);
 const directory = projectsDirectory();
@@ -137,12 +137,19 @@ export async function rails(input: any): Promise<any> {
       return await runNativeProject(input);
     if (['wizard-source', 'wizard-source-primary-status'].includes(input.action))
       return await runNativeWizardSource(input);
-    if (['wizard-environments', 'wizard-environments-status'].includes(input.action))
+    if (
+      [
+        'wizard-build',
+        'wizard-build-status',
+        'wizard-environments',
+        'wizard-environments-status',
+      ].includes(input.action)
+    )
       return await runNativeWizardSource(input, 'managed-recipe');
     if (input.action === 'token-expiry-status') return await runNativeTokenMetadata(input);
     if (String(input.action).startsWith('preview-setup-'))
       return await runNativeProject(input, 'preview');
-    return await runRails(input);
+    throw new Error('Unsupported GitLab action.');
   } finally {
     railsWorkers--;
     const next = railsQueue.shift();
@@ -287,7 +294,9 @@ function runNativeWizardSource(input: any, command = 'wizard-source'): Promise<a
       Object.assign(
         new Error('GitLab operation completion was not confirmed; inspect the recorded operation.'),
         {
-          uncertain: launched && ['wizard-source', 'wizard-environments'].includes(input.action),
+          uncertain:
+            launched &&
+            ['wizard-source', 'wizard-build', 'wizard-environments'].includes(input.action),
           action: input.action,
         },
       );
@@ -319,89 +328,6 @@ function runNativeWizardSource(input: any, command = 'wizard-source'): Promise<a
     });
     child.stdin.on('error', () => undefined);
     child.stdin.end(JSON.stringify(input));
-  });
-}
-function runRails(input: any): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
-    const modules: { [key: string]: string } = {
-      'wizard-build': 'wizard-build/activate.rb',
-      'wizard-build-status': 'wizard-build/activate.rb',
-    };
-    const importer = modules[input.action]
-      ? fs.readFileSync(
-          path.join(__dirname, '../../project-bootstrap', modules[input.action]),
-          'utf8',
-        ) + '\n'
-      : '';
-    const script =
-      `BOOTSTRAPPER_INPUT = '${encoded}'\n` +
-      importer +
-      fs.readFileSync(path.join(__dirname, '../../project-bootstrap/provision.rb'), 'utf8');
-    const child = spawn('docker', ['exec', '-i', 'system_gitlab_1', 'gitlab-rails', 'runner', '-']);
-    let output = '',
-      launched = false;
-    const readOnly = [
-      'namespaces',
-      'availability',
-      'wizard-build-status',
-      'wizard-environments-status',
-      'wizard-source-primary-status',
-      'wizard-environments-primary-status',
-      'token-expiry-status',
-    ].includes(input.action);
-    const failure = (message: string) =>
-      Object.assign(new Error(message), { uncertain: launched && !readOnly, action: input.action });
-    child.once('spawn', () => {
-      launched = true;
-    });
-    const timer = setTimeout(() => {
-      // Killing the local Docker client does not prove that the Rails process
-      // inside GitLab ended. Callers must retain their mutation barriers.
-      reject(failure('GitLab setup timed out; inspect the recorded operation before resuming.'));
-      child.kill();
-    }, 240000);
-    child.stdout.on('data', (data) => {
-      if (Buffer.byteLength(output) + Buffer.byteLength(data) > 2000000) {
-        clearTimeout(timer);
-        reject(failure('GitLab returned an oversized response; inspect the recorded operation.'));
-        child.kill();
-        return;
-      }
-      output += data;
-    });
-    // Rails diagnostics can contain a temporary PAT. Never expose them.
-    child.stderr.resume();
-    child.on('error', () => {
-      clearTimeout(timer);
-      reject(failure('Could not access the local GitLab container.'));
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code !== 0) {
-        reject(
-          failure('GitLab operation completion was not confirmed; inspect the recorded operation.'),
-        );
-        return;
-      }
-      try {
-        const result = JSON.parse(output.trim().split('\n').pop());
-        if (
-          !result ||
-          typeof result !== 'object' ||
-          Array.isArray(result) ||
-          !Object.keys(result).length
-        )
-          throw Error('terminal');
-        resolve(result);
-      } catch (_) {
-        reject(
-          failure('GitLab returned no complete terminal response; inspect the recorded operation.'),
-        );
-      }
-    });
-    child.stdin.on('error', () => undefined);
-    child.stdin.end(script);
   });
 }
 
