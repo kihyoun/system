@@ -10,7 +10,7 @@ const {parseSourceInstallation: parse} = require('../../dist/modules/lifecycle/s
 const {Adoption} = require('../../dist/modules/project-lifecycle/adoption-session');
 const clone = value => JSON.parse(JSON.stringify(value));
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
-const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+const cube = fs.readFileSync(path.join(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'source-installation-'));
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));

@@ -14,8 +14,13 @@ fs.cpSync(builtRuntime,path.join(root,'dist'),{recursive:true});
 fs.mkdirSync(path.join(root,'bin'));
 fs.mkdirSync(path.join(root,'state'));
 fs.symlinkSync(path.resolve(__dirname,'../../node_modules'),path.join(root,'node_modules'),'dir');
-fs.cpSync(path.resolve(__dirname,'../../config'),path.join(root,'config'),{recursive:true});
-for(const name of ['templates','assets','wizard','tools'])fs.symlinkSync(path.resolve(__dirname,'../..',name),path.join(root,name),'dir');
+const sourceRoot=path.resolve(__dirname,'../..');
+const {PUBLIC_PACKAGE_PAYLOAD,verifyPublicPayload}=require('../../dist/common/public-payload');
+for(const name of [...PUBLIC_PACKAGE_PAYLOAD,'assets/public-runtime.json','assets/wizard-source/snapshot.json']){
+ const target=path.join(root,name);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(path.join(sourceRoot,name),target);
+}
+assert.equal(verifyPublicPayload(root).length,PUBLIC_PACKAGE_PAYLOAD.length,'Relocated application runs with the complete regular-file public payload.');
+fs.symlinkSync(path.join(sourceRoot,'tools'),path.join(root,'tools'),'dir');
 fs.renameSync(path.join(root,'dist/cli/main.js'),path.join(root,'dist/cli/native-main.js'));
 const routingStatus=path.join(root,'routing-status');fs.writeFileSync(routingStatus,'0');
 process.env.SYSTEM_CONFIG_DIR=path.join(root,'state');

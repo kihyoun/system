@@ -2,14 +2,14 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {LifecycleService}=require('../../dist/modules/lifecycle/lifecycle.service');
 const {LiteralConfiguration}=require('../../dist/modules/projects-routing/ports');
-const {NativeProcessRunner}=require('../../dist/common/runtime/process');
+const {RootPasswordService}=require('../../dist/modules/lifecycle/root-password.service');
 test('GitLab startup recreates changed configuration and exports explicit Omnibus settings',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-startup-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const directory of ['config/system','config/gitlab','config','data'])fs.mkdirSync(path.join(root,directory),{recursive:true});
  fs.copyFileSync(path.resolve(__dirname,'../../config/gitlab/gitlab.rb'),path.join(root,'config/gitlab/gitlab.rb'));
  const config=path.join(root,'config/system/.docker.env');fs.writeFileSync(config,'GITLAB_REGISTRY_DOMAIN_MODE=0\nGITLAB_REGISTRY_URL=http://registry.localhost:5050\nGITLAB_REGISTRY_HOST=registry.localhost\nGITLAB_EXTERNAL_URL=http://gitlab.localhost\n');
  const calls=[],child={async run(binary,args,options){calls.push({binary,args,options});return binary==='docker'?'172.19.0.3':'';}};
- const service=new LifecycleService(child,new LiteralConfiguration(),{}, {},{},{gitlabConfig:path.join(root,'config'),gitlabData:path.join(root,'data'),syncTemplates:path.join(root,'templates')});
+ const service=new LifecycleService(child,new LiteralConfiguration(),{}, {},{},new RootPasswordService(),{},{gitlabConfig:path.join(root,'config'),gitlabData:path.join(root,'data'),syncTemplates:path.join(root,'templates')});
  const run=async environment=>{calls.length=0;await service.gitlab({root,state:path.join(root,'config/system'),environment:{...process.env,...environment}},true);return calls.find(c=>c.binary==='docker'&&c.args.includes('compose'));};
  assert((await run({})).args.includes('--force-recreate'));
  assert(!(await run({})).args.includes('--force-recreate'));

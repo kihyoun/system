@@ -113,6 +113,7 @@ assert(typed.ci.includes('project-ci.cjs prepare-runtime') && typed.ci.includes(
 assert(!typed.ci.includes('sh .system-bootstrapper'));
 assert.equal(crypto.createHash('md5').update(typed.ci.slice(0,1184)).digest('hex'),'bd4a8426355824593a5e21ad759830c1');
 assert.equal(typed.files.find(file=>file.path.endsWith('/runtime/project-ci.cjs')).content,fs.readFileSync(path.join(root,'templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs'),'utf8'));
+assert.equal(typed.files.find(file=>file.path==='.system-bootstrapper/build-v2/bootstrapper/ca/cacert-2026-10-20.crt').content,fs.readFileSync(path.join(root,'config/ca/cacert-2026-10-20.crt'),'utf8'), 'Read canonical CA source while retaining the managed project path');
 const typedDocker=typed.files.find(file=>file.path.endsWith('/Dockerfile')).content;
 assert(typedDocker.includes('npm run lint && npm test && npm run build && npm run test:config-export'));
 assert(typedDocker.includes('project-ci.cjs refresh-ca'));

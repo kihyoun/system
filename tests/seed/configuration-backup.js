@@ -4,9 +4,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
-const {validateBackup} = require('../../system/seed-operation');
+const {validateBackup} = require('../../dist/modules/storage/configuration');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configuration-zip-contract-'));
-const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example')).subarray(0, 1184);
+const cube = fs.readFileSync(path.join(__dirname, '../../config/system/.docker.env.example')).subarray(0, 1184);
 // Python emits actual old/new ZIPs, not a mocked unzip listing.
 function archive(name, entries, link = false) {
   const file = path.join(root, name + '.zip');
@@ -23,14 +23,12 @@ try {
     assert.throws(() => validateBackup(archive('unsafe', {...old, [name]: 'payload'})), /invalid-configuration-backup/);
   assert.throws(() => validateBackup(archive('link', old, true)), /unsafe-configuration-backup-entry/);
   // The ordinary Push path ignores metadata, including fields pretending to be authority.
-  const project = path.join(root, 'project'), system = path.join(project, 'system'), state = path.join(root, 'state');
+  const project = path.resolve(__dirname, '../..'), system = path.join(root, 'runtime'), state = path.join(root, 'state');
   fs.mkdirSync(system, {recursive: true}); fs.mkdirSync(state);
-  fs.symlinkSync(path.join(__dirname, '../../nginx'), path.join(project, 'nginx'));
-  fs.symlinkSync(path.join(__dirname, '../../project-bootstrap'), path.join(project, 'project-bootstrap'));
   const malicious = {...old, 'recovery.json': JSON.stringify({savedImages: {controller: {reference: 'attacker/latest'}}, seed: {verified: true}}),
     'RECOVERY.md': 'descriptive only'};
-  fs.copyFileSync(archive('push', malicious), path.join(project, 'bootstrapper.zip'));
-  const pushed = spawnSync(process.execPath, [path.resolve(__dirname,'../../dist/modules/configuration/entry.js'),'push',project,state,path.join(project,'bootstrapper.zip')], {cwd: system, env: {...process.env, SYSTEM_CONFIG_DIR: state}, encoding: 'utf8'});
+  const input = archive('push', malicious);
+  const pushed = spawnSync(process.execPath, [path.resolve(__dirname,'../../dist/modules/configuration/entry.js'),'push',project,state,input], {cwd: system, env: {...process.env, SYSTEM_CONFIG_DIR: state}, encoding: 'utf8'});
   assert.equal(pushed.status, 0, pushed.stderr);
   assert.equal(fs.readFileSync(path.join(state, '.docker.env'), 'utf8'), old['.docker.env']);
   assert.equal(fs.existsSync(path.join(state, 'recovery.json')), false);

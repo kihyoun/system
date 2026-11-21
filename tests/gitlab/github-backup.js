@@ -125,6 +125,8 @@ async function main() {
   fs.mkdirSync(privateTemp);
   fs.writeFileSync(knownHosts, 'github.com ' + publicKey + '\n');
   const ciEnvironment = {GITHUB_SSH_PRIVATE_KEY: credential, GITHUB_SSH_KNOWN_HOSTS: knownHosts, TMPDIR: privateTemp};
+  fail(f.ci({...ciEnvironment, WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED: 'true'}), /exact Wizard source tree or historical gitlink is required/);
+  assert.deepEqual(fs.readdirSync(privateTemp), [], 'missing source layout also cleans the owned credential');
   let result = f.ci(ciEnvironment);
   pass(result); assert.equal(f.tip(), f.sha);
   assert(!`${result.stdout}${result.stderr}`.includes(privateKey), 'private key never enters CI output');
@@ -176,7 +178,7 @@ async function main() {
   assert.equal(fs.readFileSync(path.join(sharedClone, 'wizard', 'README.md'), 'utf8'), 'Shared Wizard source\n');
   assert(!fs.existsSync(path.join(sharedClone, '.gitmodules')));
   fail(f.ci({...ciEnvironment, CI_COMMIT_SHA: f.sha, WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED: 'true'}),
-    /source layout could not be verified/);
+    /Source publication checkout does not match the pipeline/);
   console.log('PASS: protected CI eligibility, verified file host keys, file/text identities, redaction and owned credential cleanup');
   }
   f = fixture();

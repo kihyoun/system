@@ -12,11 +12,11 @@ const NODE =
     'nginx:stable-alpine@sha256:970364228b1e4f932abc22d321932816782cca8a20b85a77552a7cfe9acfb3b5',
   BUILDKIT =
     'moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea';
-const CA = 'bootstrapper/ca/cacert-2026-10-20.crt',
+const CA = 'config/ca/cacert-2026-10-20.crt',
   PUBLIC_INPUTS = [
     ['runtime/project-ci.cjs', 'wizard/.gitlab/runtime/project-ci.cjs'],
     ['runtime/LICENSES.txt', 'wizard/.gitlab/runtime/LICENSES.txt'],
-    [CA, CA],
+    ['bootstrapper/ca/cacert-2026-10-20.crt', CA],
   ];
 const digest = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 export function inputManifest(directory: string): { path: string; sha256: string }[] {
@@ -85,7 +85,7 @@ export class ResourceBenchmarkService {
     )
       throw Error('exact-benchmark-source-required');
     const source = path.resolve(options.templates, options.case),
-      root = path.resolve(options.templates, '../..'),
+      root = path.resolve(options.templates, '../../..'),
       inputs = inputManifest(source),
       dockerfile = fs.readFileSync(path.join(source, 'Dockerfile'), 'utf8');
     if (
@@ -217,7 +217,7 @@ export class ResourceBenchmarkService {
       for (const item of plan.publicRuntimeInputs) {
         const target = path.join(context, item.destination);
         fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.copyFileSync(path.resolve(options.templates, '../..', item.path), target);
+        fs.copyFileSync(path.resolve(options.templates, '../../..', item.path), target);
         if (digest(target) !== item.sha256) throw Error('benchmark-input-changed');
       }
       if (

@@ -213,7 +213,7 @@ test('public authority freezes publisher identity without contacting installatio
     } = require('../../dist/modules/host/release-authority.service'),
     { PairedControllerService } = require('../../dist/modules/host/paired-controller.service');
   const input = require('../shared/public-upgrade-fixture').publicationFixture(),
-    security = require('../../gitlab/security-release.json'),
+    security = require('../../config/gitlab/security-release.json'),
     root = path.resolve(__dirname, '../..'),
     produced = new PublicUpgradePublicationService({
       verify() {

@@ -112,10 +112,13 @@ test('browser image retains reviewed trust and the full native browser suite',()
  const dockerfile=fs.readFileSync(path.join(__dirname,'../wizard-browser.Dockerfile'),'utf8');
  assert.ok(dockerfile.includes('playwright install-deps chromium')&&dockerfile.includes('playwright install chromium'));
  assert.ok(dockerfile.includes('ENV NODE_OPTIONS=--use-openssl-ca'));
- assert.ok(dockerfile.indexOf('check.js --bundle')<dockerfile.indexOf('npm ci'));
+ const bundle=dockerfile.indexOf('RUN node src/cli/verify-ca.mts --bundle'),install=dockerfile.indexOf('RUN npm ci');
+ assert.ok(bundle>=0&&install>bundle,'reviewed CA validation must precede dependency installation');
  const dependencies=dockerfile.indexOf('playwright install-deps chromium');
- const refresh=dockerfile.indexOf('host-bootstrap/entry.js refresh-ca',dependencies);
- assert.ok(refresh>dependencies&&refresh<dockerfile.indexOf('playwright install chromium'));
+ const refresh=dockerfile.indexOf('node /candidate/dist/cli/main.js host-bootstrap refresh-ca --checkout /candidate',dependencies);
+ const checked=dockerfile.indexOf('node /candidate/dist/cli/main.js host-bootstrap ca-check --checkout /candidate',refresh);
+ const browser=dockerfile.indexOf('playwright install chromium',dependencies);
+ assert.ok(dependencies>=0&&refresh>dependencies&&checked>refresh&&browser>checked,'dependency trust changes must be replaced and verified before browser installation');
  assert.ok(dockerfile.includes('"test:ci"')&&dockerfile.includes('--reporter=list,html,junit'));
  assert.equal(dockerfile.includes('--grep'),false);
 });

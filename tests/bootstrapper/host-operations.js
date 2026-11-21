@@ -92,7 +92,7 @@ test('Nest provider and public CLI preserve JSON, policy environment and diagnos
   const app=await NestFactory.createApplicationContext(HostBootstrapModule,{logger:false,abortOnError:false});
   try {assert(app.get(HostInspectionService) instanceof HostInspectionService);} finally {await app.close();}
   for(const [args,env,status] of [[[],{SYSTEM_LOG_MAX_SIZE:'64K',SYSTEM_LOG_MAX_FILES:'2'},0],[['--max-files','0'],{},2],[['--unknown'],{},2]]) {
-    const result=spawnSync(process.execPath,['dist/cli/main.js','host-bootstrap','log-policy',...args],{cwd:root,encoding:'utf8',env:{...process.env,...env}});
+    const result=spawnSync(process.execPath,['dist/cli/main.js','host-bootstrap','log-policy','--checkout',root,...args],{cwd:root,encoding:'utf8',env:{...process.env,...env}});
     assert.equal(result.status,status,result.stderr);const report=JSON.parse(result.stdout);assert.equal(report.ok,status===0);
     if(!status) assert.deepEqual(report.expected.Config,{'max-size':'64k','max-file':'2'});
   }

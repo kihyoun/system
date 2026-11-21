@@ -4,7 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const logo = require('../../dist/common/configuration-signature').default.textLogo;
 const {CanonicalSession} = require('../../dist/modules/project-lifecycle/canonical-session');
-const file = '/system/system/.projects.env/.wizard.env', lock = file + '.environments.lock';
+const file = '/system/config/system/.projects.env/.wizard.env', lock = file + '.environments.lock';
 const prefix = '# BOOTSTRAPPER_PROJECT=';
 const operation = 'a'.repeat(48), token = 'b'.repeat(48);
 const receipt = {defaultProject: true, template: 'wizard', state: 'complete', operation: 'registration', namespaceId: 1,
@@ -12,7 +12,7 @@ const receipt = {defaultProject: true, template: 'wizard', state: 'complete', op
   wizardWorkflow: {environments: {operation, controller: 'system_bootstrapper_1', settings: {review: {enabled: false}, beta: {enabled: false}}}}};
 let current = JSON.parse(JSON.stringify(receipt));
 const encode = () => logo + '# body must retain exact whitespace\n\n' + prefix + Buffer.from(JSON.stringify(current)).toString('base64') + '\n\n';
-const files = new Map([[file, encode()], ['/system/system/.docker.env', 'WIZARD_HOST=production.example.test\nGITLAB_REGISTRY_URL=https://registry.example.test\nROOT_PASSWORD=private-never-return\n']]);
+const files = new Map([[file, encode()], ['/system/config/system/.docker.env', 'WIZARD_HOST=production.example.test\nGITLAB_REGISTRY_URL=https://registry.example.test\nROOT_PASSWORD=private-never-return\n']]);
 const directories = new Set(), inodes = new Map(); let race, inode = 0, existsRace;
 const error = code => Object.assign(new Error(code), {code});
 const mockfs = {

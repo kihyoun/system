@@ -226,7 +226,8 @@ test('host prerequisite prepares public recovery payloads and launches only the 
    assert(options.timeout>0);const create=calls.findLast(args=>args[0]==='create');
    assert.deepEqual(create.slice(0,3),['create','--pull','never']);
    assert(create.includes('container:'+controller.Id));assert(create.includes('host'));
-   assert.equal(create.at(-6),candidate);
+   assert.deepEqual(create.slice(-7),[candidate,'/system/dist/cli/main.js','public-gitlab-prerequisite-helper','/state/gitlab-prerequisites/to-2-0-0/preparation.json',create.at(-3),'plan','']);
+   assert.match(create.at(-3),/^\/state\/gitlab-prerequisites\/to-2-0-0\/launch-[a-f0-9]{32}\.json$/);
    const launch=JSON.parse(fs.readFileSync(path.join(directory,path.basename(create.at(-3)))));
    assert.equal(launch.containerId,helper);assert.deepEqual(launch.controller,prerequisiteController(controller));
    const envFile=create[create.indexOf('--env-file')+1],env=fs.readFileSync(envFile,'utf8');

@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {test} = require('node:test');
 const {impact} = require('../../dist/modules/projects-routing/impact');
-const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+const cube = fs.readFileSync(path.join(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 const env = values => cube + Object.entries(values).map(([key, value]) => key + '=' + JSON.stringify(value)).join('\n') + '\n';
 const main = env({GITLAB_HOST: 'gitlab.example.test', GITLAB_RUNNER_SCALE: '1'});
 const project = env({PROJECT_NAME: 'sample', PROJECT_TEMPLATE: 'react', USE_PROD_HOST: 'true', PROD_HOST: 'www.example.test',

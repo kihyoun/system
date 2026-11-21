@@ -36662,7 +36662,7 @@ var require_recipe_service = /* @__PURE__ */ __commonJSMin(((exports, module, th
 		locations["smoke/check.js"] = "templates/project-bootstrap/wizard-build/quickstart-v5/check.js";
 		for (const file of ["package.json", "package-lock.json"]) locations["smoke/" + file] = "templates/project-bootstrap/wizard-build/modern/smoke/" + file;
 		for (const file of ["project-ci.cjs", "LICENSES.txt"]) locations["runtime/" + file] = "templates/project-bootstrap/wizard-build/typed-v6/runtime/" + file;
-		locations["bootstrapper/ca/cacert-2026-10-20.crt"] = "bootstrapper/ca/cacert-2026-10-20.crt";
+		locations["bootstrapper/ca/cacert-2026-10-20.crt"] = "config/ca/cacert-2026-10-20.crt";
 		const files = Object.entries(locations).map(([relative, source]) => {
 			const content = node_fs_1.default.readFileSync(node_path_1.default.join(checkout, source), "utf8");
 			return {

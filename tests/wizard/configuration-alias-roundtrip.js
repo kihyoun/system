@@ -8,7 +8,7 @@ const ts = require('../../node_modules/typescript');
 const aliases = require('../../dist/modules/projects-routing/wizard-aliases');
 const snapshot = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../assets/wizard-source/snapshot.json'), 'utf8'));
 const source = name => Buffer.from(snapshot.files.find(file => file.path === name).content, 'base64').toString('utf8');
-const cube = fs.readFileSync(path.resolve(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+const cube = fs.readFileSync(path.resolve(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 function moduleFromSource(name, imports = {}) {
   const exports = {};
   const compiled = ts.transpileModule(source(name), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText;

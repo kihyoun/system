@@ -144,8 +144,8 @@ working-copy files:
 export TASK_BENCHMARK_REVISION=$(git rev-parse HEAD)
 export TASK_BENCHMARK_INPUTS=$(mktemp -d /tmp/system-resource-inputs.XXXXXXXX)
 export TASK_BENCHMARK_OUTPUT=$(mktemp -d /tmp/system-resource-results.XXXXXXXX)
-git archive --format=tar "$TASK_BENCHMARK_REVISION" project-bootstrap/templates wizard/.gitlab/runtime bootstrapper/ca |   tar -xf - -C "$TASK_BENCHMARK_INPUTS"
-node dist/modules/resources/entry.js benchmark   --case react --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates"   --source-revision "$TASK_BENCHMARK_REVISION"   --output "$TASK_BENCHMARK_OUTPUT/react"
+git archive --format=tar "$TASK_BENCHMARK_REVISION" templates/project-bootstrap/templates wizard/.gitlab/runtime config/ca |   tar -xf - -C "$TASK_BENCHMARK_INPUTS"
+system-bootstrapper resources benchmark   --case react --templates "$TASK_BENCHMARK_INPUTS/templates/project-bootstrap/templates"   --source-revision "$TASK_BENCHMARK_REVISION"   --output "$TASK_BENCHMARK_OUTPUT/react"
 ```
 
 After reviewing that plan and checking host reserve, the following pair uses one
@@ -155,12 +155,12 @@ do not reuse a directory from an interrupted attempt:
 ```sh
 export TASK_BENCHMARK_DEADLINE=$(node -p 'Date.now() / 1000 + 600')
 export SYSTEM_RESOURCE_BENCHMARK_APPROVED=1
-node dist/modules/resources/entry.js benchmark --case react \
-  --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates" \
+system-bootstrapper resources benchmark --case react \
+  --templates "$TASK_BENCHMARK_INPUTS/templates/project-bootstrap/templates" \
   --source-revision "$TASK_BENCHMARK_REVISION" --output "$TASK_BENCHMARK_OUTPUT/react" \
   --execute --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"
-node dist/modules/resources/entry.js benchmark --case angular \
-  --templates "$TASK_BENCHMARK_INPUTS/project-bootstrap/templates" \
+system-bootstrapper resources benchmark --case angular \
+  --templates "$TASK_BENCHMARK_INPUTS/templates/project-bootstrap/templates" \
   --source-revision "$TASK_BENCHMARK_REVISION" --output "$TASK_BENCHMARK_OUTPUT/angular" \
   --execute --lease-deadline-epoch "$TASK_BENCHMARK_DEADLINE"
 ```

@@ -15,7 +15,7 @@ const settings = tokenMonitorSettings({SYSTEM_CREDENTIAL_PROJECT_PATHS: '["examp
 const encoded = 'export SYSTEM_CREDENTIAL_PROJECT_PATHS="[\\"example/system\\"]"\n' +
   'export SYSTEM_CREDENTIAL_EXPIRY_METADATA="[{\\"projectPath\\":\\"example/system\\",\\"key\\":\\"GITHUB_RELEASE_TOKEN\\",\\"expiresAt\\":\\"2026-11-12\\"}]"\n';
 assert.deepEqual(tokenEnvironmentSettings(encoded), settings, 'escaped JSON from the Wizard ENV serializer must be decoded literally');
-const serializer = require('../../project-bootstrap/wizard-source/snapshot.json').files.find(file => file.path === 'src/api/Environment.ts');
+const serializer = require('../../assets/wizard-source/snapshot.json').files.find(file => file.path === 'src/api/Environment.ts');
 assert(serializer, 'the pinned Wizard snapshot must include its actual ENV serializer');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'token-env-roundtrip-'));
 try {

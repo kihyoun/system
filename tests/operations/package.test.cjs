@@ -19,11 +19,18 @@ test('public tarball carries compiled CLI and offline validation assets without 
     const npmOmissions=new Set(['angular','react','web'].map(template=>'templates/project-bootstrap/templates/'+template+'/.gitignore'));
     const publicFiles=files.filter(file=>!file.startsWith('dist/')&&!file.startsWith('node_modules/')&&!metadataFiles.has(file));
     assert.deepEqual(publicFiles.sort(),PUBLIC_PACKAGE_PAYLOAD.filter(file=>!npmOmissions.has(file)).sort());
-    for(const file of ['wizard/README.md','wizard/LICENSE'])assert(files.includes(file),file);
+    // Full source checkouts contain optional Wizard package metadata; verified
+    // deployment snapshots deliberately omit these non-runtime documentation files.
+    for(const file of ['wizard/README.md','wizard/LICENSE']){
+      const source=fs.lstatSync(path.join(root,file),{throwIfNoEntry:false});
+      if(source)assert(source.isFile()&&!source.isSymbolicLink(),file);
+      assert.equal(files.includes(file),Boolean(source),file);
+    }
     assert(!files.includes('config/system/.projects.env'));
     assert(!files.some(file=>/(?:^|\/)(?:\.env|\.npmrc|private)(?:\/|$)/.test(file)));
     execFileSync('tar',['-xzf',path.join(temporary,record.filename),'-C',temporary]);
     const unpacked=path.join(temporary,'package');
+    for(const file of ['wizard/README.md','wizard/LICENSE'])if(files.includes(file))assert(fs.readFileSync(path.join(unpacked,file)).equals(fs.readFileSync(path.join(root,file))),file);
     for(const file of ['guided-preview-evidence.js','guided-preview-evidence-v1.js','job-diagnostics.js','evidence-values.js'])
       assert(fs.readFileSync(path.join(unpacked,'dist/modules/release',file)).equals(fs.readFileSync(path.join(root,'dist/modules/release',file))),file);
     const policy=require(path.join(unpacked,'dist/modules/release/lifecycle-policy')).lifecyclePolicy();

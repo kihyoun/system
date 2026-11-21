@@ -26,7 +26,8 @@ export function generateTypedBuildRecipe(logo: string, checkout: string) {
   for (const file of ['project-ci.cjs', 'LICENSES.txt'])
     locations['runtime/' + file] =
       'templates/project-bootstrap/wizard-build/typed-v6/runtime/' + file;
-  locations['bootstrapper/ca/cacert-2026-10-20.crt'] = 'bootstrapper/ca/cacert-2026-10-20.crt';
+  // Keep the managed project's installed path stable while reading the canonical source asset.
+  locations['bootstrapper/ca/cacert-2026-10-20.crt'] = 'config/ca/cacert-2026-10-20.crt';
   const files = Object.entries(locations).map(([relative, source]) => {
     const content = fs.readFileSync(path.join(checkout, source), 'utf8');
     return { path: prefix + relative, content, sha256: hash(content) };
