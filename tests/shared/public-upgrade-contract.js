@@ -315,7 +315,7 @@ test('registry adapter preserves arguments and disables previous digest transpor
        if(process.env.SYSTEM_TEST_NATIVE_FAILURE){console.log('[{"RepoDigests":[]}]');process.exit(Number(process.env.SYSTEM_TEST_NATIVE_FAILURE));}
        console.log(process.env.SYSTEM_TEST_NATIVE_INSPECT||JSON.stringify([{Id:${JSON.stringify(image)},RepoDigests:[]}]))`, {mode:0o755});
     fs.writeFileSync(path.join(directory, 'docker-compose.native'), '#!'+process.execPath+'\n'+
-      `require('node:fs').writeFileSync(process.env.SYSTEM_PUBLIC_UPGRADE_FIXTURE+'/arguments',process.argv.slice(2).join('\\n')+'\\n');process.stdout.write(process.env.BOOTSTRAPPER_IMAGE||'');`, {mode:0o755});
+      `require('node:fs').writeFileSync(process.env.SYSTEM_PUBLIC_UPGRADE_FIXTURE+'/arguments',process.argv.slice(2).join('\\n')+'\\n');process.stdout.write(process.env[process.env.SYSTEM_TEST_COMPOSE_KEY||'BOOTSTRAPPER_IMAGE']||'');`, {mode:0o755});
     const {PublicUpgradeTransportService}=require('../../operations/dist/testing/public-upgrade-transport.service');
     let output='';
     const service=new PublicUpgradeTransportService({write:bytes=>{output+=bytes.toString();}});
@@ -353,6 +353,14 @@ test('registry adapter preserves arguments and disables previous digest transpor
     assert.match(fs.readFileSync(path.join(directory, 'arguments'), 'utf8'), new RegExp('-f\\n' + directory + '/compose.yml\\nup'));
     assert.equal(await invoke(docker,['--host=unix:///var/run/docker.sock','compose','-f','/source/system/docker-compose.yml','create','bootstrapper'],{env:{...env,BOOTSTRAPPER_IMAGE:reference},encoding:'utf8'}),image);
     fs.writeFileSync(path.join(directory, 'offline-recovery'), 'offline');
+    const support='example/security@'+id('6');
+    fs.appendFileSync(path.join(directory,'images.tsv'),support+'\t'+image+'\tsupport\n');
+    for(const key of ['GITLAB_IMAGE','GITLAB_RUNNER_IMAGE','GITLAB_RUNNER_HELPER_IMAGE']){
+      assert.equal(await invoke(compose,['-f','/source/system/docker-compose.yml','create','gitlab'],
+        {env:{...env,[key]:support,SYSTEM_TEST_COMPOSE_KEY:key}}),image);
+    }
+    await invoke(docker,['image','inspect',support],{env});
+
     await assert.rejects(() => invoke(docker, args, {env, stdio: 'pipe'}), error => error.status === 87);
     await invoke(docker, ['image', 'inspect', 'system-bootstrapper-recovery:' + 'a'.repeat(64)], {env});
     fs.writeFileSync(path.join(directory, 'fail-recovery-once'), 'once');
@@ -498,7 +506,7 @@ test('native fixture selection adapts only the exact candidate and preserves ori
     const live = path.join(directory, 'live'), configuration = path.join(live, 'configuration');
     fs.mkdirSync(configuration, {recursive:true});
     const raw = Buffer.concat([fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example')), Buffer.from("\nexport BOOTSTRAPPER_IMAGE='"+id('5')+"'\nexport WIZARD_IMAGE='"+id('6')+"'\n")]);
-    const metadata = fixture(), input = {live,previous:metadata,spec:{images:{candidate:{id:id('5')}}}};
+    const metadata = fixture(), input = {live,previous:metadata,spec:{images:{candidate:{id:id('5')},wizard:{id:id('6')}}}};
     const main = path.join(configuration,'.docker.env'), profile = path.join(configuration,'.release-images.env');
     fs.writeFileSync(main,raw,{mode:0o600});fs.writeFileSync(profile,'original-profile\n',{mode:0o600});
     assert.throws(()=>imageAssignment(raw,metadata.images.controller.reference),/public-dockerhub-digest-required/);
@@ -508,6 +516,21 @@ test('native fixture selection adapts only the exact candidate and preserves ori
     for(const role of ['controller','wizard'])assert(initialized.includes(metadata.images[role].reference));
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(configuration,'.release-images.json'))).images,metadata.images);
     assert.throws(()=>service.execute(directory,'initialize',input),/candidate-controller-selector-mismatch|fixture-already-initialized/);
+    const originalReceipt=fs.readFileSync(path.join(directory,'original-selection.json'));
+    service.migrated(directory,'save-migrated-public-selection',input);
+    assert.throws(()=>service.migrated(directory,'save-migrated-public-selection',input),/already-saved/);
+    service.migrated(directory,'candidate-pair-selectors',input);
+    assert(fs.readFileSync(main).includes(id('5')));
+    assert.equal(fs.readFileSync(profile,'utf8'),'original-profile\n');
+    assert(fs.readFileSync(path.join(directory,'original-selection.json')).equals(originalReceipt));
+    service.migrated(directory,'restore-migrated-public-selection',input);
+    assert(fs.readFileSync(main).equals(initialized));
+    const changed=initialized.toString().replace(/^export GITLAB_IMAGE=.*$/m,"export GITLAB_IMAGE='foreign'");
+    fs.writeFileSync(main,changed);
+    assert.throws(()=>service.migrated(directory,'restore-migrated-public-selection',input),/service-selection-changed/);
+    assert.equal(fs.readFileSync(main,'utf8'),changed);
+    fs.writeFileSync(main,initialized);
+
     assert.deepEqual(service.execute(directory,'restore-original',input),{restored:true});
     assert.equal(fs.readFileSync(profile,'utf8'),'original-profile\n');assert(!fs.existsSync(path.join(configuration,'.release-images.json')));
     for(const invalid of [Buffer.from(raw.toString().replace(id('5'),id('7'))),Buffer.concat([raw,Buffer.from("export BOOTSTRAPPER_IMAGE='"+id('5')+"'\n")])]){
@@ -531,6 +554,14 @@ test('future publication fixture is deterministic and verified by the production
   assert.equal(accepted.release.imageId,input.spec.images.candidate.id);assert.equal(accepted.release.wizardImageId,input.spec.images.wizard.id);
   assert.throws(()=>authority.publicInputs({...first.metadata,publicUpgrade:{...first.metadata.publicUpgrade,sha256:'0'.repeat(64)}},first.proof,security),/provenance-hash/);
   assert.equal(input.gitlabUpgrade.rollbackVerified,undefined,'synthetic future gates never mutate candidate evidence');
+  const future=structuredClone(input);future.edge=edge;future.previous.version=edge.from;future.previous.tag='v'+edge.from;future.publicationMode='future-release-before-prerequisite-v1';
+  for(const key of ['checkpointVerified','migrationVerified','registryVerified','securityTrustVerified','runnerUpgradeVerified'])delete future.gitlabUpgrade[key];
+  const before=JSON.stringify(future);
+  const frozen=service.prepare(root,future);
+  assert.equal(JSON.stringify(future),before,'future publication never invents observed candidate evidence');
+  assert(frozen.proof.equals(service.prepare(root,future).proof));
+  authority.publicInputs(frozen.metadata,frozen.proof,security);
+
 });
 
 test('native host fixture keeps diagnostics fixed and runs initialization through the shared Nest module', async () => {
