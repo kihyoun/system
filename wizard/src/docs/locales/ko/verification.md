@@ -74,6 +74,9 @@ docker run --rm --network none \
 | `performance/resources/` | 오프라인 리소스 수집기 계약 및 명시적 측정 도구 |
 
 콜드 복사/복원 오류 사례는 `tests/operations/storage-copy.test.cjs`에 통합되어 기존 operations 런타임 검사로 실행됩니다. 실제 rsync, 네이티브 find/runit 명령 픽스처 및 하위 프로세스 시간 제한을 사용하며 Docker/GitLab은 제어된 전송으로 유지합니다.
+operations 런타임 검사는 독립된 임시 디렉터리를 사용하는 격리된 테스트 파일
+프로세스를 최대 두 개까지 병렬로 실행합니다. 검사 범위와 매니페스트의 시간 예산은
+변경하지 않으며 상위 실행기는 매니페스트 항목을 계속 순서대로 실행합니다.
 
 정확한 검사 이름, 사전 요구사항 및 예산은 매니페스트가 기준입니다. 테스트는 임시 파일,
 합성 Git 저장소, 가상 Rails/Docker/API 전송 및 격리된 HTTP 프로세스를 사용합니다.

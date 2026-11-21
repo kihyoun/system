@@ -95,6 +95,9 @@ fixture's manually replaced controller and final reset using one bounded contain
 Cold-copy/restore fault cases are consolidated in `tests/operations/storage-copy.test.cjs`,
 run by the existing operations-runtime check. They use real rsync, native find/runit
 command fixtures and subprocess timeouts; Docker/GitLab remain controlled transports.
+The operations-runtime check runs at most two isolated test-file processes in parallel,
+using independent temporary directories. Its test scope and manifest budget are unchanged;
+the parent harness still runs manifest entries sequentially.
 
 The manifest is authoritative for exact check names, prerequisites and budgets.
 Tests use temporary files, synthetic Git repositories, fake Rails/Docker/API

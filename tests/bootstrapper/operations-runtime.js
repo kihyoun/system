@@ -5,4 +5,5 @@ const fs=require('node:fs');
 const root=path.resolve(__dirname,'../..');
 const tests=fs.readdirSync(path.join(root,'tests/operations')).filter(file=>file.endsWith('.test.cjs')).sort();
 if(!tests.length)throw Error('Missing shared operations acceptance tests.');
-execFileSync(process.execPath,['--test',...tests.map(file=>path.join(root,'tests/operations',file))],{cwd:root,stdio:'inherit'});
+// Bound file-process parallelism independently of the host CPU-derived default.
+execFileSync(process.execPath,['--test','--test-concurrency=2',...tests.map(file=>path.join(root,'tests/operations',file))],{cwd:root,stdio:'inherit'});

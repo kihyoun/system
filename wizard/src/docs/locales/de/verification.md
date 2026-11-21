@@ -79,6 +79,10 @@ den Controller der Public-Upgrade-Testumgebung nach manuellem Austausch und beim
 | `performance/resources/` | Offline-Verträge zur Ressourcenerfassung und ausdrückliche Messwerkzeuge |
 
 Kaltkopie-/Wiederherstellungsfehlerfälle sind in `tests/operations/storage-copy.test.cjs` zusammengefasst und laufen in der bestehenden Operations-Laufzeitprüfung. Sie verwenden echtes rsync, native find-/runit-Befehlsfixtures und Subprozess-Zeitlimits; Docker/GitLab bleiben kontrollierte Transporte.
+Die Operations-Laufzeitprüfung führt höchstens zwei isolierte Testdateiprozesse parallel
+aus, jeweils mit unabhängigen temporären Verzeichnissen. Testumfang und Zeitbudget im
+Manifest bleiben unverändert; der übergeordnete Ablauf führt die Manifesteinträge
+weiterhin nacheinander aus.
 
 Das Manifest ist maßgeblich für exakte Prüfnamen, Voraussetzungen und Budgets.
 Tests verwenden temporäre Dateien, synthetische Git-Repositorys, nachgebildete Rails-/Docker-/API-
