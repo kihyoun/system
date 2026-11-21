@@ -16,6 +16,13 @@ const hash = raw => crypto.createHash('sha256').update(raw).digest('hex');
 const required = (value, code) => { if (!value) throw Error(code); };
 const root = path.resolve(__dirname, '../..');
 
+function sanitizeGitlabFailure(value) {
+  if(!value||!['running','completed','unavailable'].includes(value.phase))return undefined;
+  if(value.phase==='completed')return Number.isInteger(value.exitCode)&&value.exitCode>=0&&value.exitCode<=255?
+    {phase:'completed',exitCode:value.exitCode}:undefined;
+  return {phase:value.phase};
+}
+
 async function download(repository, version, request = fetch) {
   required(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(repository) &&
     repository.split('/').every(part => !['.', '..'].includes(part)), 'public-upgrade-repository-invalid');
@@ -336,7 +343,13 @@ class NativeCLI {
     this.gitlabCheckpointDir=prepared.checkpointDir;
     const plan=await this.gitlab('plan');
     required(/^[a-f0-9]{64}$/.test(plan.planSha256||''),'public-upgrade-native-plan-invalid');
-    const result=await this.gitlab('promote',plan.planSha256);
+    let result;
+    try {result=await this.gitlab('promote',plan.planSha256);}
+    catch(error) {
+      this.candidate.evidence ||= {};
+      this.candidate.evidence.gitlabUpgradeFailure=await this.captureGitlabFailure();
+      throw error;
+    }
     required(result.status==='promoted' && result.toImage===security.toImage && /^[a-f0-9]{64}$/.test(result.checkpointSha256||''),'upgrade-checkpoint-proof-invalid');
     await this.invoke(['save-migrated-public-selection']);
     await this.invoke(['candidate-pair-selectors']);
@@ -346,6 +359,16 @@ class NativeCLI {
       system_wizard_1:this.candidate.spec.images.wizard.id
     });
     return result;
+  }
+
+  async captureGitlabFailure() {
+    try {
+      // Read the existing owned journal before normal cleanup, without another
+      // database/readiness probe or any process/lease mutation.
+      const script="process.stdout.write(JSON.stringify(require('/opt/system-public-upgrade/dist/modules/gitlab-upgrade/status').upgradeChildOutcome('/state')));";
+      const output=await this.candidate.inner(['exec','system_bootstrapper_1','node','-e',script],{timeout:5000});
+      return sanitizeGitlabFailure(JSON.parse(output)) || {phase:'unavailable'};
+    } catch {return {phase:'unavailable'};}
   }
 
   async selectMigratedPublic(expected) {
@@ -495,4 +518,4 @@ async function prepareGitlabMigration(candidate,expected) {
   candidate.publicUpgradeNative=native;
   return native;
 }
-module.exports = {prepareGitlabMigration, download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, controllerFixture, waitForServices, NativeCLI, run};
+module.exports = {sanitizeGitlabFailure, prepareGitlabMigration, download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, controllerFixture, waitForServices, NativeCLI, run};

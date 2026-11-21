@@ -181,16 +181,32 @@ test('completed paired rollback receipts permit a new owned controller ID but re
  assert.doesNotThrow(()=>pairedPrerequisiteRecovery(retained,current,checkpoint,main));
 });
 test('shared native GitLab status reads durable receipts without requiring any live controller',t=>{
- const {upgradeStatus}=require('../../dist/modules/gitlab-upgrade/status');
+ const {upgradeStatus,upgradeChildOutcome}=require('../../dist/modules/gitlab-upgrade/status');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'public-prerequisite-status-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  assert.deepEqual(upgradeStatus(root,root),{phase:'not-checkpointed',locked:false,checkpointSha256:undefined,planSha256:undefined});
  fs.writeFileSync(path.join(root,'operation.json'),JSON.stringify({phase:'promoted',checkpointSha256:'a'.repeat(64)}),{mode:0o600});
  assert.equal(upgradeStatus(root,root).phase,'promoted');
+ const lock=path.join(root,'.gitlab-upgrade-lock');fs.mkdirSync(lock,{mode:0o700});
+ const owner={format:'system-gitlab-upgrade-lock-v1',operation:'b'.repeat(32)},
+  child={format:'system-gitlab-upgrade-child-v1',operation:owner.operation,phase:'completed',exitCode:124,private:'private-token'};
+ const save=(name,value)=>fs.writeFileSync(path.join(lock,name),JSON.stringify(value),{mode:0o600});
+ save('upgrade-owner.json',owner);save('child.json',child);
+ assert.deepEqual(upgradeChildOutcome(root),{phase:'completed',exitCode:124});
+ save('child.json',{...child,phase:'running',exitCode:undefined});
+ assert.deepEqual(upgradeChildOutcome(root),{phase:'running'});
+ for(const patch of [{operation:'c'.repeat(32)},{phase:'private-token'},{exitCode:-1},{exitCode:256},{exitCode:'124'}]){
+  save('child.json',{...child,...patch});assert.throws(()=>upgradeChildOutcome(root),/status-child-invalid/);
+ }
+ save('child.json',child);fs.chmodSync(path.join(lock,'child.json'),0o644);
+ assert.throws(()=>upgradeChildOutcome(root),/status-child-invalid/);
+ fs.rmSync(path.join(lock,'child.json'));fs.symlinkSync(path.join(root,'operation.json'),path.join(lock,'child.json'));
+ assert.throws(()=>upgradeChildOutcome(root),error=>error.code==='ELOOP');
  fs.chmodSync(path.join(root,'operation.json'),0o644);
  assert.throws(()=>upgradeStatus(root,root),/status-receipt-invalid/);
 });
 test('host prerequisite prepares public recovery payloads and launches only the pinned helper with private bounded inputs',async t=>{
+ const {upgradeCommandFailureCodes}=require('../../dist/modules/gitlab-upgrade/command-failure-policy');
  const {PublicGitlabPrerequisiteService,prerequisiteController}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
  const {HostPolicyError}=require('../../dist/modules/host/install');
  const {ProcessFailure}=require('../../dist/common/runtime/process');
@@ -230,6 +246,8 @@ test('host prerequisite prepares public recovery payloads and launches only the 
     const code='upgrade-readiness-timeout'+suffix;
     assert.equal(options.controlledFailureCodes['System Bootstrapper: '+code],code);
    }
+   for(const code of upgradeCommandFailureCodes)
+    assert.equal(options.controlledFailureCodes['System Bootstrapper: '+code],code);
    assert.equal(options.controlledFailureCodes['System Bootstrapper: private-token'],undefined);
    assert(options.timeout>0);const create=calls.findLast(args=>args[0]==='create');
    assert.deepEqual(create.slice(0,3),['create','--pull','never']);
@@ -267,6 +285,11 @@ test('host prerequisite prepares public recovery payloads and launches only the 
   runtime.child.run=async()=>{throw new ProcessFailure('docker',1,null,false,code);};
   await assert.rejects(()=>service.execute({...input,operation:'plan'}),error=>error instanceof HostPolicyError&&error.code===code);
   assert.equal(calls.filter(args=>args[0]==='rm').length,removed,'a verified failed helper is retained with its checkpoint');
+ }
+ for(const code of [upgradeCommandFailureCodes[0],upgradeCommandFailureCodes.at(-1)]){
+  helperObservation=observedFailure();runtime.child.run=async()=>{throw new ProcessFailure('docker',1,null,false,code);};
+  await assert.rejects(()=>service.execute({...input,operation:'plan'}),error=>error instanceof HostPolicyError&&error.code===code);
+  assert.equal(calls.filter(args=>args[0]==='rm').length,removed,'command failure retains the failed helper and checkpoint');
  }
  const controlled=new ProcessFailure('docker',1,null,false,'upgrade-readiness-timeout-http');
  for(const change of [

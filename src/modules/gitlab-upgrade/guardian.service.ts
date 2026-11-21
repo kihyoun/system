@@ -1,4 +1,9 @@
-import { UPGRADE_PROCESS, type UpgradeProcess } from './native-process';
+import {
+  UPGRADE_PROCESS,
+  NativeUpgradeProcessFailure,
+  type UpgradeProcess,
+} from './native-process';
+import { upgradeCommandStage } from './command-failure-policy';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -17,28 +22,40 @@ export class UpgradeGuardianService {
     args: string[],
     opts: CommandOptions = {},
   ): string {
-    if (!session.owner) return this.process.run(binary, args, opts);
-    const timeout = opts.timeout || 180000;
-    return this.process.run(
-      process.execPath,
-      [
-        path.join(__dirname, 'child-entry.js'),
-        'watchdog',
-        path.join(session.state, '.gitlab-upgrade-lock'),
-      ],
-      {
-        timeout: timeout + 5000,
-        detached: true,
-        input: JSON.stringify({
-          binary,
-          args,
-          timeout,
-          cwd: opts.cwd,
-          env: opts.env,
-          input: opts.input,
-        }),
-      },
-    );
+    try {
+      if (!session.owner) return this.process.run(binary, args, opts);
+      const timeout = opts.timeout || 180000;
+      return this.process.run(
+        process.execPath,
+        [
+          path.join(__dirname, 'child-entry.js'),
+          'watchdog',
+          path.join(session.state, '.gitlab-upgrade-lock'),
+        ],
+        {
+          timeout: timeout + 5000,
+          detached: true,
+          input: JSON.stringify({
+            binary,
+            args,
+            timeout,
+            cwd: opts.cwd,
+            env: opts.env,
+            input: opts.input,
+          }),
+        },
+      );
+    } catch (error) {
+      if (!(error instanceof NativeUpgradeProcessFailure)) throw error;
+      const stage = upgradeCommandStage(binary, args);
+      throw Object.assign(Error(`upgrade-command-${stage}-${error.failureKind}`), {
+        stage,
+        failureKind: error.failureKind,
+        exitCode: error.exitCode,
+        signal: error.signal,
+        ...(error.systemCode ? { systemCode: error.systemCode } : {}),
+      });
+    }
   }
 
   lock(session: UpgradeSession, planSha256?: string): void {

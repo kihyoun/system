@@ -33,6 +33,42 @@ function nativeProof(args, proof={}) {
   const updated=imageAssignment(example,release.toImage);assert.equal(updated.slice(0,1184),example.slice(0,1184));assert(updated.includes(release.toImage));assert.equal(imageAssignment(updated,release.toImage),updated);
   assert.throws(()=>imageAssignment(example+'\nGITLAB_IMAGE=one\nGITLAB_IMAGE=two\n',release.toImage),/duplicate/);assert.throws(()=>imageAssignment('badcube',release.toImage),/cube/);assert.throws(()=>imageAssignment(example,'gitlab/gitlab-ee:latest'),/approved/);
   assert.equal(run(process.execPath,['-p','process.cwd()'],{cwd:root}),root,'All lifecycle subprocesses must use the intended component working directory.');
+  const {NativeUpgradeProcessFailure}=require('../../dist/modules/gitlab-upgrade/native-process');
+  const {UpgradeGuardianService}=require('../../dist/modules/gitlab-upgrade/guardian.service');
+  const {upgradeCommandStage,upgradeCommandFailureCodes,workerFailureFacts,workerFailureMarker}=require('../../dist/modules/gitlab-upgrade/command-failure-policy');
+  assert(Object.isFrozen(upgradeCommandFailureCodes));
+  for(const [binary,args,stage]of [
+    ['docker',['exec','--user','991:991','a'.repeat(64),'env','-i','HOME=/private','/opt/gitlab/embedded/bin/psql','--command','private SQL'],'preflight-sql'],
+    ['docker',['exec','a'.repeat(64),'cat','/var/opt/gitlab/gitlab-rails/etc/database.yml'],'preflight-configuration'],
+    ['docker',['exec','a'.repeat(64),'dpkg-query','-W','gitlab-*'],'preflight-package'],
+    ['docker',['exec','a'.repeat(64),'id','-u','git'],'preflight-identity'],
+    ['docker',['exec','-i','a'.repeat(64),'dd','of=/private','status=none'],'preflight-private-files'],
+    ['docker',['exec','system_gitlab_1','gitlab-rake','db:migrate:status'],'migration-status'],
+    ['docker',['exec','system_gitlab_1','curl','-fsS','http://127.0.0.1/-/readiness?all=1'],'readiness-http'],
+    ['docker',['exec','--env','SVWAIT=30','system_gitlab_1','timeout','-k','2','10','gitlab-ctl','stop'],'service-control'],
+    [process.execPath,[path.resolve(__dirname,'../../dist/cli/main.js'),'lifecycle','gitlab-start'],'lifecycle'],
+    [process.execPath,[path.resolve(__dirname,'../../dist/cli/main.js'),'projects-routing','routing','start'],'routing'],
+    ['rsync',['-a','/private/source/','/private/destination/'],'checkpoint'],
+    ['docker',['image','inspect','private-image'],'inspect'],
+    ['docker',['exec','system_gitlab_1','echo','/opt/gitlab/embedded/bin/psql'],'native'],
+  ]){
+    assert.equal(upgradeCommandStage(binary,args),stage);
+    const failure=new NativeUpgradeProcessFailure({kind:'timeout',exitCode:null,signal:'SIGTERM',systemCode:'ETIMEDOUT'});
+    const guardian=new UpgradeGuardianService({run(){throw failure;}});
+    for(const owner of [undefined,{operation:'a'.repeat(32)}])assert.throws(()=>guardian.ownedRun({owner,state:root},binary,args,{timeout:100}),error=>{
+      assert.equal(error.message,'upgrade-command-'+stage+'-timeout');assert(upgradeCommandFailureCodes.includes(error.message));
+      assert.equal(error.exitCode,null);assert.equal(error.signal,'SIGTERM');assert.equal(error.systemCode,'ETIMEDOUT');
+      for(const secret of ['private SQL','/private','private-image'])assert(!JSON.stringify(error).includes(secret));return true;
+    });
+    const injected=Error('injected-private-failure'),untouched=new UpgradeGuardianService({run(){throw injected;}});
+    assert.throws(()=>untouched.ownedRun({state:root},binary,args),error=>error===injected);
+  }
+  assert.equal(workerFailureFacts('',workerFailureMarker+'private-token\n'),undefined);
+  assert.equal(workerFailureFacts('',workerFailureMarker+'ENOENT suffix\n'),undefined);
+  assert.equal(workerFailureFacts('',workerFailureMarker+'ENOENT\n'+workerFailureMarker+'ENOBUFS\n'),undefined);
+  for(const [binary,args,timeout,kind]of [[process.execPath,['-e','console.error("private-failure-output");process.exit(7)'],1000,'nonzero-exit'],[path.join(root,'private-missing-executable'),[],1000,'spawn-not-found'],[process.execPath,['-e','console.error("private-failure-output");setInterval(()=>{},1000)'],100,'timeout']]){
+    assert.throws(()=>run(binary,args,{timeout}),error=>{assert(error instanceof NativeUpgradeProcessFailure);assert.equal(error.failureKind,kind);assert.equal(error.message,'upgrade-operation-failed');assert(!JSON.stringify(error).includes('private'));assert(!error.stack.includes('private-failure-output'));return true;});
+  }
   for(const name of ['gitlab','configuration'])fs.mkdirSync(path.join(root,name));fs.writeFileSync(path.join(root,'gitlab/value'),'original');const expected=inventory(root);fs.writeFileSync(path.join(root,'gitlab/value'),'changed');assert.notDeepEqual(inventory(root),expected);fs.writeFileSync(path.join(root,'gitlab/value'),'original');fs.symlinkSync('value',path.join(root,'gitlab/link'));assert(inventory(root).some(e=>e.type==='link'&&e.target==='value'));
   atomic(path.join(root,'private.json'),'data');assert.equal(fs.statSync(path.join(root,'private.json')).mode&0o777,0o600);assert.equal(hash('data').length,64);
   const calls=[];let state={Running:false,ExitCode:0,OOMKilled:false};const engine=new Upgrade(base,{run(binary,args,opts){calls.push({binary,args,opts});if(args[0]==='inspect')return JSON.stringify([{State:state}]);if(args.includes('status'))return 'down: native-service: 0s';return '';}});

@@ -600,6 +600,7 @@ function recover(report,exec=docker) {
   }
   if(report.evidence?.guidedPreview){const clean=require('../../dist/modules/release/guided-preview-evidence').sanitize(report.evidence.guidedPreview);if(clean)evidence.guidedPreview=clean;}
   if(report.evidence?.gitlabUpgrade){const clean=require('../e2e/gitlab-upgrade').sanitizeEvidence(report.evidence.gitlabUpgrade);if(clean)evidence.gitlabUpgrade=clean;}
+  if(report.evidence?.gitlabUpgradeFailure){const clean=require('../e2e/public-upgrade').sanitizeGitlabFailure(report.evidence.gitlabUpgradeFailure);if(clean)evidence.gitlabUpgradeFailure=clean;}
   Object.assign(instance,{id:report.runId,name,resources:report.resources,results,exec,
     startedAt:typeof report.startedAt==='string'&&Number.isFinite(Date.parse(report.startedAt))?Date.parse(report.startedAt):undefined,
     evidence:Object.keys(evidence).length?evidence:undefined,

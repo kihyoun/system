@@ -437,6 +437,12 @@ test('native host helper mounts backup strictly for plan/apply and performs reco
     assert(calls.at(-1).includes('/var/run/docker.sock:/var/run/docker.sock'));
     assert(calls.at(-1).includes('--entrypoint'));
   }
+  candidate.inner=async(args,options)=>{assert.equal(options.timeout,5000);assert.deepEqual(args.slice(0,4),['exec','system_bootstrapper_1','node','-e']);return JSON.stringify({phase:'completed',exitCode:124,private:'private-token'});};
+  const failure=await native.captureGitlabFailure();assert.deepEqual(failure,{phase:'completed',exitCode:124});
+  const {recover}=require('./disposable-candidate');
+  assert.deepEqual(recover({runId:candidate.id,resources:[],results:[],evidence:{gitlabUpgradeFailure:{...failure,private:'private-token'}}}).evidence.gitlabUpgradeFailure,failure);
+  candidate.inner=async()=>{throw Error('private-token');};
+  assert.deepEqual(await native.captureGitlabFailure(),{phase:'unavailable'});
 });
 
 test('native helper diagnostics identify only the declared phase and preserve bounded exit facts', async () => {
@@ -481,6 +487,7 @@ test('fixed native diagnostic markers survive the real Docker sanitizer and nati
     const native=new NativeCLI(candidate);
     const phases=['initialize','restore-original','plan','apply','status','recover','gitlab-prepare','gitlab-plan','gitlab-promote','gitlab-status','gitlab-abort','gitlab-rollback'];
     const codes=['docker-command-failed','release-changed-after-plan','image-archive-failed-or-timed-out',
+      'upgrade-command-preflight-sql-timeout','upgrade-command-migration-status-nonzero-exit',
       'public-gitlab-prerequisite-not-declared','public-gitlab-retained-input-mismatch','public-gitlab-installed-controller-mismatch',
       'public-gitlab-helper-runtime-overlay-refused','public-gitlab-helper-authority-mismatch','public-gitlab-helper-outcome-uncertain',
       ...Object.values(diagnostics.dockerOperations)];
@@ -589,10 +596,12 @@ test('future publication fixture is deterministic and verified by the production
 });
 
 test('native host fixture keeps diagnostics fixed and runs initialization through the shared Nest module', async () => {
+  const {upgradeCommandFailureCodes}=require('../../dist/modules/gitlab-upgrade/command-failure-policy');
   const {fixtureDiagnostic}=require('../../dist/modules/testing/public-upgrade-host-entry');
   const {PublicUpgradeHostService}=require('../../dist/modules/testing/public-upgrade-host.service');
   const {HostPolicyError}=require('../../dist/modules/host/install');
   const diagnostics=require('../e2e/public-upgrade-diagnostics.json');
+  for(const code of upgradeCommandFailureCodes)assert.equal(diagnostics.errors[code],code);
   for(const [label,code] of Object.entries(diagnostics.errors)){
     assert.equal(fixtureDiagnostic(new HostPolicyError(label),diagnostics),code);
     for(const error of [new Error(label),new HostPolicyError(label+':private-token'),new HostPolicyError('private-token:'+label)])

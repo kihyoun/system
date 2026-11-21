@@ -8,10 +8,15 @@ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function fixture(t){const state=fs.mkdtempSync(path.join(os.tmpdir(),'upgrade-child-'));t.after(()=>fs.rmSync(state,{recursive:true,force:true}));const lease=path.join(state,'.gitlab-upgrade-lock');fs.mkdirSync(lease);const owner={format:'system-gitlab-upgrade-lock-v1',operation:'a'.repeat(32)};atomic(path.join(lease,'upgrade-owner.json'),JSON.stringify(owner));const engine=new Upgrade(options);engine.state=state;engine.owner=owner;return {state,lease,engine};}
 test('worker refuses a spawn failure even when the child reports status zero',async t=>{
   const previous=process.exitCode;t.after(()=>{process.exitCode=previous;});
+  let output='';t.mock.method(process.stdout,'write',bytes=>{output+=bytes;return true;});t.mock.method(process.stderr,'write',bytes=>{output+=bytes;return true;});
   for(const [result,expected]of [[{status:0},0],[{status:23},23],[{status:null,signal:'SIGTERM'},1],
-    [{status:0,error:Object.assign(Error('private-command-data'),{code:'ENOBUFS'})},1]]){
+    ...['ENOBUFS','ENOENT','EACCES','ETIMEDOUT','PRIVATE_SECRET_CODE'].map(code=>[{status:0,error:Object.assign(Error('private-command-data'),{code}),stdout:'private-command-data',stderr:'private-command-data'},1])]){
+    output='';
     await worker(async()=>({binary:'fixture',args:[]}),()=>result);
     assert.equal(process.exitCode,expected);
+    assert(!output.includes('private-command-data')&&!output.includes('PRIVATE_SECRET_CODE'));
+    if(expected!==0){const {workerFailureFacts}=require('../../dist/modules/gitlab-upgrade/command-failure-policy');const facts=workerFailureFacts('',output);assert(facts);
+      assert.equal(facts.kind,result.error?({ENOBUFS:'output-limit',ENOENT:'spawn-not-found',EACCES:'spawn-permission',ETIMEDOUT:'timeout'}[result.error.code]||'native-error'):result.signal?'signal':'nonzero-exit');}
   }
 });
 test('process identity uses one stat snapshot even when the process exits before another read',t=>{
@@ -37,8 +42,16 @@ test('process identity and group scans preserve unexpected stat errors',t=>{
   }
 });
 test('owned local subprocess timeout kills its complete group and suppresses private command output',t=>{
-  const f=fixture(t);assert.throws(()=>f.engine.ownedRun(process.execPath,['-e','process.exit(7)'],{timeout:1000}),error=>error.exitCode===7);assert.throws(()=>f.engine.ownedRun(process.execPath,['-e','console.log("never-publish-token");setInterval(()=>{},1000)'],{timeout:100}),error=>error.message==='upgrade-operation-failed');
+  const f=fixture(t);assert.throws(()=>f.engine.ownedRun(process.execPath,['-e','process.exit(7)'],{timeout:1000}),error=>error.exitCode===7&&error.message==='upgrade-command-native-nonzero-exit');assert.throws(()=>f.engine.ownedRun(process.execPath,['-e','console.log("never-publish-token");setInterval(()=>{},1000)'],{timeout:100}),error=>error.message==='upgrade-command-native-timeout'&&error.exitCode===124);
   const witness=JSON.parse(fs.readFileSync(path.join(f.lease,'child.json'),'utf8'));assert.equal(witness.phase,'completed');assert.equal(witness.exitCode,124);assert(!activeGroup(witness.group));assert(!JSON.stringify(witness).includes('never-publish-token'));
+  for(const [binary,args,kind]of [[path.join(f.state,'private-missing-binary'),['private-argument'],'spawn-not-found'],[process.execPath,['-e','process.stdout.write("never-publish-token".repeat(600000))'],'output-limit']]){
+    assert.throws(()=>f.engine.ownedRun(binary,args,{timeout:3000}),error=>{
+      assert.equal(error.message,'upgrade-command-native-'+kind);assert.equal(error.failureKind,kind);
+      for(const key of ['stdout','stderr','args','argv','env','output','input'])assert(!Object.hasOwn(error,key));
+      assert(!JSON.stringify(error).includes('never-publish-token'));assert(!JSON.stringify(error).includes('private-argument'));assert(!JSON.stringify(error).includes('private-missing-binary'));return true;
+    });
+    const completed=JSON.parse(fs.readFileSync(path.join(f.lease,'child.json'),'utf8'));assert.equal(completed.phase,'completed');assert(!activeGroup(completed.group));
+  }
 });
 test('journaled watchdog finishes local copy work even when the invoking helper is killed',async t=>{
   const f=fixture(t),done=path.join(f.state,'copy-completed');

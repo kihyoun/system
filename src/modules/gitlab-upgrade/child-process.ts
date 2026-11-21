@@ -7,6 +7,7 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { uptime, stat, activeGroup, record } from './child-journal';
+import { nativeFailureFacts, failureMarker } from './command-failure-policy';
 export { uptime, stat, activeGroup } from './child-journal';
 export interface WorkerJob {
   binary: string;
@@ -91,8 +92,14 @@ export async function worker(
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
   });
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.error || result.signal || result.status !== 0)
+    process.stderr.write(
+      failureMarker(nativeFailureFacts(result.error, result.status, result.signal)) + '\n',
+    );
+  else {
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+  }
   process.exitCode = !result.error && Number.isInteger(result.status) ? result.status! : 1;
 }
 export async function watchdog(directory: string): Promise<void> {
@@ -164,5 +171,10 @@ export async function watchdog(directory: string): Promise<void> {
   witness.phase = 'completed';
   witness.exitCode = expired ? 124 : Number.isInteger(code) ? code! : 1;
   record(filename, witness);
+  if (expired)
+    process.stderr.write(
+      failureMarker({ kind: 'timeout', exitCode: 124, signal: null, systemCode: 'ETIMEDOUT' }) +
+        '\n',
+    );
   process.exitCode = witness.exitCode;
 }

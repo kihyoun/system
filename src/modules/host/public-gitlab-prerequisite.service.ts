@@ -22,10 +22,12 @@ import { isGitLabPrerequisite } from './upgrade-prerequisite.service';
 import { upgradePath } from './upgrade-graph';
 import type { PublicPrerequisiteExecution } from '../gitlab-upgrade/types';
 import { upgradeStatus } from '../gitlab-upgrade/status';
+import { upgradeCommandFailureCodes } from '../gitlab-upgrade/command-failure-policy';
 
 type Row = Record<string, unknown>;
 const helperFailureCodes = Object.fromEntries(
   [
+    ...upgradeCommandFailureCodes,
     'upgrade-readiness-timeout',
     'upgrade-readiness-timeout-restarting',
     'upgrade-readiness-timeout-http',

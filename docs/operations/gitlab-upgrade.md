@@ -74,6 +74,19 @@ it does not expose subprocess output or configuration. Inspect the retained
 operation and use its documented recovery path. A readiness failure does not
 release maintenance leases or prove that promotion completed.
 
+Native command failures use a finite `upgrade-command-<stage>-<kind>` diagnostic.
+The stage distinguishes SQL, private connection-file preparation, package/configuration
+reads, schema status and lifecycle commands. The kind distinguishes a nonzero exit,
+timeout, signal or supported launch/output failure. These labels identify the failed
+boundary; they do not disclose command arguments, SQL, environment or output, and do
+not retry a failed command or increase its deadline. The existing private
+supervision records retain the worker/watchdog phase and numeric exit code;
+that code can be normalized to 1 for a launch failure or signal.
+On a failed candidate promotion, the existing platform harness also retains the
+owned child journal's phase and numeric exit code before normal cleanup. This is
+a bounded, read-only diagnostic snapshot, not another SQL or readiness check;
+it never turns a failed stage into acceptance evidence.
+
 GitLab and runner startup use the shared lifecycle service through thin adapters
 under the watchdog. The child verifies the inherited operation against all
 shared owner records and its live parent identity, preserves the watchdog's
