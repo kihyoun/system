@@ -93,6 +93,57 @@ test('aliases regenerate on start/reload, clear on recovery/disable and conflict
 });
 test('all eight application environment combinations render on start/reload and missing enabled TLS templates fail before Docker',t=>{
  const f=fixture(t),names=['PROD','BETA','REVIEW'];
+ const projectDirectory=path.join(f.root,'config/system/.projects.env'),cache=path.join(f.root,'config/nginx-proxy/.projects');
+ const selection='PROJECT_NAME=application\n'+names.map(name=>'USE_'+name+'_HOST=true\n'+name+'_DOMAIN_MODE=0\n'+name+'_HOST='+name+'.localhost\n').join('');
+ fs.writeFileSync(path.join(projectDirectory,'.application.env'),selection);
+ fs.writeFileSync(path.join(projectDirectory,'.disabled.env'),'PROJECT_NAME=disabled\n'+names.map(name=>'USE_'+name+'_HOST=false\n').join(''));
+ fs.writeFileSync(path.join(projectDirectory,'.nohost.env'),'PROJECT_NAME=nohost\n');
+ fs.writeFileSync(path.join(projectDirectory,'.wizard.env'),'PROJECT_NAME=wizard\nPROJECT_TEMPLATE=wizard\nUSE_PROD_HOST=true\n');
+ assert.throws(()=>f.service.run(f.command),/ENOENT/,'fresh helpers cannot render before reconstructing ephemeral proxy records');
+ assert.equal(f.calls.length,0);
+ const originalRun=f.process.run,addresses=['172.20.0.4','172.21.0.5','172.22.0.6'];
+ let change=value=>value;
+ const observations=names.map((prefix,index)=>({Id:String(index+1).repeat(64),Name:'/application_'+prefix.toLowerCase()+'_1',State:{Running:true},Config:{Labels:{'com.docker.compose.project':'application','com.docker.compose.service':prefix.toLowerCase()}},NetworkSettings:{Networks:{['application_'+prefix.toLowerCase()]:{IPAddress:addresses[index]}}}}));
+ f.process.run=(binary,args,options)=>{
+  if(args.includes('{{json .}}')){
+   f.calls.push({binary,args,options});
+   const value=observations.find(item=>args.at(-1)===item.Name.slice(1)||args.at(-1)===item.Id);
+   if(!value)throw new ProcessFailure(binary,1,null,false);
+   return {stdout:JSON.stringify(change(structuredClone(value),args.at(-1))),stderr:'',status:0};
+  }
+  return originalRun(binary,args,options);
+ };
+ f.service.reconstructProxyRuntime(f.root);
+ assert.equal(fs.readFileSync(path.join(cache,'.application.env'),'utf8'),names.map((name,index)=>name+'_PROXY='+addresses[index]+'\n').join(''));
+ for(const name of ['disabled','nohost'])assert.equal(fs.readFileSync(path.join(cache,'.'+name+'.env'),'utf8'),'');
+ assert(!fs.existsSync(path.join(cache,'.wizard.env')));
+ assert.deepEqual(f.calls.map(call=>call.args.at(-1)),observations.flatMap(item=>[item.Name.slice(1),item.Id]));
+ assert(f.calls.every(call=>call.binary==='docker'&&call.args.slice(0,5).join(' ')==='--host=unix:///var/run/docker.sock container inspect --format {{json .}}'));
+ f.service.run(f.command);
+ const routed=fs.readFileSync(path.join(f.command.templates,'default.conf.template'),'utf8');
+ names.forEach((name,index)=>assert(routed.includes('server '+addresses[index]+':80;'),'reconstructed '+name+' uses its exact running proxy address'));
+ const retained=fs.readdirSync(cache).map(name=>[name,fs.readFileSync(path.join(cache,name),'utf8')]);
+ for(const mutation of [
+  value=>({...value,Id:'short'}),value=>({...value,Name:'/foreign_prod_1'}),
+  value=>({...value,Config:{Labels:{...value.Config.Labels,'com.docker.compose.project':'foreign'}}}),
+  value=>({...value,Config:{Labels:{...value.Config.Labels,'com.docker.compose.service':'foreign'}}}),
+  value=>({...value,State:{Running:false}}),value=>({...value,State:{Running:true,Paused:true}}),
+  value=>({...value,State:{Running:true,Restarting:true}}),
+  (value,identifier)=>identifier===value.Id?{...value,Id:'f'.repeat(64)}:value,
+  value=>({...value,NetworkSettings:{Networks:{proxy:{IPAddress:'0.0.0.0'}}}}),
+  value=>({...value,NetworkSettings:{Networks:{proxy:{IPAddress:'999.20.0.4'}}}}),
+  value=>({...value,NetworkSettings:{Networks:{}}}),
+  value=>({...value,NetworkSettings:{Networks:{one:{IPAddress:'172.20.0.4'},two:{IPAddress:'172.20.0.5'}}}}),
+  ()=>{throw new ProcessFailure('docker',1,null,false);},
+ ]){
+  change=(value,identifier)=>value.Id===observations.at(-1).Id?mutation(value,identifier):{...value,NetworkSettings:{Networks:{proxy:{IPAddress:'172.30.0.9'}}}};f.calls.length=0;
+  assert.throws(()=>f.service.reconstructProxyRuntime(f.root));
+  assert.deepEqual(fs.readdirSync(cache).map(name=>[name,fs.readFileSync(path.join(cache,name),'utf8')]),retained,'invalid enabled proxy cannot replace any cache records');
+  assert.equal(fs.readFileSync(path.join(f.command.templates,'default.conf.template'),'utf8'),routed);
+  assert(f.calls.every(call=>call.args.includes('{{json .}}')),'reconstruction never performs Compose, project lifecycle or routing mutation');
+ }
+ change=value=>value;f.process.run=originalRun;
+ for(const name of ['disabled','nohost','wizard'])fs.unlinkSync(path.join(projectDirectory,'.'+name+'.env'));
  function configure(flags,mode){
   const selection='PROJECT_NAME=application\n'+names.map((name,index)=>'USE_'+name+'_HOST='+flags[index]+'\n').join('');
   fs.writeFileSync(path.join(f.root,'config/system/.projects.env/.application.env'),selection);

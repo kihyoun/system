@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { isIPv4 } from 'node:net';
 import { ProcessRunner } from '../../common/runtime/process';
 import { ConfigurationPort, ROUTING_PROCESS, ROUTING_CONFIGURATION } from './ports';
 import { ProxyReloadService } from './proxy-reload.service';
@@ -66,6 +67,95 @@ export class ProjectsRoutingService {
     if (!['start', 'reload', 'recovery'].includes(command.action))
       throw Error('Unknown routing action.');
     return this.render(command);
+  }
+
+  /** Rebuild disposable address records without creating or changing any containers. */
+  reconstructProxyRuntime(root: string): void {
+    if (!path.isAbsolute(root)) throw Error('Absolute routing checkout required.');
+    const records = new Map<string, string>();
+    for (const file of this.projectPaths(root)) {
+      const project = this.configuration.read([file], keys, defaults),
+        name = project.PROJECT_NAME;
+      if (project.PROJECT_TEMPLATE === 'wizard' && name === 'wizard') continue;
+      if (!/^[a-zA-Z0-9_-]+$/.test(name) || records.has(name))
+        throw Error('Invalid project proxy identity.');
+      let content = '';
+      for (const prefix of prefixes)
+        if (project['USE_' + prefix + '_HOST'] === 'true')
+          content += prefix + '_PROXY=' + this.runningProxyAddress(name, prefix) + '\n';
+      records.set(name, content);
+    }
+    // Validate every enabled proxy before publishing any local cache records.
+    for (const [name, content] of records) this.writeProxyRecord(root, name, content);
+  }
+
+  private runningProxyAddress(project: string, prefix: string): string {
+    const service = prefix.toLowerCase(),
+      name = project + '_' + service + '_1';
+    const object = (value: unknown): Record<string, unknown> =>
+      value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {};
+    const inspect = (identity: string, expectedId?: string) => {
+      const container = object(
+          JSON.parse(
+            this.process.run(
+              'docker',
+              [
+                '--host=unix:///var/run/docker.sock',
+                'container',
+                'inspect',
+                '--format',
+                '{{json .}}',
+                identity,
+              ],
+              { timeout: 180000, maxBuffer: 65536 },
+            ).stdout,
+          ),
+        ),
+        state = object(container.State),
+        labels = object(object(container.Config).Labels);
+      if (
+        typeof container.Id !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(container.Id) ||
+        (expectedId !== undefined && container.Id !== expectedId) ||
+        container.Name !== '/' + name ||
+        state.Running !== true ||
+        state.Paused === true ||
+        state.Restarting === true ||
+        labels['com.docker.compose.project'] !== project ||
+        labels['com.docker.compose.service'] !== service
+      )
+        throw Error('project-proxy-runtime-identity-required');
+      return container;
+    };
+    const selected = inspect(name),
+      container = inspect(String(selected.Id), String(selected.Id)),
+      addresses = Object.values(object(object(container.NetworkSettings).Networks)).map(
+        (network) => object(network).IPAddress,
+      );
+    if (
+      addresses.length !== 1 ||
+      typeof addresses[0] !== 'string' ||
+      !isIPv4(addresses[0]) ||
+      /^(?:0|127)\./.test(addresses[0]) ||
+      Number(addresses[0].split('.')[0]) >= 224
+    )
+      throw Error('project-proxy-runtime-address-required');
+    return addresses[0];
+  }
+
+  private writeProxyRecord(root: string, name: string, content: string): void {
+    const directory = path.join(root, 'config/nginx-proxy/.projects');
+    fs.mkdirSync(directory, { recursive: true });
+    const temporary = fs.mkdtempSync(path.join(directory, '.routing-'));
+    try {
+      const next = path.join(temporary, 'record');
+      fs.writeFileSync(next, content, { mode: 0o600 });
+      fs.renameSync(next, path.join(directory, '.' + name + '.env'));
+    } finally {
+      fs.rmSync(temporary, { recursive: true, force: true });
+    }
   }
 
   private stop(command: RoutingCommand): void {
@@ -227,14 +317,7 @@ export class ProjectsRoutingService {
           if (!/^[0-9a-fA-F:.]+$/.test(address)) throw Error('Invalid project proxy address.');
           content += prefix + '_PROXY=' + address + '\n';
         }
-      const temporary = fs.mkdtempSync(path.join(directory, '.routing-'));
-      try {
-        const next = path.join(temporary, 'record');
-        fs.writeFileSync(next, content, { mode: 0o600 });
-        fs.renameSync(next, path.join(directory, '.' + name + '.env'));
-      } finally {
-        fs.rmSync(temporary, { recursive: true, force: true });
-      }
+      this.writeProxyRecord(root, name, content);
     }
   }
 

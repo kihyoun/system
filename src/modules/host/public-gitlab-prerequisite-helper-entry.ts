@@ -20,9 +20,15 @@ import { record } from '../release/source-identity';
 import { readPrivateInput } from './private-input';
 import { writePrivate, requireValue as ensure } from './install';
 import { bytesSha } from './release-selection.service';
+import { ProjectsRoutingModule } from '../projects-routing/projects-routing.module';
+import { ProjectsRoutingService } from '../projects-routing/projects-routing.service';
 
 @Module({
-  imports: [HostModule.register({ lifecycleEvidence: lifecyclePolicy() }), GitLabUpgradeModule],
+  imports: [
+    HostModule.register({ lifecycleEvidence: lifecyclePolicy() }),
+    GitLabUpgradeModule,
+    ProjectsRoutingModule,
+  ],
 })
 class PublicGitlabPrerequisiteHelperModule {}
 
@@ -162,6 +168,7 @@ export async function publicGitlabHelperMain(args = process.argv.slice(2)): Prom
         flag: 'wx',
       });
     }
+    app.get(ProjectsRoutingService).reconstructProxyRuntime(ROOT);
     // Check native recovery dependencies before the first writer is stopped.
     session.run('rsync', ['--version']);
     session.run('docker', ['compose', 'version']);

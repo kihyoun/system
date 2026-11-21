@@ -137,7 +137,7 @@ test('public prerequisite runs the accepted helper while preserving the previous
   assert.throws(()=>service.create(input,{...dependencies,publicExecution:{...dependencies.publicExecution,recoveryCheckpoint:checkpoint}}).evidence(),/public-helper-identity/);
  }finally{await app.close();}
 });
-test('public prerequisite CLI and mount authority reject unreviewed commands and helper code overlays',()=>{
+test('public prerequisite CLI and mount authority reject unreviewed commands and helper code overlays',async t=>{
  const {parsePublicGitlabInput}=require('../../dist/modules/host/public-gitlab-prerequisite-entry');
  const {prerequisiteMountTarget}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
  const common=['--checkout','/reviewed/source','--persistence-env','/private/storage.env','--directory','/platform/configuration/gitlab-prerequisites/to-2-0-0'];
@@ -147,6 +147,47 @@ test('public prerequisite CLI and mount authority reject unreviewed commands and
   ['--operation','plan','--confirm-plan','a'.repeat(64)],['--operation','delete'],['--skip-tested-controller']])assert.throws(()=>parsePublicGitlabInput([...common,...extra]));
  for(const target of ['/','/system','/system/../system','/usr','/usr/local','/usr/local/bin','/usr/local/bin/node'])assert.throws(()=>prerequisiteMountTarget(target),/runtime-overlay/);
  for(const target of ['/state','/srv/gitlab/data','/usr/bin/docker','/operator/platform/runners'])assert.doesNotThrow(()=>prerequisiteMountTarget(target));
+ const {publicGitlabHelperMain}=require('../../dist/modules/host/public-gitlab-prerequisite-helper-entry');
+ const {HostReleaseAuthorityService}=require('../../dist/modules/host/release-authority.service');
+ const {PublicUpgradePreparationService}=require('../../dist/modules/host/public-upgrade-preparation.service');
+ const {PublicGitlabPrerequisiteService,prerequisiteController}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
+ const {ProjectsRoutingService}=require('../../dist/modules/projects-routing/projects-routing.service');
+ const {ROOT}=require('../../dist/modules/gitlab-upgrade/types');
+ const privateInput=require('../../dist/modules/host/private-input'),install=require('../../dist/modules/host/install');
+ const {bytesSha}=require('../../dist/modules/host/release-selection.service');
+ const filename='/state/gitlab-prerequisites/to-2-0-0/preparation.json',launchFile=path.join(path.dirname(filename),'launch-'+'a'.repeat(32)+'.json');
+ const controller={Id:'1'.repeat(64),Name:'/system_bootstrapper_1',Image:'sha256:'+'2'.repeat(64),State:{Running:true},Config:{Labels:{'com.docker.compose.project':'system','com.docker.compose.service':'bootstrapper'}},HostConfig:{RestartPolicy:{Name:'always'}},Mounts:[]};
+ const retained={format:'system-public-gitlab-prerequisite-v1',root:'/operator/platform',directory:'/operator/platform/configuration/gitlab-prerequisites/to-2-0-0',checkpointDir:'/operator/platform/configuration/gitlab-upgrades/public-to-2-0-0',metadata:{},proof:'',previous:{images:{controller:{imageId:controller.Image}}},controller:prerequisiteController(controller),timeout:600};
+ const bytes=Buffer.from(JSON.stringify(retained)),launch={preparationSha256:bytesSha(bytes),containerId:'3'.repeat(64),controller:retained.controller};
+ t.mock.method(privateInput,'readPrivateInput',name=>{assert([filename,launchFile].includes(name));return name===filename?bytes:Buffer.from(JSON.stringify(launch));});
+ t.mock.method(install,'writePrivate',(name)=>assert.equal(name,path.join(path.dirname(filename),'accepted-evidence.json')));
+ const originalStat=fs.lstatSync,sources=['/state/.docker.env','/state/.projects.env'],destinations=sources.map(name=>path.join(ROOT,'config/system',path.basename(name)));
+ t.mock.method(fs,'lstatSync',(name,options)=>sources.includes(name)?{isSymbolicLink:()=>false,isDirectory:()=>name.endsWith('.projects.env'),isFile:()=>name.endsWith('.docker.env')}:destinations.includes(name)?undefined:originalStat(name,options));
+ t.mock.method(fs,'symlinkSync',(source,destination)=>assert.equal(destinations[sources.indexOf(source)],destination));
+ const trace=[],coreFiles=['.docker.env','config/gitlab/.docker.env','wizard/.docker.env'].map(name=>path.join(ROOT,name));
+ t.mock.method(fs,'writeFileSync',(name)=>{assert(coreFiles.includes(name));trace.push('core-address');});
+ const accepted={graph:{},evidence:{},release:{sourceRevision:'a'.repeat(40)}};
+ const session={evidence(){trace.push('evidence');},run(){trace.push('dependency');},async plan(){trace.push('plan');return {ready:true};}};
+ const providers=new Map([
+  [HostReleaseAuthorityService,{publicInputs:()=>accepted}],
+  [PublicUpgradePreparationService,{graph:()=>accepted.graph}],
+  [PublicGitlabPrerequisiteService,{inspect:()=>controller,docker:()=> '172.20.0.2'}],
+  [GitLabUpgradeService,{create:()=>session}],
+  [ProjectsRoutingService,{reconstructProxyRuntime(root){assert.equal(root,ROOT);trace.push('project-proxy-runtime');}}],
+ ]);
+ t.mock.method(NestFactory,'createApplicationContext',async module=>{
+  const {ProjectsRoutingModule}=require('../../dist/modules/projects-routing/projects-routing.module');
+  assert(Reflect.getMetadata('imports',module).includes(ProjectsRoutingModule));
+  return {get(token){assert(providers.has(token));return providers.get(token);},async close(){trace.push('close');}};
+ });
+ let output='';t.mock.method(process.stdout,'write',value=>{output+=value;return true;});
+ await publicGitlabHelperMain([filename,launchFile,'plan','']);
+ assert.deepEqual(trace,['evidence','core-address','core-address','core-address','project-proxy-runtime','dependency','dependency','plan','close']);
+ assert.equal(output,JSON.stringify({ready:true})+'\n');
+ providers.get(ProjectsRoutingService).reconstructProxyRuntime=()=>{throw Error('project-proxy-runtime-identity-required');};
+ trace.length=0;
+ await assert.rejects(publicGitlabHelperMain([filename,launchFile,'plan','']),/project-proxy-runtime-identity-required/);
+ assert.deepEqual(trace,['evidence','core-address','core-address','core-address','close'],'invalid project ownership stops before native dependencies or workflow mutations');
 });
 test('completed paired rollback receipts permit a new owned controller ID but reject unverified recovery',t=>{
  const {pairedPrerequisiteRecovery,prerequisiteController}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
@@ -286,7 +327,7 @@ test('host prerequisite prepares public recovery payloads and launches only the 
   await assert.rejects(()=>service.execute({...input,operation:'plan'}),error=>error instanceof HostPolicyError&&error.code===code);
   assert.equal(calls.filter(args=>args[0]==='rm').length,removed,'a verified failed helper is retained with its checkpoint');
  }
- for(const code of [upgradeCommandFailureCodes[0],upgradeCommandFailureCodes.at(-1)]){
+ for(const code of [upgradeCommandFailureCodes[0],upgradeCommandFailureCodes.at(-1),'project-proxy-runtime-identity-required','project-proxy-runtime-address-required']){
   helperObservation=observedFailure();runtime.child.run=async()=>{throw new ProcessFailure('docker',1,null,false,code);};
   await assert.rejects(()=>service.execute({...input,operation:'plan'}),error=>error instanceof HostPolicyError&&error.code===code);
   assert.equal(calls.filter(args=>args[0]==='rm').length,removed,'command failure retains the failed helper and checkpoint');

@@ -58,6 +58,8 @@ const helperFailureCodes = Object.fromEntries(
     'gitlab-database-session-invalid',
     'gitlab-database-session-options-invalid',
     'gitlab-database-application-name-invalid',
+    'project-proxy-runtime-identity-required',
+    'project-proxy-runtime-address-required',
   ].map((code) => ['System Bootstrapper: ' + code, code]),
 );
 const helperFailureValues = new Set(Object.values(helperFailureCodes));

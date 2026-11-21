@@ -21,6 +21,12 @@ candidate evidence or edit the preparation JSON.
 accepted target-image helper. The running previous controller stays in place.
 The helper shares its network and verified state mounts, and uses the host PID
 namespace so subsequent helpers can reconcile durable process/guardian identities.
+Its writable layer is fresh: platform and application proxy addresses are
+reconstructed from the existing owned containers before planning or maintenance.
+Application proxy records follow the saved environment selections; reconstruction
+does not create, stop or replace application containers. A missing, stopped or
+foreign enabled proxy fails before routing changes. Generated address files are
+ephemeral runtime state, not another backup input.
 The shared evidence guard requires the exact candidate image on the helper, its
 full container ID, preparation label, network, PID mode and mounts, while retaining
 the original controller's full identity, mounts, labels and restart policy.
