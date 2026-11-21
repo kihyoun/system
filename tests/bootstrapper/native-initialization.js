@@ -53,8 +53,7 @@ test('retained manifest binds archive bytes, immutable source and declared image
   using(f=>{
     for(const key of Object.keys(f.manifest)) if(!['archives','publicImages'].includes(key))delete f.manifest[key];
     f.save(); f.verify(undefined,true); assert.throws(()=>f.verify(),/local-image-aliases-required/);
-    // Retain this public refusal until the legacy executable is replaced by the native CLI.
-    const result=spawnSync('python3',[path.join(root,'bootstrapper/recovery.py'),'load','--directory',f.retained,'--checksums-only'],{encoding:'utf8'});
+    const result=spawnSync(process.execPath,[path.join(root,'operations/dist/cli.js'),'recovery','load','--checkout',f.checkout,'--directory',f.retained,'--checksums-only'],{encoding:'utf8',timeout:30000,maxBuffer:8192});
     assert.notEqual(result.status,0);assert.match(result.stderr,/legacy-checksums-cannot-load/);
   });
 });

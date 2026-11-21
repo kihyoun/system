@@ -100,7 +100,16 @@ export async function main(args: string[]): Promise<void> {
   let app: INestApplicationContext | undefined;
   try {
     app = await NestFactory.createApplicationContext(GitlabProvisionModule, { logger: false });
-    if (['activate', 'preview', 'project', 'token-metadata', 'wizard-source', 'managed-recipe'].includes(command)) {
+    if (
+      [
+        'activate',
+        'preview',
+        'project',
+        'token-metadata',
+        'wizard-source',
+        'managed-recipe',
+      ].includes(command)
+    ) {
       let input = Buffer.alloc(0);
       for await (const chunk of process.stdin) {
         input = Buffer.concat([input, Buffer.from(chunk)]);
