@@ -169,6 +169,9 @@ export class ProjectProvisionService {
       );
       ensure([200, 404].includes(file.status), 'CI lookup failed');
       if (file.status === 404) {
+        // Administrative API access does not grant push rights on a protected branch.
+        // Only the exact owned project's missing CI installation needs membership.
+        await this.controllerMembership(request, Number(project.id), authorization.account.id);
         const commit = await request('POST', `projects/${project.id}/repository/commits`, {
           branch,
           commit_message: input.files
@@ -219,6 +222,47 @@ export class ProjectProvisionService {
           'GitLab operation failed. Check readiness and namespace permissions, then retry Save.',
       };
     }
+  }
+  private async controllerMembership(request: Request, projectId: number, accountId: number) {
+    ensure(
+      Number.isSafeInteger(accountId) && accountId > 0,
+      'Controller project member identity is invalid',
+    );
+    const members = `projects/${projectId}/members`,
+      memberPath = `${members}/${accountId}`;
+    const access = (value: unknown): number => {
+      const member = row(value);
+      ensure(member.id === accountId, 'Controller project member identity changed');
+      ensure(
+        member.state === 'active' &&
+          (member.membership_state === undefined || member.membership_state === 'active') &&
+          member.expires_at === null,
+        'Controller project membership must be active and permanent',
+      );
+      ensure(
+        Number.isSafeInteger(member.access_level) &&
+          Number(member.access_level) >= 0 &&
+          Number(member.access_level) <= 50,
+        'Controller project member access is invalid',
+      );
+      return Number(member.access_level);
+    };
+    const current = await request('GET', memberPath);
+    ensure([200, 404].includes(current.status), 'Controller project membership lookup failed');
+    if (current.status === 200 && access(current.value) >= 40) return;
+    const update =
+      current.status === 404
+        ? await request('POST', members, { user_id: accountId, access_level: 40 })
+        : await request('PUT', memberPath, { access_level: 40 });
+    ensure(
+      update.status === (current.status === 404 ? 201 : 200) || update.status === 409,
+      'Controller project membership update failed',
+    );
+    const verified = await request('GET', memberPath);
+    ensure(
+      verified.status === 200 && access(verified.value) >= 40,
+      'Controller project Maintainer membership was not confirmed',
+    );
   }
   private async resume(
     request: Request,

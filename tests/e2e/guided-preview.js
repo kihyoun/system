@@ -134,6 +134,7 @@ async function run(candidate){
           ['The local administrator namespace could not be found.','namespace-unavailable'],
           ['Repository already exists in the selected namespace.','project-rejected'],
           ['Default branch not ready; retry Save','default-branch-missing'],
+          ['CI installation failed; retry Save','ci-installation-failed'],
           ['Repository ready; routing failed. Retry Save.','routing-failed'],
           ...[400,401,403,404,409,422,500,502,503,504].map(code=>[
             `GitLab rejected project creation (HTTP ${code}); check namespace permissions, reserved names or a competing creation.`,

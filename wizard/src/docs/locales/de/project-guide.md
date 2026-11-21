@@ -18,7 +18,12 @@ oder einen Namenszusatz anzuhängen.
 
 Speichern erstellt ein privates Repository, verwendet dessen konfigurierten
 Standardbranch, installiert verwaltete CI unter `.system-bootstrapper/ci.yml`
-und wählt diesen CI-Pfad aus. Die Bereitstellung läuft serverseitig über einen
+und wählt diesen CI-Pfad aus. Vor der Installation fehlender verwalteter CI im
+privaten Repository dieses Bereitstellungsvorgangs erhält das Automatisierungskonto
+des Controllers ausdrücklich die Projektrolle Maintainer, um auf den geschützten
+Standardbranch schreiben zu können. Bei der Wiederaufnahme einer bereits gültigen
+Repository-Zuordnung wird GitLab nur gelesen; Branchschutz und Benutzerdateien bleiben erhalten.
+Die Bereitstellung läuft serverseitig über einen
 authentifizierten Hintergrundjob; der Browser fragt mit kurzen Anfragen nach.
 Lass das Formular bis zum Abschluss geöffnet. Eine fehlgeschlagene Anfrage kann
 mit Speichern wiederholt werden. Rufe nach einem Browser-/Dienstneustart die

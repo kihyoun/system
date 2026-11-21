@@ -162,6 +162,7 @@ const REASONS = new Set([
   'system-beta-registration-namespace-unavailable',
   'system-beta-registration-project-rejected',
   'system-beta-registration-default-branch-missing',
+  'system-beta-registration-ci-installation-failed',
   'system-beta-registration-routing-failed',
   'system-beta-registration-unknown-failure',
   'candidate-runner-docker-section-required',

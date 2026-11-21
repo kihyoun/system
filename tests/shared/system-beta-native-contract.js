@@ -101,6 +101,7 @@ test('failed DefaultWizard registration stops the baseline before proof or mutat
     ['Repository already exists in the selected namespace.','project-rejected'],
     ['GitLab rejected project creation (HTTP 403); check namespace permissions, reserved names or a competing creation.','project-rejected'],
     ['Default branch not ready; retry Save','default-branch-missing'],
+    ['CI installation failed; retry Save','ci-installation-failed'],
     ['Repository ready; routing failed. Retry Save.','routing-failed'],
     ['private-token-secret: Namespace lookup failed','unknown-failure'],
   ];

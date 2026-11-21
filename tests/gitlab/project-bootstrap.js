@@ -98,18 +98,26 @@ async function nativeProvisionContracts() {
   const payload={action:'create',projectKey:'application',namespaceId:'7',operation:'owned-operation',template:'angular',templateVersion:1,ci:'original generated CI',files:[{action:'create',file_path:'starter.ts',content:'initial starter'}]};
   const binding={id:42,namespaceId:7,path:'team/application',webUrl:'https://gitlab.example.test/team/application',defaultBranch:'main',pipelineUrl:'https://gitlab.example.test/team/application/-/pipelines',ciPath:'.system-bootstrapper/ci.yml',template:'angular',templateVersion:1,generatedCi:payload.ci,deploymentState:'awaiting-pipeline'};
   function fixture(){
-    const state={exists:true,project:{id:42,path_with_namespace:'team/application',namespace:{id:7},visibility:'private',description:'System Bootstrapper operation owned-operation',default_branch:'main',ci_config_path:'.system-bootstrapper/ci.yml',web_url:binding.webUrl},files:{'.system-bootstrapper/ci.yml':'user-edited CI with product checks','src/app.ts':'user application source'},requests:[],pipelines:[],lose:null,createStatus:201};
-    const credentials={async ensure(){return {context:{checkout:'/checkout',containerId:'a'.repeat(64)},credential:{token:'private-api-token'}};}};
+    const state={exists:true,project:{id:42,path_with_namespace:'team/application',namespace:{id:7},visibility:'private',description:'System Bootstrapper operation owned-operation',default_branch:'main',ci_config_path:'.system-bootstrapper/ci.yml',web_url:binding.webUrl},files:{'.system-bootstrapper/ci.yml':'user-edited CI with product checks','src/app.ts':'user application source'},requests:[],pipelines:[],lose:null,loseMethod:null,createStatus:201,namespacePath:'team',projectKey:'application',controllerId:9,member:null,memberWriteStatus:null,memberWriteApplied:true,branchProtection:{name:'main',push_access_levels:[{access_level:40}],merge_access_levels:[{access_level:40}]}};
+    const credentials={async ensure(){return {context:{checkout:'/checkout',containerId:'a'.repeat(64)},credential:{token:'private-api-token'},account:{id:state.controllerId}};}};
     const api={async request(context,token,method,route,body){
       assert.equal(token,'private-api-token');assert.equal(context.checkout,'/checkout');
       state.requests.push({method,route,body});
       let status=200,value={};
       if(route.startsWith('namespaces?')){const page=Number(new URL('http://local/'+route).searchParams.get('page'));value=page===1?Array.from({length:100},(_,i)=>({id:i+1,full_path:'group'+i})):[{id:101,full_path:'last'}];}
-      else if(route==='namespaces/7')value={id:7,full_path:'team'};
-      else if(route==='projects/team%2Fapplication'){status=state.exists?200:404;value=state.project;}
+      else if(route==='namespaces/7')value={id:7,full_path:state.namespacePath};
+      else if(route==='projects/'+encodeURIComponent(state.namespacePath+'/'+state.projectKey)){status=state.exists?200:404;value=state.project;}
       else if(method==='POST'&&route==='projects'){status=state.createStatus;if(status===201){state.exists=true;value=state.project;}}
       else if(method==='PUT'&&route==='projects/42'){state.project.ci_config_path=body.ci_config_path;value=state.project;}
+      else if(method==='GET'&&route==='projects/42/members/'+state.controllerId){status=state.member?200:404;value=state.member||{};}
+      else if((method==='POST'&&route==='projects/42/members')||(method==='PUT'&&route==='projects/42/members/'+state.controllerId)){
+        assert.equal(body.access_level,40);if(method==='POST')assert.equal(body.user_id,state.controllerId);
+        status=state.memberWriteStatus??(method==='POST'?201:200);
+        if(state.memberWriteApplied)state.member={id:state.controllerId,access_level:40,state:'active',expires_at:null};
+        value=state.member||{};
+      }
       else if(method==='POST'&&route==='projects/42/repository/commits'){
+        assert(state.member?.access_level>=state.branchProtection.push_access_levels[0].access_level,'protected default branch requires explicit controller membership');
         for(const action of body.actions){assert.equal(action.action,'create');assert(!Object.hasOwn(state.files,action.file_path),'never overwrite user files');state.files[action.file_path]=action.content;}
         status=201;
       }else if(method==='GET'&&route.startsWith('projects/42/repository/files/')){
@@ -118,7 +126,7 @@ async function nativeProvisionContracts() {
       }else if(method==='GET'&&route.startsWith('projects/42/pipelines?'))value=state.pipelines;
       else if(method==='POST'&&route==='projects/42/pipeline'){value={id:91,source:'api',web_url:'https://gitlab.example.test/pipelines/91',status:'pending'};state.pipelines.push(value);status=201;}
       else throw Error('unexpected native request');
-      if(state.lose===route){state.lose=null;throw Error('private lost response');}
+      if(state.lose===route&&(!state.loseMethod||state.loseMethod===method)){state.lose=null;throw Error('private lost response');}
       return {status,value};
     }};
     return {state,service:new ProjectProvisionService(credentials,api),invoke(input=payload){return this.service.execute('/checkout',input);}};
@@ -134,11 +142,51 @@ async function nativeProvisionContracts() {
   f=fixture();assert.match((await f.invoke()).message,/Managed CI changed/);assert(f.state.requests.every(row=>row.method==='GET'));
   f=fixture();f.state.project.description='foreign';assert.equal((await f.invoke()).conflict,true);assert(f.state.requests.every(row=>row.method==='GET'));
   f=fixture();f.state.exists=false;delete f.state.files['.system-bootstrapper/ci.yml'];assert.equal((await f.invoke()).repository.id,42);
-  assert.deepEqual(f.state.requests.filter(row=>row.method!=='GET').map(row=>row.method),['POST','POST','PUT']);assert.equal(f.state.files['starter.ts'],'initial starter');
+  assert.deepEqual(f.state.requests.filter(row=>row.method!=='GET').map(row=>row.method),['POST','POST','POST','PUT']);assert.equal(f.state.files['starter.ts'],'initial starter');
   for(const route of ['projects','projects/42/repository/commits','projects/42']){
     f=fixture();f.state.exists=false;delete f.state.files['.system-bootstrapper/ci.yml'];f.state.lose=route;
     await assert.rejects(()=>f.invoke(),error=>error.uncertain===true&&!error.message.includes('private'));
     assert.equal((await f.invoke()).repository.id,42);assert.equal(f.state.requests.filter(row=>row.method==='POST'&&row.route==='projects/42/repository/commits').length,1);
+  }
+  // The permanent controller administrator is distinct from the personal
+  // namespace owner and needs direct membership to push protected main.
+  f=fixture();delete f.state.files['.system-bootstrapper/ci.yml'];f.state.namespacePath='root';f.state.projectKey='wizard';f.state.project.path_with_namespace='root/wizard';
+  const protection=structuredClone(f.state.branchProtection);
+  assert.equal((await f.invoke({...payload,projectKey:'wizard',template:'wizard',files:undefined,controllerId:1})).repository.path,'root/wizard');
+  assert.deepEqual(f.state.member,{id:9,access_level:40,state:'active',expires_at:null});assert.deepEqual(f.state.branchProtection,protection);
+  const memberWrite=f.state.requests.findIndex(row=>row.method==='POST'&&row.route==='projects/42/members');
+  const memberProof=f.state.requests.findIndex((row,index)=>index>memberWrite&&row.method==='GET'&&row.route==='projects/42/members/9');
+  const commit=f.state.requests.findIndex(row=>row.route==='projects/42/repository/commits');
+  assert(memberWrite>0&&memberProof>memberWrite&&commit>memberProof,'membership is read back before installing owned CI');
+  assert(!f.state.requests.some(row=>/protected_branches/.test(row.route)));
+  for(const level of [30,40,50]){
+    f=fixture();delete f.state.files['.system-bootstrapper/ci.yml'];f.state.member={id:9,access_level:level,state:'active',expires_at:null};
+    assert.equal((await f.invoke()).repository.id,42);
+    const writes=f.state.requests.filter(row=>row.route.includes('/members')&&row.method!=='GET');
+    assert.deepEqual(writes.map(row=>row.method),level<40?['PUT']:[]);assert.equal(f.state.member.access_level,Math.max(level,40));
+    assert.deepEqual(f.state.branchProtection,protection);
+  }
+  for(const change of [s=>s.member.id=10,s=>s.member.access_level=40.5,s=>s.member.access_level=51,s=>s.member.state='blocked',s=>s.member.membership_state='awaiting',s=>s.member.expires_at='2099-01-01',s=>s.controllerId=0]){
+    f=fixture();delete f.state.files['.system-bootstrapper/ci.yml'];f.state.member={id:9,access_level:40,state:'active',expires_at:null};change(f.state);
+    assert.equal((await f.invoke()).state,'failed');assert(f.state.requests.every(row=>row.method==='GET'));assert(!Object.hasOwn(f.state.files,'.system-bootstrapper/ci.yml'));
+  }
+  for(const change of [s=>s.project.path_with_namespace='other/application',s=>s.project.namespace.id=8,s=>s.project.visibility='public',s=>s.project.description='foreign',s=>s.project.id=0]){
+    f=fixture();delete f.state.files['.system-bootstrapper/ci.yml'];change(f.state);
+    assert.equal((await f.invoke()).state,'failed');assert(f.state.requests.every(row=>row.method==='GET'));assert(!f.state.requests.some(row=>row.route.includes('/members')));
+  }
+  for(const status of [403,409]){
+    f=fixture();delete f.state.files['.system-bootstrapper/ci.yml'];f.state.memberWriteStatus=status;f.state.memberWriteApplied=false;
+    assert.equal((await f.invoke()).state,'failed');assert(!Object.hasOwn(f.state.files,'.system-bootstrapper/ci.yml'));
+  }
+  f=fixture();delete f.state.files['.system-bootstrapper/ci.yml'];f.state.memberWriteStatus=409;
+  assert.equal((await f.invoke()).repository.id,42,'a competing membership creation needs exact adequate readback');
+  for(const method of ['POST','PUT']){
+    f=fixture();delete f.state.files['.system-bootstrapper/ci.yml'];if(method==='PUT')f.state.member={id:9,access_level:30,state:'active',expires_at:null};
+    f.state.lose=method==='POST'?'projects/42/members':'projects/42/members/9';f.state.loseMethod=method;
+    await assert.rejects(()=>f.invoke(),error=>error.uncertain===true&&!error.message.includes('private'));
+    assert.equal((await f.invoke()).repository.id,42);
+    assert.equal(f.state.requests.filter(row=>row.route.includes('/members')&&row.method!=='GET').length,1,'lost membership responses reconcile without replaying the mutation');
+    assert.equal(f.state.requests.filter(row=>row.route==='projects/42/repository/commits').length,1);
   }
   f=fixture();f.state.lose='projects/42/pipeline';await assert.rejects(()=>f.invoke({...payload,action:'pipeline'}),error=>error.uncertain===true);
   assert.equal((await f.invoke({...payload,action:'pipeline'})).pipeline.id,91);assert.equal(f.state.requests.filter(row=>row.method==='POST').length,1);
@@ -150,7 +198,7 @@ async function nativeProvisionContracts() {
   const {GitlabProvisionModule}=require('../../operations/dist/gitlab-provision/gitlab-provision.module');
   const app=await NestFactory.createApplicationContext(GitlabProvisionModule,{logger:false,abortOnError:false});
   try{assert(app.get(ProjectProvisionService) instanceof ProjectProvisionService);}finally{await app.close();}
-  console.log('Native project provisioning: paginated read-only discovery, exact resume identity, unchanged edited source, creation races, interrupted writes and pipeline retry reconciliation passed.');
+  console.log('Native project provisioning: paginated read-only discovery, exact resume identity, unchanged edited source, protected-branch controller membership, creation races, interrupted writes and pipeline retry reconciliation passed.');
 }
 
 let child;

@@ -15,8 +15,13 @@ reported without linking to it, overwriting it or adding a suffix.
 ## Save and inspect the first pipeline
 
 Save creates a private repository, uses its configured default branch, installs
-managed CI at `.system-bootstrapper/ci.yml` and selects that CI path. Provisioning
-runs server-side through an authenticated background job; the browser polls
+managed CI at `.system-bootstrapper/ci.yml` and selects that CI path. Before
+installing missing managed CI in the private repository owned by this provisioning
+operation, the controller automation account receives explicit project Maintainer
+access to write to the protected default branch. Resuming an already valid
+repository binding only reads GitLab; branch protection and user files are
+preserved. Provisioning runs
+server-side through an authenticated background job; the browser polls
 short requests. Keep the form open until completion. A failed request can be
 retried with Save. After a browser/service restart, Fetch the pending
 configuration and use **Edit → Save** to resume the same operation.
