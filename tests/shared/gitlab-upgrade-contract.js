@@ -4,22 +4,32 @@ const {test}=require('node:test');
 const {run,prepared,sanitizeEvidence,runnerState,invoke}=require('../e2e/gitlab-upgrade');
 const release=require('../../gitlab/security-release.json');
 function fixture(){const events=[];const candidate={id:'a'.repeat(24),spec:{sourceRevision:'b'.repeat(40),gitlabUpgradeAcceptance:true,restore:{base:'/recovered-data/platform'},images:{gitlab:{id:'sha256:'+'c'.repeat(64)},runner:{id:'sha256:'+'8'.repeat(64)}},supportImages:{previousGitlab:{id:'sha256:'+'d'.repeat(64)},previousRunner:{id:'sha256:'+'7'.repeat(64)},helper:{id:'sha256:'+'6'.repeat(64)},previousHelper:{id:'sha256:'+'5'.repeat(64)}}},evidence:{},stage:async(name,action)=>{events.push(name);return action();},inner:async()=>{},events};const dependencies={recordIdentity:async()=>({private:'fixture-secret'}),invoke:async(_c,action,sha)=>{events.push(action);return action==='migrate'?{status:'promoted',toImage:release.toImage,checkpointSha256:'e'.repeat(64)}:{status:'restored-checkpoint',checkpointSha256:sha};},runnerState:async(_c,promoted)=>({imageId:'sha256:'+(promoted?'8':'7').repeat(64),version:promoted?release.runner.toVersion:release.runner.fromVersion,helperImageId:'sha256:'+(promoted?'6':'5').repeat(64),identity:{1:'fixture'}}),verifyTrust:async()=>events.push('CA-trust'),verifyServiceIdentity:async()=>events.push('identity'),verifyRegistryBlob:async()=>events.push('registry-ci')};return {candidate,dependencies};}
-test('real migration adapter preserves old-data oracle, runs registry CI and restores the cold checkpoint',async()=>{const {candidate,dependencies}=fixture();await run(candidate,dependencies);assert(candidate.events.indexOf('migrate')<candidate.events.indexOf('registry-ci'));assert(candidate.events.indexOf('registry-ci')<candidate.events.indexOf('rollback'));assert.equal(candidate.events.filter(e=>e==='identity').length,2);assert.deepEqual(candidate.evidence.gitlabUpgrade,sanitizeEvidence(candidate.evidence.gitlabUpgrade));assert(candidate.evidence.gitlabUpgrade.rollbackVerified);assert(!JSON.stringify(candidate.evidence).includes('fixture-secret'));});
+test('real migration adapter preserves old-data oracle, runs registry CI and restores the cold checkpoint',async()=>{const {candidate,dependencies}=fixture();await run(candidate,dependencies);assert(candidate.events.indexOf('migrate')<candidate.events.indexOf('registry-ci'));assert(candidate.events.indexOf('registry-ci')<candidate.events.indexOf('rollback'));assert.equal(candidate.events.filter(e=>e==='identity').length,2);assert.deepEqual(candidate.evidence.gitlabUpgrade,sanitizeEvidence(candidate.evidence.gitlabUpgrade));assert(candidate.evidence.gitlabUpgrade.rollbackVerified);assert(!JSON.stringify(candidate.evidence).includes('fixture-secret'));
+ const publicFixture=fixture(),platform=publicFixture.candidate,ports=publicFixture.dependencies;platform.spec.publicUpgrade={};
+ const originalFiles={'.docker.env':'original-private-fixture'};
+ let migrations=0,rollbacks=0;
+ ports.invoke=async()=>{throw Error('legacy migration must not run for the public path');};
+ ports.preparePublicMigration=async()=>{platform.events.push('public-prepare');return {originalFiles,migrate:async()=>{migrations++;platform.events.push('public-promote');return {status:'promoted',toImage:release.toImage,checkpointSha256:'e'.repeat(64)};},rollback:async checkpoint=>{rollbacks++;platform.events.push('public-cold-rollback');return {status:'restored-checkpoint',checkpointSha256:checkpoint};},restoreAfterRollback:async()=>platform.events.push('restore-original-candidate'),revokeCredential:async()=>platform.events.push('revoke')};};
+ ports.publicUpgrade=async()=>{assert.equal(platform.evidence.gitlabUpgrade.registryVerified,true);platform.events.push('paired-public-checkpoint-reuse');};ports.configuration=async()=>originalFiles;
+ await run(platform,ports);assert.equal(migrations,1);assert.equal(rollbacks,1);
+ for(const [first,second] of [['public-promote','CA-trust'],['registry-ci','paired-public-checkpoint-reuse'],['paired-public-checkpoint-reuse','public-cold-rollback'],['public-cold-rollback','restore-original-candidate']])assert(platform.events.indexOf(first)<platform.events.indexOf(second));
+ assert.equal(platform.events.at(-1),'revoke');assert.equal(platform.evidence.gitlabUpgrade.rollbackVerified,true);
+});
 test('failed migration never advertises successful successor or proceeds to registry CI',async()=>{const {candidate,dependencies}=fixture();dependencies.invoke=async()=>{throw Error('migration-failed');};await assert.rejects(()=>run(candidate,dependencies),/migration-failed/);assert.equal(candidate.evidence.gitlabUpgrade,undefined);assert(!candidate.events.includes('registry-ci'));});
 test('failed rollback fails acceptance and leaves rollback flag false',async()=>{const {candidate,dependencies}=fixture();const real=dependencies.invoke;dependencies.invoke=(c,a,s)=>a==='rollback'?Promise.reject(Error('restore-failed')):real(c,a,s);await assert.rejects(()=>run(candidate,dependencies),/restore-failed/);assert.equal(candidate.evidence.gitlabUpgrade.rollbackVerified,false);});
 test('requires distinct declared baseline/target IDs and restored owned data',()=>{const {candidate}=fixture();assert.equal(prepared(candidate).options.persistentDir,'/recovered-data/platform');candidate.spec.supportImages.previousGitlab=candidate.spec.images.gitlab;assert.throws(()=>prepared(candidate),/distinct/);candidate.spec.restore=undefined;assert.throws(()=>prepared(candidate),/restored/);});
 test('recovered reports retain only bounded source-owned migration evidence',()=>{assert.equal(sanitizeEvidence({}),undefined);const proof={fromImage:release.fromImage,toImage:release.toImage,fromImageId:'sha256:'+'a'.repeat(64),toImageId:'sha256:'+'b'.repeat(64),checkpointVerified:true,migrationVerified:true,registryVerified:true,rollbackVerified:true,securityTrustVerified:true,private:'never-publish'};assert(!JSON.stringify(sanitizeEvidence(proof)).includes('never-publish'));});
 
 test('runner transition reads actual binary/helper/image/manager identities and rejects mismatches',async()=>{
- const {candidate}=fixture();let badVersion=false,badHelper=false,badIdentity=false;
+ const {candidate}=fixture();let badVersion=false,badHelper=false,badIdentity=false,publicHelper=false;
  candidate.inner=async args=>{
   if(args[0]==='inspect')return JSON.stringify([{Image:candidate.spec.images.runner.id,State:{Running:true}}]);
   if(args[0]==='image')return JSON.stringify([{Id:badHelper?candidate.spec.supportImages.previousHelper.id:candidate.spec.supportImages.helper.id}]);
   if(args.at(-1)==='--version')return 'Version:      '+(badVersion?'19.4.0':release.runner.toVersion);
-  if(args.at(-1)==='/etc/gitlab-runner/config.toml')return '[runners.docker]\n helper_image = "candidate-helper:target"\n';
+  if(args.at(-1)==='/etc/gitlab-runner/config.toml')return '[runners.docker]\n helper_image = "'+(publicHelper?release.runner.helperImage:'candidate-helper:target')+'"\n';
   return JSON.stringify({1:(badIdentity?'b':'a').repeat(64)});
  };
- const proof=await runnerState(candidate,true);assert.equal(proof.version,release.runner.toVersion);
+ const proof=await runnerState(candidate,true);assert.equal(proof.version,release.runner.toVersion);publicHelper=true;assert.deepEqual(await runnerState(candidate,true),proof);
  badVersion=true;await assert.rejects(()=>runnerState(candidate,true),/transition/);badVersion=false;
  badHelper=true;await assert.rejects(()=>runnerState(candidate,true),/transition/);badHelper=false;
  badIdentity=true;await assert.rejects(()=>runnerState(candidate,true,proof),/identity/);
@@ -74,6 +84,7 @@ test('platform job retains preparation, independent cleanup and artifact reserve
   assert.equal((ci.match(/timeout: 120m/g)||[]).length,1,'other CI jobs keep their own deadlines');
   assert(script>=candidate.deadline+5*60000,'preparation/publication must fit outside the shared lifecycle');
   assert(total>=script+cleanup+3*60000,'independent cleanup and artifact collection need job time');
-  assert.match(job,/after_script:\n\s+- sh tests\/ci-platform\.sh cleanup/);
+  assert.match(job,/before_script: \*operations-runtime/);
+  assert.match(job,/after_script:\n\s+- node operations\/dist\/ci\/entry\.js platform "\$CI_PROJECT_DIR" cleanup/);
   assert.match(job,/allow_failure: false/);
 });

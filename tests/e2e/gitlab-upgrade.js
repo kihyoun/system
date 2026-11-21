@@ -44,10 +44,11 @@ async function invoke(candidate,action,checkpointSha256){
 }
 async function run(candidate,dependencies={}){
   const checked=prepared(candidate),call=dependencies.invoke||invoke;
-  let expected,checkpointSha256,runnerBefore,runnerPromoted;
+  let expected,checkpointSha256,runnerBefore,runnerPromoted,publicSession;
   await candidate.stage('gitlab-upgrade-record-existing-data',async()=>{expected=await (dependencies.recordIdentity||recovery.recordIdentity)(candidate);runnerBefore=await (dependencies.runnerState||runnerState)(candidate,false);});
   await candidate.stage('gitlab-upgrade-migrated-data',async()=>{
-    const result=await call(candidate,'migrate');checkpointSha256=result.checkpointSha256;
+    if(candidate.spec.publicUpgrade) publicSession=await (dependencies.preparePublicMigration||require('./public-upgrade').prepareGitlabMigration)(candidate,expected);
+    const result=publicSession?await publicSession.migrate():await call(candidate,'migrate');checkpointSha256=result.checkpointSha256;
     if(result.status!=='promoted'||result.toImage!==release.toImage||!/^[a-f0-9]{64}$/.test(checkpointSha256||''))throw Error('upgrade-checkpoint-proof-invalid');
     await (dependencies.verifyServiceIdentity||recovery.verifyServiceIdentity)(candidate,expected);
     runnerPromoted=await (dependencies.runnerState||runnerState)(candidate,true,runnerBefore);
@@ -64,13 +65,20 @@ async function run(candidate,dependencies={}){
   });
   if(candidate.spec.publicUpgrade)await (dependencies.publicUpgrade||require('./public-upgrade').run)(candidate,expected);
   await candidate.stage('gitlab-upgrade-restored-checkpoint',async()=>{
-    const result=await call(candidate,'rollback',checkpointSha256);
+    const result=publicSession?await publicSession.rollback(checkpointSha256):await call(candidate,'rollback',checkpointSha256);
     if(result.status!=='restored-checkpoint'||result.checkpointSha256!==checkpointSha256)throw Error('upgrade-checkpoint-proof-invalid');
-    await (dependencies.verifyServiceIdentity||recovery.verifyServiceIdentity)(candidate,expected);
-    await (dependencies.runnerState||runnerState)(candidate,false,runnerBefore);
-    await (dependencies.verifyRegistryBlob||recovery.verifyRegistryBlob)(candidate,{expected});
-    candidate.evidence.gitlabUpgrade.runnerManagerIdentityPreserved=true;
-    candidate.evidence.gitlabUpgrade.rollbackVerified=true;
+    try {
+      if(publicSession)await publicSession.restoreAfterRollback();
+      await (dependencies.verifyServiceIdentity||recovery.verifyServiceIdentity)(candidate,expected);
+      await (dependencies.runnerState||runnerState)(candidate,false,runnerBefore);
+      await (dependencies.verifyRegistryBlob||recovery.verifyRegistryBlob)(candidate,{expected});
+      if(publicSession) {
+        const actual=await (dependencies.configuration||require('./public-upgrade').configuration)(candidate);
+        if(JSON.stringify(actual)!==JSON.stringify(publicSession.originalFiles))throw Error('public-upgrade-original-configuration-not-restored');
+      }
+      candidate.evidence.gitlabUpgrade.runnerManagerIdentityPreserved=true;
+      candidate.evidence.gitlabUpgrade.rollbackVerified=true;
+    } finally {if(publicSession)await publicSession.revokeCredential();}
   });
 }
 async function runnerState(candidate,promoted,previous){
@@ -82,8 +90,12 @@ async function runnerState(candidate,promoted,previous){
   const actual=await candidate.inner(['exec','runner_docker_1','gitlab-runner','--version']);
   const actualVersion=/^Version:\s+(\d+\.\d+\.\d+)\s*$/m.exec(actual)?.[1];
   const toml=await candidate.inner(['exec','runner_docker_1','cat','/etc/gitlab-runner/config.toml']);
+  const helperPin=promoted?release.runner.helperImage:release.runner.fromHelperImage;
+  const selected=/^\s*helper_image\s*=\s*"([^"]+)"\s*$/m.exec(toml)?.[1];
+  if(![alias,helperPin].includes(selected))throw Error('upgrade-runner-transition-not-proven');
+  // The aliases and public pins were loaded from the same reviewed archives.
   const helperImage=JSON.parse(await candidate.inner(['image','inspect',alias]))[0];
-  if(!container.State?.Running||container.Image!==image.id||actualVersion!==version||!toml.includes('helper_image = "'+alias+'"')||helperImage.Id!==helper.id)throw Error('upgrade-runner-transition-not-proven');
+  if(!container.State?.Running||container.Image!==image.id||actualVersion!==version||helperImage.Id!==helper.id)throw Error('upgrade-runner-transition-not-proven');
   const script="const fs=require('fs'),c=require('crypto'),path=require('path');const base=process.argv[1],result={};for(const name of fs.readdirSync(base).sort()){if(!/^[0-9]+$/.test(name))continue;const file=path.join(base,name,'config/.runner_system_id');result[name]=c.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}process.stdout.write(JSON.stringify(result));";
   const identity=JSON.parse(await candidate.inner(['exec','system_bootstrapper_1','node','-e',script,candidate.spec.restore.base+'/runners/runner']));
   if(!Object.keys(identity).length||Object.values(identity).some(value=>!/^[a-f0-9]{64}$/.test(value))||(previous&&JSON.stringify(identity)!==JSON.stringify(previous.identity)))throw Error('upgrade-runner-manager-identity-changed');

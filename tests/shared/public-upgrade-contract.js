@@ -274,6 +274,19 @@ test('same candidate drives real CLI operations, interrupted offline recovery an
     'recover', 'status', 'recover', 'status', 'restore-original', 'finish', 'revoke']);
   assert.equal(candidate.evidence.publicUpgrade.rollbackVerified, true);
   assert.equal(candidate.evidence.publicUpgrade.fromSourceRevision, metadata.source.revision);
+  // The real combined flow has already migrated GitLab. Reuse that session and
+  // leave recovered selectors intact until the one final database rollback.
+  events.length=0;working={...files};selected=[id('5'),id('6')];
+  native.preparedMigration=true;native.live='/recovered-data/platform';
+  native.planDir='/recovered-data/platform/recovery/upgrade-plans/candidate-fixture';
+  native.selectMigratedPublic=async()=>{events.push('reuse-migrated');selected=[id('3'),id('4')];};
+  await run(candidate,{},dependencies);
+  assert.deepEqual(events,['backup-attached','reuse-migrated','plan','apply','apply','status','backup-detached','old-images-removed',
+    'recover','status','recover','status']);
+  assert.equal(native.pairedCheckpoint,'/recovered-data/platform/recovery/controller-updates/candidate-fixture');
+  assert(working['.docker.env'].includes('system-bootstrapper-recovery:'));
+  delete native.preparedMigration;
+
   delete candidate.evidence.publicUpgrade;
   let verifications=0;
   dependencies.verify=async()=>{if(++verifications===5)throw Error('final-proof-failed');};
@@ -368,6 +381,21 @@ test('native host helper mounts backup strictly for plan/apply and performs reco
   const calls = [], candidate = {id: 'a'.repeat(24), spec: {restore: {base: '/recovered-data/platform'}, images: {gitlab: {id: id('7')},candidate:{id:id('8')}}},
     inner: async args => { calls.push(args); return '{}'; }};
   const native = new NativeCLI(candidate);
+
+  candidate.spec.publicUpgrade={metadata:fixture(),edge};
+  native.pairedCheckpoint=native.live+'/recovery/controller-updates/candidate-'+candidate.id;
+  for(const operation of ['prepare','plan','promote','status','rollback']){
+    await native.gitlab(operation,['promote','rollback'].includes(operation)?'b'.repeat(64):undefined);
+    const args=calls.at(-1);
+    assert(args.includes('--pid')&&args[args.indexOf('--pid')+1]==='host');
+    assert(!args.some(value=>value.includes('/external-seed')));
+    assert(args.includes('gitlab'));assert(args.includes(native.fixture+'/source'));
+    assert(args.includes(native.live+'/configuration/gitlab-prerequisites/candidate-'+candidate.id));
+    assert.equal(args.includes('--paired-checkpoint'),operation==='rollback');
+    assert.equal(args.includes('--confirm-checkpoint'),operation==='rollback');
+    assert.equal(args.includes('--confirm-plan'),operation==='promote');
+  }
+  calls.length=0;
   await native.invoke(['--operation', 'plan']);
   assert(calls[0].includes('type=bind,src=/external-seed,dst=/external-seed'));
   assert(calls[0].includes(native.fixture + '/source:' + native.fixture + '/source:ro'));

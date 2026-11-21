@@ -10,6 +10,7 @@ const {manifest} = require('../../gitlab/publish-dockerhub');
 const recovery = require('./recovery');
 const {terminalContainerState} = require('../../gitlab/upgrade');
 const diagnostics = require('./public-upgrade-diagnostics.json');
+const security = require('../../gitlab/security-release.json');
 const hash = raw => crypto.createHash('sha256').update(raw).digest('hex');
 const required = (value, code) => { if (!value) throw Error(code); };
 const root = path.resolve(__dirname, '../..');
@@ -195,9 +196,9 @@ class NativeCLI {
   async createCredential() {
     if (!this.token) this.token = await this.candidate.rails("require 'json';u=User.find_by_username('root');t=u.personal_access_tokens.create!(name:'disposable-public-upgrade',scopes:['api'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token,root_id:u.id)");
   }
-  async initialize(baseline, expected) {
+  async initialize(baseline, expected, beforeMigration = false) {
     const candidate = this.candidate, storage = require('./local-storage'), prepared = candidate.spec.publicUpgrade.source;
-    required(candidate.evidence.gitlabUpgrade?.registryVerified === true, 'existing-candidate-registry-ci-proof-required');
+    required(beforeMigration ? !candidate.evidence.gitlabUpgrade?.migrationVerified : candidate.evidence.gitlabUpgrade?.registryVerified === true, 'existing-candidate-registry-ci-proof-required');
     required(prepared && recovery.hashFile(prepared.archive) === prepared.sha256, 'public-upgrade-source-archive-required');
     await candidate.call(['exec', candidate.daemon, 'mkdir', '-p', this.fixture + '/source', this.fixture + '/bin']);
     await candidate.call(['exec', '-i', candidate.daemon, 'tar', '-xzf', '-', '-C', this.fixture + '/source'], {inputFile: prepared.archive});
@@ -223,31 +224,37 @@ class NativeCLI {
       spec: {sourceRevision: candidate.spec.sourceRevision, sourceTree: candidate.spec.sourceTree,
         sourceLayout:candidate.spec.sourceLayout,wizardSourceTree:candidate.spec.wizardSourceTree,
         wizardSourceRevision: candidate.spec.wizardSourceRevision, ciIdentity: candidate.spec.ciIdentity, images: candidate.spec.images},
-      gitlabUpgrade: candidate.evidence.gitlabUpgrade,guidedOrigin:candidate.guidedFixtureOrigin}));
+      gitlabUpgrade: beforeMigration ? this.securityIdentity() : candidate.evidence.gitlabUpgrade,
+      ...(beforeMigration ? {publicationMode:'future-release-before-prerequisite-v1'} : {}),guidedOrigin:candidate.guidedFixtureOrigin}));
     const mappings = [];
     for (const role of ['controller', 'wizard']) {
       mappings.push(previous.images[role].reference.replace(/^docker.io\//, '') + '\t' + previous.images[role].imageId + '\tprevious');
       mappings.push('system-upgrade-fixture/' + role + '@' + candidate.spec.images[role === 'controller' ? 'candidate' : 'wizard'].id +
         '\t' + candidate.spec.images[role === 'controller' ? 'candidate' : 'wizard'].id + '\ttarget');
     }
+    for (const [reference,image] of Object.entries(require('./gitlab-upgrade').prepared(candidate).imageIds))
+      mappings.push(reference.replace(/^docker.io\//,'')+'\t'+image+'\tsupport');
     await this.write(this.fixture + '/images.tsv', mappings.join('\n') + '\n');
     await this.write(this.fixture + '/compose.yml', JSON.stringify(controllerFixture(baseline, this.fixture)));
     await this.write(this.storage, "export PERSISTENCE_MODE='local'\nexport PERSISTENT_MOUNT='/'\nexport PERSISTENT_DIR='" + this.live +
       "'\nexport PERSISTENT_UUID=''\nexport SEED_DIR='" + storage.SEED + "'\nexport SEED_MOUNT='" + storage.MOUNT + "'\nexport SEED_UUID=''\n");
     await candidate.call(['exec', candidate.daemon, 'cp', '/run/system-bootstrapper/guided-preview-ca.pem', this.fixture + '/ca.pem']);
     await this.createCredential();
-    // The preceding registry-CI stage deliberately committed its verification
-    // job. Freeze that current head before this read-only upgrade data oracle.
+    // Refresh this head again after registry CI when entering the paired phase.
     const branch = await candidate.api('/projects/' + expected.projectId + '/repository/branches/' + encodeURIComponent(expected.branch), this.token.token);
     required(/^[a-f0-9]{40}$/.test(branch.commit?.id || ''), 'public-upgrade-existing-head-required');
     this.baselineHead = branch.commit.id;
     await this.write(this.fixture + '/token', this.token.token);
     await this.invoke(['initialize']);
+    if (beforeMigration) {
+      await this.invoke(['gitlab-previous-selectors']);
+      await this.invoke(['freeze-publication']);
+    }
     await replaceController(candidate, baseline, previous.images.controller.imageId, this.fixture);
   }
   async invoke(args) {
     const candidate = this.candidate, storage = require('./local-storage');
-    const command = ['run', '--rm', '-i', '--network', 'host', '--memory', '512m', '--cpus', '1',
+    const command = ['run', '--rm', '-i', '--pid', 'host', '--network', 'host', '--memory', '512m', '--cpus', '1',
       '--entrypoint', fixtureRuntime + '/node',
       '--env', 'SYSTEM_PUBLIC_UPGRADE_FIXTURE=' + this.fixture, '--env', 'SYSTEM_PUBLIC_UPGRADE_LIVE=' + this.live,
       '--env', 'PATH=' + this.fixture + '/bin:' + fixtureRuntime + ':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
@@ -260,9 +267,10 @@ class NativeCLI {
     if (args[0] === '--operation' && ['plan', 'apply'].includes(args[1])) command.push('--mount',
       'type=bind,src=' + storage.MOUNT + ',dst=' + storage.MOUNT);
     for (const host of ['gitlab', 'registry', 'sync', 'wizard']) command.push('--add-host', host + '.candidate.test:127.0.0.1');
-    const operation = args[0] === '--operation' ? args[1] : args[0];
-    required(['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover'].includes(operation),
-      'public-upgrade-native-operation-invalid');
+    const hooks=['initialize','restore-original','freeze-publication','gitlab-previous-selectors','save-migrated-public-selection','candidate-pair-selectors','restore-migrated-public-selection'];
+    const requested = args[0] === 'gitlab' ? args[args.indexOf('--operation')+1] : args[0] === '--operation' ? args[1] : args[0];
+    required(args[0]==='gitlab' ? ['prepare','plan','promote','status','abort','rollback'].includes(requested) : [...hooks,'plan','apply','status','recover'].includes(requested), 'public-upgrade-native-operation-invalid');
+    const operation=args[0]==='gitlab' ? ({prepare:'plan',plan:'plan',promote:'apply',status:'status',abort:'recover',rollback:'recover'})[requested] : hooks.includes(requested) && requested!=='restore-original' ? 'initialize' : requested;
     const failureCodes = Object.fromEntries([...new Set([
       ...Object.values(diagnostics.errors), ...Object.values(diagnostics.dockerOperations),
       ...Object.values(diagnostics.exceptionTypes), diagnostics.fallback
@@ -285,9 +293,50 @@ class NativeCLI {
     return this.invoke(['--operation', operation, '--checkout', this.fixture + '/source', '--persistence-env', this.storage, '--plan-dir', this.planDir,
       '--repository', repository, '--target', this.candidate.spec.publicUpgrade.edge.to,
       '--backup-file', require('./local-storage').MOUNT + '/public-upgrade-' + this.candidate.id + '.zip',
-      ...(this.candidate.spec.publicUpgrade.edge.databaseMigration ? ['--gitlab-checkpoint', this.candidate.spec.restore.base + '/configuration/gitlab-upgrades/candidate-' + this.candidate.id] : []),
+      ...(this.candidate.spec.publicUpgrade.edge.databaseMigration ? ['--gitlab-checkpoint', this.gitlabCheckpointDir || this.candidate.spec.restore.base + '/configuration/gitlab-upgrades/candidate-' + this.candidate.id] : []),
       '--token-file', this.fixture + '/token', '--timeout', '600', '--backup-timeout', '900',
       ...(confirmation ? ['--confirm-plan', confirmation] : [])]);
+  }
+  securityIdentity() {
+    const ids=require('./gitlab-upgrade').prepared(this.candidate).imageIds;
+    return {fromImage:security.fromImage,toImage:security.toImage,fromImageId:ids[security.fromImage],toImageId:ids[security.toImage],
+      runnerImage:security.runner.toImage,runnerImageId:ids[security.runner.toImage],fromRunnerImageId:ids[security.runner.fromImage],
+      helperImage:security.runner.helperImage,helperImageId:ids[security.runner.helperImage],fromHelperImageId:ids[security.runner.fromHelperImage],
+      runnerVersion:security.runner.toVersion,jobCaBundleSha256:security.jobCaBundleSha256};
+  }
+  gitlab(operation, confirmation) {
+    const repository=this.candidate.spec.publicUpgrade.metadata.source.repository.replace(/^https:\/\/github.com\//,'').replace(/\.git$/,'');
+    return this.invoke(['gitlab','--operation',operation,'--checkout',this.fixture+'/source','--persistence-env',this.storage,
+      '--directory',this.live+'/configuration/gitlab-prerequisites/candidate-'+this.candidate.id,
+      '--repository',repository,'--target',this.candidate.spec.publicUpgrade.edge.to,'--timeout','900',
+      ...(confirmation?[operation==='rollback'?'--confirm-checkpoint':'--confirm-plan',confirmation]:[]),
+      ...(operation==='rollback'&&this.pairedCheckpoint?['--paired-checkpoint',this.pairedCheckpoint]:[])]);
+  }
+  async migrate() {
+    const prepared=await this.gitlab('prepare');
+    required(prepared.status==='prepared' && typeof prepared.checkpointDir==='string' && prepared.checkpointDir.startsWith(this.live+'/configuration/gitlab-upgrades/'),'public-upgrade-native-GitLab-prerequisite-missing');
+    this.gitlabCheckpointDir=prepared.checkpointDir;
+    const plan=await this.gitlab('plan');
+    required(/^[a-f0-9]{64}$/.test(plan.planSha256||''),'public-upgrade-native-plan-invalid');
+    const result=await this.gitlab('promote',plan.planSha256);
+    required(result.status==='promoted' && result.toImage===security.toImage && /^[a-f0-9]{64}$/.test(result.checkpointSha256||''),'upgrade-checkpoint-proof-invalid');
+    await this.invoke(['save-migrated-public-selection']);
+    await this.invoke(['candidate-pair-selectors']);
+    await replaceController(this.candidate,this.originalBaseline,this.originalBaseline.Image,this.fixture);
+    await waitForServices(this.candidate);
+    return result;
+  }
+  async selectMigratedPublic(expected) {
+    required(this.preparedMigration && this.gitlabCheckpointDir,'public-upgrade-native-GitLab-prerequisite-missing');
+    const branch=await this.candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),this.token.token);
+    required(/^[a-f0-9]{40}$/.test(branch.commit?.id||''),'public-upgrade-existing-head-required');this.baselineHead=branch.commit.id;
+    await this.invoke(['restore-migrated-public-selection']);
+    await replaceController(this.candidate,this.originalBaseline,this.candidate.spec.publicUpgrade.metadata.images.controller.imageId,this.fixture);
+  }
+  rollback(checkpoint) {return this.gitlab('rollback',checkpoint);}
+  async restoreAfterRollback() {
+    await this.restoreOriginal(this.originalFiles);
+    await this.finish(this.originalFiles,this.originalBaseline);
   }
   async offline() {
     await this.write(this.fixture + '/offline-recovery', 'previous-public-transport-disabled\n');
@@ -330,7 +379,7 @@ async function run(candidate, expected, dependencies = {}) {
   });
   await candidate.stage(fixture.edge.requiredStage, async () => {
     const files = await read(candidate), before = preserved(files);
-    const native = dependencies.native || new NativeCLI(candidate), storage = dependencies.storage || require('./local-storage');
+    const native = dependencies.native || candidate.publicUpgradeNative || new NativeCLI(candidate), storage = dependencies.storage || require('./local-storage');
     await native.createCredential();
     verificationAuth = native.token;
     const sample = dependencies.dataSample || (() => require('./public-upgrade-data').sample(candidate, verificationAuth));
@@ -339,7 +388,8 @@ async function run(candidate, expected, dependencies = {}) {
     const oldController = fixture.metadata.images.controller.imageId, oldWizard = fixture.metadata.images.wizard.imageId;
     const targetController = candidate.spec.images.candidate.id, targetWizard = candidate.spec.images.wizard.id;
     await storage.attach(candidate);
-    await native.initialize(baseline, expected);
+    if(native.preparedMigration) await native.selectMigratedPublic(expected);
+    else await native.initialize(baseline, expected);
     verificationAuth = native.token;
     currentExpected = {...expected, head: native.baselineHead || expected.head};
     const check = async (controller, wizard) => {
@@ -380,6 +430,9 @@ async function run(candidate, expected, dependencies = {}) {
     await candidate.inner(['restart', 'system_bootstrapper_1']);
     await check(oldController, oldWizard);
     required((await native.cli('status')).operation.phase === 'rolled-back', 'public-upgrade-recovery-status-not-durable');
+    if(native.preparedMigration) {
+      native.pairedCheckpoint=native.live+'/recovery/controller-updates/'+path.basename(native.planDir);
+    } else {
     await native.restoreOriginal(files);
     // The final normal controller starts after physical backup detachment,
     // preserving the existing no-backup startup/Fetch acceptance boundary.
@@ -388,10 +441,21 @@ async function run(candidate, expected, dependencies = {}) {
       await verify();
       required(JSON.stringify(await read(candidate)) === JSON.stringify(files), 'public-upgrade-original-configuration-not-restored');
     } finally {await native.revokeCredential();}
+    }
     candidate.evidence.publicUpgrade = {fromVersion: fixture.edge.from, toVersion: fixture.edge.to,
       fromSourceRevision: fixture.metadata.source.revision, fromControllerImageId: oldController, fromWizardImageId: oldWizard,
       configurationPreserved: true, dataPreserved: true, runnerRegistryVerified: true, rollbackVerified: true,
       ...(fixture.edge.databaseMigration ? {gitlabPrerequisiteVerified:true,gitlabCheckpointSha256:plan.gitlabPrerequisite.checkpointSha256,gitlabFromVersion:plan.gitlabPrerequisite.fromVersion,gitlabToVersion:plan.gitlabPrerequisite.toVersion} : {})};
   });
 }
-module.exports = {download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, controllerFixture, waitForServices, NativeCLI, run};
+async function prepareGitlabMigration(candidate,expected) {
+  const native=new NativeCLI(candidate);
+  native.originalFiles=await configuration(candidate);
+  native.originalBaseline=JSON.parse(await candidate.inner(['inspect','system_bootstrapper_1']))[0];
+  await native.initialize(native.originalBaseline,expected,true);
+  await waitForServices(candidate);
+  native.preparedMigration=true;
+  candidate.publicUpgradeNative=native;
+  return native;
+}
+module.exports = {prepareGitlabMigration, download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, controllerFixture, waitForServices, NativeCLI, run};
