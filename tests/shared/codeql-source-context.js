@@ -52,7 +52,13 @@ try {
     'wizard/.gitlab/runtime/project-ci.cjs', 'wizard/.system-bootstrapper/build-v2/runtime/project-ci.cjs'];
   const licensePaths = runtimePaths.map(name => path.posix.join(path.posix.dirname(name), 'LICENSES.txt'));
   const producerPath = 'wizard/.gitlab/producer-v2.json';
-  const actual = new Map([...runtimePaths, ...licensePaths, producerPath].map(name => [name, fs.readFileSync(path.join(source, name))]));
+  // The isolated source snapshot omits reserved installed recipes. Construct
+  // their fixture copies from the canonical template shipped in that context.
+  const runtime = fs.readFileSync(path.join(source, runtimePaths[0]));
+  const license = fs.readFileSync(path.join(source, licensePaths[0]));
+  const actual = new Map([...runtimePaths.map(name => [name, runtime]),
+    ...licensePaths.map(name => [name, license]),
+    [producerPath, fs.readFileSync(path.join(source, producerPath))]]);
   const restore = name => write(name, actual.get(name));
   const commit = (message, names) => {
     git('add', '-A', '--', ...names); git('commit', '-qm', message);
