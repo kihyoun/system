@@ -7,7 +7,8 @@ const evidence=require('../../gitlab/guided-preview-evidence'),state=require('..
 const image='sha256:'+'a'.repeat(64),source='b'.repeat(40),operation='c'.repeat(48);
 function fixture(t,failPage=false,options={}){
   const repository={id:7,namespaceId:3,path:'root/wizard',defaultBranch:'main'},containers=new Map(),calls=[],stages=[];
-  let environment,binding,revoked=false,proofs=0,registrationReady=false;
+  let environment,binding,revoked=false,proofs=0,registrationReady=false,sourcePrepared=false,sourcePipelineReads=0;
+  const pipelines=[{id:4,sha:'a'.repeat(40),ref:'main',source:'push',status:'skipped'}];
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'system-beta-native-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   fs.mkdirSync(path.join(root,'.projects.env'));
@@ -34,7 +35,7 @@ function fixture(t,failPage=false,options={}){
     if(text.includes('beta-registry-'))return {helper:{id:image,reference:'registry.candidate.test:5050/root/wizard/successor@'+image},wizard:{id:image,reference:'registry.candidate.test:5050/root/wizard/successor-wizard@'+image}};
     if(text.includes('beta-binding-')){binding={...input,version:2,sourceLayout:'system-monorepo-v1'};return binding;}
     if(text.includes('existsSync'))return true;
-    if(text.includes("spawnSync('git'")){assert.equal(input.source,source);assert(text.includes("'ci.skip'"));return;}
+    if(text.includes("spawnSync('git'")){assert.equal(input.source,source);assert(text.includes("'ci.skip'"));sourcePrepared=true;return;}
     throw Error('unhandled controller fixture '+text.slice(0,80));
   });
   const candidate={id:'e'.repeat(24),spec:{fullAcceptance:true,guidedPreviewAcceptance:true,sourceLayout:'system-monorepo-v1',sharedSourceBundle:'/private/exact.bundle',
@@ -46,15 +47,20 @@ function fixture(t,failPage=false,options={}){
     rails:async script=>{if(script.includes('negativeGatesPassed:true'))return {mode:'contract-fixture',passed:true,negativeGatesPassed:true};
       if(script.includes('activeCount:')){revoked=true;return {activeCount:0};}return {token:'private-fixture-token'};},
     api:async(route,_token,method='GET',payload)=>{calls.push({route,method,payload});
-      if(route.includes('/pipelines?'))return [];
+      if(route.includes('/pipelines?')){
+        if(sourcePrepared&&++sourcePipelineReads>(options.sourcePipelineDelay||0)&&!pipelines.some(row=>row.id===5))
+          pipelines.push({id:5,sha:source,ref:'system-candidate-'+candidate.id,source:'push',status:'skipped',...options.sourcePipeline});
+        return pipelines.map(row=>({...row}));
+      }
+      if(route==='/projects/7/pipelines/5/jobs?per_page=100')return options.sourceJobs||[];
       if(route.includes('/repository/branches/'))return {commit:{id:source},protected:true};
       if(route==='/projects/7'&&method==='GET')return {id:7,path_with_namespace:repository.path,namespace:{id:3},visibility:'private'};
       return {};},
-    request:async(url,options={})=>{let result;
+    request:async(url,requestOptions={})=>{let result;
       if(url.endsWith('/login'))result={accessToken:'fixture'};
-      else if(url.endsWith('/status')){assert.equal(options.method,'GET');assert.equal(options.headers.Authorization,'Bearer fixture');calls.push({route:'/status'});result={status:statuses.length>1?statuses.shift():statuses[0]};registrationReady=result.status.defaultWizardSetupInProgress===false&&result.status.defaultWizardProject?.state==='registered';}
-      else if(url.endsWith('/preflight'))result={version:2,productionChanged:false,manualDeployment:true,source:{id:7,sourceRevision:source},previewHash:'f'.repeat(64)};
-      else if(url.endsWith('/apply')){environment={managementMode:'system-monorepo',operation,settings:{review:{enabled:false},beta:{enabled:true}},deployments:{}};result={state:'complete'};}
+      else if(url.endsWith('/status')){assert.equal(requestOptions.method,'GET');assert.equal(requestOptions.headers.Authorization,'Bearer fixture');calls.push({route:'/status'});result={status:statuses.length>1?statuses.shift():statuses[0]};registrationReady=result.status.defaultWizardSetupInProgress===false&&result.status.defaultWizardProject?.state==='registered';}
+      else if(url.endsWith('/preflight')){assert(pipelines.some(row=>row.id===5),'setup ran before the fixture source pipeline settled');calls.push({route:'/preflight'});result={version:2,productionChanged:false,manualDeployment:true,source:{id:7,sourceRevision:source},previewHash:'f'.repeat(64)};}
+      else if(url.endsWith('/apply')){environment={managementMode:'system-monorepo',operation,settings:{review:{enabled:false},beta:{enabled:true}},deployments:{}};if(options.setupPipeline)pipelines.push({id:6,sha:source,ref:'system-candidate-'+candidate.id,source:'push',...options.setupPipeline});result={state:'complete'};}
       else if(url.endsWith('/preview-setup'))result={version:2,phase:'ready',operation,productionChanged:false,manualDeployment:true};
       else if(url.endsWith('/api/v4/user'))return {status:revoked?401:200,body:''};
       else if(url==='https://beta.candidate.test/'){if(failPage)throw Error('fixture-page-failed');return {status:200,body:'<!doctype html><html></html>'};}
@@ -79,14 +85,35 @@ function fixture(t,failPage=false,options={}){
     }};
   return {candidate,calls,stages,containers,get environment(){return environment;},get revoked(){return revoked;},get proofs(){return proofs;}};
 }
-test('shared candidate native lifecycle produces explicit v2 evidence without pipeline or build creation',async t=>{
-  const f=fixture(t,false,{statuses:[{defaultWizardSetupInProgress:true,defaultWizardProject:{state:'not-started'}},{defaultWizardSetupInProgress:false,defaultWizardProject:{state:'registered'}}]});
+test('shared candidate native lifecycle settles the skipped source push before proving setup creates no pipelines or builds',async t=>{
+  const f=fixture(t,false,{sourcePipelineDelay:2,statuses:[{defaultWizardSetupInProgress:true,defaultWizardProject:{state:'not-started'}},{defaultWizardSetupInProgress:false,defaultWizardProject:{state:'registered'}}]});
   await adapter.run(f.candidate);evidence.validate(f.candidate.evidence.guidedPreview,f.stages);
   assert.equal(f.stages[0].name,'system-beta-production-baseline');assert.equal(f.stages[0].status,'passed');
   assert.equal(f.calls.filter(row=>row.route==='/status').length,2);assert(f.proofs>1);
   assert(f.revoked);assert.equal(f.containers.size,0);assert(!f.environment.deployments.beta.active);
   assert(!f.calls.some(row=>row.method==='POST'&&/pipelines|merge_requests|repository\/commits/.test(row.route)));
   assert(!f.calls.some(row=>row.args?.includes('build')));
+  const preflight=f.calls.findIndex(row=>row.route==='/preflight'),jobs=f.calls.findIndex(row=>row.route==='/projects/7/pipelines/5/jobs?per_page=100');
+  assert(jobs>=0&&jobs<preflight);assert.equal(f.calls.slice(0,jobs).filter(row=>row.route==='/projects/7/pipelines?per_page=100').length,4);
+});
+test('native setup cannot add a pipeline even when the fixture source SHA and ref are unchanged',async t=>{
+  for(const status of ['skipped','running'])await t.test(status,async t=>{
+    const f=fixture(t,false,{setupPipeline:{status}});
+    await assert.rejects(()=>adapter.run(f.candidate),/system-beta-setup-started-build/);
+    assert.equal(require('./stage-diagnostics').failureReason('system-beta-setup-started-build'),'system-beta-setup-started-build');
+    assert.equal(f.stages.find(row=>row.name==='system-beta-native-setup').status,'failed');
+    assert(!f.candidate.evidence.guidedPreview.setup);assert(!f.stages.some(row=>row.name==='system-beta-native-binding'));assert(f.revoked);
+  });
+});
+test('source preparation requires the exact skipped push pipeline without jobs before setup',async t=>{
+  const cases=[{sourcePipeline:{sha:'a'.repeat(40)}},{sourcePipeline:{ref:'main'}},{sourcePipeline:{source:'api'}},{sourcePipeline:{status:'running'}},{sourceJobs:[{id:10,status:'skipped'}]}];
+  for(const [index,options]of cases.entries())await t.test(String(index),async t=>{
+    const f=fixture(t,false,options);
+    await assert.rejects(()=>adapter.run(f.candidate),options.sourceJobs?/system-beta-source-pipeline-jobs-present/:/system-beta-source-pipeline-invalid/);
+    const code=options.sourceJobs?'system-beta-source-pipeline-jobs-present':'system-beta-source-pipeline-invalid';
+    assert.equal(require('./stage-diagnostics').failureReason(code),code);
+    assert(!f.stages.some(row=>row.name==='system-beta-native-setup'));assert.equal(f.environment,undefined);assert(f.revoked);
+  });
 });
 test('failed TLS page still stops exact generation, removes helpers and revokes credentials',async t=>{
   const f=fixture(t,true);await assert.rejects(()=>adapter.run(f.candidate),/fixture-page-failed/);

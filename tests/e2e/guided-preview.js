@@ -154,17 +154,29 @@ async function run(candidate){
   const fixtureDeployJobId=1000000001,fixtureStopJobId=1000000002;
   requireValue([fixturePipelineId,fixtureCandidateJobId].every(value=>Number.isSafeInteger(value)&&value>0)&&
     candidate.spec.sourceLayout==='system-monorepo-v1','system-beta-candidate-identities-required');
-  const inventory=async()=>{const rows=await candidate.api('/projects/'+before.repository.id+'/pipelines?per_page=100',token);requireValue(Array.isArray(rows)&&rows.length<100,'system-beta-pipeline-inventory-required');return rows.map(row=>row.id).sort((a,b)=>a-b);};
+  const inventory=async()=>{const rows=await candidate.api('/projects/'+before.repository.id+'/pipelines?per_page=100',token);requireValue(Array.isArray(rows)&&rows.length<100&&rows.every(row=>Number.isSafeInteger(row.id)&&row.id>0)&&new Set(rows.map(row=>row.id)).size===rows.length,'system-beta-pipeline-inventory-required');return rows;};
+  const pipelineIds=rows=>rows.map(row=>row.id).sort((a,b)=>a-b);
   const identity=row=>({projectId:row.projectId,pipelineId:row.pipelineId,jobId:row.jobId,mrIid:row.mrIid,sourceCommit:row.sourceCommit,
     operation:row.operation,generation:row.generation,state:row.state,imageDigest:row.imageRef.split('@').at(-1)});
   try{
     await candidate.stage('system-beta-native-source',async()=>{
       mintAttempted=true;const auth=await candidate.rails("require 'json';t=User.find_by_username('root').personal_access_tokens.create!(name:'guided-preview-acceptance-"+candidate.id+"',scopes:['api','write_repository','read_registry','write_registry'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token)");
       requireValue(typeof auth.token==='string'&&auth.token.length>10,'guided-preview-credential-required');token=auth.token;mintConfirmed=true;
-      pipelineCount=await inventory();repository=await sharedSource(candidate,before.repository,token,desired);
+      const previousPipelines=pipelineIds(await inventory());repository=await sharedSource(candidate,before.repository,token,desired);
       const project=await candidate.api('/projects/'+repository.id,token);
       requireValue(project.path_with_namespace===repository.path&&project.visibility==='private','system-beta-owned-source-changed');
       repository.namespaceId=project.namespace.id;images=await publishImages(candidate,repository,token);
+      // ci.skip persists an empty skipped pipeline asynchronously. Settle that
+      // exact fixture push before measuring whether native setup starts builds.
+      await candidate.wait(async()=>{
+        const rows=await inventory(),added=rows.filter(row=>!previousPipelines.includes(row.id));
+        if(!added.length)return false;
+        requireValue(added.length===1&&previousPipelines.every(id=>rows.some(row=>row.id===id))&&
+          added[0].sha===candidate.spec.sourceRevision&&added[0].ref===repository.defaultBranch&&added[0].source==='push'&&added[0].status==='skipped','system-beta-source-pipeline-invalid');
+        const jobs=await candidate.api('/projects/'+repository.id+'/pipelines/'+added[0].id+'/jobs?per_page=100',token);
+        requireValue(Array.isArray(jobs)&&jobs.length===0,'system-beta-source-pipeline-jobs-present');
+        pipelineCount=pipelineIds(rows);return true;
+      },60000);
       evidence.candidate={projectId:repository.id,namespaceId:repository.namespaceId,fixturePipelineId,fixtureCandidateJobId,
         sourceCommit:candidate.spec.sourceRevision,sourceTree:candidate.spec.sourceTree,wizardSourceTree:candidate.spec.wizardSourceTree,
         helperImage:images.helper.id,wizardImageId:images.wizard.id,helperRegistryDigest:images.helper.reference.split('@').at(-1),
@@ -178,7 +190,7 @@ async function run(candidate){
       await candidate.wait(async()=>{if(job.state==='running')job=await sync('/projects/jobs/'+job.id);requireValue(job.state!=='failed','system-beta-native-setup-failed');return job.state!=='running';},180000);
       const status=await sync('/projects/wizard/preview-setup');
       requireValue(status.version===2&&status.phase==='ready'&&status.productionChanged===false&&status.manualDeployment===true,'system-beta-native-setup-not-ready');
-      requireValue(JSON.stringify(await inventory())===JSON.stringify(pipelineCount),'system-beta-setup-started-build');
+      requireValue(JSON.stringify(pipelineIds(await inventory()))===JSON.stringify(pipelineCount),'system-beta-setup-started-build');
       const current=await production(candidate);unchanged(before,current);
       requireValue(current.environment?.managementMode==='system-monorepo'&&current.environment.settings.review.enabled===false,'system-beta-review-reservation-present');
       evidence.setup={projectId:repository.id,namespaceId:repository.namespaceId,sourceCommit:plan.source.sourceRevision,operation:status.operation,
