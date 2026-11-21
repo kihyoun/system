@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { requireValue } from './types';
 
 export interface SeedEntry {
   path: string;
@@ -102,13 +103,14 @@ export function verify(root: string, verifyImage = true): SeedManifest {
   const manifest: SeedManifest = JSON.parse(
     fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'),
   );
-  if (
-    manifest.format !== 'system-bootstrapper-seed-v2' ||
-    manifest.consistency !== 'gitlab-stopped'
-  )
-    throw new Error('Unsupported or incomplete Seed manifest');
-  if (JSON.stringify(inventory(root)) !== JSON.stringify(manifest.entries))
-    throw new Error('Seed payload does not match completed manifest');
+  requireValue(
+    manifest.format === 'system-bootstrapper-seed-v2' && manifest.consistency === 'gitlab-stopped',
+    'seed-payload-invalid',
+  );
+  requireValue(
+    JSON.stringify(inventory(root)) === JSON.stringify(manifest.entries),
+    'seed-payload-invalid',
+  );
   if (verifyImage && manifest.gitlabImage && manifest.gitlabImage !== process.env.GITLAB_IMAGE)
     throw new Error('Restore requires the harvested GitLab version and edition');
   return manifest;

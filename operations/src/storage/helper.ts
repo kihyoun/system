@@ -3,20 +3,53 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { ProcessOptions, ProcessRunner, nativeProcess } from '../runtime/process';
-import { StorageSpec, requireValue } from './types';
+import { ProcessFailure, ProcessOptions, ProcessRunner, nativeProcess } from '../runtime/process';
+import { StorageError, StorageSpec, requireValue } from './types';
 import { absolute } from './validation';
 import { imageFromConfiguration } from './configuration';
 import * as manifest from './manifest';
 export type DockerRun = (args: string[], options?: ProcessOptions) => string;
+const refusalCodes = [
+  'seed-target-unavailable',
+  'storage-operation-busy',
+  'restore-target-not-empty',
+  'seed-payload-invalid',
+] as const;
+const refusalMessages = Object.fromEntries(
+  refusalCodes.map((code) => ['Seed operation failed: ' + code + '.', code]),
+);
 export function dockerRun(runner: ProcessRunner = nativeProcess): DockerRun {
-  return (args, options = {}) =>
-    runner
-      .run('docker', ['--host=unix:///var/run/docker.sock', ...args], {
-        timeout: 3600000,
-        ...options,
-      })
-      .stdout.trim();
+  return (args, options = {}) => {
+    const storageChild =
+      (args[0] === 'run' &&
+        args.at(-2) === '/system/operations/dist/storage/entry.js' &&
+        args.at(-1) === 'validate') ||
+      (args[0] === 'start' &&
+        args[1] === '--attach' &&
+        args.length === 3 &&
+        /^system-storage-(harvest|restore)-[a-f0-9]{24}$/.test(args[2]));
+    try {
+      return runner
+        .run('docker', ['--host=unix:///var/run/docker.sock', ...args], {
+          timeout: 3600000,
+          ...options,
+          controlledFailureCodes: storageChild ? refusalMessages : undefined,
+        })
+        .stdout.trim();
+    } catch (error) {
+      if (
+        storageChild &&
+        error instanceof ProcessFailure &&
+        error.binary === 'docker' &&
+        error.status === 1 &&
+        error.signal === null &&
+        !error.uncertain &&
+        refusalCodes.some((code) => code === error.controlledCode)
+      )
+        throw new StorageError(error.controlledCode!);
+      throw error;
+    }
+  };
 }
 export function helperArguments(
   spec: StorageSpec,

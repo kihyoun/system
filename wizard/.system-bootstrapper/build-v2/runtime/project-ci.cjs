@@ -23592,13 +23592,15 @@ var require_process = /* @__PURE__ */ __commonJSMin(((exports) => {
 		status;
 		signal;
 		uncertain;
+		controlledCode;
 		code = "external-command-failed";
-		constructor(binary, status, signal, uncertain) {
+		constructor(binary, status, signal, uncertain, controlledCode) {
 			super("external-command-failed");
 			this.binary = binary;
 			this.status = status;
 			this.signal = signal;
 			this.uncertain = uncertain;
+			this.controlledCode = controlledCode;
 			this.name = "ProcessFailure";
 		}
 	};
@@ -23614,7 +23616,15 @@ var require_process = /* @__PURE__ */ __commonJSMin(((exports) => {
 				input: options.input,
 				shell: false
 			});
-			if (result.error || result.status !== 0 || result.signal !== null) throw new ProcessFailure(binary, result.status, result.signal, !!result.error || result.status === null || result.signal !== null);
+			if (result.error || result.status !== 0 || result.signal !== null) {
+				let controlledCode;
+				if (options.controlledFailureCodes && !result.error && result.signal === null && result.status !== null && result.status > 0) {
+					const lines = new Set((result.stdout + "\n" + result.stderr).split(/\r?\n/));
+					const matched = new Set(Object.entries(options.controlledFailureCodes ?? {}).filter(([line, code]) => line.length > 0 && line.length <= 256 && typeof code === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(code) && lines.has(line)).map(([, code]) => code));
+					if (matched.size === 1) controlledCode = [...matched][0];
+				}
+				throw new ProcessFailure(binary, result.status, result.signal, !!result.error || result.status === null || result.signal !== null, controlledCode);
+			}
 			return {
 				stdout: result.stdout,
 				stderr: result.stderr,

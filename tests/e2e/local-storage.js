@@ -34,7 +34,9 @@ async function assertAbsent(candidate) {
 async function verifyLocalLive(candidate,base) {
   if(!['/candidate-data/platform','/recovered-data/platform'].includes(base))throw Error('storage-owned-root-required');
   const result=await candidate.call(['exec',candidate.daemon,'sh','-ec',
-    'test "$(stat -c %d /)" = "$(stat -c %d '+base+')"; test ! -e '+SEED+'; printf local']);
+    'if ! test "$(stat -c %d /)" = "$(stat -c %d '+base+')"; then printf storage-live-not-on-root; exit 1; fi; '+
+    'if test -e '+SEED+'; then printf storage-backup-still-attached; exit 1; fi; printf local'],
+    {failureCodes:{...failureCodes('storage-live-not-on-root'),...failureCodes('storage-backup-still-attached')}});
   if(result!=='local')throw Error('storage-live-not-on-root');
   const marker=await candidate.call(['exec',candidate.daemon,'cat',base+'/.system-bootstrapper-volume']);
   if(marker!=='system-bootstrapper-persistence-v1')throw Error('storage-live-marker-invalid');
