@@ -28,26 +28,24 @@ test('public tarball carries compiled CLI and offline validation assets without 
     }
     assert(!files.includes('config/system/.projects.env'));
     assert(!files.some(file=>/(?:^|\/)(?:\.env|\.npmrc|private)(?:\/|$)/.test(file)));
-    execFileSync('tar',['-xzf',path.join(temporary,record.filename),'-C',temporary]);
-    const unpacked=path.join(temporary,'package');
-    for(const file of ['wizard/README.md','wizard/LICENSE'])if(files.includes(file))assert(fs.readFileSync(path.join(unpacked,file)).equals(fs.readFileSync(path.join(root,file))),file);
-    for(const file of ['guided-preview-evidence.js','guided-preview-evidence-v1.js','job-diagnostics.js','evidence-values.js'])
-      assert(fs.readFileSync(path.join(unpacked,'dist/modules/release',file)).equals(fs.readFileSync(path.join(root,'dist/modules/release',file))),file);
-    const policy=require(path.join(unpacked,'dist/modules/release/lifecycle-policy')).lifecyclePolicy();
-    assert.equal(typeof policy.validateAuthority,'function');assert(policy.stagesV2.includes('system-beta-native-deploy'));
-    const metadata=JSON.parse(fs.readFileSync(path.join(unpacked,'package.json')));
-    for(const script of ['preinstall','install','postinstall','prepare'])assert.equal(metadata.scripts[script],undefined);
-    assert.equal(metadata.bin['system-bootstrapper'],'dist/cli/main.js');
-    const version=execFileSync(process.execPath,[path.join(unpacked,'dist/cli/main.js'),'--version'],{encoding:'utf8',env:{PATH:'/missing',HOME:temporary}}).trim();
-    assert.equal(version,metadata.version);
     const installed=path.join(temporary,'installed'); fs.mkdirSync(installed);
     execFileSync('npm',['install','--offline','--ignore-scripts','--no-audit','--no-fund','--prefix',installed,path.join(temporary,record.filename)],{cwd:temporary,stdio:'pipe',env:{...process.env,npm_config_cache:path.join(temporary,'empty-cache'),npm_config_userconfig:path.join(temporary,'user.npmrc'),npm_config_globalconfig:path.join(temporary,'global.npmrc')}});
+    const packageRoot=path.join(installed,'node_modules/@systembootstrapper/cli');
+    for(const file of ['wizard/README.md','wizard/LICENSE'])if(files.includes(file))assert(fs.readFileSync(path.join(packageRoot,file)).equals(fs.readFileSync(path.join(root,file))),file);
+    for(const file of ['guided-preview-evidence.js','guided-preview-evidence-v1.js','job-diagnostics.js','evidence-values.js'])
+      assert(fs.readFileSync(path.join(packageRoot,'dist/modules/release',file)).equals(fs.readFileSync(path.join(root,'dist/modules/release',file))),file);
+    const policy=require(path.join(packageRoot,'dist/modules/release/lifecycle-policy')).lifecyclePolicy();
+    assert.equal(typeof policy.validateAuthority,'function');assert(policy.stagesV2.includes('system-beta-native-deploy'));
+    const metadata=JSON.parse(fs.readFileSync(path.join(packageRoot,'package.json')));
+    for(const script of ['preinstall','install','postinstall','prepare'])assert.equal(metadata.scripts[script],undefined);
+    assert.equal(metadata.bin['system-bootstrapper'],'dist/cli/main.js');
+    const version=execFileSync(process.execPath,[path.join(packageRoot,'dist/cli/main.js'),'--version'],{encoding:'utf8',env:{PATH:'/missing',HOME:temporary}}).trim();
+    assert.equal(version,metadata.version);
     const installedCli=path.join(installed,'node_modules/.bin/system-bootstrapper');
     assert.equal(execFileSync(process.execPath,[installedCli,'--version'],{encoding:'utf8'}).trim(),metadata.version);
-    const api=require(path.join(installed,'node_modules/@systembootstrapper/cli'));
+    const api=require(packageRoot);
     assert.equal(typeof api.StorageModule.register,'function');
     assert.equal(typeof api.StorageService,'function');
-    const packageRoot=path.join(installed,'node_modules/@systembootstrapper/cli');
     const {publicPayloadFiles}=require(path.join(packageRoot,'dist/common/public-payload'));
     const runtime=path.join(temporary,'host-runtime'),manifestBytes=fs.readFileSync(path.join(packageRoot,'assets/public-runtime.json'));
     const payload=JSON.parse(manifestBytes);
@@ -95,7 +93,7 @@ test('public tarball carries compiled CLI and offline validation assets without 
     fs.unlinkSync(templateDirectory);fs.renameSync(moved,templateDirectory);fs.writeFileSync(ignore,ignoreBytes);
     assert.deepEqual(selected(),baseline);
     assert.equal(fs.readFileSync(projects,'utf8'),'PROJECTS=retained\n');
-    const adapter=require(path.join(unpacked,'dist/common/runtime/preview-settings.js'));
+    const adapter=require(path.join(packageRoot,'dist/common/runtime/preview-settings.js'));
     assert.equal(adapter.normalizePreview({version:2,namespace:'example',wizard:{mode:'existing',project:'system'},review:{enabled:false,host:'',ssl:'',sslKey:''},beta:{enabled:false,host:'',ssl:'',sslKey:''}}).version,2);
   } finally {fs.rmSync(temporary,{recursive:true,force:true});}
 });
