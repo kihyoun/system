@@ -5,6 +5,7 @@
 
 저장소에서 선언한 Node/npm 버전을 사용하세요. 다음 각 디렉터리에서 `npm audit --json`을 실행하세요.
 
+- `operations`
 - `sync`
 - `wizard`
 - `project-bootstrap/templates/angular`

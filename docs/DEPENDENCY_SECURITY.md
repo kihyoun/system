@@ -7,6 +7,7 @@ when it is absent from the Production image.
 Use the repository's declared Node/npm versions. Run `npm audit --json` from each
 of these directories:
 
+- `operations`
 - `sync`
 - `wizard`
 - `project-bootstrap/templates/angular`
