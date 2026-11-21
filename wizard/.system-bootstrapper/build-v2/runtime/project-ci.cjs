@@ -23773,8 +23773,10 @@ var require_build_tools_service = /* @__PURE__ */ __commonJSMin(((exports, modul
 			this.process = process;
 			this.systemRoot = systemRoot;
 		}
-		refreshCa(checkout) {
-			const bundle = node_fs_1.default.readFileSync(node_path_1.default.join(checkout, "config/ca/cacert-2026-10-20.crt"));
+		refreshCa(checkout, layout = "system") {
+			const caDirectory = layout === "system" ? "config/ca" : layout === "project" ? "bootstrapper/ca" : void 0;
+			if (!caDirectory) throw Error("Unknown build CA layout.");
+			const bundle = node_fs_1.default.readFileSync(node_path_1.default.join(checkout, caDirectory, "cacert-2026-10-20.crt"));
 			if (node_crypto_1.default.createHash("sha256").update(bundle).digest("hex") !== exports.PUBLIC_CA_SHA256) throw Error("Reviewed public CA bundle hash mismatch.");
 			const certificates = node_path_1.default.join(this.systemRoot, "etc/ssl/certs");
 			const directory = node_fs_1.default.lstatSync(certificates);
@@ -23788,7 +23790,7 @@ var require_build_tools_service = /* @__PURE__ */ __commonJSMin(((exports, modul
 			if (node_fs_1.default.lstatSync(link, { throwIfNoEntry: false })) node_fs_1.default.unlinkSync(link);
 			node_fs_1.default.symlinkSync("certs/ca-certificates.crt", link);
 		}
-		async installRuntime(checkout, env, signal) {
+		async installRuntime(checkout, env, signal, layout = "system") {
 			const run = (binary, args, timeout = 18e4) => this.process.run(binary, args, {
 				cwd: checkout,
 				env,
@@ -23801,7 +23803,7 @@ var require_build_tools_service = /* @__PURE__ */ __commonJSMin(((exports, modul
 				"--no-cache",
 				...exports.RUNTIME_PACKAGES
 			], 9e5);
-			this.refreshCa(checkout);
+			this.refreshCa(checkout, layout);
 			for (const args of [
 				["--version"],
 				["compose", "version"],
@@ -37676,8 +37678,8 @@ async function main(args, signal) {
 	const app = await core_1.NestFactory.createApplicationContext(project_ci_module_1.ProjectCiModule, { logger: false });
 	try {
 		if (args[0] === "application" && (args.length === 2 || args.length === 3)) await app.get(application_service_1.ApplicationService).run(process.cwd(), args[1], args[2], process.env, signal);
-		else if (args[0] === "prepare-runtime" && args.length === 2) await app.get(build_tools_service_1.BuildToolsService).installRuntime(node_path_1.default.resolve(args[1]), process.env, signal);
-		else if (args[0] === "refresh-ca" && args.length === 2) app.get(build_tools_service_1.BuildToolsService).refreshCa(node_path_1.default.resolve(args[1]));
+		else if (args[0] === "prepare-runtime" && args.length === 2) await app.get(build_tools_service_1.BuildToolsService).installRuntime(node_path_1.default.resolve(args[1]), process.env, signal, "project");
+		else if (args[0] === "refresh-ca" && args.length === 2) app.get(build_tools_service_1.BuildToolsService).refreshCa(node_path_1.default.resolve(args[1]), "project");
 		else if (args[0] === "build" && args.length === 1) await app.get(delivery_service_1.DeliveryService).build(process.cwd(), process.env, signal);
 		else if (args[0] === "verify" && args.length === 1) await app.get(delivery_service_1.DeliveryService).verify(process.cwd(), process.env, signal);
 		else if (args[0] === "browser" && args.length === 1) await app.get(browser_check_service_1.BrowserCheckService).run(process.cwd(), process.env, signal);

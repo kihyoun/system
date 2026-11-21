@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+export type BuildCaLayout = 'system' | 'project';
 export const PUBLIC_CA_SHA256 = '796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe';
 export const RUNTIME_PACKAGES = [
   'docker-cli=29.9.3-r1',
@@ -23,8 +24,13 @@ export class BuildToolsService {
     readonly systemRoot = '/',
   ) {}
 
-  refreshCa(checkout: string): void {
-    const bundle = fs.readFileSync(path.join(checkout, 'config/ca/cacert-2026-10-20.crt'));
+  refreshCa(checkout: string, layout: BuildCaLayout = 'system'): void {
+    // Managed project recipes keep their installed CA location independently of
+    // the System source tree. The adapter selects a contract, never a fallback.
+    const caDirectory =
+      layout === 'system' ? 'config/ca' : layout === 'project' ? 'bootstrapper/ca' : undefined;
+    if (!caDirectory) throw Error('Unknown build CA layout.');
+    const bundle = fs.readFileSync(path.join(checkout, caDirectory, 'cacert-2026-10-20.crt'));
     if (crypto.createHash('sha256').update(bundle).digest('hex') !== PUBLIC_CA_SHA256)
       throw Error('Reviewed public CA bundle hash mismatch.');
     const certificates = path.join(this.systemRoot, 'etc/ssl/certs');
@@ -48,6 +54,7 @@ export class BuildToolsService {
     checkout: string,
     env: NodeJS.ProcessEnv,
     signal?: AbortSignal,
+    layout: BuildCaLayout = 'system',
   ): Promise<void> {
     const run = (binary: string, args: string[], timeout = 180000) =>
       this.process.run(binary, args, { cwd: checkout, env, signal, timeout });
@@ -57,7 +64,7 @@ export class BuildToolsService {
     )
       throw Error('Pinned Node and npm runtime required.');
     await run('apk', ['add', '--no-cache', ...RUNTIME_PACKAGES], 900000);
-    this.refreshCa(checkout);
+    this.refreshCa(checkout, layout);
     for (const args of [['--version'], ['compose', 'version'], ['buildx', 'version']])
       await run('docker', args);
   }

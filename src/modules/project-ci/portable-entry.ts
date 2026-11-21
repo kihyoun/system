@@ -15,9 +15,11 @@ async function main(args: string[], signal: AbortSignal): Promise<void> {
     if (args[0] === 'application' && (args.length === 2 || args.length === 3))
       await app.get(ApplicationService).run(process.cwd(), args[1], args[2], process.env, signal);
     else if (args[0] === 'prepare-runtime' && args.length === 2)
-      await app.get(BuildToolsService).installRuntime(path.resolve(args[1]), process.env, signal);
+      await app
+        .get(BuildToolsService)
+        .installRuntime(path.resolve(args[1]), process.env, signal, 'project');
     else if (args[0] === 'refresh-ca' && args.length === 2)
-      app.get(BuildToolsService).refreshCa(path.resolve(args[1]));
+      app.get(BuildToolsService).refreshCa(path.resolve(args[1]), 'project');
     else if (args[0] === 'build' && args.length === 1)
       await app.get(DeliveryService).build(process.cwd(), process.env, signal);
     else if (args[0] === 'verify' && args.length === 1)
