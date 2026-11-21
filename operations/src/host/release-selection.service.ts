@@ -73,11 +73,26 @@ export function replaceOwned(
 }
 /** Literal assignment editing preserves every unrelated byte, including the Cube and multiline secrets. */
 export function imageAssignment(raw: Buffer, value: string, key = 'BOOTSTRAPPER_IMAGE'): Buffer {
+  return literalImageAssignment(raw, value, key, false);
+}
+export function promotionAssignment(raw: Buffer, value: string): Buffer {
+  ensure(
+    /^system-successor:[a-f0-9]{40}-job[1-9][0-9]*$/.test(value),
+    'invalid-controller-promotion-alias',
+  );
+  return literalImageAssignment(raw, value, 'BOOTSTRAPPER_IMAGE', true);
+}
+function literalImageAssignment(
+  raw: Buffer,
+  value: string,
+  key: string,
+  promotion: boolean,
+): Buffer {
   ensure(
     ['BOOTSTRAPPER_IMAGE', 'WIZARD_IMAGE'].includes(key),
     'unsupported-update-image-assignment',
   );
-  if (!/^system-bootstrapper-recovery:[a-f0-9]{64}$/.test(value)) reference(value);
+  if (!promotion && !/^system-bootstrapper-recovery:[a-f0-9]{64}$/.test(value)) reference(value);
   cube(raw);
   ensure(
     Buffer.from(raw.toString('utf8')).equals(raw),
@@ -117,6 +132,7 @@ export function imageAssignment(raw: Buffer, value: string, key = 'BOOTSTRAPPER_
     if (keys[0] === key) {
       ensure(recoveryReference(assignment[key]), 'invalid-existing-image-assignment');
       if (
+        !promotion &&
         key === 'BOOTSTRAPPER_IMAGE' &&
         !/^system-bootstrapper-recovery:[a-f0-9]{64}$/.test(assignment[key])
       )

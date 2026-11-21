@@ -43,13 +43,13 @@ export class ColdMaintenanceService {
       'owned-core-container-required',
     );
   }
-  async drain(input: ColdMaintenanceInput): Promise<void> {
+  async drain(input: ColdMaintenanceInput, port = this.port): Promise<void> {
     const gitlab = record(input.gitlab),
       id = this.id(gitlab),
-      deadline = (await this.port.now()) + input.deadline;
+      deadline = (await port.now()) + input.deadline;
     let consecutive = 0;
-    while ((await this.port.now()) < deadline) {
-      const current = await this.port.inspect(id);
+    while ((await port.now()) < deadline) {
+      const current = await port.inspect(id);
       ensure('ExecIDs' in current, 'Docker-exec-drain-inspection-is-unavailable');
       ensure(current.Id === id && this.state(current).Running, 'GitLab-changed-during-drain');
       if (
@@ -58,7 +58,7 @@ export class ColdMaintenanceService {
       ) {
         if (++consecutive >= 2) return;
       } else consecutive = 0;
-      await this.port.sleep(1);
+      await port.sleep(1);
     }
     throw Error('remote-GitLab-exec-drain-timeout');
   }
@@ -68,42 +68,41 @@ export class ColdMaintenanceService {
     seconds: number,
     phase: string,
     services: string[],
+    port = this.port,
   ): Promise<void> {
-    const deadline = Math.floor(await this.port.uptime()) + seconds;
-    await this.port.phase(phase, deadline);
-    await controlGitLabServices(
-      this.port,
-      this.id(record(input.gitlab)),
-      action,
-      seconds,
-      services,
-      { deadline },
-    );
+    const deadline = Math.floor(await port.uptime()) + seconds;
+    await port.phase(phase, deadline);
+    await controlGitLabServices(port, this.id(record(input.gitlab)), action, seconds, services, {
+      deadline,
+    });
   }
 
-  async resume(input: ColdMaintenanceInput): Promise<void> {
+  async resume(input: ColdMaintenanceInput, port = this.port): Promise<void> {
     const gitlab = record(input.gitlab),
       controller = record(input.controller),
       web = record(input.web),
-      current = await this.port.inspect(this.id(gitlab));
+      current = await port.inspect(this.id(gitlab));
     ensure(
       this.state(current).Running && current.Image === gitlab.Image,
       'previous-GitLab-generation-is-not-safe-to-resume',
     );
     if (input.mainHash)
       ensure(
-        (await this.port.mainHash()) === input.mainHash,
+        (await port.mainHash()) === input.mainHash,
         'configuration-changed-before-maintenance-resume',
       );
-    await this.remote(input, 'start', 150, 'old-ingress-resume-started', [
-      'nginx',
-      'gitlab-workhorse',
-      'puma',
-    ]);
-    const deadline = (await this.port.now()) + 90;
+    await this.remote(
+      input,
+      'start',
+      150,
+      'old-ingress-resume-started',
+      ['nginx', 'gitlab-workhorse', 'puma'],
+      port,
+    );
+    const deadline = (await port.now()) + 90;
     while (true) {
       try {
-        await this.port.command(
+        await port.command(
           [
             'exec',
             this.id(gitlab),
@@ -117,11 +116,11 @@ export class ColdMaintenanceService {
         );
         break;
       } catch {
-        if ((await this.port.now()) >= deadline) throw Error('previous-GitLab-ingress-not-ready');
-        await this.port.sleep(2);
+        if ((await port.now()) >= deadline) throw Error('previous-GitLab-ingress-not-ready');
+        await port.sleep(2);
       }
     }
-    const currentController = await this.port.inspect(this.id(controller));
+    const currentController = await port.inspect(this.id(controller));
     ensure(
       currentController.Image === controller.Image && this.state(currentController).Running,
       'previous-controller-is-not-safe-to-resume',
@@ -140,48 +139,50 @@ export class ColdMaintenanceService {
       );
       restart += ':' + String(policy.MaximumRetryCount);
     }
-    await this.port.command(['update', '--restart=' + restart, this.id(controller)]);
-    if (this.state(currentController).Paused)
-      await this.port.command(['unpause', this.id(controller)]);
-    if (!this.state(await this.port.inspect(this.id(web))).Running)
-      await this.port.command(['start', this.id(web)]);
-    const resumed = await this.port.inspect(this.id(controller));
+    await port.command(['update', '--restart=' + restart, this.id(controller)]);
+    if (this.state(currentController).Paused) await port.command(['unpause', this.id(controller)]);
+    if (!this.state(await port.inspect(this.id(web))).Running)
+      await port.command(['start', this.id(web)]);
+    const resumed = await port.inspect(this.id(controller));
     ensure(
       this.state(resumed).Running &&
         !this.state(resumed).Paused &&
-        this.state(await this.port.inspect(this.id(web))).Running,
+        this.state(await port.inspect(this.id(web))).Running,
       'previous-control-plane-did-not-resume',
     );
-    await this.port.phase('old-generation-resumed-without-database-stop');
+    await port.phase('old-generation-resumed-without-database-stop');
   }
-  async quiesce(input: ColdMaintenanceInput): Promise<void> {
-    await this.remote(input, 'stop', 110, 'scheduling-ingress-stop-started', [
-      'nginx',
-      'gitlab-workhorse',
-      'puma',
-    ]);
-    if ((await this.port.probe()).runningJobs !== 0) {
-      await this.resume(input);
+  async quiesce(input: ColdMaintenanceInput, port = this.port): Promise<void> {
+    await this.remote(
+      input,
+      'stop',
+      110,
+      'scheduling-ingress-stop-started',
+      ['nginx', 'gitlab-workhorse', 'puma'],
+      port,
+    );
+    if ((await port.probe()).runningJobs !== 0) {
+      await this.resume(input, port);
       throw new ActiveMaintenanceJobs(
         'new-running-jobs-refused-maintenance-old-generation-resumed',
       );
     }
-    await this.port.phase('scheduling-ingress-stopped-final-jobs-zero');
+    await port.phase('scheduling-ingress-stopped-final-jobs-zero');
   }
-  async cleanStop(input: ColdMaintenanceInput): Promise<void> {
+  async cleanStop(input: ColdMaintenanceInput, port = this.port): Promise<void> {
     const gitlab = record(input.gitlab);
-    await this.remote(input, 'stop', 110, 'GitLab-services-stop-started', ['']);
-    await requireGitLabServicesDown(this.port, this.id(gitlab));
-    await this.drain(input);
-    await this.port.command(['stop', '--time', '60', this.id(gitlab)], 70);
-    const stoppedGitlab = this.state(await this.port.inspect(this.id(gitlab)));
+    await this.remote(input, 'stop', 110, 'GitLab-services-stop-started', [''], port);
+    await requireGitLabServicesDown(port, this.id(gitlab));
+    await this.drain(input, port);
+    await port.command(['stop', '--time', '60', this.id(gitlab)], 70);
+    const stoppedGitlab = this.state(await port.inspect(this.id(gitlab)));
     ensure(
       !stoppedGitlab.Running && stoppedGitlab.ExitCode === 0 && !stoppedGitlab.OOMKilled,
       'GitLab-stop-was-not-clean',
     );
-    await this.port.phase('GitLab-container-cleanly-stopped');
+    await port.phase('GitLab-container-cleanly-stopped');
   }
-  async run(input: ColdMaintenanceInput): Promise<string> {
+  async run(input: ColdMaintenanceInput, port = this.port): Promise<string> {
     ensure(
       Number.isFinite(input.deadline) && input.deadline > 0 && input.deadline <= 180,
       'invalid-cold-maintenance-drain-budget',
@@ -195,31 +196,28 @@ export class ColdMaintenanceService {
       this.state(controller).Running && !this.state(controller).Paused,
       'running-unpaused-controller-required',
     );
-    await this.port.command(['update', '--restart=no', this.id(controller)]);
-    await this.port.phase('public-web-stop-started');
-    await this.port.command(['stop', '--time', '30', this.id(web)]);
-    ensure(!this.state(await this.port.inspect(this.id(web))).Running, 'public-web-stop-failed');
-    await this.port.phase('old-controller-freeze-started');
-    await this.port.command(['pause', this.id(controller)]);
-    const frozen = await this.port.inspect(this.id(controller));
+    await port.command(['update', '--restart=no', this.id(controller)]);
+    await port.phase('public-web-stop-started');
+    await port.command(['stop', '--time', '30', this.id(web)]);
+    ensure(!this.state(await port.inspect(this.id(web))).Running, 'public-web-stop-failed');
+    await port.phase('old-controller-freeze-started');
+    await port.command(['pause', this.id(controller)]);
+    const frozen = await port.inspect(this.id(controller));
     ensure(
       this.state(frozen).Paused && record(record(frozen.HostConfig).RestartPolicy).Name === 'no',
       'old-controller-was-not-frozen-with-restart-disabled',
     );
-    await this.drain(input);
-    await this.quiesce(input);
-    await this.port.phase('owned-runners-stop-started');
+    await this.drain(input, port);
+    await this.quiesce(input, port);
+    await port.phase('owned-runners-stop-started');
     for (const inputRow of input.runners) {
       const runner = record(inputRow);
-      await this.port.command(['stop', '--time', '30', this.id(runner)]);
-      ensure(
-        !this.state(await this.port.inspect(this.id(runner))).Running,
-        'owned-runner-stop-failed',
-      );
+      await port.command(['stop', '--time', '30', this.id(runner)]);
+      ensure(!this.state(await port.inspect(this.id(runner))).Running, 'owned-runner-stop-failed');
     }
-    await this.cleanStop(input);
-    await this.port.command(['kill', this.id(controller)]);
-    const stopped = await this.port.inspect(this.id(controller)),
+    await this.cleanStop(input, port);
+    await port.command(['kill', this.id(controller)]);
+    const stopped = await port.inspect(this.id(controller)),
       state = this.state(stopped);
     ensure(
       !state.Running &&
@@ -229,7 +227,7 @@ export class ColdMaintenanceService {
           (Array.isArray(stopped.ExecIDs) && stopped.ExecIDs.length === 0)),
       'old-controller-stop-is-uncertain',
     );
-    await this.port.phase('old-controller-killed-before-cold-checkpoint');
-    return await this.port.checkpoint();
+    await port.phase('old-controller-killed-before-cold-checkpoint');
+    return await port.checkpoint();
   }
 }

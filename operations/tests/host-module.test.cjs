@@ -29,6 +29,8 @@ test('standalone Host module injects shared native adapter without running opera
   const {PairedControllerService}=require('../dist/host/paired-controller.service'),{PairedUpdateService}=require('../dist/host/paired-update.service'),{PublicUpgradeService}=require('../dist/host/public-upgrade.service'),{ControllerUpdateSequenceService}=require('../dist/host/controller-update-sequence.service'),{ControllerRollbackSequenceService}=require('../dist/host/controller-rollback-sequence.service');
   const paired=app.get(PairedUpdateService),publicUpgrade=app.get(PublicUpgradeService);
   assert.equal(app.get(PairedControllerService).paired,paired);
+  const {PromotionService}=require('../dist/host/promotion.service'),{PromotionSequenceService}=require('../dist/host/promotion-sequence.service');
+  assert.equal(app.get(PromotionService).sequence,app.get(PromotionSequenceService));assert.equal(app.get(PromotionService).coldSequence,app.get(ColdMaintenanceService));
   assert.equal(publicUpgrade.paired,paired);assert.equal(publicUpgrade.preparation,preparation);
   assert.equal(paired.updates,app.get(ControllerUpdateSequenceService));
   assert.equal(paired.rollbacks,app.get(ControllerRollbackSequenceService));
@@ -227,4 +229,71 @@ test('configuration backup native reader preserves store/deflate bytes and rejec
  const corrupted=Buffer.from(raw);corrupted[30+'.docker.env'.length]^=1;assert.throws(()=>new ConfigurationBackupArchive(corrupted).read('.docker.env'),/checksum/);
  const huge=Buffer.from(raw),central=huge.indexOf(Buffer.from([0x50,0x4b,0x01,0x02]));huge.writeUInt32LE(50*1024**2+1,central+24);assert.throws(()=>new ConfigurationBackupArchive(huge),/too-large/);
  assert.throws(()=>new ConfigurationBackupArchive(Buffer.from('not a ZIP')),/invalid-configuration/);
+});
+test('native promotion uses shared providers, preserves old image selectors and retains interrupted ownership',async t=>{
+ const {PromotionService}=require('../dist/host/promotion.service'),{PromotionSequenceService}=require('../dist/host/promotion-sequence.service'),{ColdMaintenanceService}=require('../dist/host/cold-maintenance.service');
+ const {PairedRuntimeService}=require('../dist/host/paired-runtime.service');
+ const {promotionAssignment,bytesSha}=require('../dist/host/release-selection.service');
+ const {HostPolicyError}=require('../dist/host/install');
+ for(const scenario of ['success','interrupted','wrong-old-image','empty-image','alias-retargeted','check-only']){
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'promotion-native-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+  fs.mkdirSync(path.join(directory,'configuration'),{recursive:true});fs.mkdirSync(path.join(directory,'recovery'),{recursive:true});fs.mkdirSync(path.join(directory,'gitlab'));
+  fs.writeFileSync(path.join(directory,'gitlab/security-release.json'),JSON.stringify({fromVersion:'19.5.3'}));
+  const image=n=>'sha256:'+n.repeat(64),selected='gitlab@'+image('2'),release={sourceRevision:'a'.repeat(40),sourceTree:'b'.repeat(40),projectId:4,pipelineId:10,candidateJobId:20,imageId:image('1'),registryRepository:'registry.example.test/system/successor',registryReference:'registry.example.test/system/successor@'+image('7')},
+    alias='system-successor:'+release.sourceRevision+'-job20';
+  const config={_root:directory,_main:path.join(directory,'configuration/.docker.env'),GITLAB_IMAGE:scenario==='empty-image'?'':selected,GITLAB_HOST:'gitlab.example.test',GITLAB_DOMAIN_MODE:'2',BOOTSTRAPPER_IMAGE:'old:controller'};
+  const raw=Buffer.concat([fs.readFileSync(path.resolve(__dirname,'../../system/.docker.env.example')).subarray(0,1184),Buffer.from("\nexport BOOTSTRAPPER_IMAGE='old:controller'\nexport GITLAB_IMAGE='"+selected+"'\nexport SECRET='line one\nline two'\n")]);
+  fs.writeFileSync(config._main,raw,{mode:0o600});const manifestBytes=Buffer.from('{}\n');fs.writeFileSync(path.join(directory,'recovery/images.json'),manifestBytes,{mode:0o600});
+  for(const name of ['release','evidence','token'])fs.writeFileSync(path.join(directory,name),'private',{mode:0o600});
+  const row=(Id,service,Image)=>({Id,Image,Config:{Labels:{'com.docker.compose.project':'system','com.docker.compose.service':service}},State:{Running:true,StartedAt:'before'},HostConfig:{RestartPolicy:{Name:'always'}},ExecIDs:[]});
+  const rows={system_bootstrapper_1:row('old-controller','bootstrapper',image('0')),system_gitlab_1:row('old-gitlab','gitlab',image(scenario==='wrong-old-image'?'3':'2')),system_web_1:row('web','web',image('4'))},events=[];
+  const baseline={configurationFiles:{'configuration/.docker.env':bytesSha(raw)},runnerManagerIdentitySha256:{},expectedRunnerCount:0,hostToolsRevision:release.sourceRevision};
+  let held=false,critical=false,finished,tagged=false;
+  const imageRow={Id:release.imageId,RepoDigests:[release.registryReference],Config:{Labels:{'org.opencontainers.image.revision':release.sourceRevision,'org.system-bootstrapper.test-job':'20'}}};
+  const images={inspect(value){if(value===selected)return {Id:image('2'),RepoDigests:[selected]};if(value===alias){if(scenario==='alias-retargeted')return {...imageRow,Id:image('9')};if(!tagged)throw Error('missing');}return imageRow;}};
+  const runDocker=(args)=>{
+   if(args[0]==='inspect')return JSON.stringify([Object.values(rows).find(row=>row.Id===args[1])||rows[args[1]]]);
+   if(args[0]==='tag'){tagged=true;return '';}
+   if(args[0]==='stop') {rows.system_bootstrapper_1.State.Running=false;if(scenario==='interrupted')cancellation.abort();return '';}
+   if(args[0]==='compose'){rows.system_bootstrapper_1={...rows.system_bootstrapper_1,Id:'new-controller',Image:release.imageId,State:{Running:true}};return '';}
+   return '';
+  };
+  const host={rootUser:()=>true,environment:{},runner:{run(_binary,args,options){assert(!args.some(value=>value==='private'));return {stdout:runDocker(args.slice(1)),stderr:'',status:0};}},run(_binary,args){events.push(args);return '';}};
+  const runtime={settings:async()=>config,services:()=>rows,capture:()=>baseline,assertBaseline(){},routes:async()=>{},sync:async()=>{}};
+  const lease={operation:'f'.repeat(32),get critical(){return critical;},set critical(value){critical=value;},acquire(){assert(!held);held=true;events.push('lease');},async command(args,_timeout,_stdin,env){assert(held);events.push(args.slice(2));if(env){assert.equal(env.GITLAB_IMAGE,selected);assert.equal(env.SYSTEM_BOOTSTRAPPER_STAGED_CONTROLLER,'1');}return Buffer.from(runDocker(args.slice(2)));},finish(failed){finished={failed,critical};held=false;}};
+  const preflight={probe:async()=>({version:'19.5.3',edition:'CE',runningJobs:0,unfinishedBackgroundMigrations:0})},preparation={syncIdle:async()=>{events.push('idle');}},inspection={mounts(){},images(){}},paired=new PairedRuntimeService(host,runtime,inspection,lease,preflight,preparation),cancellation=new AbortController();
+  const candidates={pipeline:async()=>{events.push('pipeline');return {verified:true};}},authority={inputs:()=>({release,evidence:{evidence:{gitlabUpgrade:{fromImageId:image('2')}}}})},source={verifyCheckout(){events.push('checkout');}},manifests={load:()=>({}),validateSelected(){}},api={get:async()=>({username:'operator'})};
+  const service=new PromotionService(host,runtime,candidates,{connect:()=>api},authority,source,images,manifests,inspection,lease,{}, {},{},new PromotionSequenceService({}),new ColdMaintenanceService({}),paired,preparation);
+  const input={signal:cancellation.signal,operation:'promote',checkout:directory,persistenceEnv:path.join(directory,'selector'),checkpoint:path.join(directory,'recovery/controller-promotions/example'),timeout:60,releaseFile:path.join(directory,'release'),evidenceFile:path.join(directory,'evidence'),tokenFile:path.join(directory,'token'),gitlabUrl:'https://gitlab.example.test',checkOnly:scenario==='check-only'};
+  if(scenario==='success'){
+   const result=await service.execute(input);assert.equal(result.phase,'controller-promoted-old-GitLab-preserved');assert.equal(result.GitLabMigrationStarted,false);assert.deepEqual(finished,{failed:false,critical:true});
+   assert(fs.readFileSync(config._main).equals(promotionAssignment(raw,alias)));assert(fs.readFileSync(path.join(directory,'recovery/images.json')).equals(manifestBytes));
+   assert.equal(rows.system_gitlab_1.Image,image('2'));assert.equal(result.oldGitLabImagePreserved,true);assert.equal(result.leaseOperation,'f'.repeat(32));
+   const record=JSON.parse(fs.readFileSync(path.join(input.checkpoint,'operation.json')));assert.equal(record.newControllerId,'new-controller');assert.equal(events.filter(event=>event==='pipeline').length,2);
+  }else if(scenario==='check-only'){
+   assert.equal((await service.execute(input)).verified,true);assert.equal(finished,undefined);assert(!fs.existsSync(input.checkpoint));assert(!tagged);
+  }else{
+   await assert.rejects(service.execute(input),scenario==='interrupted'?/host-operation-interrupted/:scenario==='wrong-old-image'?/old-GitLab-image/:scenario==='empty-image'?/image-selection-required/:/alias-would-be-overwritten/);
+   assert(fs.readFileSync(config._main).equals(raw));
+   if(scenario==='interrupted'){assert.deepEqual(finished,{failed:true,critical:true});assert.equal(JSON.parse(fs.readFileSync(path.join(input.checkpoint,'operation.json'))).phase,'controller-stop-started');assert(!events.some(event=>Array.isArray(event)&&event[0]==='compose'));}
+   else assert.equal(finished,undefined);
+  }
+ }
+});
+test('native staged promotion authenticates retained candidate and preserves original recovery declaration',async t=>{
+ const {PromotionService}=require('../dist/host/promotion.service'),{promotionAssignment,bytesSha}=require('../dist/host/release-selection.service');
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'staged-native-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ const checkpoint=path.join(directory,'recovery/controller-promotions/previous');fs.mkdirSync(checkpoint,{recursive:true});fs.mkdirSync(path.join(directory,'configuration'));
+ const image=n=>'sha256:'+n.repeat(64),release={projectId:4,candidateJobId:29,sourceRevision:'a'.repeat(40),sourceTree:'b'.repeat(40),registryRepository:'registry.example.test/system/successor',registryReference:'registry.example.test/system/successor@'+image('7'),imageId:image('1')},target={...release,sourceRevision:'c'.repeat(40)},alias='system-successor:'+release.sourceRevision+'-job29';
+ const before=Buffer.concat([fs.readFileSync(path.resolve(__dirname,'../../system/.docker.env.example')).subarray(0,1184),Buffer.from("\nexport BOOTSTRAPPER_IMAGE='old:controller'\nexport GITLAB_IMAGE='old:gitlab'\n")]),current=promotionAssignment(before,alias),config={_root:directory,_main:path.join(directory,'configuration/.docker.env'),BOOTSTRAPPER_IMAGE:alias};
+ const manifest={sourceCommit:'d'.repeat(40),publicImages:[],localImages:[],currentController:{reference:'original:archive',imageId:image('0')}},manifestBytes=Buffer.from(JSON.stringify(manifest));
+ const write=(file,value)=>fs.writeFileSync(file,value,{mode:0o600});write(config._main,current);write(path.join(directory,'recovery/images.json'),manifestBytes);write(path.join(checkpoint,'manifest-before.json'),manifestBytes);write(path.join(checkpoint,'main-before.env'),before);
+ const state={release,controllerAlias:alias,configurationBeforeSha256:bytesSha(before),configurationAfterSha256:bytesSha(current),newControllerId:'staged',oldGitLab:{imageId:image('2')},coldMaintenance:true,coldCheckpointSha256:'e'.repeat(64)};
+ const labels=service=>({Labels:{'com.docker.compose.project':'system','com.docker.compose.service':service}}),rows={system_bootstrapper_1:{Id:'staged',Image:image('1'),Config:labels('bootstrapper'),State:{Running:true}},system_gitlab_1:{Id:'old-gitlab',Image:image('2'),Config:labels('gitlab')}};
+ let verified=0,ancestry=[];const service=new PromotionService({}, {},{completed:async(_api,value)=>{assert.deepEqual(value,state);return {release,evidence:{evidence:{gitlabUpgrade:{fromImageId:image('2')}}}};}},{},{},{verifyObjects(){},verifyAncestry(a,b){ancestry.push([a,b]);}},{inspect:()=>({Id:image('1'),RepoDigests:[release.registryReference],Config:{Labels:{'org.opencontainers.image.revision':release.sourceRevision,'org.system-bootstrapper.test-job':'29'}}})},{validateSelected(view){assert.equal(view.localImages.at(-1).tag,alias);assert.equal(view.currentController.reference,alias);}},{},{},{verify(_checkpoint,hash){assert.equal(hash,state.coldCheckpointSha256);verified++;}});
+ const input={checkout:directory,stagedPromotion:checkpoint};write(path.join(checkpoint,'operation.json'),JSON.stringify(state));
+ const result=await service.staged(input,config,manifest,rows,{}, {},target);assert.equal(result.receipt.checkpoint,checkpoint);assert.equal(verified,1);assert.deepEqual(ancestry,[[manifest.sourceCommit,release.sourceRevision],[release.sourceRevision,target.sourceRevision]]);assert.deepEqual(manifest.localImages,[]);assert(fs.readFileSync(path.join(directory,'recovery/images.json')).equals(manifestBytes));
+ write(config._main,Buffer.concat([current,Buffer.from('# changed\n')]));await assert.rejects(service.staged(input,config,manifest,rows,{}, {},target),/configuration-mismatch/);write(config._main,current);
+ write(path.join(directory,'recovery/images.json'),'changed');await assert.rejects(service.staged(input,config,manifest,rows,{}, {},target),/manifest-changed/);write(path.join(directory,'recovery/images.json'),manifestBytes);
+ rows.system_gitlab_1.Image=image('3');await assert.rejects(service.staged(input,config,manifest,rows,{}, {},target),/old-GitLab-image-changed/);
 });

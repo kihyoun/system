@@ -55,7 +55,7 @@ export async function promotionSequenceMain(): Promise<void> {
       now: () => String(channel.call('now')),
     };
     app = await runtime.application(HostModule.register({ promotionSequencePort: port }));
-    const value = app.get(PromotionSequenceService).run(input);
+    const value = await app.get(PromotionSequenceService).run(input);
     channel.write({ complete: true, value });
   } catch (error) {
     channel.write({

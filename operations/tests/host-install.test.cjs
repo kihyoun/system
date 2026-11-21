@@ -145,3 +145,16 @@ test('storage selectors parse literal quotes without executing configuration',t=
  const result=f.service.storage(f.selector,f.checkout);assert.equal(result.root,f.root);
  assert.equal(f.calls.some(c=>c.binary==='bash'),false);
 });
+test('retained recovery manifest refuses changed payloads, unsafe paths, source mismatches and undeclared selectors',t=>{
+ for(const monorepo of [false,true]){
+  const f=fixture(t,monorepo),directory=path.join(f.dir,'retained');fs.mkdirSync(path.join(directory,'images'),{recursive:true});const archive=path.join(directory,'images/controller.tar.gz');fs.writeFileSync(archive,'retained payload');
+  const source={sourceCommit:f.identity.sourceCommit,sourceTree:f.identity.sourceTree,...(monorepo?{sourceLayout:'system-monorepo-v1',wizardSourceTree:f.identity.wizardSourceTree}:{wizardSourceRevision:f.identity.wizardSourceRevision})};
+  const manifest={...source,archives:[{...source,file:'images/controller.tar.gz',sha256:api.fileSha(archive),imageId:id('d')}],publicImages:[{reference:'nginx@'+id('c'),tag:'nginx:retained',imageId:id('c')}],localImages:[{tag:'controller:retained',imageId:id('d')}],currentController:{reference:'controller:retained',imageId:id('d'),sourceCommit:source.sourceCommit,sourceTree:source.sourceTree}},filename=path.join(directory,'images.json'),service=new api.RecoveryManifestService();
+  const save=value=>fs.writeFileSync(filename,JSON.stringify(value));save(manifest);assert.deepEqual(service.load(directory,f.checkout),manifest);assert.throws(()=>service.load(directory,f.checkout,'f'.repeat(64)),/manifest-checksum/);
+  for(const mutate of [m=>m.archives[0].file='images/../controller.tar.gz',m=>m.archives[0].sha256='f'.repeat(64),m=>m.archives.push({...m.archives[0]}),m=>m.localImages.push({...m.localImages[0]}),m=>m.localImages[0].imageId=id('e'),m=>m.publicImages[0].reference='nginx:stable',m=>m.sourceTree='e'.repeat(40),m=>m.currentController.sourceCommit='e'.repeat(40),m=>delete m.localImages]){const changed=structuredClone(manifest);mutate(changed);save(changed);assert.throws(()=>service.load(directory,f.checkout));}
+  save(manifest);const saved=fs.readFileSync(archive);fs.unlinkSync(archive);fs.symlinkSync('/dev/null',archive);assert.throws(()=>service.load(directory,f.checkout),/archive-escapes/);fs.unlinkSync(archive);fs.writeFileSync(archive,saved);
+  const selected=path.join(f.dir,'selected.env');fs.writeFileSync(selected,"export BOOTSTRAPPER_IMAGE='controller:retained'\nexport NGINX_IMAGE='nginx:retained'\nexport GITLAB_IMAGE='nginx:retained'\nexport GITLAB_RUNNER_IMAGE='nginx:retained'\n");service.validateSelected(manifest,selected);fs.writeFileSync(selected,fs.readFileSync(selected,'utf8').replace("export GITLAB_IMAGE='nginx:retained'","export GITLAB_IMAGE='undeclared:image'"));assert.throws(()=>service.validateSelected(manifest,selected),/not-declared/);
+ }
+ const digest=id('a');assert.equal(api.canonicalDigest('registry.example.test:5050/group/image:release@'+digest),'registry.example.test:5050/group/image@'+digest);
+ for(const [selected,canonical] of [['nginx','nginx:latest'],['group/nginx','group/nginx:latest'],['registry.example.test:5050/group/image','registry.example.test:5050/group/image:latest'],['nginx:stable','nginx:stable'],['nginx@'+digest,'nginx@'+digest],[digest,digest]])assert.equal(api.canonicalSelector(selected),canonical);
+});

@@ -291,12 +291,12 @@ export class PairedRuntimeService {
       stoppedIdle,
       repairBaseline,
       waitReady,
-      acquire(operation?: string) {
+      acquire(operation?: string, legacyController?: ContainerRow) {
         assertOperationActive(input.signal);
         ensure(!held, 'paired-operation-already-held');
         const value = { root: config._root, seedDirectory: config.SEED_DIR || undefined };
         if (operation) service.lease.adopt(value, operation);
-        else service.lease.acquire(value);
+        else service.lease.acquire({ ...value, legacyController });
         held = true;
       },
       finish(failed: boolean) {

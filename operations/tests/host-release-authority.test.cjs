@@ -47,3 +47,32 @@ test('candidate GitLab transport keeps credentials on fixed origin and bounds pa
   assert.throws(()=>new CandidateGitLabService().connect('https://gitlab.example.test',token),/private-GitLab-token/);
  } finally {fs.rmSync(directory,{recursive:true,force:true});}
 });
+test('native candidate authority freezes pipeline jobs, historical receipts and paired source publication',async()=>{
+ const {CandidateAuthorityService}=require('../dist/host/candidate-authority.service'),{hostRequiredJobs,hostComponents}=require('../dist/host/release-authority.service');
+ const host={environment:{},runner:{run(_binary,args){return {stdout:args.at(-1)==='submodule.wizard.path'?'wizard':'https://github.com/example/wizard.git'};}}};
+ const service=new CandidateAuthorityService(host,{});
+ const release={format:'system-successor-release-v1',projectId:4,pipelineId:17,candidateJobId:29,sourceRevision:revision,sourceTree,wizardRevision:wizardTree,imageId:id('1'),wizardImageId:id('2'),registryRepository:'registry.example.test/system/successor',registryReference:'registry.example.test/system/successor@'+id('7'),wizardRegistryReference:'registry.example.test/system/successor-wizard@'+id('8'),candidateEvidenceSha256:'a'.repeat(64)};
+ const evidence={images:{wizard:release.wizardImageId}},releaseBytes=Buffer.from(JSON.stringify(release)),evidenceBytes=Buffer.from(JSON.stringify(evidence));
+ const fixture=()=>{
+  const project={default_branch:'main',container_registry_image_prefix:'registry.example.test/system',only_allow_merge_if_pipeline_succeeds:true},branch={protected:true,commit:{id:revision}},pipeline={sha:revision,ref:'main',source:'push',status:'success'};
+  const names=[...hostRequiredJobs,'test:codeql',...hostComponents.map(name=>'test:isolated: ['+name+']'),'test:wizard-browser','deploy:dockerhub','deploy:github'];
+  const jobs=names.map((name,index)=>({id:name==='test:platform-candidate'?29:index+100,name,status:'success',allow_failure:false,pipeline:{id:17},commit:{id:revision}}));
+  const job=name=>jobs.find(row=>row.name===name),controller='docker.io/example/system@'+id('7'),wizard='docker.io/example/wizard@'+id('8');
+  const publication={format:'system-public-release-v1',publicationJobId:job('deploy:dockerhub').id,versionTag:null,platform:'linux/amd64',...Object.fromEntries(['projectId','pipelineId','sourceRevision','sourceTree','wizardRevision'].map(key=>[key,release[key]])),upstreamRelease:Object.fromEntries(['projectId','pipelineId','candidateJobId','registryReference','candidateEvidenceSha256'].map(key=>[key,release[key]]))};
+  for(const [role,reference,imageId,sourceRevision] of [['controller',controller,release.imageId,revision],['wizard',wizard,release.wizardImageId,wizardTree]])publication[role]={reference,imageId,sourceRevision,configDigest:id('9')};
+  const source={format:'system-wizard-source-publication-v1',projectId:4,pipelineId:17,publicationJobId:job('deploy:github').id,systemRevision:revision,wizardRevision:wizardTree,repository:'https://github.com/example/wizard.git',ref:'refs/heads/system-release/'+wizardTree};
+  const api={get:async path=>path.includes('/branches/')?branch:path.includes('/pipelines/')?pipeline:project,pages:async()=>jobs,raw:async path=>path.endsWith('candidate-results.json')?evidenceBytes:path.endsWith('test-results/successor/release.json')?releaseBytes:path.endsWith('wizard-source.json')?Buffer.from(JSON.stringify(source)):path.includes('.gitmodules')?Buffer.from('mapping'):Buffer.from(JSON.stringify(publication))};
+  return {project,branch,pipeline,jobs,job,api,publication,source,controller,wizard};
+ };
+ const verify=f=>service.pipeline(f.api,release,releaseBytes,evidenceBytes);
+ const valid=fixture();assert.equal((await verify(valid)).candidateJobId,29);assert.equal((await service.publicPair(valid.api,release,evidence,valid.controller,valid.wizard)).sourceJobId,valid.job('deploy:github').id);
+ for(const mutate of [f=>f.project.only_allow_merge_if_pipeline_succeeds=false,f=>f.branch.protected=false,f=>f.branch.commit.id='e'.repeat(40),f=>f.pipeline.source='merge_request_event',f=>f.pipeline.status='running',f=>f.job('build').allow_failure=true,f=>f.job('test:platform-candidate').id++,f=>f.jobs.push({...f.job('build')}),f=>f.jobs.push({name:'internal-extra',status:'failed'}),f=>f.api.raw=async()=>Buffer.from('different')]){
+  const f=fixture();mutate(f);await assert.rejects(verify(f));
+ }
+ for(const name of [...hostRequiredJobs,'test:codeql',...hostComponents.map(name=>'test:isolated: ['+name+']')])for(const status of ['failed','skipped','canceled','running']){const f=fixture();f.job(name).status=status;await assert.rejects(verify(f),/required-job-not-successful/);}
+ const historical=fixture();historical.branch.commit.id='e'.repeat(40);assert.equal((await service.pipeline(historical.api,release,releaseBytes,evidenceBytes,false)).candidateJobId,29);
+ const optional=fixture();optional.job('deploy:github').status='failed';optional.pipeline.status='failed';assert.equal((await verify(optional)).GitHubMirrorFailed,true);await assert.rejects(service.publicPair(optional.api,release,evidence,optional.controller,optional.wizard),/source-publication-job-not-successful/);
+ for(const mutate of [f=>f.job('test:wizard-browser').allow_failure=true,f=>f.job('deploy:dockerhub').commit.id='e'.repeat(40),f=>f.publication.upstreamRelease.candidateJobId++,f=>f.publication.wizard.imageId=id('3'),f=>f.source.ref='refs/heads/main',f=>f.source.repository='https://github.com/unrelated/wizard.git',f=>f.pipeline.source='web']){
+  const f=fixture();mutate(f);await assert.rejects(service.publicPair(f.api,release,evidence,f.controller,f.wizard));
+ }
+});

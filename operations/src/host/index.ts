@@ -40,3 +40,6 @@ export * from './public-upgrade.service';
 export * from './public-upgrade-backup.service';
 
 export * from './recovery-operation.service';
+
+export * from './promotion.service';
+export * from './promotion-entry';

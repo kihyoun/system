@@ -161,11 +161,16 @@ export class PromotionNativePortService implements PromotionAbortPort {
     return crypto.createHash('sha256').update(Buffer.from(this.main(), 'base64')).digest('hex');
   }
   async runners(): Promise<Row[]> {
-    const config = this.current().config,
-      expected = this.images.inspect(config.GITLAB_RUNNER_IMAGE).Id;
-    const ids = (await this.command(['ps', '-q'])).trim().split(/\s+/).filter(Boolean);
+    return this.runnersFor(this.current().config, (args) => this.command(args));
+  }
+  async runnersFor(
+    config: RuntimeConfig,
+    command: (args: string[]) => Promise<string>,
+  ): Promise<Row[]> {
+    const expected = this.images.inspect(config.GITLAB_RUNNER_IMAGE).Id;
+    const ids = (await command(['ps', '-q'])).trim().split(/\s+/).filter(Boolean);
     if (!ids.length) return [];
-    const values: unknown = JSON.parse(await this.command(['inspect', ...ids]));
+    const values: unknown = JSON.parse(await command(['inspect', ...ids]));
     ensure(Array.isArray(values), 'invalid-runner-inspection');
     const selected: Row[] = [],
       root = fs.realpathSync(path.join(config._root, 'runners'));
