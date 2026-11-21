@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { isDeepStrictEqual } from 'node:util';
 import { Injectable } from '@nestjs/common';
 import type { UpgradeSession } from './session';
 import {
@@ -14,6 +16,7 @@ import {
   type OperationStatus,
 } from './types';
 import { atomic, jsonBytes, json, hash, runnerAssignment } from './policy';
+import { upgradeStatus } from './status';
 
 @Injectable()
 export class UpgradeWorkflowService {
@@ -62,7 +65,47 @@ export class UpgradeWorkflowService {
     ])
       if (!value.results.some((r) => r.name === stage && r.status === 'passed'))
         throw Error('upgrade-passing-successor-evidence-required');
-    if (session.inspect('system_bootstrapper_1').Image !== value.images.candidate)
+    const execution = session.publicExecution;
+    if (execution) {
+      const helper = session.inspect(execution.containerId),
+        controller = session.inspect('system_bootstrapper_1');
+      const recovery = execution.recoveryCheckpoint,
+        recoveryMount = recovery
+          ? helper.Mounts?.find((mount) => mount.Destination === recovery)
+          : undefined,
+        mounts = recovery
+          ? helper.Mounts?.filter((mount) => mount.Destination !== recovery)
+          : helper.Mounts;
+      if (
+        !/^[a-f0-9]{64}$/.test(execution.containerId) ||
+        !/^[a-f0-9]{64}$/.test(execution.preparationSha256) ||
+        helper.Id !== execution.containerId ||
+        helper.Image !== value.images.candidate ||
+        helper.State.Running !== true ||
+        helper.Config?.Hostname !== os.hostname() ||
+        helper.Config.Labels?.['system.gitlab.prerequisite'] !== execution.preparationSha256 ||
+        helper.HostConfig?.PidMode !== 'host' ||
+        helper.HostConfig.NetworkMode !== 'container:' + execution.controller.Id ||
+        (recovery &&
+          (!recoveryMount ||
+            recoveryMount.Type !== 'bind' ||
+            recoveryMount.RW !== false ||
+            recoveryMount.Source !== recovery)) ||
+        !isDeepStrictEqual(mounts, execution.controller.Mounts) ||
+        controller.State.Running !== true ||
+        !isDeepStrictEqual(
+          {
+            Id: controller.Id,
+            Image: controller.Image,
+            Mounts: controller.Mounts,
+            restartPolicy: controller.HostConfig?.RestartPolicy,
+            labels: controller.Config?.Labels,
+          },
+          execution.controller,
+        )
+      )
+        throw Error('upgrade-public-helper-identity-mismatch');
+    } else if (session.inspect('system_bootstrapper_1').Image !== value.images.candidate)
       throw Error('upgrade-tested-controller-required');
     return { sha256: hash(bytes), candidateImage: value.images.candidate };
   }
@@ -190,16 +233,7 @@ export class UpgradeWorkflowService {
     return { status: 'previous-generation-resumed' };
   }
   status(session: UpgradeSession): OperationStatus {
-    const name = path.join(session.checkpoints, 'operation.json'),
-      lock = path.join(session.state, '.gitlab-upgrade-lock/upgrade-owner.json');
-    const operation = fs.existsSync(name) ? json(name) : {};
-    const owner = fs.existsSync(lock) ? json(lock) : {};
-    return {
-      phase: operation.phase || owner.phase || 'not-checkpointed',
-      locked: !!owner.operation,
-      checkpointSha256: operation.checkpointSha256 || owner.checkpointSha256,
-      planSha256: owner.planSha256,
-    };
+    return upgradeStatus(session.checkpoints, session.state);
   }
   async rollback(session: UpgradeSession, expected: string): Promise<OperationReceipt> {
     const checkpoint = session.checkpoint(expected);

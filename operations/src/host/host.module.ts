@@ -1,5 +1,6 @@
 import { PromotionService } from './promotion.service';
 import { RecoveryOperationService } from './recovery-operation.service';
+import { PublicGitlabPrerequisiteService } from './public-gitlab-prerequisite.service';
 import { GitlabDataSampleService } from '../gitlab-preflight/gitlab-data-sample.service';
 import { PublicUpgradeService } from './public-upgrade.service';
 import { PublicUpgradeBackupService } from './public-upgrade-backup.service';
@@ -135,6 +136,33 @@ export class HostModule {
           ],
           useFactory: (...dependencies: ConstructorParameters<typeof PromotionService>) =>
             new PromotionService(...dependencies),
+        },
+        {
+          provide: PublicGitlabPrerequisiteService,
+          inject: [
+            HostInstallService,
+            RuntimeVerificationService,
+            PublicUpgradePreparationService,
+            HostReleaseAuthorityService,
+            RuntimeInspectionService,
+            HostSourceService,
+          ],
+          useFactory: (
+            host: HostInstallService,
+            runtime: RuntimeVerificationService,
+            preparation: PublicUpgradePreparationService,
+            authority: HostReleaseAuthorityService,
+            inspection: RuntimeInspectionService,
+            source: HostSourceService,
+          ) =>
+            new PublicGitlabPrerequisiteService(
+              host,
+              runtime,
+              preparation,
+              authority,
+              inspection,
+              source,
+            ),
         },
         {
           provide: RecoveryOperationService,
@@ -638,6 +666,7 @@ export class HostModule {
       ],
       exports: [
         PromotionService,
+        PublicGitlabPrerequisiteService,
         RecoveryOperationService,
         PublicUpgradeService,
         PublicUpgradeBackupService,

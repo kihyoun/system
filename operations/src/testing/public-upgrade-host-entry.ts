@@ -33,9 +33,21 @@ export async function publicUpgradeHostMain(
   let app: Awaited<ReturnType<typeof NestFactory.createApplicationContext>> | undefined;
   try {
     const input =
-      args.length === 1 && ['initialize', 'restore-original'].includes(args[0])
-        ? (args[0] as 'initialize' | 'restore-original')
-        : parsePublicUpgradeInput(args);
+      args[0] === 'gitlab'
+        ? { gitlab: args.slice(1) }
+        : args.length === 1 &&
+            [
+              'initialize',
+              'restore-original',
+              'freeze-publication',
+              'gitlab-previous-selectors',
+            ].includes(args[0])
+          ? (args[0] as
+              | 'initialize'
+              | 'restore-original'
+              | 'freeze-publication'
+              | 'gitlab-previous-selectors')
+          : parsePublicUpgradeInput(args);
     app = await NestFactory.createApplicationContext(
       PublicUpgradeHostModule.register(directory, checkout),
       { logger: false, abortOnError: false },

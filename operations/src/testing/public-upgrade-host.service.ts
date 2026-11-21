@@ -10,6 +10,11 @@ import {
 import { requireValue as ensure } from '../host/install';
 import { readPrivateInput } from '../host/private-input';
 import { record } from '../release/source-identity';
+import { parsePublicGitlabInput } from '../host/public-gitlab-prerequisite-entry';
+import { PublicGitlabPrerequisiteService } from '../host/public-gitlab-prerequisite.service';
+import { release } from '../gitlab-upgrade/types';
+import { runnerHelper } from '../gitlab-upgrade/policy';
+import { writePrivate } from '../host/install';
 import { nativeProcess, type ProcessRunner } from '../runtime/process';
 
 /** Only the disposable host's absent systemd facts are substituted. */
@@ -33,6 +38,7 @@ export class PublicUpgradeHostService {
     readonly upgrade: PublicUpgradeService,
     readonly selection: PublicUpgradeSelectionService,
     readonly publication: PublicUpgradePublicationService,
+    readonly gitlab: PublicGitlabPrerequisiteService,
   ) {}
   read(directory: string) {
     ensure(path.isAbsolute(directory), 'absolute-fixture-required');
@@ -58,6 +64,15 @@ export class PublicUpgradeHostService {
       const [tag, filename] = parts;
       if (tag === previous.tag && filename === 'system-release-' + previous.tag + '.json')
         return new Response(fixtureEncoding(previous).toString());
+      const retained = path.join(directory, 'publication.json');
+      if (!prepared && fs.existsSync(retained)) {
+        const value = record(JSON.parse(readPrivateInput(retained).toString()));
+        prepared = {
+          metadata: value.metadata,
+          proof: Buffer.from(String(value.proof), 'base64'),
+          security: value.security,
+        } as ReturnType<PublicUpgradePublicationService['prepare']>;
+      }
       prepared ??= this.publication.prepare(checkout, fixture);
       ensure(tag === prepared.metadata.tag, 'candidate-public-asset-mismatch');
       if (filename === 'system-release-' + tag + '.json')
@@ -66,8 +81,64 @@ export class PublicUpgradeHostService {
       return new Response(prepared.proof.toString());
     };
   }
-  async execute(directory: string, input: PublicUpgradeInput | 'initialize' | 'restore-original') {
+  async execute(
+    directory: string,
+    input:
+      | PublicUpgradeInput
+      | 'initialize'
+      | 'restore-original'
+      | 'freeze-publication'
+      | 'gitlab-previous-selectors'
+      | { gitlab: string[] },
+  ) {
     const fixture = this.read(directory);
+    if (typeof input === 'object' && 'gitlab' in input)
+      return this.gitlab.execute(parsePublicGitlabInput(input.gitlab));
+    if (input === 'freeze-publication') {
+      const publication = this.publication.prepare(path.join(directory, 'source'), fixture);
+      writePrivate(
+        path.join(directory, 'publication.json'),
+        Buffer.from(
+          JSON.stringify({ ...publication, proof: publication.proof.toString('base64') }),
+        ),
+      );
+      return { retained: true };
+    }
+    if (input === 'gitlab-previous-selectors') {
+      const main = path.join(String(fixture.live), 'configuration/.docker.env'),
+        expected = record(fixture.gitlabUpgrade);
+      let text = readPrivateInput(main).toString();
+      for (const [key, alias, reference] of [
+        ['GITLAB_IMAGE', 'candidate-gitlab:under-test', release.fromImage],
+        ['GITLAB_RUNNER_IMAGE', 'candidate-runner:under-test', release.runner.fromImage],
+      ]) {
+        const assignment = new RegExp('^export ' + key + "='" + alias + "'$", 'm');
+        ensure(assignment.test(text), 'candidate-previous-service-selector-required');
+        text = text.replace(assignment, 'export ' + key + "='" + reference + "'");
+      }
+      writePrivate(main, Buffer.from(text));
+      const root = path.join(String(fixture.live), 'runners');
+      for (const pool of fs.readdirSync(root)) {
+        if (!/^(?:runner|[a-z0-9][a-z0-9_-]*_runner)$/.test(pool)) continue;
+        for (const index of fs.readdirSync(path.join(root, pool))) {
+          const config = path.join(root, pool, index, 'config/config.toml');
+          if (!fs.existsSync(config)) continue;
+          writePrivate(
+            config,
+            Buffer.from(
+              runnerHelper(readPrivateInput(config).toString(), release.runner.fromHelperImage, {
+                [release.runner.fromHelperImage]: 'candidate-helper:under-test',
+              }),
+            ),
+          );
+        }
+      }
+      ensure(
+        expected.fromImageId && expected.fromRunnerImageId,
+        'candidate-previous-image-identities-required',
+      );
+      return { selected: true };
+    }
     if (typeof input === 'string') return this.selection.execute(directory, input, fixture);
     const certificate = path.join(String(fixture.live), 'host/letsencrypt');
     if (!fs.lstatSync('/etc/letsencrypt', { throwIfNoEntry: false }))

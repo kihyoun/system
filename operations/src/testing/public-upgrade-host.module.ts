@@ -6,6 +6,7 @@ import { lifecyclePolicy } from '../release/lifecycle-policy';
 import { PublicUpgradePublicationService } from './public-upgrade-publication.service';
 import { PublicUpgradeSelectionService } from './public-upgrade-selection.service';
 import { PublicUpgradeHostService, fixtureHostProcess } from './public-upgrade-host.service';
+import { PublicGitlabPrerequisiteService } from '../host/public-gitlab-prerequisite.service';
 @Module({})
 export class PublicUpgradeHostModule {
   static register(directory: string, checkout: string): DynamicModule {
@@ -41,13 +42,15 @@ export class PublicUpgradeHostModule {
             PublicUpgradeService,
             PublicUpgradeSelectionService,
             PublicUpgradePublicationService,
+            PublicGitlabPrerequisiteService,
           ],
           useFactory: (
             upgrade: PublicUpgradeService,
             selection: PublicUpgradeSelectionService,
             publication: PublicUpgradePublicationService,
+            gitlab: PublicGitlabPrerequisiteService,
           ) => {
-            const service = new PublicUpgradeHostService(upgrade, selection, publication);
+            const service = new PublicUpgradeHostService(upgrade, selection, publication, gitlab);
             request = service.transport(directory, checkout);
             return service;
           },

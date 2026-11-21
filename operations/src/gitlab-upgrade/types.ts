@@ -56,6 +56,20 @@ export interface UpgradeDependencies {
   runnerAliases?: Aliases;
   helperAliases?: Aliases;
   runnerData?: string;
+  /** Native public-release adapter only; the running helper must itself be the tested candidate. */
+  publicExecution?: PublicPrerequisiteExecution;
+}
+export interface PublicPrerequisiteExecution {
+  containerId: string;
+  preparationSha256: string;
+  recoveryCheckpoint?: string;
+  controller: {
+    Id: string;
+    Image: string;
+    Mounts: unknown;
+    restartPolicy: unknown;
+    labels: unknown;
+  };
 }
 export interface Container {
   Id: string;
@@ -69,9 +83,13 @@ export interface Container {
     ExitCode?: number;
     Paused?: boolean;
   };
-  Config?: { Labels?: Record<string, string> };
+  Config?: { Labels?: Record<string, string>; Hostname?: string };
   Mounts?: { Destination: string; RW?: boolean; Type: string; Name: string; Source?: string }[];
-  HostConfig?: { RestartPolicy?: { Name?: string; MaximumRetryCount?: number } };
+  HostConfig?: {
+    RestartPolicy?: { Name?: string; MaximumRetryCount?: number };
+    PidMode?: string;
+    NetworkMode?: string;
+  };
   RestartCount?: number;
 }
 export interface Image {

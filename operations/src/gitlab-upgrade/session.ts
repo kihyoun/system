@@ -16,6 +16,7 @@ import type {
   Checkpoint,
   OperationReceipt,
   OperationStatus,
+  PublicPrerequisiteExecution,
 } from './types';
 import { UpgradeGuardianService } from './guardian.service';
 import { UpgradeRuntimeService } from './runtime.service';
@@ -48,12 +49,14 @@ export class UpgradeSession {
   operation!: string;
   owner!: UpgradeOwner;
   held: string[] = [];
+  readonly publicExecution?: PublicPrerequisiteExecution;
   constructor(
     input: unknown,
     dependencies: UpgradeDependencies,
     private readonly capabilities: UpgradeCapabilities,
   ) {
     this.options = options(input);
+    this.publicExecution = dependencies.publicExecution;
     this.run = dependencies.run || ((binary, args, opts) => this.ownedRun(binary, args, opts));
     this.sleep = dependencies.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.now = dependencies.now || Date.now;
