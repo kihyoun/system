@@ -129,7 +129,13 @@ export class PublicUpgradeTransportService {
       const commandOffset = args[0] === '--host=unix:///var/run/docker.sock' ? 1 : 0;
       if (path.basename(program) === 'docker-compose' || args[commandOffset] === 'compose') {
         if (path.basename(program) !== 'docker-compose') args = args.slice(commandOffset + 1);
-        for (const key of ['BOOTSTRAPPER_IMAGE', 'WIZARD_IMAGE'])
+        for (const key of [
+          'BOOTSTRAPPER_IMAGE',
+          'WIZARD_IMAGE',
+          'GITLAB_IMAGE',
+          'GITLAB_RUNNER_IMAGE',
+          'GITLAB_RUNNER_HELPER_IMAGE',
+        ])
           if (env[key]) env[key] = map(env[key]!);
         if (args.some((value) => value.endsWith('system/docker-compose.yml'))) {
           const index = args.findIndex((value) => value === 'up' || value === 'create');

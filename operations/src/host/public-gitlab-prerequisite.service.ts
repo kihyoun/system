@@ -17,6 +17,18 @@ import type { PublicPrerequisiteExecution } from '../gitlab-upgrade/types';
 import { upgradeStatus } from '../gitlab-upgrade/status';
 
 type Row = Record<string, unknown>;
+export function prerequisiteMountTarget(destination: unknown): void {
+  ensure(
+    typeof destination === 'string' &&
+      path.posix.isAbsolute(destination) &&
+      path.posix.normalize(destination) === destination &&
+      !['/system', '/usr/local/bin/node'].some(
+        (target) =>
+          target === destination || target.startsWith(destination.replace(/\/$/, '') + '/'),
+      ),
+    'public-gitlab-helper-runtime-overlay-refused',
+  );
+}
 export interface PublicGitlabInput {
   operation: 'prepare' | 'plan' | 'promote' | 'status' | 'abort' | 'rollback';
   checkout: string;
@@ -208,6 +220,8 @@ export class PublicGitlabPrerequisiteService {
       image = String(record(record(metadata.images).controller).imageId),
       args = [
         'create',
+        '--pull',
+        'never',
         '--name',
         name,
         '--restart',
@@ -225,6 +239,7 @@ export class PublicGitlabPrerequisiteService {
     // does not attach a Seed medium or invent a backup destination.
     for (const item of controller.Mounts as unknown[]) {
       const mount = record(item);
+      prerequisiteMountTarget(mount.Destination);
       ensure(
         ['bind', 'volume'].includes(String(mount.Type)) &&
           ![mount.Source, mount.Name, mount.Destination].some(
@@ -259,7 +274,12 @@ export class PublicGitlabPrerequisiteService {
         values.every((value) => typeof value === 'string' && !/[\r\n\0]/.test(value)),
       'public-gitlab-controller-environment-invalid',
     );
-    writePrivate(environmentFile, Buffer.from(values.join('\n') + '\n'));
+    const allowed =
+      /^(?:PERSISTENCE_MODE|PERSISTENT_(?:DIR|MOUNT|UUID)|SEED_(?:DIR|MOUNT|UUID)|GITLAB_[A-Z0-9_]+|NGINX_IMAGE|WIZARD_IMAGE|SYSTEM_(?:WIZARD_ENVIRONMENT_IMAGE|LOG_MAX_SIZE|LOG_MAX_FILES|PUBLIC_UPGRADE_FIXTURE))=/;
+    writePrivate(
+      environmentFile,
+      Buffer.from(values.filter((value) => allowed.test(String(value))).join('\n') + '\n'),
+    );
     args.push(
       '--env-file',
       environmentFile,

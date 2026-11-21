@@ -7,6 +7,42 @@ session with `plan`, `promote`, `abort`, `rollback` and `status`. A service sing
 never shares mutable owner state between sessions. HTTP adapters and CLI handlers
 can use the same service; this module does not expose a new HTTP endpoint.
 
+Official public-release upgrades use the host entry
+`operations/dist/host/public-gitlab-prerequisite-entry.js` (CLI:
+`system-bootstrapper gitlab-upgrade`). Its `--operation prepare` downloads and
+validates the target's public release metadata and provenance, verifies the
+installed official release, owned mounts and source checkout, and retains all
+GitLab, Runner, Helper and target controller images before maintenance. It creates
+private inputs under an explicit `--directory` below
+`PERSISTENT_DIR/configuration/gitlab-prerequisites/`; operators do not invent
+candidate evidence or edit the preparation JSON.
+
+`plan`, `promote`, `abort` and `rollback` invoke this same session in a one-shot
+accepted target-image helper. The running previous controller stays in place.
+The helper shares its network and verified state mounts, and uses the host PID
+namespace so subsequent helpers can reconcile durable process/guardian identities.
+The shared evidence guard requires the exact candidate image on the helper, its
+full container ID, preparation label, network, PID mode and mounts, while retaining
+the original controller's full identity, mounts, labels and restart policy.
+Controller source or Node overlays and inherited Node/preload options cannot
+replace the helper runtime. Internal candidate commands retain their original
+requirement that the running controller itself is the accepted candidate.
+
+Promotion requires `--confirm-plan` from `plan`; abort uses that same hash.
+Rollback requires `--confirm-checkpoint` from promotion. The existing cold
+checkpoint and operation formats remain unchanged. Every command reports the
+host `checkpointDir`; supply that exact path to the public paired upgrade's
+`--gitlab-checkpoint`. Read-only `status` uses retained receipts even after the
+original controller is gone, without a running helper or backup medium.
+
+After a paired controller/Wizard rollback has recreated the controller, cold
+GitLab rollback additionally requires its explicit `--paired-checkpoint` path.
+The adapter verifies the completed paired rollback, target source, previous image,
+configuration hash, passing verification, original mounts and restart policy
+before binding a new helper to the restored controller's full ID. A changed
+container name alone grants no recovery authority. Retain the reviewed checkout,
+public preparation, image payloads and both checkpoints for offline recovery.
+
 The workflow coordinates separate runtime/readiness, runner, checkpoint and
 lease/guardian services. Pure policy preserves approved pins, the exact Cube and
 legacy assignment formats. Checkpoint reads remain bounded at 64 MiB; options,

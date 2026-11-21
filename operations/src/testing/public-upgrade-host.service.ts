@@ -17,6 +17,15 @@ import { runnerHelper } from '../gitlab-upgrade/policy';
 import { writePrivate } from '../host/install';
 import { nativeProcess, type ProcessRunner } from '../runtime/process';
 
+export type PublicUpgradeFixtureOperation =
+  | 'initialize'
+  | 'restore-original'
+  | 'freeze-publication'
+  | 'gitlab-previous-selectors'
+  | 'save-migrated-public-selection'
+  | 'restore-migrated-public-selection'
+  | 'candidate-pair-selectors';
+
 /** Only the disposable host's absent systemd facts are substituted. */
 export const fixtureHostProcess: ProcessRunner = {
   run(binary, args, options) {
@@ -83,15 +92,25 @@ export class PublicUpgradeHostService {
   }
   async execute(
     directory: string,
-    input:
-      | PublicUpgradeInput
-      | 'initialize'
-      | 'restore-original'
-      | 'freeze-publication'
-      | 'gitlab-previous-selectors'
-      | { gitlab: string[] },
+    input: PublicUpgradeInput | PublicUpgradeFixtureOperation | { gitlab: string[] },
   ) {
     const fixture = this.read(directory);
+    if (
+      typeof input === 'string' &&
+      [
+        'save-migrated-public-selection',
+        'restore-migrated-public-selection',
+        'candidate-pair-selectors',
+      ].includes(input)
+    )
+      return this.selection.migrated(
+        directory,
+        input as
+          | 'save-migrated-public-selection'
+          | 'restore-migrated-public-selection'
+          | 'candidate-pair-selectors',
+        fixture,
+      );
     if (typeof input === 'object' && 'gitlab' in input)
       return this.gitlab.execute(parsePublicGitlabInput(input.gitlab));
     if (input === 'freeze-publication') {
@@ -139,7 +158,13 @@ export class PublicUpgradeHostService {
       );
       return { selected: true };
     }
-    if (typeof input === 'string') return this.selection.execute(directory, input, fixture);
+    if (typeof input === 'string') {
+      ensure(
+        input === 'initialize' || input === 'restore-original',
+        'invalid-fixture-selection-operation',
+      );
+      return this.selection.execute(directory, input, fixture);
+    }
     const certificate = path.join(String(fixture.live), 'host/letsencrypt');
     if (!fs.lstatSync('/etc/letsencrypt', { throwIfNoEntry: false }))
       fs.symlinkSync(certificate, '/etc/letsencrypt');

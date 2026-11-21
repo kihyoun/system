@@ -65,6 +65,15 @@ export class PublicUpgradePublicationService {
     );
     const upgrade = {
       ...record(fixture.gitlabUpgrade),
+      ...(fixture.publicationMode === 'future-release-before-prerequisite-v1'
+        ? {
+            checkpointVerified: true,
+            migrationVerified: true,
+            registryVerified: true,
+            securityTrustVerified: true,
+            runnerUpgradeVerified: true,
+          }
+        : {}),
       rollbackVerified: true,
       runnerManagerIdentityPreserved: true,
     };
@@ -83,16 +92,26 @@ export class PublicUpgradePublicationService {
       fs.readFileSync(path.join(checkout, 'gitlab/security-release.json'), 'utf8'),
     );
     if (transitions.some((row) => row.databaseMigration && row.to === edge.to)) {
-      const proof = this.prerequisite.verify(
-        String(fixture.live),
-        path.join(
-          String(fixture.live),
-          'configuration/gitlab-upgrades',
-          'candidate-' + fixture.runId,
-        ),
-        String(spec.sourceRevision),
-        security,
-      );
+      // The publication transport models an already accepted future release.
+      // Its candidate checkpoint is not this installation's checkpoint. The
+      // real public prerequisite and plan independently verify the latter.
+      const proof =
+        fixture.publicationMode === 'future-release-before-prerequisite-v1'
+          ? {
+              checkpointSha256: bytesSha(fixtureEncoding({ source, security, images })),
+              fromVersion: record(security).fromVersion,
+              toVersion: record(security).toVersion,
+            }
+          : this.prerequisite.verify(
+              String(fixture.live),
+              path.join(
+                String(fixture.live),
+                'configuration/gitlab-upgrades',
+                'candidate-' + fixture.runId,
+              ),
+              String(spec.sourceRevision),
+              security,
+            );
       Object.assign(publicUpgrade, {
         gitlabPrerequisiteVerified: true,
         gitlabCheckpointSha256: proof.checkpointSha256,

@@ -106,19 +106,17 @@ export async function publicGitlabHelperMain(args = process.argv.slice(2)): Prom
     };
     const evidence = path.join(path.dirname(filename), 'accepted-evidence.json');
     writePrivate(evidence, Buffer.from(JSON.stringify(accepted.evidence)));
-    const session = app
-      .get(GitLabUpgradeService)
-      .create(
-        {
-          sourceRevision: accepted.release.sourceRevision,
-          evidence,
-          stateDir: '/state',
-          persistentDir: retained.root,
-          checkpointDir: '/state/gitlab-upgrades/public-' + path.basename(path.dirname(filename)),
-          readyTimeoutSeconds: retained.timeout,
-        },
-        { publicExecution: execution },
-      );
+    const session = app.get(GitLabUpgradeService).create(
+      {
+        sourceRevision: accepted.release.sourceRevision,
+        evidence,
+        stateDir: '/state',
+        persistentDir: retained.root,
+        checkpointDir: '/state/gitlab-upgrades/public-' + path.basename(path.dirname(filename)),
+        readyTimeoutSeconds: retained.timeout,
+      },
+      { publicExecution: execution },
+    );
     // This validates the actual helper image, original controller, complete public
     // acceptance evidence and all six local image pins even for offline recovery.
     session.evidence();

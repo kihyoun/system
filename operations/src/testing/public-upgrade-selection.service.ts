@@ -6,10 +6,105 @@ import { requireValue as ensure, reference } from '../host/install';
 import { cube } from '../host-bootstrap/runtime-verification.service';
 import { readPrivateInput } from '../host/private-input';
 import { imageAssignment, replaceOwned, directoryBarrier } from '../host/release-selection.service';
+import { environmentAssignments } from '../runtime/environment-assignments';
 
 /** Exact disposable candidate selector adaptation; production selection remains strict. */
 @Injectable()
 export class PublicUpgradeSelectionService {
+  migrated(
+    directory: string,
+    operation:
+      | 'save-migrated-public-selection'
+      | 'restore-migrated-public-selection'
+      | 'candidate-pair-selectors',
+    fixture: Record<string, unknown>,
+  ) {
+    const configuration = path.join(String(fixture.live), 'configuration'),
+      main = path.join(configuration, '.docker.env'),
+      names = ['.docker.env', '.release-images.json', '.release-images.env'],
+      file = path.join(directory, 'migrated-public-selection.json'),
+      write = (filename: string, bytes: Buffer) =>
+        replaceOwned(filename, bytes, {
+          mode: 0o600,
+          uid: process.geteuid!(),
+          gid: process.getegid!(),
+        });
+    if (operation === 'save-migrated-public-selection') {
+      ensure(!fs.existsSync(file), 'candidate-migrated-selection-already-saved');
+      write(
+        file,
+        Buffer.from(
+          JSON.stringify(
+            Object.fromEntries(
+              names.map((name) => [
+                name,
+                readPrivateInput(path.join(configuration, name)).toString('base64'),
+              ]),
+            ),
+          ),
+        ),
+      );
+      return { saved: true };
+    }
+    if (operation === 'restore-migrated-public-selection') {
+      const saved = record(JSON.parse(readPrivateInput(file).toString())),
+        raw = Buffer.from(String(saved['.docker.env']), 'base64'),
+        previous = environmentAssignments(raw.toString()),
+        current = environmentAssignments(readPrivateInput(main).toString());
+      cube(raw);
+      ensure(
+        ['GITLAB_IMAGE', 'GITLAB_RUNNER_IMAGE'].every(
+          (key) => previous[key] && previous[key] === current[key],
+        ),
+        'candidate-migrated-service-selection-changed',
+      );
+      for (const name of names) {
+        ensure(typeof saved[name] === 'string', 'candidate-migrated-selection-invalid');
+        write(path.join(configuration, name), Buffer.from(String(saved[name]), 'base64'));
+      }
+      return { restored: true };
+    }
+    let raw = readPrivateInput(main),
+      text = raw.toString();
+    cube(raw);
+    for (const [role, key, specRole] of [
+      ['controller', 'BOOTSTRAPPER_IMAGE', 'candidate'],
+      ['wizard', 'WIZARD_IMAGE', 'wizard'],
+    ]) {
+      const previous = reference(record(record(record(fixture.previous).images)[role]).reference),
+        image = record(record(record(fixture.spec).images)[specRole]).id,
+        assignment = new RegExp('^export ' + key + '=.*$', 'gm'),
+        matches = [...text.matchAll(assignment)];
+      ensure(
+        typeof image === 'string' &&
+          /^sha256:[a-f0-9]{64}$/.test(image) &&
+          matches.length === 1 &&
+          environmentAssignments(matches[0][0])[key] === previous,
+        'candidate-pair-selector-mismatch',
+      );
+      text = text.replace(assignment, 'export ' + key + "='" + image + "'");
+    }
+    raw = Buffer.from(text);
+    cube(raw);
+    write(main, raw);
+    const original = record(
+      JSON.parse(readPrivateInput(path.join(directory, 'original-selection.json')).toString()),
+    );
+    for (const name of [
+      '.release-images.json',
+      '.release-images.env',
+      '.release-images.recovered.json',
+    ]) {
+      const content = original[name],
+        destination = path.join(configuration, name);
+      ensure(content === null || typeof content === 'string', 'invalid-original-selection');
+      if (content === null) {
+        fs.rmSync(destination, { force: true });
+        directoryBarrier(configuration);
+      } else write(destination, Buffer.from(String(content), 'base64'));
+    }
+    return { selected: true };
+  }
   previousConfiguration(raw: Buffer, fixture: Record<string, unknown>): Buffer {
     const expected = record(record(record(fixture.spec).images).candidate).id;
     ensure(

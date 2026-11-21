@@ -3,7 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { PublicUpgradeHostModule } from './public-upgrade-host.module';
-import { PublicUpgradeHostService } from './public-upgrade-host.service';
+import {
+  PublicUpgradeHostService,
+  type PublicUpgradeFixtureOperation,
+} from './public-upgrade-host.service';
 import { parsePublicUpgradeInput } from '../host/public-upgrade-entry';
 import { HostPolicyError } from '../host/install';
 import { record } from '../release/source-identity';
@@ -41,12 +44,11 @@ export async function publicUpgradeHostMain(
               'restore-original',
               'freeze-publication',
               'gitlab-previous-selectors',
+              'save-migrated-public-selection',
+              'restore-migrated-public-selection',
+              'candidate-pair-selectors',
             ].includes(args[0])
-          ? (args[0] as
-              | 'initialize'
-              | 'restore-original'
-              | 'freeze-publication'
-              | 'gitlab-previous-selectors')
+          ? (args[0] as PublicUpgradeFixtureOperation)
           : parsePublicUpgradeInput(args);
     app = await NestFactory.createApplicationContext(
       PublicUpgradeHostModule.register(directory, checkout),
