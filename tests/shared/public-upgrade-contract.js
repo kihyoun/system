@@ -567,6 +567,7 @@ test('future publication fixture is deterministic and verified by the production
 
 test('native host fixture keeps diagnostics fixed and runs initialization through the shared Nest module', async () => {
   const {fixtureDiagnostic}=require('../../dist/modules/testing/public-upgrade-host-entry');
+  const {PublicUpgradeHostService}=require('../../dist/modules/testing/public-upgrade-host.service');
   const {HostPolicyError}=require('../../dist/modules/host/install');
   const diagnostics=require('../e2e/public-upgrade-diagnostics.json');
   for(const [label,code] of Object.entries(diagnostics.errors)){
@@ -583,6 +584,36 @@ test('native host fixture keeps diagnostics fixed and runs initialization throug
     fs.writeFileSync(path.join(directory,'fixture.json'),JSON.stringify(input),{mode:0o600});
     const main=path.join(input.live,'configuration/.docker.env');
     fs.writeFileSync(main,Buffer.concat([fs.readFileSync(path.join(root,'config/system/.docker.env.example')),Buffer.from("\nexport BOOTSTRAPPER_IMAGE='"+input.spec.images.candidate.id+"'\nexport WIZARD_IMAGE='"+input.spec.images.wizard.id+"'\n")]),{mode:0o600});
+    const original=fs.readFileSync(main), security=require('../../config/gitlab/security-release.json');
+    const service=new PublicUpgradeHostService();service.read=()=>input;
+    fs.mkdirSync(path.join(input.live,'runners'));
+    const aliases=[['GITLAB_IMAGE','candidate-gitlab:under-test',security.fromImage],['GITLAB_RUNNER_IMAGE','candidate-runner:under-test',security.runner.fromImage]];
+    const select=render=>aliases.reduce((text,[key,alias])=>text.replace(new RegExp('^export '+key+'=.*$','m'),()=>render(key,alias)),original.toString());
+    for(const render of [(key,alias)=>key+'='+alias,(key,alias)=>'export '+key+"='"+alias+"'",(key,alias)=>'export '+key+'="'+alias+'"']){
+      const raw=select(render)+"\nLITERAL_NOTE='keep\nexport GITLAB_IMAGE=foreign\nall these bytes'\n";
+      fs.writeFileSync(main,raw);
+      assert.deepEqual(await service.execute(directory,'gitlab-previous-selectors'),{selected:true});
+      const expected=aliases.reduce((text,[key,,reference])=>text.replace(new RegExp('^(?:export )?'+key+'=.*$','m'),()=>"export "+key+"='"+reference+"'"),raw);
+      assert.equal(fs.readFileSync(main,'utf8'),expected,'only the two actual image assignments change');
+      assert(fs.readFileSync(main).subarray(0,1184).equals(original.subarray(0,1184)));
+    }
+    const baseline=select((key,alias)=>'export '+key+'="'+alias+'"');
+    for(const invalid of [
+      baseline.replace('candidate-gitlab:under-test','foreign'),
+      baseline.replace('candidate-runner:under-test','foreign'),
+      baseline+'\nGITLAB_IMAGE=candidate-gitlab:under-test\n',
+      baseline+'\nexport GITLAB_RUNNER_IMAGE="candidate-runner:under-test"\n',
+      baseline.replace('export GITLAB_IMAGE=','unset GITLAB_IMAGE\nexport GITLAB_IMAGE='),
+      baseline+'\nunset GITLAB_RUNNER_IMAGE\n',
+      baseline.replace('candidate-gitlab:under-test','$(touch /private/never-run)'),
+      baseline.replace('candidate-runner:under-test','$FOREIGN'),
+      baseline.replace(/^export GITLAB_RUNNER_IMAGE=.*\n/m,''),
+    ]){
+      fs.writeFileSync(main,invalid);
+      await assert.rejects(service.execute(directory,'gitlab-previous-selectors'),/candidate-previous-service-selector-required/);
+      assert.equal(fs.readFileSync(main,'utf8'),invalid,'invalid selector refuses before writing either assignment');
+    }
+    fs.writeFileSync(main,original);
     fs.mkdirSync(path.join(directory,'runtime'),{recursive:true});
     const {PublicUpgradeRuntimeService}=require('../../dist/modules/testing/public-upgrade-runtime.service');
     new PublicUpgradeRuntimeService().copyApplication(root,path.join(directory,'runtime'));
@@ -597,7 +628,7 @@ test('native host fixture keeps diagnostics fixed and runs initialization throug
     assert.deepEqual(JSON.parse(result),{initialized:true});
     const {NestFactory}=require('../../node_modules/@nestjs/core');
     const {PublicUpgradeHostModule}=require('../../dist/modules/testing/public-upgrade-host.module');
-    const {PublicUpgradeHostService,fixtureHostProcess}=require('../../dist/modules/testing/public-upgrade-host.service');
+    const {fixtureHostProcess}=require('../../dist/modules/testing/public-upgrade-host.service');
     const app=await NestFactory.createApplicationContext(PublicUpgradeHostModule.register(directory,root),{logger:false,abortOnError:false});
     try{
       const service=app.get(PublicUpgradeHostService),request=service.transport(directory,root);

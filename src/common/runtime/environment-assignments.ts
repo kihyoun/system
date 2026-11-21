@@ -1,5 +1,15 @@
 /** Parse declarative environment files without executing commands or expansions. */
-export function environmentAssignments(text: string): Record<string, string> {
+export interface EnvironmentAssignment {
+  name: string;
+  value: string;
+  start: number;
+  end: number;
+  kind: 'assignment' | 'unset';
+}
+export function environmentAssignments(
+  text: string,
+  observe?: (assignment: EnvironmentAssignment) => void,
+): Record<string, string> {
   if (text.includes('\0')) throw Error('invalid-environment-file');
   const values: Record<string, string> = {};
   let index = 0;
@@ -10,6 +20,7 @@ export function environmentAssignments(text: string): Record<string, string> {
       while (index < text.length && text[index] !== '\n') index++;
       continue;
     }
+    const start = index;
     const unset =
       /^unset[ \t]+([A-Za-z_][A-Za-z0-9_]*(?:[ \t]+[A-Za-z_][A-Za-z0-9_]*)*)[ \t]*(?:#[^\n]*)?(?:\r?\n|$)/.exec(
         text.slice(index),
@@ -17,8 +28,11 @@ export function environmentAssignments(text: string): Record<string, string> {
     if (unset) {
       // An explicit empty value also clears inherited values when callers merge
       // declarative configuration layers; downstream defaults remain available.
-      for (const name of unset[1].split(/[ \t]+/)) values[name] = '';
       index += unset[0].length;
+      for (const name of unset[1].split(/[ \t]+/)) {
+        values[name] = '';
+        observe?.({ name, value: '', start, end: index, kind: 'unset' });
+      }
       continue;
     }
     const key = /^(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=/.exec(text.slice(index));
@@ -69,6 +83,7 @@ export function environmentAssignments(text: string): Record<string, string> {
     }
     if (quote) throw Error('unterminated-environment-quote');
     values[key[1]] = value;
+    observe?.({ name: key[1], value, start, end: index, kind: 'assignment' });
     if (!ended && index >= text.length) break;
   }
   return values;

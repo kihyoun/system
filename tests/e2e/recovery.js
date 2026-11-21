@@ -341,6 +341,7 @@ async function capture(original,dependencies={}) {
         assert.deepEqual(backup.recovery,metadata);
         assert.deepEqual(metadata.observedRuntime,input.observation);
         assert.equal(metadata.savedImages.gitlab.reference,'candidate-gitlab:under-test');
+        if(input.expectedSavedController!==undefined)assert.equal(metadata.savedImages.controller.reference,input.expectedSavedController);
         assert.equal(metadata.savedImages.wizard.reference,input.wizard);
         assert.equal(metadata.observedRuntime.images.controller.imageId,input.controller);
         assert.equal(metadata.seed.verified,false);
@@ -349,6 +350,7 @@ async function capture(original,dependencies={}) {
         assert.equal(metadata.recoveryTools.extendedConfigurationZipRequired,true);
         assert.match(read('RECOVERY.md'),/matching completed Seed/);
       },{observation:fetched.main.recoveryObservation,controller:original.spec.images.candidate.id,
+        ...(guided?{expectedSavedController:original.spec.images.candidate.id}:{}),
         wizard:inputs.expected.privateWizard?.imageRef||'systembootstrapper/wizard'});
       await fromController(original,'/tmp/bootstrapper.zip',inputs.configArchive);
     });

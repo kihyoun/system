@@ -1,6 +1,11 @@
 {
   "marker": "SYSTEM_PUBLIC_UPGRADE_DIAGNOSTIC ",
   "errors": {
+    "candidate-previous-service-selector-required": "previous-service-selector-required",
+    "candidate-previous-image-identities-required": "previous-image-identities-required",
+    "candidate-controller-image-id-required": "candidate-controller-image-id-required",
+    "candidate-controller-assignment-required": "candidate-controller-assignment-required",
+    "candidate-controller-selector-mismatch": "candidate-controller-selector-mismatch",
     "public-upgrade-provenance-hash-mismatch": "provenance-hash-mismatch",
     "public-upgrade-publisher-identity-mismatch": "publisher-identity-mismatch",
     "public-upgrade-candidate-identity-mismatch": "candidate-identity-mismatch",
