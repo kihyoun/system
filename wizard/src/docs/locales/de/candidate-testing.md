@@ -514,22 +514,7 @@ Der abschließende normale Controller startet nach vollständiger physischer Tre
 des Sicherungsgeräts und besteht authentifiziertes Fetch. Fehlgeschlagene Schritte
 veröffentlichen keinen Upgrade-Erfolg.
 
-Ein auf 512 MiB und eine CPU begrenzter Helfer verwendet das eingebettete Python
-des angegebenen GitLab-Images sowie Docker-/Compose-Binärdateien und den
-musl-Loader des vorbereiteten Controllers. Seine Mounts gehören ausschließlich
-zum privaten Daemon. Eingecheckte Testadapter bilden Ubuntu/systemd und die
-Host-Mountansicht sowie die öffentlichen Metadaten des noch unveröffentlichten
-Ziels und den genauen Transport vom Digest zum vorbereiteten Image nach.
-Die Konfigurations-Digests des Ziels stammen aus gehashten Konfigurationsdateien
-der bereits gespeicherten Image-Archive. Die echte
-öffentliche Autoritätsprüfung, Quellprüfung, Sicherung, der Updater, Leases,
-Journale und Wiederherstellung laufen unverändert. Die Zuordnung vorheriger
-Digests bleibt während der Archivwiederherstellung abgeschaltet. Synthetische
-zukünftige Veröffentlichungseingaben werden niemals als Release-Nachweis exportiert.
-Dieser Test belegt weder tatsächliche systemd-Zeitplanung noch einen zukünftigen
-öffentlichen Upload; Host- und Veröffentlichungsprüfungen bleiben verpflichtend.
-Offline-Vertragstests prüfen die Adaptergrenzen; erst die vollständige native
-Kandidatenphase liefert den Upgrade-Abnahmenachweis.
+Ein auf 512 MiB und eine CPU begrenzter Helfer verwendet das deklarierte Kandidaten-Image und dessen festgelegte Node-Laufzeit. Sein dünner Node-Einstieg ruft den Production-Dienst für öffentliche Upgrades auf; nur Veröffentlichungstransport und Fakten zum verwerfbaren Host verwenden Fixture-Provider. Docker-/Compose-Transporte sind dünne Node-Adapter mit einem ausschließlich für Tests vorgesehenen Nest-Modul. Die Vorbereitung kopiert Node-Binärdatei, gebündelte Operations, Docker-/Compose-Binärdateien, musl-Loader und deklarierte C++-/GCC-Bibliotheken des exakten Kandidaten mit nativen Dateisystem-APIs. Schreibgeschützte Mounts stellen diese Laufzeit unter einem ausdrücklichen Pfad im Helfer und historischen Controller bereit; eine Node-Installation im alten Image wird nicht vorausgesetzt. Laufzeitproben laden kopierten Interpreter und Nest-Modul in beiden Images vor dem Controller-Austausch. Eine unerwartete Node-Bibliotheksabhängigkeit des Kandidaten lässt die Vorbereitung fehlschlagen. Offline-Tests decken Transportverhalten ab; erfolgreiche Laufzeitproben und die vollständige Kandidatenschranke bleiben erforderlich, um die Vollständigkeit dieser Laufzeit in jenen Images zu belegen. Seine Mounts gehören nur zum privaten Daemon. Versionierte Testadapter bilden Ubuntu/systemd und die Host-Mountansicht sowie öffentliche Metadaten des noch unveröffentlichten Ziels und den exakten Digest-zu-Image-Transport nach. Ziel-Konfigurations-Digests stammen aus gehashten Konfigurationsblobs der bereits gespeicherten Image-Archive. Echte öffentliche Autoritätsprüfung, Quellprüfungen, Sicherung, Updater, Leases, Journale und Wiederherstellung laufen unverändert. Die Abbildung vorheriger Digests bleibt bei Archivwiederherstellung deaktiviert. Synthetische künftige Veröffentlichungseingaben werden nie als Release-Nachweis exportiert. Diese Fixture belegt weder echte systemd-Zeitplanung noch einen künftigen öffentlichen Upload; Host- und Veröffentlichungsprüfungen bleiben verpflichtend. Offline-Verträge prüfen Adaptergrenzen; nur die vollständige native Kandidatenstufe liefert Upgrade-Abnahmenachweise.
 
 ## Geführte Vorschau-Abnahme nach dem Deployment
 
@@ -537,3 +522,9 @@ Das [Betreiber-Vorprüfungswerkzeug](GUIDED_PREVIEW_ACCEPTANCE.md) prüft expliz
 private System-Beta-Einstellungen gegen einen ausgewählten lokalen Controller.
 Es liest nur und lehnt `--apply` ab. Die wegwerfbare Fixture-Auswahl läuft niemals
 auf einer Benutzerinstallation. Ein erfolgreicher Plan belegt keine native Abnahme.
+
+### Abdeckung des ursprünglichen und wiederhergestellten Hosts
+
+Der ursprüngliche Host prüft idempotente Runner-Registrierung, eine neue Registry-Build/Push/Pull/Run-Pipeline und eine absichtlich fehlschlagende Pipeline, deren Auslieferungsjob übersprungen bleiben muss. Der wiederhergestellte Host behält native GitLab-Bereitschafts- und Runner-Prüfung bei, vergleicht gespeicherte Runner-Datenbank-ID, Manager-Identitäts-Hash und unveränderliche Image-ID und führt die ursprüngliche Registry-Blob-Pipeline aus. Er wiederholt nicht die allgemeine Projekterstellung und Fehlerpipeline des ursprünglichen Hosts. Dessen erfolgreiche Pipeline-Identität bleibt der Sicherungsmaßstab; der wiederhergestellte Blob-Job zeichnet seine eigenen tatsächlichen Pipeline- und Job-IDs auf.
+
+Kalte Wiederherstellung, GitLab-Migration, gepaartes öffentliches Upgrade und Rollback behalten getrennte Zustandsübergangsprüfungen. Unit- und Komponentenverträge decken Ablehnungs- und Bereinigungspfade ab; sie ersetzen weder native Wiederherstellung noch Registry-Authentifizierung oder tatsächliche Migrationsjobs.

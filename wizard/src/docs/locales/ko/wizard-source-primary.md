@@ -194,3 +194,5 @@ docker run --rm --network host --mount type=bind,src=/operator/configuration,dst
 지정된 operations 기능입니다. 이 진입점을 사용하기 전에 operations 패키지를 빌드하세요.
 승인된 컨트롤러/도우미에는 컴파일된 런타임이 포함됩니다. 과거 레시피 생성기는
 예약된 바이트를 보존하는 형식 어댑터로 유지됩니다.
+
+소스 가져오기와 네이티브 빌드 상태는 operations 런타임의 `WizardSourceOperationService`를 공유합니다. Sync는 저장된 바인딩을 stdin으로 전달하여 자격 증명 CLI 명령 `wizard-source`를 호출합니다. 서비스는 프로젝트 범위 자격 증명을 얻기 전에 정확한 프로젝트 ID, 네임스페이스, 경로, 소유권을 검사합니다. 가져오기는 보호된 CI 파일 갱신을 포함하는 생성 전용 Git 커밋 하나를 사용합니다. 재시도는 이전 커밋을 인정하기 전에 전체 가져오기 표시와 파일 내용을 확인합니다. 상태는 선택적 미러 게시와 무관하게 필수 네이티브 작업과 아티팩트를 읽습니다.

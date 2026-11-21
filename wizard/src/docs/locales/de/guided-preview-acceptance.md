@@ -13,7 +13,7 @@ Nachweisversion 2 deklariert ausdrücklich
 `verifier.mode: contract-fixture`. Native gemeinsame Einrichtung, Bindung, eigene
 Docker-Beta-Deployments/Stops, Image-Labels, exaktes Host-TLS, unveränderte Production
 und Bereinigung werden auf der wegwerfbaren Plattform geprüft. Positive und negative
-Verträge des unveränderten Production-Ruby-Prüfers decken Pipelineautorisierung ab.
+Verträge des gemeinsamen nativen Prüfers decken Pipelineautorisierung ab.
 Der übergeordnete Kandidat ist noch nicht abgeschlossen und wird niemals als
 abgeschlossene native Autorisierungspipeline dargestellt. Fixture-Identitäten haben
 einen expliziten Namensraum. Die Veröffentlichung entfernt unbekannte Felder und

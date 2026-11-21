@@ -95,20 +95,18 @@ Konfiguration wird weiterhin über Übertragen/Abrufen und Öffnen/Sichern verwa
 
 ### 2.4 Lokaler Funktionstest
 
-Für eine ausdrücklich entbehrliche lokale Testinstanz erstellt
-`tests/gitlab-runner/live/runner.py` ein privates Testprojekt und eine Pipeline,
-prüft den Runner und lädt die erzeugte Ergebnisdatei herunter. Es erstellt einen
-eigenen temporären Test-Zugriffstoken mit dem Geltungsbereich `api` und widerruft
-ihn anschließend. Dies ist ein Testhilfsprogramm; die eigentliche Runner-Einrichtung
-benötigt nur `create_runner`.
+Für eine ausdrücklich verwerfbare Testinstanz erzeugt die native Runner-Prüfung ein privates, eindeutig markiertes Testprojekt samt Pipeline, prüft den tatsächlichen Runner, lädt dessen Ergebnis herunter und prüft authentifiziertes Fetch. Sie liest die bestehende einsatzbereite Automatisierungskennung, ohne Rails-Tokens auszustellen oder Zugangsdaten zu erneuern. Die Prüfung erstellt einen kurzlebigen Projekttoken, widerruft genau diesen Token und beantragt nur die Löschung ihres eigenen markierten Projekts; GitLab löscht asynchron.
+
+Führe sie nach normaler Einrichtung im geprüften Controller aus, mit einem unveränderlichen Job-Image, das du ausgewählt und für dessen Runner verfügbar gemacht hast:
+
+```bash
+sudo docker exec -w /system system_bootstrapper_1 node tests/gitlab-runner/live/runner.js \
+  --allow-disposable-project \
+  --job-image 'alpine@sha256:REPLACE_WITH_64_HEX_DIGEST' --timeout 720
+```
+
+Dieser ausdrücklich aktivierte Vorgang darf Production nicht ansprechen. Ein privater Nachweis ausschließlich mit Metadaten im Controller-Zustand hält das genaue zugeordnete Projekt und den Bereinigungsstatus fest. Prüfe nach einer Unterbrechung den gemeldeten Nachweis und verwende denselben Einstieg mit `--allow-disposable-project --cleanup-record /state/live-runner-audit-OPERATION.json`. Die Bereinigung löscht kein Projekt, dessen Identität oder Eigentumsmarkierung geändert wurde. Der bestehende verwerfbare Kandidat prüft ebenfalls echte Runner-/Registry-Jobs; diese optionale manuelle Prüfung fügt keine Pipeline-Stufe hinzu.
 
 Wenn die Runner-Einrichtung fehlschlägt, wird der Plattformstart fortgesetzt, damit
 du die Konfiguration im Wizard korrigieren kannst. Prüfe die Bootstrapper-Ausgabe,
 korrigiere die Einstellungen und versuche **Registrieren** erneut.
-
-```bash
-sudo python3 tests/gitlab-runner/live/runner.py
-```
-
-Voraussetzungen sind laufende lokale Dienste, Docker-Zugriff und die Adressen
-`gitlab.localhost` und `sync.localhost` auf dem lokalen HTTP-Proxy.

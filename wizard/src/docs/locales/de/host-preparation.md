@@ -68,7 +68,7 @@ Plattformabnahme sind separate Schritte.
 
 ## Native Host-Laufzeit vorbereiten
 
-Host-`system-bootstrapper start --checkout /absolute/reviewed/source`, `system-bootstrapper stop --checkout /absolute/reviewed/source`, `bootstrapper/persistence.js`, der Release-Installer
+Host-`start`, `stop`, `bootstrapper/persistence.js`, der Release-Installer
 und Ersatz-/Wiederherstellungswerkzeuge benötigen Node und kompilierte `operations`
 **vor** ihrem ersten Aufruf. Docker-Installation allein oder `--install-host` am
 Initialisierer bereiten diese Laufzeit nicht vor. Wählen Sie einen der folgenden
@@ -80,7 +80,7 @@ unter `/opt/system-bootstrapper-runtime`; vorhandene nvm-Installationen,
 Standardversionen und Shell-Profile der Benutzer bleiben erhalten. Auch der Hash
 des von nvm geladenen Node-Archivs wird geprüft. Quickstart prüft das CLI-Archiv
 und installiert es mit seinen gebündelten Abhängigkeiten offline, ohne
-Installationsskripte auszuführen. Die kompilierten Dateien werden anschließend
+Installationsskripte auszuführen. Die kompilierten Dateien, gebündelten Abhängigkeiten und Richtlinienressourcen werden anschließend
 in den passenden akzeptierten Checkout kopiert; ein erneuter Build ist unnötig.
 
 Beim manuellen Weg zuerst den geprüften Release-Checkout wählen und die öffentlichen Metadaten anhand des [Release-Leitfadens](docs/RELEASES.md) verifizieren.
@@ -89,17 +89,14 @@ Danach vor jedem Host-Lebenszyklus-, Persistenz- oder Installationseinstieg ausf
 ```sh
 SYSTEM_RELEASE_TAG='vMAJOR.MINOR.PATCH' # Exact reviewed public release
 sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
-# The checkout must match that release's verified source revision.
-test ! -e operations/dist && test ! -e operations/node_modules && \
+# The checkout must match the source revision in that release's verified metadata.
+test ! -e operations/dist && test ! -e operations/node_modules && test ! -e operations/assets && \
 sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets operations/assets
 ```
 
-Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery
-müssen das Laufzeitverzeichnis sowie `operations/dist` und
-`operations/node_modules` erhalten bleiben. Die Werkzeuge nutzen den gespeicherten
-absoluten Node-Pfad ohne nvm, Shell-Profil oder npm-Zugriff. Die Datei
-`/opt/system-bootstrapper-runtime/node-executable` enthält diesen Pfad.
+Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Bewahre dieses Verzeichnis sowie `operations/dist` und `operations/node_modules` und `operations/assets` des Checkouts für Offline-Recovery auf. Kompatibilitätswerkzeuge wählen die gespeicherte absolute Node-Datei direkt; sie laden kein Shell-Profil, rufen nvm nicht auf und kontaktieren npm nicht während der Wiederherstellung. Verwende `/opt/system-bootstrapper-runtime/bin/node` für ausdrückliche native Aufrufe.
 
 ### Quellcodeentwicklung ohne vorgebauten Controller-Laufzeitinhalt
 
@@ -136,11 +133,11 @@ danach diesen Quellstart anstelle des Installers für öffentliche Images:
 
 ```bash
 sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  node operations/dist/cli.js start --checkout "$PWD"
+  "$SYSTEM_NODE_BIN/node" operations/dist/cli.js start --checkout "$PWD"
 ```
 
 Behalten Sie `SYSTEM_NODE_BIN` für weitere `sudo env "PATH=..."`-Aufrufe von
-`system-bootstrapper stop --checkout /absolute/reviewed/source`, `bootstrapper/persistence.js` und nativen Hostwerkzeugen: sudo verwirft
+`stop`, `bootstrapper/persistence.js` und nativen Hostwerkzeugen: sudo verwirft
 normalerweise den interaktiven nvm-PATH. Alternativ nutzen Sie die beim Weg über
 akzeptierte Images vorbereitete eigene Laufzeit. Beim Quellstart werden weiterhin
 Controller-/Wizard-Images gebaut, sofern ein vorhandenes akzeptiertes Release-Profil
@@ -285,7 +282,7 @@ gegen die Identitäten der geladenen öffentlichen Images. Es lehnt eine bestehe
 konfiguration oder GitLab-Daten ab, statt eine Neuinstallation als Upgrade zu behandeln.
 Es verzeichnet nur die beiden Release-Image-Selektoren in der privaten Datei
 `configuration/.release-images.env` und ruft den nativen Start mit deaktivierten
-Builds auf. Normale spätere Aufrufe von `sudo node operations/dist/cli.js start --checkout "$PWD"` verwenden dieses Profil erneut;
+Builds auf. Normale spätere Aufrufe von `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` verwenden dieses Profil erneut;
 ausdrückliche Selektoren in der gespeicherten Hauptkonfiguration haben weiterhin Vorrang. `--install-host`
 kann die Docker-Installation ausführen, wenn sie noch nicht erfolgt ist. Dieses
 Installationsprogramm stellt keinen Seed wieder her, importiert keine Konfigurations-ZIP und stellt keine Zertifikate aus.
@@ -388,7 +385,7 @@ Sperren, Fehlerbehandlung und Wiederherstellung auf leerem Speicher.
 Die Shell-/rsync-Regressionsprüfung verwendet temporäre Daten und einen Docker-Testbefehl:
 
 ```bash
-python3 tests/seed/recovery-contract.py
+node --test operations/tests/storage-copy.test.cjs
 ```
 
 Führen Sie die [vollständige verwerfbare Abnahmesuite](tests/e2e/README.md) aus, um echtes
@@ -400,5 +397,5 @@ Verwenden Sie die vorbereitete Host-Laufzeit; geben Sie beim Quellentwicklungswe
 den oben gezeigten ausdrücklichen Node-PATH an.
 
 ```bash
-sudo node operations/dist/cli.js stop --checkout "$PWD"
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js stop --checkout "$PWD"
 ```

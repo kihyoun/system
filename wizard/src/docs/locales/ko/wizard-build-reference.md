@@ -26,10 +26,7 @@ Jest에는 `CI=true`를 설정합니다.
 
 ## 활성화 및 복구
 
-Sync 모듈은 미리보기, 활성화 및 상태 함수를 제공합니다.
-서버는 소스 가져오기 실행 기록을 보존하고 별도의 버전 1 `build` 객체를 저장합니다.
-정확히 미리 본 레시피 해시, 완료된 관리형 소스 등록 및 설정된 로컬 레지스트리가 필요합니다.
-임시 GitLab API 인증 정보는 기존 Rails 어댑터 내부에 머무르며 외부 ensure에서 취소합니다.
+Sync 모듈은 미리보기, 활성화, 상태 기능을 제공합니다. 서버는 소스 가져오기 영수증을 보존하고 별도의 버전 1 `build` 객체를 저장합니다. 정확히 미리 본 레시피 해시, 완료된 관리 소스 등록, 설정된 로컬 레지스트리가 필요합니다. 검증된 프로젝트 범위 자격 증명은 공유 자격 증명 서비스로 얻으며 비공개 토큰 저널은 GitLab 설정 볼륨에 남습니다.
 
 어댑터는 저장소 소유권, 소스 표식, 기본 브랜치 및 예상된 비활성 기본 틀을 확인합니다.
 레시피 설치는 보호된 `[skip ci]` 커밋 하나입니다.
@@ -58,7 +55,7 @@ Sync 모듈은 미리보기, 활성화 및 상태 함수를 제공합니다.
 
 ## 검증 조건
 
-픽스처는 `tests/gitlab/wizard-build.rb`, `tests/wizard/build-recipe.js` 및
+픽스처는 `tests/gitlab/wizard-build.js`, `tests/wizard/build-recipe.js` 및
 `tests/wizard/build-workflow.js`이며 공유 테스트 매니페스트가 격리 검사를 선택합니다.
 새 잠금 파일 설치, 실제 선택한 도구 모음 검사, 후보 HTTP/브라우저 검사 및
 실제 GitLab/Runner/레지스트리 실행은 별도의 통합 검증 조건입니다.
@@ -163,3 +160,11 @@ CI 검증, 정리 및 공개 신뢰 파일을 상속합니다.
 `WIZARD_BASE_URL`에 HTTP 원본을, `WIZARD_EVIDENCE_DIR`에 비공개 출력 디렉터리를 설정하세요.
 관리형 컨테이너 기본값은 `http://wizard-candidate`와 `/evidence`이며,
 선택한 원본 밖의 모든 요청은 차단됩니다.
+
+`.gitlab/producer-v2.json`이 있는 새 Node 24 소스 스냅샷은 `node24-vite8-typed-v6`를 선택합니다. 그 `.system-bootstrapper/build-v2` 파일에는 검토한 이식 가능한 런타임, Dockerfile, 브라우저 검사 및 CA 번들이 있습니다. 작업은 `node .../runtime/project-ci.cjs build` 또는 `verify`로 공유 Nest 작업 서비스를 호출합니다. Node Alpine 작업은 먼저 build-v2 디렉터리로 `prepare-runtime`을 호출합니다. 애플리케이션은 계속 Nginx가 제공하는 정적 SPA입니다.
+
+`typed-v6/runtime`의 버전별 런타임은 예약된 레시피 해시의 일부입니다. 후속 레시피를 도입할 때 이 바이트를 보존하세요. 현재 이식 가능한 번들 변경은 기존 예약을 다시 쓸 권한을 부여하지 않습니다. 런타임이 버전별 레시피와 다른 새 소스 스냅샷은 검토한 후속 프로필을 제공할 때까지 선택에 실패합니다. 기존 build-v1 레시피 선택과 해시는 정확히 유지합니다. v6에 바인딩된 환경 예약은 같은 런타임으로 수동 Review/Beta 작업을 생성하며, 과거 environment-v1 선택은 `wizard-environments/historical`의 보관된 스크립트를 읽습니다.
+
+관리되는 빌드 활성화와 상태는 `ManagedBuildService`를 공유 operations 명령 `managed-recipe` 및 Sync API를 통해 사용합니다. 네이티브 세션은 과거의 프로젝트 및 작업별 PostgreSQL advisory 키를 유지합니다. Git 커밋은 보호된 파일 갱신을 사용하며 파이프라인 생성은 먼저 작업 체크포인트를 기록합니다. 비공개 쓰기 증거는 응답이 유실되어도 요청을 재실행하지 않고 남습니다. 상태는 동일한 예약 레시피, 필수 작업, 아티팩트 다이제스트를 확인하며 파이프라인을 시작하지 않습니다. 조정은 정확한 커밋만 검색하고 최대 20개의 파이프라인 변수 집합을 검사하며 모호하거나 검색 한도를 소진한 경우 거부합니다.
+
+operations 빌드 후 `node tests/gitlab/wizard-build.js`로 실제 GitLab 인스턴스 없이 원자적 설치, 중단된 요청, 소스/파이프라인 경합, 과거 Jest 및 현재 Vitest 증거 계약을 검사하세요.

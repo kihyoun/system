@@ -75,19 +75,19 @@ Wizard의 변경 사항은 보내기를 사용할 때만 전송됩니다.
 이 설정은 Harvest/Seed 주기를 변경하지 않습니다. Bootstrapper 구성은 계속 보내기/가져오기와
 열기/백업으로 관리합니다.
 
-### 2.4 로컬 기능 테스트
+### 2.4 로컬 기능 검사
 
-명시적으로 폐기 가능한 로컬 테스트 인스턴스에서는 `tests/gitlab-runner/live/runner.py`가
-비공개 테스트 프로젝트와 파이프라인을 만들고, Runner를 확인하고, 생성된 결과 파일을
-다운로드합니다. 별도의 `api` 범위 임시 테스트 접근 토큰을 만들고 이후 폐기합니다.
-이것은 테스트 도우미이며, 실제 Runner 설정에는 `create_runner`만 필요합니다.
+명시적으로 폐기 가능한 테스트 인스턴스에서 네이티브 Runner 감사는 고유하게 표시한 비공개 스모크 프로젝트와 파이프라인을 만들고 실제 Runner를 검사하며 결과를 내려받아 인증된 Fetch를 확인합니다. Rails 토큰을 발급하거나 자격 증명을 갱신하지 않고 기존의 준비된 자동화 자격 증명을 읽습니다. 짧게 유효한 프로젝트 토큰을 만들고 정확히 그 토큰을 폐기하며 자신이 표시한 프로젝트에 대해서만 삭제를 요청합니다. GitLab 삭제는 비동기입니다.
+
+정상 설정 후 검토한 컨트롤러 내부에서 직접 선택하여 Runner가 사용할 수 있게 한 불변 작업 이미지로 실행하세요.
+
+```bash
+sudo docker exec -w /system system_bootstrapper_1 node tests/gitlab-runner/live/runner.js \
+  --allow-disposable-project \
+  --job-image 'alpine@sha256:REPLACE_WITH_64_HEX_DIGEST' --timeout 720
+```
+
+이 명시적 동의 작업은 Production을 대상으로 하면 안 됩니다. 컨트롤러 상태 아래의 비공개 메타데이터 전용 영수증은 정확히 소유한 프로젝트와 정리 상태를 기록합니다. 감사가 중단되면 보고된 영수증을 확인하고 같은 진입점에 `--allow-disposable-project --cleanup-record /state/live-runner-audit-OPERATION.json`을 전달하세요. 정리는 식별 정보나 소유권 표시가 바뀐 프로젝트를 삭제하지 않습니다. 기존의 폐기 가능한 후보도 실제 Runner/레지스트리 작업 실행을 검사하며, 이 선택적 수동 감사는 파이프라인 단계를 추가하지 않습니다.
 
 Runner 설정에 실패해도 플랫폼 시작은 계속되므로 Wizard에서 구성을 수정할 수 있습니다.
 Bootstrapper 출력을 확인하고 설정을 수정한 뒤 **등록**을 다시 시도하세요.
-
-```bash
-sudo python3 tests/gitlab-runner/live/runner.py
-```
-
-실행 중인 로컬 서비스, Docker 접근 권한, 로컬 HTTP 프록시의 `gitlab.localhost`와
-`sync.localhost` 주소가 사전 조건입니다.

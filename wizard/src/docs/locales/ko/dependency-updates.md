@@ -10,7 +10,7 @@ Renovate OSS는 기존 Docker Runner 풀에서 예약된 `renovate:discover` Git
 ## 운영자 설정
 
 구성을 System 프로젝트의 보호된 기본 브랜치에 병합한 후 검토된 체크아웃을 사용하세요.
-일반 HTTPS CA 신뢰를 갖춘 Python 3이면 충분합니다. GitLab 관리자 API 토큰은 체크아웃
+일반 HTTPS CA 신뢰를 갖춘 고정 Node/operations 런타임을 준비하세요. GitLab 관리자 API 토큰은 체크아웃
 밖의 0600 권한 파일에 보관하세요. 운영자 프로비저닝 명령에서만 사용하며 CI에는 절대로
 들어가지 않습니다. 전용 계정에는 운영자가 실제로 관리하는 이메일 주소를 사용하세요.
 

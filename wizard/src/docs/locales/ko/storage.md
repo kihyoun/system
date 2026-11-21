@@ -186,7 +186,7 @@ Quickstart는 Node와 operations를 자동으로 준비합니다. 수동 소스/
    불변 비공개 Wizard 고정값을 유지하세요. 선택적 관리형 Review/Beta 도우미의 이전
    로컬 이미지가 없으면 각각 깨끗하게 다시 빌드하고 명시적으로 재프로비저닝해야 합니다.
    [관리형 환경 가이드](../project-bootstrap/wizard-environments/README.md)를 확인하세요.
-5. 해당 체크아웃에서 `sudo node operations/dist/cli.js start --checkout "$PWD"`를 실행하세요. 저장소를 확인하고 컨트롤러를
+5. 해당 체크아웃에서 `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"`를 실행하세요. 저장소를 확인하고 컨트롤러를
    빌드한 뒤 보존된 구성으로 서비스를 시작합니다. 컨테이너 IP, 네트워크 및 프록시
    구성은 다시 생성됩니다. 호스트 주소가 바뀌면 구성된 도메인 이름을 유지하면서 DNS를 바꾸세요.
 6. Wizard/Sync, GitLab, 레지스트리 인증, Runner 관리자 및 TLS 갱신을 확인하세요.

@@ -2,7 +2,7 @@
 
 ### 새 Ubuntu 호스트에 빠르게 설치
 
-sudo 권한, curl, Python 3, 인터넷, RAM 8 GiB 이상,
+sudo 권한, curl, 인터넷, RAM 8 GiB 이상,
 데이터용 여유 공간 40 GiB와 소스용 1 GiB, 사용 가능한 포트 80/443을 갖춘
 Ubuntu 24.04 / 26.04 LTS x86_64 호스트의 터미널에서 다음 명령을 실행하세요.
 

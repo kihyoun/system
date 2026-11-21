@@ -70,7 +70,7 @@ node gitlab/prepare-wizard-source.js
 node project-bootstrap/wizard-source/package.js
 ```
 
-Das normale oberste `system-bootstrapper start --checkout /absolute/reviewed/source` ruft die Vorbereitung auf, bevor Compose das
+Das normale oberste `start --checkout /absolute/reviewed/source` ruft die Vorbereitung auf, bevor Compose das
 System-Image baut. Manuelle System-Image-Builds müssen zuerst denselben Befehl
 ausführen. Der Image-Build prüft das erzeugte Manifest und die Datei-Hashes;
 er schlägt fehl, wenn die Vorbereitung ausgelassen wurde. Checke die erzeugte
@@ -115,12 +115,12 @@ Führe nach dem Kompilieren von Sync und Erzeugen des Schnappschusses aus:
 ```sh
 node tests/wizard/source-package.js
 node tests/wizard/source-workflow.js
-ruby tests/wizard/source-import.rb
+node tests/gitlab/source-import.js
 ```
 
 Der Pakettest erstellt entbehrliche Git-Repositories. Der Ablauftest verwendet
-eine temporäre private Konfiguration und einen simulierten Rails-Transport.
-Der Ruby-Adaptertest verwendet eine GitLab-API-Fixture im Arbeitsspeicher. Diese
+eine temporäre private Konfiguration und einen simulierten Transport.
+Der native Import-/Statustest verwendet eine GitLab-API-Fixture im Arbeitsspeicher. Diese
 Tests kontaktieren niemals das laufende GitLab und verändern die Plattform nicht.
 Führe die Wizard-Prüfungen mit den in `wizard/package.json` deklarierten
 Node-/npm-Versionen aus: `npm ci`, `npm run lint`, `npm test`, `npm run build`

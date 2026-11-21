@@ -1,8 +1,6 @@
 # 구성 요소 및 플랫폼 테스트
 
-테스트는 검사하는 인프라 구성 요소별로 묶습니다. 유용한 곳에는 JavaScript, Bash,
-Python 및 Ruby를 유지합니다. 격리된 실행기는 명시적 [매니페스트](manifest.json)만
-실행하며 `live/` 스크립트를 검색하거나 플랫폼을 자동 시작하지 않습니다.
+테스트는 검증하는 인프라 구성 요소별로 나뉩니다. 네이티브 TypeScript 서비스는 Node 픽스처로 검사합니다. 격리 실행기는 명시적인 [매니페스트](manifest.json)만 실행하며 `live/` 스크립트를 검색하거나 플랫폼을 자동으로 시작하지 않습니다.
 
 ## 격리 검사 재현하기
 
@@ -16,20 +14,9 @@ docker run --rm --network none system-component-tests all
 docker run --rm --network none system-component-tests sync
 ```
 
-이 자식 컨테이너에 Docker 소켓, 비공개 구성, 호스트 네트워크 또는 플랫폼 볼륨을
-마운트하지 마세요. 신뢰된 호스트에 Node가 없으면
-`node project-bootstrap/wizard-source/package.js`가 소스 패키징 대안을 제공합니다.
-컨텍스트에는 현재 커밋된 Git 트리의 허용된 blob과 일반
-`wizard/` 트리가 포함됩니다(`system-monorepo-v1`). 과거 gitlink 소스는 별도의 검증된 Wizard 스냅샷과
-정확한 재귀 서브모듈이 필요합니다(`git submodule update --init --recursive`). Git 메타데이터, 비공개/무시/미추적 파일 및 작업
-사본 편집은 제외합니다. 패키징 전에 의도한 코드를 커밋하세요. 전체 체크아웃을 보내는
-대체 동작은 없습니다.
+이 자식 컨테이너에 Docker 소켓, 비공개 설정, 호스트 네트워크 또는 플랫폼 볼륨을 마운트하지 마세요. 소스 패키징 전에 고정 Node 런타임과 operations 패키지를 준비하세요. 최초 Quickstart만 Node 이전 셸 진입점입니다. 컨텍스트에는 현재 커밋된 Git 트리의 허용 목록에 있는 블롭만 포함되며, 일반 `wizard/` 트리도 `system-monorepo-v1`에서 포함합니다. 과거 gitlink 소스는 검증된 별도 Wizard 스냅샷과 정확한 재귀 하위 모듈(`git submodule update --init --recursive`)도 필요합니다. Git 메타데이터, 비공개/무시된/추적되지 않은 파일 및 작업 사본 수정은 제외합니다. 패키징 전에 의도한 코드를 커밋하세요. 전체 체크아웃을 보내는 대체 경로는 없습니다.
 
-이미지는 Debian Bookworm/glibc에서 다이제스트로 고정된 Node 24.22.0/npm 11.19.1과
-Ruby 3.4.11을 Python 및 셸 도구와 함께 제공합니다. 커밋된 Sync 잠금 파일로 설치하고
-`npm run build`를 실행하며, prebuild는 자동 수정 없이 ESLint를 검사합니다. 빌드 중
-런타임과 공유 라이브러리 버전을 출력합니다. 이 Ruby 픽스처 런타임은 GitLab 내장
-Rails 런타임과 별개입니다.
+이미지는 Debian Bookworm/glibc에서 다이제스트로 고정한 Node 24.22.0/npm 11.19.1을 사용하며, 독립적인 ZIP/TOML 픽스처 오라클용 Python과 프로세스 및 과거 형식 검사용 셸/네이티브 도구를 포함합니다. Ruby 테스트 런타임은 설치하지 않습니다. 커밋된 Sync 잠금 파일을 설치하고 `npm run build`를 실행하며, prebuild는 자동 수정 없이 ESLint를 검사합니다. 빌드 중 런타임과 공유 라이브러리 버전을 출력합니다. 이 픽스처 의존성은 플랫폼 작업을 구현하지 않습니다.
 
 후보 이미지 준비 과정은 전체 플랫폼을 시작하기 전에 빌드된 Wizard의 실제
 구성 내보내기 도구로 `tests/wizard/configuration-routing-export.js`도 실행합니다.
@@ -86,6 +73,8 @@ docker run --rm --network none \
 | `shared/` | Runner/컨텍스트 계약, 정리/실패 전파, 비공개 데몬 수명 주기, 페이로드 전용 복구 및 로컬 ACME 픽스처 |
 | `performance/resources/` | 오프라인 리소스 수집기 계약 및 명시적 측정 도구 |
 
+콜드 복사/복원 오류 사례는 `operations/tests/storage-copy.test.cjs`에 통합되어 기존 operations 런타임 검사로 실행됩니다. 실제 rsync, 네이티브 find/runit 명령 픽스처 및 하위 프로세스 시간 제한을 사용하며 Docker/GitLab은 제어된 전송으로 유지합니다.
+
 정확한 검사 이름, 사전 요구사항 및 예산은 매니페스트가 기준입니다. 테스트는 임시 파일,
 합성 Git 저장소, 가상 Rails/Docker/API 전송 및 격리된 HTTP 프로세스를 사용합니다.
 픽스처 통과는 실제 레지스트리 이미지, 브라우저, Runner 또는 GitLab 파이프라인 통과를
@@ -125,7 +114,7 @@ docker run --rm --network none \
 
 `check:documentation`은 플랫폼의 기존 신뢰된 `docker` Runner 풀을 사용합니다.
 별도 문서 Runner나 조정자 등록은 필요하지 않습니다. 커밋된
-`tests/ci-documentation.sh` 부모는 해당 Runner의 Docker 권한으로 다이제스트 고정
+`node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR"` 부모는 해당 Runner의 Docker 권한으로 다이제스트 고정
 Node 자식을 사용자 1000으로 짧게 실행합니다. 네트워크, 호스트 소켓, 바인드 마운트,
 추가 capability 및 상속된 CI 자격 증명은 없습니다. 실제 검사기를 격리하는 것이며
 신뢰된 부모까지 격리하는 것은 아닙니다. 임의의 미검토 코드를 공유 소켓 Runner에
@@ -142,11 +131,11 @@ Node 자식을 사용자 1000으로 짧게 실행합니다. 네트워크, 호스
 또는 장기 리소스가 없습니다. 전체 검사에는 기존 `docker` Runner 태그와 리소스
 제한이 그대로 유지됩니다.
 
-Docker나 추가 린트 패키지 없이 기존 Ruby/Psych, Node 및 Git으로 선택 규칙과 문서
-회귀 검사를 재현하세요.
+Docker나 추가 lint 패키지 없이 고정된 operations YAML 파서, Node와 Git으로 선택 및 문서 회귀 검사를 재현하세요:
 
 ```sh
-ruby tests/gitlab/ci-selection.rb
+npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+node tests/gitlab/ci-selection.js
 node tests/gitlab/check-documentation.js
 ```
 
@@ -161,7 +150,7 @@ CI 자체 변경 시 필수 런타임 파이프라인을 대체하지 않습니�
 
 게시 전에 8개 구성 요소 매트릭스 작업이 실행됩니다. 각각 고정 Docker CLI,
 `services: []` 및 기존 `docker` Runner 태그를 사용하는 신뢰된 부모입니다.
-`sh tests/ci-isolated.sh <component>`를 호출하고 검증된 stdin 아카이브로 빌드한 뒤,
+`node operations/dist/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"`를 호출하고 검증된 stdin 아카이브로 빌드한 뒤,
 CI 자격 증명을 상속하지 않는 소켓 없는/네트워크 비활성 자식을 실행합니다. 작업의
 체크아웃 경로가 Docker 호스트에 없을 수도 있으므로 보고서는 `docker cp`로 가져옵니다.
 
@@ -244,7 +233,7 @@ CodeQL CLI에는 별도의 [라이선스 조건](https://github.com/github/codeq
 유료 구독을 구매하지 않습니다. Runner의 연산 및 저장 공간은 운영자가 부담합니다.
 
 `node tests/prepare-codeql.js`는 일반적인 Wizard 소스 준비 후 커밋된 입력을
-패키징합니다. `sh tests/ci-codeql.sh`는 선택한 신뢰된 Docker Runner에서 일반 CI
+패키징합니다. `node operations/dist/ci/entry.js codeql-parent "$CI_PROJECT_DIR"`는 선택한 신뢰된 Docker Runner에서 일반 CI
 식별 변수와 함께 검증된 컨텍스트를 실행합니다. 자식 컨테이너는 RAM 6 GiB와
 CPU 두 개로 제한하며 이미지 준비와 검사는 각각 최대 15분입니다. 이 정적
 작업은 폐기 가능한 플랫폼을 시작하지 않습니다. SARIF 결과, 추출 범위, 소스
@@ -255,11 +244,7 @@ CPU 두 개로 제한하며 이미지 준비와 검사는 각각 최대 15분입
 
 ## 명시적 라이브 어댑터
 
-`*/live/` 아래 스크립트는 운영자가 준비한 폐기 가능한 플랫폼이 필요합니다. 여러
-스크립트는 고정 `system_*` 이름, localhost 경로, 준비된 페이로드 및 비공개 자격 증명을
-사용합니다. 운영 환경이나 워크스테이션 설치를 대상으로 해서는 안 됩니다. Ruby
-감사는 GitLab 내장 Rails에서 실행되며 Python 드라이버는 Python 3이 필요합니다.
-격리 실행기는 glob 검색으로 이를 실행하지 않습니다.
+`*/live/` 아래 스크립트는 운영자가 준비한 폐기 가능한 플랫폼이 필요합니다. 일부는 고정 `system_*` 이름, localhost 경로, 준비된 페이로드와 비공개 자격 증명을 사용합니다. Production이나 워크스테이션 설치를 대상으로 하면 안 됩니다. 네이티브 감사는 검토한 컨트롤러 내부에서 기존의 준비된 자동화 자격 증명을 초기화하거나 갱신하지 않고 재사용합니다. Runner 변경에는 폐기 가능한 프로젝트에 대한 명시적 동의와 불변 작업 이미지가 필요합니다. 격리 실행기는 glob 검색으로 이들을 실행하지 않습니다.
 
 `wizard/live/build.js`에는 `SYSTEM_WIZARD_LIVE_ACCEPTANCE=true`와 명시적 숫자
 `SYSTEM_WIZARD_EXPECTED_PROJECT`가 필요합니다. Sync 자격 증명은 명령 인수나 로그가
@@ -274,3 +259,9 @@ CPU 두 개로 제한하며 이미지 준비와 검사는 각각 최대 15분입
 빌드 승인만으로 MR 실패, Review/Beta, 운영 환경 승격 또는 롤백을 입증하지 않습니다.
 해당 명시적 작업에는 각 [환경](../project-bootstrap/wizard-environments/README.md) 및
 [운영 환경](../project-bootstrap/wizard-production/README.md) 절차를 사용하세요.
+
+호스트 릴리스 회귀 검사는 `tests/bootstrapper/paired-native-fixture.cjs`와 기존 `operations/tests/host-*.test.cjs` 모음을 통해 컴파일된 공유 Nest 서비스를 호출합니다. Docker/Git 및 준비 포트는 제어된 픽스처이며 실제 파일 시스템, Git, 프로세스 소유권 및 advisory 잠금은 계속 로컬에서 검사합니다. 오류 행렬은 거부마다 플랫폼을 새로 만들지 않고 소스/이미지 권한, 변경 전 거부, 중단된 소유권, 설정 드리프트, 콜드 체크포인트와 복구 실패를 검사합니다.
+
+`tests/bootstrapper/public-controller-update.cjs`와 `public-upgrade.cjs`는 공유 서비스를 통해 쌍 업데이트, 계획/적용/복구 및 API에 의존하지 않는 롤백을 검사합니다. 정지한 컨트롤러의 전체 행렬은 `operations/tests/host-runtime-inspection.test.cjs`에 있습니다. 공개 업그레이드 픽스처는 과거 게시도 포함해 일치하는 릴리스 체크아웃 버전을 선택하며, 더 새로운 체크아웃에서 데이터베이스 마이그레이션 증거를 추론하지 않습니다.
+
+쌍의 고정 이미지 보존 시나리오는 정확히 보관한 쌍을 롤백하므로 별도 롤백 스모크 검사에서 동일한 성공 업데이트를 다시 만들지 않습니다. 중지 상태 복구 성공 검사는 시작 후 경로, 인증된 Sync, Runner 연결이 모두 실행되는지 확인합니다. 시작 후 준비 실패 한 건은 보존된 lease/저널 경계를 검사합니다. 직접 네이티브 런타임 검사는 원격 준비 포트마다 전체 복구를 반복하지 않고 잘못된 Wizard 경로와 오래된 Runner 연결을 검사합니다.

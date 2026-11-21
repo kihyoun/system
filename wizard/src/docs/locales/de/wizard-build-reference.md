@@ -33,12 +33,7 @@ Plattformressourcen.
 
 ## Aktivierung und Wiederaufnahme
 
-Das Sync-Modul stellt Vorschau-, Aktivierungs- und Statusfunktionen bereit.
-Der Server bewahrt den Quellcode-Importbeleg und speichert ein separates
-Version-1-Objekt `build`. Es verlangt den exakten angezeigten Rezept-Hash,
-abgeschlossene verwaltete Quellcoderegistrierung und eine konfigurierte lokale
-Registry. Temporäre GitLab-API-Zugangsdaten bleiben im bestehenden Rails-Adapter
-und werden durch dessen äußeren Ensure-Block widerrufen.
+Das Sync-Modul bietet Vorschau, Aktivierung und Status. Der Server erhält den Quellimport-Nachweis und speichert ein separates versioniertes `build`-Objekt der Version 1. Er verlangt den exakten vorgeschauten Rezept-Hash, abgeschlossene verwaltete Quellregistrierung und eine konfigurierte lokale Registry. Eine geprüfte projektgebundene Kennung wird über den gemeinsamen Zugangsdienst bezogen; private Token-Journale bleiben im GitLab-Konfigurationsvolume.
 
 Der Adapter prüft Repository-Eigentum, Quellcodemarkierung, Standardbranch und
 das erwartete deaktivierte Grundgerüst. Die Rezeptinstallation ist ein
@@ -75,7 +70,7 @@ Pipeline-Identitäten für die Untersuchung bei.
 
 ## Prüfbedingungen
 
-Fixtures sind `tests/gitlab/wizard-build.rb`, `tests/wizard/build-recipe.js`
+Fixtures sind `tests/gitlab/wizard-build.js`, `tests/wizard/build-recipe.js`
 und `tests/wizard/build-workflow.js`; das gemeinsame Testmanifest wählt die
 isolierten Prüfungen aus. Frische Installation anhand der Lockdatei, tatsächliche
 Prüfungen mit der gewählten Werkzeugkette, Kandidaten-HTTP-/Browserprüfungen
@@ -199,3 +194,11 @@ Um das exakte Smoke-Skript gegen einen isolierten lokalen Build auszuführen, se
 `WIZARD_BASE_URL` auf dessen HTTP-Ursprung und `WIZARD_EVIDENCE_DIR` auf ein privates
 Ausgabeverzeichnis. Die Standardwerte im verwalteten Container bleiben `http://wizard-candidate`
 und `/evidence`; alle Anfragen außerhalb des gewählten Ursprungs werden blockiert.
+
+Neue Node-24-Quellsnapshots mit `.gitlab/producer-v2.json` wählen `node24-vite8-typed-v6`. Dessen `.system-bootstrapper/build-v2`-Dateien enthalten die geprüfte portable Laufzeit, Dockerfiles, Browserprüfungen und das CA-Bundle. Jobs rufen gemeinsame Nest-Operationsdienste mit `node .../runtime/project-ci.cjs build` oder `verify` auf; Node-Alpine-Jobs rufen zuerst `prepare-runtime` mit dem build-v2-Verzeichnis auf. Die Anwendung bleibt eine von Nginx ausgelieferte statische SPA.
+
+Die versionierte Laufzeit in `typed-v6/runtime` ist Teil des reservierten Rezept-Hashes. Bewahre diese Bytes bei Einführung eines Nachfolgerezepts; eine Änderung des aktuellen portablen Bundles erlaubt nicht das Umschreiben einer bestehenden Reservierung. Ein neuer Quellsnapshot mit einer vom versionierten Rezept abweichenden Laufzeit wird bei der Auswahl abgelehnt, bis ein geprüftes Nachfolgeprofil vorliegt. Bestehende build-v1-Rezeptauswahlen und Hashes bleiben exakt erhalten. An v6 gebundene Umgebungsreservierungen erzeugen manuelle Review- und Beta-Jobs über dieselbe Laufzeit; historische environment-v1-Auswahlen lesen die archivierten Skripte in `wizard-environments/historical`.
+
+Verwaltete Build-Aktivierung und Status verwenden `ManagedBuildService` über den gemeinsamen Operationsbefehl `managed-recipe` und die Sync-API. Die native Sitzung erhält den historischen projekt- und operationsbezogenen PostgreSQL-Advisory-Schlüssel. Git-Commits verwenden geschützte Dateiaktualisierungen; die Pipeline-Erstellung zeichnet zuerst ihren Operations-Checkpoint auf. Private Schreibnachweise überstehen verlorene Antworten ohne erneute Anfrage. Der Status prüft dasselbe reservierte Rezept, erforderliche Jobs und Artefakt-Digest und startet niemals eine Pipeline. Der Abgleich sucht nur nach dem exakten Commit und prüft höchstens 20 Pipeline-Variablensätze; mehrdeutige oder ausgeschöpfte Suchen werden abgelehnt.
+
+Führe nach dem Operations-Build `node tests/gitlab/wizard-build.js` aus, um atomare Installation, unterbrochene Anfragen, Quell-/Pipeline-Rennen sowie historische Jest- und aktuelle Vitest-Nachweisverträge ohne aktive GitLab-Instanz zu prüfen.

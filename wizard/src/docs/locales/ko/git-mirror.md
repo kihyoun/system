@@ -80,7 +80,7 @@ git submodule update --init wizard
 ```
 
 자격 증명이 삽입되지 않은 인증된 복제 URL을 사용하세요. `git submodule
-sync`는 로컬 재정의를 `.gitmodules` 값으로 대체하므로 동기화가 필요하면 비공개 매핑을 다시
+sync` replaces a local override with `.gitmodules` 값으로 대체하므로 동기화가 필요하면 비공개 매핑을 다시
 적용하세요. System CI에서 `prepare:wizard-source`는 `GIT_SUBMODULE_STRATEGY: none`으로
 Runner의 자동 서브모듈 체크아웃을 비활성화합니다. 이어서 `gitlab/prepare-wizard-source.js`가
 소스 패키징 전에 구성된 비공개 선택자로 정확한 gitlink를 초기화하고 검증합니다. 이 준비 단계
@@ -89,10 +89,7 @@ Runner의 자동 서브모듈 체크아웃을 비활성화합니다. 이어서 `
 
 ## 도우미 계약
 
-`gitlab/github-backup.sh`는 의도한 기본 GitLab 프로젝트를 가리키는 `origin`이 있는
-체크아웃에서 실행됩니다. CI 통합은 고정된 Node 24 런타임, Git, OpenSSH 클라이언트/에이전트,
-`mkdir`와 `rmdir`가 있는 POSIX 셸을 제공합니다. 동반 파일 `github-backup-transport.js`를
-셸 도우미 옆에 두세요. 구성은 보호된 CI 작업에서 옵니다.
+`node operations/dist/mirror/entry.js ci`는 `origin`이 의도한 기본 GitLab 프로젝트를 가리키는 체크아웃에서 실행됩니다. 먼저 고정 Node 런타임과 컴파일한 operations 패키지를 준비하세요. 공유 `MirrorModule`이 네이티브 Git/OpenSSH 도구를 통해 전송, 잠금, 정리를 담당합니다. 설정은 보호된 CI 작업에서 가져옵니다.
 
 | 변수 | 필수 값 |
 | --- | --- |

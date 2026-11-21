@@ -1,9 +1,6 @@
 # Komponenten- und Plattformtests
 
-Tests sind nach der von ihnen geprüften Infrastrukturkomponente gruppiert. JavaScript,
-Bash, Python und Ruby bleiben erhalten, wo sie nützlich sind. Der isolierte Runner führt
-nur das ausdrückliche [Manifest](manifest.json) aus; er entdeckt niemals `live/`-Skripte
-und startet keine Plattform automatisch.
+Tests sind nach der geprüften Infrastrukturkomponente gruppiert. Native TypeScript-Dienste werden über Node-Fixtures geprüft. Der isolierte Runner führt nur das ausdrückliche [Manifest](manifest.json) aus; er entdeckt keine `live/`-Skripte und startet keine Plattform automatisch.
 
 ## Isolierte Prüfungen nachbilden
 
@@ -17,21 +14,9 @@ docker run --rm --network none system-component-tests all
 docker run --rm --network none system-component-tests sync
 ```
 
-Binden Sie weder Docker-Socket noch private Konfiguration, Host-Netzwerk oder Plattform-
-Volumes in dieses Kind ein. Fehlt Node auf dem vertrauenswürdigen Host,
-bietet `node project-bootstrap/wizard-source/package.js` den Ersatzweg zur Quellcode-
-paketierung. Der Kontext enthält nur erlaubte Blobs aus dem aktuellen versionierten
-Git-Baum einschließlich des regulären `wizard/`-Baums bei `system-monorepo-v1`.
-Historische Gitlink-Quellen benötigen zusätzlich den validierten separaten Wizard-Snapshot
-und exakte rekursive Submodule (`git submodule update --init --recursive`). Er schließt
-Git-Metadaten, private/ignorierte/unversionierte Dateien und Arbeitskopieänderungen aus. Committen Sie den
-beabsichtigten Code vor der Paketierung; kein Ersatzweg sendet den gesamten Checkout.
+Binde weder Docker-Socket noch private Konfiguration, Host-Netzwerk oder Plattform-Volumes in dieses Kind ein. Bereite die festgelegte Node-Laufzeit und das Operations-Paket vor der Quellpaketierung vor; der erste Quickstart ist der einzige Shell-Einstieg vor Node. Der Kontext enthält nur erlaubte Blobs aus dem aktuellen versionierten Git-Baum einschließlich des regulären `wizard/`-Baums für `system-monorepo-v1`. Historische Gitlink-Quellen benötigen zusätzlich den validierten separaten Wizard-Snapshot und exakte rekursive Submodule (`git submodule update --init --recursive`). Er schließt Git-Metadaten, private/ignorierte/unversionierte Dateien und Arbeitskopieänderungen aus. Committe den beabsichtigten Code vor der Paketierung; kein Ersatzweg sendet den gesamten Checkout.
 
-Das Image kombiniert per Digest festgelegtes Node 24.22.0/npm 11.19.1 und Ruby 3.4.11 auf
-Debian Bookworm/glibc mit Python und Shell-Werkzeugen. Es installiert die versionierte Sync-
-Lockdatei und führt `npm run build` aus, dessen Prebuild ESLint ohne automatische Korrektur prüft.
-Laufzeit- und gemeinsame Bibliotheksversionen werden beim Bau ausgegeben. Diese Ruby-
-Testlaufzeit ist von GitLabs eingebetteter Rails-Laufzeit getrennt.
+Das Image nutzt per Digest festgelegtes Node 24.22.0/npm 11.19.1 auf Debian Bookworm/glibc, mit Python für unabhängige ZIP-/TOML-Fixture-Orakel und Shell-/nativen Werkzeugen für Prozess- und historische Formatprüfungen. Eine Ruby-Testlaufzeit wird nicht installiert. Es installiert die versionierte Sync-Lockdatei und führt `npm run build` aus, dessen Prebuild ESLint ohne automatische Korrektur prüft. Laufzeit- und Bibliotheksversionen werden beim Bau ausgegeben. Diese Fixture-Abhängigkeiten implementieren keine Plattformoperationen.
 
 Die Vorbereitung der Kandidaten-Images führt außerdem
 `tests/wizard/configuration-routing-export.js` mit dem tatsächlichen
@@ -93,6 +78,8 @@ den Controller der Public-Upgrade-Testumgebung nach manuellem Austausch und beim
 | `shared/` | Runner-/Kontextverträge, Bereinigung/Fehlerweitergabe, Lebenszyklus privater Daemons, Wiederherstellung nur aus Nutzdaten und lokale ACME-Testumgebungen |
 | `performance/resources/` | Offline-Verträge zur Ressourcenerfassung und ausdrückliche Messwerkzeuge |
 
+Kaltkopie-/Wiederherstellungsfehlerfälle sind in `operations/tests/storage-copy.test.cjs` zusammengefasst und laufen in der bestehenden Operations-Laufzeitprüfung. Sie verwenden echtes rsync, native find-/runit-Befehlsfixtures und Subprozess-Zeitlimits; Docker/GitLab bleiben kontrollierte Transporte.
+
 Das Manifest ist maßgeblich für exakte Prüfnamen, Voraussetzungen und Budgets.
 Tests verwenden temporäre Dateien, synthetische Git-Repositorys, nachgebildete Rails-/Docker-/API-
 Transporte und isolierte HTTP-Prozesse. Ein erfolgreicher Test belegt nicht,
@@ -136,7 +123,7 @@ bedingt und die Production-Freigabe manuell.
 
 `check:documentation` verwendet den bestehenden vertrauenswürdigen `docker`-Runner-Pool der Plattform;
 weder ein separater Dokumentationsrunner noch eine Koordinatorregistrierung sind erforderlich. Sein
-versionierter Elternprozess `tests/ci-documentation.sh` nutzt die Docker-Befugnis dieses Runners,
+versionierter Elternprozess `node operations/dist/ci/entry.js documentation "$CI_PROJECT_DIR"` nutzt die Docker-Befugnis dieses Runners,
 um ein kurzlebiges, per Digest festgelegtes Node-Kind als Benutzer 1000 ohne Netzwerk,
 Host-Socket, Bind-Mounts, zusätzliche Fähigkeiten oder geerbte CI-Zugangsdaten zu starten. Dies
 isoliert die eigentliche Prüfung, nicht den vertrauenswürdigen Elternprozess: Beliebiger ungeprüfter Code
@@ -155,11 +142,11 @@ Der Dokumentationspfad behält sein dreiminütiges Job-Budget und hat keine Lauf
 Artefakte, Builds, Plattformtests oder langlebigen Ressourcen. Bestehende `docker`-Runner-
 Tags und Ressourcengrenzen bleiben für vollständige Prüfungen unverändert.
 
-Bilden Sie Auswahl- und Dokumentationsregressionen mit vorhandenem Ruby/Psych,
-Node und Git nach, ohne Docker oder zusätzliche Lint-Pakete:
+Bilde Auswahl- und Dokumentationsregressionen mit dem festgelegten Operations-YAML-Parser, Node und Git nach, ohne Docker oder zusätzliche Lint-Pakete:
 
 ```sh
-ruby tests/gitlab/ci-selection.rb
+npm --prefix operations ci --ignore-scripts --no-audit --no-fund
+node tests/gitlab/ci-selection.js
 node tests/gitlab/check-documentation.js
 ```
 
@@ -175,7 +162,7 @@ veraltete Artefakte führen vor der Docker-Ausführung zum Fehler.
 
 Acht Komponentenmatrix-Jobs laufen vor der Veröffentlichung. Jeder ist ein vertrauenswürdiger Elternprozess
 mit festgelegter Docker CLI, `services: []` und dem bestehenden Runner-Tag `docker`.
-Er ruft `sh tests/ci-isolated.sh <component>` auf, baut aus dem geprüften stdin-
+Er ruft `node operations/dist/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"` auf, baut aus dem geprüften stdin-
 Archiv und führt dann ein socketfreies, netzwerkdeaktiviertes Kind ohne geerbte CI-
 Zugangsdaten aus. Berichte verlassen es über `docker cp`, da der Checkout-Pfad eines Jobs
 auf dem Docker-Host nicht existieren muss.
@@ -266,7 +253,7 @@ und der Job schließt kein Abonnement ab. Rechenleistung und Speicher des Runner
 liegen weiterhin in der Verantwortung des Betreibers.
 
 `node tests/prepare-codeql.js` paketiert nach der normalen Wizard-Quellvorbereitung
-die versionierten Eingaben. `sh tests/ci-codeql.sh` führt diesen geprüften Kontext
+die versionierten Eingaben. `node operations/dist/ci/entry.js codeql-parent "$CI_PROJECT_DIR"` führt diesen geprüften Kontext
 auf dem ausgewählten vertrauenswürdigen Docker-Runner mit dessen üblichen
 CI-Identitätsvariablen aus. Der Kindcontainer ist auf 6 GiB RAM und zwei CPUs
 begrenzt; Image-Vorbereitung und Scan haben jeweils ein Zeitlimit von 15 Minuten.
@@ -279,11 +266,7 @@ mit dieser Standard-Sicherheitsprüfung gleichzusetzen.
 
 ## Ausdrückliche Live-Adapter
 
-Skripte unter `*/live/` verlangen eine vom Betreiber vorbereitete verwerfbare Plattform. Einige
-verwenden feste `system_*`-Namen, localhost-Routen, vorbereitete Nutzdaten und private
-Zugangsdaten. Sie dürfen weder Production noch eine Arbeitsplatzinstallation ansprechen.
-Ruby-Prüfungen laufen innerhalb von GitLabs eingebettetem Rails; Python-Treiber benötigen Python 3.
-Der isolierte Runner führt sie niemals durch Glob-Suche aus.
+Skripte unter `*/live/` benötigen eine vom Betreiber vorbereitete verwerfbare Plattform. Einige verwenden feste `system_*`-Namen, localhost-Routen, vorbereitete Nutzdaten und private Zugangsdaten. Sie dürfen weder Production noch eine Arbeitsplatzinstallation ansprechen. Native Prüfungen laufen im geprüften Controller und verwenden die bestehende einsatzbereite Automatisierungskennung ohne Initialisierung oder Erneuerung. Runner-Änderungen verlangen ausdrückliche Zustimmung zu einem verwerfbaren Projekt und ein unveränderliches Job-Image. Der isolierte Runner führt sie niemals durch Glob-Suche aus.
 
 `wizard/live/build.js` verlangt `SYSTEM_WIZARD_LIVE_ACCEPTANCE=true` und ein ausdrückliches
 numerisches `SYSTEM_WIZARD_EXPECTED_PROJECT`. Übergeben Sie Sync-Zugangsdaten privat in
@@ -301,3 +284,9 @@ Review/Beta noch Production-Freigabe oder Rollback. Verwenden Sie die entspreche
 [Umgebungs-](../project-bootstrap/wizard-environments/README.md) und
 [Production-Verfahren](../project-bootstrap/wizard-production/README.md) für
 diese ausdrücklichen Vorgänge.
+
+Host-Release-Regressionsprüfungen rufen kompilierte gemeinsame Nest-Dienste über `tests/bootstrapper/paired-native-fixture.cjs` und bestehende `operations/tests/host-*.test.cjs`-Suiten auf. Docker/Git und Bereitschaftsports sind kontrollierte Fixtures; echtes Dateisystem, Git, Prozesseigentümerschaft und Advisory-Sperren werden weiterhin lokal geprüft. Fehlermatrizen decken Quell-/Image-Autorität, Ablehnungen vor Änderungen, unterbrochene Eigentümerschaft, Konfigurationsabweichungen, Kalt-Checkpoints und Wiederherstellungsfehler ab, ohne für jede Ablehnung eine weitere Plattform aufzubauen.
+
+`tests/bootstrapper/public-controller-update.cjs` und `public-upgrade.cjs` prüfen Paar-Update, Plan/Apply/Wiederherstellung und API-unabhängigen Rollback über die gemeinsamen Dienste. Die vollständige Matrix für ruhende Controller liegt in `operations/tests/host-runtime-inspection.test.cjs`. Öffentliche Upgrade-Fixtures wählen die passende Release-Checkout-Version einschließlich historischer Veröffentlichungen; sie leiten Datenbankmigrationsnachweise niemals aus einem neueren Checkout ab.
+
+Das Szenario zum Erhalt der Paar-Pins setzt auch sein exakt beibehaltenes Paar zurück und baut daher kein identisches erfolgreiches Update in einem separaten Rollback-Kurztest. Eine erfolgreiche Reparatur bei gestopptem Controller prüft, dass Routen, authentifiziertes Sync und Runner-Kontakte nach dem Start ausgeführt werden. Ein Bereitschaftsfehler nach dem Start prüft die erhaltene Lease-/Journalgrenze; direkte native Laufzeittests prüfen falsche Wizard-Routen und veraltete Runner-Kontakte, ohne für jeden entfernten Bereitschaftsport eine ganze Reparatur zu wiederholen.

@@ -64,7 +64,7 @@ Entwickler können die Basis mit dem bestehenden eigenständigen Build-Kontext b
 docker build -t system-runtime:candidate ./bootstrapper
 ```
 
-Das vollständige System-Image führt ebenfalls `bootstrapper/install-runtime.sh` aus seinem
+Das vollständige System-Image führt ebenfalls `bootstrapper/install-runtime.js` aus seinem
 Repository-Build-Kontext aus. Es beginnt mit demselben offiziellen, per Digest festgelegten Node-
 24.22.0-/Alpine-3.24-Image, statt eine separat veröffentlichte System-
 Basis zu verlangen. Das gemeinsame Installationsprogramm prüft Node 24.22.0 und npm 11.19.1, bevor es
@@ -118,11 +118,11 @@ Verwenden Sie für einen abgeschlossenen externen Seed und die passende private 
 versionierten Host-Einstiegspunkt, bevor schreibende Dienste starten. Bereiten Sie zuerst die leeren Live-
 Grundverzeichnisse mit `bootstrapper/persistence.js` und dem privaten Host-Selektor vor, wie
 im [Verfahren für neue Ziele](../docs/RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation) gezeigt.
-Die schreibgeschützte Vorprüfung verlangt, dass diese Verzeichnisse existieren:
+Die schreibgeschützte Vorprüfung verlangt, dass diese Verzeichnisse existieren. Diese Beispiele verwenden die beibehaltene Quickstart-Node-Datei; eine Quellinstallation setzt ihre ausdrücklich vorbereitete Node-Datei ein.
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/seed-operation.js restore \
+  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --configuration-backup /root/recovery/bootstrapper.zip \
   --check-only
@@ -145,12 +145,12 @@ GitLab der Installation nicht verfügbar, kann ein unabhängig verfügbarer Spie
 Quellcode-Bundle dieselben geprüften Git-Objekte liefern. Das Werkzeug patcht,
 aktualisiert oder klont sich während der Initialisierung niemals selbst.
 
-`initialize.js` behandelt den Austausch eines Hosts bei Erhalt **aktiver** Dienstdaten.
+`node bootstrapper/initialize.js` behandelt den Austausch eines Hosts bei Erhalt **aktiver** Dienstdaten.
 Es formatiert kein Dateisystem, stellt keine ersten Zertifikate aus, migriert keine GitLab-Versionen,
 wendet keinen Seed an und macht aus einem leeren Dateisystem keine bestehende Installation. Folgen Sie
 bei einer Neuinstallation dem Erstinstallationsweg im [Handbuch](../docs/HANDBOOK.md).
 
-Erforderlich sind root-Zugriff unter unterstütztem Ubuntu, Git und Python 3, ausgewählter
+Erforderlich sind root-Zugriff unter unterstütztem Ubuntu, Git und die festgelegte Node-Laufzeit, ausgewählter
 lokaler oder ausdrücklich volumegestützter Live-Speicher, gespeicherte Konfiguration und das
 unten beschriebene Wiederherstellungsmanifest. Ein ausgewähltes Live-Volume muss bereits
 eingebunden sein; der lokale Modus verwendet das Systemlaufwerk. Das normale Host-Installationsprogramm liefert
@@ -159,7 +159,7 @@ Docker; Certbot wird ebenfalls installiert, wenn
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/initialize.sh \
+  node bootstrapper/initialize.js \
   --install-host \
   --receipt-dir /var/log/system-bootstrapper/initialize-example \
   --timeout 1200 \
@@ -731,7 +731,7 @@ vorherigen Controller und die Konfiguration auf denselben alten GitLab-Daten wie
 niemals diese Datenbank zurück. Ein geändertes GitLab-Image oder eine abgeschlossene Migration verhindern diesen Weg:
 Nutzen Sie stattdessen die geprüfte Datenbankcheckpoint-Wiederherstellung des GitLab-Upgrade-Helfers.
 Abgeschlossene Controller-Freigaben werden nicht als unterbrochene Vorgänge behandelt.
-Host-Befehle laufen durch den versionierten Wächter `host-child.py`: Er erbt einen
+Host-Befehle laufen durch den versionierten Wächter `ControllerLeaseService`: Er erbt einen
 stabilen Dateisystemschutz, verzeichnet PID-/Start-/Prozessgruppenidentität vor Freigabe
 einer Worker-Startbarriere und begrenzt und beendet die gesamte zugehörige Befehlsgruppe.
 Die Übernahme lehnt lebende Koordinatoren, Wächter oder Worker-Gruppen ab, auch nach einem
@@ -744,7 +744,7 @@ Aktualisieren Sie nach erfolgreicher GitLab-Migration die aufbewahrten Wiederher
 die VM löschen oder auf einen späteren Hostaustausch vertrauen:
 
 ```sh
-sudo python3 bootstrapper/record-recovery-images.py \
+sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -776,23 +776,15 @@ GitLab-Installation.
 
 ## Native Host-Laufzeit vorbereiten
 
-Quickstart installiert nvm **0.41.0** aus dem festgelegten Commit mit geprüftem
-Skript-Hash und installiert darüber Node **24.22.0**. Die eigene Installation liegt
-unter `/opt/system-bootstrapper-runtime`; vorhandene nvm-Installationen,
-Standardversionen und Shell-Profile der Benutzer bleiben erhalten. Auch der Hash
-des von nvm geladenen Node-Archivs wird geprüft. Kompilierte Operations-Dateien
-und Abhängigkeiten stammen aus dem akzeptierten Controller-Image; der dafür
-angelegte Container wird nicht gestartet. Ein npm-Installationslauf auf dem Host
-ist nicht erforderlich.
+Quickstart prüft das festgelegte nvm-Skript und das Node-**24.22.0**-Archiv und installiert anschließend das exakte akzeptierte CLI-Archiv mit gebündelten Abhängigkeiten offline und mit deaktivierten npm-Skripten. Die akzeptierten Release-Metadaten binden dieses Archiv an dieselbe getestete Quellrevision und denselben Baum wie Controller und Wizard. Die eigene Laufzeit liegt unter `/opt/system-bootstrapper-runtime`.
 
-Beim manuellen Weg zuerst die nativen Host-Abhängigkeiten installieren, den
-geprüften Release-Checkout wählen und die öffentlichen Metadaten verifizieren.
-Danach vor dem Release-Installer ausführen:
+Bereite die Laufzeit eines ausdrücklich ausgewählten akzeptierten Releases vor der Wiederherstellung vor:
 
 ```sh
-sudo python3 bootstrapper/prepare-host-runtime.py \
-  --checkout "$PWD" --release-metadata /absolute/path/release.json
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
 ```
+
+Rufe die beibehaltene CLI mit einem ausdrücklich geprüften Checkout auf. Dieser Modus installiert nur die Node-/CLI-Laufzeit; er startet die Plattform nicht und stellt sie nicht wieder her. Bewahre beim Vorbereiten einer Offline-Wiederherstellung die kompilierten Operations-Dateien des Checkouts auf.
 
 Ein vorhandenes Laufzeitverzeichnis wird nicht überschrieben. Für Offline-Recovery
 müssen das Laufzeitverzeichnis sowie `operations/dist` und

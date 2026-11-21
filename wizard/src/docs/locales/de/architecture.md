@@ -61,20 +61,15 @@ Berechtigung. Dienste verwenden injizierte Prozess-, Konfigurations- und Nachwei
 - `ReleaseModule` bindet akzeptierte Quell-/Image-/Jobnachweise an unveränderliche
   Image-, GitHub- und npm-Veröffentlichung. Es aktualisiert keine laufende Installation.
 
-Das [Betriebsinventar](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md) ordnet öffentliche und
-Kompatibilitätseinstiege ihren Aufrufern, Berechtigungen, dauerhaften Besitznachweisen,
-nativen Werkzeugen, Fehlerpfaden und ausführbaren Tests zu. Dünne Einstiege rufen
-vorbereitete kompilierte Dienste auf. Verbleibende Python-Aufgaben für Host-Vorprüfung
-und Wiederherstellung werden dort ausdrücklich benannt und nicht als vollständig
-migrierte Adapter dargestellt.
+Das [Betriebsinventar](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md) ordnet öffentliche und Kompatibilitätseinstiege ihren Aufrufern, Berechtigungen, dauerhafter Eigentümerschaft, nativen Werkzeugen, Fehlerpfaden und ausführbaren Tests zu. Dünne Einstiege rufen vorbereitete kompilierte Nest-Dienste auf, die eigenständige CLI und API gemeinsam nutzen; aktuelle Host-Vorprüfung, Sicherungsabfragen, Freigabe und Wiederherstellung delegieren nicht mehr an Python-Programme.
 
 Bereiten Sie die [Host-Laufzeit](../Prepare-Host.md#prepare-the-host-operations-runtime)
 **vor** Host-Start/-Stopp, Persistenzprüfung, Installation oder Wiederherstellung vor.
 Quickstart übernimmt dies; Quellcodeentwickler bauen die Laufzeit vor Host-Befehlen.
 Behalten Sie Node, kompilierte Operationen und Abhängigkeiten für Offline-Recovery.
-Vorbereitende Bootstrap-Werkzeuge, OS-/Certbot-Einrichtung, GitLab-natives Ruby,
+Vorbereitende Bootstrap-Werkzeuge, OS-/Certbot-Einrichtung, die minimale Ruby-Ausnahme für den ersten GitLab-Token,
 eigenständige Kindprozess-Guardians und bytegenaue historische Build-Rezepte
-behalten eigene Verträge. Docker/Compose, NGINX, Git und `flock` bleiben native
+behalten eigene Verträge. GitLabs eigene deklarative Ruby-Konfiguration bleibt eine Upstream-Dienstschnittstelle. Docker/Compose, NGINX, Git und `flock` bleiben native
 Ausführungsgrenzen. Wizard-HTTP-Endpunkte, gespeicherte Konfiguration und Harvest/Seed bleiben kompatibel.
 
 ## Wegweiser für den Betrieb
@@ -246,7 +241,7 @@ Containerdefinitionen sind reproduzierbar; GitLab-Repositorys, Datenbanken, Regi
 
 | Pfad | Zweck in der vorhandenen Implementierung |
 | --- | --- |
-| `system-bootstrapper start --checkout /absolute/reviewed/source`, `system-bootstrapper stop --checkout /absolute/reviewed/source` | Dünne Host-Lebenszykluseinstiege zur vorbereiteten Betriebslaufzeit. |
+| `operations/dist/cli.js start/stop --checkout PATH` | Dünne Host-Lebenszykluseinstiege zur vorbereiteten Betriebslaufzeit. |
 | `bootstrapper/` | Basis-Image, Hostinitialisierung, Wiederherstellung, Laufzeitprüfung sowie akzeptierte Controller-Freigabe-/Exportwerkzeuge. |
 | `system/` | Zentrale Compose-Definition, Controller-Kompatibilitätseinstiege und Zustandsinitialisierung. |
 | `gitlab/` | GitLab-Konfiguration/Ruby-Adapter sowie Kompatibilitätseinstiege für typisierte Upgrades und Veröffentlichung. |

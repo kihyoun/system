@@ -134,7 +134,7 @@ Node는 이 갱신된 OpenSSL 신뢰 저장소를 사용합니다.
 ```sh
 node tests/wizard/build-recipe.js
 node tests/wizard/build-workflow.js
-ruby tests/gitlab/wizard-build.rb
+node tests/gitlab/wizard-build.js
 ```
 
 이 픽스처는 실행 중인 GitLab에 접속하지 않습니다. 전체 통합 검사에는 실제 소유 프로젝트,

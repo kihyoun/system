@@ -7,6 +7,7 @@ Weder der Ubuntu-Release-Name noch die Userspace-Distribution eines Images beleg
 Kompatibilität. Führen Sie die Repository-Vorprüfung **auf diesem Linux-x86_64-Host**
 aus, bevor Sie ein MongoDB-Image auswählen, den Host-Kernel ändern oder eine
 CI-Datenbank aktivieren:
+Verwende die von Quickstart vorbereitete festgelegte Node-Laufzeit. Bereite bei einem Quellcheckout zuerst die gemeinsamen Dienste mit `npm ci --prefix operations` und `npm run build --prefix operations` vor.
 
 ```sh
 node bootstrapper/container-preflight.js --mongodb-version 8.0.37
@@ -178,7 +179,7 @@ ohne Docker-Zugriff. Geben Sie bei eigenen Kerneinstellungen passende Optionen
 an oder exportieren Sie beide `SYSTEM_LOG_*`-Werte. Schreiben Sie keine private
 Hauptkonfiguration in einen Diagnosebericht.
 
-Der socketfreie Komponententest lautet `python3 tests/bootstrapper/host-operations.py`.
+Der socketfreie Komponententest lautet `node --test tests/bootstrapper/host-operations.js`.
 Bestehende Vorlagen-, Environment-Helper-, Runner- und Konfigurations-Roundtrip-Tests
 prüfen zusätzlich die Weitergabe der Richtlinie. Die Kandidaten-Image-Vorbereitung
 führt `tests/bootstrapper/log-rotation-docker.js` aus: Zwei verwerfbare

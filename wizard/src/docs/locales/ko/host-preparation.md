@@ -61,7 +61,7 @@ sudo /opt/system-bootstrapper-runtime/bin/node bootstrapper/install.js
 
 ## 네이티브 호스트 런타임 준비
 
-호스트의 `system-bootstrapper start --checkout /absolute/reviewed/source`, `system-bootstrapper stop --checkout /absolute/reviewed/source`, `bootstrapper/persistence.js`, 릴리스 설치 및 호스트 작업 진입점,
+호스트의 `start`, `stop`, `bootstrapper/persistence.js`, 릴리스 설치 및 호스트 작업 진입점,
 교체/복원 도구는 첫 호출 **전에** Node와 컴파일된 `operations`가 필요합니다. Docker만
 설치하거나 초기화 도구에 `--install-host`를 전달해도 이 런타임은 준비되지 않습니다.
 아래 준비 경로 중 하나를 선택하여 시작 절차나 복구 절차 전에 완료하세요.
@@ -71,7 +71,7 @@ nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
 `/opt/system-bootstrapper-runtime`이며 기존 사용자의 nvm 설치, 기본 버전과
 셸 프로필은 변경하지 않습니다. nvm이 내려받은 Node 압축 파일의 고정 해시도
 확인합니다. Quickstart는 검증된 CLI 아카이브와 포함된 의존성을 오프라인으로
-설치하며 설치 스크립트를 실행하지 않습니다. 이 컴파일된 파일을 동일한 승인
+설치하며 설치 스크립트를 실행하지 않습니다. 이 컴파일된 파일, 번들된 의존성과 정책 리소스를 동일한 승인
 소스 체크아웃에 복사하므로 다시 빌드할 필요가 없습니다.
 
 수동 설치에서는 먼저 검토된 릴리스의 소스를 체크아웃한 다음 [릴리스 안내](docs/RELEASES.md)에 따라 공개 메타데이터를 검증합니다.
@@ -80,17 +80,14 @@ nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
 ```sh
 SYSTEM_RELEASE_TAG='vMAJOR.MINOR.PATCH' # Exact reviewed public release
 sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
-# The checkout must match that release's verified source revision.
-test ! -e operations/dist && test ! -e operations/node_modules && \
+# The checkout must match the source revision in that release's verified metadata.
+test ! -e operations/dist && test ! -e operations/node_modules && test ! -e operations/assets && \
 sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets operations/assets
 ```
 
-기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
-런타임 디렉터리와 `operations/dist`, `operations/node_modules`를
-보존하세요. 도구는 저장된 Node 실행 파일의 절대 경로를 사용하므로 복구 중에는
-nvm, 셸 프로필이나 npm 네트워크 접근이 필요하지 않습니다. 실행 파일 경로는
-`/opt/system-bootstrapper-runtime/node-executable`에 기록됩니다.
+준비 과정은 기존 런타임 디렉터리를 덮어쓰지 않고 거부합니다. 오프라인 복구를 위해 이 디렉터리와 체크아웃의 `operations/dist`, `operations/node_modules`, `operations/assets`를 보관하세요. 호환성 도구는 저장된 절대 Node 실행 파일을 직접 선택하며 복구 중 셸 프로필을 읽거나 nvm을 호출하거나 npm에 연결하지 않습니다. 명시적인 네이티브 호출에는 `/opt/system-bootstrapper-runtime/bin/node`를 사용하세요.
 
 ### 사전 빌드된 컨트롤러 런타임 없이 소스 개발하기
 
@@ -125,11 +122,11 @@ test -f operations/dist/host-lifecycle/entry.js
 
 ```bash
 sudo env "PATH=$SYSTEM_NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  node operations/dist/cli.js start --checkout "$PWD"
+  "$SYSTEM_NODE_BIN/node" operations/dist/cli.js start --checkout "$PWD"
 ```
 
 `SYSTEM_NODE_BIN`을 유지하여 이후 `sudo env "PATH=..."` 호출에서
-`system-bootstrapper stop --checkout /absolute/reviewed/source`, `bootstrapper/persistence.js`, 네이티브 호스트 도구에 전달하세요. sudo는 보통 대화형
+`stop`, `bootstrapper/persistence.js`, 네이티브 호스트 도구에 전달하세요. sudo는 보통 대화형
 nvm PATH를 제거합니다. 또는 승인된 이미지 경로로 준비한 전용 런타임을 사용하세요.
 기존 승인 릴리스 프로필에서 빌드를 비활성화하지 않았다면 소스 시작은 여전히 컨트롤러와
 Wizard 이미지를 빌드합니다. 복구 기록에 필요한 이미지를 다시 빌드하여 대체해도 된다는
@@ -258,7 +255,7 @@ HTTPS를 사용하는 호스트에는 Certbot을 별도로 설치한 뒤
 정보와 대조해 검증합니다. 재설치를 업그레이드로 취급하지 않고, 기존 기본 구성이나 GitLab
 데이터가 있으면 거부합니다. 비공개 `configuration/.release-images.env`에는 두 릴리스
 이미지 선택자만 기록하고 빌드를 비활성화하여 기본 시작을 호출합니다. 이후 일반적인
-`sudo node operations/dist/cli.js start --checkout "$PWD"` 호출은 이 프로필을 재사용합니다. 저장된 기본 구성에 명시한 선택자가
+`sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` 호출은 이 프로필을 재사용합니다. 저장된 기본 구성에 명시한 선택자가
 여전히 우선합니다. Docker 설치를 아직 실행하지 않았다면 `--install-host`로 수행할 수
 있습니다. 이 설치 프로그램은 Seed 복원, 구성 ZIP 가져오기, 인증서 발급을 수행하지 않습니다.
 
@@ -352,7 +349,7 @@ Wizard 백업으로 유지하며, Wizard는 서비스 데이터 Seed를 다운�
 셸/rsync 회귀 검사는 임시 데이터와 픽스처 Docker 명령을 사용합니다.
 
 ```bash
-python3 tests/seed/recovery-contract.py
+node --test operations/tests/storage-copy.test.cjs
 ```
 
 실제 GitLab, Registry, Runner CI, 구성 내보내기, TLS 갱신을 함께 실행하려면
@@ -363,5 +360,5 @@ python3 tests/seed/recovery-contract.py
 준비된 호스트 런타임을 사용하세요. 소스 개발 경로에서는 위의 명시적 Node PATH를 전달하세요.
 
 ```bash
-sudo node operations/dist/cli.js stop --checkout "$PWD"
+sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js stop --checkout "$PWD"
 ```

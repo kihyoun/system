@@ -51,17 +51,14 @@ Angular, React, 일반 웹 프로젝트를 제공하며, NestJS는 내부 Sync �
 - `ReleaseModule`은 승인된 소스/이미지/작업 증거를 변경 불가능한 이미지, GitHub, npm
   게시와 연결합니다. 실행 중인 설치를 승격하지는 않습니다.
 
-[운영 목록](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md)은 공개 및 호환 진입점의 호출자, 권한, 영구
-소유권, 네이티브 도구, 실패 처리와 실행 가능한 테스트를 연결합니다. 얇은 진입점은 준비된
-컴파일 서비스를 호출합니다. 남아 있는 Python 호스트 사전 검사/복구 책임도 명시하며,
-모든 파일을 완전히 이전된 어댑터라고 설명하지 않습니다.
+[작업 목록](https://github.com/kihyoun/system/blob/HEAD/operations/ARCHITECTURE.md)은 공개 및 호환성 진입점, 호출자, 권한, 영구 소유권, 네이티브 도구, 실패 처리와 실행 가능한 검사를 연결합니다. 얇은 진입점은 독립 실행 CLI와 API가 공유하는 준비된 컴파일 Nest 서비스를 호출합니다. 현재 호스트 사전 검사, 백업 폴링, 승격 및 복구는 더 이상 Python 프로그램에 위임하지 않습니다.
 
 호스트 시작/중지, 영구 저장소 검사, 설치 또는 복구 **전에**
 [호스트 런타임](../Prepare-Host.md#prepare-the-host-operations-runtime)을 준비하세요.
 Quickstart는 이를 준비하며, 소스 개발자는 호스트 수명 주기 명령을 사용하기 전에 빌드합니다.
 오프라인 복구를 위해 Node, 컴파일된 운영 코드와 의존성을 보관하세요. 런타임 이전 부트스트랩,
-OS/Certbot 설정, GitLab 네이티브 Ruby, 독립 자식 프로세스 Guardian과 바이트 단위 식별이
-필요한 과거 빌드 레시피는 별도의 계약을 유지합니다. Docker/Compose, NGINX, Git,
+OS/Certbot 설정, 최초 GitLab 토큰을 위한 최소 Ruby 예외, 독립 자식 프로세스 Guardian과 바이트 단위 식별이
+필요한 과거 빌드 레시피는 별도의 계약을 유지합니다. GitLab 자체의 선언적 Ruby 설정은 업스트림 서비스 인터페이스로 유지됩니다. Docker/Compose, NGINX, Git,
 `flock`은 네이티브 실행 경계로 남습니다. Wizard HTTP 엔드포인트, 저장된 구성 및
 Harvest/Seed는 호환성을 유지합니다.
 
@@ -230,7 +227,7 @@ Engine 업데이트에는 자체 유지 관리 경로가 필요합니다.
 
 | 경로 | 기존 구현에서의 목적 |
 | --- | --- |
-| `system-bootstrapper start --checkout /absolute/reviewed/source`, `system-bootstrapper stop --checkout /absolute/reviewed/source` | 준비된 운영 런타임을 호출하는 얇은 호스트 수명 주기 진입점입니다. |
+| `operations/dist/cli.js start/stop --checkout PATH` | 준비된 운영 런타임을 호출하는 얇은 호스트 수명 주기 진입점입니다. |
 | `bootstrapper/` | 기반 이미지, 호스트 초기화, 복구, 런타임 검증, 승인된 컨트롤러 승격/내보내기 도구입니다. |
 | `system/` | 기본 Compose 정의, 컨트롤러 호환 진입점과 상태 초기화입니다. |
 | `gitlab/` | GitLab 구성/Ruby 어댑터와 타입이 지정된 업그레이드/게시 호환 진입점입니다. |

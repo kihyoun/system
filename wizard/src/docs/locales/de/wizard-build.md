@@ -157,7 +157,7 @@ Bestätigung, Fortsetzung, Fehler-/Statusdarstellung, Eigentum und Änderungssch
 ```sh
 node tests/wizard/build-recipe.js
 node tests/wizard/build-workflow.js
-ruby tests/gitlab/wizard-build.rb
+node tests/gitlab/wizard-build.js
 ```
 
 Diese Fixtures kontaktieren das laufende GitLab nicht. Vollständige

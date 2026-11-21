@@ -139,18 +139,15 @@ Harvest/복원/갱신 프로세스가 남아 있지 않은지 확인하고 필�
 
 ### Wizard 또는 호스트에서 실행하기
 
-대상을 사용할 수 있을 때 인증된 Wizard의 **Harvest**는 `system/seed-operation.js harvest`와
-같은 저장소 관리 디스패처를 사용합니다. 사용 가능한 승인된 전체 컨트롤러 이미지를
-사용하여 검토된 호스트 체크아웃에서 실행할 수도 있습니다. 실제 이미지 식별 정보를
-확인하고 기록한 다음 다음을 사용하세요.
+대상을 사용할 수 있으면 인증된 Wizard의 **Harvest**는 `system/seed-operation.js harvest`와 같은 저장소 소유 디스패처를 사용합니다. 대신 검토한 호스트 체크아웃에서 사용 가능한 승인된 전체 컨트롤러 이미지로 실행할 수 있습니다. 실제 이미지 식별 정보를 확인하고 기록한 다음 아래의 Quickstart가 준비한 Node 실행 파일을 사용하세요. 소스 설치는 `/opt/system-bootstrapper-runtime/bin/node` 대신 명시적으로 보관한 Node 실행 파일을 사용합니다.
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/seed-operation.js harvest \
+  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --check-only
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/seed-operation.js harvest \
+  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
 ```
 
@@ -180,7 +177,7 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     node bootstrapper/persistence.js
+     /opt/system-bootstrapper-runtime/bin/node bootstrapper/persistence.js
    ```
 
    이 단계는 컨테이너를 시작하지 않으며 백업 매체도 필요하지 않습니다. 새 대상에서는
@@ -196,12 +193,12 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     node bootstrapper/seed-operation.js restore \
+     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip \
      --check-only
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     node bootstrapper/seed-operation.js restore \
+     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip
    ```
@@ -225,7 +222,7 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
    디렉터리와 키 파일은 변경하지 않습니다. 보존 Seed도 변경하지 않습니다.
    필요하면 Certbot을 설치하고 `sudo node bootstrapper/install-volume-host.js`를
    실행하세요. webroot 갱신 경로를 새 라이브 디렉터리에 다시 바인딩하고 갱신/배포
-   통합을 설치합니다. 필수 이미지 선택자를 설정하고 `sudo node operations/dist/cli.js start --checkout "$PWD"`로 시작하세요.
+   통합을 설치합니다. 필수 이미지 선택자를 설정하고 `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"`로 시작하세요.
    이전 불변 이미지가 없으면 선택적 Review/Beta 도우미를 명시적으로 재프로비저닝하세요.
    [환경 절차](../project-bootstrap/wizard-environments/README.md)를 확인하세요.
    Runner 관리자/작업 공간은 구성과 복원 GitLab 상태에서 다시 만들어지므로 이전
@@ -247,14 +244,7 @@ System 소스 및 선언된 이미지 참조나 검증된 이미지 아카이브
 
 ### 복원된 비공개 Wizard 이미지 가져오기
 
-GitLab 시작 후 `system/ensure-wizard-image.sh`는 플랫폼 자체 레지스트리에서 누락된
-불변 Wizard 이미지를 복구합니다. 저장된 관리형 Wizard 영수증과 레지스트리/프로젝트
-식별 정보를 검증하고 GitLab/레지스트리 전용 프록시를 렌더링하며 GitLab 내부 준비 상태
-엔드포인트를 기다립니다. GitLab은 `read_registry`만 가진 프로젝트 배포 토큰을 만듭니다.
-Docker는 표준 입력으로 암호를 받고 새 비공개 임시 디렉터리에 로그인을 기록합니다.
-도우미는 정확한 저장 다이제스트를 가져와 검증하고 성공/실패 시 토큰을 폐기하며 임시
-로그인을 제거합니다. 이전 호스트 Docker 자격 증명은 복구 입력이 아닙니다.
-일반 공개 이미지 시작이나 이미 캐시된 정확한 고정값에는 토큰이 필요하지 않습니다.
+GitLab 시작 후 공유 Wizard 복구 서비스는 플랫폼 자체 레지스트리에서 누락된 불변 Wizard 이미지를 복구합니다. 저장된 관리 Wizard 영수증과 레지스트리/프로젝트 식별 정보를 확인하고 GitLab/레지스트리 전용 프록시를 생성하며 GitLab의 내부 준비 엔드포인트를 기다립니다. 검증된 로컬 컨트롤러 자격 증명은 GitLab의 문서화된 API로 프로젝트 배포 토큰을 요청합니다. 토큰은 `read_registry` 권한만 가지며 Docker는 표준 입력으로 암호를 받아 새 비공개 임시 디렉터리에 로그인을 저장합니다. 도우미는 정확히 저장된 다이제스트를 내려받아 확인하고 성공 또는 실패 시 토큰을 폐기하며 임시 로그인을 제거합니다. 이전 호스트 Docker 자격 증명은 복구 입력이 아닙니다.
 
 배포 토큰에는 안전 한도로 GitLab의 다음 날 UTC 만료가 적용되며 보통 즉시 폐기합니다.
 [GitLab 배포 토큰 문서](https://docs.gitlab.com/api/deploy_tokens/)를 확인하세요.
@@ -266,9 +256,11 @@ Docker는 표준 입력으로 암호를 받고 새 비공개 임시 디렉터리
 수 있도록 pending 파일을 유지하세요. 자격 증명 오류는 다른 이미지로 대체하지 않고
 Wizard와 프로젝트 서비스 전에 시작을 중단합니다.
 
+Harvest가 원격 GitLab 중지 명령의 완료를 확인하지 못하면 Seed 및 인증서 장벽을 유지하고 서비스를 재개하지 않습니다. 복구 전에 원격 작업자와 보관된 작업 소유권을 확인하세요. 클라이언트 시간 초과만으로 지연된 Docker 명령이 끝났음을 증명할 수 없습니다.
+
 ## 검증 범위
 
-`tests/seed/recovery-contract.py`는 픽스처 Docker 명령으로 실제 셸 스크립트와 rsync를
+`operations/tests/storage-copy.test.cjs`는 픽스처 Docker 명령으로 네이티브 서비스와 rsync를
 검사합니다. 복사 실패, 강제 종료, 버전 불일치, 손상, 완료 마커 누락, 활성 쓰기,
 갱신 잠금 및 중단 복사의 내구성을 포함합니다. Wizard 모델 회귀 검사는 리터럴 할당,
 JSON/ENV/ZIP 동등성 및 불변 서명을 검사합니다.

@@ -1,7 +1,7 @@
 # Schnellinstallation auf einem frischen Ubuntu-Host
 
 Führen Sie den Befehl auf Ihrem eigenen **frischen Ubuntu-24.04- oder 26.04-LTS-amd64-Host**
-mit root/sudo, curl, standardmäßigem Python 3, Internetzugang, **mindestens 8 GiB RAM**,
+mit root/sudo, curl, Internetzugang, **mindestens 8 GiB RAM**,
 40 GiB freiem Speicher im System-/Live-Daten-Dateisystem und 1 GiB für Quellcode aus.
 Reservieren Sie mehr Platz für Repositorys, Registry-Images, Builds und Backups.
 Ports 80 und 443 müssen frei sein. SSH-Zugang oder lokale Konsole müssen verfügbar bleiben.
@@ -12,12 +12,7 @@ oder der Firmware reservierten Speicher (7,5 GiB gemeldeter Speicher).
 curl -fsSL https://github.com/kihyoun/system/releases/latest/download/quickstart.sh | sudo bash
 ```
 
-Quickstart bereitet auch die festgelegte Host-Node-Laufzeit vor und kopiert passende
-kompilierte Operationen und Abhängigkeiten aus dem akzeptierten Controller, bevor
-Host-Lebenszykluswerkzeuge aufgerufen werden. Ein vorhandenes Benutzer-Node/nvm ist
-weder erforderlich noch wird es ersetzt. Manuelle Installation und Ersatzhost-Recovery
-müssen diese [Host-Laufzeiteingaben](../Prepare-Host.md#prepare-the-host-operations-runtime)
-gesondert vorbereiten oder wiederherstellen.
+Quickstart bereitet auch die festgelegte Host-Node-Laufzeit vor und kopiert die passenden kompilierten Operations-Dateien, Abhängigkeiten und Richtlinienressourcen aus dem geprüften CLI-Paket, bevor es Host-Lebenszykluswerkzeuge aufruft. Ein vorhandenes Benutzer-Node/nvm ist weder erforderlich noch wird es ersetzt. Manuelle Installation und Ersatzhost-Recovery müssen diese [Host-Laufzeiteingaben](../Prepare-Host.md#prepare-the-host-operations-runtime) gesondert vorbereiten oder wiederherstellen.
 
 Der Befehl lädt das repositoryeigene Installationsprogramm herunter und führt es als root aus.
 Sie können die `quickstart.sh` des Releases vor dem Ausführen prüfen. Das veröffentlichte
@@ -28,12 +23,7 @@ die passenden öffentlichen Images anhand ihrer Digests. Weder privates GitLab-K
 Job-Artefakt, Docker-Hub-Anmeldung noch lokale Versionsliste sind erforderlich.
 Öffentliche Registries und GitHub können anonyme Anfragen begrenzen.
 
-Das Installationsprogramm prüft Betriebssystem, Architektur, Berechtigungen, Ressourcen,
-Ports und vorhandene Installationspfade, bevor es Hostpakete ändert. Es übergibt die
-Abhängigkeiten an `bootstrapper/install.js` und den Start an `system-bootstrapper install`;
-es baut weder Ersatz-Images noch startet es GitLab vor der Browserkonfiguration.
-Das native Release-Installationsprogramm prüft erneut unveränderten Quellcode, Image-Labels,
-unveränderliche Digests, akzeptierte Image-IDs, denselben Kandidatenversuch und frischen persistenten Zustand.
+Das Installationsprogramm prüft Betriebssystem, Architektur, Berechtigungen, Ressourcen, Ports und bestehende Installationspfade, bevor es Hostpakete ändert. Seine gemeinsamen NestJS-Dienste bereiten Host-Abhängigkeiten vor und rufen das native Release-Installationsprogramm auf; es baut keine Ersatz-Images und startet GitLab nicht vor der Browserkonfiguration. Das native Release-Installationsprogramm prüft erneut sauberen Quellcode, Image-Labels, unveränderliche Digests, akzeptierte Image-IDs, denselben Kandidatenversuch und frischen persistenten Zustand.
 
 Paketinstallation, Quellcodedownloads, Image-Downloads und erster Start können jeweils
 mehrere Minuten dauern. Netzwerk und Hostressourcen bestimmen die Dauer. Ein Zeitlimit

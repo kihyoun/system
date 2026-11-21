@@ -228,7 +228,7 @@ Halten Sie die geprüfte Node-Installation, `operations/dist` und
    verwaltete Review-/Beta-Helfer benötigen einen eigenen sauberen Neuaufbau und
    eine ausdrückliche erneute Bereitstellung, falls ihr bisheriges lokales Image
    fehlt; siehe [Leitfaden für verwaltete Umgebungen](../project-bootstrap/wizard-environments/README.md).
-5. Führen Sie `sudo node operations/dist/cli.js start --checkout "$PWD"` aus diesem Checkout aus. Es prüft den Speicher,
+5. Führen Sie `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"` aus diesem Checkout aus. Es prüft den Speicher,
    erstellt den Controller und startet Dienste mit der aufbewahrten
    Konfiguration. Container-IPs, Netzwerke und Proxy-Konfiguration werden neu
    erstellt. Ändern Sie DNS, wenn sich die Host-Adresse geändert hat, und

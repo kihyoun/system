@@ -227,3 +227,5 @@ Quellinstallationsprüfung und Pipeline-Richtlinien für primäre Quellen sind t
 Operations-Fähigkeiten. Bauen Sie das Operations-Paket vor der Verwendung dieser
 Einstiege; akzeptierte Controller/Helfer enthalten seine kompilierte Laufzeit.
 Historische Rezeptgeneratoren bleiben Formatadapter und bewahren reservierte Bytes.
+
+Quellimport und nativer Build-Status teilen sich `WizardSourceOperationService` in der Operations-Laufzeit. Sync ruft den Zugangsdaten-CLI-Befehl `wizard-source` mit seiner gespeicherten Bindung über stdin auf. Der Dienst prüft die genaue Projekt-ID, Namespace, Pfad und Eigentümerschaft, bevor er eine projektgebundene Kennung bezieht. Der Import verwendet einen einzigen ausschließlich erstellenden Git-Commit mit geschützter CI-Dateiaktualisierung; ein erneuter Versuch prüft vollständige Importmarkierung und Dateiinhalte, bevor er einen früheren Commit akzeptiert. Der Status liest erforderliche native Jobs und Artefakte unabhängig von optionaler Spiegelveröffentlichung.

@@ -6,6 +6,7 @@
 Ubuntu 릴리스 이름이나 이미지 사용자 공간의 배포판만으로는 호환성을 입증할 수
 없습니다. MongoDB 이미지를 선택하거나 호스트 커널을 변경하거나 CI 데이터베이스를
 활성화하기 전에 **해당 Linux x86_64 호스트에서** 저장소의 사전 검사를 실행하세요.
+Quickstart가 준비한 고정 Node 런타임을 사용하세요. 소스 체크아웃에서는 먼저 `npm ci --prefix operations`와 `npm run build --prefix operations`로 공유 서비스를 준비하세요.
 
 ```sh
 node bootstrapper/container-preflight.js --mongodb-version 8.0.37
@@ -158,7 +159,7 @@ Docker를 사용할 수 없거나 입력이 잘못되면 종료 코드 2를 반�
 표시합니다. 사용자 정의 핵심 설정에는 일치하는 옵션을 명시하거나 두
 `SYSTEM_LOG_*` 값을 export하세요. 비공개 기본 구성을 진단 보고서에 출력하지 마세요.
 
-소켓을 사용하지 않는 구성 요소 테스트는 `python3 tests/bootstrapper/host-operations.py`입니다.
+소켓을 사용하지 않는 구성 요소 테스트는 `node --test tests/bootstrapper/host-operations.js`입니다.
 기존 템플릿, 환경 도우미, Runner 및 구성 왕복 테스트도 정책 전달을 검증합니다.
 후보 이미지 준비는 `tests/bootstrapper/log-rotation-docker.js`를 실행합니다.
 폐기 가능한 컨테이너 두 세대가 합성 데이터를 출력하고, Docker 로그를 다시 읽어

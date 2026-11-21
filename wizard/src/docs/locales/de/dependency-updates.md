@@ -11,8 +11,7 @@ niemals GitHub-Spiegel oder automatische Projektentdeckung.
 ## Einrichtung durch den Betreiber
 
 Verwenden Sie einen geprüften Checkout, nachdem die Konfiguration in den geschützten
-Standardbranch des System-Projekts gemergt wurde. Python 3 mit normalem HTTPS-CA-Vertrauen
-genügt. Halten Sie ein GitLab-Administrator-API-Token in einer Datei mit Modus 0600
+Standardbranch des System-Projekts gemergt wurde. Bereiten Sie die festgelegte Node-/Operations-Laufzeit mit normalem HTTPS-CA-Vertrauen vor. Halten Sie ein GitLab-Administrator-API-Token in einer Datei mit Modus 0600
 außerhalb des Checkouts. Es wird nur durch den Provisionierungsbefehl des Betreibers
 verwendet und gelangt nie in CI. Nutzen Sie eine echte, vom Betreiber kontrollierte
 E-Mail-Adresse für das dedizierte Konto.

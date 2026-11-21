@@ -373,7 +373,7 @@ GitLab 마이그레이션과 승인 후 같은 깨끗한 승인 체크아웃에�
 실행하세요.
 
 ```bash
-sudo python3 bootstrapper/record-recovery-images.py \
+sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
   --evidence /root/system-successor/candidate-results.json \

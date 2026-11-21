@@ -110,7 +110,7 @@ git submodule update --init wizard
 
 Verwenden Sie eine authentifizierte Clone-URL ohne eingebettete Zugangsdaten.
 `git submodule
-sync` ersetzt eine lokale Überschreibung durch `.gitmodules`;
+sync` replaces a local override with `.gitmodules`;
 wenden Sie die private Zuordnung daher erneut an, falls eine Synchronisierung
 erforderlich ist. In der System-CI deaktiviert `prepare:wizard-source` den
 automatischen Submodul-Checkout des Runners mit `GIT_SUBMODULE_STRATEGY: none`.
@@ -123,12 +123,7 @@ erfolgreichen GitHub-Lesezugriff benötigen, um fortzufahren.
 
 ## Vereinbarung des Helfers
 
-`gitlab/github-backup.sh` läuft in einem Checkout, dessen `origin` auf das
-vorgesehene primäre GitLab-Projekt zeigt. Die CI-Integration stellt seine
-festgelegte Node-24-Laufzeit, Git, OpenSSH-Client/-Agent und eine POSIX-Shell
-mit `mkdir` und `rmdir` bereit. Bewahren Sie die zugehörige
-`github-backup-transport.js` neben dem Shell-Helfer auf. Die Konfiguration
-kommt aus dem geschützten CI-Job:
+`node operations/dist/mirror/entry.js ci` läuft in einem Checkout, dessen `origin` auf das gewünschte primäre GitLab-Projekt zeigt. Bereite zuerst die festgelegte Node-Laufzeit und das kompilierte Operations-Paket vor. Das gemeinsame `MirrorModule` verwaltet Transport, Sperren und Bereinigung über native Git- und OpenSSH-Werkzeuge. Die Konfiguration stammt aus dem geschützten CI-Job:
 
 | Variable | Erforderlicher Wert |
 | --- | --- |

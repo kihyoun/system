@@ -59,7 +59,7 @@ HTTPS 인증서를 준비하세요.
 docker build -t system-runtime:candidate ./bootstrapper
 ```
 
-전체 System 이미지도 저장소 빌드 컨텍스트에서 `bootstrapper/install-runtime.sh`를
+전체 System 이미지도 저장소 빌드 컨텍스트에서 `bootstrapper/install-runtime.js`를
 실행합니다. 별도로 게시된 System 베이스를 요구하는 대신 같은 공식 다이제스트 고정
 Node 24.22.0 / Alpine 3.24 이미지에서 시작합니다. 공유 설치 프로그램은 Node 24.22.0과
 npm 11.19.1을 확인한 뒤 고정된 Docker CLI 29.9.3-r1, Compose 5.7.2, Buildx 0.38.1,
@@ -104,11 +104,11 @@ Seed 백업 저장소는 독립적입니다. 일반 시작 중 `SEED_DIR`은 선
 완료된 외부 Seed와 일치하는 비공개 구성 ZIP이 있으면 쓰기 시작 전에 커밋된 호스트
 진입점을 사용하세요. 먼저 [새 대상 절차](../docs/RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation)에
 나온 대로 `bootstrapper/persistence.js`와 비공개 호스트 선택자로 빈 라이브 골격을
-준비하세요. 읽기 전용 사전 검사는 해당 디렉터리가 이미 있어야 합니다.
+준비하세요. 읽기 전용 사전 검사는 해당 디렉터리가 이미 있어야 합니다.. 이 예시는 보관한 Quickstart Node 실행 파일을 사용하며 소스 설치에서는 명시적으로 준비한 Node 실행 파일을 대입합니다.
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/seed-operation.js restore \
+  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --configuration-backup /root/recovery/bootstrapper.zip \
   --check-only
@@ -129,12 +129,12 @@ sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
 소스 번들로 같은 검토된 Git 객체를 제공할 수 있습니다. 도구는 초기화 중 자신을
 패치하거나 업데이트하거나 복제하지 않습니다.
 
-`initialize.js`는 **라이브** 서비스 데이터를 유지하면서 호스트를 교체합니다.
+`node bootstrapper/initialize.js`는 **라이브** 서비스 데이터를 유지하면서 호스트를 교체합니다.
 파일시스템 포맷, 최초 인증서 발급, GitLab 버전 마이그레이션, Seed 적용 또는 빈
 파일시스템을 기존 설치로 전환하는 동작은 수행하지 않습니다. 새 설치는
 [핸드북](../docs/HANDBOOK.md)의 최초 설치 경로를 따르세요.
 
-지원되는 Ubuntu의 root 접속, Git과 Python 3, 선택된 로컬 또는 명시적 볼륨 라이브
+지원되는 Ubuntu의 root 접속, Git과 고정된 Node 런타임, 선택된 로컬 또는 명시적 볼륨 라이브
 저장소, 저장 구성 및 아래 복구 매니페스트가 필요합니다. 선택된 라이브 볼륨은 이미
 마운트되어야 하며 로컬 모드는 시스템 디스크를 사용합니다. 일반 호스트 설치 프로그램이
 Docker를 제공하고 `--install-host` 선택 시 Certbot도 설치합니다. 인스턴스 선택자와
@@ -142,7 +142,7 @@ Docker를 제공하고 `--install-host` 선택 시 Certbot도 설치합니다. �
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/initialize.sh \
+  node bootstrapper/initialize.js \
   --install-host \
   --receipt-dir /var/log/system-bootstrapper/initialize-example \
   --timeout 1200 \
@@ -662,7 +662,7 @@ Abort는 기록된 오래된 임대만 인수하고 제한된 원격 명령이 �
 복원할 수 있지만 데이터베이스를 되돌리지는 않습니다. GitLab 이미지가 변경되었거나
 마이그레이션이 완료되면 이 경로를 거부합니다. 대신 GitLab 업그레이드 도우미의
 검증된 데이터베이스 체크포인트 복구를 사용하세요. 완료된 컨트롤러 승격은 중단된
-작업으로 취급하지 않습니다. 호스트 명령은 커밋된 `host-child.py` 감시자를 통해
+작업으로 취급하지 않습니다. 호스트 명령은 커밋된 `ControllerLeaseService` 감시자를 통해
 실행됩니다. 이 감시자는 안정적인 파일시스템 보호를 상속하고 작업자 시작 장벽을 풀기
 전에 PID/시작/프로세스 그룹 식별 정보를 기록하며 소유한 전체 명령 그룹을 제한하고
 회수합니다. 채택은 조정자 SIGKILL 후를 포함하여 살아 있는 조정자, 감시자 또는 작업자
@@ -675,7 +675,7 @@ GitLab 마이그레이션 성공 후 VM 삭제나 이후 호스트 교체에 의
 입력을 갱신하세요.
 
 ```sh
-sudo python3 bootstrapper/record-recovery-images.py \
+sudo node operations/dist/host/recovery-export-entry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \
@@ -706,22 +706,15 @@ Docker 기본 동작 테스트는 소켓 없는 구성 요소 테스트와 별�
 
 ## 네이티브 호스트 런타임 준비
 
-Quickstart는 고정된 커밋과 스크립트 해시를 확인하여 nvm **0.41.0**을 설치한 뒤,
-nvm으로 Node **24.22.0**을 설치합니다. 전용 설치 경로는
-`/opt/system-bootstrapper-runtime`이며 기존 사용자의 nvm 설치, 기본 버전과
-셸 프로필은 변경하지 않습니다. nvm이 내려받은 Node 압축 파일의 고정 해시도
-확인합니다. 컴파일된 Operations 파일과 의존성은 승인된 Controller 이미지에서
-복사하며, 추출용 컨테이너는 시작하지 않습니다. 호스트에서 npm 설치를 실행할
-필요가 없습니다.
+새 Quickstart는 고정된 nvm 스크립트와 Node **24.22.0** 아카이브를 확인한 뒤 번들된 의존성을 포함한 정확한 승인 CLI tarball을 오프라인으로, npm 스크립트를 비활성화하여 설치합니다. 승인 릴리스 메타데이터는 이 tarball을 컨트롤러/Wizard와 동일하게 테스트된 소스 리비전 및 트리에 연결합니다. 전용 런타임은 `/opt/system-bootstrapper-runtime`에 있습니다.
 
-수동 설치에서는 먼저 네이티브 호스트 의존성을 설치하고, 검토된 릴리스의 소스를
-체크아웃한 다음 공개 메타데이터를 검증합니다. 릴리스 설치 도구를 실행하기 전에
-다음 명령으로 런타임을 준비하세요.
+명시적으로 선택한 승인 릴리스는 복구 전에 런타임을 준비하세요:
 
 ```sh
-sudo python3 bootstrapper/prepare-host-runtime.py \
-  --checkout "$PWD" --release-metadata /absolute/path/release.json
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
 ```
+
+보관한 CLI를 명시적으로 검토한 체크아웃과 함께 호출하세요. 이 모드는 Node/CLI 런타임만 설치하며 플랫폼을 시작하거나 복원하지 않습니다. 오프라인 복구 환경을 준비할 때 체크아웃의 컴파일된 operations를 보관하세요.
 
 기존 런타임 디렉터리는 덮어쓰지 않습니다. 오프라인 복구를 위해
 런타임 디렉터리와 `operations/dist`, `operations/node_modules`를

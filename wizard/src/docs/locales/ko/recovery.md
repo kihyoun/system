@@ -94,7 +94,7 @@ A/AAAA 레코드를 갱신하세요. 공개 HTTPS를 사용하려면 포트 80�
 
    ```bash
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/initialize.sh \
+     node bootstrapper/initialize.js \
        --install-host \
        --receipt-dir /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID \
        --timeout 1200

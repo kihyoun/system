@@ -287,7 +287,7 @@ Baue Sync mit `cd sync && npm run build`. Die isolierte API-Regression
 entbehrlichen Container/Netzwerk-Namensraum laufen. Sie prüft Validierung,
 Authentifizierung, Namensraumkonflikte, konkurrierendes Speichern, Wiederaufnahme,
 Statusabfragen, den Ausschluss von Konfigurationsschreibvorgängen und Abrufen-Rundläufe.
-Die Vorlagenerzeugung wird durch `node tests/gitlab/application-templates.js` geprüft.
+Die Vorlagenerzeugung wird durch `node tests/gitlab/application-templates.js` geprüft. Dieselbe Fixture prüft native Namespace-Seitennavigation, die Erstellung eigener Repositories, schreibgeschützte Nachweiswiederherstellung nach Benutzeränderungen, unterbrochene API-Schreibvorgänge und idempotente initiale Pipeline-Erstellung.
 
 Verwende für Wizard-Prüfungen die in `wizard/package.json` deklarierten Node-/npm-Versionen,
 installiere mit `npm ci` und führe dann `npm run lint`, `npm test`, `npm run build`
@@ -295,18 +295,10 @@ und `npm run test:config-export` im Wizard-Verzeichnis aus. Die Tests prüfen
 Metadaten, Zertifikats-/Deployment-Einstellungen, Schlüsselvalidierung und das
 Ignorieren veralteter Antworten.
 
-`tests/gitlab/live/project-bootstrap.js` ist ein ausdrücklich zu aktivierender
-Test für eine entbehrliche Plattform. Er bezieht Sync-Zugangsdaten aus der Umgebung
-und eine `PROJECT_PAYLOAD`-JSON-Datei mit `{projectKey, namespaceId, data, ci}` aus
-dem Wizard-Generator. Er erstellt sein Projekt `bootstrapdemo` oder nimmt es wieder
-auf, prüft gleichzeitiges/wiederholtes Speichern und Abrufen und lässt das Projekt
-zur Prüfung bestehen. Richte ihn nicht auf einen fremden bestehenden Schlüssel.
-Live-Prüfungen der Vorlagen befinden sich in
-`tests/gitlab/live/application-templates.js` und
-`tests/gitlab/live/application-templates-audit.rb`.
+`tests/gitlab/live/project-bootstrap.js` ist ein ausdrücklich aktivierter Test für eine verwerfbare Plattform. Er erhält Sync-Zugangsdaten über die Umgebung und eine `PROJECT_PAYLOAD`-JSON-Datei mit `{projectKey, namespaceId, data, ci}` aus dem Wizard-Generator. Er erstellt sein Projekt `bootstrapdemo` oder setzt es fort, prüft gleichzeitiges/wiederholtes Save und Fetch und lässt es zur Inspektion bestehen. Richte ihn nicht auf einen fremden bestehenden Schlüssel. Live-Vorlagenprüfungen sind `tests/gitlab/live/application-templates.js` und `tests/gitlab/live/application-templates-audit.js --projects-file /tmp/template-live-results.json --timeout 720`. Führe die Prüfung nach normaler Einrichtung im geprüften Controller aus. Sie liest die bestehende einsatzbereite Automatisierungskennung und prüft die exakten privaten Repositories, Starter-Dateien, die eindeutige initiale Pipeline und erfolgreiche Review-/Production-Umgebungen. Fehlgeschlagene Jobs werden nicht automatisch wiederholt. Die separate Prüfung `tests/gitlab/live/project-bootstrap-audit.js --project root/bootstrapdemo` prüft private Projektidentität, verwalteten CI-Pfad, exakten Cube und offizielles CI-Lint. Keine Prüfung initialisiert Zugangsdaten oder ruft Rails auf; übergib deinen eigenen ausdrücklichen Testprojektpfad oder deine Metadatendatei.
 
 `tests/wizard/default-wizard.js` und
-`tests/nginx/default-wizard-routing.sh` prüfen die verwaltete Registrierung und
+`tests/nginx/typed-routing.js` prüfen die verwaltete Registrierung und
 das Verhalten mit genau einer Route; `tests/wizard/live/default-wizard.js` ist
 die zugehörige authentifizierte Live-Prüfung. Lokale HTTP-Fixtures belegen weder
 echtes DNS noch Zertifikatsausstellung/-erneuerung, GitLab-Job-Ausführung oder

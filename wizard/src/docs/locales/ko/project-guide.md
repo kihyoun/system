@@ -240,24 +240,17 @@ Harvest/Seed와 독립적입니다. 실제 구성 백업은 비공개로 보관�
 `node tests/gitlab/project-bootstrap.js`는 포트 8071을 사용하므로 폐기 가능한
 컨테이너/네트워크 네임스페이스에서 실행해야 합니다. 검증, 인증, 네임스페이스 충돌,
 경합하는 저장, 복구, 폴링, 구성 쓰기 차단 및 가져오기 왕복을 검사합니다.
-템플릿 생성은 `node tests/gitlab/application-templates.js`에서 검사합니다.
+템플릿 생성은 `node tests/gitlab/application-templates.js`에서 검사합니다. 같은 픽스처는 네이티브 네임스페이스 페이지 순회, 소유한 저장소 생성, 사용자 수정 후 읽기 전용 영수증 복구, 중단된 API 쓰기 및 멱등적인 초기 파이프라인 생성도 검사합니다.
 
 Wizard 검사는 `wizard/package.json`에 선언된 Node/npm 버전을 사용하고
 `npm ci`로 설치한 뒤 Wizard 디렉터리에서 `npm run lint`, `npm test`,
 `npm run build` 및 `npm run test:config-export`를 실행하세요. 테스트는 메타데이터,
 인증서/배포 설정, 키 검증 및 오래된 응답 무시를 검사합니다.
 
-`tests/gitlab/live/project-bootstrap.js`는 폐기 가능한 플랫폼을 대상으로 명시적으로
-선택하여 실행하는 테스트입니다. 환경에서 Sync 자격 증명을, Wizard 생성기에서 나온
-`PROJECT_PAYLOAD` JSON 파일에서 페이로드를 받으며, 이 파일에는
-`{projectKey, namespaceId, data, ci}`가 포함됩니다.
-이 테스트는 `bootstrapdemo` 프로젝트를 생성하거나 재개하고, 동시/반복 저장과 가져오기를
-확인한 뒤 점검을 위해 프로젝트를 남겨 둡니다. 관련 없는 기존 키를 대상으로 실행하지 마세요.
-템플릿 라이브 검사는 `tests/gitlab/live/application-templates.js`와
-`tests/gitlab/live/application-templates-audit.rb`에 있습니다.
+`tests/gitlab/live/project-bootstrap.js`는 폐기 가능한 플랫폼에 대한 명시적 선택 검사입니다. Sync 자격 증명을 환경에서 받고 `PROJECT_PAYLOAD` JSON 파일에 담긴 Wizard 생성기의 `{projectKey, namespaceId, data, ci}`를 사용합니다. 자신의 `bootstrapdemo` 프로젝트를 생성하거나 이어서 실행하고 동시/반복 Save와 Fetch를 확인한 뒤 검토를 위해 프로젝트를 남깁니다. 관련 없는 기존 키를 대상으로 하지 마세요. 템플릿 라이브 검사는 `tests/gitlab/live/application-templates.js`와 `tests/gitlab/live/application-templates-audit.js --projects-file /tmp/template-live-results.json --timeout 720`에 있습니다. 정상 설정 후 검토한 컨트롤러 안에서 감사를 실행하세요. 기존의 준비된 자동화 자격 증명을 읽고 정확한 비공개 저장소, 스타터 파일, 고유한 초기 파이프라인 및 성공한 Review/Production 환경을 확인합니다. 실패한 작업을 자동으로 재시도하지 않습니다. 별도 `tests/gitlab/live/project-bootstrap-audit.js --project root/bootstrapdemo`는 비공개 프로젝트 식별 정보, 관리되는 CI 경로, 정확한 Cube와 공식 CI lint를 검사합니다. 두 감사 모두 자격 증명을 초기화하거나 Rails를 호출하지 않습니다. 직접 선택한 명시적 테스트 프로젝트 경로나 메타데이터 파일을 제공하세요.
 
 `tests/wizard/default-wizard.js`와
-`tests/nginx/default-wizard-routing.sh`는 관리형 등록과 단일 경로 동작을 검사합니다.
+`tests/nginx/typed-routing.js`는 관리형 등록과 단일 경로 동작을 검사합니다.
 `tests/wizard/live/default-wizard.js`는 이에 대한 인증된 라이브 검사입니다.
 로컬 HTTP 픽스처는 실제 DNS, 인증서 발급/갱신, GitLab 작업 실행 또는 성공적인 운영 환경
 롤아웃을 입증하지 않습니다. 명시적으로 소유한 테스트 플랫폼에서 이러한 관문을 별도로 검증하세요.

@@ -2,7 +2,7 @@
 
 ### Schnellinstallation auf einem frischen Ubuntu-Host
 
-Führen Sie auf Ubuntu 24.04 / 26.04 LTS x86_64 mit sudo-Zugriff, curl, Python 3, Internet,
+Führen Sie auf Ubuntu 24.04 / 26.04 LTS x86_64 mit sudo-Zugriff, curl, Internet,
 mindestens 8 GiB RAM, 40 GiB freiem Speicher für Daten plus 1 GiB für Quellcode und
 freien Ports 80/443 diesen Befehl im Terminal des Hosts aus:
 

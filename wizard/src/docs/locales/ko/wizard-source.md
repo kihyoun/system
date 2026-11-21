@@ -60,7 +60,7 @@ node gitlab/prepare-wizard-source.js
 node project-bootstrap/wizard-source/package.js
 ```
 
-일반적인 루트 `system-bootstrapper start --checkout /absolute/reviewed/source`는 Compose가 System 이미지를 빌드하기 전에 준비를 호출합니다.
+일반적인 루트 `start --checkout /absolute/reviewed/source`는 Compose가 System 이미지를 빌드하기 전에 준비를 호출합니다.
 수동으로 System 이미지를 빌드할 때도 먼저 같은 명령을 실행해야 합니다. 이미지 빌드는 생성된
 매니페스트와 파일 해시를 검증하며, 준비를 생략하면 실패합니다. 생성된 `snapshot.json`은
 커밋하지 마세요.
@@ -98,11 +98,11 @@ Sync를 컴파일하고 스냅샷을 생성한 뒤 다음을 실행하세요.
 ```sh
 node tests/wizard/source-package.js
 node tests/wizard/source-workflow.js
-ruby tests/wizard/source-import.rb
+node tests/gitlab/source-import.js
 ```
 
 패키지 테스트는 폐기 가능한 Git 저장소를 만듭니다. 워크플로 테스트는 임시 비공개 구성과
-스텁 Rails 전송을 사용합니다. Ruby 어댑터 테스트는 메모리 내 GitLab API 픽스처를 사용합니다.
+스텁 전송을 사용합니다. 네이티브 가져오기/상태 검사는 메모리 내 GitLab API 픽스처를 사용합니다.
 이 테스트들은 실행 중인 GitLab에 접속하거나 플랫폼을 변경하지 않습니다. `wizard/package.json`에
 선언된 Node/npm 버전으로 Wizard 검사를 실행하세요. `npm ci`, `npm run lint`, `npm test`,
 `npm run build`, `npm run test:config-export`를 사용합니다. 관리형 빌드 레시피는 일치하는

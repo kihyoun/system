@@ -172,19 +172,15 @@ veraltete Sperre. Erheben Sie kein Zwischenverzeichnis `.harvest-*` zu `current`
 
 ### Aus dem Wizard oder auf dem Host ausführen
 
-Bei verfügbarem Ziel verwendet **Harvest** im authentifizierten Wizard denselben
-repositoryeigenen Dispatcher wie `system/seed-operation.js harvest`. Alternativ können Sie den
-Vorgang aus einem geprüften Host-Checkout mit einem verfügbaren, freigegebenen,
-vollständigen Controller-Image ausführen. Ermitteln und dokumentieren Sie seine
-tatsächliche Image-Identität und verwenden Sie dann:
+Bei verfügbarem Ziel verwendet **Harvest** im authentifizierten Wizard denselben Repository-eigenen Dispatcher wie `system/seed-operation.js harvest`. Alternativ kannst du aus einem geprüften Host-Checkout mit einem verfügbaren akzeptierten vollständigen Controller-Image arbeiten. Ermittle und protokolliere dessen tatsächliche Image-Identität und verwende dann die unten durch Quickstart vorbereitete Node-Datei. Eine Quellinstallation ersetzt `/opt/system-bootstrapper-runtime/bin/node` durch ihre ausdrücklich beibehaltene Node-Datei:
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/seed-operation.js harvest \
+  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --check-only
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  node bootstrapper/seed-operation.js harvest \
+  /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js harvest \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
 ```
 
@@ -221,7 +217,7 @@ Datenverzeichnis ist keine Eingabe.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     node bootstrapper/persistence.js
+     /opt/system-bootstrapper-runtime/bin/node bootstrapper/persistence.js
    ```
 
    Dieser Schritt startet keine Container und benötigt kein Sicherungsmedium.
@@ -241,12 +237,12 @@ Datenverzeichnis ist keine Eingabe.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     node bootstrapper/seed-operation.js restore \
+     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip \
      --check-only
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     node bootstrapper/seed-operation.js restore \
+     /opt/system-bootstrapper-runtime/bin/node bootstrapper/seed-operation.js restore \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip
    ```
@@ -281,7 +277,7 @@ Datenverzeichnis ist keine Eingabe.
    `sudo node bootstrapper/install-volume-host.js` aus. Dies bindet
    Webroot-Erneuerungspfade an das neue produktive Verzeichnis und installiert
    die Erneuerungs-/Deploy-Integration. Setzen Sie die erforderlichen
-   Image-Auswahlwerte und starten Sie dann mit `sudo node operations/dist/cli.js start --checkout "$PWD"`.
+   Image-Auswahlwerte und starten Sie dann mit `sudo /opt/system-bootstrapper-runtime/bin/node operations/dist/cli.js start --checkout "$PWD"`.
    Stellen Sie optionale Review-/Beta-Helfer ausdrücklich erneut bereit, falls
    ihr altes unveränderliches Image fehlt; siehe
    [Umgebungsverfahren](../project-bootstrap/wizard-environments/README.md).
@@ -311,18 +307,7 @@ Seed-Wiederherstellung erfordert weiterhin wie oben ein anderes frisches Ziel.
 
 ### Ein wiederhergestelltes privates Wizard-Image abrufen
 
-Nach dem Start von GitLab stellt `system/ensure-wizard-image.sh` ein fehlendes
-unveränderliches Wizard-Image aus der plattformeigenen Registry wieder her.
-Es prüft den gespeicherten verwalteten Wizard-Beleg und die
-Registry-/Projektidentität, rendert einen ausschließlich für GitLab/Registry
-bestimmten Proxy und wartet auf GitLabs internen Bereitschaftsendpunkt. GitLab
-erstellt ein Projekt-Deploy-Token ausschließlich mit `read_registry`; Docker
-erhält das Passwort über die Standardeingabe und schreibt seine Anmeldung in
-ein neues privates temporäres Verzeichnis. Der Helfer ruft den exakten
-gespeicherten Digest ab und prüft ihn, widerruft das Token bei Erfolg oder
-Fehlschlag und entfernt die temporäre Anmeldung. Alte Docker-Zugangsdaten des
-Hosts sind keine Wiederherstellungseingaben. Normaler Start mit öffentlichen
-Images und bereits zwischengespeicherte exakte Festlegungen benötigen kein Token.
+Nach dem GitLab-Start stellt der gemeinsame Wizard-Wiederherstellungsdienst ein fehlendes unveränderliches Wizard-Image aus der plattformeigenen Registry wieder her. Er prüft den gespeicherten verwalteten Wizard-Nachweis sowie Registry-/Projektidentität, erzeugt einen reinen GitLab-/Registry-Proxy und wartet auf GitLabs internen Bereitschaftsendpunkt. Die geprüfte lokale Controller-Kennung fordert über GitLabs dokumentierte API einen Projekt-Deploy-Token an. Dieser hat nur `read_registry`; Docker erhält das Passwort über stdin und schreibt die Anmeldung in ein neues privates temporäres Verzeichnis. Der Helfer lädt und prüft den exakten gespeicherten Digest, widerruft den Token bei Erfolg oder Fehler und entfernt die temporäre Anmeldung. Alte Docker-Zugangsdaten des Hosts sind keine Wiederherstellungseingaben.
 
 Das Deploy-Token besitzt als Sicherheitsgrenze GitLabs Ablaufdatum am nächsten
 UTC-Tag und wird normalerweise sofort widerrufen. Siehe
@@ -338,9 +323,11 @@ den Start; behalten Sie die Pending-Datei bei, damit der Helfer den reservierten
 Zugang widerrufen kann. Zugangsdatenfehler stoppen den Start vor Wizard und
 Projektdiensten, statt ein anderes Image einzusetzen.
 
+Wenn Harvest den Abschluss des entfernten GitLab-Stoppbefehls nicht bestätigen kann, behält es seine Seed- und Zertifikatssperren und setzt Dienste nicht fort. Prüfe vor der Wiederherstellung den entfernten Worker und die beibehaltene Operationseigentümerschaft; ein abgelaufenes Client-Zeitlimit allein beweist nicht, dass ein verzögerter Docker-Befehl abgeschlossen ist.
+
 ## Prüfgrenzen
 
-`tests/seed/recovery-contract.py` prüft die tatsächlichen Shell-Skripte und rsync
+`operations/tests/storage-copy.test.cjs` prüft die nativen Dienste und rsync
 mit einem Docker-Testbefehl, einschließlich gescheiterter Kopien, erzwungenem
 Herunterfahren, Versionskonflikten, Beschädigungen, fehlenden
 Abschlussmarkierungen, aktiven schreibenden Prozessen, Erneuerungssperren und
