@@ -46,6 +46,33 @@ export class GitlabCredentialService {
     }
     return this.current(context, directory);
   }
+  /** Read existing authority without Rails bootstrap, renewal or credential writes. */
+  async existing(options: GitlabCredentialOptions) {
+    const directory = options.configDirectory ?? '/srv/gitlab/config';
+    const context = await this.contexts.resolve(options.checkout, directory, options.signal);
+    return this.journals.withJournal(directory, async (journal) => {
+      const state = journal.read();
+      if (
+        state?.phase !== 'ready' ||
+        !state.account?.userId ||
+        !state.replacement ||
+        state.account.userId !== state.replacement.userId ||
+        state.renewal ||
+        state.retiring
+      )
+        throw Error('gitlab-existing-controller-credential-required');
+      return {
+        context,
+        configDirectory: directory,
+        credential: { ...state.replacement },
+        account: {
+          id: state.account.userId,
+          username: state.account.username,
+          email: state.account.email,
+        },
+      };
+    });
+  }
   async renew(options: GitlabCredentialOptions, recoveryAdministrator?: string) {
     const directory = options.configDirectory ?? '/srv/gitlab/config';
     const context = await this.contexts.resolve(options.checkout, directory, options.signal);
