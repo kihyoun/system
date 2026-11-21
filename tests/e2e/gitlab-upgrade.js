@@ -60,7 +60,7 @@ async function run(candidate,dependencies={}){
   });
   await candidate.stage('gitlab-upgrade-registry-ci',async()=>{
     await candidate.inner(['exec','runner_docker_1','gitlab-runner','verify']);
-    await (dependencies.verifyRegistryBlob||recovery.verifyRegistryBlob)(candidate,{expected});
+    await (dependencies.verifyRegistryBlob||recovery.verifyRegistryBlob)(candidate,{expected,runnerImageId:runnerPromoted.imageId});
     candidate.evidence.gitlabUpgrade.registryVerified=true;
   });
   if(candidate.spec.publicUpgrade)await (dependencies.publicUpgrade||require('./public-upgrade').run)(candidate,expected);
@@ -70,8 +70,8 @@ async function run(candidate,dependencies={}){
     try {
       if(publicSession)await publicSession.restoreAfterRollback();
       await (dependencies.verifyServiceIdentity||recovery.verifyServiceIdentity)(candidate,expected);
-      await (dependencies.runnerState||runnerState)(candidate,false,runnerBefore);
-      await (dependencies.verifyRegistryBlob||recovery.verifyRegistryBlob)(candidate,{expected});
+      const runnerRestored=await (dependencies.runnerState||runnerState)(candidate,false,runnerBefore);
+      await (dependencies.verifyRegistryBlob||recovery.verifyRegistryBlob)(candidate,{expected,runnerImageId:runnerRestored.imageId});
       if(publicSession) {
         const actual=await (dependencies.configuration||require('./public-upgrade').configuration)(candidate);
         if(JSON.stringify(actual)!==JSON.stringify(publicSession.originalFiles))throw Error('public-upgrade-original-configuration-not-restored');

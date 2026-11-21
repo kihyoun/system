@@ -543,6 +543,14 @@ does not repeat the original host's generic project
 creation and failure pipeline. The original successful pipeline identity remains the
 backup oracle; the restored blob job records its own actual pipeline and job IDs.
 
+Both owned hosts apply the prepared-image pull policies after manager creation.
+The guided HTTPS scenario also reapplies its public test-CA job bind and environment.
+These disposable test adapters leave installed product runner defaults unchanged.
+Migration and rollback pass their independently verified runner image to the same
+registry check; runner ID, credential and current-host manager identity stay strict.
+Failed registry jobs retain bounded pipeline/job metadata and fixed diagnostic codes;
+raw job traces and credentials are not written to acceptance receipts.
+
 Cold restore, GitLab migration, paired public upgrade and rollback keep their separate
 state-transition checks. Unit and component contracts cover rejection and cleanup paths;
 they do not replace native recovery, registry authentication or actual migration jobs.

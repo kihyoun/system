@@ -802,15 +802,24 @@ test('shared candidate registry recovery accepts exact candidate and forbids cac
   assert.throws(()=>recovery.privateWizardDescriptor(value,{...spec,supportImages:{helper:{id:value.imageId}}}),/descriptor-invalid/);
 });
 function runnerFixture(t){
-  const root=fs.mkdtempSync(path.join(os.tmpdir(),'runner-identity-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const platform=fs.mkdtempSync(path.join(os.tmpdir(),'runner-identity-'));t.after(()=>fs.rmSync(platform,{recursive:true,force:true}));
+  const root=path.join(platform,'runners/runner/1/config');fs.mkdirSync(root,{recursive:true});
   const token='glrt-private-fixture',manager='s_native',calls=[],stages=[];
-  const config=(id=56,credential=token)=>fs.writeFileSync(path.join(root,'config.toml'),'[[runners]]\n id = '+id+'\n token = "'+credential+'"\n');
+  const config=(id=56,credential=token)=>fs.writeFileSync(path.join(root,'config.toml'),
+    'concurrent = 1\n[[runners]]\n name = "runner-docker-1"\n executor = "docker"\n id = '+id+'\n token = "'+credential+'"\n'+
+    ' url = "https://gitlab.candidate.test"\n clone_url = "https://gitlab.candidate.test"\n [runners.docker]\n'+
+    '    image = "alpine:3.23"\n    helper_image = "candidate-helper:under-test"\n    volumes = ["/var/run/docker.sock:/var/run/docker.sock"]\n');
   const system=value=>fs.writeFileSync(path.join(root,'.runner_system_id'),value);
   config();system(manager+'\n');
   const container={Image:'sha256:'+'b'.repeat(64),State:{Running:true}};
-  const candidate={spec:{recoveryAcceptance:true,supportImages:{helper:{}},restore:{base:'/restored',expected:{projectId:12,registryPipelineId:34}}},evidence:{},url:'https://candidate.test',
+  const candidate={spec:{recoveryAcceptance:true,supportImages:{helper:{}},restore:{base:platform,expected:{projectId:12,registryPipelineId:34}}},evidence:{},url:'https://candidate.test',
+    prepareRunnerTransport:require('./disposable-candidate').Candidate.prototype.prepareRunnerTransport,sleep:async milliseconds=>assert.equal(milliseconds,4000),
     stage:async(name,action)=>{stages.push(name);return action();},wait:async action=>assert.equal(await action(),true),request:async()=>({status:200}),
-    inner:async args=>{calls.push(args);if(args[0]==='inspect')return JSON.stringify([container]);if(args.includes('-e'))return require('node:child_process').execFileSync(process.execPath,['-e',args[4],root],{encoding:'utf8',stdio:'pipe'});return '';},
+    inner:async(args,options)=>{calls.push(args);if(args[0]==='inspect')return JSON.stringify([container]);
+      if(args.includes('-e'))return require('node:child_process').execFileSync(process.execPath,['-e',args[4],...args.slice(5)],{encoding:'utf8',stdio:'pipe'});
+      if(args.includes('cat')&&args.includes('/etc/gitlab-runner/config.toml'))return fs.readFileSync(path.join(root,'config.toml'),'utf8');
+      if(args.some(arg=>arg.includes('config.toml.guided-tmp')))fs.writeFileSync(path.join(root,'config.toml'),options.input);
+      return '';},
     rails:async()=>{throw Error('Fresh registration must not run on restored path');},api:async()=>{throw Error('Generic new project pipelines must not run on restored path');}};
   return {root,token,manager,candidate,container,calls,stages,config,system};
 }
@@ -825,6 +834,12 @@ test('fresh restored platform accepts changed or matching manager IDs while reta
     assert(f.calls.some(args=>args.includes('http://127.0.0.1/-/readiness')));
     assert(f.calls.some(args=>args.includes('gitlab-runner')&&args.includes('verify')));
     assert.deepEqual(f.candidate.evidence,{projectId:12,pipelineId:34});
+    const transport=fs.readFileSync(path.join(f.root,'config.toml'),'utf8');
+    assert(transport.includes('allowed_pull_policies = ["never", "if-not-present"]'));
+    assert(transport.includes('helper_image = "candidate-helper:under-test"'));
+    assert(transport.includes('clone_url = "https://gitlab.candidate.test"'));
+    await f.candidate.prepareRunnerTransport();assert.equal(fs.readFileSync(path.join(f.root,'config.toml'),'utf8'),transport);
+    assert.deepEqual(await recovery.runnerIdentity(f.candidate),current);
     assert(!JSON.stringify(current).includes(f.token));assert(!JSON.stringify(current).includes(f.manager));
     f.system(f.manager);assert.deepEqual(await recovery.runnerIdentity(f.candidate),current,'file newline does not change canonical manager fingerprint');
   });
@@ -861,7 +876,7 @@ test('existing restored registry job proves the current manager without another 
   ];
   for(const [index,[change,code]]of cases.entries())await t.test(String(index),async t=>{
     const f=runnerFixture(t),current=await recovery.runnerIdentity(f.candidate),requests=[];
-    f.candidate.restoredRunnerIdentity=current;
+    f.candidate.restoredRunnerIdentity=current;f.candidate.evidence={projectId:12,pipelineId:34};
     const expected={...f.candidate.spec.restore.expected,runnerIdentity:{...current,manager:'c'.repeat(64)},branch:'main',imageCommit:'e'.repeat(40)};
     let minted=0;f.candidate.rails=async()=>{minted++;return {token:'private-api-fixture',root_id:1};};
     f.candidate.api=async(route,_token,method='GET')=>{
@@ -869,14 +884,100 @@ test('existing restored registry job proves the current manager without another 
       if(method==='DELETE'||method==='PUT')return {};
       if(route.includes('/repository/files/'))return {last_commit_id:'f'.repeat(40)};
       if(route.endsWith('/pipelines'))return [{id:35,status:'success',sha:'f'.repeat(40)}];
-      if(route.endsWith('/pipelines/35/jobs'))return [{id:45,status:'success',runner:{id:56},runner_manager:{system_id:f.manager},...change}];
+      if(route.endsWith('/pipelines/35/jobs'))return [{id:45,name:'restored-registry-blob',status:'success',runner:{id:56},runner_manager:{system_id:f.manager},...change}];
       throw Error('unexpected API request');
     };
     const run=()=>recovery.verifyRegistryBlob(f.candidate,{expected});
     if(code){await assert.rejects(run,{message:code});assert.equal(f.candidate.evidence.recovery,undefined);assert.equal(require('./stage-diagnostics').failureReason(code),code);}
-    else {await run();assert.equal(f.candidate.evidence.recovery.jobId,45);assert.equal(f.candidate.evidence.recovery.pipelineId,35);}
+    else {await run();assert.equal(f.candidate.evidence.recovery.jobId,45);assert.equal(f.candidate.evidence.recovery.pipelineId,35);assert.equal(f.candidate.evidence.pipelineId,34);assert.equal(f.candidate.evidence.projectId,12);}
     assert.equal(minted,1);assert.equal(requests.filter(row=>row.method==='PUT').length,1);assert.equal(requests.filter(row=>row.method==='DELETE').length,1);
     assert(!requests.some(row=>row.method==='POST'));assert.equal(requests.filter(row=>row.route.endsWith('/jobs')).length,1);
     assert(!JSON.stringify(f.candidate.evidence).includes('private-'));
+  });
+});
+
+test('fresh restored guided manager reapplies test CA transport without changing native identity',async t=>{
+  const f=runnerFixture(t),current=await recovery.runnerIdentity(f.candidate);
+  f.candidate.id='a'.repeat(24);
+  Object.assign(f.candidate.spec,{fullAcceptance:true,guidedPreviewAcceptance:true,sourceLayout:'system-monorepo-v1',
+    sourceRevision:'e'.repeat(40),sourceTree:'d'.repeat(40),wizardSourceTree:'c'.repeat(40),
+    images:{candidate:{id:'sha256:'+'1'.repeat(64)},wizard:{id:'sha256:'+'2'.repeat(64)}},
+    guidedPreviewSettings:{version:2,namespace:'root',wizard:{mode:'existing',project:'wizard',origin:''},
+      review:{enabled:false,host:'',ssl:'',sslKey:''},beta:{enabled:true,host:'beta.candidate.test',ssl:'/ssl/live/recovery-fixture/fullchain.pem',sslKey:'/ssl/live/recovery-fixture/privkey.pem'}}});
+  f.candidate.restoredRunnerIdentity=current;f.candidate.spec.restore.expected.runnerIdentity=current;
+  await require('./disposable-candidate').Candidate.prototype.platform.call(f.candidate);
+  const content=fs.readFileSync(path.join(f.root,'config.toml'),'utf8');
+  assert(content.includes('/run/system-bootstrapper/guided-preview-ca.pem:/etc/system-bootstrapper/guided-preview-ca.pem:ro'));
+  for(const name of ['SSL_CERT_FILE','GIT_SSL_CAINFO','CURL_CA_BUNDLE','NODE_EXTRA_CA_CERTS','REQUESTS_CA_BUNDLE'])assert(content.includes(name+'=/etc/system-bootstrapper/guided-preview-ca.pem'));
+  assert(content.includes('allowed_pull_policies = ["never", "if-not-present"]'));
+  assert(!content.includes('SSL_NO_VERIFY'));assert.deepEqual(await recovery.runnerIdentity(f.candidate),current);
+});
+
+test('restored registry failures retain bounded child diagnostics through report and recovery serialization',async t=>{
+  for(const unavailable of [false,true])await t.test(String(unavailable),async t=>{
+    const f=runnerFixture(t),requests=[],{Candidate,recover}=require('./disposable-candidate');
+    f.candidate.id='a'.repeat(24);f.candidate.resources=[];f.candidate.results=[];f.candidate.evidence={projectId:12,pipelineId:34};
+    f.candidate.restoredRunnerIdentity=await recovery.runnerIdentity(f.candidate);
+    const expected={...f.candidate.spec.restore.expected,runnerIdentity:f.candidate.restoredRunnerIdentity,branch:'main',imageCommit:'e'.repeat(40)};
+    f.candidate.rails=async()=>({token:'private-api-fixture',root_id:1});
+    f.candidate.api=async(route,_token,method='GET')=>{
+      requests.push({route,method});
+      if(method==='DELETE'||method==='PUT')return {};
+      if(route.includes('/repository/files/'))return {last_commit_id:'f'.repeat(40)};
+      if(route.endsWith('/pipelines'))return [{id:35,status:'failed',sha:'f'.repeat(40)}];
+      if(route.endsWith('/pipelines/35/jobs'))return [
+        {id:45,name:'restored-registry-blob',status:'failed',runner:{id:56},failure_reason:'runner_configuration_error',duration:3,queued_duration:1},
+        {id:46,name:'restored-registry-blob',status:'skipped',failure_reason:'private-secret-reason'},
+        {id:47,name:'private-secret-job',status:'failed'}];
+      if(route.endsWith('/jobs/45/trace')){
+        if(unavailable)throw Error('private-secret-transport');
+        return 'private-secret-token\nERROR: Job failed (system failure): the configured PullPolicies ([never]) are not allowed by AllowedPullPolicies ([always])';
+      }
+      throw Error('unexpected API request');
+    };
+    await assert.rejects(()=>recovery.verifyRegistryBlob(f.candidate,{expected}),{message:'restored-registry-ci-failed'});
+    assert.equal(requests.filter(row=>row.route.endsWith('/jobs')).length,1);
+    assert.deepEqual(requests.filter(row=>row.route.endsWith('/trace')).map(row=>row.route),['/projects/12/jobs/45/trace']);
+    const reportDirectory=path.join(f.root,'report');Candidate.prototype.report.call(f.candidate,reportDirectory);
+    const receipt=JSON.parse(fs.readFileSync(path.join(reportDirectory,'results.json'),'utf8'));
+    const resumed=recover(receipt);resumed.report(path.join(f.root,'resumed'));
+    const durable=JSON.parse(fs.readFileSync(path.join(f.root,'resumed/results.json'),'utf8'));
+    assert.equal(durable.evidence.pipelineId,34);assert.equal(durable.evidence.projectId,12);assert.equal(durable.evidence.failurePipelineId,35);assert.equal(durable.evidence.pipelineStatus,'failed');
+    assert.equal(durable.evidence.jobs.length,2);assert.equal(durable.evidence.jobs[0].failureReason,'runner_configuration_error');
+    assert.deepEqual(durable.evidence.jobs[0].diagnostics,unavailable?{codes:['trace-unavailable']}:{commands:[],codes:['runner-pull-policy']});
+    assert.equal(durable.evidence.jobs[1].diagnostics,undefined);assert.equal(durable.evidence.jobs[1].failureReason,undefined);
+    assert(!JSON.stringify(receipt).includes('private-'));assert(!JSON.stringify(durable).includes('private-'));
+    assert.equal(requests.filter(row=>row.method==='PUT').length,1);assert.equal(requests.filter(row=>row.method==='DELETE').length,1);
+    assert(!requests.some(row=>row.method==='POST'));
+  });
+});
+
+test('restored registry proof permits only declared phase image transitions and retains registration and manager',async t=>{
+  const old='sha256:'+'b'.repeat(64),target='sha256:'+'c'.repeat(64),foreign='sha256:'+'d'.repeat(64);
+  const cases=[
+    [target,target,undefined,undefined],[old,old,undefined,undefined],
+    [target,undefined,undefined,'recovery-runner-image-changed'],
+    [foreign,foreign,undefined,'recovery-runner-image-changed'],
+    [target,'invalid',undefined,'recovery-runner-image-changed'],
+    [old,target,undefined,'recovery-runner-image-changed'],
+    [target,target,f=>f.config(57),'recovery-runner-id-changed'],
+    [target,target,f=>f.config(56,'glrt-other-fixture'),'recovery-runner-credential-changed'],
+    [target,target,f=>f.system('s_other'),'recovery-runner-manager-changed'],
+  ];
+  for(const [index,[image,runnerImageId,change,code]]of cases.entries())await t.test(String(index),async t=>{
+    const f=runnerFixture(t),baseline=await recovery.runnerIdentity(f.candidate);
+    f.candidate.restoredRunnerIdentity=baseline;f.candidate.spec.images={runner:{id:target}};
+    f.candidate.spec.supportImages.previousRunner={id:old};f.container.Image=image;if(change)change(f);
+    f.candidate.rails=async()=>({token:'private-api-fixture',root_id:1});
+    f.candidate.api=async(route,_token,method='GET')=>{
+      if(method==='DELETE'||method==='PUT')return {};
+      if(route.includes('/repository/files/'))return {last_commit_id:'f'.repeat(40)};
+      if(route.endsWith('/pipelines'))return [{id:35,status:'success',sha:'f'.repeat(40)}];
+      if(route.endsWith('/jobs'))return [{id:45,name:'restored-registry-blob',status:'success',runner:{id:56},runner_manager:{system_id:f.manager}}];
+      throw Error('unexpected API request');
+    };
+    const input={expected:{...f.candidate.spec.restore.expected,runnerIdentity:baseline,branch:'main',imageCommit:'e'.repeat(40)},...(runnerImageId===undefined?{}:{runnerImageId})};
+    if(code)await assert.rejects(()=>recovery.verifyRegistryBlob(f.candidate,input),{message:code});else await recovery.verifyRegistryBlob(f.candidate,input);
+    assert.equal(f.candidate.restoredRunnerIdentity,baseline,'Phase image selection must not rewrite the retained native identity.');
   });
 });

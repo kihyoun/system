@@ -636,6 +636,10 @@ async function verifyPrivateWizard(candidate,expected){
 }
 async function verifyRegistryBlob(candidate,input) {
   await candidate.stage('recovery-original-registry-blob-ci',async()=>{
+    const baseline=candidate.restoredRunnerIdentity;
+    const runnerImageId=input.runnerImageId===undefined?baseline?.imageId:input.runnerImageId;
+    if(input.runnerImageId!==undefined&&(!/^sha256:[a-f0-9]{64}$/.test(runnerImageId)||
+      ![candidate.spec.images?.runner?.id,candidate.spec.supportImages?.previousRunner?.id].includes(runnerImageId)))throw Error('recovery-runner-image-changed');
     const auth=await rootToken(candidate);
     try {
       const expected=input.expected;
@@ -644,10 +648,25 @@ async function verifyRegistryBlob(candidate,input) {
       const commit=await candidate.api('/projects/'+expected.projectId+'/repository/files/.gitlab-ci.yml?ref='+encodeURIComponent(expected.branch),auth.token);
       let pipeline;
       await candidate.wait(async()=>{const runs=await candidate.api('/projects/'+expected.projectId+'/pipelines',auth.token);pipeline=runs.find(run=>run.sha===commit.last_commit_id);return pipeline&&['success','failed','skipped','canceled'].includes(pipeline.status);},180000);
-      if(pipeline.status!=='success')throw Error('restored-registry-ci-failed');
       const jobs=await candidate.api('/projects/'+expected.projectId+'/pipelines/'+pipeline.id+'/jobs',auth.token);
-      if(jobs.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id||(expected.runnerIdentity&&jobs[0].runner.id!==expected.runnerIdentity.runnerId))throw Error('restored-registry-job-not-successful');
-      const current=await runnerIdentity(candidate);assertRunnerIdentity(candidate.restoredRunnerIdentity,current,true);
+      if(!Number.isSafeInteger(pipeline.id)||pipeline.id<1||!Array.isArray(jobs))throw Error('restored-registry-job-not-successful');
+      const diagnostics=require('../shared/job-diagnostics');
+      const observed=jobs.filter(job=>Number.isSafeInteger(job.id)&&job.id>0&&job.name==='restored-registry-blob'&&
+        ['success','failed','skipped','canceled'].includes(job.status)).map(job=>({id:job.id,name:job.name,status:job.status,
+        ...(Number.isSafeInteger(job.runner?.id)&&job.runner.id>0?{runnerId:job.runner.id}:{}),
+        ...(diagnostics.failureReason(job.failure_reason)?{failureReason:diagnostics.failureReason(job.failure_reason)}:{}),
+        ...(Number.isFinite(job.duration)&&job.duration>=0?{duration:job.duration}:{}),
+        ...(Number.isFinite(job.queued_duration)&&job.queued_duration>=0?{queuedSeconds:job.queued_duration}:{})}));
+      for(const job of observed.filter(job=>job.status==='failed')){
+        try{job.diagnostics=diagnostics.classify(await candidate.api('/projects/'+expected.projectId+'/jobs/'+job.id+'/trace',auth.token));}
+        catch{job.diagnostics={codes:['trace-unavailable']};}
+      }
+      if(pipeline.status!=='success'){
+        Object.assign(candidate.evidence,{failurePipelineId:pipeline.id,pipelineStatus:pipeline.status,jobs:observed});
+        throw Error('restored-registry-ci-failed');
+      }
+      if(jobs.length!==1||observed.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id||(expected.runnerIdentity&&jobs[0].runner.id!==expected.runnerIdentity.runnerId))throw Error('restored-registry-job-not-successful');
+      const current=await runnerIdentity(candidate);assertRunnerIdentity(baseline&&{...baseline,imageId:runnerImageId},current,true);
       const manager=jobs[0].runner_manager?.system_id;
       if(typeof manager!=='string'||!/^[rs]_[A-Za-z0-9]{1,128}$/.test(manager)||
         crypto.createHash('sha256').update(manager).digest('hex')!==current.manager)throw Error('recovery-runner-job-manager-mismatch');

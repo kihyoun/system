@@ -187,11 +187,16 @@ function fixture(overrides={}) {
   assert.deepEqual(diagnostic.classify('ERROR: Job failed (system failure): the configured PullPolicies ([never]) are not allowed by AllowedPullPolicies ([always])'),{commands:[],codes:['runner-pull-policy']});
   assert.equal(diagnostic.failureReason('runner_configuration_error'),'runner_configuration_error');
   assert.equal(diagnostic.failureReason('secret-fixture-token'),undefined);
+  const originalGuided=fixture({guidedPreviewAcceptance:true});
+  await originalGuided.instance.prepareRunnerTransport();
+  assert(!originalGuided.commands.some(call=>call.args.includes('cat')&&call.args.includes('/etc/gitlab-runner/config.toml')),
+    'The original HTTP phase must not bind a test CA before guided TLS preparation creates it.');
   const failing=fixture().instance;
   const policyDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-runner-policy-'));
   const policyFile=path.join(policyDirectory,'runners/runner/1/config/config.toml');
   fs.mkdirSync(path.dirname(policyFile),{recursive:true});
-  fs.writeFileSync(policyFile,'[[runners]]\r\n  token = "secret-fixture-token"\r\n  [runners.docker]\r\n    image = "alpine"\r\n');
+  const originalPolicy='[[runners]]\r\n  id = 56\r\n  token = "secret-fixture-token"\r\n  url = "https://gitlab.candidate.test"\r\n  clone_url = "https://gitlab.candidate.test"\r\n  [runners.docker]\r\n    image = "alpine"\r\n  [runners.cache]\r\n    Type = "s3"\r\n';
+  fs.writeFileSync(policyFile,originalPolicy);
   failing.spec={...spec,supportImages:{helper:{}},restore:{base:policyDirectory}};
   const policyTransport=failing.inner.bind(failing);
   failing.inner=async(args,options)=>{
@@ -215,9 +220,15 @@ function fixture(overrides={}) {
     assert(fs.readFileSync(policyFile,'utf8').includes('allowed_pull_policies = ["never", "if-not-present"]'));
     assert.deepEqual(failing.evidence.jobs[0].diagnostics,classified);
     assert.equal(failing.evidence.jobs[0].failureReason,'runner_configuration_error');
-    fs.writeFileSync(policyFile,'[[runners]]\n  token = "secret-fixture-token"\n');
-    await assert.rejects(failing.platform());
-    assert.equal(createdProjects,1,'A missing real Docker TOML section must fail before creating any CI project.');
+    const configured=fs.readFileSync(policyFile,'utf8');
+    assert(configured.startsWith(originalPolicy.slice(0,originalPolicy.indexOf('  [runners.docker]'))));
+    assert(configured.endsWith('  [runners.cache]\r\n    Type = "s3"\r\n'));
+    await failing.prepareRunnerTransport();assert.equal(fs.readFileSync(policyFile,'utf8'),configured,'Transport preparation is idempotent.');
+    for(const invalid of ['[[runners]]\n  token = "secret-fixture-token"\n',originalPolicy+'  [runners.docker]\n',originalPolicy+'[[runners]]\n']){
+      fs.writeFileSync(policyFile,invalid);await assert.rejects(failing.platform());
+      assert.equal(fs.readFileSync(policyFile,'utf8'),invalid,'Ambiguous TOML remains untouched.');
+    }
+    assert.equal(createdProjects,1,'Missing or ambiguous real Docker TOML sections must fail before creating any CI project.');
   } finally {fs.rmSync(policyDirectory,{recursive:true,force:true});}
   const recoveryModule=require('../e2e/recovery'),oldRestore=recoveryModule.bootstrapRestore;
   const wizardId='sha256:'+'f'.repeat(64),sourceRevision='e'.repeat(40),imageDigest='sha256:'+'d'.repeat(64);

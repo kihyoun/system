@@ -310,6 +310,23 @@ class Candidate {
     if(!response.body) return null;
     try {return JSON.parse(response.body);} catch {return response.body;}
   }
+  async prepareRunnerTransport() {
+    const script='('+function(base){
+      const fs=require('fs');const p=base+'/runners/runner/1/config/config.toml';
+      let t=fs.readFileSync(p,'utf8');
+      if((t.match(/^\s*\[\[runners\]\]\s*$/gm)||[]).length!==1||
+        (t.match(/^\s*\[runners\.docker\]\s*$/gm)||[]).length!==1)throw Error('candidate-runner-docker-section-required');
+      t=t.replace(/(\[runners\.docker\]\r?\n)([\s\S]*?)(?=\r?\n\s*\[|$)/,(_match,header,body)=>
+        header+'    helper_image = "candidate-helper:under-test"\n    pull_policy = "if-not-present"\n    allowed_pull_policies = ["never", "if-not-present"]\n'+
+        body.replace(/^\s*(?:helper_image|pull_policy|allowed_pull_policies)\s*=.*(?:\r?\n|$)/gm,''));
+      fs.writeFileSync(p,t,{mode:0o600});
+    }.toString()+')('+JSON.stringify(this.spec.restore?.base||'/candidate-data/platform')+')';
+    await this.inner(['exec','system_bootstrapper_1','node','-e',script]);
+    if(this.spec.restore&&this.spec.guidedPreviewAcceptance===true)await require('../e2e/guided-preview-platform').configureRunner(this);
+    await this.sleep(4000);
+    await this.inner(['exec','runner_docker_1','gitlab-runner','verify']);
+    await this.inner(['exec','runner_docker_1','sh','-c','grep -F \'allowed_pull_policies = ["never", "if-not-present"]\' /etc/gitlab-runner/config.toml >/dev/null && grep -F \'helper_image = "candidate-helper:under-test"\' /etc/gitlab-runner/config.toml >/dev/null']);
+  }
   async platform() {
     if(!this.spec.supportImages?.helper) throw new Error('runner-helper-image-required');
     await this.stage('gitlab-and-runner-ready',async()=>{
@@ -327,6 +344,8 @@ class Candidate {
         const recovery=require('../e2e/recovery'),actual=await recovery.runnerIdentity(this);
         recovery.assertRunnerIdentity(expected.runnerIdentity,actual);
         recovery.assertRunnerIdentity(this.restoredRunnerIdentity,actual,true);
+        await this.prepareRunnerTransport();
+        recovery.assertRunnerIdentity(actual,await recovery.runnerIdentity(this),true);
         // Retain the original successful pipeline whose immutable blob was backed up.
         this.evidence={...this.evidence,projectId:expected.projectId,pipelineId:expected.registryPipelineId};
       });
@@ -341,19 +360,7 @@ class Candidate {
         await this.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','node','/system/operations/dist/lifecycle/entry.js','runner-register','/system','main'],{timeout:180000});
         const after=await this.rails("require 'json'; puts JSON.generate(pools:Ci::Runner.instance_type.where(description:'System Bootstrapper Docker pool').count,active_setup:User.find_by_username('root').personal_access_tokens.where(name:'system-bootstrapper-runner-setup',revoked:false).count)");
         if(after.pools!==1||after.active_setup!==0) throw new Error('runner-idempotency-failed');
-        const script='('+function(base){
-          const fs=require('fs');const p=base+'/runners/runner/1/config/config.toml';
-          let t=fs.readFileSync(p,'utf8');
-          if((t.match(/\[runners\.docker\]\r?\n/g)||[]).length!==1)throw Error('candidate-runner-docker-section-required');
-          t=t.replace(/(\[runners\.docker\]\r?\n)([\s\S]*?)(?=\r?\n\s*\[|$)/,(_match,header,body)=>
-            header+'    helper_image = "candidate-helper:under-test"\n    pull_policy = "if-not-present"\n    allowed_pull_policies = ["never", "if-not-present"]\n'+
-            body.replace(/^\s*(?:helper_image|pull_policy|allowed_pull_policies)\s*=.*(?:\r?\n|$)/gm,''));
-          fs.writeFileSync(p,t,{mode:0o600});
-        }.toString()+')('+JSON.stringify(this.spec.restore?.base||'/candidate-data/platform')+')';
-        await this.inner(['exec','system_bootstrapper_1','node','-e',script]);
-        await this.inner(['exec','runner_docker_1','sh','-c','grep -F \'allowed_pull_policies = ["never", "if-not-present"]\' /etc/gitlab-runner/config.toml >/dev/null && grep -F \'helper_image = "candidate-helper:under-test"\' /etc/gitlab-runner/config.toml >/dev/null']);
-        await this.sleep(4000);
-        await this.inner(['exec','runner_docker_1','gitlab-runner','verify']);
+        await this.prepareRunnerTransport();
       });
       let project,branch;
       await this.stage('registry-build-push-pull-run',async()=>{
@@ -559,8 +566,9 @@ function recover(report,exec=docker) {
     ['candidate','wizard','gitlab','runner','nginx'].includes(role)&&/^sha256:[a-f0-9]{64}$/.test(id)).map(([role,id])=>[role,{id}]));
   const evidence={};
   for(const key of ['projectId','pipelineId','failurePipelineId']) if(Number.isInteger(report.evidence?.[key])&&report.evidence[key]>0)evidence[key]=report.evidence[key];
+  if(['success','failed','skipped','canceled'].includes(report.evidence?.pipelineStatus))evidence.pipelineStatus=report.evidence.pipelineStatus;
   if(Array.isArray(report.evidence?.jobs)) evidence.jobs=report.evidence.jobs.filter(job=>
-    Number.isInteger(job.id)&&['registry-round-trip','delivery-gate'].includes(job.name)&&['success','failed','skipped'].includes(job.status)).map(job=>({id:job.id,name:job.name,status:job.status,
+    Number.isInteger(job.id)&&['registry-round-trip','delivery-gate','restored-registry-blob'].includes(job.name)&&['success','failed','skipped','canceled'].includes(job.status)).map(job=>({id:job.id,name:job.name,status:job.status,
       ...(Number.isInteger(job.runnerId)?{runnerId:job.runnerId}:{}),
       ...(jobDiagnostics.failureReason(job.failureReason)?{failureReason:jobDiagnostics.failureReason(job.failureReason)}:{}),
       ...(Number.isFinite(job.duration)?{duration:job.duration}:{}),
