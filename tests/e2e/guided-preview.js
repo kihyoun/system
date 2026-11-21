@@ -123,7 +123,28 @@ async function publishImages(candidate,repository,token){
     images:{helper:candidate.spec.images.candidate.id,wizard:candidate.spec.images.wizard.id}},{timeout:480000});
 }
 async function run(candidate){
-  const desired=settings(candidate),before=await production(candidate),sync=syncSession(candidate);
+  const desired=settings(candidate),sync=syncSession(candidate);
+  const before=await candidate.stage('system-beta-production-baseline',async()=>{
+    await candidate.wait(async()=>{
+      const response=await sync('/status'),status=response.status||response;
+      if(status.defaultWizardProject?.state==='failed'){
+        const message=status.defaultWizardProject.message;
+        const known=new Map([
+          ['Namespace lookup failed','namespace-unavailable'],
+          ['The local administrator namespace could not be found.','namespace-unavailable'],
+          ['Repository already exists in the selected namespace.','project-rejected'],
+          ['Default branch not ready; retry Save','default-branch-missing'],
+          ['Repository ready; routing failed. Retry Save.','routing-failed'],
+          ...[400,401,403,404,409,422,500,502,503,504].map(code=>[
+            `GitLab rejected project creation (HTTP ${code}); check namespace permissions, reserved names or a competing creation.`,
+            'project-rejected']),
+        ]);
+        requireValue(false,'system-beta-registration-'+(known.get(message)||'unknown-failure'));
+      }
+      return status.defaultWizardSetupInProgress===false&&status.defaultWizardProject?.state==='registered';
+    },candidate.spec.readinessMilliseconds||600000);
+    return production(candidate);
+  });
   const evidence={version:2,sourceLayout:'system-monorepo-v1',fixtureNamespace:'system-beta-contract-fixture-v1',
     acceptanceScope:'native-lifecycle-with-contract-verifier',productionMainSha256:before.mainSha256,productionImageId:before.runningImage};
   candidate.evidence.guidedPreview=evidence;

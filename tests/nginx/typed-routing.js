@@ -29,21 +29,40 @@ test('literal configuration adapter reads settings without executing them and cl
  const port=new LiteralConfiguration();assert.deepEqual(port.read([file],['PROJECT_NAME','USE_BETA_HOST'],{USE_BETA_HOST:'false'}),{PROJECT_NAME:'sample',USE_BETA_HOST:'false'});
  assert.throws(()=>port.read([file+'.missing'],['PROJECT_NAME']),/missing/);
 });
-test('start/reload retain one Wizard route, optional fragments, HTTP01 bytes and exact Compose settings',t=>{
+test('start/reload/apply retain the signed default Wizard, one route, optional fragments and exact Compose settings',async t=>{
  const f=fixture(t);
- fs.writeFileSync(path.join(f.root,'system/.projects.env/.wizard.env'),'PROJECT_NAME=wizard\nPROJECT_TEMPLATE=wizard\nUSE_PROD_HOST=true\nUSE_BETA_HOST=true\nUSE_REVIEW_HOST=true\n');
+ const {wizardConfiguration}=require('../../sync/dist/DefaultWizard');
+ const {readReceipt}=require('../../sync/dist/ProjectBootstrap');
+ const crypto=require('node:crypto');
+ const receipt={operation:'b'.repeat(48),defaultProject:true,template:'wizard',state:'pending',repository:{id:1,namespaceId:1,path:'root/wizard',defaultBranch:'main',systemProject:true}};
+ const project=path.join(f.root,'system/.projects.env/.wizard.env');
+ const content=wizardConfiguration({WIZARD_HOST:'wizard.example.test',WIZARD_DOMAIN_MODE:'0'})+'\n# BOOTSTRAPPER_PROJECT='+Buffer.from(JSON.stringify(receipt)).toString('base64')+'\n';
+ assert.equal(content[807],'$');assert.equal(crypto.createHash('md5').update(content.slice(0,1184)).digest('hex'),'bd4a8426355824593a5e21ad759830c1');
+ fs.writeFileSync(project,content);assert.deepEqual(readReceipt(content),receipt);
+ const {NestFactory}=require('../../operations/node_modules/@nestjs/core');
+ let closed=0;
+ t.mock.method(NestFactory,'createApplicationContext',async()=>({get(token){assert.equal(token,ProjectsRoutingService);return f.service;},async close(){closed++;}}));
+ const {main}=require('../../operations/dist/projects-routing/entry');
  f.service.run({...f.command,action:'proxies'});f.service.run({...f.command,action:'stop-proxies'});assert.equal(f.calls.length,0);
  const acme=fs.readFileSync(path.join(f.root,'nginx/.templates/acme-http01.conf.template'));
- for(const action of ['start','reload']){
-  f.calls.length=0;f.service.run({...f.command,action});
+ let originalTemplate;
+ for(const action of ['start','reload','apply']){
+  f.calls.length=0;
+  if(action==='apply')await main('routing',['apply',f.root,f.command.templates]);
+  else f.service.run({...f.command,action});
   const template=fs.readFileSync(path.join(f.root,'templates/default.conf.template'),'utf8');
+  if(originalTemplate===undefined)originalTemplate=template;else assert.equal(template,originalTemplate);
+  assert.equal(fs.readFileSync(project,'utf8'),content,'routing preserves the pending authoritative default-project receipt');
+  assert.deepEqual(fs.readdirSync(path.join(f.root,'nginx-proxy/.projects')),[],'default Wizard never creates an application proxy record');
   assert(template.includes('127.0.0.1:8071'));assert.equal(template.split('include /etc/nginx/templates/wizard-environments/*.conf;').length-1,1);
   assert.equal(template.split('server_name wizard.example.test;').length-1,1);assert(!/wizard_(prod|beta|review)/.test(template));
   assert(fs.readFileSync(path.join(f.root,'templates/00-acme-http01.conf.template')).equals(acme));
   assert.equal(fs.readFileSync(path.join(f.root,'templates/wizard-environments/beta.conf'),'utf8'),'owned candidate fragment');
   if(action==='start'){assert.equal(f.calls.at(-1).options.env.NGINX_IMAGE,'selected-nginx');assert.equal(f.calls.at(-1).options.env.PERSISTENT_DIR,'/selected/data');assert.equal(f.calls.at(-1).options.env.SYSTEM_LOG_MAX_SIZE,'7m');}
+  if(action!=='start'){assert(f.calls.some(call=>call.args.slice(-2).join(' ')==='nginx -t'));assert(f.calls.some(call=>call.args.slice(-3).join(' ')==='nginx -s reload'));assert(!f.calls.some(call=>call.args.includes('compose')));}
   assert(!JSON.stringify(f.calls).includes('system_wizard_1'));assert(!JSON.stringify(f.calls).includes('system_gitlab_1'));
  }
+ assert.equal(closed,1,'apply executes and closes the native routing entry application');
  f.service.run({...f.command,action:'recovery',environment:{PATH:'/prepared/bin'}});
  assert.equal(f.calls.at(-1).options.env.PATH,'/prepared/bin');assert.equal(f.calls.at(-1).options.env.HOME,undefined);
  const recovered=fs.readFileSync(path.join(f.root,'templates/default.conf.template'),'utf8');
