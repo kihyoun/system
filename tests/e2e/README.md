@@ -516,10 +516,14 @@ Node runtime. Its thin Node entry invokes the production public-upgrade service;
 only publication transport and disposable host facts use fixture providers.
 Docker/Compose transports are thin Node adapters backed by a test-only Nest module. Preparation copies the
 exact candidate's Node binary, bundled operations, Docker/Compose binaries, musl
-loader and declared C++/GCC libraries with native filesystem APIs. Read-only mounts
+loader and declared C++/GCC libraries with native filesystem APIs. The copied fixture
+runtime also retains the candidate's exact `gitlab/security-release.json` and
+`gitlab/upgrade-child.js` loader inputs beside operations. Read-only mounts
 supply that runtime at an explicit path in both the helper and historical
-controller; no Node installation in the old image is assumed. Runtime probes load
-the copied interpreter and Nest module in both images before controller replacement.
+controller; no Node installation in the old image is assumed. The existing runtime
+probes load the copied interpreter and full public-upgrade Host entry in both images
+before controller replacement. The existing local contract executes a relocated copy
+through the real source launcher.
 An unexpected candidate Node library dependency fails preparation. Offline tests
 cover transport behavior; successful runtime probes and the full candidate gate
 are still required to establish that this runtime closure works in those images.

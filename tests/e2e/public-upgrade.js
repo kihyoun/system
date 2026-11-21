@@ -216,7 +216,7 @@ class NativeCLI {
     for (const image of [candidate.spec.images.candidate.id, previous.images.controller.imageId]) {
       const output = await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
         '--entrypoint', fixtureRuntime + '/node', ...runtimeVolumes(this.fixture).flatMap(value => ['--volume', value]),
-        image, '-e', "require('/opt/system-public-upgrade/operations/dist/testing/public-upgrade.module.js');process.stdout.write('runtime-ready')"]);
+        image, '-e', "require('/opt/system-public-upgrade/operations/dist/testing/public-upgrade-host-entry.js');process.stdout.write('runtime-ready')"]);
       required(output.trim() === 'runtime-ready', 'public-upgrade-runtime-unavailable');
     }
 

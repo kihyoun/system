@@ -8,6 +8,25 @@ import { runtimeLibraries } from './public-upgrade-transport.service';
 /** Prepare the candidate-owned runtime closure for helpers and historical controllers. */
 @Injectable()
 export class PublicUpgradeRuntimeService {
+  copyApplication(source: string, runtime: string): void {
+    if (!path.isAbsolute(source) || !path.isAbsolute(runtime))
+      throw Error('absolute-fixture-required');
+    fs.cpSync(path.join(source, 'operations'), path.join(runtime, 'operations'), {
+      recursive: true,
+      dereference: true,
+    });
+    // The full host module loads the release profile and process journal relative
+    // to the operations tree. Keep those exact candidate inputs when relocating it.
+    const gitlab = path.join(runtime, 'gitlab');
+    fs.mkdirSync(gitlab, { recursive: true, mode: 0o755 });
+    for (const file of ['security-release.json', 'upgrade-child.js'])
+      fs.copyFileSync(
+        path.join(source, 'gitlab', file),
+        path.join(gitlab, file),
+        fs.constants.COPYFILE_EXCL,
+      );
+  }
+
   verifyHost(): void {
     for (const [binary, args] of [
       ['git', ['--version']],
@@ -55,10 +74,7 @@ export class PublicUpgradeRuntimeService {
       copy('/usr/bin/' + name, path.join(fixture, name + '.native'));
       fs.chmodSync(path.join(fixture, name + '.native'), 0o755);
     }
-    fs.cpSync('/system/operations', path.join(runtime, 'operations'), {
-      recursive: true,
-      dereference: true,
-    });
+    this.copyApplication('/system', runtime);
     for (const [name, file] of [
       ['docker', 'docker'],
       ['docker-compose', 'docker'],

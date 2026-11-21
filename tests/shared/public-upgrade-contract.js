@@ -582,7 +582,12 @@ test('native host fixture keeps diagnostics fixed and runs initialization throug
     fs.writeFileSync(path.join(directory,'fixture.json'),JSON.stringify(input),{mode:0o600});
     const main=path.join(input.live,'configuration/.docker.env');
     fs.writeFileSync(main,Buffer.concat([fs.readFileSync(path.join(root,'system/.docker.env.example')),Buffer.from("\nexport BOOTSTRAPPER_IMAGE='"+input.spec.images.candidate.id+"'\nexport WIZARD_IMAGE='"+input.spec.images.wizard.id+"'\n")]),{mode:0o600});
-    const entry=path.join(root,'operations/dist/testing/public-upgrade-host-entry.js');
+    fs.mkdirSync(path.join(directory,'runtime'),{recursive:true});
+    const {PublicUpgradeRuntimeService}=require('../../operations/dist/testing/public-upgrade-runtime.service');
+    new PublicUpgradeRuntimeService().copyApplication(root,path.join(directory,'runtime'));
+    for(const file of ['security-release.json','upgrade-child.js'])
+      assert(fs.readFileSync(path.join(directory,'runtime/gitlab',file)).equals(fs.readFileSync(path.join(root,'gitlab',file))));
+    const entry=path.join(root,'tests/e2e/public-upgrade-host.js');
     const result=execFileSync(process.execPath,[entry,'initialize'],{env:{...process.env,SYSTEM_PUBLIC_UPGRADE_FIXTURE:directory},encoding:'utf8'});
     assert.deepEqual(JSON.parse(result),{initialized:true});
     const {NestFactory}=require('../../operations/node_modules/@nestjs/core');
