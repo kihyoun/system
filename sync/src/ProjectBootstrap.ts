@@ -280,6 +280,12 @@ function runNativeTokenMetadata(input: any): Promise<any> {
 }
 function runNativeWizardSource(input: any): Promise<any> {
   return new Promise((resolve, reject) => {
+    let launched = false;
+    const failure = () =>
+      Object.assign(
+        new Error('GitLab operation completion was not confirmed; inspect the recorded operation.'),
+        { uncertain: launched && input.action === 'wizard-source', action: input.action },
+      );
     const child = execFile(
       process.execPath,
       [
@@ -291,7 +297,7 @@ function runNativeWizardSource(input: any): Promise<any> {
       { timeout: 240000, maxBuffer: 2 * 1024 * 1024 },
       (error, stdout) => {
         if (error) {
-          reject(new Error('Wizard repository operation failed; retry with the saved binding.'));
+          reject(failure());
           return;
         }
         try {
@@ -299,10 +305,13 @@ function runNativeWizardSource(input: any): Promise<any> {
           if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error();
           resolve(value);
         } catch {
-          reject(new Error('Wizard repository operation failed; retry with the saved binding.'));
+          reject(failure());
         }
       },
     );
+    child.once('spawn', () => {
+      launched = true;
+    });
     child.stdin.on('error', () => undefined);
     child.stdin.end(JSON.stringify(input));
   });
