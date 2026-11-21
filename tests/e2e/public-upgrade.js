@@ -337,6 +337,8 @@ class NativeCLI {
   async restoreAfterRollback() {
     await this.restoreOriginal(this.originalFiles);
     await this.finish(this.originalFiles,this.originalBaseline);
+    await waitForServices(this.candidate);
+    await this.candidate.wait(async()=>{const value=await recovery.syncFetch(this.candidate);return !!value.main?.data;},600000);
   }
   async offline() {
     await this.write(this.fixture + '/offline-recovery', 'previous-public-transport-disabled\n');
