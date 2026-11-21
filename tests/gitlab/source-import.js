@@ -88,6 +88,26 @@ async function main() {
   const coordinator = new WizardSourceOperationService({ensure:async()=>({context:{},configDirectory:'/private',credential:{token:'admin'}})}, {current:async()=>{minted++;return {token:'scoped'};}}, {request:async(_context,token,method,route)=>{routes.push(route);assert.equal(token,route==='projects/7'?'admin':'scoped');return api(rows).request(method,route);}}, importer,status);
   assert.equal((await coordinator.execute('/checkout',statusInput)).build.phase,'candidate-verified'); assert.equal(minted,1);assert.ok(routes.includes('projects/7'));assert.ok(!routes.some(route=>route.includes('team%2Fwizard')));
   rows['projects/7'].only_allow_merge_if_pipeline_succeeds=false; await assert.rejects(()=>coordinator.execute('/checkout',statusInput),/binding changed/);assert.equal(minted,1,'conflicting ownership must not mint credentials');
+  const {recipeWriteProof,reconcileRecipeWrite}=require('../../operations/dist/gitlab-provision/recipe-write-proof');
+  const parent='a'.repeat(40), installed='b'.repeat(40), proofRows={
+    'projects/7/repository/branches/main':{commit:{id:parent}},
+    'projects/7/repository/files/.system-bootstrapper%2Fci.yml?ref=main':file('recipe',installed),
+    ['projects/7/repository/commits/'+installed]:{parent_ids:[parent]},
+  };
+  const read=async route=>({status:route in proofRows?200:404,value:proofRows[route]||{}});
+  const proof=await recipeWriteProof(7,'projects/7/repository/commits',{branch:'main',actions:[{action:'update',file_path:'.system-bootstrapper/ci.yml',content:'recipe',last_commit_id:parent}]},read);
+  assert.equal(proof.files[0].sha256,hash('recipe'));assert.equal(JSON.stringify(proof).includes('"content"'),false);
+  assert.equal(await reconcileRecipeWrite(7,proof,read),true);
+  proofRows['projects/7/repository/commits/'+installed].parent_ids=['c'.repeat(40)];await assert.rejects(()=>reconcileRecipeWrite(7,proof,read),/parent-reconciliation-conflict/);
+  delete proofRows['projects/7/repository/files/.system-bootstrapper%2Fci.yml?ref=main'];assert.equal(await reconcileRecipeWrite(7,proof,read),false,'missing commit evidence must not authorize replay');
+  await assert.rejects(()=>recipeWriteProof(7,'projects/8/repository/commits',{},read),/route-invalid/);
+  await assert.rejects(()=>recipeWriteProof(7,'projects/7/repository/commits',{branch:'main',actions:[{action:'create',file_path:'README.md',content:'foreign'}]},read),/proof-invalid/);
+  const operation='d'.repeat(48), pipelineProof=await recipeWriteProof(7,'projects/7/pipeline',{ref:'main',variables:[{key:'SYSTEM_WIZARD_OPERATION',value:operation},{key:'SYSTEM_WIZARD_EXPECTED_SHA',value:installed}]},read);
+  const listRoute='projects/7/pipelines?ref=main&source=api&per_page=100&page=1';proofRows[listRoute]=[];
+  assert.equal(await reconcileRecipeWrite(7,pipelineProof,read),false);
+  proofRows[listRoute]=[{id:12,sha:installed,ref:'main',source:'api'}];proofRows['projects/7/pipelines/12/variables']=[{key:'SYSTEM_WIZARD_OPERATION',value:operation}];
+  assert.equal(await reconcileRecipeWrite(7,pipelineProof,read),true);
+  proofRows[listRoute].push({...proofRows[listRoute][0]});await assert.rejects(()=>reconcileRecipeWrite(7,pipelineProof,read),/reconciliation-conflict/);
   console.log('Wizard source import/status: atomic CAS, binary modes, lost responses, ownership, native evidence and mirror isolation passed.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

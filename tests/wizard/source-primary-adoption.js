@@ -677,7 +677,7 @@ async function bindingRefresh(f) {
     current=session();lostCancel=true;await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/lost cancellation response/);
     executions.clear(); // Docker may garbage-collect completed execs before the controller retries.
     current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/release-reconciled-retry/);assert.equal(launches,2);assert.equal(cancels,2);
-    current=session();await current.withAdvisoryLock('42',async()=>{const original=backend, before=writes;backend=undefined;await assert.rejects(()=>current.request('PUT','projects/7/variables/WIZARD_REVIEW_HOST',body),/backend-ownership-lost/);assert.equal(writes,before);backend=original;});
+    current=session();await current.withAdvisoryLock('42',async()=>{await assert.rejects(()=>current.request('POST','projects/7/repository/commits',{branch:'main',actions:[]}),/write-route-invalid/);const original=backend, before=writes;backend=undefined;await assert.rejects(()=>current.request('PUT','projects/7/variables/WIZARD_REVIEW_HOST',body),/backend-ownership-lost/);assert.equal(writes,before);backend=original;});
     current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{backend=undefined;for(const execution of executions.values()){execution.running=false;execution.exitCode=3;}throw Error('database holder exited');}),/release-ownership-lost/);
     current=session();await assert.rejects(()=>current.withAdvisoryLock('42',async()=>{}),/release-reconciled-retry/);
     current=session();loseProofAfterWrite=true;await assert.rejects(()=>current.withAdvisoryLock('42',()=>current.request('PUT','projects/7/variables/WIZARD_REVIEW_HOST',body)),/backend-ownership-lost/);

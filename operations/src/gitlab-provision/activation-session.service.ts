@@ -1,3 +1,4 @@
+import { recipeWriteProof, reconcileRecipeWrite, validateRecipeProof } from './recipe-write-proof';
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
@@ -77,10 +78,14 @@ function validate(value: unknown): LockState {
     if (
       !['POST', 'PUT'].includes(String(pending.method)) ||
       typeof pending.route !== 'string' ||
-      !pending.route.startsWith(`projects/${state.projectId}/variables`)
+      !new RegExp(
+        `^projects/${state.projectId}/(?:variables(?:/[A-Za-z0-9_]+)?|repository/commits|pipeline)$`,
+      ).test(pending.route.split('?')[0])
     )
       throw Error('gitlab-activation-lock-invalid');
-    row(pending.body);
+    const body = row(pending.body);
+    if (!pending.route.startsWith(`projects/${state.projectId}/variables`))
+      validateRecipeProof(body);
     if (Buffer.byteLength(JSON.stringify(pending)) > 16384)
       throw Error('gitlab-activation-lock-invalid');
   }
@@ -102,6 +107,7 @@ export class GitlabActivationSessionService {
     projectId: number,
     operation: string,
     token: string,
+    purpose?: 'build' | 'environment',
   ): GitlabActivationSession {
     if (!Number.isSafeInteger(projectId) || projectId < 1 || !/^[a-f0-9]{64}$/.test(operation))
       throw Error('gitlab-activation-context-invalid');
@@ -120,7 +126,40 @@ export class GitlabActivationSessionService {
         if (!active || active.state.phase !== 'held' || active.state.pending || !body)
           throw Error('gitlab-activation-held-lock-required');
         await this.assertBackend(active.session, active.state);
-        active.state.pending = { method, route, body };
+        const isRecipe =
+          route === `projects/${projectId}/repository/commits` ||
+          route === `projects/${projectId}/pipeline`;
+        if (
+          isRecipe &&
+          (!purpose || method !== 'POST' || (route.endsWith('/pipeline') && purpose !== 'build'))
+        )
+          throw Error('gitlab-activation-write-route-invalid');
+        if (!isRecipe) {
+          const allowed =
+            /^(?:SYSTEM_WIZARD_ENVIRONMENT_(?:IMAGE|OPERATION)|WIZARD_(?:REVIEW|BETA)_HOST)$/.test(
+              String(body.key),
+            );
+          const pipelineIntent =
+            purpose === 'build' &&
+            /^SYSTEM_WIZARD_PIPELINE_[a-f0-9]{48}$/.test(String(body.key)) &&
+            method === 'POST';
+          if (
+            (!allowed && !pipelineIntent) ||
+            ![
+              `projects/${projectId}/variables`,
+              `projects/${projectId}/variables/${body.key}`,
+            ].includes(route.split('?')[0]) ||
+            (route.includes('?') && !route.endsWith('?filter%5Benvironment_scope%5D=*'))
+          )
+            throw Error('gitlab-activation-write-route-invalid');
+        }
+        const proof = isRecipe
+          ? await recipeWriteProof(projectId, route, body, (target) =>
+              this.api.request(context, token, 'GET', target),
+            )
+          : body;
+        await this.assertBackend(active.session, active.state);
+        active.state.pending = { method, route, body: proof };
         active.journal.save(active.state);
         const response = await this.api.request(context, token, method, route, body);
         if (response.status === 200 || response.status === 201) {
@@ -133,14 +172,14 @@ export class GitlabActivationSessionService {
       withAdvisoryLock: async (key, callback) =>
         this.journals.withFile(
           configDirectory,
-          `project-${projectId}`,
+          purpose === 'build' ? `project-build-${projectId}` : `project-${projectId}`,
           validate,
           async (journal) => {
             let state = journal.read();
             if (
               state &&
               (state.projectId !== projectId ||
-                state.key !== key ||
+                (state.key !== key && !(purpose === 'build' && state.phase === 'idle')) ||
                 (state.phase !== 'idle' &&
                   (state.operation !== operation || state.containerId !== context.containerId)))
             )
@@ -236,32 +275,51 @@ export class GitlabActivationSessionService {
                 throw Error('gitlab-activation-release-reconciled-retry');
               }
               if (state.pending) {
-                const pending = state.pending,
-                  name = pending.body.key;
                 if (
-                  typeof name !== 'string' ||
-                  !/^(?:SYSTEM_WIZARD_ENVIRONMENT_(?:IMAGE|OPERATION)|WIZARD_(?:REVIEW|BETA)_HOST)$/.test(
-                    name,
+                  state.pending.body.kind === 'commit' ||
+                  state.pending.body.kind === 'pipeline'
+                ) {
+                  if (!purpose || (state.pending.body.kind === 'pipeline' && purpose !== 'build'))
+                    throw Error('gitlab-activation-write-route-invalid');
+                  const reconciled = await reconcileRecipeWrite(
+                    projectId,
+                    state.pending.body,
+                    (route) => this.api.request(context, token, 'GET', route),
+                  );
+                  await this.assertBackend(session, state);
+                  if (reconciled) {
+                    delete state.pending;
+                    journal.save(state);
+                  }
+                } else {
+                  const pending = state.pending,
+                    name = pending.body.key;
+                  if (
+                    typeof name !== 'string' ||
+                    !/^(?:SYSTEM_WIZARD_ENVIRONMENT_(?:IMAGE|OPERATION)|SYSTEM_WIZARD_PIPELINE_[a-f0-9]{48}|WIZARD_(?:REVIEW|BETA)_HOST)$/.test(
+                      name,
+                    )
                   )
-                )
-                  throw Error('gitlab-activation-pending-write-invalid');
-                const response = await this.api.request(
-                  context,
-                  token,
-                  'GET',
-                  `projects/${projectId}/variables/${name}?filter%5Benvironment_scope%5D=*`,
-                );
-                const current = row(response.value);
-                if (
-                  response.status !== 200 ||
-                  current.hidden === true ||
-                  !Object.entries(pending.body).every(([key, value]) =>
-                    isDeepStrictEqual(current[key], value),
+                    throw Error('gitlab-activation-pending-write-invalid');
+                  const response = await this.api.request(
+                    context,
+                    token,
+                    'GET',
+                    `projects/${projectId}/variables/${name}?filter%5Benvironment_scope%5D=*`,
+                  );
+                  const current = row(response.value);
+                  if (
+                    response.status !== 200 ||
+                    current.hidden === true ||
+                    !Object.entries(pending.body).every(([key, value]) =>
+                      isDeepStrictEqual(current[key], value),
+                    )
                   )
-                )
-                  throw Error('gitlab-activation-write-reconciliation-required');
-                delete state.pending;
-                journal.save(state);
+                    throw Error('gitlab-activation-write-reconciliation-required');
+                  await this.assertBackend(session, state);
+                  delete state.pending;
+                  journal.save(state);
+                }
               }
               active = { state, journal, session };
               try {
