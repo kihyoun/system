@@ -8,13 +8,18 @@ function fixture(t){
  const receipt={format:'system-cli-source-v1',name:'@systembootstrapper/cli',version:'2.0.0',sourceRevision:source.revision,sourceTree:source.tree,pipelineId:1,packageJobId:2,filename:'systembootstrapper-cli-2.0.0.tgz',sha256:hash(Buffer.from('x')),integrity:integrity(Buffer.from('x'))};
  const value={format:'system-accepted-release-v1',version:'2.0.0',source,quickstart:{cli:receipt},acceptance:{requiredChecksPassed:true,controllerWizardSameAttempt:true},images:Object.fromEntries(['controller','wizard'].map(role=>[role,{reference:'example/'+role+'@sha256:'+'d'.repeat(64)}]))};
  const manifest=path.join(root,'release.json'),checkout=path.join(root,'checkout'),pkg=path.join(root,'package');
- fs.writeFileSync(manifest,JSON.stringify(value),{mode:0o600});for(const name of ['dist','node_modules']){fs.mkdirSync(path.join(pkg,name),{recursive:true});fs.writeFileSync(path.join(pkg,name,'accepted'),'exact');}
+ fs.writeFileSync(manifest,JSON.stringify(value),{mode:0o600});for(const name of ['dist','node_modules','assets']){fs.mkdirSync(path.join(pkg,name),{recursive:true});fs.writeFileSync(path.join(pkg,name,'accepted'),'exact');}
+ // Exercise the actual package policy's relative dependencies after placement,
+ // rather than accepting a checkout whose entrypoints cannot load their assets.
+ fs.mkdirSync(path.join(pkg,'dist/release'),{recursive:true});
+ fs.copyFileSync(path.join(__dirname,'../dist/release/lifecycle-policy.js'),path.join(pkg,'dist/release/lifecycle-policy.js'));
+ fs.cpSync(path.join(__dirname,'../assets/gitlab'),path.join(pkg,'assets/gitlab'),{recursive:true});
  return {root,source,value,manifest,checkout,pkg};
 }
 test('accepted source verified before runtime placement and native install, followed by real readiness contract',async t=>{
  const f=fixture(t),calls=[];
  const child={async run(binary,args){calls.push([binary,...args]);if(args.includes('clone'))fs.mkdirSync(path.join(f.checkout,'operations'),{recursive:true});if(args.includes('HEAD^{tree}'))return f.source.tree;if(args.includes('ls-tree'))return `040000 tree ${f.source.wizardSourceTree}\twizard`;if(args.includes('HEAD'))return f.source.revision;return '';}};
- const installer={async install(args,checkout){calls.push(['install']);assert.equal(checkout,f.checkout);assert.equal(args.releaseMetadata,f.manifest);assert.equal(fs.readFileSync(path.join(checkout,'operations/dist/accepted'),'utf8'),'exact');}};
+ const installer={async install(args,checkout){calls.push(['install']);assert.equal(checkout,f.checkout);assert.equal(args.releaseMetadata,f.manifest);for(const name of ['dist','node_modules','assets'])assert.equal(fs.readFileSync(path.join(checkout,'operations',name,'accepted'),'utf8'),'exact');const policy=require(path.join(checkout,'operations/dist/release/lifecycle-policy.js')).lifecyclePolicy();assert.equal(typeof policy.validateAuthority,'function');assert(policy.stagesV2.includes('system-beta-native-deploy'));}};
  const requests=[];const service=new QuickstartService(child,{async install(){calls.push(['ubuntu']);}},installer,f.pkg,async url=>{requests.push(url);return new Response(url.endsWith('configuration')?'<html>fixture</html>':'',{status:url.endsWith('configuration')?200:401});},{async check(){}});
  await service.install(f.checkout,f.manifest,{});
  assert.equal(calls[0][0],'ubuntu');assert.equal(calls.at(-1)[0],'install');assert.equal(requests.length,2);

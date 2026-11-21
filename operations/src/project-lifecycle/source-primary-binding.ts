@@ -132,7 +132,7 @@ export async function evidence(
   const r = receipt.repository,
     prefix = 'projects/' + r.id + '/';
   // All routes are known from this invocation's exact binding and pipeline.
-  // Read them together so the native adapter can share one bounded Rails batch.
+  // Fetch the related project, pipeline and job evidence together through the native API.
   const [project, pipeline, jobs, files] = await Promise.all([
     getAs<NativeProject>(prefix.slice(0, -1)),
     getAs<NativePipeline>(prefix + 'pipelines/' + pipelineId),

@@ -226,20 +226,16 @@ export class UpgradeRuntimeService {
   }
   syncIdle(session: UpgradeSession): void {
     const value = parseRecord(
-      session.run(
-        process.execPath,
-        [path.join(GITLAB, 'upgrade.js'), 'sync-status'],
-        {
-          timeout: 15000,
-          env: {
-            ...process.env,
-            ...environmentAssignments(
-              fs.readFileSync(path.join(session.state, 'sync-auth.env'), 'utf8'),
-            ),
-            ...environmentAssignments(fs.readFileSync(session.config, 'utf8')),
-          },
+      session.run(process.execPath, [path.join(GITLAB, 'upgrade.js'), 'sync-status'], {
+        timeout: 15000,
+        env: {
+          ...process.env,
+          ...environmentAssignments(
+            fs.readFileSync(path.join(session.state, 'sync-auth.env'), 'utf8'),
+          ),
+          ...environmentAssignments(fs.readFileSync(session.config, 'utf8')),
         },
-      ),
+      }),
     );
     if (value.idle !== true) throw Error('upgrade-sync-operation-running');
   }

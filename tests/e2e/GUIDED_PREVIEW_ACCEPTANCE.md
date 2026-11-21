@@ -12,7 +12,7 @@ Evidence version 2 explicitly declares
 `verifier.mode: contract-fixture`. Native shared setup, binding, owned Docker
 Beta deploy/stop, image labels, exact-host TLS, unchanged Production and cleanup
 are verified on the disposable platform. Pipeline authorization is covered by
-the unchanged production Ruby verifier's positive and negative contracts. The
+the shared native verifier's positive and negative contracts. The
 parent candidate has not yet completed, and is never represented as a completed
 native authorization pipeline. Fixture identities occupy an explicit namespace;
 publication strips unrecognized fields and rejects missing or contradictory

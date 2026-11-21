@@ -81,7 +81,7 @@ existing user nvm installations, default versions and shell profiles are preserv
 The exact Node archive checksum is verified after nvm's download verification.
 Quickstart verifies the accepted release's bundled npm CLI tarball and installs it
 offline with lifecycle scripts disabled. It copies those compiled operations and
-bundled dependencies into the accepted checkout without rebuilding them.
+bundled dependencies and policy assets into the accepted checkout without rebuilding them.
 
 For the explicit installation path, check out the reviewed release, and verify its public metadata through the [release guide](docs/RELEASES.md).
 Then prepare the runtime before invoking any host lifecycle, persistence or installation entry:
@@ -90,14 +90,15 @@ Then prepare the runtime before invoking any host lifecycle, persistence or inst
 SYSTEM_RELEASE_TAG='vMAJOR.MINOR.PATCH' # Exact reviewed public release
 sudo bash tools/quickstart/quickstart.sh --runtime-only "$SYSTEM_RELEASE_TAG"
 # The checkout must match the source revision in that release's verified metadata.
-test ! -e operations/dist && test ! -e operations/node_modules && \
+test ! -e operations/dist && test ! -e operations/node_modules && test ! -e operations/assets && \
 sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
-sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets operations/assets
 ```
 
 The preparation refuses an existing runtime directory instead of overwriting it.
 Keep that directory and the checkout's `operations/dist` and
-`operations/node_modules` for offline recovery. Compatibility tools select the
+`operations/node_modules` and `operations/assets` for offline recovery. Compatibility tools select the
 saved absolute Node executable directly; they do not source a shell profile,
 invoke nvm or contact npm during recovery. Use `/opt/system-bootstrapper-runtime/bin/node` for explicit native invocations.
 

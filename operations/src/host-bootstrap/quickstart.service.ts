@@ -78,7 +78,7 @@ export class QuickstartService {
       throw Error('Accepted source tree mismatch.');
     // The package was hash-checked before its first execution. Reuse those exact
     // compiled bytes and bundled dependencies, without a second build/download.
-    for (const name of ['dist', 'node_modules']) {
+    for (const name of ['dist', 'node_modules', 'assets']) {
       const destination = path.join(checkout, 'operations', name),
         origin = path.join(this.packageRoot, name);
       if (

@@ -1,7 +1,7 @@
 # Quickstart on a fresh Ubuntu host
 
 Run on your own **fresh Ubuntu 24.04 or 26.04 LTS amd64** host with root/sudo,
-curl, standard Python 3, internet access, **at least 8 GiB RAM**, 40 GiB free on
+curl, internet access, **at least 8 GiB RAM**, 40 GiB free on
 the system/live-data filesystem and 1 GiB for source. Reserve more space for
 repositories, registry images, builds and backups. Ports 80 and 443 must be free.
 An SSH session or local console must remain available. The memory preflight allows
@@ -12,7 +12,7 @@ curl -fsSL https://github.com/kihyoun/system/releases/latest/download/quickstart
 ```
 
 Quickstart also prepares the pinned host Node runtime and copies the matching
-compiled operations and dependencies from the accepted controller before invoking
+compiled operations, dependencies and policy assets from the verified CLI package before invoking
 host lifecycle tools. A preinstalled user Node/nvm is not required or replaced.
 Manual installation and replacement-host recovery must prepare or restore those
 [host runtime inputs](../Prepare-Host.md#prepare-the-host-operations-runtime) separately.
@@ -26,8 +26,8 @@ No private GitLab account, job artifact, Docker Hub login or local version list 
 required. Public registries and GitHub may enforce anonymous request limits.
 
 The installer checks OS, architecture, privileges, resources, ports and existing
-installation paths before changing host packages. It delegates dependencies to
-`bootstrapper/install.js` and startup to `system-bootstrapper install`; it
+installation paths before changing host packages. Its shared NestJS services prepare
+host dependencies and call the native release installer; it
 neither builds replacement images nor starts GitLab before browser configuration.
 The native release installer rechecks clean source, image labels, immutable digests,
 accepted image IDs, same candidate attempt and fresh persistent state.

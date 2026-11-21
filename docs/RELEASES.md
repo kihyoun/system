@@ -314,6 +314,10 @@ git clone https://github.com/kihyoun/system.git system-upgrade-2
 cd system-upgrade-2
 git checkout --detach v2.0.0
 sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
+test ! -e operations/dist && test ! -e operations/node_modules && test ! -e operations/assets && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist operations/dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules operations/node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets operations/assets
 ```
 
 Prepare validates the public metadata/provenance and installed release, then

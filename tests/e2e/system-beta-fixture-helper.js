@@ -12,7 +12,7 @@ async function execute(input) {
       if(binding.helperImage!==input.helperImage||binding.wizardImageId!==input.wizardImageId||binding.wizardImageRef!==input.wizardImageRef||
         binding.sourceCommit!==input.request.sourceCommit||binding.candidateJobId!==input.fixtureCandidateJobId)
         throw Error('Fixture identity changed.');
-      // Pipeline authorization is tested separately by the unchanged Ruby
+      // Pipeline authorization is tested separately by the shared native
       // verifier and negative cases. This result makes no native CI claim.
       return {ok:true,imageRef:binding.wizardImageRef,helperImage:binding.helperImage};
     }
