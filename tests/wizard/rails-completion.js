@@ -2,36 +2,31 @@
 const assert = require('assert');
 const {EventEmitter} = require('events');
 const childProcess = require('child_process');
-const originalSpawn = childProcess.spawn, originalTimeout = global.setTimeout, originalClear = global.clearTimeout;
-let scenario, timeout;
-childProcess.spawn = (command, args) => {
-  assert.equal(command, 'docker'); assert(args.includes('gitlab-rails'));
+const originalExecFile = childProcess.execFile, originalTimeout = global.setTimeout;
+let scenario;
+childProcess.execFile = (command, args, options, callback) => {
+  assert.equal(command, process.execPath); assert(args[0].endsWith('/operations/dist/gitlab-provision/entry.js')); assert.equal(args[1], 'preview');
+  assert.equal(options.timeout, 240000); assert.equal(options.maxBuffer, 2 * 1024 * 1024);
   const child = new EventEmitter();
-  child.stdout = new EventEmitter(); child.stderr = {resume() {}};
-  child.stdin = new EventEmitter(); child.stdin.end = () => {};
-  child.kill = () => {queueMicrotask(() => child.emit('close', null)); return true;};
+  child.stdin = new EventEmitter(); child.stdin.end = text => {assert(JSON.parse(text).action.startsWith('preview-setup-'));};
   queueMicrotask(() => {
-    if (scenario === 'spawn-error') {child.emit('error', Error('fixture spawn failure')); return;}
+    if (scenario === 'spawn-error') {callback(Error('fixture spawn failure'), ''); return;}
     child.emit('spawn');
-    if (scenario === 'timeout') timeout();
-    else if (scenario === 'transport-loss') child.emit('error', Error('fixture transport lost'));
-    else if (scenario === 'client-exit') child.emit('close', 1);
-    else if (scenario === 'truncated-json') {child.stdout.emit('data', '{"state":'); child.emit('close', 0);}
-    else if (scenario === 'invalid-json-shape') {child.stdout.emit('data', 'null'); child.emit('close', 0);}
-    else if (scenario === 'oversized-output') {child.stdout.emit('data', 'x'.repeat(2000001)); child.emit('close', 0);}
-    else if (scenario === 'settled-failure') {child.stdout.emit('data', JSON.stringify({state: 'failed', message: 'Settled native refusal.'})); child.emit('close', 0);}
+    if (['timeout','transport-loss','client-exit','oversized-output'].includes(scenario)) callback(Error('fixture private transport diagnostic'), '');
+    else if (scenario === 'truncated-json') callback(null, '{"state":');
+    else if (scenario === 'invalid-json-shape') callback(null, 'null');
+    else if (scenario === 'settled-failure') callback(null, JSON.stringify({state:'failed',message:'Settled native refusal.'}));
     else throw Error('Unknown fixture scenario');
   });
   return child;
 };
-global.setTimeout = (callback, milliseconds, ...args) => milliseconds === 240000 ? (timeout = callback, {fixture: true}) : originalTimeout(callback, milliseconds, ...args);
-global.clearTimeout = timer => {if (!timer?.fixture) originalClear(timer);};
 const {rails, startJob} = require('../../sync/dist/ProjectBootstrap');
 (async () => {
-  for (scenario of ['timeout', 'transport-loss', 'client-exit', 'truncated-json', 'invalid-json-shape', 'oversized-output']) {
-    await assert.rejects(rails({action: 'preview-setup-project'}), error => {
+  for (const action of ['preview-setup-project', 'preview-setup-revoke'])
+   for (scenario of ['timeout', 'transport-loss', 'client-exit', 'truncated-json', 'invalid-json-shape', 'oversized-output']) {
+    await assert.rejects(rails({action}), error => {
       assert.equal(error.uncertain, true, scenario + ' lost its unconfirmed mutation marker');
-      assert.equal(error.action, 'preview-setup-project'); return true;
+      assert.equal(error.action, action); return true;
     });
   }
   scenario = 'spawn-error';
@@ -46,5 +41,5 @@ const {rails, startJob} = require('../../sync/dist/ProjectBootstrap');
   const job = startJob('nested-uncertainty-fixture', async () => {throw Object.assign(Error('Fixture uncertain mutation.'), {uncertain: true, action: 'wizard-environments-primary'});});
   await new Promise(resolve => originalTimeout(resolve, 0));
   assert.equal(job.state, 'failed'); assert.equal(job.uncertain, true); assert.equal(job.uncertainAction, 'wizard-environments-primary');
-  console.log('Rails completion witness: mutation timeout, transport loss, client exit and incomplete JSON retain uncertainty; pre-spawn refusal, read-only timeout and settled native failures stay distinct; nested jobs preserve the marker.');
-})().catch(error => {console.error(error); process.exitCode = 1;}).finally(() => {childProcess.spawn = originalSpawn; global.setTimeout = originalTimeout; global.clearTimeout = originalClear;});
+  console.log('Native preview completion witness: mutation timeout, transport loss, client exit and incomplete JSON retain uncertainty; pre-spawn refusal, read-only timeout and settled native failures stay distinct; nested jobs preserve the marker.');
+})().catch(error => {console.error(error); process.exitCode = 1;}).finally(() => {childProcess.execFile = originalExecFile;});

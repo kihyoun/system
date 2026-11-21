@@ -1,5 +1,6 @@
 import { GitlabTokenMetadataService } from './token-metadata.service';
 import { GitlabRunnerCredentialService } from './runner-credential.service';
+import { PreviewSetupService } from './preview-setup.service';
 import { ProjectProvisionService } from './project-provision.service';
 import { GitlabRunnerRequestService } from './runner-request.service';
 import { SourcePrimaryOperationService } from './source-primary-operation.service';
@@ -24,6 +25,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
 @Module({
   imports: [GitlabPreflightModule],
   providers: [
+    PreviewSetupService,
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
     GitlabTokenMetadataService,
@@ -44,6 +46,7 @@ import { SourcePrimaryActivationService } from './source-primary-activation.serv
     { provide: GITLAB_PROVISION_PROCESS, useClass: ManagedChildProcess },
   ],
   exports: [
+    PreviewSetupService,
     ProjectProvisionService,
     RecoveryRegistryCredentialService,
     GitlabTokenMetadataService,

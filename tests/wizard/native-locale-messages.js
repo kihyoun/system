@@ -30,7 +30,8 @@ try {
     'sync/src/SystemBetaSetup.ts',
     'operations/src/project-lifecycle/preview-settings.ts',
     'operations/src/project-lifecycle/source-transfer.service.ts',
-    'project-bootstrap/preview-setup/provision.rb',
+    'operations/src/gitlab-provision/preview-setup.service.ts',
+    'operations/src/gitlab-provision/preview-evidence.ts',
     'operations/src/project-lifecycle/preview-producers.ts',
     'operations/src/project-lifecycle/adoption-session.ts',
     'operations/src/project-lifecycle/source-primary-binding.ts',
@@ -61,5 +62,5 @@ try {
     assert(nativeOperationKorean[message] && /[가-힣]/.test(nativeOperationKorean[message]), 'Missing Korean native message: ' + message);
   }
   assert.deepEqual(Object.keys(nativeOperationGerman).sort(), Object.keys(nativeOperationKorean).sort());
-  console.log('PASS native preview public messages from actual Sync/Ruby producers and the Wizard catalogue: ' + messages.size + ' messages.');
+  console.log('PASS native preview public messages from actual Sync/Nest producers and the Wizard catalogue: ' + messages.size + ' messages.');
 } finally { fs.rmSync(directory, {recursive: true, force: true}); }

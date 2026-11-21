@@ -105,7 +105,7 @@
   {"component":"sync","file":"sync/backup-workflow.js","timeoutSeconds":20},
   {"component":"bootstrapper","file":"seed/coordinated-backup.js","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/preview-setup.js","timeoutSeconds":30},
-  {"component":"gitlab","file":"gitlab/preview-setup.rb","timeoutSeconds":25},
+  {"component":"gitlab","file":"gitlab/preview-setup.js","timeoutSeconds":25},
   {"component":"wizard","file":"wizard/preview-source-transfer.js","timeoutSeconds":30},
   {"component":"wizard","file":"wizard/preview-setup-workflow.js","timeoutSeconds":40},
   {"component":"wizard","file":"wizard/preview-producers.js","timeoutSeconds":20},

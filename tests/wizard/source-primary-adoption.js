@@ -57,10 +57,11 @@ function nativeCollector(f) {
   const phases = [];
   f.adoption.collectEvidence = async phase => {
     phases.push({locked: fs.existsSync(f.config + '.environments.lock')});
-    const raw = require('child_process').execFileSync('ruby', [path.resolve(__dirname, '../gitlab/preview-evidence.rb'), '--collect'],
-      {input: JSON.stringify({input: {...phase, action: 'preview-setup-adoption-evidence', projectIds: [1, 7]}, rows: f.rows}),
-        encoding: 'utf8', maxBuffer: 1500000, timeout: 10000, stdio: ['pipe', 'pipe', 'pipe']});
-    const result = JSON.parse(raw);
+    const {PreviewEvidence} = require('../../operations/dist/gitlab-provision/preview-evidence');
+    const result = await new PreviewEvidence({...phase, projectIds: [1, 7]}, async route => {
+      assert(Object.hasOwn(f.rows, route), 'Unexpected evidence route: ' + route);
+      return structuredClone(f.rows[route]);
+    }).adoption();
     phases.at(-1).reads = result.reads.length;
     f.calls.push(...result.reads.map(row => row.route));
     return collectedReads(result);

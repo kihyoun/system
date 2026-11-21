@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { GitlabTokenMetadataService } from './token-metadata.service';
 import 'reflect-metadata';
+import { PreviewSetupService } from './preview-setup.service';
 import { ProjectProvisionService } from './project-provision.service';
 import { SourcePrimaryOperationService } from './source-primary-operation.service';
 import { GitlabProjectCredentialService } from './project-credential.service';
@@ -34,6 +35,7 @@ export async function main(args: string[]): Promise<void> {
       'renew',
       'reconcile-initial',
       'activate',
+      'preview',
       'project',
       'renew-project',
       'token-metadata',
@@ -65,9 +67,9 @@ export async function main(args: string[]): Promise<void> {
     !path.isAbsolute(values['--checkout']) ||
     Boolean(values['--username']) !== Boolean(values['--email']) ||
     (values['--username'] && command !== 'initialize') ||
-    (['initialize', 'activate', 'project', 'renew-project', 'token-metadata'].includes(command) &&
+    (['initialize', 'activate', 'preview', 'project', 'renew-project', 'token-metadata'].includes(command) &&
       values['--administrator-token-file']) ||
-    (['activate', 'project'].includes(command) && values['--config-directory']) ||
+    (['activate', 'preview', 'project'].includes(command) && values['--config-directory']) ||
     (command === 'reconcile-initial' && !values['--administrator-token-file']) ||
     (command === 'renew-project' &&
       (!/^[1-9][0-9]*$/.test(values['--project-id'] ?? '') || !values['--project-path'])) ||
@@ -84,7 +86,7 @@ export async function main(args: string[]): Promise<void> {
   let app: INestApplicationContext | undefined;
   try {
     app = await NestFactory.createApplicationContext(GitlabProvisionModule, { logger: false });
-    if (['activate', 'project', 'token-metadata'].includes(command)) {
+    if (['activate', 'preview', 'project', 'token-metadata'].includes(command)) {
       let input = Buffer.alloc(0);
       for await (const chunk of process.stdin) {
         input = Buffer.concat([input, Buffer.from(chunk)]);
@@ -103,9 +105,11 @@ export async function main(args: string[]): Promise<void> {
         return;
       }
       const service =
-        command === 'project'
-          ? app.get(ProjectProvisionService)
-          : app.get(SourcePrimaryOperationService);
+        command === 'preview'
+          ? app.get(PreviewSetupService)
+          : command === 'project'
+            ? app.get(ProjectProvisionService)
+            : app.get(SourcePrimaryOperationService);
       const result = await service.execute(
         values['--checkout'],
         JSON.parse(input.toString('utf8')),

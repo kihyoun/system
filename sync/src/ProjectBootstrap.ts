@@ -136,6 +136,8 @@ export async function rails(input: any): Promise<any> {
     if (['namespaces', 'availability', 'create', 'pipeline'].includes(input.action))
       return await runNativeProject(input);
     if (input.action === 'token-expiry-status') return await runNativeTokenMetadata(input);
+    if (String(input.action).startsWith('preview-setup-'))
+      return await runNativeProject(input, 'preview');
     return await runRails(input);
   } finally {
     railsWorkers--;
@@ -145,14 +147,18 @@ export async function rails(input: any): Promise<any> {
     }
   }
 }
-function runNativeProject(input: any): Promise<any> {
+function runNativeProject(input: any, command = 'project'): Promise<any> {
   return new Promise((resolve, reject) => {
     let launched = false;
     const failure = () =>
       Object.assign(
         new Error('GitLab operation completion was not confirmed; inspect the recorded operation.'),
         {
-          uncertain: launched && ['create', 'pipeline'].includes(input.action),
+          uncertain:
+            launched &&
+            ['create', 'pipeline', 'preview-setup-project', 'preview-setup-revoke'].includes(
+              input.action,
+            ),
           action: input.action,
         },
       );
@@ -160,7 +166,7 @@ function runNativeProject(input: any): Promise<any> {
       process.execPath,
       [
         path.resolve(__dirname, '../../operations/dist/gitlab-provision/entry.js'),
-        'project',
+        command,
         '--checkout',
         path.resolve(__dirname, '../..'),
       ],
@@ -275,19 +281,7 @@ function runRails(input: any): Promise<any> {
     const encoded = Buffer.from(JSON.stringify(input)).toString('base64');
     const modules: { [key: string]: string } = {
       'wizard-source': 'wizard-source/import.rb',
-      ...Object.fromEntries(
-        [
-          'preflight',
-          'project',
-          'revoke',
-          'read',
-          'read-many',
-          'source-context',
-          'source-evidence',
-          'adoption-evidence',
-          'system',
-        ].map((action) => ['preview-setup-' + action, 'preview-setup/provision.rb']),
-      ),
+
       'wizard-build': 'wizard-build/activate.rb',
       'wizard-build-status': 'wizard-build/activate.rb',
       'wizard-environments': 'wizard-environments/activate.rb',
@@ -315,12 +309,6 @@ function runRails(input: any): Promise<any> {
       'wizard-source-primary-status',
       'wizard-environments-primary-status',
       'token-expiry-status',
-      'preview-setup-preflight',
-      'preview-setup-read',
-      'preview-setup-read-many',
-      'preview-setup-source-context',
-      'preview-setup-source-evidence',
-      'preview-setup-adoption-evidence',
     ].includes(input.action);
     const failure = (message: string) =>
       Object.assign(new Error(message), { uncertain: launched && !readOnly, action: input.action });
