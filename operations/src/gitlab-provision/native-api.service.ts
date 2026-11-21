@@ -75,7 +75,14 @@ export class GitlabNativeApiService {
     route: string,
     body?: unknown,
   ): Promise<GitlabApiResult> {
-    const response = await this.exchange(value, token, method, route, body);
+    // Repository files include base64-encoded generated documentation. Keep the
+    // larger read bound specific to this endpoint; ordinary API results and all
+    // writes retain the smaller transport limit.
+    const maxBytes =
+      method === 'GET' && /^projects\/[^/]+\/repository\/files\//.test(route)
+        ? 8 * 1024 * 1024
+        : 2 * 1024 * 1024;
+    const response = await this.exchange(value, token, method, route, body, maxBytes);
     try {
       return {
         status: response.status,

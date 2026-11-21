@@ -122,6 +122,14 @@ async function runChecks() {
   const raw=' {"unicode":"한글", "padding":true}\n';let nativeCall;
   const api=new GitlabNativeApiService({async run(binary,args,options){nativeCall={binary,args,options};return raw+'\nBOOTSTRAPPER_HTTP_STATUS:200';}});
   const response=await api.readBytes(session.context,session.credential.token,'projects/4/jobs/24/artifacts/proof.json');assert(response.bytes.equals(Buffer.from(raw)));assert.equal(response.status,200);assert(!nativeCall.args.join(' ').includes(session.credential.token));assert(nativeCall.options.input.includes(session.credential.token));assert(nativeCall.options.maxBuffer<=8*1024**2+128);checks++;
+  const encodedDocumentation='a'.repeat(3*1024**2);
+  const filesApi=new GitlabNativeApiService({async run(binary,args,options){
+    const output=JSON.stringify({content:encodedDocumentation})+'\nBOOTSTRAPPER_HTTP_STATUS:200';
+    assert(Buffer.byteLength(output)<=options.maxBuffer,'Generated documentation must fit the bounded repository-file read.');
+    return output;
+  }});
+  assert.equal((await filesApi.request(session.context,session.credential.token,'GET','projects/4/repository/files/src%2Fdocs%2Fcontent.json?ref=master')).value.content,encodedDocumentation);checks++;
+  await api.request(session.context,session.credential.token,'GET','projects/4');assert.equal(nativeCall.options.maxBuffer,2*1024**2+128);checks++;
   return {mode:'contract-fixture',passed:true,negativeGatesPassed:true,checks};
 }
 module.exports=runChecks;

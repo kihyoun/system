@@ -69,9 +69,18 @@ export async function main(args: string[]): Promise<void> {
     !path.isAbsolute(values['--checkout']) ||
     Boolean(values['--username']) !== Boolean(values['--email']) ||
     (values['--username'] && command !== 'initialize') ||
-    (['initialize', 'activate', 'preview', 'project', 'renew-project', 'token-metadata', 'wizard-source'].includes(command) &&
+    ([
+      'initialize',
+      'activate',
+      'preview',
+      'project',
+      'renew-project',
+      'token-metadata',
+      'wizard-source',
+    ].includes(command) &&
       values['--administrator-token-file']) ||
-    (['activate', 'preview', 'project', 'wizard-source'].includes(command) && values['--config-directory']) ||
+    (['activate', 'preview', 'project', 'wizard-source'].includes(command) &&
+      values['--config-directory']) ||
     (command === 'reconcile-initial' && !values['--administrator-token-file']) ||
     (command === 'renew-project' &&
       (!/^[1-9][0-9]*$/.test(values['--project-id'] ?? '') || !values['--project-path'])) ||

@@ -1,6 +1,11 @@
 // Exact public native-operation messages only; unknown diagnostics remain verbatim.
 const messages: [string, string, string][] = [
   [
+    'Versioned source producer does not match its exact runtime.',
+    'Der versionierte Quellproduzent stimmt nicht mit seiner exakten Laufzeit überein.',
+    '버전이 지정된 소스 생성자가 해당 런타임과 정확히 일치하지 않습니다.',
+  ],
+  [
     'System and Wizard use one shared source. Optional Beta uses an accepted System candidate; Production promotion is explicit.',
     'System und Wizard verwenden eine gemeinsame Quelle. Optionale Beta nutzt einen akzeptierten System-Kandidaten; Production wird ausdrücklich freigegeben.',
     'System과 Wizard는 하나의 공유 소스를 사용합니다. 선택적 Beta는 승인된 System 후보를 사용하며 Production 승격은 명시적으로 승인합니다.',
