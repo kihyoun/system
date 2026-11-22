@@ -1,12 +1,12 @@
-export { ProjectsRoutingModule } from './projects-routing.module';
+export { ProjectsRoutingModule } from './projectsRouting.module';
 export {
   ProjectsRoutingService,
   ROUTING_PROCESS,
   ROUTING_CONFIGURATION,
-} from './projects-routing.service';
-export type { RoutingCommand } from './projects-routing.service';
+} from './projectsRouting.service';
+export type { RoutingCommand } from './projectsRouting.service';
 export { LiteralConfiguration } from './ports';
 export type { ConfigurationPort } from './ports';
 export { impact, semantic } from './impact';
-export { managed, preserve } from './managed-project';
+export { managed, preserve } from './managedProject';
 export { validateArchive } from './archive';

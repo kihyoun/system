@@ -5,15 +5,15 @@ const os = require('os');
 const path = require('path');
 const {execFileSync} = require('child_process');
 const crypto = require('crypto');
-const {PUBLIC_PACKAGE_PAYLOAD} = require('../../dist/common/public-payload');
-const {pack} = require('../../dist/modules/source-preparation/wizard-source.service');
-const {CommittedContextService} = require('../../dist/modules/ci/committed-context.service');
-const {NativeContextProcess} = require('../../dist/modules/ci/context-process');
-const {WizardSourceService} = require('../../dist/modules/source-preparation/wizard-source.service');
+const {publicPackagePayload} = require('../../dist/common/publicPayload');
+const {pack} = require('../../dist/modules/source-preparation/wizardSource.service');
+const {CommittedContextService} = require('../../dist/modules/ci/committedContext.service');
+const {NativeContextProcess} = require('../../dist/modules/ci/contextProcess');
+const {WizardSourceService} = require('../../dist/modules/source-preparation/wizardSource.service');
 const committedContext = new CommittedContextService(new NativeContextProcess(), new WizardSourceService());
-const {ContextPreparationService} = require('../../dist/modules/ci/context-preparation.service');
-const {CodeqlContextService} = require('../../dist/modules/ci/codeql-context.service');
-const {WizardBrowserContextService} = require('../../dist/modules/ci/wizard-browser-context.service');
+const {ContextPreparationService} = require('../../dist/modules/ci/contextPreparation.service');
+const {CodeqlContextService} = require('../../dist/modules/ci/codeqlContext.service');
+const {WizardBrowserContextService} = require('../../dist/modules/ci/wizardBrowserContext.service');
 const preparation = new ContextPreparationService(committedContext);
 const prepareContext = root => preparation.prepareContext(root);
 const prepareCandidate = root => preparation.prepareCandidate(root);
@@ -34,7 +34,9 @@ try {
   const runtimeNames = ['project-ci.cjs', 'LICENSES.txt'];
   for (const name of runtimeNames) write('wizard/.system-bootstrapper/build-v2/runtime/'+name, fs.readFileSync(path.join(source, 'templates/project-bootstrap/wizard-build/typed-v6/runtime', name)));
   write('wizard/src/api/Helper.tsx',Buffer.from(sourceSnapshot.files.find(file=>file.path==='src/api/Helper.tsx').content,'base64'));
-  for (const name of ['.gitlab/runtime/project-ci.cjs', '.gitlab/runtime/LICENSES.txt', '.gitlab/producer-v2.json', '.gitlab/primary.yml']) write('wizard/'+name, Buffer.from(sourceSnapshot.files.find(file=>file.path===name).content,'base64'));
+  for (const name of ['project-ci.cjs','LICENSES.txt']) write('wizard/.gitlab/runtime/'+name,fs.readFileSync(path.join(source,'templates/project-bootstrap/wizard-build/typed-v6/runtime',name)));
+  write('wizard/.gitlab/producer-v2.json',JSON.stringify({version:2,runtime:'.gitlab/runtime/project-ci.cjs',runtimeSha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(source,'templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs'))).digest('hex'),buildProfile:'node24-vite8-typed-v6'}));
+  write('wizard/.gitlab/primary.yml','historical native source fixture\n');
   write('wizard/.env', 'committed-private-wizard-marker\n');
   write('wizard/credentials.json', 'committed-private-wizard-marker\n');
   write('wizard/private.pem', 'committed-private-wizard-marker\n');
@@ -64,25 +66,25 @@ try {
   // Use real authored entry and provider names to prove the full Root runtime
   // closure survives context filtering after the native source migration.
   const nativeInputs = [
-    'src/cli/main.ts', 'src/cli/application-commands.ts', 'src/cli/verify-ca.mts',
-    'src/common/ca-policy.mts', 'src/common/runtime/process.ts',
+    'src/cli/main.ts', 'src/cli/applicationCommands.ts', 'src/cli/verifyCa.mts',
+    'src/common/caPolicy.mts', 'src/common/runtime/process.ts',
     'src/modules/host-bootstrap/entry.ts', 'src/modules/host-bootstrap/initialize.service.ts',
-    'src/modules/host-bootstrap/build-tools.service.ts', 'src/modules/host-bootstrap/certificate.service.ts',
+    'src/modules/host-bootstrap/buildTools.service.ts', 'src/modules/host-bootstrap/certificate.service.ts',
     'src/modules/host-bootstrap/local.service.ts', 'src/modules/host-bootstrap/recovery.service.ts',
-    'src/modules/host-bootstrap/runtime-verification.service.ts',
-    'src/modules/storage/entry.ts', 'src/modules/storage/manifest-entry.ts',
+    'src/modules/host-bootstrap/runtimeVerification.service.ts',
+    'src/modules/storage/entry.ts', 'src/modules/storage/manifestEntry.ts',
     'src/modules/storage/manifest.ts', 'src/modules/storage/storage.service.ts',
-    'src/modules/storage/coordinated-backup.ts', 'src/modules/storage/persistence.ts',
+    'src/modules/storage/coordinatedBackup.ts', 'src/modules/storage/persistence.ts',
     'src/modules/lifecycle/entry.ts', 'src/modules/lifecycle/lifecycle.service.ts',
-    'src/modules/lifecycle/source-installation-entry.ts', 'src/modules/lifecycle/public-settings-entry.ts',
-    'src/modules/wizard-recovery/wizard-recovery.service.ts'];
+    'src/modules/lifecycle/sourceInstallationEntry.ts', 'src/modules/lifecycle/publicSettingsEntry.ts',
+    'src/modules/wizard-recovery/wizardRecovery.service.ts'];
   const runtimeInputs = [...nativeInputs, 'tools/quickstart/quickstart.sh', 'tools/gitlab/bootstrap-token.rb',
     'containers/bootstrapper/Dockerfile', 'config/gitlab/docker-compose.omnibus.yml', 'config/gitlab-runner/docker-compose.yml',
-    'config/system/.seed.env', 'config/system/docker-compose.yml', 'src/modules/projects-routing/wizard-aliases.ts'];
+    'config/system/.seed.env', 'config/system/docker-compose.yml', 'src/modules/projects-routing/wizardAliases.ts'];
   const browserInputs = [...new Set(['tests/wizard-browser.Dockerfile', '.prettierrc', '.prettierignore', 'LICENSE',
-    ...PUBLIC_PACKAGE_PAYLOAD.filter(name => !name.startsWith('wizard/')),
-    'src/common/public-payload.ts',
-    'src/modules/build/project-ci-bundle.service.ts', 'package.json', 'package-lock.json', 'tsconfig.json',
+    ...publicPackagePayload.filter(name => !name.startsWith('wizard/')),
+    'src/common/publicPayload.ts',
+    'src/modules/project-ci/cliArtifact.ts', 'package.json', 'package-lock.json', 'tsconfig.json',
     ...['configuration.module.ts', 'configuration.service.ts', 'entry.ts'].map(name => 'src/modules/configuration/'+name),
     'src/modules/mirror/credentials.service.ts', 'config/ca/cacert-2026-10-20.crt', 'config/ca/provenance.json',
     ...runtimeNames.map(name => 'templates/project-bootstrap/wizard-build/typed-v6/runtime/'+name)])];
@@ -106,7 +108,7 @@ try {
   write('wizard/untracked-secret.ts', 'untracked-private-wizard-marker');
   for (const name of ['.docker.env','config/system/.docker.env','tests/credentials.json','templates/project-bootstrap/untracked-secret.txt','seed/data','test-results/old.xml']) write(name,'untracked-private-marker');
   write('src/api/public.ts','dirty-private-marker');
-  for (const name of ['src/modules/host-bootstrap/entry.ts', 'src/modules/mirror/credentials.service.ts', 'LICENSE', 'src/modules/build/project-ci-bundle.service.ts']) write(name, 'dirty-private-marker');
+  for (const name of ['src/modules/host-bootstrap/entry.ts', 'src/modules/mirror/credentials.service.ts', 'LICENSE', 'src/modules/project-ci/cliArtifact.ts']) write(name, 'dirty-private-marker');
   fs.symlinkSync('credentials.json', path.join(root, 'src/modules/mirror/untracked-link.ts'));
   write('.gitlab-ci.yml','dirty-uncommitted-ci\n');
   write('VERSION','9.9.9\n');
@@ -159,7 +161,7 @@ try {
   assert.equal(candidate.wizardRevision,snapshot.sourceRevision);
   const staticContext = prepareCodeql(root);
   const staticArchive = path.join(root, '.codeql-context/context.tar');
-  for (const name of PUBLIC_PACKAGE_PAYLOAD) {
+  for (const name of publicPackagePayload) {
     const expected = name.startsWith('wizard/') ? Buffer.from(snapshot.files.find(file=>file.path===name.slice(7)).content,'base64') : committedInputs.get(name);
     assert(execFileSync('tar',['-xOf',staticArchive,'tooling/'+name],{maxBuffer:8*1024*1024}).equals(expected), 'Native CodeQL tooling preserves its committed public package dependency: '+name);
   }

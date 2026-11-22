@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
-const {UpgradeLifecycleService}=require('../../dist/modules/host/upgrade-lifecycle.service');
+const {UpgradeLifecycleService}=require('../../dist/modules/host/upgradeLifecycle.service');
 function fixture(t){const directory=fs.mkdtempSync(path.join(os.tmpdir(),'host-lifecycle-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));return {directory,service:new UpgradeLifecycleService()};}
 test('upgrade durable phases cannot skip retained images or backup readiness',t=>{
  const {directory,service}=fixture(t);

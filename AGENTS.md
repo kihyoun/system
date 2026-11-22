@@ -83,10 +83,10 @@ Change only intended assignments after the signature. Verify the signature and
 an authenticated Fetch response when modifying configuration. Keep the strict
 validator; the MD5 format check is not cryptographic authentication.
 
-Relevant copies are in `src/common/configuration-signature.ts` and `wizard/src/api/Helper.tsx`.
+Relevant copies are in `src/common/configurationSignature.ts` and `wizard/src/api/Helper.tsx`.
 Configuration validation and routing also live in
-`src/modules/projects-routing/wizard-aliases.ts` and
-`src/modules/projects-routing/projects-routing.service.ts`; lifecycle
+`src/modules/projects-routing/wizardAliases.ts` and
+`src/modules/projects-routing/projectsRouting.service.ts`; lifecycle
 readiness uses `src/modules/lifecycle/lifecycle.service.ts`.
 
 ## Persistence and recovery
@@ -162,6 +162,17 @@ readiness uses `src/modules/lifecycle/lifecycle.service.ts`.
 
 ## NestJS and TypeScript conventions
 
+Follow the [TypeScript Deep Dive style guide](https://github.com/basarat/typescript-book/blob/master/docs/styleguide/styleguide.md)
+for maintained NestJS TypeScript: two spaces, single quotes, semicolons,
+`Type[]` arrays, camelCase variables/functions/members and filenames, and
+PascalCase types/classes/interfaces/namespaces/enum members without an `I`
+interface prefix. Use `undefined` for internal absence; retain conventional or
+public API `null` values and external wire-field names. Prefer strict equality,
+with `== null` / `!= null` allowed for a combined primitive absence check.
+Prettier owns mechanical formatting and ESLint enforces the additional naming,
+array, block and blank-line conventions. Preserve historical reserved bytes and
+the exact Cube when applying style changes.
+
 Follow the official NestJS [modules](https://docs.nestjs.com/modules),
 [providers](https://docs.nestjs.com/providers) and
 [standalone applications](https://docs.nestjs.com/standalone-applications)
@@ -175,7 +186,8 @@ that Nest requires a particular domain architecture.
   to organize code in this single platform.
 - Keep the NestJS application sources under root `src/`: HTTP adapters in `src/api`, CLI adapters in `src/cli`, capability modules and their services in `src/modules`, and shared runtime infrastructure in `src/common`. Do not retain operational JavaScript compatibility launchers in legacy source directories. React Wizard remains a separate frontend. Keep templates/static configuration outside the application source and explicitly allowed bootstrap exceptions under `tools/`.
 - Put one blank line between adjacent methods. Preserve that spacing when editing and formatting classes.
-- Use kebab-case filenames and conventional suffixes such as `.module.ts`,
+- Use braces for control-flow bodies. Keep `if` bodies on new lines after the opening brace and closing braces on their own line; separate each complete `if` statement from surrounding statements with one blank line, including nested `if` statements. Do not add a padding line solely before an enclosing closing brace. The root ESLint configuration enforces braces, multiline block layout and this spacing throughout the NestJS sources.
+- Use camelCase filenames and conventional suffixes such as `.module.ts`,
   `.service.ts`, `.controller.ts`, `.dto.ts` and `.spec.ts` for new Nest code.
   Use PascalCase for classes/types and camelCase for functions/properties.
   Preserve compatibility entry points and historical artifacts when migrating.

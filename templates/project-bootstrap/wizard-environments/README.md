@@ -156,3 +156,33 @@ missing proof keeps the mutation barrier and does not authorize another write.
 The recipe commit never starts a pipeline and leaves reserved historical build
 files unchanged. `node tests/gitlab/environment-upgrade.js` exercises this contract
 with an injected repository and lock provider.
+
+## Shared configuration workflow
+
+`WizardEnvironmentsModule` owns the retained managed Wizard's configuration
+workflow. Pure typed settings rules are separate from injected DNS/TLS checks,
+activation/status coordination and `EnvironmentStoreService`. The store validates
+configuration signatures and receipt identities, acquires the existing helper
+mutex, and compares configuration bytes before writing. Same-operation deployment
+updates are retained; unrelated concurrent edits, ownership changes and stale
+previews refuse mutation. External intent is durable before GitLab is called,
+so interrupted operations retain their reservation and reconciliation state.
+
+The authenticated `/projects/wizard/environments` endpoints and the standalone
+`system-bootstrapper wizard-environments` command use the same Nest providers.
+Use `preview` or `status` to inspect state, `preflight SETTINGS_FILE` for explicit
+settings, and `configure REQUEST_FILE` with the preview hash and settings in a
+private JSON file. The CLI starts no HTTP server. Ordinary application Review/Beta
+and the separate optional System Beta keep their existing ownership boundaries.
+
+Activation and status updates also hold the existing shared storage lease, so
+Harvest and GitLab upgrades cannot race the same configuration operation. A
+settled successful or definite failed call releases only its unchanged own
+lease. Uncertain transport completion, changed ownership or hard process loss
+retains the lease and reconciliation state. Read them with
+`system-bootstrapper wizard-environments inspect`; it reports only sanitized
+ownership/operation metadata and performs no cleanup. Before another status
+update, follow the [stale-operation investigation](../../../docs/RECOVERY_CONTRACT.md):
+positively prove the previous owner and its dispatched work have ended and
+resolve only their stale lease. The CLI never adopts a foreign or unresolved
+barrier merely because time has passed.

@@ -6,9 +6,16 @@ import { MirrorCiService } from './ci.service';
 import { MirrorContext } from './ports';
 import { eligibility } from './policy';
 export async function main(mode: string, context: MirrorContext): Promise<string> {
-  if (!['publish', 'ci', 'wizard-ci'].includes(mode)) throw Error('Use publish, ci or wizard-ci');
+  if (!['publish', 'ci', 'wizard-ci'].includes(mode)) {
+    throw Error('Use publish, ci or wizard-ci');
+  }
+
   const skip = eligibility(context.env);
-  if (skip) return 'GitHub backup skipped: ' + skip;
+
+  if (skip) {
+    return 'GitHub backup skipped: ' + skip;
+  }
+
   const app = await NestFactory.createApplicationContext(MirrorModule, { logger: false });
   try {
     return mode === 'publish'
@@ -18,10 +25,13 @@ export async function main(mode: string, context: MirrorContext): Promise<string
     await app.close();
   }
 }
+
 if (require.main === module) {
   const abort = new AbortController();
   const cancel = () => abort.abort();
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, cancel);
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.on(signal, cancel);
+  }
   main(process.argv[2] || 'publish', { cwd: process.cwd(), env: process.env, signal: abort.signal })
     .then((result) => console.log(result))
     .catch((error: unknown) => {
@@ -31,6 +41,8 @@ if (require.main === module) {
       process.exitCode = 1;
     })
     .finally(() => {
-      for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.off(signal, cancel);
+      for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+        process.off(signal, cancel);
+      }
     });
 }

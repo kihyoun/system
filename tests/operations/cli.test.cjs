@@ -108,7 +108,7 @@ function installationFixture(t, runtimeOnly = false) {
   fs.linkSync(fixtureNode(),nodeExecutable);
   const metadata = require('../../package.json');
   fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({name: metadata.name, version: metadata.version, bin: metadata.bin}));
-  for (const name of ['main.js', 'presentation.js', 'application-commands.js'])
+  for (const name of ['main.js', 'presentation.js', 'applicationCommands.js'])
     fs.copyFileSync(path.resolve(__dirname, '../../dist/cli', name), path.join(packageRoot, 'dist/cli', name));
   const source = {sourceCommit: 'a'.repeat(40), sourceTree: 'b'.repeat(40), sourceLayout: 'system-monorepo-v1', wizardSourceTree: 'c'.repeat(40)};
   const controller = 'docker.io/example/system@sha256:' + 'd'.repeat(64);
@@ -121,7 +121,7 @@ function installationFixture(t, runtimeOnly = false) {
   const paths = {binding: path.join(privateDirectory, 'cli-installation.json'), command: path.join(commandDirectory, 'system-bootstrapper'), packageRoot, nodeExecutable};
   const calls = [];
   const host = {rootUser: () => true, source(directory) {calls.push(directory); assert([checkout,packageRoot].includes(directory)); return source;}};
-  const {CliInstallationService} = require('../../dist/modules/host-bootstrap/cli-installation.service');
+  const {CliInstallationService} = require('../../dist/modules/host-bootstrap/cliInstallation.service');
   const service = new CliInstallationService(host, paths);
   return {root, runtime, packageRoot, checkout, data, persistenceEnv, source, controller, paths, calls, host, service, main, receipt};
 }
@@ -185,7 +185,7 @@ test('CLI installation refuses missing, unsafe, changed and foreign bindings bef
   assert.equal(fs.readFileSync(f.paths.command, 'utf8'), 'foreign command');
   fs.unlinkSync(f.paths.command);
   assert.throws(() => f.service.install({checkout: 'relative', persistenceEnv: f.persistenceEnv}), /absolute-path-required/);
-  const {CliInstallationService} = require('../../dist/modules/host-bootstrap/cli-installation.service');
+  const {CliInstallationService} = require('../../dist/modules/host-bootstrap/cliInstallation.service');
   assert.throws(() => new CliInstallationService({...f.host, rootUser: () => false}, f.paths).install({checkout: f.checkout}), /requires-root/);
   const unsafe = installationFixture(t);
   fs.chownSync(unsafe.packageRoot,1000,1000);
@@ -273,7 +273,7 @@ test('CLI installation refuses missing, unsafe, changed and foreign bindings bef
 
 test('accepted runtime-only CLI installation exposes help without inventing a host checkout', {skip: process.getuid?.() !== 0}, t => {
   const f = installationFixture(t, true);
-  const {hash, integrity} = require('../../dist/modules/release/npm-identity');
+  const {hash, integrity} = require('../../dist/modules/release/npmIdentity');
   const version = require('../../package.json').version;
   const provenance = {format: 'system-cli-source-v1', version, sourceRevision: f.source.sourceCommit, sourceTree: f.source.sourceTree, pipelineId: 1, packageJobId: 2};
   fs.mkdirSync(path.join(f.packageRoot, 'assets'));

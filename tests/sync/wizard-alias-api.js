@@ -7,7 +7,7 @@ const path = require('node:path');
 const source = path.resolve(__dirname, '../..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-alias-api-'));
 fs.mkdirSync(path.join(root, 'config/system/.projects.env'), {recursive: true});
-const paths = require(path.join(source, 'dist/common/runtime/installation-paths'));
+const paths = require(path.join(source, 'dist/common/runtime/installationPaths'));
 paths.checkoutRoot = () => root;
 paths.checkoutPath = (...parts) => path.join(root, ...parts);
 let server, application;

@@ -6,10 +6,10 @@ const crypto = require('node:crypto');
 const os = require('node:os');
 const {execFileSync} = require('node:child_process');
 const graph = require('../../config/releases/upgrade-paths.json');
-const {createPublicationRuntime} = require('../../dist/modules/release/publication-runtime');
+const {createPublicationRuntime} = require('../../dist/modules/release/publicationRuntime');
 const recovery = require('./recovery');
 const {terminalContainerState} = require('../../dist/modules/gitlab-upgrade/policy');
-const {fixtureRuntime,runtimeVolumes} = require('../../dist/modules/testing/public-upgrade-transport.service');
+const {fixtureRuntime,runtimeVolumes} = require('../../dist/modules/testing/publicUpgradeTransport.service');
 const diagnostics = require('./public-upgrade-diagnostics.json');
 const security = require('../../config/gitlab/security-release.json');
 const {manifest} = createPublicationRuntime(security).images;
@@ -200,7 +200,7 @@ class NativeCLI {
   async write(filename, input) {
     await this.candidate.inner(['run', '--rm', '-i', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
       '--entrypoint', '/usr/local/bin/node', '--volume', this.live + ':' + this.live,
-      this.candidate.spec.images.candidate.id, '/system/dist/modules/testing/public-upgrade-entry.js',
+      this.candidate.spec.images.candidate.id, '/system/dist/modules/testing/publicUpgradeEntry.js',
       'write', filename], {input});
   }
 
@@ -216,7 +216,7 @@ class NativeCLI {
     await candidate.call(['exec', '-i', candidate.daemon, 'tar', '-xzf', '-', '-C', this.fixture + '/source'], {inputFile: prepared.archive});
     await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '256m', '--cpus', '0.25',
       '--entrypoint', '/usr/local/bin/node', '--volume', this.fixture + ':' + this.fixture,
-      candidate.spec.images.candidate.id, '/system/dist/modules/testing/public-upgrade-entry.js',
+      candidate.spec.images.candidate.id, '/system/dist/modules/testing/publicUpgradeEntry.js',
       'prepare', this.fixture]);
     const previous = candidate.spec.publicUpgrade.metadata;
     // Prove the copied interpreter and bundled modules load in the candidate
@@ -225,7 +225,7 @@ class NativeCLI {
     for (const image of [candidate.spec.images.candidate.id, previous.images.controller.imageId]) {
       const output = await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
         '--entrypoint', fixtureRuntime + '/node', ...runtimeVolumes(this.fixture).flatMap(value => ['--volume', value]),
-        image, '-e', "require('/opt/system-public-upgrade/dist/modules/testing/public-upgrade-host-entry.js');process.stdout.write('runtime-ready')"]);
+        image, '-e', "require('/opt/system-public-upgrade/dist/modules/testing/publicUpgradeHostEntry.js');process.stdout.write('runtime-ready')"]);
       required(output.trim() === 'runtime-ready', 'public-upgrade-runtime-unavailable');
     }
 

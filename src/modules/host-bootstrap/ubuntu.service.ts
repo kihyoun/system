@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 @Injectable()
 export class UbuntuHostService {
   constructor(
@@ -10,17 +10,26 @@ export class UbuntuHostService {
   ) {}
 
   async install(input: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
-    if (process.geteuid?.() !== 0) throw Error('Host installation requires root.');
+    if (process.geteuid?.() !== 0) {
+      throw Error('Host installation requires root.');
+    }
+
     const release: Record<string, string> = {};
     for (const line of fs
       .readFileSync(path.join(this.systemRoot, 'etc/os-release'), 'utf8')
       .split('\n')) {
       const match = /^([A-Z_]+)=(?:"([^"\\]*)"|'([^']*)'|([^\s#]*))$/.exec(line);
-      if (match) release[match[1]] = match[2] ?? match[3] ?? match[4];
+
+      if (match) {
+        release[match[1]] = match[2] ?? match[3] ?? match[4];
+      }
     }
     const suite = release.UBUNTU_CODENAME || release.VERSION_CODENAME;
-    if (release.ID !== 'ubuntu' || !/^[a-z][a-z0-9-]*$/.test(suite || ''))
+
+    if (release.ID !== 'ubuntu' || !/^[a-z][a-z0-9-]*$/.test(suite || '')) {
       throw Error('Supported Ubuntu release required.');
+    }
+
     const env = { ...input, DEBIAN_FRONTEND: 'noninteractive' };
     const run = (binary: string, args: string[]) =>
       this.process.run(binary, args, { cwd: this.systemRoot, env, signal, timeout: 1800000 });
@@ -32,7 +41,11 @@ export class UbuntuHostService {
     await run('curl', ['-fsSL', 'https://download.docker.com/linux/ubuntu/gpg', '-o', key]);
     fs.chmodSync(key, 0o644);
     const architecture = (await run('dpkg', ['--print-architecture'])).trim();
-    if (!/^[a-z0-9][a-z0-9-]*$/.test(architecture)) throw Error('Invalid host architecture.');
+
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(architecture)) {
+      throw Error('Invalid host architecture.');
+    }
+
     const sources = path.join(this.systemRoot, 'etc/apt/sources.list.d');
     fs.mkdirSync(sources, { recursive: true, mode: 0o755 });
     fs.writeFileSync(

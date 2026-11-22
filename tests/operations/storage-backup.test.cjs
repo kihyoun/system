@@ -4,11 +4,11 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const core=require('../../dist/modules/storage/coordinated-backup');
-const normalizePreview=require('../../dist/common/runtime/preview-settings').normalizePreview;
+const core=require('../../dist/modules/storage/coordinatedBackup');
+const normalizePreview=require('../../dist/common/runtime/previewSettings').normalizePreview;
 const backup={...core,capture: state=>core.capture(state,normalizePreview),runWorkflow: options=>core.runWorkflow({...options,normalizePreview})};
 const seedOperation=require('../../dist/modules/storage/lease');
-const logo=fs.readFileSync(path.join(__dirname,'../../src/common/configuration-signature.ts'),'utf8').match(/return `([\s\S]*?)`;/)[1];
+const logo=fs.readFileSync(path.join(__dirname,'../../src/common/configurationSignature.ts'),'utf8').match(/return `([\s\S]*?)`;/)[1];
 function fixture(run) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'coordinated-backup-'));
   try {

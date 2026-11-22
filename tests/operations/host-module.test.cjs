@@ -1,35 +1,35 @@
 require('reflect-metadata');
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {NestFactory}=require('@nestjs/core');
-const {HostModule,HOST_PROCESS_RUNNER}=require('../../dist/modules/host/host.module');
+const {HostModule,hostProcessRunner}=require('../../dist/modules/host/host.module');
 const {HostInstallService}=require('../../dist/modules/host/install');
-const {RuntimeInspectionService}=require('../../dist/modules/host/runtime-inspection');
+const {RuntimeInspectionService}=require('../../dist/modules/host/runtimeInspection');
 test('standalone Host module injects shared native adapter without running operations',async()=>{
  let response=new Response('accepted'),requests=[];
  const publicReleaseRequest=async(url,options)=>{requests.push([String(url),options]);return response;};
  let calls=0;const runner={run(){calls++;return {stdout:'',stderr:'',status:0};}};
  const app=await NestFactory.createApplicationContext(HostModule.register({runner,publicReleaseRequest,environment:{CUSTOM:'test'}}),{logger:false});
  try {
-  const {PromotionNativePortService}=require('../../dist/modules/host/promotion-native-port.service'),{PromotionAbortService}=require('../../dist/modules/host/promotion-abort.service'),{ColdMaintenanceService}=require('../../dist/modules/host/cold-maintenance.service');
+  const {PromotionNativePortService}=require('../../dist/modules/host/promotionNativePort.service'),{PromotionAbortService}=require('../../dist/modules/host/promotionAbort.service'),{ColdMaintenanceService}=require('../../dist/modules/host/coldMaintenance.service');
   assert.equal(app.get(PromotionAbortService).port,app.get(PromotionNativePortService));assert.equal(app.get(ColdMaintenanceService).port,app.get(PromotionNativePortService));
-  const {GitlabPreflightService}=require('../../dist/modules/gitlab-preflight/gitlab-preflight.service');
+  const {GitlabPreflightService}=require('../../dist/modules/gitlab-preflight/gitlabPreflight.service');
   assert.equal(app.get(PromotionNativePortService).nativeGitlabProbe,app.get(GitlabPreflightService));
-  const {promotionRecoveryArguments}=require('../../dist/modules/host/promotion-recovery-entry');
+  const {promotionRecoveryArguments}=require('../../dist/modules/host/promotionRecoveryEntry');
   assert.equal(promotionRecoveryArguments(['--checkpoint-dir','/retained/checkpoint','--persistence-env','/private/storage.env']).timeout,1200);
   assert.throws(()=>promotionRecoveryArguments(['--checkpoint-dir','/retained/checkpoint','--persistence-env','/private/storage.env','--timeout','NaN']),/bounded-promotion/);
   await assert.rejects(app.get(PromotionNativePortService).prepare({checkout:'/source',checkpoint:'/retained/checkpoint',persistenceEnv:'/private/storage.env',timeout:0}),/bounded-promotion/);
-  const {PublicReleaseAssetsService}=require('../../dist/modules/host/public-release-assets.service'),
-    {PublicUpgradePreparationService}=require('../../dist/modules/host/public-upgrade-preparation.service');
+  const {PublicReleaseAssetsService}=require('../../dist/modules/host/publicReleaseAssets.service'),
+    {PublicUpgradePreparationService}=require('../../dist/modules/host/publicUpgradePreparation.service');
   const assets=app.get(PublicReleaseAssetsService),preparation=app.get(PublicUpgradePreparationService);
-  const {RecoveryArchiveService}=require('../../dist/modules/host/recovery-archive.service');
+  const {RecoveryArchiveService}=require('../../dist/modules/host/recoveryArchive.service');
   assert(app.get(RecoveryArchiveService) instanceof RecoveryArchiveService);
-  const {RecoveryExportService}=require('../../dist/modules/host/recovery-export.service');
+  const {RecoveryExportService}=require('../../dist/modules/host/recoveryExport.service');
   assert.equal(app.get(RecoveryExportService).archives,app.get(RecoveryArchiveService));
   assert.equal(preparation.assets,assets);
-  const {PairedControllerService}=require('../../dist/modules/host/paired-controller.service'),{PairedUpdateService}=require('../../dist/modules/host/paired-update.service'),{PublicUpgradeService}=require('../../dist/modules/host/public-upgrade.service'),{ControllerUpdateSequenceService}=require('../../dist/modules/host/controller-update-sequence.service'),{ControllerRollbackSequenceService}=require('../../dist/modules/host/controller-rollback-sequence.service');
+  const {PairedControllerService}=require('../../dist/modules/host/pairedController.service'),{PairedUpdateService}=require('../../dist/modules/host/pairedUpdate.service'),{PublicUpgradeService}=require('../../dist/modules/host/publicUpgrade.service'),{ControllerUpdateSequenceService}=require('../../dist/modules/host/controllerUpdateSequence.service'),{ControllerRollbackSequenceService}=require('../../dist/modules/host/controllerRollbackSequence.service');
   const paired=app.get(PairedUpdateService),publicUpgrade=app.get(PublicUpgradeService);
   assert.equal(app.get(PairedControllerService).paired,paired);
-  const {PromotionService}=require('../../dist/modules/host/promotion.service'),{PromotionSequenceService}=require('../../dist/modules/host/promotion-sequence.service');
+  const {PromotionService}=require('../../dist/modules/host/promotion.service'),{PromotionSequenceService}=require('../../dist/modules/host/promotionSequence.service');
   assert.equal(app.get(PromotionService).sequence,app.get(PromotionSequenceService));assert.equal(app.get(PromotionService).coldSequence,app.get(ColdMaintenanceService));
   assert.equal(publicUpgrade.paired,paired);assert.equal(publicUpgrade.preparation,preparation);
   assert.equal(paired.updates,app.get(ControllerUpdateSequenceService));
@@ -45,7 +45,7 @@ test('standalone Host module injects shared native adapter without running opera
   preparation.verifyHost(metadata,facts);
   assert.throws(()=>preparation.verifyHost(metadata,{...facts,memoryBytes:7800000*1024}),/insufficient-upgrade-memory/);
   assert.throws(()=>preparation.verifyHost(metadata,{...facts,architecture:'arm64'}),/supported-Ubuntu/);
-  const host=app.get(HostInstallService);assert.equal(app.get(HOST_PROCESS_RUNNER),runner);assert.equal(app.get(RuntimeInspectionService).host,host);assert.equal(calls,0);
+  const host=app.get(HostInstallService);assert.equal(app.get(hostProcessRunner),runner);assert.equal(app.get(RuntimeInspectionService).host,host);assert.equal(calls,0);
   host.run('git',['--version']);assert.equal(calls,1);
   const native=app.get(PromotionNativePortService),original=native.lease.command;let received;
   native.lease.command=async(...args)=>{received=args;return Buffer.from('ok');};
@@ -54,7 +54,7 @@ test('standalone Host module injects shared native adapter without running opera
  }finally{await app.close();}
 });
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const {HostStorageService}=require('../../dist/modules/host/host-storage.service');
+const {HostStorageService}=require('../../dist/modules/host/hostStorage.service');
 for (const [version,imageVersion] of [['1.2.0','1.2.0'],['2.0.0','2.0.0'],['2.0.0','1.2.0'],['1.2.0','2.0.0']]) test('host storage checkout '+version+' / image '+imageVersion+' preserves operation-owned duration and retains uncertain launchers',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'host-storage-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  fs.writeFileSync(path.join(root,'VERSION'),version+'\n');
@@ -87,7 +87,7 @@ for (const [version,imageVersion] of [['1.2.0','1.2.0'],['2.0.0','2.0.0'],['2.0.
  }
 });
 test('compatibility storage argument parser preserves environment and selectors',()=>{
- const {storageArguments}=require('../../dist/modules/host/storage-entry');
+ const {storageArguments}=require('../../dist/modules/host/storageEntry');
  assert.deepEqual(storageArguments(['restore','--image','accepted','--configuration-backup','/backup.zip','--check-only'],{PERSISTENCE_ENV_FILE:'/private/settings'},'/checkout'),{operation:'restore',image:'accepted',checkout:'/checkout',persistenceEnv:'/private/settings',configurationBackup:'/backup.zip',checkOnly:true});
  assert.throws(()=>storageArguments(['restore','--other'],{},'/checkout'),/arguments/);
  const {spawnSync}=require('node:child_process');
@@ -96,7 +96,7 @@ test('compatibility storage argument parser preserves environment and selectors'
  assert.equal(invalid.stderr,'System Bootstrapper: unknown-command-use-help\n');
 });
 test('native controller lease preserves critical ownership, excludes contenders and adopts only dead owners',async t=>{
- const {ControllerLeaseService}=require('../../dist/modules/host/controller-lease.service');
+ const {ControllerLeaseService}=require('../../dist/modules/host/controllerLease.service');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'controller-lease-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const directory of ['configuration/.projects.env','host/letsencrypt','gitlab/data'])fs.mkdirSync(path.join(root,directory),{recursive:true});
  const service=new ControllerLeaseService();service.acquire({root});
@@ -122,7 +122,7 @@ test('native controller lease preserves critical ownership, excludes contenders 
  recovery.release();assert(!fs.existsSync(ownerPath));
  const fresh=new ControllerLeaseService();fresh.acquire({root});fresh.release();
  const {spawn}=require('node:child_process');
- const coordinator=spawn(process.execPath,['-e',`const {ControllerLeaseService}=require(${JSON.stringify(require.resolve('../../dist/modules/host/controller-lease.service'))});const lease=new ControllerLeaseService();lease.acquire({root:process.argv[1]});lease.critical=true;lease.command([process.execPath,'-e','setTimeout(()=>{},1200)']).catch(()=>{});`,root],{stdio:'ignore'});
+ const coordinator=spawn(process.execPath,['-e',`const {ControllerLeaseService}=require(${JSON.stringify(require.resolve('../../dist/modules/host/controllerLease.service'))});const lease=new ControllerLeaseService();lease.acquire({root:process.argv[1]});lease.critical=true;lease.command([process.execPath,'-e','setTimeout(()=>{},1200)']).catch(()=>{});`,root],{stdio:'ignore'});
  t.after(()=>{try{coordinator.kill('SIGKILL')}catch{}});
  const journal=path.join(root,'configuration/.gitlab-upgrade-lock/host-child.json');
  const until=Date.now()+5000;
@@ -139,7 +139,7 @@ test('native controller lease preserves critical ownership, excludes contenders 
 
 });
 test('cold maintenance shares awaited native sequencing, bounded drain and fail-closed recovery',async()=>{
- const {ColdMaintenanceService,ActiveMaintenanceJobs}=require('../../dist/modules/host/cold-maintenance.service');
+ const {ColdMaintenanceService,ActiveMaintenanceJobs}=require('../../dist/modules/host/coldMaintenance.service');
  for(const scenario of ['success','claimed-job','expired','uncertain-stop','busy-exec','forced-stop','service-up']){
   const row=(Id,service)=>({Id,Image:'old-image',State:{Running:true,Paused:false,ExitCode:0,OOMKilled:false},HostConfig:{RestartPolicy:{Name:'always'}},ExecIDs:[],Config:{Labels:{'com.docker.compose.project':'system','com.docker.compose.service':service}}});
   const rows={controller:row('controller','bootstrapper'),gitlab:row('gitlab','gitlab'),web:row('web','web'),runner:row('runner','docker_1')};
@@ -169,8 +169,8 @@ test('cold maintenance shares awaited native sequencing, bounded drain and fail-
  }
 });
 test('native checkpoint verifies retained bytes and shared recovery rejects a concurrent caller before cleanup',async t=>{
- const {ControllerCheckpointService}=require('../../dist/modules/host/controller-checkpoint.service');
- const {PromotionRecoveryService}=require('../../dist/modules/host/promotion-recovery.service');
+ const {ControllerCheckpointService}=require('../../dist/modules/host/controllerCheckpoint.service');
+ const {PromotionRecoveryService}=require('../../dist/modules/host/promotionRecovery.service');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'native-checkpoint-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const name of ['data/gitlab','data/configuration','checkpoint'])fs.mkdirSync(path.join(root,name),{recursive:true});
  fs.writeFileSync(path.join(root,'data/gitlab/payload'),'retained');fs.symlinkSync('payload',path.join(root,'data/gitlab/link'));
@@ -183,7 +183,7 @@ test('native checkpoint verifies retained bytes and shared recovery rejects a co
 });
 
 test('retained recovery publication advances both security images without losing earlier archives',()=>{
- const {RecoveryPublicationService}=require('../../dist/modules/host/recovery-publication.service');
+ const {RecoveryPublicationService}=require('../../dist/modules/host/recoveryPublication.service');
  const security=require('../../config/gitlab/security-release.json'), service=new RecoveryPublicationService();
  const old={archives:[{file:'images/old.tar.gz',imageId:'sha256:'+'1'.repeat(64)}],localImages:[{tag:'system_bootstrapper',imageId:'sha256:'+'1'.repeat(64)}],publicImages:[{reference:security.fromImage,tag:security.fromImage.split('@')[0]},{reference:security.runner.fromImage,tag:security.runner.fromImage.split('@')[0]}],currentController:{reference:'controller:old',imageId:'sha256:'+'1'.repeat(64)}};
  const before=structuredClone(old),archive={file:'images/new.tar.gz',imageId:'sha256:'+'2'.repeat(64)};
@@ -195,7 +195,7 @@ test('retained recovery publication advances both security images without losing
  assert.throws(()=>refresh({...old,publicImages:old.publicImages.slice(0,1)}),/Runner-public-image-declaration/);
 });
 test('native paired runtime preserves immutable peers, lease ownership, readiness diagnostics and private command transport',async()=>{
- const {PairedRuntimeService,repairPeers,verifyRunnerContainers,unchangedPairedServices}=require('../../dist/modules/host/paired-runtime.service');
+ const {PairedRuntimeService,repairPeers,verifyRunnerContainers,unchangedPairedServices}=require('../../dist/modules/host/pairedRuntime.service');
  const {HostPolicyError}=require('../../dist/modules/host/install');
  let nativeCalls=[],leaseCalls=[],finished=[],probe={version:'19.6.1',edition:'CE',runningJobs:0,unfinishedBackgroundMigrations:0};
  const host={environment:{DOCKER_CONTEXT:'foreign',DOCKER_TLS_VERIFY:'1',DOCKER_CERT_PATH:'/private'},runner:{run(binary,args,options){nativeCalls.push({binary,args,options});return {status:0,stdout:'native',stderr:''};}}};
@@ -232,15 +232,15 @@ test('native paired runtime preserves immutable peers, lease ownership, readines
   await assert.rejects(service.context({...input,timeout:10},config).waitReady({}),/runner-contact-missing/);assert.equal(clock,102500);assert.equal(host.deadline,102500);host.deadline=undefined;
  }finally{Date.now=originalNow;global.setTimeout=originalTimeout;}
 
- const {parsePublicUpgradeInput}=require('../../dist/modules/host/public-upgrade-entry');const parsed=parsePublicUpgradeInput(['--operation','status','--checkout','/source','--persistence-env','/selector','--plan-dir','/retained']);assert.equal(parsed.directory,'/retained');assert.equal(parsed.timeout,1200);assert.throws(()=>parsePublicUpgradeInput(['--operation','bad']),/invalid-public-upgrade-operation/);
+ const {parsePublicUpgradeInput}=require('../../dist/modules/host/publicUpgradeEntry');const parsed=parsePublicUpgradeInput(['--operation','status','--checkout','/source','--persistence-env','/selector','--plan-dir','/retained']);assert.equal(parsed.directory,'/retained');assert.equal(parsed.timeout,1200);assert.throws(()=>parsePublicUpgradeInput(['--operation','bad']),/invalid-public-upgrade-operation/);
  const {spawn}=require('node:child_process');
- const cancellationPath=path.resolve(__dirname,'../../dist/modules/host/operation-cancellation');
+ const cancellationPath=path.resolve(__dirname,'../../dist/modules/host/operationCancellation');
  const child=spawn(process.execPath,['-e',`const {operationSignals}=require(${JSON.stringify(cancellationPath)});const before=process.listenerCount('SIGTERM');const owner=operationSignals();const timer=setInterval(()=>{},1000);owner.signal.addEventListener('abort',()=>{owner.close();clearInterval(timer);process.stdout.write('closed:'+String(process.listenerCount('SIGTERM')===before));});process.stdout.write('ready\\n');`],{stdio:['ignore','pipe','pipe']});
  let output='';await new Promise((resolve,reject)=>{child.stdout.on('data',bytes=>{output+=bytes;if(output.includes('ready')&&!output.includes('closed:'))child.kill('SIGTERM');});child.once('error',reject);child.once('close',(code,signal)=>{try{assert.equal(code,0);assert.equal(signal,null);assert(output.endsWith('closed:true'));resolve();}catch(error){reject(error);}});});
 
 });
 test('configuration backup native reader preserves store/deflate bytes and rejects ambiguous or corrupt exports',()=>{
- const {ConfigurationBackupArchive}=require('../../dist/modules/host/configuration-backup-archive'),{crc32,deflateRawSync}=require('node:zlib');
+ const {ConfigurationBackupArchive}=require('../../dist/modules/host/configurationBackupArchive'),{crc32,deflateRawSync}=require('node:zlib');
  function zip(entries){let offset=0;const bodies=[],directory=[];for(const [name,value,method=0] of entries){const filename=Buffer.from(name),raw=Buffer.from(value),data=method===8?deflateRawSync(raw):raw,local=Buffer.alloc(30),central=Buffer.alloc(46);local.writeUInt32LE(0x04034b50);local.writeUInt16LE(method,8);local.writeUInt32LE(crc32(raw),14);local.writeUInt32LE(data.length,18);local.writeUInt32LE(raw.length,22);local.writeUInt16LE(filename.length,26);central.writeUInt32LE(0x02014b50);central.writeUInt16LE(method,10);central.writeUInt32LE(crc32(raw),16);central.writeUInt32LE(data.length,20);central.writeUInt32LE(raw.length,24);central.writeUInt16LE(filename.length,28);central.writeUInt32LE(offset,42);bodies.push(local,filename,data);directory.push(central,filename);offset+=local.length+filename.length+data.length;}const dir=Buffer.concat(directory),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(entries.length,8);end.writeUInt16LE(entries.length,10);end.writeUInt32LE(dir.length,12);end.writeUInt32LE(offset,16);return Buffer.concat([...bodies,dir,end]);}
  const content='private exact bytes\n$Cube\n',raw=zip([['.docker.env',content],['.projects.env/.a.env','UNICODE=한글\n',8]]),archive=new ConfigurationBackupArchive(raw);
  assert.equal(archive.read('.docker.env').toString(),content);assert.equal(archive.read('.projects.env/.a.env').toString(),'UNICODE=한글\n');assert.throws(()=>archive.read('missing'),/entry-missing/);
@@ -250,9 +250,9 @@ test('configuration backup native reader preserves store/deflate bytes and rejec
  assert.throws(()=>new ConfigurationBackupArchive(Buffer.from('not a ZIP')),/invalid-configuration/);
 });
 test('native promotion uses shared providers, preserves old image selectors and retains interrupted ownership',async t=>{
- const {PromotionService}=require('../../dist/modules/host/promotion.service'),{PromotionSequenceService}=require('../../dist/modules/host/promotion-sequence.service'),{ColdMaintenanceService}=require('../../dist/modules/host/cold-maintenance.service');
- const {PairedRuntimeService}=require('../../dist/modules/host/paired-runtime.service');
- const {promotionAssignment,bytesSha}=require('../../dist/modules/host/release-selection.service');
+ const {PromotionService}=require('../../dist/modules/host/promotion.service'),{PromotionSequenceService}=require('../../dist/modules/host/promotionSequence.service'),{ColdMaintenanceService}=require('../../dist/modules/host/coldMaintenance.service');
+ const {PairedRuntimeService}=require('../../dist/modules/host/pairedRuntime.service');
+ const {promotionAssignment,bytesSha}=require('../../dist/modules/host/releaseSelection.service');
  const {HostPolicyError}=require('../../dist/modules/host/install');
  for(const scenario of ['success','interrupted','wrong-old-image','empty-image','alias-retargeted','check-only']){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'promotion-native-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
@@ -300,7 +300,7 @@ test('native promotion uses shared providers, preserves old image selectors and 
  }
 });
 test('native staged promotion authenticates retained candidate and preserves original recovery declaration',async t=>{
- const {PromotionService}=require('../../dist/modules/host/promotion.service'),{promotionAssignment,bytesSha}=require('../../dist/modules/host/release-selection.service');
+ const {PromotionService}=require('../../dist/modules/host/promotion.service'),{promotionAssignment,bytesSha}=require('../../dist/modules/host/releaseSelection.service');
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'staged-native-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
  const checkpoint=path.join(directory,'recovery/controller-promotions/previous');fs.mkdirSync(checkpoint,{recursive:true});fs.mkdirSync(path.join(directory,'configuration'));
  const image=n=>'sha256:'+n.repeat(64),release={projectId:4,candidateJobId:29,sourceRevision:'a'.repeat(40),sourceTree:'b'.repeat(40),registryRepository:'registry.example.test/system/successor',registryReference:'registry.example.test/system/successor@'+image('7'),imageId:image('1')},target={...release,sourceRevision:'c'.repeat(40)},alias='system-successor:'+release.sourceRevision+'-job29';
@@ -318,7 +318,7 @@ test('native staged promotion authenticates retained candidate and preserves ori
 });
 test('native promotion abort adopts before cleanup, resumes only the exact old generation and retains ambiguous outcomes',async t=>{
  const checkout=fs.mkdtempSync(path.join(os.tmpdir(),'native-abort-checkout-'));t.after(()=>fs.rmSync(checkout,{recursive:true,force:true}));fs.writeFileSync(path.join(checkout,'VERSION'),'2.0.0\n');
- const {PromotionAbortService}=require('../../dist/modules/host/promotion-abort.service'),{bytesSha}=require('../../dist/modules/host/release-selection.service');
+ const {PromotionAbortService}=require('../../dist/modules/host/promotionAbort.service'),{bytesSha}=require('../../dist/modules/host/releaseSelection.service');
  const before=Buffer.concat([fs.readFileSync(path.resolve(__dirname,'../../config/system/.docker.env.example')).subarray(0,1184),Buffer.from("\nexport BOOTSTRAPPER_IMAGE='old:controller'\n")]),after=Buffer.concat([before,Buffer.from('# accepted target\n')]),image=n=>'sha256:'+n.repeat(64);
  for(const scenario of ['restored','early','compose-uncertain','readiness-uncertain','live-owner','changed-GitLab','changed-config','changed-checkpoint','foreign-helper','completed']){
   const state={format:'system-controller-promotion-v1',phase:scenario==='completed'?'controller-promoted-old-GitLab-preserved':'controller-start-started',release:{sourceRevision:'a'.repeat(40)},leaseOperation:'f'.repeat(32),configurationBeforeSha256:bytesSha(before),configurationAfterSha256:bytesSha(after),previousController:{imageId:image('0'),restartPolicy:{Name:'on-failure',MaximumRetryCount:3}},oldGitLab:{imageId:image('2')},coldCheckpointSha256:'e'.repeat(64),remoteCommandDeadlineUptime:102,remoteCommandBootId:'current-boot',coldPhase:scenario==='early'?'scheduling-ingress-stop-started':'old-controller-killed-before-cold-checkpoint'};

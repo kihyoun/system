@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/jwtAuth.guard';
 import { RuntimeService } from '../runtime/runtime.service';
 import { ConfigurationService } from './configuration.service';
 
@@ -55,7 +55,11 @@ export class ConfigurationController {
   @Post('zip')
   pushZip(@Req() request: Request, @Res() response: Response) {
     const result = this.config.pushZip(request.files, request.body);
-    if (result.applyMode === 'restart') this.runtime.restartAfterResponse(response);
+
+    if (result.applyMode === 'restart') {
+      this.runtime.restartAfterResponse(response);
+    }
+
     response.status(200).json(result);
   }
 

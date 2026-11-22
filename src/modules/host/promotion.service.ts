@@ -1,4 +1,4 @@
-import { checkoutConfiguration } from '../../common/runtime/checkout-layout';
+import { checkoutConfiguration } from '../../common/runtime/checkoutLayout';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,34 +7,34 @@ import {
   RuntimeVerificationService,
   serviceOrigin,
   type RuntimeBaseline,
-} from '../host-bootstrap/runtime-verification.service';
-import { CandidateAuthorityService, type CandidateGitLabApi } from './candidate-authority.service';
-import { CandidateGitLabService } from './candidate-gitlab.service';
-import { HostReleaseAuthorityService } from './release-authority.service';
+} from '../host-bootstrap/runtimeVerification.service';
+import { CandidateAuthorityService, type CandidateGitLabApi } from './candidateAuthority.service';
+import { CandidateGitLabService } from './candidateGitlab.service';
+import { HostReleaseAuthorityService } from './releaseAuthority.service';
 import { HostSourceService } from './source';
-import { RecoveryImageService } from './recovery-images';
+import { RecoveryImageService } from './recoveryImages';
 import {
   RecoveryManifestService,
   canonicalDigest,
   type RecoveryManifest,
-} from './recovery-manifest';
+} from './recoveryManifest';
 import {
   RuntimeInspectionService,
   type RuntimeConfig,
   type ContainerRow,
-} from './runtime-inspection';
-import { ControllerLeaseService } from './controller-lease.service';
-import { ControllerCheckpointService } from './controller-checkpoint.service';
-import { PromotionNativePortService } from './promotion-native-port.service';
-import { PromotionRecoveryService } from './promotion-recovery.service';
-import { PromotionSequenceService, type PromotionSequencePort } from './promotion-sequence.service';
-import { ColdMaintenanceService, type ColdMaintenancePort } from './cold-maintenance.service';
-import { PairedRuntimeService, ownedCore } from './paired-runtime.service';
-import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
-import { readPrivateInput } from './private-input';
-import { bytesSha, promotionAssignment } from './release-selection.service';
-import { record, imageId } from '../release/source-identity';
-import { assertOperationActive, cancellationPort } from './operation-cancellation';
+} from './runtimeInspection';
+import { ControllerLeaseService } from './controllerLease.service';
+import { ControllerCheckpointService } from './controllerCheckpoint.service';
+import { PromotionNativePortService } from './promotionNativePort.service';
+import { PromotionRecoveryService } from './promotionRecovery.service';
+import { PromotionSequenceService, type PromotionSequencePort } from './promotionSequence.service';
+import { ColdMaintenanceService, type ColdMaintenancePort } from './coldMaintenance.service';
+import { PairedRuntimeService, ownedCore } from './pairedRuntime.service';
+import { PublicUpgradePreparationService } from './publicUpgradePreparation.service';
+import { readPrivateInput } from './privateInput';
+import { bytesSha, promotionAssignment } from './releaseSelection.service';
+import { record, imageId } from '../release/sourceIdentity';
+import { assertOperationActive, cancellationPort } from './operationCancellation';
 type Row = Record<string, unknown>;
 export interface PromotionInput {
   signal?: AbortSignal;
@@ -84,22 +84,26 @@ export class PromotionService {
         input.timeout <= 3600,
       'root-and-bounded-readiness-timeout-required',
     );
-    for (const value of [input.checkout, input.persistenceEnv, input.checkpoint])
+    for (const value of [input.checkout, input.persistenceEnv, input.checkpoint]) {
       ensure(path.isAbsolute(value), 'absolute-promotion-input-required');
+    }
     ensure(
       !input.stagedPromotion || input.operation === 'promote',
       'staged-promotion-is-only-for-promotion',
     );
     ensure(!input.checkOnly || input.operation === 'promote', 'check-only-requires-promotion');
+
     if (input.operation === 'abort') {
       await this.recovery.abort(input);
       return { phase: 'aborted' };
     }
+
     const config = await this.runtime.settings(
       input.persistenceEnv,
       input.checkout,
       this.host.environment,
     );
+
     if (input.operation === 'status') {
       const value = record(
         JSON.parse(readPrivateInput(path.join(input.checkpoint, 'operation.json')).toString()),
@@ -118,6 +122,7 @@ export class PromotionService {
         oldGitLabImageId: record(value.oldGitLab).imageId,
       };
     }
+
     ensure(
       input.releaseFile && input.evidenceFile && input.gitlabUrl && input.tokenFile,
       'successor-release-API-inputs-required',
@@ -141,18 +146,28 @@ export class PromotionService {
       pipeline = () => this.candidates.pipeline(api, release, releaseBytes, evidenceBytes);
     this.source.verifyCheckout(release, input.checkout);
     const proof = await pipeline();
-    if (input.checkOnly && !input.stagedPromotion) return { verified: true, pipeline: proof };
+
+    if (input.checkOnly && !input.stagedPromotion) {
+      return { verified: true, pipeline: proof };
+    }
+
     const original = this.runtime.services(config);
     this.inspection.mounts(config, original);
     let manifest = this.manifests.load(path.join(config._root, 'recovery'), input.checkout),
       stagedReceipt: Row | null = null;
+
     if (input.stagedPromotion) {
       const staged = await this.staged(input, config, manifest, original, api, security, release);
       manifest = staged.manifest;
       stagedReceipt = staged.receipt;
     }
+
     this.inspection.images(config, manifest, original);
-    if (input.checkOnly) return { verified: true, pipeline: proof, stagedReceipt };
+
+    if (input.checkOnly) {
+      return { verified: true, pipeline: proof, stagedReceipt };
+    }
+
     const controller = original.system_bootstrapper_1,
       gitlab = original.system_gitlab_1,
       web = original.system_web_1;
@@ -202,17 +217,24 @@ export class PromotionService {
       ensure(selected && imageId(expected), 'controller-promotion-image-selection-required');
       const image = this.images.inspect(selected);
       ensure(image.Id === expected, 'controller-promotion-image-selection-changed');
-      if (selected.includes('@sha256:'))
+
+      if (selected.includes('@sha256:')) {
         ensure(
           image.RepoDigests?.includes(canonicalDigest(selected)),
           'controller-promotion-image-digest-unverified',
         );
+      }
+
       ensure(
         rows.every((row) => row.Image === expected),
         'controller-promotion-running-image-mismatch',
       );
     }
-    if (!input.cold) await this.preparation.syncIdle(config);
+
+    if (!input.cold) {
+      await this.preparation.syncIdle(config);
+    }
+
     await this.pull(input, api, release);
     let existing;
     try {
@@ -307,12 +329,14 @@ export class PromotionService {
             phase: (phase, deadline) => {
               const current = readJournal();
               current.coldPhase = phase;
+
               if (deadline !== undefined) {
                 current.remoteCommandDeadlineUptime = deadline;
                 current.remoteCommandBootId = fs
                   .readFileSync('/proc/sys/kernel/random/boot_id', 'utf8')
                   .trim();
               }
+
               journal(current);
             },
             probe: async () => ({ ...(await preflight()) }),
@@ -359,7 +383,11 @@ export class PromotionService {
                 return;
               } catch {
                 assertOperationActive(input.signal);
-                if (Date.now() >= deadline) throw Error('staged-controller-acceptance-timeout');
+
+                if (Date.now() >= deadline) {
+                  throw Error('staged-controller-acceptance-timeout');
+                }
+
                 await new Promise((resolve) =>
                   setTimeout(resolve, Math.min(3000, deadline - Date.now())),
                 );
@@ -412,8 +440,9 @@ export class PromotionService {
         ...this.host.environment,
         DOCKER_HOST: 'unix:///var/run/docker.sock',
       };
-      for (const key of ['DOCKER_CONTEXT', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH'])
+      for (const key of ['DOCKER_CONTEXT', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']) {
         delete environment[key];
+      }
       const result = this.host.runner.run(
         'docker',
         [
@@ -518,8 +547,11 @@ export class PromotionService {
         gitlab.Image === record(state.oldGitLab).imageId,
       'staged-controller-old-GitLab-image-changed',
     );
-    if (state.coldMaintenance)
+
+    if (state.coldMaintenance) {
       this.checkpoints.verify(checkpoint, String(state.coldCheckpointSha256));
+    }
+
     const view = structuredClone(manifest);
     ensure(
       ![...view.publicImages, ...view.localImages].some((row) => row.tag === alias),

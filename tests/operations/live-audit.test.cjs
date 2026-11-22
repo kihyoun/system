@@ -1,8 +1,8 @@
 require('reflect-metadata');
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const {LiveAuditAccessService}=require('../../dist/modules/testing/live-audit-access.service');
-const {LiveProjectAuditService}=require('../../dist/modules/testing/live-project-audit.service');
-const {LiveRunnerAuditService}=require('../../dist/modules/testing/live-runner-audit.service');
+const {LiveAuditAccessService}=require('../../dist/modules/testing/liveAuditAccess.service');
+const {LiveProjectAuditService}=require('../../dist/modules/testing/liveProjectAudit.service');
+const {LiveRunnerAuditService}=require('../../dist/modules/testing/liveRunnerAudit.service');
 const authority={context:{checkout:'/system',containerId:'a'.repeat(64)},credential:{id:12,userId:3,token:'private-controller-token',expiresAt:'2099-01-01'},account:{id:3,username:'system-bootstrapper-controller',email:'controller@example.invalid'}};
 function fixture(t,scenario='success'){
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'live-audit-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
@@ -31,7 +31,7 @@ function fixture(t,scenario='success'){
  return {directory,configuration,calls,access,runtime,service:new LiveRunnerAuditService(access,runtime),input:{checkout:'/system',configDirectory:'/srv/gitlab/config',allowDisposableProject:true,configuration,jobImage:'alpine@sha256:'+'a'.repeat(64),timeout:1},deleted:()=>deleted,revoked:()=>revoked,allowCleanup:()=>{cleanupFailed=false;}};
 }
 test('live audit module shares existing native authority and opens without running commands',async()=>{
- const {NestFactory}=require('@nestjs/core'),{LiveAuditModule}=require('../../dist/modules/testing/live-audit.module'),{GitlabCredentialService}=require('../../dist/modules/gitlab-provision/credential.service');
+ const {NestFactory}=require('@nestjs/core'),{LiveAuditModule}=require('../../dist/modules/testing/liveAudit.module'),{GitlabCredentialService}=require('../../dist/modules/gitlab-provision/credential.service');
  const app=await NestFactory.createApplicationContext(LiveAuditModule,{logger:false});try{assert.equal(app.get(LiveAuditAccessService).credentials,app.get(GitlabCredentialService));assert.equal(app.get(LiveRunnerAuditService).access,app.get(LiveAuditAccessService));}finally{await app.close();}
  const state={phase:'ready',account:{userId:3,username:'controller',email:'controller@example.invalid'},replacement:authority.credential};let reads=0;
  const credentials=new GitlabCredentialService({resolve:async()=>authority.context},{initial(){assert.fail('bootstrap must not run');}},{current(){assert.fail('renewal must not run');}},{withJournal:async(_directory,read)=>{reads++;return read({read:()=>state,save(){assert.fail('credentials must not be written');}});}});

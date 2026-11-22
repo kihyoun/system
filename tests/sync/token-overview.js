@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
-const {credentialExpiry, tokenMonitorSettings, tokenEnvironmentSettings, safeTokenOverview} = require('../../dist/api/operations/token-overview');
+const {credentialExpiry, tokenMonitorSettings, tokenEnvironmentSettings, safeTokenOverview} = require('../../dist/api/operations/tokenOverview');
 const now = Date.parse('2026-11-09T12:00:00Z');
 assert.equal(credentialExpiry('2026-11-09', false, 14, now).status, 'expired');
 assert.equal(credentialExpiry('2026-11-10', false, 14, now).status, 'expiring');
@@ -55,7 +55,7 @@ assert.throws(() => tokenMonitorSettings({SYSTEM_CREDENTIAL_PROJECT_PATHS: '["a/
 console.log('PASS credential date boundaries, explicit scope, unsupported metadata and response redaction.');
 
 async function nativeMetadata() {
-  const {GitlabTokenMetadataService}=require('../../dist/modules/gitlab-provision/token-metadata.service');
+  const {GitlabTokenMetadataService}=require('../../dist/modules/gitlab-provision/tokenMetadata.service');
   const queries=[],calls=[];let closed=0;
   const session={main:0,ci:1,async query(database,sql){queries.push({database,sql});
     if(sql.includes('public.routes'))return sql.includes('missing/project')?'[]':'[42]';

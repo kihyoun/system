@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
-import { PackageAssetsService } from './package-assets.service';
-import { ProjectCiBundleService } from './project-ci-bundle.service';
+import { PackageAssetsService } from './packageAssets.service';
 @Module({
-  providers: [PackageAssetsService, ProjectCiBundleService],
-  exports: [PackageAssetsService, ProjectCiBundleService],
+  providers: [PackageAssetsService],
+  exports: [PackageAssetsService],
 })
 export class BuildModule {}

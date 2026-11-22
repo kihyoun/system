@@ -1,8 +1,8 @@
-import type { ChildOptions } from '../../common/runtime/managed-child';
-export const WIZARD_RECOVERY_PROCESS = Symbol('WIZARD_RECOVERY_PROCESS');
-export const WIZARD_RECOVERY_REGISTRY = Symbol('WIZARD_RECOVERY_REGISTRY');
-export const WIZARD_RECOVERY_READY = Symbol('WIZARD_RECOVERY_READY');
-export const WIZARD_RECOVERY_DURABILITY = Symbol('WIZARD_RECOVERY_DURABILITY');
+import type { ChildOptions } from '../../common/runtime/managedChild';
+export const wizardRecoveryProcess = Symbol('WIZARD_RECOVERY_PROCESS');
+export const wizardRecoveryRegistry = Symbol('WIZARD_RECOVERY_REGISTRY');
+export const wizardRecoveryReady = Symbol('WIZARD_RECOVERY_READY');
+export const wizardRecoveryDurability = Symbol('WIZARD_RECOVERY_DURABILITY');
 export interface RecoveryOptions {
   checkout: string;
   settings: NodeJS.ProcessEnv;

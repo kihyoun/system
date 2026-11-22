@@ -5,12 +5,12 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
-const {pack} = require('../../dist/modules/source-preparation/wizard-source.service');
-const {CommittedContextService} = require('../../dist/modules/ci/committed-context.service');
-const {NativeContextProcess} = require('../../dist/modules/ci/context-process');
-const {WizardSourceService} = require('../../dist/modules/source-preparation/wizard-source.service');
+const {pack} = require('../../dist/modules/source-preparation/wizardSource.service');
+const {CommittedContextService} = require('../../dist/modules/ci/committedContext.service');
+const {NativeContextProcess} = require('../../dist/modules/ci/contextProcess');
+const {WizardSourceService} = require('../../dist/modules/source-preparation/wizardSource.service');
 const committedContext = new CommittedContextService(new NativeContextProcess(), new WizardSourceService());
-const {CodeqlContextService} = require('../../dist/modules/ci/codeql-context.service');
+const {CodeqlContextService} = require('../../dist/modules/ci/codeqlContext.service');
 const prepare = root => new CodeqlContextService(committedContext).prepare(root);
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codeql-shared-source-'));
 const source = path.resolve(__dirname, '../..');
@@ -63,7 +63,7 @@ try {
   const license = fs.readFileSync(path.join(source, licensePaths[0]));
   const actual = new Map([...runtimePaths.map(name => [name, runtime]),
     ...licensePaths.map(name => [name, license]),
-    [producerPath, fs.readFileSync(path.join(source, producerPath))]]);
+    [producerPath, Buffer.from(JSON.stringify({version:2,runtime:'.gitlab/runtime/project-ci.cjs',runtimeSha256:crypto.createHash('sha256').update(runtime).digest('hex'),buildProfile:'node24-vite8-typed-v6'}))]]);
   const restore = name => write(name, actual.get(name));
   const commit = (message, names) => {
     git('add', '-A', '--', ...names); git('commit', '-qm', message);

@@ -26,7 +26,7 @@ for (const [index, files] of [[1, ['src/modules/lifecycle/runner.service.ts']], 
     assert.match(extracted[0].groups.currentDigest, /^sha256:[a-f0-9]{64}$/);
   }
 }
-const globalPath = path.join(root, 'dist/modules/renovate/config-entry.js');
+const globalPath = path.join(root, 'dist/modules/renovate/configEntry.js');
 const original = {...process.env};
 try {
   process.env.CI_API_V4_URL = 'https://gitlab.example.com/api/v4';

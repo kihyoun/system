@@ -16,7 +16,7 @@ async function run(input, dependencies = {}) {
   const selectedPaths = basePaths(input.base), paths = dependencies.paths || selectedPaths;
   const {NestFactory} = require('../../node_modules/@nestjs/core');
   const {HostCertificateService} = require('../../dist/modules/host-bootstrap/certificate.service');
-  const {ManagedChildProcess} = require('../../dist/common/runtime/managed-child');
+  const {ManagedChildProcess} = require('../../dist/common/runtime/managedChild');
   const native = dependencies.native || new ManagedChildProcess();
   const checkout = dependencies.checkout || '/system';
   const selector = dependencies.selector || '/tmp/acme-persistence.env';

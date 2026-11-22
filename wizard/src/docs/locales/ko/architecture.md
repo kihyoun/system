@@ -44,9 +44,14 @@ React 프런트엔드는 별도의 `wizard/` 디렉터리에 유지됩니다. Ne
 - `LifecycleModule`은 컨트롤러/Runner 시작과 중지, 등록, 취소 및 시간 제한 없이
   포그라운드에서 실행되는 사전 빌드된 Sync 프로세스를 담당합니다.
 - `ProjectLifecycleModule`, `EnvironmentModule`, `CanonicalModule`은 프로젝트 배포
-  트랜잭션, 소스 전송과 기준 환경 상태를 담당합니다. `PreviewOperatorModule`,
-  `AdoptionModule`, `UpgradeModule`, `ProductionModule`, `SystemBetaModule`은 설정,
-  소스 채택/빌드 업그레이드, 명시적인 Wizard Production 승격, 승인된 후보의 System Beta를 구분합니다.
+  트랜잭션, 소스 전송과 기준 환경 상태를 담당합니다.
+  `WizardEnvironmentsModule`은 형식이 명확한 설정, DNS/TLS 사전 검사,
+  활성화/상태 결정과 잠긴 기록 저장소를 분리합니다. HTTP와 독립
+  `wizard-environments` 명령은 같은 주입형 워크플로 서비스를 사용합니다.
+  프로세스 내부 준비 상태는 영구 구성이나 작업 잠금을 대체하지 않습니다.
+  `PreviewOperatorModule`, `AdoptionModule`, `UpgradeModule`, `ProductionModule`,
+  `SystemBetaModule`은 설정, 소스 채택/빌드 업그레이드, 명시적인 Wizard
+  Production 승격, 승인된 후보의 System Beta를 구분합니다.
 - `GitLabUpgradeModule`은 영구 Guardian의 감독 아래 승인된 네이티브 데이터베이스 전환,
   콜드 체크포인트, 준비 상태 검증, 중단과 롤백을 담당합니다.
 - `ReleaseModule`은 승인된 소스/이미지/작업 증거를 변경 불가능한 이미지, GitHub, npm

@@ -2,19 +2,22 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { renderWelcome } from './presentation';
-import { applicationCommand } from './application-commands';
+import { applicationCommand } from './applicationCommands';
 
 function packageVersion(): string {
   const metadata: unknown = JSON.parse(
     readFileSync(resolve(__dirname, '../../package.json'), 'utf8'),
   );
+
   if (
     !metadata ||
     typeof metadata !== 'object' ||
     !('version' in metadata) ||
     typeof metadata.version !== 'string'
-  )
+  ) {
     throw new Error('package-version-unavailable');
+  }
+
   return metadata.version;
 }
 
@@ -35,36 +38,63 @@ export function parseHostArguments(
   const seen = new Set<string>();
   for (let index = 1; index < args.length; index++) {
     const flag = args[index];
-    if (seen.has(flag)) throw new Error('duplicate-option');
+
+    if (seen.has(flag)) {
+      throw new Error('duplicate-option');
+    }
+
     seen.add(flag);
+
     if (!install && flag === '--check-only') {
       checkOnly = true;
       continue;
     }
+
     if (install && flag === '--install-host') {
       forward.push(flag);
       continue;
     }
-    if (!accepted.includes(flag) || !args[index + 1] || args[index + 1].startsWith('--'))
+
+    if (!accepted.includes(flag) || !args[index + 1] || args[index + 1].startsWith('--')) {
       throw new Error('unknown-command-use-help');
+    }
+
     const value = args[++index];
-    if (flag === '--checkout') checkout = value;
-    else if (install) forward.push(flag, value);
-    else if (flag === '--image') image = value;
-    else if (flag === '--persistence-env') persistenceEnv = value;
-    else configurationBackup = value;
+
+    if (flag === '--checkout') {
+      checkout = value;
+    } else if (install) {
+      forward.push(flag, value);
+    } else if (flag === '--image') {
+      image = value;
+    } else if (flag === '--persistence-env') {
+      persistenceEnv = value;
+    } else {
+      configurationBackup = value;
+    }
   }
   checkout ||= defaults?.checkout || '';
   image ||= defaults?.image || '';
-  if (!seen.has('--persistence-env') && defaults?.persistenceEnv)
+
+  if (!seen.has('--persistence-env') && defaults?.persistenceEnv) {
     persistenceEnv = defaults.persistenceEnv;
-  if (!checkout.startsWith('/')) throw new Error('explicit-host-checkout-required');
-  if (!install && !image) throw new Error('accepted-controller-image-required');
+  }
+
+  if (!checkout.startsWith('/')) {
+    throw new Error('explicit-host-checkout-required');
+  }
+
+  if (!install && !image) {
+    throw new Error('accepted-controller-image-required');
+  }
+
   if (
     !persistenceEnv.startsWith('/') ||
     (configurationBackup && !configurationBackup.startsWith('/'))
-  )
+  ) {
     throw new Error('absolute-private-input-required');
+  }
+
   return { checkout, image, persistenceEnv, configurationBackup, checkOnly, forward };
 }
 
@@ -84,32 +114,58 @@ export async function resolveHostArguments(
     'recovery-export',
     'promotion-abort',
   ].includes(command);
-  if (!storage && !lifecycle && !advanced) return args;
-  if (storage)
+
+  if (!storage && !lifecycle && !advanced) {
+    return args;
+  }
+
+  if (storage) {
     parseHostArguments(args, { checkout: '/selected-installation', image: 'selected-image' });
+  }
+
   if (
     lifecycle &&
     !(
       args.length === 1 ||
       (args.length === 3 && args[1] === '--checkout' && args[2].startsWith('/'))
     )
-  )
+  ) {
     throw Error('explicit-host-checkout-required');
-  if (args.includes('--checkout')) return args;
+  }
+
+  if (args.includes('--checkout')) {
+    return args;
+  }
+
   const selected = await resolve(storage && !args.includes('--image'));
   const result = [...args, '--checkout', selected.checkout];
+
   if (storage && !args.includes('--image')) {
-    if (!selected.image) throw Error('cli-saved-controller-image-required');
+    if (!selected.image) {
+      throw Error('cli-saved-controller-image-required');
+    }
+
     result.push('--image', selected.image);
   }
+
   const persistence = storage || (advanced && command !== 'recovery');
+
   if (persistence) {
     const supplied = args.indexOf('--persistence-env');
-    if (supplied >= 0 && args[supplied + 1] !== selected.persistenceEnv)
+
+    if (supplied >= 0 && args[supplied + 1] !== selected.persistenceEnv) {
       throw Error('cli-installation-selector-mismatch');
-    if (supplied < 0) result.push('--persistence-env', selected.persistenceEnv);
+    }
+
+    if (supplied < 0) {
+      result.push('--persistence-env', selected.persistenceEnv);
+    }
   }
-  if (lifecycle) process.env.PERSISTENCE_ENV_FILE = selected.persistenceEnv;
+
+  if (lifecycle) {
+    process.env.PERSISTENCE_ENV_FILE = selected.persistenceEnv;
+  }
+
   return result;
 }
 
@@ -118,10 +174,12 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     process.stdout.write(renderWelcome(packageVersion()));
     return;
   }
+
   if (args.length === 1 && args[0] === '--version') {
     process.stdout.write(`${packageVersion()}\n`);
     return;
   }
+
   if (args.length === 1 && ['--help', 'help', '-h'].includes(args[0])) {
     process.stdout.write(
       'System Bootstrapper\n\nUsage: system-bootstrapper <command>\n\n' +
@@ -148,10 +206,12 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
         '  projects-routing    Validate and apply owned routing\n' +
         '  project-environments / system-beta / wizard-production\n' +
         '                      Operate explicitly selected project environments\n' +
+        '  project-ci          Build, verify and operate source-bound project CI\n' +
+        '  wizard-environments preview|status|configure REQUEST_FILE|preflight SETTINGS_FILE|inspect\n' +
         '  source-checkout / source-prepare / wizard-source-primary / wizard-upgrade\n' +
         '                      Prepare and maintain managed project sources\n' +
         '  release / renovate  Run explicitly authorized publication and dependency operations\n' +
-        '  ci / docs / resources / bundle-project-ci\n' +
+        '  ci / docs / resources\n' +
         '                      Repository build, verification and authoring capabilities\n\n' +
         'Host commands use the registered installation; --checkout explicitly selects a recovery/development checkout.\n' +
         'CLI setup: cli-install --checkout /root-owned/installed/source [--persistence-env FILE]\n' +
@@ -162,80 +222,106 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     );
     return;
   }
+
   if (args[0] === 'cli-install') {
     const { withCliInstallation, installCli } = await import('./installation.js');
     await withCliInstallation((service) => installCli(service, [...args.slice(1)]));
     console.log('System Bootstrapper command installed.');
     return;
   }
-  if (await applicationCommand(args[0], [...args.slice(1)])) return;
-  args = await resolveHostArguments(args);
-  if (['controller-update', 'upgrade', 'recovery', 'promote', 'gitlab-upgrade'].includes(args[0])) {
-    const checkout = args.indexOf('--checkout');
-    if (checkout < 1 || !args[checkout + 1]?.startsWith('/'))
-      throw new Error('explicit-host-checkout-required');
-    if (args[0] === 'gitlab-upgrade') {
-      const { publicGitlabMain } =
-        await import('../modules/host/public-gitlab-prerequisite-entry.js');
-      await publicGitlabMain([...args.slice(1)]);
-    } else if (args[0] === 'promote') {
-      const { promotionMain } = await import('../modules/host/promotion-entry.js');
-      await promotionMain([...args.slice(1)]);
-    } else if (args[0] === 'controller-update') {
-      const { pairedControllerMain } = await import('../modules/host/paired-controller-entry.js');
-      await pairedControllerMain([...args.slice(1)]);
-    } else if (args[0] === 'upgrade') {
-      const { publicUpgradeMain } = await import('../modules/host/public-upgrade-entry.js');
-      await publicUpgradeMain([...args.slice(1)]);
-    } else {
-      const { recoveryMain } = await import('../modules/host/recovery-entry.js');
-      await recoveryMain([...args.slice(1)]);
-    }
+
+  if (await applicationCommand(args[0], [...args.slice(1)])) {
     return;
   }
+
+  args = await resolveHostArguments(args);
+
+  if (['controller-update', 'upgrade', 'recovery', 'promote', 'gitlab-upgrade'].includes(args[0])) {
+    const checkout = args.indexOf('--checkout');
+
+    if (checkout < 1 || !args[checkout + 1]?.startsWith('/')) {
+      throw new Error('explicit-host-checkout-required');
+    }
+
+    if (args[0] === 'gitlab-upgrade') {
+      const { publicGitlabMain } = await import('../modules/host/publicGitlabPrerequisiteEntry.js');
+      await publicGitlabMain([...args.slice(1)]);
+    } else if (args[0] === 'promote') {
+      const { promotionMain } = await import('../modules/host/promotionEntry.js');
+      await promotionMain([...args.slice(1)]);
+    } else if (args[0] === 'controller-update') {
+      const { pairedControllerMain } = await import('../modules/host/pairedControllerEntry.js');
+      await pairedControllerMain([...args.slice(1)]);
+    } else if (args[0] === 'upgrade') {
+      const { publicUpgradeMain } = await import('../modules/host/publicUpgradeEntry.js');
+      await publicUpgradeMain([...args.slice(1)]);
+    } else {
+      const { recoveryMain } = await import('../modules/host/recoveryEntry.js');
+      await recoveryMain([...args.slice(1)]);
+    }
+
+    return;
+  }
+
   if (args[0] === 'recovery-export') {
     const checkout = args.indexOf('--checkout');
-    if (checkout < 1 || !args[checkout + 1]?.startsWith('/'))
+
+    if (checkout < 1 || !args[checkout + 1]?.startsWith('/')) {
       throw new Error('explicit-host-checkout-required');
-    const { recoveryExportMain } = await import('../modules/host/recovery-export-entry.js');
+    }
+
+    const { recoveryExportMain } = await import('../modules/host/recoveryExportEntry.js');
     await recoveryExportMain([...args.slice(1)]);
     return;
   }
+
   if (args[0] === 'gitlab-credentials') {
     const { main: credentials } = await import('../modules/gitlab-provision/entry.js');
     await credentials([...args.slice(1)]);
     return;
   }
+
   if (args[0] === 'promotion-abort') {
     const checkout = args.indexOf('--checkout');
-    if (checkout < 1 || !args[checkout + 1]?.startsWith('/'))
+
+    if (checkout < 1 || !args[checkout + 1]?.startsWith('/')) {
       throw new Error('explicit-host-checkout-required');
-    const { main: recover } = await import('../modules/host/promotion-recovery-entry.js');
+    }
+
+    const { main: recover } = await import('../modules/host/promotionRecoveryEntry.js');
     await recover([...args.slice(1)]);
     return;
   }
+
   if (['start', 'stop', 'persistence'].includes(args[0])) {
-    if (args.length !== 3 || args[1] !== '--checkout' || !args[2].startsWith('/'))
+    if (args.length !== 3 || args[1] !== '--checkout' || !args[2].startsWith('/')) {
       throw new Error('explicit-host-checkout-required');
+    }
+
     const { hostLifecycle } = await import('../modules/host-lifecycle/entry.js');
     await hostLifecycle(args[0], args[2]);
     return;
   }
+
   if (['harvest', 'restore', 'install'].includes(args[0])) {
     const options = parseHostArguments(args);
-    const { NestFactory } = await import('@nestjs/core');
-    const { HostModule, HostStorageService, HostInstallService, installArguments } =
-      await import('../modules/host/index.js');
-    const application = await NestFactory.createApplicationContext(HostModule.register(), {
+    const { NestFactory: nestFactory } = await import('@nestjs/core');
+    const {
+      HostModule: hostModule,
+      HostStorageService: hostStorageService,
+      HostInstallService: hostInstallService,
+      installArguments,
+    } = await import('../modules/host/index.js');
+    const application = await nestFactory.createApplicationContext(hostModule.register(), {
       logger: false,
     });
     try {
       if (args[0] === 'install') {
         application
-          .get(HostInstallService)
+          .get(hostInstallService)
           .install(installArguments(options.forward), options.checkout);
       } else {
-        await application.get(HostStorageService).execute({
+        await application.get(hostStorageService).execute({
           operation: args[0] as 'harvest' | 'restore',
           checkout: options.checkout,
           image: options.image,
@@ -249,10 +335,11 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     }
     return;
   }
+
   throw new Error('unknown-command-use-help');
 }
 
-if (require.main === module)
+if (require.main === module) {
   main().catch((error: unknown) => {
     const message =
       error instanceof Error && /^[a-z][a-z0-9-]+$/.test(error.message)
@@ -261,3 +348,4 @@ if (require.main === module)
     process.stderr.write(`System Bootstrapper: ${message}\n`);
     process.exitCode ||= 1;
   });
+}

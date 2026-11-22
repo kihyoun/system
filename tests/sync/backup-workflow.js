@@ -6,8 +6,8 @@ const os=require('node:os');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const child=require('node:child_process');
-const workflow=require('../../dist/api/operations/coordinated-backup-workflow');
-const native=require('../../dist/modules/storage/coordinated-backup');
+const workflow=require('../../dist/api/operations/coordinatedBackupWorkflow');
+const native=require('../../dist/modules/storage/coordinatedBackup');
 function fixture(run) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'sync-backup-'));
   const previous=process.env.SYSTEM_CONFIG_DIR;process.env.SYSTEM_CONFIG_DIR=root;

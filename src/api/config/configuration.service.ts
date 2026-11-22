@@ -3,33 +3,46 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { validConfigurationSignature } from '../../common/configuration-validation';
+import { validConfigurationSignature } from '../../common/configurationValidation';
 import type { UploadedFile, FileArray } from 'express-fileupload';
-import { mainConfigPath, projectsDirectory, projectConfigPath } from './state-paths';
-import { configurationImpact } from './configuration-impact';
-import { recoveryObservation } from '../operations/recovery-observation';
-import { suggestConfig } from './configuration-suggestions';
-import { validProjectKey, validateAliasProject, readReceipt } from '../projects/project-workflow';
+import {
+  mainConfigPath,
+  projectsDirectory,
+  projectConfigPath,
+} from '../../modules/configuration/statePaths';
+import { configurationImpact } from './configurationImpact';
+import { recoveryObservation } from '../operations/recoveryObservation';
+import { suggestConfig } from './configurationSuggestions';
+import {
+  validProjectKey,
+  validateAliasProject,
+  readReceipt,
+} from '../../modules/project-workflow/projectWorkflow';
 import { RuntimeService } from '../runtime/runtime.service';
-import { SyncHttpError, operationFailed } from '../http/sync-http-error';
-import * as wizardAliases from '../../modules/projects-routing/wizard-aliases';
-import * as applicationAliases from '../../modules/projects-routing/application-aliases';
-import { checkoutRoot, checkoutPath, cliArguments } from '../../common/runtime/installation-paths';
-import { failureMessage } from '../../common/runtime/operation-error';
+import { SyncHttpError, operationFailed } from '../http/syncHttpError';
+import * as wizardAliases from '../../modules/projects-routing/wizardAliases';
+import * as applicationAliases from '../../modules/projects-routing/applicationAliases';
+import { checkoutRoot, checkoutPath, cliArguments } from '../../common/runtime/installationPaths';
+import { failureMessage } from '../../common/runtime/operationError';
 
 @Injectable()
 export class ConfigurationService {
   constructor(private readonly runtime: RuntimeService) {}
 
   main() {
-    if (!fs.existsSync(mainConfigPath())) throw new SyncHttpError(404);
+    if (!fs.existsSync(mainConfigPath())) {
+      throw new SyncHttpError(404);
+    }
+
     const data = fs.readFileSync(mainConfigPath(), { encoding: 'utf8', flag: 'r' });
     return { filename: '.docker.env', data, recoveryObservation: recoveryObservation() };
   }
 
   suggestions(hostname: string) {
-    if (fs.existsSync(mainConfigPath()))
+    if (fs.existsSync(mainConfigPath())) {
       throw new SyncHttpError(409, { message: 'Saved configuration exists. Fetch it instead.' });
+    }
+
     try {
       const files = ['/templates/default.conf.template', '/synctemplates/default.conf.template'];
       const nginx = files
@@ -69,7 +82,11 @@ export class ConfigurationService {
 
   private upload(files: FileArray | null | undefined, field: string): UploadedFile {
     const file = files?.[field];
-    if (!file || Array.isArray(file) || file.name !== field) throw new SyncHttpError(400);
+
+    if (!file || Array.isArray(file) || file.name !== field) {
+      throw new SyncHttpError(400);
+    }
+
     return file;
   }
 
@@ -85,10 +102,12 @@ export class ConfigurationService {
   pushZip(files: FileArray | null | undefined, input: any) {
     const file = this.upload(files, 'bootstrapper.zip');
     try {
-      if (input?.impact && input.impact !== configurationImpact(file.data).fingerprint)
+      if (input?.impact && input.impact !== configurationImpact(file.data).fingerprint) {
         throw new SyncHttpError(409, {
           message: 'Configuration changed since impact review. Review Push again.',
         });
+      }
+
       fs.writeFileSync(checkoutPath('bootstrapper.zip'), file.data);
       const out = execFileSync(
         process.execPath,
@@ -119,16 +138,24 @@ export class ConfigurationService {
         output: out.toString(),
       };
     } catch (error) {
-      if (error instanceof SyncHttpError) throw error;
+      if (error instanceof SyncHttpError) {
+        throw error;
+      }
+
       throw operationFailed();
     }
   }
 
   writeProject(input: any) {
     try {
-      if (typeof input.data !== 'string') throw new TypeError('Invalid project configuration.');
-      if (!validConfigurationSignature(input.data) || !validProjectKey(input.projectKey))
+      if (typeof input.data !== 'string') {
+        throw new TypeError('Invalid project configuration.');
+      }
+
+      if (!validConfigurationSignature(input.data) || !validProjectKey(input.projectKey)) {
         throw new SyncHttpError(400);
+      }
+
       try {
         validateAliasProject(input.data, input.projectKey);
       } catch (error) {
@@ -144,7 +171,10 @@ export class ConfigurationService {
       this.runtime.status.needRestart = true;
       return { message: 'New Project added.', status: this.runtime.status, output: out.toString() };
     } catch (error) {
-      if (error instanceof SyncHttpError) throw error;
+      if (error instanceof SyncHttpError) {
+        throw error;
+      }
+
       throw operationFailed();
     }
   }
@@ -179,7 +209,10 @@ export class ConfigurationService {
         output: out.toString(),
       };
     } catch (error) {
-      if (error instanceof SyncHttpError) throw error;
+      if (error instanceof SyncHttpError) {
+        throw error;
+      }
+
       throw operationFailed();
     }
   }
@@ -209,8 +242,10 @@ export class ConfigurationService {
   }
 
   deleteMain() {
-    if (!fs.existsSync(mainConfigPath()))
+    if (!fs.existsSync(mainConfigPath())) {
       throw new SyncHttpError(404, 'File does not exist.', true);
+    }
+
     try {
       console.log('Stopping intermediate services...');
       const out = execFileSync(

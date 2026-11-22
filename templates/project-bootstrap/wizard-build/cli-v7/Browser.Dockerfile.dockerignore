@@ -1,0 +1,7 @@
+**
+!.gitlab
+!.gitlab/cli
+!.gitlab/cli/**
+!.system-bootstrapper
+!.system-bootstrapper/build-v3
+!.system-bootstrapper/build-v3/**

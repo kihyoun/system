@@ -3,7 +3,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const {HostPersistenceService}=require('../../dist/modules/host-lifecycle/persistence.service');
-const {ManagedChildProcess}=require('../../dist/common/runtime/managed-child');
+const {ManagedChildProcess}=require('../../dist/common/runtime/managedChild');
 const script=path.resolve(__dirname,'../../dist/cli/main.js');
 function fixture(t){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'system-storage-guard-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));

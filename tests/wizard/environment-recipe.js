@@ -2,8 +2,8 @@
 const assert = require('assert');
 const crypto = require('crypto');
 const fs = require('fs');
-const logo = require('../../dist/common/configuration-signature').default.textLogo;
-const generate = require('../../dist/modules/project-lifecycle/environment-recipe.service').generate;
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
+const generate = require('../../dist/modules/project-lifecycle/environmentRecipe.service').generate;
 const settings = {review: {enabled: true, host: 'review.example.test', domainMode: 2},
   beta: {enabled: true, host: 'beta.example.test', domainMode: 2}};
 const options = {settings, settingsHash: 'a'.repeat(64), helperImage: 'sha256:' + 'b'.repeat(64),
@@ -46,20 +46,20 @@ for (const file of recipe.files) {
   assert.strictEqual(crypto.createHash('sha256').update(file.content).digest('hex'), file.sha256);
   assert(file.path.startsWith('.system-bootstrapper/environments-v1/'));
 }
-const source = fs.readFileSync(require('node:path').resolve(__dirname, '../../src/modules/project-lifecycle/environment-runtime.ts'), 'utf8');
+const source = fs.readFileSync(require('node:path').resolve(__dirname, '../../src/modules/project-lifecycle/environmentRuntime.ts'), 'utf8');
 assert(!source.includes("['pull', imageRef]"), 'helper must not receive registry credentials');
 console.log('Environment recipe: deterministic manual-only jobs, immutable image, MR identities, serialized host ownership and bounded clean helper passed.');
-const modernBuild = require('../../dist/modules/project-lifecycle/build-recipe.service').generate(logo, 'node24-vite8');
+const modernBuild = require('../../dist/modules/project-lifecycle/buildRecipe.service').generate(logo, 'node24-vite8');
 const modernEnvironment = generate(logo, {...options, buildRecipeHash: modernBuild.recipeHash});
 assert.notStrictEqual(modernEnvironment.recipeHash, recipe.recipeHash);
 assert(modernEnvironment.ci.includes('Node 24 / Vite 8'));
 assert.strictEqual(modernEnvironment.ci[807], '$');
 assert.throws(() => generate(logo, {...options, buildRecipeHash: '0'.repeat(64)}), /different build recipe/);
-assert.strictEqual(generate(logo, {...options, buildRecipeHash: require('../../dist/modules/project-lifecycle/build-recipe.service').generate(logo).recipeHash}).recipeHash,
+assert.strictEqual(generate(logo, {...options, buildRecipeHash: require('../../dist/modules/project-lifecycle/buildRecipe.service').generate(logo).recipeHash}).recipeHash,
   recipe.recipeHash, 'Explicit legacy profile must not change existing environment recipes');
 console.log('Review/Beta recipe retains the explicitly selected, canonical modern or historical toolchain.');
 
-const primary = require('../../dist/modules/project-lifecycle/source-primary-environment');
+const primary = require('../../dist/modules/project-lifecycle/sourcePrimaryEnvironment');
 const stopped = {version: 1, phase: 'ready', operation: '1'.repeat(48), settings,
   settingsHash: crypto.createHash('sha256').update(JSON.stringify(settings)).digest('hex'),
   deployments: {review: {lastPipelineId: 43, stoppedThroughPipelineId: 43,
@@ -84,7 +84,7 @@ assert.throws(() => primary.sourcePrimaryEnvironment(stopped, {...selected, ciFi
 assert.throws(() => primary.reservation({...adopted, settingsHash: '0'.repeat(64)}), /reservation/);
 assert.deepStrictEqual(stopped.deployments.review.tombstone.projectId, 1, 'Migration mutated an old-project tombstone');
 console.log('Source-primary environments: strict CI binding, new ownership, exact historical tombstones and preserved generation floors passed.');
-const typedBuild=require('../../dist/modules/project-lifecycle/build-recipe.service').generate(logo,'node24-vite8-typed-v6');
+const typedBuild=require('../../dist/modules/project-lifecycle/buildRecipe.service').generate(logo,'node24-vite8-typed-v6');
 const typedEnvironment=generate(logo,{...options,buildRecipeHash:typedBuild.recipeHash});
 assert(typedEnvironment.files.every(file=>file.path.startsWith('.system-bootstrapper/environments-v2/')&&!file.path.endsWith('.sh')));
 assert.equal(generate(logo,{...options,buildRecipeHash:typedBuild.recipeHash}).recipeHash,typedEnvironment.recipeHash);
@@ -96,3 +96,11 @@ for(const kind of ['review','beta']) for(const action of ['deploy','stop']) {
 }
 assert(!typedEnvironment.ci.includes('deploy:prod'));
 assert.equal(crypto.createHash('md5').update(typedEnvironment.ci.slice(0,1184)).digest('hex'),'bd4a8426355824593a5e21ad759830c1');
+
+if(process.env.SYSTEM_CLI_ARTIFACT){
+ const cliBuild=require('../../dist/modules/project-lifecycle/buildRecipe.service').generate(logo,'node24-vite8-cli-v7');
+ const cliEnvironment=generate(logo,{...options,buildRecipeHash:cliBuild.recipeHash});
+ for(const kind of ['review','beta'])for(const action of ['deploy','stop'])assert(cliEnvironment.ci.includes('system-bootstrapper project-ci environment '+action+' '+kind));
+ assert(!cliEnvironment.ci.includes('runtime/project-ci.cjs'));assert(!cliEnvironment.ci.includes('deploy:prod'));
+ assert.equal(crypto.createHash('md5').update(cliEnvironment.ci.slice(0,1184)).digest('hex'),'bd4a8426355824593a5e21ad759830c1');
+}

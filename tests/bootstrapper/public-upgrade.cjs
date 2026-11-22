@@ -3,13 +3,13 @@ const { test } = require('node:test'),
   fs = require('node:fs'),
   path = require('node:path');
 const { fixture, image, reference } = require('./paired-native-fixture.cjs');
-const { PublicUpgradeService } = require('../../dist/modules/host/public-upgrade.service'),
-  { PublicUpgradePlanService } = require('../../dist/modules/host/public-upgrade-plan.service'),
+const { PublicUpgradeService } = require('../../dist/modules/host/publicUpgrade.service'),
+  { PublicUpgradePlanService } = require('../../dist/modules/host/publicUpgradePlan.service'),
   {
     PublicUpgradeApplyService,
-  } = require('../../dist/modules/host/public-upgrade-apply.service'),
-  { UpgradeLifecycleService } = require('../../dist/modules/host/upgrade-lifecycle.service'),
-  { bytesSha } = require('../../dist/modules/host/release-selection.service');
+  } = require('../../dist/modules/host/publicUpgradeApply.service'),
+  { UpgradeLifecycleService } = require('../../dist/modules/host/upgradeLifecycle.service'),
+  { bytesSha } = require('../../dist/modules/host/releaseSelection.service');
 function publicFixture(t) {
   t.mock.method(fs, 'statfsSync', () => ({ bavail: 20 * 1024 ** 3, bsize: 1 }));
   const f = fixture(t, { selected: true }),
@@ -152,8 +152,8 @@ test('public native plan and apply retain independent archives before backup and
   assert.equal(f.rows.system_bootstrapper_1.Image, image('1'));
 });
 test('public native plan preserves private early and late errors with finite failed-step context', async (t) => {
-  const { fixtureDiagnostic } = require('../../dist/modules/testing/public-upgrade-host-entry'),
-    { publicUpgradePlanFailureStep } = require('../../dist/modules/host/public-upgrade-failure-context'),
+  const { fixtureDiagnostic } = require('../../dist/modules/testing/publicUpgradeHostEntry'),
+    { publicUpgradePlanFailureStep } = require('../../dist/modules/host/publicUpgradeFailureContext'),
     diagnostics = require('../e2e/public-upgrade-diagnostics.json');
   for (const step of ['backup-target', 'capture', 'data-sample']) {
     const f = publicFixture(t),
@@ -244,11 +244,11 @@ test('public native coordinator lock excludes concurrent attempts without interr
 test('public authority freezes publisher identity without contacting installation CI and rejects missing gates, failed jobs or cross-attempt images', async () => {
   const {
       PublicUpgradePublicationService,
-    } = require('../../dist/modules/testing/public-upgrade-publication.service'),
+    } = require('../../dist/modules/testing/publicUpgradePublication.service'),
     {
       HostReleaseAuthorityService,
-    } = require('../../dist/modules/host/release-authority.service'),
-    { PairedControllerService } = require('../../dist/modules/host/paired-controller.service');
+    } = require('../../dist/modules/host/releaseAuthority.service'),
+    { PairedControllerService } = require('../../dist/modules/host/pairedController.service');
   const input = require('../shared/public-upgrade-fixture').publicationFixture(),
     security = require('../../config/gitlab/security-release.json'),
     root = path.resolve(__dirname, '../..'),
@@ -332,7 +332,7 @@ function configurationZip(entries) {
 test('native matching backup verifies real ZIP bytes, completed Seed and exact live configuration before accepting the pair', async (t) => {
   const {
     PublicUpgradeBackupService,
-  } = require('../../dist/modules/host/public-upgrade-backup.service');
+  } = require('../../dist/modules/host/publicUpgradeBackup.service');
   for (const mode of [
     'valid',
     'not-completed',
@@ -431,7 +431,7 @@ test('native matching backup verifies real ZIP bytes, completed Seed and exact l
   assert(!fs.existsSync(path.dirname(target)));
 });
 test('native retained-image recovery verifies bytes before loading and creates exact owned aliases without registry access', async (t) => {
-  const { RecoveryImageService } = require('../../dist/modules/host/recovery-images'),
+  const { RecoveryImageService } = require('../../dist/modules/host/recoveryImages'),
     f = fixture(t),
     directory = path.join(f.directory, 'retained');
   fs.mkdirSync(path.join(directory, 'images'), { recursive: true });

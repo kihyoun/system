@@ -40,6 +40,7 @@ export function installMiddleware(app: NestExpressApplication, runtime: RuntimeS
           .json({ message: 'Browser origin is not configured for this Sync endpoint.' });
         return;
       }
+
       next();
     } catch {
       res.status(503).json({ message: 'Browser origin settings are unavailable.' });
@@ -62,10 +63,12 @@ export function installMiddleware(app: NestExpressApplication, runtime: RuntimeS
   app.use(fileUpload({ limits: { fileSize: 50 * 1024 * 1024, files: 2 }, abortOnLimit: true }));
   app.use((req: Request, res: Response, next: NextFunction) => {
     const files = Object.values(req.files || {}).flat();
+
     if (files.length > 1) {
       res.status(400).json({ message: 'Upload exactly one file.' });
       return;
     }
+
     next();
   });
   app.use(morgan('combined'));
@@ -76,8 +79,18 @@ export function installMiddleware(app: NestExpressApplication, runtime: RuntimeS
       req.method === 'GET' &&
       (req.path === '/projects/wizard/preview-setup' ||
         /^\/projects\/jobs\/[a-zA-Z0-9_-]{1,128}$/.test(req.path));
+    // Only the same running job can reach its existing settings/preview dedup.
+    const ownEnvironmentRequest =
+      ((req.method === 'GET' &&
+        ['/projects/wizard/environments', '/projects/wizard/environments/status'].includes(
+          req.path,
+        )) ||
+        (req.method === 'POST' && req.path === '/projects/wizard/environments')) &&
+      runtime.ownsEnvironmentOperation();
+
     if (
       (upgrading || runtime.storageOperationBusy()) &&
+      !ownEnvironmentRequest &&
       (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) ||
         (req.path.startsWith('/projects') && !localProjectRead)) &&
       !['/login', '/token', '/logout'].includes(req.path)
@@ -89,6 +102,7 @@ export function installMiddleware(app: NestExpressApplication, runtime: RuntimeS
       });
       return;
     }
+
     next();
   });
   app.use(['/config', '/command'], (req: Request, res: Response, next: NextFunction) => {
@@ -99,6 +113,7 @@ export function installMiddleware(app: NestExpressApplication, runtime: RuntimeS
       });
       return;
     }
+
     next();
   });
 }

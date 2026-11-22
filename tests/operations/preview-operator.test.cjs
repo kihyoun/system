@@ -3,8 +3,8 @@ require('reflect-metadata');
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const {NestFactory} = require('@nestjs/core');
-const {PreviewOperatorModule} = require('../../dist/modules/project-lifecycle/preview-operator.module');
-const {PreviewOperatorService} = require('../../dist/modules/project-lifecycle/preview-operator.service');
+const {PreviewOperatorModule} = require('../../dist/modules/project-lifecycle/previewOperator.module');
+const {PreviewOperatorService} = require('../../dist/modules/project-lifecycle/previewOperator.service');
 test('operator delegates to shared setup, rejects unsafe files and observes terminal job failure', async () => {
  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'preview-operator-'));
  const filename = path.join(directory, 'settings.json');

@@ -2,8 +2,8 @@
 const assert = require('assert');
 const fs = require('fs');
 const crypto = require('crypto');
-const logo = require('../../dist/common/configuration-signature').default.textLogo;
-const {CanonicalSession} = require('../../dist/modules/project-lifecycle/canonical-session');
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
+const {CanonicalSession} = require('../../dist/modules/project-lifecycle/canonicalSession');
 const file = '/system/config/system/.projects.env/.wizard.env', lock = file + '.environments.lock';
 const prefix = '# BOOTSTRAPPER_PROJECT=';
 const operation = 'a'.repeat(48), token = 'b'.repeat(48);

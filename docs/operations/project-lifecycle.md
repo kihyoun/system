@@ -11,6 +11,7 @@ Project recipes and committed-source preparation are typed providers;
 | `ProjectLifecycleModule`, `ProjectLifecycleService.execute` | Deployment transaction, health check, route switch, rollback and stopped-state handling through `DeploymentPort`. |
 | `ProjectLifecycleModule`, `SourceTransferService` | Source import/export validation, pinned DNS reads, exact producer hashes and Git transfer through `SOURCE_TRANSFER_PORT`. |
 | `EnvironmentModule`, `EnvironmentService` | Review/Beta runtime, immutable image verification and native Docker/route operations; the central environment command. |
+| `WizardEnvironmentsModule`, `WizardEnvironmentWorkflowService` | Shared HTTP/CLI preview, explicit activation and status. Pure settings policy, injected DNS/TLS/GitLab ports and `EnvironmentStoreService` keep validation, workflow and locked configuration persistence separate. |
 | `CanonicalModule`, `CanonicalService.run` | Controller-side lock ownership, configuration compare-and-swap, reservations, generation floors, tombstones and binding history; the compiled canonical stdin boundary. |
 | `ProductionModule`, `ProductionService.run` | Promotion plan/apply, rollback and crash recovery with exact image/checkpoint authority; the compiled production entry. |
 | `UpgradeModule`, `UpgradeService.run` | Wizard upgrade plan/stage and adoption, including source-preserving build upgrades; the compiled upgrade entry. This is distinct from platform GitLab upgrades. |
@@ -24,6 +25,23 @@ Canonical writes run in the original controller with its persistent state. A
 helper receives only the operation's required state, registry and Docker access;
 private credentials and complete configuration are never public plan output.
 Production image changes remain separate from source-primary binding changes.
+
+`system-bootstrapper wizard-environments` exposes `preview`, `inspect`, `status`,
+`preflight SETTINGS_FILE` and `configure REQUEST_FILE` without starting HTTP.
+The private configure JSON contains the exact preview hash and the explicit
+Review/Beta settings returned by preview. The API and CLI use the same Nest
+providers. Preparing-job state belongs to that provider instance; configuration
+and helper leases remain filesystem state. Before external activation, the store
+records intent and subsequently merges only same-operation deployment updates.
+Other concurrent configuration edits fail compare-and-swap and remain intact.
+Mutating activation/status jobs hold the existing global storage lease until
+their owned calls have settled. Uncertain transport completion or a killed
+process retains that barrier and the reconciliation receipt. `inspect` reads
+the sanitized owner, operation and completion state without adopting a lease.
+Status reconciliation then requires the existing stale-operation investigation:
+positively establish ownership and the end of the prior coordinator and its
+dispatched work before resolving only that stale lease. An elapsed timeout alone
+does not establish this proof.
 
 Native boundaries include Git, Docker, TLS/DNS and GitLab API reads. Shared native
 evidence services replace the external Ruby GitLab verifiers. Historical recipe generators and
@@ -46,12 +64,12 @@ ports and temporary state, including refusal and recovery paths:
   generations, cancellation, transactions and routes.
 - `tests/wizard/production-promotion.js` and `in-place-upgrade.js`: confirmation,
   immutable authority, archive/recovery and source-preserving upgrade behavior.
-- `tests/wizard/preview-source-transfer.js`, `preview-producers.js` and
-  `preview-setup.js`: transfer identity, settings and producer contracts.
+- `tests/wizard/preview-source-transfer.js`, `previewProducers.js` and
+  `previewSetup.js`: transfer identity, settings and producer contracts.
 - `tests/wizard/system-beta.js`, `system-beta-launcher.js`, `system-review.js`
   and `system-review-launcher.js`: shared candidate authority, owned lifecycle
   and refusal of new legacy Review bindings.
-- `tests/wizard/source-primary-adoption.js` and `source-installation.js`: fresh
+- `tests/wizard/source-primary-adoption.js` and `sourceInstallation.js`: fresh
   evidence, bounded private receipts, exact project identity, recipe refresh,
   mutex/compare-and-swap, preserved Production and recovery aliases.
 - `tests/wizard/native-locale-messages.js`: translated public diagnostics from

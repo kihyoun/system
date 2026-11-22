@@ -8,7 +8,7 @@ never shares mutable owner state between sessions. HTTP adapters and CLI handler
 can use the same service; this module does not expose a new HTTP endpoint.
 
 Official public-release upgrades use the host entry
-`dist/modules/host/public-gitlab-prerequisite-entry.js` (CLI:
+`dist/modules/host/publicGitlabPrerequisiteEntry.js` (CLI:
 `system-bootstrapper gitlab-upgrade`). Its `--operation prepare` downloads and
 validates the target's public release metadata and provenance, verifies the
 installed official release, owned mounts and source checkout, and retains all

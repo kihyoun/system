@@ -1,21 +1,21 @@
 import {
-  GITHUB_PUBLICATION_PORTS,
+  githubPublicationPorts,
   GithubPublicationService,
   type GithubPublicationPorts,
-} from './github-publication.service';
+} from './githubPublication.service';
 import { Module, type DynamicModule } from '@nestjs/common';
 import {
-  NPM_PUBLICATION_PORTS,
+  npmPublicationPorts,
   NpmPublicationService,
   type NpmPublicationPorts,
-} from './npm-publication.service';
+} from './npmPublication.service';
 
 @Module({})
 export class ReleaseModule {
   static registerGithub(ports: GithubPublicationPorts): DynamicModule {
     return {
       module: ReleaseModule,
-      providers: [{ provide: GITHUB_PUBLICATION_PORTS, useValue: ports }, GithubPublicationService],
+      providers: [{ provide: githubPublicationPorts, useValue: ports }, GithubPublicationService],
       exports: [GithubPublicationService],
     };
   }
@@ -23,7 +23,7 @@ export class ReleaseModule {
   static registerNpm(ports: NpmPublicationPorts): DynamicModule {
     return {
       module: ReleaseModule,
-      providers: [{ provide: NPM_PUBLICATION_PORTS, useValue: ports }, NpmPublicationService],
+      providers: [{ provide: npmPublicationPorts, useValue: ports }, NpmPublicationService],
       exports: [NpmPublicationService],
     };
   }

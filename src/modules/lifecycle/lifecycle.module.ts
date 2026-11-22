@@ -1,15 +1,15 @@
-import { WizardRecoveryModule } from '../wizard-recovery/wizard-recovery.module';
-import { GitlabProvisionModule } from '../gitlab-provision/gitlab-provision.module';
+import { WizardRecoveryModule } from '../wizard-recovery/wizardRecovery.module';
+import { GitlabProvisionModule } from '../gitlab-provision/gitlabProvision.module';
 import { Module } from '@nestjs/common';
-import { ManagedChildProcess } from '../../common/runtime/managed-child';
+import { ManagedChildProcess } from '../../common/runtime/managedChild';
 import { LiteralConfiguration } from '../projects-routing/ports';
-import { ProjectsRoutingModule } from '../projects-routing/projects-routing.module';
-import { LifecycleService, LIFECYCLE_PATHS, lifecyclePaths } from './lifecycle.service';
+import { ProjectsRoutingModule } from '../projects-routing/projectsRouting.module';
+import { LifecycleService, lifecyclePathsToken, lifecyclePaths } from './lifecycle.service';
 import { RunnerLifecycleService } from './runner.service';
-import { RootPasswordService } from './root-password.service';
-import { RunnerComposeService } from './runner-compose.service';
-import { WizardPublicSettingsModule } from './public-settings.module';
-import { LIFECYCLE_CHILD, LIFECYCLE_CONFIGURATION } from './types';
+import { RootPasswordService } from './rootPassword.service';
+import { RunnerComposeService } from './runnerCompose.service';
+import { WizardPublicSettingsModule } from './publicSettings.module';
+import { lifecycleChild, lifecycleConfiguration } from './types';
 @Module({
   imports: [
     ProjectsRoutingModule,
@@ -18,10 +18,10 @@ import { LIFECYCLE_CHILD, LIFECYCLE_CONFIGURATION } from './types';
     WizardPublicSettingsModule,
   ],
   providers: [
-    { provide: LIFECYCLE_PATHS, useValue: lifecyclePaths },
-    { provide: LIFECYCLE_CHILD, useClass: ManagedChildProcess },
+    { provide: lifecyclePathsToken, useValue: lifecyclePaths },
+    { provide: lifecycleChild, useClass: ManagedChildProcess },
     {
-      provide: LIFECYCLE_CONFIGURATION,
+      provide: lifecycleConfiguration,
       useFactory: () => new LiteralConfiguration(),
     },
     LifecycleService,

@@ -12,6 +12,6 @@
 **/fixtures/**
 **/__fixtures__/**
 # Exact System Cube signatures and presentation bytes.
-/src/common/configuration-signature.ts
+/src/common/configurationSignature.ts
 /src/cli/presentation.ts
 /wizard/src/api/Helper.tsx

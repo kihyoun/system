@@ -4,9 +4,9 @@ import path from 'node:path';
 import { HostPersistenceService } from '../host-lifecycle/persistence.service';
 import { HostLifecycleService, readEnvironment } from '../host-lifecycle/lifecycle.service';
 import { HostInstallService } from '../host/install';
-import { RecoveryManifestService, type RecoveryManifest } from '../host/recovery-manifest';
-import { RecoveryImageService } from '../host/recovery-images';
-import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+import { RecoveryManifestService, type RecoveryManifest } from '../host/recoveryManifest';
+import { RecoveryImageService } from '../host/recoveryImages';
+import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 import { HostCertificateService } from './certificate.service';
 export interface RetainedRecoveryPort {
   verify(
@@ -42,9 +42,16 @@ export class RetainedRecoveryService {
     verifyOnly: boolean,
     signal?: AbortSignal,
   ): Promise<void> {
-    if (process.geteuid?.() !== 0) throw Error('Retained recovery requires root.');
+    if (process.geteuid?.() !== 0) {
+      throw Error('Retained recovery requires root.');
+    }
+
     const selector = input.PERSISTENCE_ENV_FILE;
-    if (!selector) throw Error('Select the retained private persistence environment.');
+
+    if (!selector) {
+      throw Error('Select the retained private persistence environment.');
+    }
+
     let env = await readEnvironment(this.process, [selector], input, checkout, signal);
     const persistence = new HostPersistenceService(this.process);
     env = await persistence.prepare(env, process.geteuid?.(), signal);
@@ -57,15 +64,23 @@ export class RetainedRecoveryService {
       configuration,
       env.RECOVERY_MANIFEST_SHA256,
     );
-    if (verifyOnly) return;
-    if (!fs.statSync(configuration).isFile())
+
+    if (verifyOnly) {
+      return;
+    }
+
+    if (!fs.statSync(configuration).isFile()) {
       throw Error('Retained live configuration is required.');
+    }
+
     const selected = path.join(this.systemRoot, 'etc/system-bootstrapper/persistence.env');
     fs.mkdirSync(path.dirname(selected), { recursive: true, mode: 0o700 });
+
     if (fs.realpathSync(selector) !== selected) {
       fs.writeFileSync(selected, fs.readFileSync(selector), { mode: 0o600 });
       fs.chmodSync(selected, 0o600);
     }
+
     env = {
       ...env,
       PERSISTENCE_ENV_FILE: selected,

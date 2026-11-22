@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { ConfigurationPort } from '../projects-routing/ports';
-export const LIFECYCLE_CHILD = Symbol('LIFECYCLE_CHILD');
-export const LIFECYCLE_CONFIGURATION = Symbol('LIFECYCLE_CONFIGURATION');
+export const lifecycleChild = Symbol('LIFECYCLE_CHILD');
+export const lifecycleConfiguration = Symbol('LIFECYCLE_CONFIGURATION');
 export interface LifecycleContext {
   root: string;
   state: string;

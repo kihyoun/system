@@ -1,77 +1,74 @@
 import { PromotionService } from './promotion.service';
-import { RecoveryOperationService } from './recovery-operation.service';
-import { PublicGitlabPrerequisiteService } from './public-gitlab-prerequisite.service';
-import { GitlabDataSampleService } from '../gitlab-preflight/gitlab-data-sample.service';
-import { PublicUpgradeService } from './public-upgrade.service';
-import { PublicUpgradeBackupService } from './public-upgrade-backup.service';
-import { ReleaseSelectionService } from './release-selection.service';
-import { PairedRuntimeService } from './paired-runtime.service';
-import { PairedUpdateService } from './paired-update.service';
-import { PairedControllerService } from './paired-controller.service';
-import { RecoveryExportService } from './recovery-export.service';
-import { RecoveryArchiveService } from './recovery-archive.service';
-import { DockerArchiveProcess } from '../../common/runtime/archive-process';
-import { PublicReleaseAssetsService } from './public-release-assets.service';
+import { RecoveryOperationService } from './recoveryOperation.service';
+import { PublicGitlabPrerequisiteService } from './publicGitlabPrerequisite.service';
+import { GitlabDataSampleService } from '../gitlab-preflight/gitlabDataSample.service';
+import { PublicUpgradeService } from './publicUpgrade.service';
+import { PublicUpgradeBackupService } from './publicUpgradeBackup.service';
+import { ReleaseSelectionService } from './releaseSelection.service';
+import { PairedRuntimeService } from './pairedRuntime.service';
+import { PairedUpdateService } from './pairedUpdate.service';
+import { PairedControllerService } from './pairedController.service';
+import { RecoveryExportService } from './recoveryExport.service';
+import { RecoveryArchiveService } from './recoveryArchive.service';
+import { DockerArchiveProcess } from '../../common/runtime/archiveProcess';
+import { PublicReleaseAssetsService } from './publicReleaseAssets.service';
 import {
   PublicUpgradePreparationService,
   type PublicHostFacts,
-} from './public-upgrade-preparation.service';
-import { ControllerLeaseModule } from './controller-lease.module';
-import { GitlabPreflightModule } from '../gitlab-preflight/gitlab-preflight.module';
-import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
-import { CandidateAuthorityService } from './candidate-authority.service';
-import { CandidateGitLabService } from './candidate-gitlab.service';
-import { PromotionRecoveryService } from './promotion-recovery.service';
+} from './publicUpgradePreparation.service';
+import { ControllerLeaseModule } from './controllerLease.module';
+import { GitlabPreflightModule } from '../gitlab-preflight/gitlabPreflight.module';
+import { GitlabPreflightService } from '../gitlab-preflight/gitlabPreflight.service';
+import { CandidateAuthorityService } from './candidateAuthority.service';
+import { CandidateGitLabService } from './candidateGitlab.service';
+import { PromotionRecoveryService } from './promotionRecovery.service';
 import {
   PromotionNativePortService,
   type PromotionGitLabProbe,
-} from './promotion-native-port.service';
-import { ControllerCheckpointService } from './controller-checkpoint.service';
-import { RuntimeVerificationService } from '../host-bootstrap/runtime-verification.service';
-import { ControllerLeaseService } from './controller-lease.service';
-import { PromotionAbortService, type PromotionAbortPort } from './promotion-abort.service';
-import {
-  PublicUpgradePlanService,
-  type PublicUpgradePlanPort,
-} from './public-upgrade-plan.service';
+} from './promotionNativePort.service';
+import { ControllerCheckpointService } from './controllerCheckpoint.service';
+import { RuntimeVerificationService } from '../host-bootstrap/runtimeVerification.service';
+import { ControllerLeaseService } from './controllerLease.service';
+import { PromotionAbortService, type PromotionAbortPort } from './promotionAbort.service';
+import { PublicUpgradePlanService, type PublicUpgradePlanPort } from './publicUpgradePlan.service';
 import {
   PublicUpgradeApplyService,
   type PublicUpgradeApplyPort,
-} from './public-upgrade-apply.service';
+} from './publicUpgradeApply.service';
 import {
   ControllerRollbackSequenceService,
   type ControllerRollbackPort,
-} from './controller-rollback-sequence.service';
+} from './controllerRollbackSequence.service';
 import {
   ControllerUpdateSequenceService,
   type ControllerUpdateSequencePort,
-} from './controller-update-sequence.service';
-import { PromotionSequenceService, type PromotionSequencePort } from './promotion-sequence.service';
-import { ColdMaintenanceService, type ColdMaintenancePort } from './cold-maintenance.service';
-import { RecoveryPublicationService } from './recovery-publication.service';
-import { UpgradeLifecycleService } from './upgrade-lifecycle.service';
-import { NativeHostAttachedProcess, type HostAttachedProcess } from './attached-process';
+} from './controllerUpdateSequence.service';
+import { PromotionSequenceService, type PromotionSequencePort } from './promotionSequence.service';
+import { ColdMaintenanceService, type ColdMaintenancePort } from './coldMaintenance.service';
+import { RecoveryPublicationService } from './recoveryPublication.service';
+import { UpgradeLifecycleService } from './upgradeLifecycle.service';
+import { NativeHostAttachedProcess, type HostAttachedProcess } from './attachedProcess';
 import type { LifecycleEvidencePort } from '../release/types';
-import { HostReleaseAuthorityService } from './release-authority.service';
+import { HostReleaseAuthorityService } from './releaseAuthority.service';
 import { Module, type DynamicModule } from '@nestjs/common';
 import { nativeProcess, type ProcessRunner } from '../../common/runtime/process';
 import { HostInstallService } from './install';
-import { UpgradePrerequisiteService } from './upgrade-prerequisite.service';
-import { HostStorageService } from './host-storage.service';
+import { UpgradePrerequisiteService } from './upgradePrerequisite.service';
+import { HostStorageService } from './hostStorage.service';
 import { HostSourceService } from './source';
-import { RecoveryImageService } from './recovery-images';
-import { RecoveryManifestService } from './recovery-manifest';
-import { RuntimeInspectionService } from './runtime-inspection';
-export const HOST_PUBLIC_UPGRADE_APPLY_PORT = Symbol('HOST_PUBLIC_UPGRADE_APPLY_PORT');
-export const HOST_CONTROLLER_ROLLBACK_PORT = Symbol('HOST_CONTROLLER_ROLLBACK_PORT');
-export const HOST_CONTROLLER_UPDATE_SEQUENCE_PORT = Symbol('HOST_CONTROLLER_UPDATE_SEQUENCE_PORT');
-export const HOST_PROMOTION_ABORT_PORT = Symbol('HOST_PROMOTION_ABORT_PORT');
-export const HOST_PROMOTION_SEQUENCE_PORT = Symbol('HOST_PROMOTION_SEQUENCE_PORT');
-export const HOST_COLD_MAINTENANCE_PORT = Symbol('HOST_COLD_MAINTENANCE_PORT');
-export const HOST_ATTACHED_PROCESS = Symbol('HOST_ATTACHED_PROCESS');
-export const HOST_PROCESS_RUNNER = Symbol('HOST_PROCESS_RUNNER');
-export const HOST_LIFECYCLE_EVIDENCE = Symbol('HOST_LIFECYCLE_EVIDENCE');
-export const HOST_ENVIRONMENT = Symbol('HOST_ENVIRONMENT');
+import { RecoveryImageService } from './recoveryImages';
+import { RecoveryManifestService } from './recoveryManifest';
+import { RuntimeInspectionService } from './runtimeInspection';
+export const hostPublicUpgradeApplyPort = Symbol('HOST_PUBLIC_UPGRADE_APPLY_PORT');
+export const hostControllerRollbackPort = Symbol('HOST_CONTROLLER_ROLLBACK_PORT');
+export const hostControllerUpdateSequencePort = Symbol('HOST_CONTROLLER_UPDATE_SEQUENCE_PORT');
+export const hostPromotionAbortPort = Symbol('HOST_PROMOTION_ABORT_PORT');
+export const hostPromotionSequencePort = Symbol('HOST_PROMOTION_SEQUENCE_PORT');
+export const hostColdMaintenancePort = Symbol('HOST_COLD_MAINTENANCE_PORT');
+export const hostAttachedProcess = Symbol('HOST_ATTACHED_PROCESS');
+export const hostProcessRunner = Symbol('HOST_PROCESS_RUNNER');
+export const hostLifecycleEvidence = Symbol('HOST_LIFECYCLE_EVIDENCE');
+export const hostEnvironment = Symbol('HOST_ENVIRONMENT');
 export interface HostModuleOptions {
   candidateRequest?: typeof fetch;
   publicReleaseRequest?: typeof fetch;
@@ -419,7 +416,7 @@ export class HostModule {
             ),
         },
         {
-          provide: HOST_PUBLIC_UPGRADE_APPLY_PORT,
+          provide: hostPublicUpgradeApplyPort,
           useValue:
             options.publicUpgradeApplyPort ??
             Object.fromEntries(
@@ -441,12 +438,12 @@ export class HostModule {
         },
         {
           provide: PublicUpgradeApplyService,
-          inject: [UpgradeLifecycleService, HOST_PUBLIC_UPGRADE_APPLY_PORT],
+          inject: [UpgradeLifecycleService, hostPublicUpgradeApplyPort],
           useFactory: (lifecycle: UpgradeLifecycleService, port: PublicUpgradeApplyPort) =>
             new PublicUpgradeApplyService(lifecycle, port),
         },
         {
-          provide: HOST_CONTROLLER_ROLLBACK_PORT,
+          provide: hostControllerRollbackPort,
           useValue:
             options.controllerRollbackPort ??
             Object.fromEntries(
@@ -475,11 +472,11 @@ export class HostModule {
         },
         {
           provide: ControllerRollbackSequenceService,
-          inject: [HOST_CONTROLLER_ROLLBACK_PORT],
+          inject: [hostControllerRollbackPort],
           useFactory: (port: ControllerRollbackPort) => new ControllerRollbackSequenceService(port),
         },
         {
-          provide: HOST_CONTROLLER_UPDATE_SEQUENCE_PORT,
+          provide: hostControllerUpdateSequencePort,
           useValue:
             options.controllerUpdateSequencePort ??
             Object.fromEntries(
@@ -509,23 +506,23 @@ export class HostModule {
         },
         {
           provide: ControllerUpdateSequenceService,
-          inject: [HOST_CONTROLLER_UPDATE_SEQUENCE_PORT],
+          inject: [hostControllerUpdateSequencePort],
           useFactory: (port: ControllerUpdateSequencePort) =>
             new ControllerUpdateSequenceService(port),
         },
         {
-          provide: HOST_PROMOTION_ABORT_PORT,
+          provide: hostPromotionAbortPort,
           inject: [PromotionNativePortService],
           useFactory: (native: PromotionNativePortService) => options.promotionAbortPort ?? native,
         },
         {
           provide: PromotionAbortService,
-          inject: [HOST_PROMOTION_ABORT_PORT, ColdMaintenanceService],
+          inject: [hostPromotionAbortPort, ColdMaintenanceService],
           useFactory: (port: PromotionAbortPort, cold: ColdMaintenanceService) =>
             new PromotionAbortService(port, cold),
         },
         {
-          provide: HOST_PROMOTION_SEQUENCE_PORT,
+          provide: hostPromotionSequencePort,
           useValue:
             options.promotionSequencePort ??
             Object.fromEntries(
@@ -552,17 +549,17 @@ export class HostModule {
         },
         {
           provide: PromotionSequenceService,
-          inject: [HOST_PROMOTION_SEQUENCE_PORT],
+          inject: [hostPromotionSequencePort],
           useFactory: (port: PromotionSequencePort) => new PromotionSequenceService(port),
         },
         {
-          provide: HOST_COLD_MAINTENANCE_PORT,
+          provide: hostColdMaintenancePort,
           inject: [PromotionNativePortService],
           useFactory: (native: PromotionNativePortService) => options.coldMaintenancePort ?? native,
         },
         {
           provide: ColdMaintenanceService,
-          inject: [HOST_COLD_MAINTENANCE_PORT],
+          inject: [hostColdMaintenancePort],
           useFactory: (port: ColdMaintenancePort) => new ColdMaintenanceService(port),
         },
         { provide: RecoveryPublicationService, useFactory: () => new RecoveryPublicationService() },
@@ -620,17 +617,17 @@ export class HostModule {
         },
         { provide: UpgradeLifecycleService, useFactory: () => new UpgradeLifecycleService() },
         {
-          provide: HOST_ATTACHED_PROCESS,
+          provide: hostAttachedProcess,
           useValue: options.attachedProcess ?? new NativeHostAttachedProcess(),
         },
         {
           provide: HostStorageService,
-          inject: [HostInstallService, HOST_ATTACHED_PROCESS],
+          inject: [HostInstallService, hostAttachedProcess],
           useFactory: (host: HostInstallService, attached: HostAttachedProcess) =>
             new HostStorageService(host, attached),
         },
         {
-          provide: HOST_LIFECYCLE_EVIDENCE,
+          provide: hostLifecycleEvidence,
           useValue: options.lifecycleEvidence ?? {
             stages: [],
             stagesV2: [],
@@ -641,14 +638,14 @@ export class HostModule {
         },
         {
           provide: HostReleaseAuthorityService,
-          inject: [HOST_LIFECYCLE_EVIDENCE],
+          inject: [hostLifecycleEvidence],
           useFactory: (policy: LifecycleEvidencePort) => new HostReleaseAuthorityService(policy),
         },
-        { provide: HOST_PROCESS_RUNNER, useValue: options.runner ?? nativeProcess },
-        { provide: HOST_ENVIRONMENT, useValue: options.environment ?? process.env },
+        { provide: hostProcessRunner, useValue: options.runner ?? nativeProcess },
+        { provide: hostEnvironment, useValue: options.environment ?? process.env },
         {
           provide: HostInstallService,
-          inject: [HOST_PROCESS_RUNNER, HOST_ENVIRONMENT],
+          inject: [hostProcessRunner, hostEnvironment],
           useFactory: (runner: ProcessRunner, environment: NodeJS.ProcessEnv) =>
             new HostInstallService(
               runner,
@@ -697,7 +694,7 @@ export class HostModule {
         HostReleaseAuthorityService,
         HostInstallService,
         ...consumers,
-        HOST_PROCESS_RUNNER,
+        hostProcessRunner,
       ],
     };
   }

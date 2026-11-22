@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '../..');
 const runtime=release.createPublicationRuntime(release.readPublicationProfile(root));
 const publicUpgrade=(...args)=>release.publicUpgradeAssets(...args,{evidence:runtime.evidence,lifecycle:release.lifecyclePolicy()});
 function fixture() {
-  const {PublicUpgradePublicationService}=require('../../dist/modules/testing/public-upgrade-publication.service');
+  const {PublicUpgradePublicationService}=require('../../dist/modules/testing/publicUpgradePublication.service');
   const generated=new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}}).prepare(root,require('../shared/public-upgrade-fixture').publicationFixture());
   const metadata=generated.metadata,proof=JSON.parse(generated.proof),security=require('../../config/gitlab/security-release.json');
   const jobs = proof.publication.jobs.map(row => ({...row, pipeline: {id: row.pipelineId}, commit: {id: row.sourceRevision}}));
@@ -23,7 +23,7 @@ test('sanitized public proof round-trips through shared native authority without
   assert(!payload.toString().includes('must-never-publish'));
   assert(!payload.toString().includes('private-fixture-password'));
   assert(!payload.toString().includes('registry.example.invalid'));
-  const {HostReleaseAuthorityService}=require('../../dist/modules/host/release-authority.service');
+  const {HostReleaseAuthorityService}=require('../../dist/modules/host/releaseAuthority.service');
   const accepted=new HostReleaseAuthorityService({}).publicInputs(metadata,payload,security);
   assert.equal(accepted.release.imageId,proof.release.imageId);
 });
@@ -38,7 +38,7 @@ test('publisher refuses an untested transition, failed runtime check or false pr
 
 test('public monorepo authority retains only validated v2 fixture boundary and refuses substituted source or attempt',()=>{
   const {metadata,proof,jobs}=fixture(),released=proof.release,value=proof.evidence;
-  const lifecycle=require('../../dist/modules/release/guided-preview-evidence'),beta=require('../shared/system-beta-evidence-fixture').proof();
+  const lifecycle=require('../../dist/modules/release/guidedPreviewEvidence'),beta=require('../shared/system-beta-evidence-fixture').proof();
   released.sourceLayout='system-monorepo-v1';released.wizardSourceTree='f'.repeat(40);delete released.wizardRevision;
   Object.assign(value,{sourceLayout:released.sourceLayout,sourceTree:released.sourceTree,wizardSourceTree:released.wizardSourceTree,
     ciIdentity:{projectId:released.projectId,pipelineId:released.pipelineId,candidateJobId:released.candidateJobId}});
@@ -74,8 +74,8 @@ test('future public-upgrade fixture carries real original Beta observations with
     helperImage:spec.images.candidate.id,wizardImageId:spec.images.wizard.id,fixturePipelineId:spec.ciIdentity.pipelineId,fixtureCandidateJobId:spec.ciIdentity.candidateJobId});
   beta.setup.sourceCommit=spec.sourceRevision;beta.beta.stoppedThroughPipelineId=spec.ciIdentity.pipelineId;
   for(const row of [beta.beta.deployment,beta.beta.stopped])Object.assign(row,{sourceCommit:spec.sourceRevision,pipelineId:spec.ciIdentity.pipelineId,generation:'p'+spec.ciIdentity.pipelineId+'-j201'});
-  value.guidedOrigin={runId:'e'.repeat(24),guidedPreview:beta,results:[...require('../../dist/modules/release/guided-preview-evidence').stagesV2,'recovery-original-host-removed','cleanup'].map(name=>({name,status:'passed'}))};
-  const {PublicUpgradePublicationService}=require('../../dist/modules/testing/public-upgrade-publication.service');
+  value.guidedOrigin={runId:'e'.repeat(24),guidedPreview:beta,results:[...require('../../dist/modules/release/guidedPreviewEvidence').stagesV2,'recovery-original-host-removed','cleanup'].map(name=>({name,status:'passed'}))};
+  const {PublicUpgradePublicationService}=require('../../dist/modules/testing/publicUpgradePublication.service');
   const service=new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}});
   const published=JSON.parse(service.prepare(root,value).proof);
   assert.equal(runtime.evidence.validateEvidence(published.evidence,published.release),spec.images.candidate.id);

@@ -1,6 +1,6 @@
-import { GitlabDatabaseService } from '../gitlab-preflight/gitlab-database.service';
-import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
-import { NativeUpgradeProcess } from './native-process';
+import { GitlabDatabaseService } from '../gitlab-preflight/gitlabDatabase.service';
+import { GitlabPreflightService } from '../gitlab-preflight/gitlabPreflight.service';
+import { NativeUpgradeProcess } from './nativeProcess';
 import 'reflect-metadata';
 import { UpgradeSession } from './session';
 import { UpgradeGuardianService } from './guardian.service';

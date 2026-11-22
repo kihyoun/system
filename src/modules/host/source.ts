@@ -1,4 +1,4 @@
-import { readSourceIdentity, revision } from '../release/source-identity';
+import { readSourceIdentity, revision } from '../release/sourceIdentity';
 import { HostInstallService, requireValue } from './install';
 export class HostSourceService {
   constructor(readonly host = new HostInstallService()) {}

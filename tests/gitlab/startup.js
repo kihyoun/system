@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {LifecycleService}=require('../../dist/modules/lifecycle/lifecycle.service');
 const {LiteralConfiguration}=require('../../dist/modules/projects-routing/ports');
-const {RootPasswordService}=require('../../dist/modules/lifecycle/root-password.service');
+const {RootPasswordService}=require('../../dist/modules/lifecycle/rootPassword.service');
 test('GitLab startup recreates changed configuration and exports explicit Omnibus settings',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-startup-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const directory of ['config/system','config/gitlab','config','data'])fs.mkdirSync(path.join(root,directory),{recursive:true});

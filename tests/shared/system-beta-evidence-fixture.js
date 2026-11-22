@@ -1,5 +1,5 @@
 'use strict';
-const evidence=require('../../dist/modules/release/guided-preview-evidence');
+const evidence=require('../../dist/modules/release/guidedPreviewEvidence');
 function proof(){
   const image='sha256:'+'a'.repeat(64),source='b'.repeat(40),operation='c'.repeat(48);
   const deployment={projectId:7,pipelineId:100,jobId:201,mrIid:0,sourceCommit:source,operation,generation:'p100-j201',state:'active',imageDigest:image};

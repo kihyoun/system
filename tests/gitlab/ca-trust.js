@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-const nativeTrust=require('../../dist/modules/host-bootstrap/ca-verification.service');
+const nativeTrust=require('../../dist/modules/host-bootstrap/caVerification.service');
 const trust={...nativeTrust,provenance:nativeTrust.readCaProvenance(),system:()=>new nativeTrust.CaVerificationService().system(path.resolve(__dirname,'../..'))},release=require('../../config/gitlab/security-release.json');
 const bundle=fs.readFileSync(path.join(__dirname,'../../config/ca',trust.provenance.bundle));
 assert.equal(crypto.createHash('sha256').update(bundle).digest('hex'),trust.provenance.sha256);
@@ -24,7 +24,7 @@ try{
 const {verifyPreparedTrust}=require('../e2e/prepare-images');let calls=0;
 verifyPreparedTrust({candidate:'candidate:fixture',wizard:'wizard:fixture'},()=>{calls++;return bundle.toString();});assert.equal(calls,6);
 assert.throws(()=>verifyPreparedTrust({candidate:'candidate:fixture',wizard:'wizard:fixture'},()=>bundle.toString()+compromised),/distrusted/);
-const recipes=require('../../dist/modules/project-lifecycle/build-recipe.service');
+const recipes=require('../../dist/modules/project-lifecycle/buildRecipe.service');
 const logo=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8').slice(0,1184);
 for(const profile of ['legacy-ca-v4','node24-vite8-ca-v4','node24-vite8-quickstart-v5']){
  const recipe=recipes.generate(logo,profile);assert.deepEqual(recipes.select(logo,recipe.recipeHash),recipe);

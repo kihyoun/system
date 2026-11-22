@@ -31,15 +31,21 @@ variables:
   npm_config_cafile: "$CI_PROJECT_DIR/config/ca/cacert-2026-10-20.crt"
 
 default:
-  before_script:
-    - node src/cli/verify-ca.mts --bundle
+  before_script: &cli-bootstrap
+    - echo '796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe  config/ca/cacert-2026-10-20.crt' | sha256sum -c -
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
+    - mkdir -p .ci-cli-package
+    - npm pack --offline --ignore-scripts --pack-destination .ci-cli-package
+    - npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .ci-cli ./.ci-cli-package/systembootstrapper-cli-$(cat VERSION).tgz
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - export SYSTEM_CLI_ARTIFACT="$CI_PROJECT_DIR/assets/cli-companion/systembootstrapper-cli-$(cat VERSION).tgz"
+    - system-bootstrapper host-bootstrap ca-check --checkout "$CI_PROJECT_DIR"
 
 .runtime-tools:
   before_script: &runtime-tools
-    - node src/cli/verify-ca.mts --bundle
-    - npm ci --ignore-scripts --no-audit --no-fund
-    - npm run build
-    - timeout -k 5 110 node dist/cli/main.js host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"
+    - *cli-bootstrap
+    - timeout -k 5 110 system-bootstrapper host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"
 
 stages:
   - prepare
@@ -87,9 +93,10 @@ check:documentation:
   timeout: 3m
   allow_failure: false
   script:
-    - node dist/cli/main.js ci documentation "$CI_PROJECT_DIR"
+    - system-bootstrapper ci documentation "$CI_PROJECT_DIR"
   after_script:
-    - node dist/cli/main.js ci documentation "$CI_PROJECT_DIR" cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci documentation "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -108,16 +115,14 @@ renovate:discover:
   services: []
   tags: [docker]
   before_script:
-    - node src/cli/verify-ca.mts --bundle
-    - npm ci --ignore-scripts --no-audit --no-fund
-    - npm run build
+    - *cli-bootstrap
   cache: []
   dependencies: []
   resource_group: renovate-discovery
   timeout: 45m
   variables:
     GIT_SUBMODULE_STRATEGY: none
-    RENOVATE_CONFIG_FILE: dist/modules/renovate/config-entry.js
+    RENOVATE_CONFIG_FILE: dist/modules/renovate/configEntry.js
     LOG_LEVEL: info
   script:
     - renovate-config-validator --strict --no-global renovate.json
@@ -138,19 +143,18 @@ prepare:wizard-source:
   cache: []
   timeout: 5m
   script:
-    - npm ci --ignore-scripts --no-audit --no-fund
-    - npm run build
-    - node dist/cli/main.js source-checkout "$CI_PROJECT_DIR"
-    - node dist/cli/main.js docs check
-    - node dist/cli/main.js source-prepare "$CI_PROJECT_DIR"
-    - node dist/cli/main.js source-prepare "$CI_PROJECT_DIR" --verify
-    - node dist/cli/main.js ci prepare-context "$CI_PROJECT_DIR"
-    - node dist/cli/main.js ci prepare-candidate "$CI_PROJECT_DIR"
-    - node dist/cli/main.js ci prepare-wizard-browser "$CI_PROJECT_DIR"
-    - node dist/cli/main.js ci prepare-codeql "$CI_PROJECT_DIR"
+    - system-bootstrapper project-ci package "$CI_PROJECT_DIR" "$CI_PROJECT_DIR/assets/cli-companion"
+    - system-bootstrapper source-checkout "$CI_PROJECT_DIR"
+    - system-bootstrapper docs check
+    - system-bootstrapper source-prepare "$CI_PROJECT_DIR"
+    - system-bootstrapper source-prepare "$CI_PROJECT_DIR" --verify
+    - system-bootstrapper ci prepare-context "$CI_PROJECT_DIR"
+    - system-bootstrapper ci prepare-candidate "$CI_PROJECT_DIR"
+    - system-bootstrapper ci prepare-wizard-browser "$CI_PROJECT_DIR"
+    - system-bootstrapper ci prepare-codeql "$CI_PROJECT_DIR"
   artifacts:
     expire_in: 1 day
-    paths: [assets/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/, .codeql-context/]
+    paths: [assets/cli-companion/, assets/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/, .codeql-context/]
   rules: *runtime-rules
 
 # Package-only checks share the accepted source; no second platform is created.
@@ -169,7 +173,7 @@ test:npm-package:
     - npm ci --ignore-scripts --no-audit --no-fund
     - npm run build
     - node --test tests/operations/cli.test.cjs tests/operations/package.test.cjs
-    - node dist/cli/main.js release package-cli
+    - system-bootstrapper release package-cli
   artifacts:
     expire_in: 1 year
     paths: [test-results/npm-package/]
@@ -196,9 +200,10 @@ test:isolated:
   cache: []
   dependencies: [prepare:wizard-source]
   script:
-    - node dist/cli/main.js ci isolated "$CI_PROJECT_DIR" "$COMPONENT"
+    - system-bootstrapper ci isolated "$CI_PROJECT_DIR" "$COMPONENT"
   after_script:
-    - node dist/cli/main.js ci isolated "$CI_PROJECT_DIR" cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci isolated "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -225,9 +230,10 @@ test:codeql:
   cache: []
   dependencies: [prepare:wizard-source]
   script:
-    - node dist/cli/main.js ci codeql-parent "$CI_PROJECT_DIR"
+    - system-bootstrapper ci codeql-parent "$CI_PROJECT_DIR"
   after_script:
-    - node dist/cli/main.js ci codeql-parent "$CI_PROJECT_DIR" cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci codeql-parent "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -251,9 +257,10 @@ test:candidate-image:
   timeout: 15m
   allow_failure: false
   script:
-    - node dist/cli/main.js ci candidate-image "$CI_PROJECT_DIR"
+    - system-bootstrapper ci candidate-image "$CI_PROJECT_DIR"
   after_script:
-    - node dist/cli/main.js ci candidate-image "$CI_PROJECT_DIR" cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci candidate-image "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -280,9 +287,10 @@ test:wizard-browser:
   timeout: 15m
   allow_failure: false
   script:
-    - node dist/cli/main.js ci wizard-browser "$CI_PROJECT_DIR"
+    - system-bootstrapper ci wizard-browser "$CI_PROJECT_DIR"
   after_script:
-    - node dist/cli/main.js ci wizard-browser "$CI_PROJECT_DIR" cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci wizard-browser "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -310,10 +318,11 @@ test:platform-candidate:
   allow_failure: false
   before_script: *runtime-tools
   script:
-    - node dist/cli/main.js ci candidate-capacity "$CI_PROJECT_DIR"
-    - node dist/cli/main.js ci platform "$CI_PROJECT_DIR"
+    - system-bootstrapper ci candidate-capacity "$CI_PROJECT_DIR"
+    - system-bootstrapper ci platform "$CI_PROJECT_DIR"
   after_script:
-    - node dist/cli/main.js ci platform "$CI_PROJECT_DIR" cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci platform "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -326,7 +335,7 @@ build:
   stage: build
   before_script: *runtime-tools
   script:
-    - node dist/cli/main.js ci build-bootstrapper "$CI_PROJECT_DIR"
+    - system-bootstrapper ci build-bootstrapper "$CI_PROJECT_DIR"
   rules: *runtime-rules
 
 # Optional Wizard-only acceptance on the configured fixed HTTPS Beta host.
@@ -360,7 +369,7 @@ deploy:wizard-beta:
   extends: .wizard-beta
   dependencies: [test:platform-candidate]
   script:
-    - node dist/cli/main.js system-beta run deploy
+    - system-bootstrapper system-beta run deploy
   environment:
     name: 'wizard-beta/$CI_PROJECT_ID'
     url: '$SYSTEM_BETA_URL'
@@ -370,7 +379,7 @@ stop:wizard-beta:
   extends: .wizard-beta
   dependencies: []
   script:
-    - node dist/cli/main.js system-beta run stop
+    - system-bootstrapper system-beta run stop
   environment:
     name: 'wizard-beta/$CI_PROJECT_ID'
     action: stop
@@ -394,7 +403,7 @@ deploy:dockerhub:
   allow_failure: false
   before_script: *runtime-tools
   script:
-    - node dist/cli/main.js release dockerhub
+    - system-bootstrapper release dockerhub
   artifacts:
     expire_in: 1 year
     paths: [test-results/dockerhub/]
@@ -422,15 +431,13 @@ deploy:github:
     expire_in: 1 year
     paths: [test-results/github/]
   before_script:
-    - node src/cli/verify-ca.mts --bundle
-    - npm ci --ignore-scripts --no-audit --no-fund
-    - npm run build
+    - *cli-bootstrap
   rules:
     - if: '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       when: on_success
     - when: never
   script:
-    - node dist/cli/main.js github-backup ci
+    - system-bootstrapper github-backup ci
 
 
 
@@ -462,9 +469,7 @@ deploy:github-release:
   resource_group: 'github-release-$CI_PROJECT_ID'
   allow_failure: false
   script:
-    - npm ci --ignore-scripts --no-audit --no-fund
-    - npm run build
-    - node dist/cli/main.js release github
+    - system-bootstrapper release github
   artifacts:
     when: always
     expire_in: 1 year
@@ -490,9 +495,7 @@ deploy:npm:
   resource_group: npm-release
   allow_failure: false
   script:
-    - npm ci --ignore-scripts --no-audit --no-fund
-    - npm run build
-    - node dist/cli/main.js release npm
+    - system-bootstrapper release npm
   rules:
     - if: '$NPM_PUBLISH_ENABLED == "true" && $GITHUB_RELEASE_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       changes: *runtime-changes

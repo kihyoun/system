@@ -16,7 +16,7 @@ const originals = {listen: net.Server.prototype.listen, log: console.log, error:
 const commands = ['exec', 'execFile', 'execSync', 'execFileSync', 'spawn', 'spawnSync'];
 for (const name of commands) { originals[name] = child[name]; child[name] = () => { throw Error('Native commands are forbidden in Nest initialization.'); }; }
 net.Server.prototype.listen = () => { throw Error('Import, creation and initialization must not open a listener.'); };
-const wizard = require(path.join(source, 'projects/default-wizard'));
+const wizard = require(path.join(source, 'projects/defaultWizard'));
 const ensureDefaultWizard = wizard.ensureDefaultWizard;
 let registrations = 0, complete;
 wizard.ensureDefaultWizard = () => {
@@ -52,7 +52,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   }
   assert.equal(registrations, 0, 'Default Wizard registration must wait until the management listener is available');
   const {AuthService} = require(path.join(source, 'auth/auth.service'));
-  const {JwtAuthGuard} = require(path.join(source, 'auth/jwt-auth.guard'));
+  const {JwtAuthGuard} = require(path.join(source, 'auth/jwtAuth.guard'));
   const {RuntimeService} = require(path.join(source, 'runtime/runtime.service'));
   const [first, second] = applications;
   const tokens = first.get(AuthService).login({username: 'nest-fixture', password: 'fixture-password'});

@@ -3,7 +3,7 @@
 // existing database, repository, registry, TLS and encrypted-state identity.
 const release=require('../../config/gitlab/security-release.json');
 const recovery=require('./recovery');
-const trust=require('../../dist/modules/host-bootstrap/ca-verification.service');
+const trust=require('../../dist/modules/host-bootstrap/caVerification.service');
 function sanitizeEvidence(value){
   if(value?.fromImage!==release.fromImage||value.toImage!==release.toImage||
     !/^sha256:[a-f0-9]{64}$/.test(value.fromImageId||'')||!/^sha256:[a-f0-9]{64}$/.test(value.toImageId||''))return undefined;
@@ -26,7 +26,7 @@ async function invoke(candidate,action,checkpointSha256){
   const input={...prepared(candidate),action,checkpointSha256};
   const script=`const fs=require('fs');let raw='';process.stdin.on('data',chunk=>raw+=chunk);process.stdin.on('end',async()=>{try{
     const input=JSON.parse(raw),{release}=require('/system/dist/modules/gitlab-upgrade/types'),{hash}=require('/system/dist/modules/gitlab-upgrade/policy');
-    const {NestFactory}=require('/system/node_modules/@nestjs/core'),{GitLabUpgradeModule}=require('/system/dist/modules/gitlab-upgrade/gitlab-upgrade.module'),{GitLabUpgradeService}=require('/system/dist/modules/gitlab-upgrade/gitlab-upgrade.service');
+    const {NestFactory}=require('/system/node_modules/@nestjs/core'),{GitLabUpgradeModule}=require('/system/dist/modules/gitlab-upgrade/gitlabUpgrade.module'),{GitLabUpgradeService}=require('/system/dist/modules/gitlab-upgrade/gitlabUpgrade.service');
     const app=await NestFactory.createApplicationContext(GitLabUpgradeModule,{logger:false,abortOnError:false});
     try {
     // These image IDs were loaded from outer-driver archives whose public pins
@@ -106,7 +106,7 @@ async function runnerState(candidate,promoted,previous){
   return {version:actualVersion,imageId:container.Image,helperImageId:helperImage.Id,identity};
 }
 async function verifyTrust(candidate){
-  const proof=JSON.parse(await candidate.inner(['exec','system_bootstrapper_1','node','-e',"process.stdout.write(JSON.stringify(new (require('/system/dist/modules/host-bootstrap/ca-verification.service').CaVerificationService)().system('/system')))"]));
+  const proof=JSON.parse(await candidate.inner(['exec','system_bootstrapper_1','node','-e',"process.stdout.write(JSON.stringify(new (require('/system/dist/modules/host-bootstrap/caVerification.service').CaVerificationService)().system('/system')))"]));
   if(proof.bundleSha256!==release.jobCaBundleSha256||proof.systemCertificates<50||proof.nodeCertificates<50)throw Error('upgrade-controller-CA-trust-invalid');
   for(const args of [
     ['exec','runner_docker_1','cat','/etc/ssl/certs/ca-certificates.crt'],

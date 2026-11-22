@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {QuickstartService}=require('../../dist/modules/host-bootstrap/quickstart.service');
-const {hash,integrity}=require('../../dist/modules/release/npm-identity');
+const {hash,integrity}=require('../../dist/modules/release/npmIdentity');
 function fixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'quickstart-native-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const source={repository:'https://github.com/example/system.git',revision:'a'.repeat(40),tree:'b'.repeat(40),sourceLayout:'system-monorepo-v1',wizardSourceTree:'c'.repeat(40)};
@@ -18,7 +18,7 @@ function fixture(t){
 test('accepted source verified before runtime placement and native install, followed by real readiness contract',async t=>{
  const f=fixture(t),calls=[];
  const child={async run(binary,args){calls.push([binary,...args]);if(args.includes('clone'))fs.mkdirSync(f.checkout,{recursive:true});if(args.includes('HEAD^{tree}'))return f.source.tree;if(args.includes('ls-tree'))return `040000 tree ${f.source.wizardSourceTree}\twizard`;if(args.includes('HEAD'))return f.source.revision;return '';}};
- const installer={async install(args,checkout){calls.push(['install']);assert.equal(checkout,f.checkout);assert.equal(args.releaseMetadata,f.manifest);for(const name of ['dist','node_modules','assets'])assert.equal(fs.readFileSync(path.join(checkout,name,'accepted'),'utf8'),'exact');const policy=require(path.join(checkout,'dist/modules/release/lifecycle-policy.js')).lifecyclePolicy();assert.equal(typeof policy.validateAuthority,'function');assert(policy.stagesV2.includes('system-beta-native-deploy'));}};
+ const installer={async install(args,checkout){calls.push(['install']);assert.equal(checkout,f.checkout);assert.equal(args.releaseMetadata,f.manifest);for(const name of ['dist','node_modules','assets'])assert.equal(fs.readFileSync(path.join(checkout,name,'accepted'),'utf8'),'exact');const policy=require(path.join(checkout,'dist/modules/release/lifecyclePolicy.js')).lifecyclePolicy();assert.equal(typeof policy.validateAuthority,'function');assert(policy.stagesV2.includes('system-beta-native-deploy'));}};
  const requests=[];const service=new QuickstartService(child,{async install(){calls.push(['ubuntu']);}},installer,f.pkg,async url=>{requests.push(url);return new Response(url.endsWith('configuration')?'<html>fixture</html>':'',{status:url.endsWith('configuration')?200:401});},{async check(){}});
  await service.install(f.checkout,f.manifest,{});
  assert.equal(calls[0][0],'ubuntu');assert.equal(calls.at(-1)[0],'install');assert.equal(requests.length,2);

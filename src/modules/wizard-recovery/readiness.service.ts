@@ -1,10 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { LifecycleProcess, ChildOptions } from '../../common/runtime/managed-child';
-import { WIZARD_RECOVERY_PROCESS, type RecoveryReadinessPort } from './ports';
+import type { LifecycleProcess, ChildOptions } from '../../common/runtime/managedChild';
+import { wizardRecoveryProcess, type RecoveryReadinessPort } from './ports';
 @Injectable()
 export class WizardRecoveryReadinessService implements RecoveryReadinessPort {
-  constructor(@Inject(WIZARD_RECOVERY_PROCESS) private readonly children: LifecycleProcess) {}
+  constructor(@Inject(wizardRecoveryProcess) private readonly children: LifecycleProcess) {}
 
   async wait(options: ChildOptions): Promise<void> {
     const deadline = Date.now() + 300000;

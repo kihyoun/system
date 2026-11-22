@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {Upgrade,release,hash,atomic,run,json,INPUT_JSON_MAX_BYTES,CHECKPOINT_JSON_MAX_BYTES}=require('../../dist/modules/gitlab-upgrade/compatibility');
+const {Upgrade,release,hash,atomic,run,json,inputJsonMaxBytes,checkpointJsonMaxBytes}=require('../../dist/modules/gitlab-upgrade/compatibility');
 const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
 const old='sha256:'+'b'.repeat(64),next='sha256:'+'c'.repeat(64);
 function fixture(t){
@@ -50,24 +50,24 @@ test('a real copied inventory larger than 4MiB is readable and still rejects cha
   for(let depth=0;depth<9;depth++){directory=path.join(directory,'retained-'+String(depth)+'-'+'x'.repeat(180));fs.mkdirSync(directory);}
   for(let index=0;index<2400;index++)fs.writeFileSync(path.join(directory,'entry-'+String(index).padStart(4,'0')),'saved');
   const receipt=f.engine.snapshot(f.plan),file=path.join(f.engine.checkpoints,'checkpoint.json');
-  assert(fs.statSync(file).size>INPUT_JSON_MAX_BYTES,'The regression requires a genuine >4MiB filesystem inventory.');
-  assert(fs.statSync(file).size<CHECKPOINT_JSON_MAX_BYTES);
+  assert(fs.statSync(file).size>inputJsonMaxBytes,'The regression requires a genuine >4MiB filesystem inventory.');
+  assert(fs.statSync(file).size<checkpointJsonMaxBytes);
   assert.deepEqual(f.engine.checkpoint(receipt.checkpointSha256),receipt.checkpoint);
   fs.writeFileSync(path.join(f.engine.checkpoints,'gitlab/data/original'),'wrong-data');
   assert.throws(()=>f.engine.checkpoint(receipt.checkpointSha256),/checkpoint-verification-failed/);
 });
 test('checkpoint size is bounded before reading or publishing, while options and evidence retain the 4MiB limit',t=>{
   const f=fixture(t),large=path.join(f.state,'large-input.json');
-  atomic(large,'{}'+' '.repeat(INPUT_JSON_MAX_BYTES));
+  atomic(large,'{}'+' '.repeat(inputJsonMaxBytes));
   assert.throws(()=>json(large),/upgrade-input-too-large/,'The CLI options reader keeps the small private-input budget.');
   f.engine.options.evidence=large;assert.throws(()=>f.engine.evidence(),/upgrade-input-too-large/);
   fs.mkdirSync(f.engine.checkpoints,{recursive:true});const checkpoint=path.join(f.engine.checkpoints,'checkpoint.json');
-  atomic(checkpoint,'{}');fs.truncateSync(checkpoint,CHECKPOINT_JSON_MAX_BYTES+1);
+  atomic(checkpoint,'{}');fs.truncateSync(checkpoint,checkpointJsonMaxBytes+1);
   let read=false;const originalRead=fs.readSync;fs.readSync=(...args)=>{read=true;return originalRead(...args);};
   try{assert.throws(()=>f.engine.checkpoint('a'.repeat(64)),/upgrade-checkpoint-too-large/);}finally{fs.readSync=originalRead;}
   assert(!read,'An oversized checkpoint must be refused from metadata before reading payload bytes.');
   fs.rmSync(f.engine.checkpoints,{recursive:true});
-  assert.throws(()=>f.engine.snapshot({...f.plan,oversized:'x'.repeat(CHECKPOINT_JSON_MAX_BYTES)}),/upgrade-checkpoint-too-large/);
+  assert.throws(()=>f.engine.snapshot({...f.plan,oversized:'x'.repeat(checkpointJsonMaxBytes)}),/upgrade-checkpoint-too-large/);
   assert(!fs.existsSync(checkpoint),'An unreadable checkpoint must not be published.');
 });
 test('evidence validation and its plan hash use the same bounded bytes even if the pathname is replaced',t=>{
@@ -79,7 +79,7 @@ test('evidence validation and its plan hash use the same bounded bytes even if t
   let replaced=false;const originalRead=fs.readSync;
   fs.readSync=(descriptor,...args)=>{
     const count=originalRead(descriptor,...args);
-    if(count>0&&!replaced&&fs.readlinkSync('/proc/self/fd/'+descriptor)===filename){replaced=true;atomic(filename,' '.repeat(INPUT_JSON_MAX_BYTES+1));}
+    if(count>0&&!replaced&&fs.readlinkSync('/proc/self/fd/'+descriptor)===filename){replaced=true;atomic(filename,' '.repeat(inputJsonMaxBytes+1));}
     return count;
   };
   try{assert.deepEqual(f.engine.evidence(),{sha256:hash(raw),candidateImage:candidate});}finally{fs.readSync=originalRead;}
@@ -121,7 +121,7 @@ test('a completed worker group does not permit adoption while its journal-writin
   const f=fixture(t);f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);f.engine.adopt(migrated.checkpointSha256,'checkpointSha256');
   const owner={...f.engine.owner,pid:99999999,start:'0'};
   for(const lock of f.engine.held)atomic(path.join(lock,'upgrade-owner.json'),JSON.stringify(owner));
-  const {stat}=require('../../dist/modules/gitlab-upgrade/child-process');
+  const {stat}=require('../../dist/modules/gitlab-upgrade/childProcess');
   atomic(path.join(f.state,'.gitlab-upgrade-lock/child.json'),JSON.stringify({format:'system-gitlab-upgrade-child-v1',operation:owner.operation,group:99999999,watchdogPid:process.pid,watchdogStart:stat(process.pid).start,phase:'completed'}));
   assert.throws(()=>f.engine.adopt(migrated.checkpointSha256,'checkpointSha256'),/child-still-running/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(f.state,'.gitlab-upgrade-lock/upgrade-owner.json'),'utf8')).pid,99999999);

@@ -1,5 +1,5 @@
 'use strict';
-const {requiredJobs,stages}=require('../../dist/modules/release/guided-preview-evidence');
+const {requiredJobs,stages}=require('../../dist/modules/release/guidedPreviewEvidence');
 const sha='b'.repeat(40),reviewSha='c'.repeat(40),mergedSha='d'.repeat(40);
 const image='sha256:'+'a'.repeat(64),imageDigest='sha256:'+'e'.repeat(64);
 function proof(productionImageId=image) {

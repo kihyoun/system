@@ -2,21 +2,21 @@ import { parseArgs } from 'node:util';
 import type {
   CliInstallationService,
   CliHostSelection,
-} from '../modules/host-bootstrap/cli-installation.service';
+} from '../modules/host-bootstrap/cliInstallation.service';
 
 export async function withCliInstallation<T>(
   action: (service: CliInstallationService) => T,
 ): Promise<T> {
-  const { NestFactory } = await import('@nestjs/core');
-  const { CliInstallationModule } = await import('./installation.module.js');
-  const { CliInstallationService } =
-    await import('../modules/host-bootstrap/cli-installation.service.js');
-  const app = await NestFactory.createApplicationContext(CliInstallationModule, {
+  const { NestFactory: nestFactory } = await import('@nestjs/core');
+  const { CliInstallationModule: cliInstallationModule } = await import('./installation.module.js');
+  const { CliInstallationService: cliInstallationService } =
+    await import('../modules/host-bootstrap/cliInstallation.service.js');
+  const app = await nestFactory.createApplicationContext(cliInstallationModule, {
     logger: false,
     abortOnError: false,
   });
   try {
-    return await action(app.get(CliInstallationService));
+    return await action(app.get(cliInstallationService));
   } finally {
     await app.close();
   }

@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const {spawnSync} = require('child_process');
 const root = path.resolve(__dirname, '../..');
-const {RunnerComposeService} = require(path.join(root, 'dist/modules/lifecycle/runner-compose.service'));
+const {RunnerComposeService} = require(path.join(root, 'dist/modules/lifecycle/runnerCompose.service'));
 const compose = new RunnerComposeService();
 const definition = (pool,count,persistent) => compose.definition(pool,count,persistent,path.join(root,'config/gitlab-runner/docker-compose.yml'));
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-persistence-'));
@@ -86,7 +86,7 @@ try {
   fs.symlinkSync(config, path.join(fixture, 'config/system/.docker.env'));
   const provision = spawnSync(process.execPath, ['-e', `
     const {RunnerLifecycleService}=require(${JSON.stringify(path.join(root,'dist/modules/lifecycle/runner.service'))});
-    const {RunnerComposeService}=require(${JSON.stringify(path.join(root,'dist/modules/lifecycle/runner-compose.service'))});
+    const {RunnerComposeService}=require(${JSON.stringify(path.join(root,'dist/modules/lifecycle/runnerCompose.service'))});
     const service=new RunnerLifecycleService({}, {}, {current:async options=>{if(options.checkout!==${JSON.stringify(fixture)})throw Error('wrong checkout');return {id:12,token:'glrt-persisted_test'};}},new RunnerComposeService());
     service.provisionToken({root:${JSON.stringify(fixture)},state:${JSON.stringify(state)},environment:{PERSISTENT_DIR:${JSON.stringify(persistent)}}}).catch(error=>{console.error(error);process.exitCode=1;});
   `], {cwd: path.join(fixture, 'config/gitlab-runner'), env, encoding: 'utf8'});

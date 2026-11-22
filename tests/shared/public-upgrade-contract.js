@@ -354,7 +354,7 @@ test('registry adapter preserves arguments and disables previous digest transpor
        console.log(process.env.SYSTEM_TEST_NATIVE_INSPECT||JSON.stringify([{Id:${JSON.stringify(image)},RepoDigests:[]}]))`, {mode:0o755});
     fs.writeFileSync(path.join(directory, 'docker-compose.native'), '#!'+process.execPath+'\n'+
       `require('node:fs').writeFileSync(process.env.SYSTEM_PUBLIC_UPGRADE_FIXTURE+'/arguments',process.argv.slice(2).join('\\n')+'\\n');process.stdout.write(process.env[process.env.SYSTEM_TEST_COMPOSE_KEY||'BOOTSTRAPPER_IMAGE']||'');`, {mode:0o755});
-    const {PublicUpgradeTransportService}=require('../../dist/modules/testing/public-upgrade-transport.service');
+    const {PublicUpgradeTransportService}=require('../../dist/modules/testing/publicUpgradeTransport.service');
     let output='';
     const service=new PublicUpgradeTransportService({write:bytes=>{output+=bytes.toString();}});
     const invoke=async(program,args,options)=>{
@@ -484,7 +484,7 @@ test('mount adapter only models the exact owned live filesystem and delegates ba
   const script = path.resolve(__dirname, '../e2e/public-upgrade-findmnt.js');
   const env = {...process.env, SYSTEM_PUBLIC_UPGRADE_LIVE: '/recovered-data/platform'};
   assert.equal(execFileSync(process.execPath, [script, '-rn', '-T', '/recovered-data/platform/configuration', '-o', 'MAJ:MIN'], {env, encoding: 'utf8'}), '0:1\n');
-  const {PublicUpgradeTransportService}=require('../../dist/modules/testing/public-upgrade-transport.service');
+  const {PublicUpgradeTransportService}=require('../../dist/modules/testing/publicUpgradeTransport.service');
   let output='';const service=new PublicUpgradeTransportService({write:bytes=>{output+=bytes.toString();}});
   for (const target of new Set(['/tmp', os.tmpdir()])) {
     const args = ['-rn', '-T', target, '-o', 'MAJ:MIN'];
@@ -647,8 +647,8 @@ test('fixture credential revocation uses the authenticated API before any Rails 
 });
 
 test('native fixture selection adapts only the exact candidate and preserves original selection bytes', () => {
-  const {PublicUpgradeSelectionService} = require('../../dist/modules/testing/public-upgrade-selection.service');
-  const {imageAssignment} = require('../../dist/modules/host/release-selection.service');
+  const {PublicUpgradeSelectionService} = require('../../dist/modules/testing/publicUpgradeSelection.service');
+  const {imageAssignment} = require('../../dist/modules/host/releaseSelection.service');
   const service = new PublicUpgradeSelectionService(), directory = fs.mkdtempSync(path.join(os.tmpdir(), 'public-selection-'));
   try {
     const live = path.join(directory, 'live'), configuration = path.join(live, 'configuration');
@@ -688,14 +688,14 @@ test('native fixture selection adapts only the exact candidate and preserves ori
 });
 
 test('future publication fixture is deterministic and verified by the production authority', () => {
-  const {PublicUpgradePublicationService} = require('../../dist/modules/testing/public-upgrade-publication.service');
-  const {HostReleaseAuthorityService} = require('../../dist/modules/host/release-authority.service');
+  const {PublicUpgradePublicationService} = require('../../dist/modules/testing/publicUpgradePublication.service');
+  const {HostReleaseAuthorityService} = require('../../dist/modules/host/releaseAuthority.service');
   const root=path.resolve(__dirname,'../..'), security=require('../../config/gitlab/security-release.json');
   const input=require('./public-upgrade-fixture').publicationFixture();
   const service=new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}});
   const first=service.prepare(root,input), second=service.prepare(root,input);
   assert(first.proof.equals(second.proof));assert.deepEqual(first.metadata,second.metadata);
-  const generate = "const {PublicUpgradePublicationService}=require('./dist/modules/testing/public-upgrade-publication.service');const input=require('./tests/shared/public-upgrade-fixture').publicationFixture();process.stdout.write(new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}}).prepare(process.cwd(),input).proof)";
+  const generate = "const {PublicUpgradePublicationService}=require('./dist/modules/testing/publicUpgradePublication.service');const input=require('./tests/shared/public-upgrade-fixture').publicationFixture();process.stdout.write(new PublicUpgradePublicationService({verify(){throw Error('unexpected checkpoint');}}).prepare(process.cwd(),input).proof)";
   assert(first.proof.equals(execFileSync(process.execPath,['-e',generate],{cwd:root})), 'fresh CLI process must reproduce publication bytes');
   const authority=new HostReleaseAuthorityService({});
   const accepted=authority.publicInputs(first.metadata,first.proof,security);
@@ -713,11 +713,11 @@ test('future publication fixture is deterministic and verified by the production
 });
 
 test('native host fixture keeps diagnostics fixed and runs initialization through the shared Nest module', async (t) => {
-  const {upgradeCommandFailureCodes}=require('../../dist/modules/gitlab-upgrade/command-failure-policy');
-  const {fixtureDiagnostic}=require('../../dist/modules/testing/public-upgrade-host-entry');
-  const {PublicUpgradeHostService}=require('../../dist/modules/testing/public-upgrade-host.service');
+  const {upgradeCommandFailureCodes}=require('../../dist/modules/gitlab-upgrade/commandFailurePolicy');
+  const {fixtureDiagnostic}=require('../../dist/modules/testing/publicUpgradeHostEntry');
+  const {PublicUpgradeHostService}=require('../../dist/modules/testing/publicUpgradeHost.service');
   const {HostPolicyError}=require('../../dist/modules/host/install');
-  const {publicUpgradePlanSteps,publicUpgradePlanStep,publicUpgradePlanStepSync,publicUpgradePlanFailureStep}=require('../../dist/modules/host/public-upgrade-failure-context');
+  const {publicUpgradePlanSteps,publicUpgradePlanStep,publicUpgradePlanStepSync,publicUpgradePlanFailureStep}=require('../../dist/modules/host/publicUpgradeFailureContext');
   const diagnostics=require('../e2e/public-upgrade-diagnostics.json');
   for(const code of upgradeCommandFailureCodes)assert.equal(diagnostics.errors[code],code);
   assert.deepEqual(Object.keys(diagnostics.planSteps),publicUpgradePlanSteps);
@@ -757,7 +757,7 @@ test('native host fixture keeps diagnostics fixed and runs initialization throug
     const root=path.resolve(__dirname,'../..'), input=require('./public-upgrade-fixture').publicationFixture();
     input.live=path.join(directory,'live');fs.mkdirSync(path.join(input.live,'configuration'),{recursive:true});
     fs.symlinkSync(root,path.join(directory,'source'),'dir');
-    const {publicUpgradeHostMain}=require('../../dist/modules/testing/public-upgrade-host-entry');
+    const {publicUpgradeHostMain}=require('../../dist/modules/testing/publicUpgradeHostEntry');
     const factory=require('../../node_modules/@nestjs/core').NestFactory;
     const previousExitCode=process.exitCode;
     for(const mode of ['bootstrap','request','inner','non-plan']){
@@ -817,7 +817,7 @@ test('native host fixture keeps diagnostics fixed and runs initialization throug
     }
     fs.writeFileSync(main,original);
     fs.mkdirSync(path.join(directory,'runtime'),{recursive:true});
-    const {PublicUpgradeRuntimeService}=require('../../dist/modules/testing/public-upgrade-runtime.service');
+    const {PublicUpgradeRuntimeService}=require('../../dist/modules/testing/publicUpgradeRuntime.service');
     new PublicUpgradeRuntimeService().copyApplication(root,path.join(directory,'runtime'));
     const runtime=path.join(directory,'runtime');
     for(const name of ['dist','node_modules','assets'])assert(fs.statSync(path.join(runtime,name)).isDirectory(), 'relocated Root runtime contains '+name);
@@ -829,8 +829,8 @@ test('native host fixture keeps diagnostics fixed and runs initialization throug
     const result=execFileSync(process.execPath,[entry,'initialize'],{env:{...process.env,SYSTEM_PUBLIC_UPGRADE_FIXTURE:directory},encoding:'utf8'});
     assert.deepEqual(JSON.parse(result),{initialized:true});
     const {NestFactory}=require('../../node_modules/@nestjs/core');
-    const {PublicUpgradeHostModule}=require('../../dist/modules/testing/public-upgrade-host.module');
-    const {fixtureHostProcess}=require('../../dist/modules/testing/public-upgrade-host.service');
+    const {PublicUpgradeHostModule}=require('../../dist/modules/testing/publicUpgradeHost.module');
+    const {fixtureHostProcess}=require('../../dist/modules/testing/publicUpgradeHost.service');
     const app=await NestFactory.createApplicationContext(PublicUpgradeHostModule.register(directory,root),{logger:false,abortOnError:false});
     try{
       const service=app.get(PublicUpgradeHostService),request=service.transport(directory,root);

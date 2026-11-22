@@ -2134,7 +2134,7 @@ After GitLab migration and acceptance, run the committed recovery exporter from
 the same clean accepted checkout:
 
 ```bash
-sudo node dist/modules/host/recovery-export-entry.js --checkout "$PWD" \
+sudo node dist/modules/host/recoveryExportEntry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
   --evidence /root/system-successor/candidate-results.json \

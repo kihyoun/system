@@ -1,4 +1,4 @@
-export const BOOTSTRAPPER_CUBE = `#-------------------------------------------------------------
+export const bootstrapperCube = `#-------------------------------------------------------------
 #                +------------------+                        |
 #               /|                 /|                        |
 #              / |                / |                        |
@@ -20,5 +20,5 @@ export const BOOTSTRAPPER_CUBE = `#---------------------------------------------
 `;
 
 export function renderWelcome(version: string): string {
-  return `${BOOTSTRAPPER_CUBE}\nSystem Bootstrapper ${version}\nYou build it. You own it.\n\nRun system-bootstrapper --help for available commands.\n`;
+  return `${bootstrapperCube}\nSystem Bootstrapper ${version}\nYou build it. You own it.\n\nRun system-bootstrapper --help for available commands.\n`;
 }

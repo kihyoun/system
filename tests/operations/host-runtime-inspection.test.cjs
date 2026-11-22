@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const {RuntimeInspectionService,inspectServiceRows,failedStoppedController}=require('../../dist/modules/host/runtime-inspection');
+const {RuntimeInspectionService,inspectServiceRows,failedStoppedController}=require('../../dist/modules/host/runtimeInspection');
 const {HostInstallService}=require('../../dist/modules/host/install');
 const config={GITLAB_RUNNER_SCALE:'0',WIZARD_ENABLE:'false'};
 test('stopped controller requires exact quiescent identity and no active execs',()=>{
@@ -41,7 +41,7 @@ test('mount verification rejects duplicate targets, outside data and tmpfs repla
 });
 
 // Runtime verification moved from the Python fixture to the shared native service.
-const {RuntimeVerificationService}=require('../../dist/modules/host-bootstrap/runtime-verification.service');
+const {RuntimeVerificationService}=require('../../dist/modules/host-bootstrap/runtimeVerification.service');
 const {HostInitializeService}=require('../../dist/modules/host-bootstrap/initialize.service');
 const {writePrivate}=require('../../dist/modules/host/install');
 function verificationFixture(t){

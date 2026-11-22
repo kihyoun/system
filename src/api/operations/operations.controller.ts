@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/jwtAuth.guard';
 import { RuntimeService } from '../runtime/runtime.service';
 import { OperationsService } from './operations.service';
 

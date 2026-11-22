@@ -1,6 +1,46 @@
 // Exact public native-operation messages only; unknown diagnostics remain verbatim.
 const messages: [string, string, string][] = [
   [
+    'The CLI build profile requires matching source files. Use the source migration first.',
+    'Das CLI-Buildprofil benötigt passende Quelldateien. Führe zuerst die Quellmigration aus.',
+    'CLI 빌드 프로필에는 일치하는 소스 파일이 필요합니다. 먼저 소스 마이그레이션을 수행하세요.',
+  ],
+  [
+    'Versioned source producer requires its matching CLI package.',
+    'Der versionierte Quellproduzent benötigt sein passendes CLI-Paket.',
+    '버전이 지정된 소스 생성자에는 일치하는 CLI 패키지가 필요합니다.',
+  ],
+  [
+    'Source CLI requires its matching versioned recipe.',
+    'Die Quell-CLI benötigt ihr passendes versioniertes Rezept.',
+    '소스 CLI에는 일치하는 버전별 레시피가 필요합니다.',
+  ],
+  [
+    'Source CLI companion does not match its source-bound package.',
+    'Das begleitende CLI-Artefakt stimmt nicht mit seinem quellgebundenen Paket überein.',
+    'CLI 동반 아티팩트가 소스에 연결된 패키지와 일치하지 않습니다.',
+  ],
+  [
+    'Historical source snapshots cannot select a CLI companion.',
+    'Historische Quell-Snapshots können kein begleitendes CLI-Artefakt auswählen.',
+    '이전 소스 스냅샷에서는 CLI 동반 아티팩트를 선택할 수 없습니다.',
+  ],
+  [
+    'CLI companion export requires the shared source layout.',
+    'Der Export des begleitenden CLI-Artefakts benötigt das gemeinsame Quelllayout.',
+    'CLI 동반 아티팩트를 내보내려면 공유 소스 구조가 필요합니다.',
+  ],
+  [
+    'CLI companion differs from the committed System source.',
+    'Das begleitende CLI-Artefakt weicht vom committeten System-Quellstand ab.',
+    'CLI 동반 아티팩트가 커밋된 System 소스와 다릅니다.',
+  ],
+  [
+    'Derived CLI companion must not be committed into its own source.',
+    'Das abgeleitete CLI-Artefakt darf nicht in seine eigene Quelle committet werden.',
+    '파생된 CLI 동반 아티팩트를 자체 소스에 커밋하면 안 됩니다.',
+  ],
+  [
     'Versioned source producer does not match its exact runtime.',
     'Der versionierte Quellproduzent stimmt nicht mit seiner exakten Laufzeit überein.',
     '버전이 지정된 소스 생성자가 해당 런타임과 정확히 일치하지 않습니다.',

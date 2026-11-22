@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {execFileSync} = require('child_process');
-const {pack, validate, safePath} = require('../../dist/modules/source-preparation/wizard-source.service');
+const {pack, validate, safePath} = require('../../dist/modules/source-preparation/wizardSource.service');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-source-'));
 const source = path.resolve(__dirname, '../..');
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], {stdio: ['ignore', 'pipe', 'pipe']}).toString().trim();

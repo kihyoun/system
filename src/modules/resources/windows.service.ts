@@ -30,8 +30,11 @@ export class WindowsResourceService {
       ),
     );
     const rows = Array.isArray(parsed) ? parsed : [parsed];
-    if (rows.some((row) => !row || typeof row !== 'object'))
+
+    if (rows.some((row) => !row || typeof row !== 'object')) {
       throw Error('windows-metric-unavailable');
+    }
+
     return rows as Record<string, unknown>[];
   }
 
@@ -98,7 +101,7 @@ export class WindowsResourceService {
       signal?.throwIfAborted();
       unavailable.push('windows-pagefile:unavailable');
     }
-    for (const volume of ['C:', 'E:'])
+    for (const volume of ['C:', 'E:']) {
       try {
         const [row] = await this.cim(
           'Win32_LogicalDisk',
@@ -115,6 +118,7 @@ export class WindowsResourceService {
         signal?.throwIfAborted();
         unavailable.push('windows-volume-' + volume[0] + ':unavailable');
       }
+    }
     return {
       observedAt: timestamp(),
       logicalCpus,
@@ -131,20 +135,26 @@ export class WindowsResourceService {
     signal?: AbortSignal,
   ) {
     validateOptions(options);
+
     if (
       !['C:', 'E:'].includes(options.backingVolume) ||
       !options.distribution ||
       /[\0\r\n]/.test(options.distribution)
-    )
+    ) {
       throw Error('invalid-windows-resource-options');
+    }
+
     const run = (args: string[], timeout: number) =>
       this.transport.run(['wsl.exe', ...args], timeout, signal);
     const running = (await run(['--list', '--running', '--quiet'], 5000))
       .replace(/\0/g, '')
       .split(/\r?\n/)
       .map((value) => value.trim());
-    if (!running.includes(options.distribution))
+
+    if (!running.includes(options.distribution)) {
       throw Error('requested-wsl-distribution-not-running');
+    }
+
     const prefix = ['-d', options.distribution, '-u', 'root', '--exec'];
     const entry = (
       await run(
@@ -173,18 +183,27 @@ export class WindowsResourceService {
             (options.budget + 8) * 1000,
           ),
         ) as { schemaVersion: number; samples: ResourceSample[] };
-      if (raw.schemaVersion !== 1 || raw.samples?.length !== 1)
+
+      if (raw.schemaVersion !== 1 || raw.samples?.length !== 1) {
         throw Error('invalid-linux-resource-response');
+      }
+
       const sample = raw.samples[0],
         ticks = sample.linux.cpuTicksCounters;
-      if (previous && ticks && ticks.total > previous.total)
+
+      if (previous && ticks && ticks.total > previous.total) {
         sample.linux.cpuPercentTotalSincePreviousSample =
           Math.round(10000 * (1 - (ticks.idle - previous.idle) / (ticks.total - previous.total))) /
           100;
+      }
+
       previous = ticks || null;
       sample.windows = windows;
       samples.push(sample);
-      if (index + 1 < options.samples) await delay(options.interval * 1000, undefined, { signal });
+
+      if (index + 1 < options.samples) {
+        await delay(options.interval * 1000, undefined, { signal });
+      }
     }
     return {
       schemaVersion: 1,

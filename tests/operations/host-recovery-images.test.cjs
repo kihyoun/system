@@ -114,8 +114,8 @@ test('native recovery archive publishes complete private bytes and cleans failed
     crypto = require('node:crypto');
   const { spawn } = require('node:child_process'),
     { gunzipSync } = require('node:zlib');
-  const { RecoveryArchiveService } = require('../../dist/modules/host/recovery-archive.service');
-  const { DockerArchiveProcess } = require('../../dist/common/runtime/archive-process');
+  const { RecoveryArchiveService } = require('../../dist/modules/host/recoveryArchive.service');
+  const { DockerArchiveProcess } = require('../../dist/common/runtime/archiveProcess');
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'recovery-native-archive-'));
   fs.mkdirSync(path.join(directory, 'images'));
   const source = ['a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40)],
@@ -177,7 +177,7 @@ test('native recovery archive publishes complete private bytes and cleans failed
     );
     assert.deepEqual(fs.readdirSync(path.join(directory, 'images')), before);
     // The export use case owns the same durable lease through asynchronous archive completion.
-    const { RecoveryExportService } = require('../../dist/modules/host/recovery-export.service');
+    const { RecoveryExportService } = require('../../dist/modules/host/recoveryExport.service');
     const calls = [],
       main = path.join(directory, 'main'),
       manifest = path.join(directory, 'images.json');
@@ -340,7 +340,7 @@ test('native recovery archive publishes complete private bytes and cleans failed
 test('recovery operation shares offline authority and refuses legacy loading before I/O', async () => {
   const { NestFactory } = require('@nestjs/core');
   const { HostModule, RecoveryOperationService, RecoveryManifestService, RecoveryImageService } = require('../../dist/modules/host');
-  const { parseRecoveryInput } = require('../../dist/modules/host/recovery-entry');
+  const { parseRecoveryInput } = require('../../dist/modules/host/recoveryEntry');
   const input = parseRecoveryInput(['load', '--directory', '/retained', '--checkout', '/source', '--configuration', '/saved/main.sh']);
   const app = await NestFactory.createApplicationContext(HostModule.register(), { logger: false });
   const calls = [], manifest = { archives: [] };

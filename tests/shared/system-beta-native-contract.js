@@ -1,9 +1,9 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),vm=require('node:vm');
-const projectBootstrap=require('../../dist/api/projects/project-workflow');
+const projectBootstrap=require('../../dist/modules/project-workflow/projectWorkflow');
 const adapter=require('../e2e/guided-preview'),platform=require('../e2e/guided-preview-platform');
-const evidence=require('../../dist/modules/release/guided-preview-evidence'),state=require('../../dist/modules/project-lifecycle/state');
+const evidence=require('../../dist/modules/release/guidedPreviewEvidence'),state=require('../../dist/modules/project-lifecycle/state');
 const image='sha256:'+'a'.repeat(64),source='b'.repeat(40),operation='c'.repeat(48);
 function fixture(t,failPage=false,options={}){
   const repository={id:7,namespaceId:3,path:'root/wizard',defaultBranch:'main'},containers=new Map(),calls=[],stages=[];
@@ -29,7 +29,7 @@ function fixture(t,failPage=false,options={}){
           assert(file==='/state/.docker.env'||file==='/state/.projects.env/.wizard.env');
           return fs.readFileSync(path.join(root,file.slice('/state/'.length)),...args);
         }};
-        if(name==='/system/dist/api/projects/project-workflow')return projectBootstrap;
+        if(name==='/system/dist/modules/project-workflow/projectWorkflow')return projectBootstrap;
         return require(name);
       }});
     }

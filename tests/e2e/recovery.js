@@ -115,7 +115,7 @@ async function syncFetch(candidate,connection,{waitForReady=false}={}) {
   if(candidate.spec?.guidedPreviewAcceptance===true&&!candidate.spec.restore){
     const preview=await request('/projects/wizard/preview-setup',{headers});
     if(preview.status!==200)throw Error('recovery-preview-intent-fetch-failed');
-    result.previewSetup=require('../../dist/modules/project-lifecycle/preview-settings').settings(JSON.parse(preview.body).settings);
+    result.previewSetup=require('../../dist/modules/project-lifecycle/previewSettings').settings(JSON.parse(preview.body).settings);
   }
   signature(result.main.data);
   if(!Array.isArray(result.projects)||!result.projects.some(project=>project.filename==='.wizard.env')) throw Error('recovery-project-export-missing');
@@ -374,7 +374,7 @@ async function captureSeed(original,inputs) {
   const current=await step('manifest-current',async()=>{
     const current=await original.inner(['run','--rm','--network','none','--read-only',
       '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--mount','type=bind,src='+SEED+',dst=/seed,readonly',
-      '--entrypoint','node','system-candidate:under-test','/system/dist/modules/storage/manifest-entry.js','current','/seed']);
+      '--entrypoint','node','system-candidate:under-test','/system/dist/modules/storage/manifestEntry.js','current','/seed']);
     if(!/^\/seed\/snapshots\/[A-Za-z0-9.-]+$/.test(current))throw Error('completed-snapshot-required');
     return current;
   });
@@ -718,7 +718,7 @@ async function run(original,reportDirectory,dependencies={}) {
       // Private future-publication fixture input retains where lifecycle ran.
       // This is not the final restored acceptance receipt.
       second.guidedFixtureOrigin={runId:original.id,results:original.results.map(({name,status})=>({name,status})),
-        guidedPreview:require('../../dist/modules/release/guided-preview-evidence').validateAuthority(original.evidence.guidedPreview,original.results,{
+        guidedPreview:require('../../dist/modules/release/guidedPreviewEvidence').validateAuthority(original.evidence.guidedPreview,original.results,{
           ...original.spec,candidateImageId:original.spec.images.candidate.id,wizardImageId:original.spec.images.wizard.id})};
     }
     if(original.spec.gitlabUpgradeAcceptance===true){

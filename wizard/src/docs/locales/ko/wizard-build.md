@@ -92,11 +92,15 @@ Runner/시작 작업과 다른 프로젝트 변경은 보호됩니다.
 
 ## 도구 모음 프로필
 
-Vite를 사용하는 새 소스 가져오기는 `node24-vite8-quickstart-v5` 프로필을 선택합니다.
+현재 소스 가져오기는 `node24-vite8-cli-v7` 프로필을 선택합니다.
 고정된 Node 24/npm 도구 모음, 잠금 파일 설치, 린트, Vitest, TypeScript/Vite 빌드,
 설정 내보내기 검사 및 Playwright 브라우저 검사를 사용합니다.
 브라우저 증거에는 렌더링된 UI, 프로젝트, SPA 이동, 설정 ZIP 및 정확한 Cube 검증이 포함됩니다.
 정확히 고정된 버전은 `wizard/package.json`과 관리형 레시피를 확인하세요.
+일반 CLI 패키지는 SourceSnapshot v3의 `.gitlab/cli`에 포함되며 정확한
+소스/버전/해시 영수증을 검증합니다. 작업은 패키지를 오프라인으로 설치하고
+`system-bootstrapper project-ci`를 호출하므로 npm 게시가 필요하지 않습니다.
+명시적인 동반 아카이브 입력은 [패키지 준비](OPERATIONS.md)를 참조하세요.
 
 이 프로필은 정확한 태그 정리와 빌드/브라우저 이미지의 공개 CA 신뢰를 유지합니다.
 신뢰 데이터는 System 소스에 포함된 검토되고 체크섬이 확인된 Mozilla 번들에서 가져옵니다.
@@ -111,8 +115,8 @@ Node는 이 갱신된 OpenSSL 신뢰 저장소를 사용합니다.
 이 프로필에는 현재 인터페이스가 필요합니다. 기존 overview-v3 및 CA-v4 예약은
 과거의 **시작하기** / **Wizard 열기** 검사를 유지합니다.
 
-기존 관리형 가져오기는 일치하는 소스와 함께 `"buildProfile": "node24-vite8-quickstart-v5"`를 지정하여
-보호된 빌드/환경 전용 업그레이드를 사용하세요. 연결된 소스 기준 프로젝트는 대신
+기존 관리형 가져오기는 일치하는 소스와 함께 `"buildProfile": "node24-vite8-cli-v7"`를 지정하여
+보호된 소스/도구 모음 마이그레이션을 사용하세요. 연결된 소스 기준 프로젝트는 대신
 [네이티브 소스 병합 및 연결 새로고침](../templates/project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe)을 사용합니다.
 모든 이전 프로필은 정확한 과거 해시를 유지합니다.
 현재 동등한 레거시 프로필은 `legacy-ca-v4`입니다.

@@ -7,7 +7,7 @@ const {test}=require('node:test');
 const {execFileSync,spawnSync}=require('node:child_process');
 const {StorageService}=require('../../dist/modules/storage/storage.service');
 const {nativeProcess}=require('../../dist/common/runtime/process');
-const {normalizePreview}=require('../../dist/common/runtime/preview-settings');
+const {normalizePreview}=require('../../dist/common/runtime/previewSettings');
 const storage=new StorageService(nativeProcess,normalizePreview);
 const operation=Object.assign({},...['validation','configuration','lease','helper'].map(name=>require('../../dist/modules/storage/'+name)),{
   inside:spec=>storage.inside(spec),launch:(operation,options)=>storage.launch(operation,options),

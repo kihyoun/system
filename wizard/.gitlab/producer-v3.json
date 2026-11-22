@@ -1,0 +1,5 @@
+{
+  "version": 3,
+  "cliArtifact": ".gitlab/cli/system-bootstrapper.tgz",
+  "buildProfile": "node24-vite8-cli-v7"
+}

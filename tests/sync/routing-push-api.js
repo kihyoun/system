@@ -7,7 +7,7 @@ const path = require('node:path');
 const child = require('node:child_process');
 const source = path.resolve(__dirname, '../..'), root = fs.mkdtempSync(path.join(os.tmpdir(), 'routing-push-api-'));
 for (const folder of ['config/system', 'state/.projects.env']) fs.mkdirSync(path.join(root, folder), {recursive: true});
-const paths = require(path.join(source, 'dist/common/runtime/installation-paths'));
+const paths = require(path.join(source, 'dist/common/runtime/installationPaths'));
 paths.checkoutRoot = () => root;
 paths.checkoutPath = (...parts) => path.join(root, ...parts);
 process.env.SYSTEM_CONFIG_DIR = path.join(root, 'state'); process.env.SYNC_USER = 'fixture'; process.env.SYNC_PASS = 'fixture-password';

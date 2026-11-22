@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const {test} = require('node:test');
-const aliases = require('../../dist/modules/projects-routing/application-aliases');
+const aliases = require('../../dist/modules/projects-routing/applicationAliases');
 const cube = fs.readFileSync(path.join(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 const env = values => cube + Object.entries(values).map(([key, value]) => key + '=' + JSON.stringify(value)).join('\n') + '\n';
 const main = env({WIZARD_HOST: 'wizard.example.test', WIZARD_DOMAIN_MODE: '2', WIZARD_ALIASES: 'oldwizard.example.test',

@@ -7,7 +7,7 @@ const http = require('http');
 const { spawn } = require('child_process');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'suggestions-api-'));
 fs.mkdirSync(path.join(tmp, 'config/system'),{recursive:true});
-const startCode = `const path=require('node:path');const paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installation-paths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);paths.cliArguments=(command,args)=>[path.join(fixture,'dist/cli/main.js'),command,...args];require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
+const startCode = `const path=require('node:path');const paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installationPaths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);paths.cliArguments=(command,args)=>[path.join(fixture,'dist/cli/main.js'),command,...args];require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
 const child = spawn(process.execPath,
   ['-e', startCode, process.env.SYNC_ENTRY || path.resolve(__dirname, '../../dist/api/index.js'), tmp], {
     cwd: tmp, stdio: 'ignore',

@@ -89,7 +89,7 @@ for (const [name, paths] of [
 ]) cases.push([name, paths, light]);
 for (const [name, paths] of [
   ['mixed changes', ['README.md', 'system/start.js']], ['unknown location', ['future-component/new-format.xyz']],
-  ['CI configuration', ['.gitlab-ci.yml']], ['CI helper', ['src/modules/ci/documentation-policy.ts']], ['test guide', ['tests/README.md']],
+  ['CI configuration', ['.gitlab-ci.yml']], ['CI helper', ['src/modules/ci/documentationPolicy.ts']], ['test guide', ['tests/README.md']],
   ['infrastructure', ['containers/bootstrapper/Dockerfile', 'config/system/docker-compose.yml']], ['submodule configuration', ['.gitmodules']], ['Wizard tree', ['wizard']],
   ['code within docs', ['docs/execute.sh']], ['newline root path', ['README.md\nsystem/start.js']], ['newline docs path', ['docs/guide\nexecute.md']],
   ['trailing newline', ['README.md\n']], ['case mismatch', ['readme.md']], ['suffixed guide', ['README.md.js']],
@@ -131,9 +131,20 @@ for (const name of full) {
   assert((job.dependencies || []).every(dependency => full.includes(dependency)), name + ' artifact selection closure');
 }
 const equal = (name, fields) => { for (const [field, expected] of Object.entries(fields)) assert.deepEqual(jobs[name][field], expected, name + '.' + field); };
-const native = ['node src/cli/verify-ca.mts --bundle', 'npm ci --ignore-scripts --no-audit --no-fund', 'npm run build', 'timeout -k 5 110 node dist/cli/main.js host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"'];
+const cliBootstrap = [
+  "echo '796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe  config/ca/cacert-2026-10-20.crt' | sha256sum -c -",
+  'npm ci --ignore-scripts --no-audit --no-fund',
+  'npm run build',
+  'mkdir -p .ci-cli-package',
+  'npm pack --offline --ignore-scripts --pack-destination .ci-cli-package',
+  'npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .ci-cli ./.ci-cli-package/systembootstrapper-cli-$(cat VERSION).tgz',
+  'export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"',
+  'export SYSTEM_CLI_ARTIFACT="$CI_PROJECT_DIR/assets/cli-companion/systembootstrapper-cli-$(cat VERSION).tgz"',
+  'system-bootstrapper host-bootstrap ca-check --checkout "$CI_PROJECT_DIR"'
+];
+const native = [cliBootstrap, 'timeout -k 5 110 system-bootstrapper host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"'];
 const isolated = {services: [], tags: ['docker']};
-equal('check:documentation', {...isolated, script: ['node dist/cli/main.js ci documentation "$CI_PROJECT_DIR"'], after_script: ['node dist/cli/main.js ci documentation "$CI_PROJECT_DIR" cleanup'], timeout: '3m', allow_failure: false, needs: undefined, dependencies: undefined});
+equal('check:documentation', {...isolated, script: ['system-bootstrapper ci documentation "$CI_PROJECT_DIR"'], after_script: ['export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"', 'system-bootstrapper ci documentation "$CI_PROJECT_DIR" cleanup'], timeout: '3m', allow_failure: false, needs: undefined, dependencies: undefined});
 assert.equal(jobs['check:documentation'].variables.RUNNER_SCRIPT_TIMEOUT, '2m');
 assert.equal(jobs['check:documentation'].variables.RUNNER_AFTER_SCRIPT_TIMEOUT, '30s');
 assert(!Object.keys(jobs).some(name => name.includes('wizard-review')), 'System Review jobs must not return');
@@ -148,26 +159,26 @@ equal('deploy:wizard-beta', {dependencies: ['test:platform-candidate']});
 equal('stop:wizard-beta', {dependencies: []});
 assert.equal(jobs['deploy:wizard-beta'].environment.on_stop, 'stop:wizard-beta');
 assert.equal(jobs['stop:wizard-beta'].environment.action, 'stop');
-const projectCI = fs.readFileSync(path.join(root, 'src/modules/project-lifecycle/environment-recipe.service.ts'), 'utf8');
+const projectCI = fs.readFileSync(path.join(root, 'src/modules/project-lifecycle/environmentRecipe.service.ts'), 'utf8');
 assert(projectCI.includes("['review', 'beta']") && projectCI.includes('review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'), 'Generic project Review and Beta remain available');
 equal('deploy:npm', {dependencies: ['test:npm-package', 'test:platform-candidate', 'deploy:dockerhub', 'deploy:github', 'deploy:github-release'], needs: undefined, allow_failure: false, interruptible: false, resource_group: 'npm-release'});
 for (const name of ['deploy:npm', 'deploy:dockerhub']) {
   assert.deepEqual(jobs[name].rules.at(-1), {when: 'never'});
   for (const rule of jobs[name].rules.slice(0, -1)) for (const selector of ['$CI_COMMIT_REF_PROTECTED == "true"', '$CI_PIPELINE_SOURCE == "push"', name === 'deploy:npm' ? '$NPM_PUBLISH_ENABLED == "true"' : '$DOCKERHUB_PUBLISH_ENABLED == "true"']) assert(rule.if.includes(selector), name + ' protected publisher selectors');
 }
-equal('deploy:github', {dependencies: [], script: ['node dist/cli/main.js github-backup ci']});
+equal('deploy:github', {dependencies: [], script: ['system-bootstrapper github-backup ci']});
 assert.deepEqual(jobs['deploy:github'].artifacts.paths, ['test-results/github/']);
 assert.equal(jobs['deploy:github'].artifacts.when, 'always');
 assert.equal(jobs['deploy:github'].rules[0].if, '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null');
-equal('test:wizard-browser', {...isolated, script: ['node dist/cli/main.js ci wizard-browser "$CI_PROJECT_DIR"'], after_script: ['node dist/cli/main.js ci wizard-browser "$CI_PROJECT_DIR" cleanup']});
+equal('test:wizard-browser', {...isolated, script: ['system-bootstrapper ci wizard-browser "$CI_PROJECT_DIR"'], after_script: ['export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"', 'system-bootstrapper ci wizard-browser "$CI_PROJECT_DIR" cleanup']});
 assert.equal(jobs['test:wizard-browser'].artifacts.reports.junit, 'test-results/wizard-browser/junit.xml');
-equal('deploy:dockerhub', {...isolated, script: ['node dist/cli/main.js release dockerhub'], dependencies: ['test:platform-candidate'], needs: undefined, stage: 'deploy', allow_failure: false, interruptible: false, resource_group: 'dockerhub-release-$CI_PROJECT_ID'});
+equal('deploy:dockerhub', {...isolated, script: ['system-bootstrapper release dockerhub'], dependencies: ['test:platform-candidate'], needs: undefined, stage: 'deploy', allow_failure: false, interruptible: false, resource_group: 'dockerhub-release-$CI_PROJECT_ID'});
 assert.equal(jobs['deploy:dockerhub'].variables.GIT_DEPTH, '0');
 assert.deepEqual(jobs['deploy:dockerhub'].artifacts.paths, ['test-results/dockerhub/']);
-equal('build', {script: ['node dist/cli/main.js ci build-bootstrapper "$CI_PROJECT_DIR"'], before_script: native});
+equal('build', {script: ['system-bootstrapper ci build-bootstrapper "$CI_PROJECT_DIR"'], before_script: native});
 assert.equal(config.variables.IMAGE_TAG, '$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG');
 assert.match(config.image, /^node:24\.22\.0-alpine3\.24@sha256:[a-f0-9]{64}$/);
 assert.match(config.services[0], /^docker:29\.9\.2-dind@sha256:[a-f0-9]{64}$/);
-assert.deepEqual(config.default.before_script, ['node src/cli/verify-ca.mts --bundle']);
+assert.deepEqual(config.default.before_script, cliBootstrap);
 assert.equal(config.variables.NODE_OPTIONS, '--use-openssl-ca');
 console.log(`PASS: ${cases.length} native YAML path/event cases, Ruby absolute/line anchors, required gates, artifact closure, protected releases and mirror`);

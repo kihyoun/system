@@ -4,13 +4,13 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {Adoption} = require('../../dist/modules/project-lifecycle/adoption-session');
-const b = require('../../dist/modules/project-lifecycle/source-primary-binding');
-const {readConfiguration} = require('../../dist/modules/project-lifecycle/upgrade-session');
+const {Adoption} = require('../../dist/modules/project-lifecycle/adoptionSession');
+const b = require('../../dist/modules/project-lifecycle/sourcePrimaryBinding');
+const {readConfiguration} = require('../../dist/modules/project-lifecycle/upgradeSession');
 const {projectForImage} = require('../../dist/modules/wizard-recovery/identity');
-const logo = require('../../dist/common/configuration-signature').default.textLogo;
-const builds = require('../../dist/modules/project-lifecycle/build-recipe.service');
-const env = require('../../dist/modules/project-lifecycle/source-primary-environment');
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
+const builds = require('../../dist/modules/project-lifecycle/buildRecipe.service');
+const env = require('../../dist/modules/project-lifecycle/sourcePrimaryEnvironment');
 const sha = 'a'.repeat(40), image = 'registry.example.test/team/system-wizard@sha256:' + 'b'.repeat(64);
 const oldImage = 'registry.example.test/root/wizard@sha256:' + 'c'.repeat(64), helperImage = 'sha256:' + 'd'.repeat(64);
 const publicImage = 'docker.io/example/wizard@sha256:' + '9'.repeat(64);
@@ -30,12 +30,13 @@ function fixture(profile = 'node24-vite8-overview-v3') {
   const text = logo + '\n# BOOTSTRAPPER_PROJECT=' + Buffer.from(JSON.stringify(receipt)).toString('base64') + '\n';
   fs.writeFileSync(config, text);
   fs.writeFileSync(mainConfig, logo + "\nexport GITLAB_HOST='gitlab.example.test'\nexport GITLAB_REGISTRY_URL='https://registry.example.test'\nexport GITLAB_REGISTRY_DOMAIN_MODE='2'\nexport WIZARD_IMAGE='" + oldImage + "'\n");
-  const scripts = [...recipe.files, {path: b.CI, content: '# native CI\n'}, {path: '.gitlab/delivery/environment.sh', content: fs.readFileSync(path.resolve(__dirname, '../../templates/project-bootstrap/wizard-environments/historical/source-primary-v1.sh'), 'utf8')}];
+  const scripts = [...recipe.files, {path: b.ci, content: '# native CI\n'}, {path: '.gitlab/delivery/environment.sh', content: fs.readFileSync(path.resolve(__dirname, '../../templates/project-bootstrap/wizard-environments/historical/source-primary-v1.sh'), 'utf8')}];
+  if(profile==='node24-vite8-cli-v7'){const {cliArtifactFiles,selectedCliArtifact}=require('../../dist/modules/project-ci/cliArtifact');for(const file of cliArtifactFiles(selectedCliArtifact()))scripts.push({path:file.path,content:file.bytes});scripts.push({path:'.gitlab/producer-v3.json',content:fs.readFileSync(path.resolve(__dirname,'../../wizard/.gitlab/producer-v3.json'))});}
   const input = {version: 1, projectId: 7, projectPath: 'team/system-wizard', namespaceId: 9, defaultBranch: 'master', pipelineId: 31, sourceCommit: sha,
     imageRef: image, helperImage, ciFiles: scripts.map(file => ({path: file.path, sha256: b.hash(file.content)}))};
   const rows = {
     'projects/1': {id: 1, namespace: {id: 1}, path_with_namespace: 'root/wizard', visibility: 'private', description: 'System Bootstrapper operation ' + receipt.operation, ci_config_path: '.system-bootstrapper/ci.yml'},
-    'projects/7': {id: 7, namespace: {id: 9}, path_with_namespace: input.projectPath, default_branch: 'master', visibility: 'private', ci_config_path: b.CI,
+    'projects/7': {id: 7, namespace: {id: 9}, path_with_namespace: input.projectPath, default_branch: 'master', visibility: 'private', ci_config_path: b.ci,
       only_allow_merge_if_pipeline_succeeds: true, only_allow_merge_if_all_discussions_are_resolved: true},
     'projects/7/repository/branches/master': {commit: {id: sha}},
     'projects/7/pipelines/31': {id: 31, sha, ref: 'master', source: 'push', status: 'success', web_url: 'https://gitlab.example.test/pipeline'},
@@ -53,11 +54,11 @@ function fixture(profile = 'node24-vite8-overview-v3') {
 }
 async function use(run, profile) { const f = fixture(profile); try {await run(f);} finally {fs.rmSync(f.root, {recursive: true, force: true});} }
 function nativeCollector(f) {
-  const {collectedReads} = require('../../dist/modules/project-lifecycle/preview-reads');
+  const {collectedReads} = require('../../dist/modules/project-lifecycle/previewReads');
   const phases = [];
   f.adoption.collectEvidence = async phase => {
     phases.push({locked: fs.existsSync(f.config + '.environments.lock')});
-    const {PreviewEvidence} = require('../../dist/modules/gitlab-provision/preview-evidence');
+    const {PreviewEvidence} = require('../../dist/modules/gitlab-provision/previewEvidence');
     const result = await new PreviewEvidence({...phase, projectIds: [1, 7]}, async route => {
       assert(Object.hasOwn(f.rows, route), 'Unexpected evidence route: ' + route);
       return structuredClone(f.rows[route]);
@@ -74,8 +75,9 @@ async function buildUpdate(f, profile = 'node24-vite8-ca-v4') {
   fs.writeFileSync(f.mainConfig, fs.readFileSync(f.mainConfig, 'utf8').replace(oldImage, image));
   const target = builds.generate(logo, profile), sourceCommit = 'e'.repeat(40), pipelineId = 32;
   const imageRef = image.replace('b'.repeat(64), 'f'.repeat(64));
-  const scripts = [...target.files, {path: b.CI, content: '# reviewed native CI\n'},
+  const scripts = [...target.files, {path: b.ci, content: '# reviewed native CI\n'},
     {path: '.gitlab/delivery/environment.sh', content: fs.readFileSync(path.resolve(__dirname, '../../templates/project-bootstrap/wizard-environments/historical/source-primary-v1.sh'), 'utf8')}];
+  if(profile==='node24-vite8-cli-v7'){const {cliArtifactFiles,selectedCliArtifact}=require('../../dist/modules/project-ci/cliArtifact');for(const file of cliArtifactFiles(selectedCliArtifact()))scripts.push({path:file.path,content:file.bytes});scripts.push({path:'.gitlab/producer-v3.json',content:fs.readFileSync(path.resolve(__dirname,'../../wizard/.gitlab/producer-v3.json'))});}
   const input = {...f.input, sourceCommit, pipelineId, imageRef, buildProfile: target.profile,
     ciFiles: scripts.map(file => ({path: file.path, sha256: b.hash(file.content)}))};
   f.rows['projects/7/repository/branches/master'].commit.id = sourceCommit;
@@ -92,14 +94,14 @@ async function buildUpdate(f, profile = 'node24-vite8-ca-v4') {
 async function bindingRefresh(f) {
   const update = await buildUpdate(f, 'node24-vite8-quickstart-v5');
   fs.writeFileSync(f.mainConfig, fs.readFileSync(f.mainConfig, 'utf8').replace(image, publicImage));
-  const nativeCI = f.rows['projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + sha];
-  f.rows['projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + update.input.sourceCommit] = nativeCI;
-  update.input.ciFiles.find(file => file.path === b.CI).sha256 = b.hash(Buffer.from(nativeCI.content, 'base64'));
+  const nativeCI = f.rows['projects/7/repository/files/' + encodeURIComponent(b.ci) + '?ref=' + sha];
+  f.rows['projects/7/repository/files/' + encodeURIComponent(b.ci) + '?ref=' + update.input.sourceCommit] = nativeCI;
+  update.input.ciFiles.find(file => file.path === b.ci).sha256 = b.hash(Buffer.from(nativeCI.content, 'base64'));
   return {...update, input: {...update.input, action: 'refresh-binding'}};
 }
 (async () => {
   for (const manifestSize of [23, 40]) await use(async f => {
-    const {batchedReads, MAX_ROUTES} = require('../../dist/modules/project-lifecycle/preview-reads');
+    const {batchedReads, maxRoutes} = require('../../dist/modules/project-lifecycle/previewReads');
     // Include the native recipe (and its real CA bundle) in a full approved
     // manifest. Process launches must scale with phases, not individual files.
     while (f.input.ciFiles.length < manifestSize) {
@@ -112,7 +114,7 @@ async function bindingRefresh(f) {
     const original = f.adoption.request;
     f.adoption.request = batchedReads(async routes => {
       batches.push([...routes]); active++; peak = Math.max(peak, active);
-      assert(routes.length <= MAX_ROUTES);
+      assert(routes.length <= maxRoutes);
       try { return await Promise.all(routes.map(original)); } finally { active--; }
     });
     const plan = await f.adoption.plan(f.input);
@@ -149,7 +151,7 @@ async function bindingRefresh(f) {
     f => { f.rows['projects/7'].visibility = 'public'; },
     f => { f.rows['projects/7/pipelines/31/jobs?per_page=100&include_retried=false'][0].status = 'failed'; },
     f => { f.rows['projects/7/jobs/41/artifacts/wizard-evidence.json'].cubeSignature = false; },
-    f => { f.rows['projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + sha].content = Buffer.from('changed bytes').toString('base64'); }
+    f => { f.rows['projects/7/repository/files/' + encodeURIComponent(b.ci) + '?ref=' + sha].content = Buffer.from('changed bytes').toString('base64'); }
   ]) await use(async f => {
     const phases = nativeCollector(f), plan = await f.adoption.plan(f.input);
     change(f);
@@ -166,16 +168,16 @@ async function bindingRefresh(f) {
     f => {f.rows['projects/7/pipelines/31'].sha = 'f'.repeat(40);},
     f => {f.rows['projects/7/pipelines/31/jobs?per_page=100&include_retried=false'][2].status = 'failed';},
     f => {f.rows['projects/7/jobs/41/artifacts/wizard-evidence.json'].cubeSignature = false;},
-    f => {f.rows['projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + sha].content = Buffer.from('changed native CI').toString('base64');},
+    f => {f.rows['projects/7/repository/files/' + encodeURIComponent(b.ci) + '?ref=' + sha].content = Buffer.from('changed native CI').toString('base64');},
     f => {f.rows['projects/7/repository/files/' + encodeURIComponent('.system-bootstrapper/build-v1/build.sh') + '?ref=' + sha].content = Buffer.from('changed generic recipe').toString('base64');}
   ]) await use(async f => {
-    const {batchedReads} = require('../../dist/modules/project-lifecycle/preview-reads'), original = f.adoption.request;
+    const {batchedReads} = require('../../dist/modules/project-lifecycle/previewReads'), original = f.adoption.request;
     f.adoption.request = batchedReads(routes => Promise.all(routes.map(original)));
     const plan = await f.adoption.plan(f.input); change(f);
     await assert.rejects(f.adoption.plan(f.input));
     await assert.rejects(f.adoption.apply(f.input, plan.planHash));
     assert.equal(f.calls.filter(route => route === 'projects/7').length, 3, 'A later plan or apply reused the earlier project proof');
-    const ciRoute = 'projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + sha;
+    const ciRoute = 'projects/7/repository/files/' + encodeURIComponent(b.ci) + '?ref=' + sha;
     assert.equal(f.calls.filter(route => route === ciRoute).length, 3, 'A later plan or apply reused the earlier manifest proof');
     assert.equal(fs.readFileSync(f.config, 'utf8'), f.text);
     assert(!fs.existsSync(f.directory), 'Refused fresh evidence created an adoption archive');
@@ -223,18 +225,18 @@ async function bindingRefresh(f) {
     assert.equal((await f.adoption.apply(f.input, plan.planHash)).unchanged, true);
     process.env.SYSTEM_CONFIG_DIR = f.root;
     fs.appendFileSync(f.mainConfig, "export WIZARD_ENABLE='true'\nexport WIZARD_HOST='ui.example.test'\nexport WIZARD_DOMAIN_MODE='2'\n");
-    const bootstrap = require('../../dist/api/projects/project-workflow');
+    const bootstrap = require('../../dist/modules/project-workflow/projectWorkflow');
     let calls = 0;
     bootstrap.rails = async input => {
       calls++; assert.equal(input.action, 'wizard-source-primary-status'); assert.equal(input.repository.id, 7);
       return {sourceRevision: sha, build: b.read(f.config).receipt.wizardWorkflow.build, message: 'Fixture native evidence'};
     };
-    assert.equal((await require('../../dist/api/projects/default-wizard').ensureDefaultWizard()).repository.id, 7);
+    assert.equal((await require('../../dist/api/projects/defaultWizard').ensureDefaultWizard()).repository.id, 7);
     assert.equal(calls, 0, 'Restart tried to recreate or import a second Wizard project');
-    const workflow = require('../../dist/api/projects/wizard-source-workflow');
+    const workflow = require('../../dist/api/projects/wizardSourceWorkflow');
     assert.equal(workflow.previewWizardSource().canInitialize, false);
     assert.throws(() => workflow.initializeWizardSource({}), /Source import is disabled/);
-    const build = require('../../dist/api/projects/wizard-build-workflow');
+    const build = require('../../dist/api/projects/wizardBuildWorkflow');
     assert.equal(build.previewWizardBuild().mode, 'source-primary');
     assert.throws(() => build.activateWizardBuild({}), /native repository pipelines/);
     const job = build.refreshWizardBuild();
@@ -292,6 +294,17 @@ async function bindingRefresh(f) {
     assert.deepEqual(archive.previousReceipt, before.receipt);
     assert.equal((await f.adoption.apply(input, plan.planHash)).unchanged, true);
   }, profile);
+  if(process.env.SYSTEM_CLI_ARTIFACT){
+    await use(async f=>{
+      const {input,target}=await buildUpdate(f,'node24-vite8-cli-v7');const plan=await f.adoption.plan(input);
+      assert.equal(plan.next.wizardWorkflow.build.recipeHash,target.recipeHash);await f.adoption.apply(input,plan.planHash);
+      assert.equal(b.read(f.config).receipt.wizardWorkflow.build.recipeHash,target.recipeHash);
+    },'node24-vite8-typed-v6');
+    await use(async f=>{const {input}=await buildUpdate(f,'node24-vite8-cli-v7');input.ciFiles=input.ciFiles.filter(file=>!file.path.endsWith('.tgz'));
+      await assert.rejects(f.adoption.plan(input),/exact approved file manifest|matching source files/);
+    },'node24-vite8-typed-v6');
+    await use(async f=>{const {input}=await buildUpdate(f,'node24-vite8-typed-v6');await assert.rejects(f.adoption.plan(input),/Retain the Quick Install-compatible/);},'node24-vite8-cli-v7');
+  }
   await use(async f => {
     const {input} = await buildUpdate(f);
     await assert.rejects(f.adoption.plan(input), /Retain the Quick Install-compatible/);
@@ -374,8 +387,8 @@ async function bindingRefresh(f) {
     input => {input.imageRef = publicImage;},
     input => {input.ciFiles = input.ciFiles.filter(file => file.path !== '.gitlab/delivery/environment.sh');},
     (input, f) => {
-      input.ciFiles.find(file => file.path === b.CI).sha256 = b.hash('# changed native CI\n');
-      f.rows['projects/7/repository/files/' + encodeURIComponent(b.CI) + '?ref=' + input.sourceCommit].content = Buffer.from('# changed native CI\n').toString('base64');
+      input.ciFiles.find(file => file.path === b.ci).sha256 = b.hash('# changed native CI\n');
+      f.rows['projects/7/repository/files/' + encodeURIComponent(b.ci) + '?ref=' + input.sourceCommit].content = Buffer.from('# changed native CI\n').toString('base64');
     },
     (input, f) => {f.rows['projects/7'].only_allow_merge_if_pipeline_succeeds = false;},
     (input, f) => {f.rows['projects/7'].only_allow_merge_if_all_discussions_are_resolved = false;},
@@ -467,7 +480,7 @@ async function bindingRefresh(f) {
     assert.equal(fs.readFileSync(f.config, 'utf8'), before); assert.equal(fs.readFileSync(f.mainConfig, 'utf8'), main);
     assert(!fs.existsSync(f.directory));
   }, 'node24-vite8-quickstart-v5');
-  const {GitlabNativeApiService}=require('../../dist/modules/gitlab-provision/native-api.service');
+  const {GitlabNativeApiService}=require('../../dist/modules/gitlab-provision/nativeApi.service');
   const nativeApiCalls=[], nativeApiContext={checkout:path.resolve(__dirname,'../..'),containerId:'e'.repeat(64)};
   let nativeApiOutput='{"id":7}\nBOOTSTRAPPER_HTTP_STATUS:200';
   const nativeApi=new GitlabNativeApiService({async run(binary,args,options){nativeApiCalls.push({binary,args,options});return nativeApiOutput;}});
@@ -481,8 +494,8 @@ async function bindingRefresh(f) {
   nativeApiOutput=JSON.stringify({id:42,token:'private-fixture-bootstrap'});await nativeApi.bootstrap(nativeApiContext,'f'.repeat(48));
   const bootstrapCall=nativeApiCalls.at(-1);assert(bootstrapCall.args.includes('gitlab-rails'));assert(bootstrapCall.options.input.includes('admin.personal_access_tokens.create!'));
   assert(!bootstrapCall.args.includes('private-fixture-bootstrap'));
-  const {GitlabAuthJournalService}=require('../../dist/modules/gitlab-provision/auth-journal.service');
-  const {GitlabAuthBootstrapService}=require('../../dist/modules/gitlab-provision/auth-bootstrap.service');
+  const {GitlabAuthJournalService}=require('../../dist/modules/gitlab-provision/authJournal.service');
+  const {GitlabAuthBootstrapService}=require('../../dist/modules/gitlab-provision/authBootstrap.service');
   const authDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-auth-journal-'));
   try {
     const journals=new GitlabAuthJournalService();let creations=0, loseBootstrap=true, revoked=false, loseRevocation=true, expectedName;
@@ -534,7 +547,7 @@ async function bindingRefresh(f) {
     await journals.withJournal(authDirectory,async()=>{await assert.rejects(()=>journals.withJournal(authDirectory,async()=>{}),/mutex is busy/);});
     fs.unlinkSync(journalPath);fs.symlinkSync('/dev/null',journalPath);await assert.rejects(()=>lifecycle.initial(nativeApiContext,authDirectory),/private-state-invalid/);
   } finally {fs.rmSync(authDirectory,{recursive:true,force:true});}
-  const {GitlabControllerCredentialService}=require('../../dist/modules/gitlab-provision/controller-credential.service');
+  const {GitlabControllerCredentialService}=require('../../dist/modules/gitlab-provision/controllerCredential.service');
   const controllerAuthDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-controller-auth-'));
   try {
     const journals=new GitlabAuthJournalService(), operation='d'.repeat(48);
@@ -574,14 +587,14 @@ async function bindingRefresh(f) {
     const renewed=await service.current(nativeApiContext,controllerAuthDirectory,renewalDate);assert.equal(renewed.id,43);assert.equal(tokenCreations,3);
     await journals.withJournal(controllerAuthDirectory,async journal=>{assert(!journal.read().retiring);assert(!journal.read().renewal);});
   } finally {fs.rmSync(controllerAuthDirectory,{recursive:true,force:true});}
-  const {GitlabActivationSessionService}=require('../../dist/modules/gitlab-provision/activation-session.service');
+  const {GitlabActivationSessionService}=require('../../dist/modules/gitlab-provision/activationSession.service');
   const nativeHttp=require('http'), originalRequest=nativeHttp.request, {EventEmitter}=require('events');
   try {
     nativeHttp.request=(options,receive)=>{assert.equal(options.socketPath,'/var/run/docker.sock');assert.equal(options.path,'/v1.44/exec/'+'a'.repeat(64)+'/json');assert.equal(options.method,'GET');const request=new EventEmitter();request.destroy=()=>{};request.end=()=>{const response=new EventEmitter();response.statusCode=200;receive(response);response.emit('data',Buffer.from('{}'));response.emit('end');};return request;};
-    const {GitlabLockExecHttpTransport}=require('../../dist/modules/gitlab-provision/lock-exec.service');
+    const {GitlabLockExecHttpTransport}=require('../../dist/modules/gitlab-provision/lockExec.service');
     assert.equal((await new GitlabLockExecHttpTransport().request('GET','/exec/'+'a'.repeat(64)+'/json')).status,200);
   } finally {nativeHttp.request=originalRequest;}
-  const {GitlabProjectCredentialService}=require('../../dist/modules/gitlab-provision/project-credential.service');
+  const {GitlabProjectCredentialService}=require('../../dist/modules/gitlab-provision/projectCredential.service');
   const scopedDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-scoped-credential-'));
   try {
     const tokens=new Map(), bots=new Map();let creates=0, lostInvisible=true, next=40;
@@ -606,7 +619,7 @@ async function bindingRefresh(f) {
     const recovered=await service.current(nativeApiContext,scopedDirectory,7,'team/wizard','controller-private-token',new Date('2027-02-11T00:00:00Z'),true);assert.notEqual(recovered.id,renewed.id);assert(tokens.get(renewed.id).revoked);assert(bots.get(recovered.userId).external);
     await assert.rejects(()=>service.current(nativeApiContext,scopedDirectory,7,'foreign/wizard','controller-private-token'),/project-mismatch/);
   } finally {fs.rmSync(scopedDirectory,{recursive:true,force:true});}
-  const {SourcePrimaryOperationService}=require('../../dist/modules/gitlab-provision/source-primary-operation.service');
+  const {SourcePrimaryOperationService}=require('../../dist/modules/gitlab-provision/sourcePrimaryOperation.service');
   const invalidNativeActivation=require('child_process').spawnSync(process.execPath,[path.resolve(__dirname,'../../dist/modules/gitlab-provision/entry.js'),'activate','--checkout',nativeApiContext.checkout],{input:'{}',encoding:'utf8'});
   assert.equal(invalidNativeActivation.status,1);assert.equal(invalidNativeActivation.stdout,'');assert(invalidNativeActivation.stderr.includes('operation did not complete'));
   let authorized=0;
@@ -614,9 +627,9 @@ async function bindingRefresh(f) {
   const nativeActivationInput={action:'wizard-environments-primary',projectKey:'wizard',namespaceId:9,repository:{id:7,path:'team/wizard',namespaceId:9},environments:{operation:'a'.repeat(48)}};
   assert.equal((await nativeActivation.execute(nativeApiContext.checkout,nativeActivationInput)).environments.phase,'ready');
   await assert.rejects(()=>nativeActivation.execute(nativeApiContext.checkout,{...nativeActivationInput,namespaceId:88}),/project-binding|project binding/);assert.equal(authorized,1);
-  const {GitlabNativeContextService}=require('../../dist/modules/gitlab-provision/native-context.service');
+  const {GitlabNativeContextService}=require('../../dist/modules/gitlab-provision/nativeContext.service');
   const {GitlabCredentialService}=require('../../dist/modules/gitlab-provision/credential.service');
-  const {NestFactory}=require('../../node_modules/@nestjs/core'), {GitlabProvisionModule}=require('../../dist/modules/gitlab-provision/gitlab-provision.module');
+  const {NestFactory}=require('../../node_modules/@nestjs/core'), {GitlabProvisionModule}=require('../../dist/modules/gitlab-provision/gitlabProvision.module');
   const provisioningModule=await NestFactory.createApplicationContext(GitlabProvisionModule,{logger:false});try {assert(provisioningModule.get(GitlabCredentialService));} finally {await provisioningModule.close();}
 
   const {main:credentialCommand}=require('../../dist/modules/gitlab-provision/entry');
@@ -645,7 +658,7 @@ async function bindingRefresh(f) {
     await assert.rejects(()=>credentials.ensure({checkout:nativeApiContext.checkout,configDirectory:contextDirectory,identity:{username:'other',email:'other@example.test'}}),/identity-binding-mismatch/);
     phase='replacement-verified';steps.length=0;await credentials.ensure({checkout:nativeApiContext.checkout,configDirectory:contextDirectory});assert.deepEqual(steps,['initial','complete','current']);
   } finally {fs.rmSync(contextDirectory,{recursive:true,force:true});}
-  const {GitlabLockExecService}=require('../../dist/modules/gitlab-provision/lock-exec.service');
+  const {GitlabLockExecService}=require('../../dist/modules/gitlab-provision/lockExec.service');
   const lockDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gitlab-activation-lock-'));
   try {
     const journals=new GitlabAuthJournalService(), commands=[], executions=new Map();let nextExec=0, launches=0, cancels=0, lostStart=true, lostWrite=true, lostCancel=false, loseProofAfterWrite=false, writes=0, variable, backend;
@@ -711,7 +724,7 @@ async function bindingRefresh(f) {
 
   } finally {fs.rmSync(lockDirectory,{recursive:true,force:true});}
   // Shared typed activation: the same reservation survives uncertain writes.
-  const {SourcePrimaryActivationService} = require('../../dist/modules/gitlab-provision/source-primary-activation.service');
+  const {SourcePrimaryActivationService} = require('../../dist/modules/gitlab-provision/sourcePrimaryActivation.service');
   const activationService = new SourcePrimaryActivationService();
   const activationFiles = ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map(path => ({path, sha256: crypto.createHash('sha256').update('owned').digest('hex')}));
   const activationProject = {id: 7, path_with_namespace: 'team/wizard', default_branch: 'main', namespace: {id: 9}, ci_config_path: '.gitlab/primary.yml', visibility: 'private', only_allow_merge_if_pipeline_succeeds: true, only_allow_merge_if_all_discussions_are_resolved: true};

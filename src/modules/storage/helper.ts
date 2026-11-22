@@ -1,4 +1,4 @@
-import { environmentAssignments } from '../../common/runtime/environment-assignments';
+import { environmentAssignments } from '../../common/runtime/environmentAssignments';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,8 +51,10 @@ export function dockerRun(runner: ProcessRunner = nativeProcess): DockerRun {
         error.signal === null &&
         !error.uncertain &&
         refusalCodes.some((code) => code === error.controlledCode)
-      )
+      ) {
         throw new StorageError(error.controlledCode!);
+      }
+
       throw error;
     }
   };
@@ -100,11 +102,14 @@ export function helperArguments(
     '--mount',
     'type=bind,src=' + seed + ',dst=/seed',
   ];
-  if (backup)
+
+  if (backup) {
     args.push(
       '--mount',
       'type=bind,src=' + absolute(backup) + ',dst=/system/bootstrapper.zip,readonly',
     );
+  }
+
   args.push(
     '--env',
     'SYSTEM_STORAGE_SPEC=' +
@@ -125,13 +130,18 @@ export function helperArguments(
 }
 export function configurationImage(spec: StorageSpec, runner: ProcessRunner = nativeProcess) {
   let raw;
+
   if (spec.backup) {
     const extracted = runner.run('unzip', ['-p', '/system/bootstrapper.zip', '.docker.env'], {
       maxBuffer: 5000000,
     });
     raw = Buffer.from(extracted.stdout);
-  } else raw = fs.readFileSync('/live/configuration/.docker.env');
+  } else {
+    raw = fs.readFileSync('/live/configuration/.docker.env');
+  }
+
   let image = imageFromConfiguration(raw, spec.GITLAB_IMAGE || '', runner);
+
   if (!image && spec.operation === 'restore') {
     // A Seed is an explicit versioned input, never a request for a default or
     // latest image. Validate every payload byte before using its recorded pin;
@@ -139,6 +149,7 @@ export function configurationImage(spec: StorageSpec, runner: ProcessRunner = na
     const snapshot = manifest.current('/seed', false);
     image = JSON.parse(fs.readFileSync(path.join(snapshot, 'manifest.json'), 'utf8')).gitlabImage;
   }
+
   requireValue(
     typeof image === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/.test(image),
     'matching-configuration-backup-required',
@@ -155,10 +166,12 @@ export function gitlabOwnership(spec: StorageSpec, image: string, run: DockerRun
     '--format',
     '{{.Names}}',
   ]);
+
   if (!present) {
     requireValue(spec.operation === 'restore', 'controlled-gitlab-is-missing');
     return;
   }
+
   requireValue(present === 'system_gitlab_1', 'ambiguous-controlled-gitlab');
   const row = JSON.parse(run(['inspect', 'system_gitlab_1']))[0];
   requireValue(
@@ -186,6 +199,7 @@ export function gitlabOwnership(spec: StorageSpec, image: string, run: DockerRun
     ).filter((mount) => mount.Destination === destination);
     requireValue(matches.length === 1 && matches[0].RW === true, 'gitlab-live-mount-is-missing');
     let selected = matches[0].Source;
+
     if (matches[0].Type === 'volume') {
       const volume = JSON.parse(run(['volume', 'inspect', matches[0].Name]))[0],
         options = volume.Options || {};
@@ -194,14 +208,19 @@ export function gitlabOwnership(spec: StorageSpec, image: string, run: DockerRun
         'gitlab-volume-is-not-a-live-bind',
       );
       selected = options.device;
-    } else requireValue(matches[0].Type === 'bind', 'gitlab-volume-is-not-a-live-bind');
+    } else {
+      requireValue(matches[0].Type === 'bind', 'gitlab-volume-is-not-a-live-bind');
+    }
+
     requireValue(
       selected === spec.PERSISTENT_DIR + '/gitlab/' + relative,
       'gitlab-writers-use-different-live-storage',
     );
   }
-  if (spec.operation === 'restore')
+
+  if (spec.operation === 'restore') {
     requireValue(row.State.Running === false, 'stop-gitlab-before-restore');
+  }
 }
 export function statusIdle(status: Record<string, unknown>) {
   // Harvest itself is an active API operation; all other queues must already
@@ -240,8 +259,11 @@ export function savedSyncEnvironment(environment: NodeJS.ProcessEnv): NodeJS.Pro
     ...environmentAssignments(fs.readFileSync(path.join(config, 'sync-auth.env'), 'utf8')),
   };
   const saved = path.join(config, '.docker.env');
-  if (fs.existsSync(saved))
+
+  if (fs.existsSync(saved)) {
     Object.assign(result, environmentAssignments(fs.readFileSync(saved, 'utf8')));
+  }
+
   return result;
 }
 export async function syncStatus(environment: NodeJS.ProcessEnv = process.env) {
@@ -263,7 +285,10 @@ export async function syncStatus(environment: NodeJS.ProcessEnv = process.env) {
           let raw = '';
           res.on('data', (part) => {
             raw += part;
-            if (raw.length > 16384) req.destroy();
+
+            if (raw.length > 16384) {
+              req.destroy();
+            }
           });
           res.on('error', () => reject(Error('controller-status-unavailable')));
           res.on('end', () => {

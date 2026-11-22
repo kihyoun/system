@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-export const ROOT = path.resolve(__dirname, '../../..');
-export const GITLAB = path.join(ROOT, 'config/gitlab');
+export const root = path.resolve(__dirname, '../../..');
+export const gitlabConfigurationPath = path.join(root, 'config/gitlab');
 export type Aliases = Record<string, string>;
 export interface ReleaseProfile {
   fromImage: string;
@@ -19,7 +19,7 @@ export interface ReleaseProfile {
   };
 }
 export const release: ReleaseProfile = parseRelease(
-  fs.readFileSync(path.join(GITLAB, 'security-release.json'), 'utf8'),
+  fs.readFileSync(path.join(gitlabConfigurationPath, 'security-release.json'), 'utf8'),
 );
 /** The standalone watchdog is a native process-group boundary, not an operation service. */
 export interface ChildJournal {
@@ -28,7 +28,7 @@ export interface ChildJournal {
   stat(pid: number): { state: string; start: string } | null;
 }
 export { childJournal };
-import * as childJournal from './child-journal';
+import * as childJournal from './childJournal';
 export interface CommandOptions {
   timeout?: number;
   cwd?: string;
@@ -193,25 +193,32 @@ interface AcceptanceEvidence {
   images: Record<string, string>;
 }
 export function readRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw Error('upgrade-input-invalid');
+  }
+
   return value as Record<string, unknown>;
 }
 export function parseRecord(raw: string): Record<string, unknown> {
   return readRecord(JSON.parse(raw) as unknown);
 }
 function stringFields(value: Record<string, unknown>, fields: string[]): void {
-  for (const key of fields)
-    if (typeof value[key] !== 'string') throw Error('upgrade-input-invalid');
+  for (const key of fields) {
+    if (typeof value[key] !== 'string') {
+      throw Error('upgrade-input-invalid');
+    }
+  }
 }
 function optionalFields(
   value: Record<string, unknown>,
   kind: 'number' | 'boolean' | 'string',
   fields: string[],
 ): void {
-  for (const key of fields)
-    if (value[key] !== undefined && typeof value[key] !== kind)
+  for (const key of fields) {
+    if (value[key] !== undefined && typeof value[key] !== kind) {
       throw Error('upgrade-input-invalid');
+    }
+  }
 }
 function parseRelease(raw: string): ReleaseProfile {
   const value = parseRecord(raw),
@@ -229,7 +236,11 @@ function parseRelease(raw: string): ReleaseProfile {
 }
 export function parseContainer(raw: string): Container {
   const values: unknown = JSON.parse(raw);
-  if (!Array.isArray(values) || !values.length) throw Error('upgrade-input-invalid');
+
+  if (!Array.isArray(values) || !values.length) {
+    throw Error('upgrade-input-invalid');
+  }
+
   const value = readRecord(values[0]);
   // Docker fields absent in older responses stay absent; use sites decide whether they are required.
   optionalFields(value, 'string', ['Id', 'Image']);
@@ -237,16 +248,25 @@ export function parseContainer(raw: string): Container {
   optionalFields(state, 'boolean', ['Running', 'OOMKilled', 'Dead', 'Restarting', 'Paused']);
   optionalFields(state, 'string', ['Status']);
   optionalFields(state, 'number', ['ExitCode']);
+
   if (value.Config !== undefined) {
     const config = readRecord(value.Config);
+
     if (config.Labels !== undefined) {
       const labels = readRecord(config.Labels);
-      for (const label of Object.values(labels))
-        if (typeof label !== 'string') throw Error('upgrade-input-invalid');
+      for (const label of Object.values(labels)) {
+        if (typeof label !== 'string') {
+          throw Error('upgrade-input-invalid');
+        }
+      }
     }
   }
+
   if (value.Mounts !== undefined) {
-    if (!Array.isArray(value.Mounts)) throw Error('upgrade-input-invalid');
+    if (!Array.isArray(value.Mounts)) {
+      throw Error('upgrade-input-invalid');
+    }
+
     for (const item of value.Mounts) {
       const mount = readRecord(item);
       stringFields(mount, ['Destination', 'Type']);
@@ -254,35 +274,48 @@ export function parseContainer(raw: string): Container {
       optionalFields(mount, 'boolean', ['RW']);
     }
   }
+
   if (value.HostConfig !== undefined) {
     const host = readRecord(value.HostConfig);
+
     if (host.RestartPolicy !== undefined) {
       const policy = readRecord(host.RestartPolicy);
       optionalFields(policy, 'string', ['Name']);
       optionalFields(policy, 'number', ['MaximumRetryCount']);
     }
   }
+
   optionalFields(value, 'number', ['RestartCount']);
   return value as unknown as Container;
 }
 export function parseImage(raw: string): Image {
   const values: unknown = JSON.parse(raw);
-  if (!Array.isArray(values) || !values.length) throw Error('upgrade-input-invalid');
+
+  if (!Array.isArray(values) || !values.length) {
+    throw Error('upgrade-input-invalid');
+  }
+
   const value = readRecord(values[0]);
   stringFields(value, ['Id']);
+
   if (
     value.RepoDigests !== undefined &&
     (!Array.isArray(value.RepoDigests) ||
       value.RepoDigests.some((item) => typeof item !== 'string'))
-  )
+  ) {
     throw Error('upgrade-input-invalid');
+  }
+
   return value as unknown as Image;
 }
 export function parseOwner(input: unknown): UpgradeOwner {
   const value = readRecord(input);
   stringFields(value, ['format', 'operation']);
-  if (typeof value.pid !== 'number')
+
+  if (typeof value.pid !== 'number') {
     throw Error('upgrade-interrupted-operation-requires-inspection');
+  }
+
   optionalFields(value, 'string', ['start', 'planSha256', 'checkpointSha256', 'phase']);
   optionalFields(value, 'number', ['quiesceDeadline']);
   optionalFields(value, 'boolean', ['runnersStopped']);
@@ -291,19 +324,33 @@ export function parseOwner(input: unknown): UpgradeOwner {
 export function parseChild(input: unknown): ChildRecord {
   const value = readRecord(input);
   stringFields(value, ['format', 'operation', 'watchdogStart']);
-  for (const key of ['group', 'watchdogPid'])
-    if (typeof value[key] !== 'number') throw Error('upgrade-operation-child-still-running');
+  for (const key of ['group', 'watchdogPid']) {
+    if (typeof value[key] !== 'number') {
+      throw Error('upgrade-operation-child-still-running');
+    }
+  }
   return value as unknown as ChildRecord;
 }
 export function parseCheckpoint(raw: string): Checkpoint {
   const value = parseRecord(raw),
     plan = readRecord(value.plan);
+
   if (plan.runner !== undefined) {
     const runner = readRecord(plan.runner);
-    if (!Array.isArray(runner.configurations)) throw Error('upgrade-runner-checkpoint-invalid');
-    for (const row of runner.configurations) readRecord(row);
+
+    if (!Array.isArray(runner.configurations)) {
+      throw Error('upgrade-runner-checkpoint-invalid');
+    }
+
+    for (const row of runner.configurations) {
+      readRecord(row);
+    }
   }
-  if (!Array.isArray(value.entries)) throw Error('upgrade-checkpoint-verification-failed');
+
+  if (!Array.isArray(value.entries)) {
+    throw Error('upgrade-checkpoint-verification-failed');
+  }
+
   for (const row of value.entries) {
     const entry = readRecord(row);
     stringFields(entry, ['path', 'type']);
@@ -312,14 +359,28 @@ export function parseCheckpoint(raw: string): Checkpoint {
 }
 export function parseEvidence(raw: string): AcceptanceEvidence {
   const value = parseRecord(raw);
-  if (!Array.isArray(value.results)) throw Error('upgrade-passing-successor-evidence-required');
-  for (const row of value.results) readRecord(row);
+
+  if (!Array.isArray(value.results)) {
+    throw Error('upgrade-passing-successor-evidence-required');
+  }
+
+  for (const row of value.results) {
+    readRecord(row);
+  }
+
   if (value.evidence !== undefined) {
     const evidence = readRecord(value.evidence);
-    if (evidence.gitlabUpgrade !== undefined) readRecord(evidence.gitlabUpgrade);
+
+    if (evidence.gitlabUpgrade !== undefined) {
+      readRecord(evidence.gitlabUpgrade);
+    }
   }
+
   const images = readRecord(value.images);
-  for (const image of Object.values(images))
-    if (typeof image !== 'string') throw Error('upgrade-passing-successor-evidence-required');
+  for (const image of Object.values(images)) {
+    if (typeof image !== 'string') {
+      throw Error('upgrade-passing-successor-evidence-required');
+    }
+  }
   return value as unknown as AcceptanceEvidence;
 }

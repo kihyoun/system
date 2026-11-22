@@ -3,14 +3,14 @@ import { Module } from '@nestjs/common';
 import { HostInstallService } from '../modules/host/install';
 import {
   CliInstallationService,
-  CLI_INSTALLATION_PATHS,
+  cliInstallationPaths,
   nativeCliInstallationPaths,
-} from '../modules/host-bootstrap/cli-installation.service';
+} from '../modules/host-bootstrap/cliInstallation.service';
 
 @Module({
   providers: [
     { provide: HostInstallService, useFactory: () => new HostInstallService() },
-    { provide: CLI_INSTALLATION_PATHS, useFactory: nativeCliInstallationPaths },
+    { provide: cliInstallationPaths, useFactory: nativeCliInstallationPaths },
     CliInstallationService,
   ],
   exports: [CliInstallationService],

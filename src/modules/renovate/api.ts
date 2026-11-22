@@ -7,11 +7,16 @@ export class RenovateApi implements RenovateReader {
     endpoint: unknown,
     private readonly token: string,
   ) {
-    if (typeof endpoint !== 'string' || !token || /[\r\n]/.test(token))
+    if (typeof endpoint !== 'string' || !token || /[\r\n]/.test(token)) {
       throw Error('Private GitLab API credentials required.');
+    }
+
     const url = new URL(endpoint);
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash)
+
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
       throw Error('Use an HTTPS GitLab API endpoint.');
+    }
+
     this.endpoint = endpoint.replace(/\/$/, '');
   }
 
@@ -20,7 +25,10 @@ export class RenovateApi implements RenovateReader {
   }
 
   async call(method: string, route: string, data?: unknown, missing = false): Promise<unknown> {
-    if (!/^\/(?!\/)/.test(route) || /[\r\n#]/.test(route)) throw Error('Invalid GitLab API route.');
+    if (!/^\/(?!\/)/.test(route) || /[\r\n#]/.test(route)) {
+      throw Error('Invalid GitLab API route.');
+    }
+
     const signal = AbortSignal.timeout(60_000);
     let response: Response;
     try {
@@ -34,26 +42,39 @@ export class RenovateApi implements RenovateReader {
     } catch {
       throw Error('GitLab API connection failed.');
     }
+
     if (missing && response.status === 404) {
       await response.body?.cancel();
       return null;
     }
+
     if (!response.ok) {
       await response.body?.cancel();
       throw Error(`GitLab API rejected request: HTTP ${response.status}`);
     }
+
     const reader = response.body?.getReader();
     const chunks: Uint8Array[] = [];
     let length = 0;
     try {
-      if (reader)
+      if (reader) {
         while (true) {
           const next = await reader.read();
-          if (next.done) break;
+
+          if (next.done) {
+            break;
+          }
+
           length += next.value.length;
-          if (length > 4 * 1024 * 1024) throw Error('GitLab API response exceeds its limit.');
+
+          if (length > 4 * 1024 * 1024) {
+            throw Error('GitLab API response exceeds its limit.');
+          }
+
           chunks.push(next.value);
         }
+      }
+
       const body = Buffer.concat(chunks).toString('utf8');
       return body ? JSON.parse(body) : null;
     } catch {
@@ -69,9 +90,16 @@ export class RenovateApi implements RenovateReader {
       const items = await this.get(
         route + (route.includes('?') ? '&' : '?') + `per_page=100&page=${page}`,
       );
-      if (!Array.isArray(items) || items.length > 100) throw Error('Invalid GitLab API page.');
+
+      if (!Array.isArray(items) || items.length > 100) {
+        throw Error('Invalid GitLab API page.');
+      }
+
       result.push(...items);
-      if (items.length < 100) return result;
+
+      if (items.length < 100) {
+        return result;
+      }
     }
     throw Error('GitLab API pagination exceeds its limit.');
   }

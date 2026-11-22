@@ -12,8 +12,8 @@ let server, application;
 const child = require('child_process');
 child.execSync = child.execFile = child.spawn = () => { throw Error('API fixture forbids shell/container calls'); };
 process.env.SYNC_USER = 'fixture'; process.env.SYNC_PASS = 'fixture-password';
-const bootstrap = require(path.join(source, 'dist/api/projects/project-workflow'));
-const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/api/projects/default-wizard'));
+const bootstrap = require(path.join(source, 'dist/modules/project-workflow/projectWorkflow'));
+const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/api/projects/defaultWizard'));
 const repository = {id: 99, path: 'root/wizard', defaultBranch: 'main', systemProject: true,
   ciPath: '.system-bootstrapper/ci.yml', generatedCi: wizardCi()};
 bootstrap.writeReceipt(path.join(root, 'system/.projects.env/.wizard.env'), wizardConfiguration({WIZARD_HOST: 'localhost'}),
@@ -37,6 +37,10 @@ const {bootstrap: startSync} = require(path.join(source, 'dist/api/bootstrap'));
   const preview = await (await request('/projects/wizard/source', {headers})).json();
   assert.equal(calls, 0, 'preview performed a mutation'); assert.equal(preview.repository.id, 99);
   assert.equal((await request('/projects/wizard/source', {method: 'POST', headers, body: JSON.stringify({manifestHash: 'stale'})})).status, 409);
+  for (const input of [[], {manifestHash: null}, {manifestHash: 7}]) {
+    assert.equal((await request('/projects/wizard/source', {method: 'POST', headers, body: JSON.stringify(input)})).status, 409);
+  }
+  assert.equal(calls, 0);
   const start = await request('/projects/wizard/source', {method: 'POST', headers, body: JSON.stringify({manifestHash: preview.manifestHash})});
   assert.equal(start.status, 202); const job = await start.json(); assert.equal(job.state, 'running'); assert.equal(calls, 1);
   assert.equal((await request('/config/project', {method: 'POST', headers, body: '{}'})).status, 409);

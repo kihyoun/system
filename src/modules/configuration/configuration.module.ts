@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { NativeProcessRunner } from '../../common/runtime/process';
-import { ProjectsRoutingModule } from '../projects-routing/projects-routing.module';
-import { CONFIGURATION_PROCESS, ConfigurationService } from './configuration.service';
+import { ProjectsRoutingModule } from '../projects-routing/projectsRouting.module';
+import { configurationProcess, ConfigurationService } from './configuration.service';
 @Module({
   imports: [ProjectsRoutingModule],
   providers: [
-    { provide: CONFIGURATION_PROCESS, useClass: NativeProcessRunner },
+    { provide: configurationProcess, useClass: NativeProcessRunner },
     ConfigurationService,
   ],
   exports: [ConfigurationService],

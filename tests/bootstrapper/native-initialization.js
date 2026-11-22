@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const {execFileSync, spawnSync} = require('node:child_process');
-const {RecoveryManifestService, canonicalDigest, canonicalSelector, fileSha} = require('../../dist/modules/host/recovery-manifest');
-const {runtimeImageSelectors, verifyImageInspections} = require('../../dist/modules/host/runtime-inspection');
+const {RecoveryManifestService, canonicalDigest, canonicalSelector, fileSha} = require('../../dist/modules/host/recoveryManifest');
+const {runtimeImageSelectors, verifyImageInspections} = require('../../dist/modules/host/runtimeInspection');
 const service = new RecoveryManifestService(), root = path.resolve(__dirname, '../..');
 function fixture() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'system-native-init-'));

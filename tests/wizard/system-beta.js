@@ -1,9 +1,9 @@
 'use strict';
 const assert = require('assert');
-const {environmentHash, validate, sha} = require('../../dist/modules/project-lifecycle/system-beta-binding');
-const {plan} = require('../../dist/modules/project-lifecycle/system-beta-plan');
-const {request} = require('../../dist/modules/project-lifecycle/system-beta-session');
-const {parse} = require('../../dist/modules/project-lifecycle/environment-runtime');
+const {environmentHash, validate, sha} = require('../../dist/modules/project-lifecycle/systemBetaBinding');
+const {plan} = require('../../dist/modules/project-lifecycle/systemBetaPlan');
+const {request} = require('../../dist/modules/project-lifecycle/systemBetaSession');
+const {parse} = require('../../dist/modules/project-lifecycle/environmentRuntime');
 const state = require('../../dist/modules/project-lifecycle/state');
 const copy = value => JSON.parse(JSON.stringify(value));
 const operation = 'a'.repeat(48), sourceCommit = 'b'.repeat(40), wizardSourceTree = 'c'.repeat(40);

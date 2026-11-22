@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GitlabCredentialService } from '../gitlab-provision/credential.service';
-import { RecoveryRegistryCredentialService } from '../gitlab-provision/recovery-registry-credential.service';
+import { RecoveryRegistryCredentialService } from '../gitlab-provision/recoveryRegistryCredential.service';
 import type { RecoveryOptions, RecoveryRegistryPort, RegistrySession } from './ports';
 @Injectable()
 export class WizardRecoveryRegistryService implements RecoveryRegistryPort {

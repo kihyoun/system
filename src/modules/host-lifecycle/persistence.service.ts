@@ -2,21 +2,27 @@ import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 
 export function storageEnvironment(input: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env = { ...input };
   env.PERSISTENCE_MODE ||= env.PERSISTENT_MOUNT ? 'volume' : 'local';
+
   if (env.PERSISTENCE_MODE === 'local') {
     env.PERSISTENT_MOUNT ||= '/';
     env.PERSISTENT_DIR ||= '/var/lib/system-bootstrapper/platform';
     env.PERSISTENT_UUID ||= '';
   }
-  for (const key of ['SEED_DIR', 'SEED_MOUNT', 'SEED_UUID']) env[key] ||= '';
+
+  for (const key of ['SEED_DIR', 'SEED_MOUNT', 'SEED_UUID']) {
+    env[key] ||= '';
+  }
   return env;
 }
 function requireStorage(value: unknown, message: string): asserts value {
-  if (!value) throw new Error('Persistent storage: ' + message);
+  if (!value) {
+    throw new Error('Persistent storage: ' + message);
+  }
 }
 const directories = [
   'configuration',
@@ -76,19 +82,27 @@ export class HostPersistenceService {
       (await inspect('TARGET', canonicalMount)) === canonicalMount,
       'mountpoint mismatch.',
     );
-    if (env.PERSISTENCE_MODE === 'volume')
+
+    if (env.PERSISTENCE_MODE === 'volume') {
       requireStorage(
         (await inspect('MAJ:MIN', canonicalMount)) !== (await inspect('MAJ:MIN', '/')),
         'storage resolves to the root filesystem.',
       );
-    else requireStorage(canonicalMount === '/', 'local mode must select the system filesystem.');
-    if (env.PERSISTENT_UUID)
+    } else {
+      requireStorage(canonicalMount === '/', 'local mode must select the system filesystem.');
+    }
+
+    if (env.PERSISTENT_UUID) {
       requireStorage(
         (await inspect('UUID', canonicalMount)) === env.PERSISTENT_UUID,
         'filesystem UUID mismatch.',
       );
+    }
+
     let existing = canonicalData;
-    while (!fs.existsSync(existing)) existing = path.dirname(existing);
+    while (!fs.existsSync(existing)) {
+      existing = path.dirname(existing);
+    }
     requireStorage(
       (await inspect('TARGET', existing)) === canonicalMount,
       'data directory resolves to another filesystem.',
@@ -115,17 +129,20 @@ export class HostPersistenceService {
       const target = path.join(canonicalData, relative);
       requireStorage((await run('realpath', ['-m', '--', target])) === target, 'unsafe data path.');
       const stat = fs.lstatSync(target, { throwIfNoEntry: false });
-      if (stat)
+
+      if (stat) {
         requireStorage(
           stat.isDirectory() &&
             !stat.isSymbolicLink() &&
             (await inspect('TARGET', target)) === canonicalMount,
           'unsafe data directory or nested mount.',
         );
+      }
     }
     const marker = path.join(canonicalData, '.system-bootstrapper-volume');
     const markerStat = fs.lstatSync(marker, { throwIfNoEntry: false });
-    if (markerStat)
+
+    if (markerStat) {
       requireStorage(
         markerStat.isFile() &&
           !markerStat.isSymbolicLink() &&
@@ -133,9 +150,15 @@ export class HostPersistenceService {
             'system-bootstrapper-persistence-v1',
         'invalid volume marker.',
       );
-    if (env.PERSISTENCE_CHECK_ONLY === '1') return env;
-    for (const relative of directories)
+    }
+
+    if (env.PERSISTENCE_CHECK_ONLY === '1') {
+      return env;
+    }
+
+    for (const relative of directories) {
       fs.mkdirSync(path.join(canonicalData, relative), { recursive: true, mode: 0o700 });
+    }
     fs.chmodSync(path.join(canonicalData, 'configuration'), 0o700);
     fs.chmodSync(path.join(canonicalData, 'wizard-public'), 0o755);
     const ssl = path.join(canonicalData, 'ssl');

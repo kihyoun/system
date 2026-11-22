@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 export { StorageModule } from './modules/storage/storage.module';
 export { StorageService } from './modules/storage/storage.service';
-export type { StorageCommandDto } from './modules/storage/storage-command.dto';
+export type { StorageCommandDto } from './modules/storage/storageCommand.dto';
 export { NativeProcessRunner, ProcessFailure } from './common/runtime/process';
 export type { ProcessRunner, ProcessOptions, ProcessResult } from './common/runtime/process';
 export { HostModule, HostStorageService, HostInstallService } from './modules/host';
@@ -13,4 +13,4 @@ export { LifecycleModule } from './modules/lifecycle/lifecycle.module';
 export { LifecycleService } from './modules/lifecycle/lifecycle.service';
 export { RunnerLifecycleService } from './modules/lifecycle/runner.service';
 export { DocumentationModule } from './modules/documentation/documentation.module';
-export { DocumentationExportService } from './modules/documentation/documentation-export.service';
+export { DocumentationExportService } from './modules/documentation/documentationExport.service';

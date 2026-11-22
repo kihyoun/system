@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 import { HostInspectionService } from './inspection.service';
-import { inspectHost } from './inspection-cli';
+import { inspectHost } from './inspectionCli';
 import 'reflect-metadata';
 import path from 'node:path';
-import { RuntimeVerificationService } from './runtime-verification.service';
+import { RuntimeVerificationService } from './runtimeVerification.service';
 import { HostInitializeService } from './initialize.service';
 import { parseArguments, absolute, optionalString } from './arguments';
 import { QuickstartService } from './quickstart.service';
 import { UbuntuHostService } from './ubuntu.service';
 import { RetainedRecoveryService } from './recovery.service';
 import { NestFactory } from '@nestjs/core';
-import { HostBootstrapModule } from './host-bootstrap.module';
-import { BuildToolsService } from './build-tools.service';
+import { HostBootstrapModule } from './hostBootstrap.module';
+import { BuildToolsService } from './buildTools.service';
 import { HostCertificateService } from './certificate.service';
 import { LocalHostService } from './local.service';
-import { CaVerificationService } from './ca-verification.service';
+import { CaVerificationService } from './caVerification.service';
 export async function main(input: string[], env = process.env): Promise<void> {
   if (input.includes('--help') || input.includes('-h')) {
     console.log(
@@ -22,13 +22,20 @@ export async function main(input: string[], env = process.env): Promise<void> {
     );
     return;
   }
+
   const args = [...input],
     command = args.shift();
   const index = args.indexOf('--checkout'),
     checkout = index >= 0 ? args[index + 1] : undefined;
-  if (index >= 0) args.splice(index, 2);
-  if (!command || !checkout || !path.isAbsolute(checkout))
+
+  if (index >= 0) {
+    args.splice(index, 2);
+  }
+
+  if (!command || !checkout || !path.isAbsolute(checkout)) {
     throw Error('host-bootstrap-absolute-checkout-required');
+  }
+
   if (
     ![
       'rebind-renewal',
@@ -47,8 +54,10 @@ export async function main(input: string[], env = process.env): Promise<void> {
       'certbot',
       'prepare-local',
     ].includes(command)
-  )
+  ) {
     throw Error('host-bootstrap-unsupported-action');
+  }
+
   if (
     command !== 'rebind-renewal' &&
     command !== 'container-preflight' &&
@@ -65,13 +74,17 @@ export async function main(input: string[], env = process.env): Promise<void> {
     ) &&
     !(command === 'recover-volume' && args.length === 1 && args[0] === '--verify') &&
     args.length
-  )
+  ) {
     throw Error('host-bootstrap-unexpected-arguments');
+  }
+
   if (
     !['refresh-ca', 'ca-check', 'container-preflight', 'log-policy'].includes(command) &&
     process.geteuid?.() !== 0
-  )
+  ) {
     throw Error('host-bootstrap-root-required');
+  }
+
   const app = await NestFactory.createApplicationContext(HostBootstrapModule, {
     logger: false,
     abortOnError: false,
@@ -105,8 +118,11 @@ export async function main(input: string[], env = process.env): Promise<void> {
       );
     } else if (command === 'verify-runtime') {
       const operation = args.shift();
-      if (operation !== 'baseline' && operation !== 'check')
+
+      if (operation !== 'baseline' && operation !== 'check') {
         throw Error('Runtime verification requires baseline or check.');
+      }
+
       const values = parseArguments(
         args,
         ['--public-images'],
@@ -141,30 +157,33 @@ export async function main(input: string[], env = process.env): Promise<void> {
           args[0] === '--bundle' ? service.bundle(checkout) : service.system(checkout, env),
         ),
       );
-    } else if (command === 'quickstart')
+    } else if (command === 'quickstart') {
       await app.get(QuickstartService).install(checkout, args[1], env, abort.signal);
-    else if (command === 'install-host')
+    } else if (command === 'install-host') {
       await app.get(UbuntuHostService).install(env, abort.signal);
-    else if (command === 'recover-volume')
+    } else if (command === 'recover-volume') {
       await app
         .get(RetainedRecoveryService)
         .recover(checkout, env, args[0] === '--verify', abort.signal);
-    else if (command === 'refresh-ca') app.get(BuildToolsService).refreshCa(checkout);
-    else if (command === 'install-runtime')
+    } else if (command === 'refresh-ca') {
+      app.get(BuildToolsService).refreshCa(checkout);
+    } else if (command === 'install-runtime') {
       await app.get(BuildToolsService).installRuntime(checkout, env, abort.signal);
-    else if (command === 'prepare-local')
+    } else if (command === 'prepare-local') {
       await app.get(LocalHostService).prepare(env, abort.signal);
-    else {
+    } else {
       const service = app.get(HostCertificateService);
+
       if (command === 'rebind-renewal') {
         const values = parseArguments(args, [], ['--directory', '--webroot']);
         service.rebind(absolute(values['--directory']), absolute(values['--webroot']));
-      } else if (command === 'install-volume-host')
+      } else if (command === 'install-volume-host') {
         await service.install(checkout, env, abort.signal);
-      else if (command === 'install-certificate')
+      } else if (command === 'install-certificate') {
         await service.publish(checkout, env, abort.signal);
-      else
+      } else {
         await service.renew(checkout, args[0] === '--' ? args.slice(1) : args, env, abort.signal);
+      }
     }
   } finally {
     process.off('SIGINT', cancel);
@@ -172,6 +191,7 @@ export async function main(input: string[], env = process.env): Promise<void> {
     await app.close();
   }
 }
+
 if (require.main === module) {
   const alias = path.basename(process.argv[1]),
     commands: Record<string, string> = {

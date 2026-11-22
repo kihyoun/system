@@ -137,14 +137,15 @@ recipes only, verifies their pinned images and lockfile, rejects symlinks/privat
 input filenames, and records a public input manifest. Without `--execute`, it
 prints the validated plan and starts no Docker workload.
 
-Extract exact committed templates instead of assigning a commit ID to dirty
-working-copy files:
+Prepare the source-bound regular CLI companion as described in the
+[operations guide](../../../docs/OPERATIONS.md) and export its absolute
+`SYSTEM_CLI_ARTIFACT` path. Extract exact committed templates:
 
 ```sh
 export TASK_BENCHMARK_REVISION=$(git rev-parse HEAD)
 export TASK_BENCHMARK_INPUTS=$(mktemp -d /tmp/system-resource-inputs.XXXXXXXX)
 export TASK_BENCHMARK_OUTPUT=$(mktemp -d /tmp/system-resource-results.XXXXXXXX)
-git archive --format=tar "$TASK_BENCHMARK_REVISION" templates/project-bootstrap/templates wizard/.gitlab/runtime config/ca |   tar -xf - -C "$TASK_BENCHMARK_INPUTS"
+git archive --format=tar "$TASK_BENCHMARK_REVISION" templates/project-bootstrap/templates |   tar -xf - -C "$TASK_BENCHMARK_INPUTS"
 system-bootstrapper resources benchmark   --case react --templates "$TASK_BENCHMARK_INPUTS/templates/project-bootstrap/templates"   --source-revision "$TASK_BENCHMARK_REVISION"   --output "$TASK_BENCHMARK_OUTPUT/react"
 ```
 

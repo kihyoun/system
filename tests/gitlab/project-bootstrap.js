@@ -15,11 +15,11 @@ fs.mkdirSync(path.join(root,'bin'));
 fs.mkdirSync(path.join(root,'state'));
 fs.symlinkSync(path.resolve(__dirname,'../../node_modules'),path.join(root,'node_modules'),'dir');
 const sourceRoot=path.resolve(__dirname,'../..');
-const {PUBLIC_PACKAGE_PAYLOAD,verifyPublicPayload}=require('../../dist/common/public-payload');
-for(const name of [...PUBLIC_PACKAGE_PAYLOAD,'assets/public-runtime.json','assets/wizard-source/snapshot.json']){
+const {publicPackagePayload,verifyPublicPayload}=require('../../dist/common/publicPayload');
+for(const name of [...publicPackagePayload,'assets/public-runtime.json','assets/wizard-source/snapshot.json']){
  const target=path.join(root,name);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(path.join(sourceRoot,name),target);
 }
-assert.equal(verifyPublicPayload(root).length,PUBLIC_PACKAGE_PAYLOAD.length,'Relocated application runs with the complete regular-file public payload.');
+assert.equal(verifyPublicPayload(root).length,publicPackagePayload.length,'Relocated application runs with the complete regular-file public payload.');
 fs.symlinkSync(path.join(sourceRoot,'tools'),path.join(root,'tools'),'dir');
 fs.renameSync(path.join(root,'dist/cli/main.js'),path.join(root,'dist/cli/native-main.js'));
 const routingStatus=path.join(root,'routing-status');fs.writeFileSync(routingStatus,'0');
@@ -32,6 +32,7 @@ let text = ''; process.stdin.on('data', chunk => text += chunk);
 process.stdin.on('end', () => {
  const input = JSON.parse(text);
  require('fs').appendFileSync(${JSON.stringify(path.join(root, 'native-requests.jsonl'))}, JSON.stringify(input) + '\\n');
+ if(input.projectKey==='malformed')return console.log(JSON.stringify(input.fixtureResult));
  if(input.projectKey==='uncertain')return process.exit(1);
  if(input.projectKey==='diagnostic')return console.log(JSON.stringify({state:'failed',message:'CI installation failed; retry Save',...input.fixtureResult}));
  const result = input.action === 'pipeline' ? {pipeline: {id: 123, webUrl: 'http://gitlab.localhost/pipeline', status: 'pending'}} :
@@ -46,11 +47,11 @@ process.stdin.on('end', () => {
 fs.writeFileSync(path.join(root, 'dist/cli/main.js'), mock, {mode: 0o755});
 process.env.PATH = path.join(root, 'bin') + ':' + process.env.PATH;
 process.chdir(root);
-const bootstrap = require(path.join(api, 'projects/project-workflow'));
-const logo = require(path.join(root,'dist/common/configuration-signature')).default.textLogo;
+const bootstrap = require(path.join(api, '../modules/project-workflow/projectWorkflow'));
+const logo = require(path.join(root,'dist/common/configurationSignature')).default.textLogo;
 // Use the exact pinned Wizard Fetch parser and ProjectConfig serializer. Only
 // browser/storage dependencies and MobX observation are inert in this fixture.
-const snapshot = require('../../dist/modules/source-preparation/wizard-source.service').validate(JSON.parse(fs.readFileSync(
+const snapshot = require('../../dist/modules/source-preparation/wizardSource.service').validate(JSON.parse(fs.readFileSync(
   path.resolve(__dirname, '../../assets/wizard-source/snapshot.json'), 'utf8')));
 const ts = require('../../node_modules/typescript');
 const wizardModules = new Map();
@@ -103,7 +104,7 @@ function request(route, token, body) {
   });
 }
 async function nativeProvisionContracts() {
-  const {ProjectProvisionService}=require('../../dist/modules/gitlab-provision/project-provision.service');
+  const {ProjectProvisionService}=require('../../dist/modules/gitlab-provision/projectProvision.service');
   const payload={action:'create',projectKey:'application',namespaceId:'7',operation:'owned-operation',template:'angular',templateVersion:1,ci:'original generated CI',files:[{action:'create',file_path:'starter.ts',content:'initial starter'}]};
   const binding={id:42,namespaceId:7,path:'team/application',webUrl:'https://gitlab.example.test/team/application',defaultBranch:'main',pipelineUrl:'https://gitlab.example.test/team/application/-/pipelines',ciPath:'.system-bootstrapper/ci.yml',template:'angular',templateVersion:1,generatedCi:payload.ci,deploymentState:'awaiting-pipeline'};
   function fixture(){
@@ -215,7 +216,7 @@ async function nativeProvisionContracts() {
   for(const status of [400,409,403]){f=fixture();f.state.exists=false;f.state.createStatus=status;const result=await f.invoke();assert.equal(result.state,'failed');assert.equal(result.conflict,status!==403);assert.equal(f.state.requests.filter(row=>row.method!=='GET').length,1);}
   f=fixture();assert.equal((await f.invoke({...payload,projectKey:'application\n'})).state,'failed');assert.equal(f.state.requests.length,0);
   const {NestFactory}=require('../../node_modules/@nestjs/core');
-  const {GitlabProvisionModule}=require('../../dist/modules/gitlab-provision/gitlab-provision.module');
+  const {GitlabProvisionModule}=require('../../dist/modules/gitlab-provision/gitlabProvision.module');
   const app=await NestFactory.createApplicationContext(GitlabProvisionModule,{logger:false,abortOnError:false});
   try{assert(app.get(ProjectProvisionService) instanceof ProjectProvisionService);}finally{await app.close();}
   console.log('Native project provisioning: paginated read-only discovery, exact resume identity, unchanged edited source, protected-branch controller membership, creation races, interrupted writes and pipeline retry reconciliation passed.');
@@ -224,6 +225,31 @@ async function nativeProvisionContracts() {
 let child;
 (async () => {
   await nativeProvisionContracts();
+  // A launched native mutation with malformed JSON fields cannot confirm completion.
+  for(const fixtureResult of [null,[],{},
+    {repository:{id:'42'}},{pipeline:{id:'123'}},
+    {namespaces:[{id:1,path:false}]},{state:42},
+    {projects:[{id:42,namespaceId:1,path:'root/application',defaultBranch:'main',sourceRevision:42}]},
+  ]) {
+    await assert.rejects(
+      ()=>bootstrap.rails({action:'create',projectKey:'malformed',fixtureResult}),
+      error=>error.uncertain===true && /completion was not confirmed/.test(error.message),
+    );
+  }
+  const nullableNative={
+    repository:{id:42,generatedCi:null},
+    build:{pipeline:null,publishing:null,artifact:null},
+    extension:{retained:'future metadata'},
+  };
+  assert.deepEqual(
+    await bootstrap.rails({action:'create',projectKey:'malformed',fixtureResult:nullableNative}),
+    nullableNative,
+    'Native decoding preserves conventional nulls and additive metadata.',
+  );
+  const malformed=await wait(bootstrap.createProject({...input('malformed'),fixtureResult:{repository:{id:'42'}}}));
+  assert.equal(malformed.state,'failed');assert.equal(malformed.uncertain,true);
+  const malformedReceipt=bootstrap.readReceipt(fs.readFileSync(path.join(root,'state/.projects.env/.malformed.env'),'utf8'));
+  assert.equal(malformedReceipt.state,'pending');assert.equal(malformedReceipt.repository,undefined);
   const output=[],originalLog=console.log;
   console.log=(...values)=>output.push(values.join(' '));
   try{
@@ -293,8 +319,8 @@ let child;
   assert.throws(() => bootstrap.createProject({...saved, data: saved.data.replace('GITLAB_RUNNER_SCALE="1"', 'GITLAB_RUNNER_SCALE="2"')}), /already exists locally/);
   assert.throws(() => bootstrap.createProject({...saved, template: 'react', data: saved.data.replace('PROJECT_TEMPLATE="angular"', 'PROJECT_TEMPLATE="react"')}), /already exists locally/);
   fs.writeFileSync(routingStatus,'0');
-  delete require.cache[require.resolve(path.join(api, 'projects/project-workflow'))];
-  const restarted = require(path.join(api, 'projects/project-workflow'));
+  delete require.cache[require.resolve(path.join(api, '../modules/project-workflow/projectWorkflow'))];
+  const restarted = require(path.join(api, '../modules/project-workflow/projectWorkflow'));
   const resumed = restarted.createProject({...saved, resumeRepository: {id: 999}});
   assert.equal(resumed.id, interrupted.id, 'restart resumes the durable operation');
   assert.equal((await wait(resumed)).state, 'complete');

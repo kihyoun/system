@@ -1,12 +1,12 @@
-import { WizardSourcePublicationService } from './wizard-source-publication.service';
+import { WizardSourcePublicationService } from './wizardSourcePublication.service';
 import { MirrorCiService } from './ci.service';
 import { Module } from '@nestjs/common';
 import { MirrorService } from './mirror.service';
 import { MirrorCredentialsService } from './credentials.service';
-import { MIRROR_PORT, NativeMirrorPort } from './ports';
+import { mirrorPort, NativeMirrorPort } from './ports';
 @Module({
   providers: [
-    { provide: MIRROR_PORT, useClass: NativeMirrorPort },
+    { provide: mirrorPort, useClass: NativeMirrorPort },
     MirrorService,
     MirrorCredentialsService,
     MirrorCiService,

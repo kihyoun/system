@@ -1,15 +1,15 @@
 import { createEvidence } from './evidence';
-import { publishSuccessor } from './successor-publication';
-import { createDockerHubPublisher, type InspectManifest } from './dockerhub-publication';
+import { publishSuccessor } from './successorPublication';
+import { createDockerHubPublisher, type InspectManifest } from './dockerhubPublication';
 import type { Environment, Execute, LifecycleEvidencePort, SecurityProfile } from './types';
 export * from './types';
-export * from './source-identity';
+export * from './sourceIdentity';
 export * from './evidence';
-export * from './successor-publication';
+export * from './successorPublication';
 export * from './manifest';
-export * from './github-source';
+export * from './githubSource';
 export * from './command';
-export * from './dockerhub-publication';
+export * from './dockerhubPublication';
 /** Constructible by CLI or a Nest provider without starting an HTTP application. */
 export class ReleaseService {
   readonly evidence: ReturnType<typeof createEvidence>;
@@ -38,17 +38,17 @@ export class ReleaseService {
     );
   }
 }
-export { NpmPublicationError, readNpmReceipt, validateNpmPublication } from './npm-identity';
-export type { NpmReceipt } from './npm-identity';
-export * from './npm-publication.service';
+export { NpmPublicationError, readNpmReceipt, validateNpmPublication } from './npmIdentity';
+export type { NpmReceipt } from './npmIdentity';
+export * from './npmPublication.service';
 export * from './release.module';
 
-export * from './github-publication.service';
-export * from './github-acceptance';
-export * from './github-metadata';
-export * from './github-presentation';
-export * from './github-transport';
-export * from './public-upgrade-assets';
+export * from './githubPublication.service';
+export * from './githubAcceptance';
+export * from './githubMetadata';
+export * from './githubPresentation';
+export * from './githubTransport';
+export * from './publicUpgradeAssets';
 
-export * from './publication-runtime';
-export { lifecyclePolicy } from './lifecycle-policy';
+export * from './publicationRuntime';
+export { lifecyclePolicy } from './lifecyclePolicy';

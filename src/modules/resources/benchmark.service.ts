@@ -6,39 +6,57 @@ import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { ObservationProcess } from './process';
 import { ResourceCollectorService, ResourceSample, summary, timestamp } from './collector.service';
-const NODE =
+import { cliRepositoryPath, maxCliArtifactBytes } from '../project-ci/cliFileEvidence';
+import { cliArtifactFiles, selectedCliArtifact } from '../project-ci/cliArtifact';
+const node =
     'node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f',
-  NGINX =
+  nginx =
     'nginx:stable-alpine@sha256:970364228b1e4f932abc22d321932816782cca8a20b85a77552a7cfe9acfb3b5',
-  BUILDKIT =
+  buildkit =
     'moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea';
-const CA = 'config/ca/cacert-2026-10-20.crt',
-  PUBLIC_INPUTS = [
-    ['runtime/project-ci.cjs', 'wizard/.gitlab/runtime/project-ci.cjs'],
-    ['runtime/LICENSES.txt', 'wizard/.gitlab/runtime/LICENSES.txt'],
-    ['bootstrapper/ca/cacert-2026-10-20.crt', CA],
-  ];
 const digest = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-export function inputManifest(directory: string): { path: string; sha256: string }[] {
+export function inputManifest(
+  directory: string,
+  cliSha256?: string,
+): { path: string; sha256: string }[] {
   const output: { path: string; sha256: string }[] = [];
   function visit(folder: string) {
     for (const name of fs.readdirSync(folder).sort()) {
       const file = path.join(folder, name),
         stat = fs.lstatSync(file);
-      if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory()))
+
+      if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) {
         throw Error('benchmark-input-type-refused');
-      if (stat.isDirectory()) visit(file);
-      else {
-        if (['.env', '.docker.env', '.npmrc', '.netrc'].includes(name) || stat.size > 4_000_000)
+      }
+
+      if (stat.isDirectory()) {
+        visit(file);
+      } else {
+        const relative = path.relative(directory, file).split(path.sep).join('/');
+        const cliArtifact = relative === cliRepositoryPath && cliSha256 !== undefined;
+
+        if (
+          ['.env', '.docker.env', '.npmrc', '.netrc'].includes(name) ||
+          stat.size > (cliArtifact ? maxCliArtifactBytes : 4_000_000)
+        ) {
           throw Error('benchmark-private-or-oversized-input');
-        output.push({
-          path: path.relative(directory, file).split(path.sep).join('/'),
-          sha256: digest(file),
-        });
+        }
+
+        const sha256 = digest(file);
+
+        if (cliArtifact && sha256 !== cliSha256) {
+          throw Error('benchmark-input-changed');
+        }
+
+        output.push({ path: relative, sha256 });
       }
     }
   }
-  if (fs.lstatSync(directory).isSymbolicLink()) throw Error('benchmark-input-type-refused');
+
+  if (fs.lstatSync(directory).isSymbolicLink()) {
+    throw Error('benchmark-input-type-refused');
+  }
+
   visit(directory);
   return output;
 }
@@ -82,46 +100,45 @@ export class ResourceBenchmarkService {
     if (
       !['react', 'angular'].includes(options.case) ||
       !/^[a-f0-9]{40}$/.test(options.sourceRevision)
-    )
+    ) {
       throw Error('exact-benchmark-source-required');
+    }
+
     const source = path.resolve(options.templates, options.case),
       root = path.resolve(options.templates, '../../..'),
       inputs = inputManifest(source),
       dockerfile = fs.readFileSync(path.join(source, 'Dockerfile'), 'utf8');
+
     if (
-      !dockerfile.includes(NODE) ||
-      !dockerfile.includes(NGINX) ||
+      !dockerfile.includes(node) ||
+      !dockerfile.includes(nginx) ||
       !dockerfile.includes('RUN npm ci') ||
-      !dockerfile.includes('runtime/project-ci.cjs refresh-ca')
-    )
+      !dockerfile.includes('system-bootstrapper host-bootstrap refresh-ca')
+    ) {
       throw Error('reviewed-benchmark-recipe-required');
+    }
+
     const pkg = JSON.parse(fs.readFileSync(path.join(source, 'package.json'), 'utf8')) as unknown,
       lock = JSON.parse(fs.readFileSync(path.join(source, 'package-lock.json'), 'utf8')) as {
         lockfileVersion: number;
       };
-    if (lock.lockfileVersion !== 3) throw Error('committed-npm-lockfile-required');
-    const publicInputs = PUBLIC_INPUTS.map(([destination, file]) => {
-      const sourceFile = path.join(root, file),
-        stat = fs.lstatSync(sourceFile);
-      if (!stat.isFile() || stat.isSymbolicLink()) throw Error('reviewed-public-runtime-required');
-      return {
-        path: file,
-        destination: '.system-bootstrapper/' + destination,
-        sha256: digest(sourceFile),
-      };
-    });
-    if (
-      digest(path.join(root, CA)) !==
-      '796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe'
-    )
-      throw Error('reviewed-public-ca-required');
+
+    if (lock.lockfileVersion !== 3) {
+      throw Error('committed-npm-lockfile-required');
+    }
+
+    const publicInputs = cliArtifactFiles(selectedCliArtifact()).map((file) => ({
+      path: file.path,
+      destination: file.path,
+      sha256: createHash('sha256').update(file.bytes).digest('hex'),
+    }));
     return {
       version: 1,
       case: options.case,
       systemSourceRevision: options.sourceRevision,
-      nodeImage: NODE,
-      nginxImage: NGINX,
-      buildkitImage: BUILDKIT,
+      nodeImage: node,
+      nginxImage: nginx,
+      buildkitImage: buildkit,
       builderMemoryBytes: 4 * 1024 ** 3,
       builderCpus: 2,
       candidateMemoryBytes: 128 * 1024 ** 2,
@@ -147,25 +164,38 @@ export class ResourceBenchmarkService {
 
   async execute(options: BenchmarkOptions, environment = process.env, signal?: AbortSignal) {
     const plan = this.plan(options);
-    if (!options.execute) return plan;
-    if (environment.SYSTEM_RESOURCE_BENCHMARK_APPROVED !== '1')
+
+    if (!options.execute) {
+      return plan;
+    }
+
+    if (environment.SYSTEM_RESOURCE_BENCHMARK_APPROVED !== '1') {
       throw Error('benchmark-resource-lease-required');
+    }
+
     if (
       ['DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH'].some(
         (key) => environment[key],
       )
-    )
+    ) {
       throw Error('native-local-daemon-required');
+    }
+
     const deadline = options.leaseDeadline;
+
     if (
       !deadline ||
       !Number.isFinite(deadline) ||
       deadline - Date.now() / 1000 <= 75 ||
       deadline - Date.now() / 1000 > 600
-    )
+    ) {
       throw Error('shared-benchmark-deadline-required');
-    if (process.platform !== 'linux' || process.arch !== 'x64')
+    }
+
+    if (process.platform !== 'linux' || process.arch !== 'x64') {
       throw Error('native-linux-amd64-required');
+    }
+
     fs.mkdirSync(options.output, { mode: 0o700, recursive: false });
     const operation = randomUUID().replace(/-/g, ''),
       builder = 'resource-' + operation,
@@ -200,7 +230,11 @@ export class ResourceBenchmarkService {
       output?: (chunk: Buffer) => void,
     ) => {
       const remaining = deadline * 1000 - Date.now() - 60000;
-      if (remaining <= 0) throw Error('benchmark-cleanup-reserve-reached');
+
+      if (remaining <= 0) {
+        throw Error('benchmark-cleanup-reserve-reached');
+      }
+
       return this.docker(args, Math.min(timeout, remaining), childSignal, output);
     };
     const evidence = () =>
@@ -212,19 +246,37 @@ export class ResourceBenchmarkService {
     try {
       const context = path.join(temporary, 'context');
       fs.cpSync(path.join(options.templates, options.case), context, { recursive: true });
-      if (JSON.stringify(inputManifest(context)) !== JSON.stringify(plan.inputs))
+
+      if (JSON.stringify(inputManifest(context)) !== JSON.stringify(plan.inputs)) {
         throw Error('benchmark-input-changed');
+      }
+
+      const publicFiles = new Map(
+        cliArtifactFiles(selectedCliArtifact()).map((file) => [file.path, file.bytes]),
+      );
       for (const item of plan.publicRuntimeInputs) {
         const target = path.join(context, item.destination);
         fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.copyFileSync(path.resolve(options.templates, '../../..', item.path), target);
-        if (digest(target) !== item.sha256) throw Error('benchmark-input-changed');
+        const bytes = publicFiles.get(item.path);
+
+        if (!bytes) {
+          throw Error('benchmark-input-changed');
+        }
+
+        fs.writeFileSync(target, bytes);
+
+        if (digest(target) !== item.sha256) {
+          throw Error('benchmark-input-changed');
+        }
       }
+
       if (
         JSON.stringify(inputManifest(path.join(options.templates, options.case))) !==
         JSON.stringify(plan.inputs)
-      )
+      ) {
         throw Error('benchmark-input-changed');
+      }
+
       await work(
         [
           'buildx',
@@ -240,7 +292,7 @@ export class ResourceBenchmarkService {
           '--driver-opt',
           'cpu-quota=200000',
           '--driver-opt',
-          'image=' + BUILDKIT,
+          'image=' + buildkit,
         ],
         30000,
         signal,
@@ -248,12 +300,18 @@ export class ResourceBenchmarkService {
       for (const phase of ['cold', 'warm']) {
         signal?.throwIfAborted();
         const remaining = deadline * 1000 - Date.now() - 60000;
-        if (remaining <= 0) throw Error('benchmark-cleanup-reserve-reached');
-        if (phase === 'warm')
+
+        if (remaining <= 0) {
+          throw Error('benchmark-cleanup-reserve-reached');
+        }
+
+        if (phase === 'warm') {
           fs.appendFileSync(
             path.join(context, options.case === 'react' ? 'src/App.tsx' : 'src/app/app.ts'),
             '\n// Resource benchmark dependency-cache reuse.\n',
           );
+        }
+
         const tag = 'system-resource-benchmark:' + operation + '-' + phase;
         tags.push(tag);
         intent.phase = phase;
@@ -303,17 +361,27 @@ export class ResourceBenchmarkService {
           });
         try {
           while (!done) {
-            if (samples.length < 30) samples.push(await this.collector.sample(signal));
-            else await delay(250, undefined, { signal });
+            if (samples.length < 30) {
+              samples.push(await this.collector.sample(signal));
+            } else {
+              await delay(250, undefined, { signal });
+            }
           }
         } finally {
-          if (!done) buildAbort.abort();
+          if (!done) {
+            buildAbort.abort();
+          }
+
           await build;
         }
         fs.writeFileSync(path.join(options.output, phase + '.log'), Buffer.concat(log), {
           mode: 0o600,
         });
-        if (buildFailure) throw buildFailure;
+
+        if (buildFailure) {
+          throw buildFailure;
+        }
+
         report.builds.push({
           phase,
           startedAt,
@@ -325,15 +393,21 @@ export class ResourceBenchmarkService {
               : 'same-builder-dependency-cache-source-rebuild',
           samples,
           summary: summary(samples),
-          contextManifest: inputManifest(context),
+          contextManifest: inputManifest(
+            context,
+            plan.publicRuntimeInputs.find((input) => input.path === cliRepositoryPath)!.sha256,
+          ),
         });
         evidence();
       }
       const image = JSON.parse(
         await work(['image', 'inspect', '--format', '{{json .}}', tags.at(-1)!], 30000, signal),
       ) as Image;
-      if (image.Config?.Labels?.['system.resource.benchmark.operation'] !== operation)
+
+      if (image.Config?.Labels?.['system.resource.benchmark.operation'] !== operation) {
         throw Error('benchmark-image-ownership-changed');
+      }
+
       intent.phase = 'candidate-create-intent';
       checkpoint(options.output, intent);
       const createdCandidate = await work(
@@ -354,7 +428,11 @@ export class ResourceBenchmarkService {
         30000,
         signal,
       );
-      if (!/^[a-f0-9]{64}$/.test(createdCandidate)) throw Error('invalid-benchmark-candidate');
+
+      if (!/^[a-f0-9]{64}$/.test(createdCandidate)) {
+        throw Error('invalid-benchmark-candidate');
+      }
+
       candidate = createdCandidate;
       intent.candidateId = candidate;
       checkpoint(options.output, intent);
@@ -368,7 +446,10 @@ export class ResourceBenchmarkService {
           );
           break;
         } catch (error) {
-          if (attempt === 19 || signal?.aborted) throw error;
+          if (attempt === 19 || signal?.aborted) {
+            throw error;
+          }
+
           await delay(250, undefined, { signal });
         }
       }
@@ -380,10 +461,15 @@ export class ResourceBenchmarkService {
       const errors: string[] = [],
         clean = (args: string[]) => {
           const remaining = deadline * 1000 - Date.now();
-          if (remaining < 1000) throw Error('benchmark-lease-ended');
+
+          if (remaining < 1000) {
+            throw Error('benchmark-lease-ended');
+          }
+
           return this.docker(args, Math.min(6000, remaining));
         };
-      if (!candidate && intent.phase === 'candidate-create-intent')
+
+      if (!candidate && intent.phase === 'candidate-create-intent') {
         try {
           const found = await clean([
             'ps',
@@ -392,45 +478,62 @@ export class ResourceBenchmarkService {
             '--filter',
             'label=system.resource.benchmark.operation=' + operation,
           ]);
-          if (/^[a-f0-9]{64}$/.test(found)) candidate = found;
-          else if (found) throw Error();
+
+          if (/^[a-f0-9]{64}$/.test(found)) {
+            candidate = found;
+          } else if (found) {
+            throw Error();
+          }
         } catch {
           errors.push('candidate-reconciliation');
         }
-      if (candidate)
+      }
+
+      if (candidate) {
         try {
           const row = JSON.parse(
             await clean(['inspect', '--format', '{{json .}}', candidate]),
           ) as Image;
+
           if (
             row.Id !== candidate ||
             row.Config?.Labels?.['system.resource.benchmark.operation'] !== operation
-          )
+          ) {
             throw Error();
+          }
+
           await clean(['rm', '-f', candidate]);
         } catch {
           errors.push('candidate');
         }
+      }
+
       try {
         await clean(['buildx', 'rm', '-f', builder]);
       } catch {
         errors.push('builder');
       }
-      for (const tag of tags)
+      for (const tag of tags) {
         try {
           if (
             !(await clean(['image', 'ls', '--filter', 'reference=' + tag, '--format', '{{.ID}}']))
-          )
+          ) {
             continue;
+          }
+
           const row = JSON.parse(
             await clean(['image', 'inspect', '--format', '{{json .}}', tag]),
           ) as Image;
-          if (row.Config?.Labels?.['system.resource.benchmark.operation'] !== operation)
+
+          if (row.Config?.Labels?.['system.resource.benchmark.operation'] !== operation) {
             throw Error();
+          }
+
           await clean(['image', 'rm', tag]);
         } catch {
           errors.push('image');
         }
+      }
       fs.rmSync(temporary, { recursive: true, force: true });
       report.cleanup = errors.length ? 'failed' : 'passed';
       report.cleanupErrors = errors;
@@ -440,8 +543,14 @@ export class ResourceBenchmarkService {
       intent.phase = report.success ? 'complete' : 'failed';
       intent.cleanup = report.cleanup;
       checkpoint(options.output, intent);
-      if (failure) throw failure;
-      if (errors.length) throw Error('benchmark-owned-cleanup-incomplete');
+
+      if (failure) {
+        throw failure;
+      }
+
+      if (errors.length) {
+        throw Error('benchmark-owned-cleanup-incomplete');
+      }
     }
     return { case: options.case, success: report.success, cleanup: report.cleanup };
   }

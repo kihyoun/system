@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const {DocumentationSourceCheckService} = require('../../dist/modules/documentation/documentation-source-check.service');
+const {DocumentationSourceCheckService} = require('../../dist/modules/documentation/documentationSourceCheck.service');
 const checker = new DocumentationSourceCheckService();
 const check = directory => checker.check(directory);
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-docs-source-'));
@@ -41,9 +41,9 @@ try {
 } finally { fs.rmSync(root, {recursive: true, force: true}); }
 
 // Keep the former authoring checks in the existing component entry: no extra gate.
-const {DocumentationExportService,documentationHeadings}=require('../../dist/modules/documentation/documentation-export.service');
+const {DocumentationExportService,documentationHeadings}=require('../../dist/modules/documentation/documentationExport.service');
 const service=new DocumentationExportService(),checkout=path.resolve(__dirname,'../..'),bundle=service.build(checkout);
-const {includedTest:included}=require('../../dist/modules/ci/context-selection');
+const {includedTest:included}=require('../../dist/modules/ci/contextSelection');
 for(const filename of [...Object.keys(bundle.sources),...Object.keys(bundle.images),'docs/wizard-docs-catalog.json'])assert(included(filename),filename);
 assert(!included('docs/private.env'));assert(!included('docs/credentials.json'));
 for(const filename of Object.keys(bundle.sources)){

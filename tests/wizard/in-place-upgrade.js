@@ -4,11 +4,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {execFileSync, spawnSync} = require('child_process');
-const {Upgrade, sourceMarker, buildMarker, environmentMarker, readConfiguration} = require('../../dist/modules/project-lifecycle/upgrade-session');
-const {hash, signature} = require('../../dist/modules/project-lifecycle/production-session');
-const builds = require('../../dist/modules/project-lifecycle/build-recipe.service');
-const environments = require('../../dist/modules/project-lifecycle/environment-recipe.service');
-const logo = require('../../dist/common/configuration-signature').default.textLogo;
+const {Upgrade, sourceMarker, buildMarker, environmentMarker, readConfiguration} = require('../../dist/modules/project-lifecycle/upgradeSession');
+const {hash, signature} = require('../../dist/modules/project-lifecycle/productionSession');
+const builds = require('../../dist/modules/project-lifecycle/buildRecipe.service');
+const environments = require('../../dist/modules/project-lifecycle/environmentRecipe.service');
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
 const currentSource = JSON.parse(fs.readFileSync(path.join(__dirname, '../../assets/wizard-source/snapshot.json'), 'utf8')).sourceRevision;
 const helper = 'sha256:' + 'b'.repeat(64), oldHelper = 'sha256:' + 'a'.repeat(64);
 const sourceFile = (name, content, mode = '100644') => ({path: name, mode, sha256: hash(content), content: Buffer.from(content).toString('base64')});
@@ -288,10 +288,11 @@ async function test(name, run, modern = false) { const f = new Fixture(modern); 
     assert.deepEqual(await f.upgrade.preservedTree(f.receipt, 'main', plan.publicPlan.managedPaths), preserved);
     assert.equal((await f.upgrade.adopt((await f.upgrade.adoptionPlan(true)).planHash, true)).unchanged, true);
   }, profile);
-  for (const targetProfile of ['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5', 'node24-vite8-typed-v6'])
-  for (const profile of targetProfile.endsWith('-v6') ? ['node24-vite8-quickstart-v5'] : ['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', ...(targetProfile.endsWith('-v5') ? ['node24-vite8-ca-v4', targetProfile] : [])]) await test('explicit ' + targetProfile + ' recipe upgrade from ' + profile + ' preserves source and stopped generations', async f => {
+  for (const targetProfile of ['node24-vite8-ca-v4', 'node24-vite8-quickstart-v5', 'node24-vite8-typed-v6', ...(process.env.SYSTEM_CLI_ARTIFACT ? ['node24-vite8-cli-v7'] : [])])
+  for (const profile of targetProfile.endsWith('-v7') ? ['node24-vite8-typed-v6'] : targetProfile.endsWith('-v6') ? ['node24-vite8-quickstart-v5'] : ['node24-vite8-cleanup-v2', 'node24-vite8-overview-v3', ...(targetProfile.endsWith('-v5') ? ['node24-vite8-ca-v4', targetProfile] : [])]) await test('explicit ' + targetProfile + ' recipe upgrade from ' + profile + ' preserves source and stopped generations', async f => {
     const previous = JSON.parse(JSON.stringify(f.receipt.wizardWorkflow));
     const historicalOperation = f.upgrade.operation(f.receipt, logo, true);
+    if(targetProfile==='node24-vite8-cli-v7'){const {cliArtifactFiles,selectedCliArtifact}=require('../../dist/modules/project-ci/cliArtifact');const head=f.ref('main');for(const file of cliArtifactFiles(selectedCliArtifact()))head.files.set(file.path,f.row(file.bytes,head.id));}
     f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile: targetProfile, request: f.request.bind(f), checkHelper: async () => {}});
     const plan = await f.upgrade.plan(true);
     assert.equal(plan.publicPlan.buildRecipeHash, builds.generate(logo, targetProfile).recipeHash);
@@ -318,6 +319,16 @@ async function test(name, run, modern = false) { const f = new Fixture(modern); 
     }
     assert.deepEqual(f.posts, []);
   }, 'node24-vite8-quickstart-v5');
+  if(process.env.SYSTEM_CLI_ARTIFACT){
+    await test('CLI migration refuses missing source companion before any writes',async f=>{
+      f.upgrade=new Upgrade({...f,helperImage:helper,buildProfile:'node24-vite8-cli-v7',request:f.request.bind(f),checkHelper:async()=>{}});
+      await assert.rejects(f.upgrade.plan(true),/matching source files/);assert.deepEqual(f.posts,[]);
+    },'node24-vite8-typed-v6');
+    await test('CLI profile refuses downgrade before any writes',async f=>{
+      f.upgrade=new Upgrade({...f,helperImage:helper,buildProfile:'node24-vite8-typed-v6',request:f.request.bind(f),checkHelper:async()=>{}});
+      await assert.rejects(f.upgrade.plan(true),/Retain the overview-compatible/);assert.deepEqual(f.posts,[]);
+    },'node24-vite8-cli-v7');
+  }
   await test('native operator CLI accepts the explicit overview profile and rejects unknown options or profiles before requests', async f => {
     const responses = {}, request = f.request.bind(f);
     f.upgrade = new Upgrade({...f, helperImage: helper, buildProfile: 'node24-vite8-overview-v3',

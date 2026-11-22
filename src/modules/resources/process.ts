@@ -15,7 +15,10 @@ export class ObservationProcess {
     signal?: AbortSignal,
     output?: (chunk: Buffer) => void,
   ): Promise<string> {
-    if (signal?.aborted) return Promise.reject(new ObservationFailure('cancelled'));
+    if (signal?.aborted) {
+      return Promise.reject(new ObservationFailure('cancelled'));
+    }
+
     return new Promise((resolve, reject) => {
       const child = spawn(args[0], args.slice(1), {
         detached: process.platform !== 'win32',
@@ -30,7 +33,10 @@ export class ObservationProcess {
         code: number | null = null,
         cleaned = false;
       const finish = () => {
-        if (!closed || (reason && !cleaned)) return;
+        if (!closed || (reason && !cleaned)) {
+          return;
+        }
+
         clearTimeout(timer);
         signal?.removeEventListener('abort', cancel);
         reason
@@ -40,14 +46,19 @@ export class ObservationProcess {
             : reject(new ObservationFailure('command-unavailable'));
       };
       const kill = (value: NodeJS.Signals) => {
-        if (child.pid)
+        if (child.pid) {
           try {
             process.kill(process.platform === 'win32' ? child.pid : -child.pid, value);
           } catch {}
+        }
       };
       const stop = (value: ObservationFailure['reason']) => {
-        if (reason) return;
+        if (reason) {
+          return;
+        }
+
         reason = value;
+
         if (process.platform === 'win32' && child.pid) {
           const killer = spawn(
             path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
@@ -57,7 +68,10 @@ export class ObservationProcess {
           const bound = setTimeout(() => killer.kill(), 1000);
           killer.on('error', () => {});
           killer.on('close', () => clearTimeout(bound));
-        } else kill('SIGTERM');
+        } else {
+          kill('SIGTERM');
+        }
+
         setTimeout(
           () => {
             kill('SIGKILL');
@@ -78,11 +92,16 @@ export class ObservationProcess {
       signal?.addEventListener('abort', cancel, { once: true });
       const consume = (chunk: Buffer, retain: boolean) => {
         bytes += chunk.length;
+
         if (bytes > 2_000_000) {
           stop('output-limit');
           return;
         }
-        if (retain) text += chunk.toString();
+
+        if (retain) {
+          text += chunk.toString();
+        }
+
         try {
           output?.(chunk);
         } catch {

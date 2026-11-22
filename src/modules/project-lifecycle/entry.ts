@@ -1,8 +1,8 @@
-import { DeploymentSession } from './deployment-session';
+import { DeploymentSession } from './deploymentSession';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ProjectLifecycleModule } from './project-lifecycle.module';
-import { ProjectLifecycleService } from './project-lifecycle.service';
+import { ProjectLifecycleModule } from './projectLifecycle.module';
+import { ProjectLifecycleService } from './projectLifecycle.service';
 import { DeploymentAction, DeploymentPort, DeploymentSlot } from './types';
 export async function execute<A extends DeploymentAction>(
   port: DeploymentPort,

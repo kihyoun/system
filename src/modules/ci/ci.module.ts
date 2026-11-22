@@ -1,10 +1,10 @@
-import { ImageCompatibilityService } from '../build/image-compatibility.service';
-import { BootstrapperBuildService } from './bootstrapper-build.service';
-import { CodeqlToolchainService } from './codeql-toolchain.service';
+import { ImageCompatibilityService } from '../build/imageCompatibility.service';
+import { BootstrapperBuildService } from './bootstrapperBuild.service';
+import { CodeqlToolchainService } from './codeqlToolchain.service';
 import { DocumentationCheckService } from './documentation.service';
-import { CandidateRuntimeService } from './candidate-runtime.service';
-import { ContainerCheckService } from './container-check.service';
-import { CodeqlParentService } from './codeql-parent.service';
+import { CandidateRuntimeService } from './candidateRuntime.service';
+import { ContainerCheckService } from './containerCheck.service';
+import { CodeqlParentService } from './codeqlParent.service';
 import { CodeqlService } from './codeql.service';
 import { Module } from '@nestjs/common';
 import { PlatformCheckService } from './platform.service';

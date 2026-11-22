@@ -22,7 +22,9 @@ export interface MountRow {
   type: string;
 }
 export function requireValue(value: unknown, code: string): asserts value {
-  if (!value) throw new StorageError(code);
+  if (!value) {
+    throw new StorageError(code);
+  }
 }
 export class StorageError extends Error {
   constructor(

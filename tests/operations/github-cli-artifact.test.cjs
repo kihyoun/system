@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {acceptedCliArtifact}=require('../../dist/modules/release/github-cli-artifact');
-const {hash,integrity}=require('../../dist/modules/release/npm-identity');
+const {acceptedCliArtifact}=require('../../dist/modules/release/githubCliArtifact');
+const {hash,integrity}=require('../../dist/modules/release/npmIdentity');
 test('bootstrap CLI receipt binds exact successful package source and immutable bytes',()=>{
  const bytes=Buffer.from('tested artifact'),expected={version:'2.0.0',sourceRevision:'a'.repeat(40),sourceTree:'b'.repeat(40),pipelineId:10,packageJobId:42};
  const receipt={format:'system-cli-source-v1',name:'@systembootstrapper/cli',...expected,filename:'systembootstrapper-cli-2.0.0.tgz',sha256:hash(bytes),integrity:integrity(bytes)};

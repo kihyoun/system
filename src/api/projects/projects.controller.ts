@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/jwtAuth.guard';
 import { ProjectsService } from './projects.service';
 
 @Controller('projects')
@@ -28,14 +28,14 @@ export class ProjectsController {
   @Post('wizard/preview-setup/preflight')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
-  preflight(@Body() input: any) {
+  preflight(@Body() input: unknown) {
     return this.projects.preflight(input);
   }
 
   @Post('wizard/preview-setup/apply')
   @HttpCode(202)
   @Header('Cache-Control', 'no-store')
-  applyPreview(@Body() input: any) {
+  applyPreview(@Body() input: unknown) {
     return this.projects.applyPreview(input);
   }
 
@@ -53,7 +53,7 @@ export class ProjectsController {
 
   @Post('wizard/source')
   @HttpCode(202)
-  initializeSource(@Body() input: any) {
+  initializeSource(@Body() input: unknown) {
     return this.projects.initializeSource(input);
   }
 
@@ -65,7 +65,7 @@ export class ProjectsController {
 
   @Post('wizard/build')
   @HttpCode(202)
-  activateBuild(@Body() input: any) {
+  activateBuild(@Body() input: unknown) {
     return this.projects.activateBuild(input);
   }
 
@@ -84,7 +84,7 @@ export class ProjectsController {
 
   @Post('wizard/environments')
   @HttpCode(202)
-  configureEnvironments(@Body() input: any) {
+  configureEnvironments(@Body() input: unknown) {
     return this.projects.configureEnvironments(input);
   }
 
@@ -113,7 +113,7 @@ export class ProjectsController {
 
   @Post()
   @HttpCode(202)
-  create(@Body() input: any) {
+  create(@Body() input: unknown) {
     return this.projects.create(input);
   }
 }

@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');
-const {UpgradePrerequisiteService}=require('../../dist/modules/host/upgrade-prerequisite.service');
-const {validateUpgradeGraph}=require('../../dist/modules/host/upgrade-graph');
+const {UpgradePrerequisiteService}=require('../../dist/modules/host/upgradePrerequisite.service');
+const {validateUpgradeGraph}=require('../../dist/modules/host/upgradeGraph');
 const security=require('../../config/gitlab/security-release.json');
 const id=n=>'sha256:'+n.repeat(64),sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 test('database transition declares native prerequisite without preservation claims',()=>{

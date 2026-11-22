@@ -1,7 +1,7 @@
 'use strict';
 // Configure the original owned disposable platform before taking the guided
 // baseline. Source CI bytes and TLS verification remain unchanged.
-const {settings: desiredSettings}=require('../../dist/modules/project-lifecycle/preview-settings');
+const {settings: desiredSettings}=require('../../dist/modules/project-lifecycle/previewSettings');
 const recovery=require('./recovery');
 const {ISSUANCE_CA,issuanceDomains}=require('./local-acme');
 const {runnerCapacity}=require('./guided-preview-runner-capacity');
@@ -120,7 +120,7 @@ async function restoreTrust(candidate,dependencies={}){
 async function bindingProof(candidate,dependencies={}){
   return (dependencies.node||node)(candidate,function(){
     const fs=require('fs'),crypto=require('crypto');
-    const {readReceipt}=require('/system/dist/api/projects/project-workflow');
+    const {readReceipt}=require('/system/dist/modules/project-workflow/projectWorkflow');
     const state=require('/system/dist/modules/project-lifecycle/state');
     const file='/state/.projects.env/.wizard.env',text=fs.readFileSync(file,'utf8'),receipt=readReceipt(text);
     const environment=receipt.wizardWorkflow?.environments;
@@ -159,7 +159,7 @@ async function bootstrapTls(candidate,domains,execute){
     WIZARD_ALIASES:recovery.WIZARD_ALIAS};
   await execute(candidate,function(input){
     const fs=require('fs'),path=require('path');
-    const {signature}=require('/system/dist/modules/project-lifecycle/production-session');
+    const {signature}=require('/system/dist/modules/project-lifecycle/productionSession');
     fs.mkdirSync(path.dirname(input.leaf),{recursive:true,mode:0o700});
     fs.writeFileSync(input.leaf,input.certificate+'\n',{mode:0o644});fs.writeFileSync(input.key,input.privateKey+'\n',{mode:0o600});
     let config=fs.readFileSync('/state/.docker.env','utf8');signature(config);
@@ -196,7 +196,7 @@ async function prepare(candidate,acme,dependencies={}){
     }
   });
   await candidate.stage('guided-preview-native-source-installation-record',()=>candidate.inner(['exec','system_bootstrapper_1','node',
-    '/system/dist/modules/lifecycle/source-installation-entry.js','--controller',candidate.spec.images.candidate.id,'--wizard',candidate.spec.images.wizard.id,
+    '/system/dist/modules/lifecycle/sourceInstallationEntry.js','--controller',candidate.spec.images.candidate.id,'--wizard',candidate.spec.images.wizard.id,
     '--source-revision',candidate.spec.sourceRevision,'--source-tree',candidate.spec.sourceTree,'--wizard-revision',candidate.spec.sourceRevision]));
   return {acmeIdentity:candidate.guidedAcmeIdentity,trust:candidate.guidedTrust,domains};
 }

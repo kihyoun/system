@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { WizardRecoveryModule } from './wizard-recovery.module';
-import { WizardRecoveryService } from './wizard-recovery.service';
+import { WizardRecoveryModule } from './wizardRecovery.module';
+import { WizardRecoveryService } from './wizardRecovery.service';
 import type { RecoveryOptions } from './ports';
 export async function recoverImage(options: RecoveryOptions) {
   const app = await NestFactory.createApplicationContext(WizardRecoveryModule, {
@@ -27,8 +27,10 @@ export async function main(checkout: string) {
     process.off('SIGTERM', cancel);
   }
 }
-if (require.main === module)
+
+if (require.main === module) {
   void main(process.argv[2]).catch((error) => {
     console.error(error instanceof Error ? error.message : 'Wizard image recovery failed.');
     process.exitCode = 1;
   });
+}

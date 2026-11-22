@@ -675,7 +675,7 @@ GitLab 마이그레이션 성공 후 VM 삭제나 이후 호스트 교체에 의
 입력을 갱신하세요.
 
 ```sh
-sudo node dist/modules/host/recovery-export-entry.js --checkout "$PWD" \
+sudo node dist/modules/host/recoveryExportEntry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \

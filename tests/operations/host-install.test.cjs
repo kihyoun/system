@@ -137,7 +137,7 @@ test('reviewed upgrade graph resolves explicit paths and rejects unsafe migratio
 });
 test('storage selectors parse literal quotes without executing configuration',t=>{
  const f=fixture(t);
- const {environmentAssignments}=require('../../dist/common/runtime/environment-assignments');
+ const {environmentAssignments}=require('../../dist/common/runtime/environmentAssignments');
  assert.deepEqual(environmentAssignments('NGINX_IMAGE=old\nunset NGINX_IMAGE OTHER # defaults\nLAST=value\n'),{NGINX_IMAGE:'',OTHER:'',LAST:'value'});
  for(const invalid of ['unset A; touch /tmp/file', 'unset $(command)', 'unset -- A', 'unset A && command'])assert.throws(()=>environmentAssignments(invalid));
  assert.deepEqual(environmentAssignments("# heading\nexport A='a b'\nB='a'\\''b'\nC=plain # note\nD=\"x\\$y\"\n"),{A:'a b',B:"a'b",C:'plain',D:'x$y'});

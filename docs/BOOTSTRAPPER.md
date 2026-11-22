@@ -732,7 +732,7 @@ After successful GitLab migration, refresh retained recovery inputs before delet
 the VM or relying on a later host replacement:
 
 ```sh
-sudo node dist/modules/host/recovery-export-entry.js --checkout "$PWD" \
+sudo node dist/modules/host/recoveryExportEntry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/successor/release.json \
   --evidence /root/successor/candidate-results.json \

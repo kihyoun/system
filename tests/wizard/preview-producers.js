@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const {validateProducers, approvedProducers} = require('../../dist/modules/project-lifecycle/preview-producers');
+const {validateProducers, approvedProducers} = require('../../dist/modules/project-lifecycle/previewProducers');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'preview-producers-'));
 try {
@@ -25,7 +25,7 @@ try {
   add('.gitlab/producer-v2.json',JSON.stringify({version:2,runtime:'.gitlab/runtime/project-ci.cjs',runtimeSha256:hash('pinned portable runtime'),buildProfile:'node24-vite8-typed-v6'}));
   function saveModern(){const m={version:1,sourceRevision:'a'.repeat(40),files:modern.map(({path,mode,sha256})=>({path,mode,sha256}))};fs.writeFileSync(snapshot,JSON.stringify({...m,manifestHash:hash(JSON.stringify(m)),files:modern}));}
   saveModern(); const modernApproved=approvedProducers(snapshot);assert(validateProducers(modernApproved,snapshot));
-  const {ciFiles}=require('../../dist/modules/project-lifecycle/source-primary-environment');
+  const {ciFiles}=require('../../dist/modules/project-lifecycle/sourcePrimaryEnvironment');
   assert(ciFiles([...modernApproved,{path:'.system-bootstrapper/build-v2/Dockerfile',sha256:hash('docker')}]).length);
   assert.throws(()=>ciFiles(modernApproved.filter(file=>file.path!=='.gitlab/runtime/project-ci.cjs')),/manifest/);
   const runtime=modern.find(file=>file.path==='.gitlab/runtime/project-ci.cjs');runtime.content=Buffer.from('tampered').toString('base64');runtime.sha256=hash('tampered');saveModern();assert.throws(()=>approvedProducers(snapshot),/exact runtime/);

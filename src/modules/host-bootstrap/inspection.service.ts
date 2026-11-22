@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 import { ProcessFailure } from '../../common/runtime/process';
 import {
   assess,
@@ -12,7 +12,7 @@ import {
   version,
   type HostFacts,
   type LogPolicy,
-} from './inspection-policy';
+} from './inspectionPolicy';
 export interface Probe {
   code: string;
   exitCode?: number | null;
@@ -29,7 +29,10 @@ function optional(filename: string): string {
   try {
     return fs.readFileSync(filename, 'utf8').trim();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return '';
+    }
+
     throw error;
   }
 }
@@ -50,41 +53,57 @@ export class HostInspectionService {
   async preflight(input: PreflightOptions, env: NodeJS.ProcessEnv, signal?: AbortSignal) {
     const mongo = version(input.mongodbVersion),
       timeout = input.timeout ?? 30;
-    if (!Number.isInteger(timeout) || timeout < 1 || timeout > 120)
+
+    if (!Number.isInteger(timeout) || timeout < 1 || timeout > 120) {
       throw new InspectionInputError('Probe timeout must be from 1 to 120 seconds.');
+    }
+
     if (
       os.platform() !== 'linux' ||
       (env.DOCKER_HOST ?? 'unix:///var/run/docker.sock') !== 'unix:///var/run/docker.sock' ||
       (env.DOCKER_CONTEXT ?? 'default') !== 'default'
-    )
+    ) {
       throw new InspectionInputError(
         'Run on the Linux Docker daemon host using the local Unix socket, without a remote Docker context.',
       );
+    }
+
     const facts = this.facts();
+
     if (input.plannedKernel) {
       version(input.plannedKernel);
-      if (input.image)
+
+      if (input.image) {
         throw new InspectionInputError(
           'A running image cannot test a planned kernel. Boot and check the selected daemon host separately.',
         );
+      }
+
       facts.upstreamKernel = input.plannedKernel;
       facts.kernelVersionSource = 'operator-planned-upstream';
     }
+
     const findings = assess(facts, mongo);
     let probe: Probe | undefined;
+
     if (input.image && !findings.length) {
       probe = await this.probe(input.image, timeout, env, signal);
-      if (probe.mongodbVersion && probe.mongodbVersion !== input.mongodbVersion)
+
+      if (probe.mongodbVersion && probe.mongodbVersion !== input.mongodbVersion) {
         findings.push({
           code: 'image-version-mismatch',
           message: 'The executable version differs from the selected MongoDB version.',
         });
-      if (probe.code !== 'image-probe-passed')
+      }
+
+      if (probe.code !== 'image-probe-passed') {
         findings.push({
           code: probe.code,
           message: 'Exact image execution failed; see probe diagnosis.',
         });
+      }
     }
+
     return {
       schemaVersion: 1,
       host: facts,
@@ -102,10 +121,15 @@ export class HostInspectionService {
     env: NodeJS.ProcessEnv,
     signal?: AbortSignal,
   ): Promise<Probe> {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*@sha256:[a-f0-9]{64}$/.test(image) || /[\r\n]/.test(image))
+    if (
+      !/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*@sha256:[a-f0-9]{64}$/.test(image) ||
+      /[\r\n]/.test(image)
+    ) {
       throw new InspectionInputError(
         'Probe requires an immutable IMAGE@sha256:<64 lowercase hex> reference, already pulled on the daemon host.',
       );
+    }
+
     const name = 'system-compatibility-' + randomUUID().replaceAll('-', ''),
       label = 'com.system-bootstrapper.compatibility-preflight';
     let output = '',
@@ -163,20 +187,37 @@ export class HostInspectionService {
             },
           },
         );
-        if (!output) output = stdout;
+
+        if (!output) {
+          output = stdout;
+        }
       } catch (error) {
-        if (signal?.aborted) throw error;
-        if (timedOut) return { code: 'image-probe-timeout' };
-        if (!(error instanceof ProcessFailure)) throw error;
+        if (signal?.aborted) {
+          throw error;
+        }
+
+        if (timedOut) {
+          return { code: 'image-probe-timeout' };
+        }
+
+        if (!(error instanceof ProcessFailure)) {
+          throw error;
+        }
+
         exitCode = error.signal === 'SIGILL' ? 132 : error.status;
-        if (exitCode === 0) exitCode = null;
+
+        if (exitCode === 0) {
+          exitCode = null;
+        }
       }
+
       if (exitCode === 0) {
         const match = /\bdb version v(\d+\.\d+\.\d+)\b/.exec(output);
         return match
           ? { code: 'image-probe-passed', exitCode, mongodbVersion: match[1] }
           : { code: 'image-version-unrecognized', exitCode };
       }
+
       const code =
         output.includes('12257600') ||
         /kernel.*(incompatib|unsupported)|incompatib.*kernel/i.test(output)
@@ -203,13 +244,15 @@ export class HostInspectionService {
           { cwd: '/', env, timeout: 15000, maxBuffer: 4096 },
         );
       } catch {}
-      if (owner.trim() === name)
+
+      if (owner.trim() === name) {
         await this.process.run('docker', [...socket, 'rm', '-f', name], {
           cwd: '/',
           env,
           timeout: 15000,
           maxBuffer: 4096,
         });
+      }
     }
   }
 
@@ -221,15 +264,19 @@ export class HostInspectionService {
     signal?: AbortSignal,
   ) {
     const expected = logPolicy(size, files);
+
     if (
       containers.some((name) => !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name) || /[\r\n]/.test(name))
-    )
+    ) {
       throw new InspectionInputError(
         'Supply exact container names or IDs, not selectors or options.',
       );
+    }
+
     const checked = [];
-    for (const name of containers)
+    for (const name of containers) {
       checked.push(await this.verifyLogging(name, expected, env, signal));
+    }
     return {
       schemaVersion: 1,
       expected,
@@ -259,8 +306,11 @@ export class HostInspectionService {
         { cwd: '/', env, signal, timeout: 15000, maxBuffer: 65536 },
       ),
     );
-    if (!actual || typeof actual !== 'object' || Array.isArray(actual))
+
+    if (!actual || typeof actual !== 'object' || Array.isArray(actual)) {
       throw new Error('Invalid Docker logging response.');
+    }
+
     const value = actual as Record<string, unknown>,
       config = value.Config;
     const matches =

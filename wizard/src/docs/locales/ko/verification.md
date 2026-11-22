@@ -235,22 +235,18 @@ attestation 검증을 주장하지 않습니다. 다른 후보 이미지 메타�
 사용 전에 체크섬을 검증합니다. 검사 자식 컨테이너에는 네트워크, Docker 소켓
 또는 자격 증명이 없으며 애플리케이션 빌드를 실행할 수 없습니다.
 
-동일한 휴대용 런타임의 다음 세 가지 생성된 복사본 대신 원본 자체 작성 소스를
-분석합니다.
+스캔은 원본 자체 작성 소스를 분석합니다. 현재 v3 컨텍스트는 고정 SHA-256,
+일반 파일 모드와 라이선스 해시를 검증한 뒤 변경 불가능한 과거 아티팩트
+`templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs`만
+제외합니다. 경로와 해시는 `scan-source.json`에 남으며 일반 CLI와 모든 자체 작성
+TypeScript는 분석합니다. 과거 v2 컨텍스트는 세 복사본, Producer 및 라이선스의
+엄격한 검증을 유지합니다. 누락, 변경 또는 링크된 아티팩트는 거부하며 다른 생성
+경로에는 이 예외를 적용하지 않습니다.
 
-```text
-templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs
-wizard/.system-bootstrapper/build-v2/runtime/project-ci.cjs
-wizard/.gitlab/runtime/project-ci.cjs
-```
-
-제외하기 전에 준비 과정은 커밋된 일반 파일 세 개 모두, 동일한 바이트와 일치하는
-라이선스 파일, 기록된 Producer 해시를 요구합니다. 일부가 없거나 변경되었거나 링크인
-아티팩트는 거부합니다. 경로와 해시는 `scan-source.json`에서 분석 파일과 별도로
-보존합니다. 자체 작성 소스와 과거 레시피 소스는 모두 계속 분석하며, 추가 번들 경로에는
-이 예외를 적용하지 않습니다. 필수 `test:wizard-browser` 작업은 컴파일된 공유 소스,
-세 복사본, Producer 메타데이터와 라이선스 고지를 대상으로 생성기의 `--check`를
-독립적으로 실행합니다.
+`tests/operations/project-ci-artifact.test.cjs`는 일반 npm 패키지, 영수증, 체크섬 및
+소스 바인딩을 독립적으로 검증하며 소스와 아카이브 변경의 거부도 포함합니다.
+CLI 어댑터 테스트는 HTTP 서비스 없이 호출을 검증합니다. 실제 브라우저 실행은
+별도의 필수 게이트로 유지합니다.
 
 이것은 생성된 코드와 포함된 외부 라이브러리 코드에 대한 중복 SAST 검사를 의도적으로
 제거하는 범위 경계입니다. 포함된 타사 의존성 코드는 이 번들을 통해 다시 분석하지

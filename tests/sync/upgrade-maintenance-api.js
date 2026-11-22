@@ -4,7 +4,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {spawn}=require('node:child_process');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'upgrade-sync-')),state=path.join(root,'state');fs.mkdirSync(state);
 fs.mkdirSync(path.join(root,'config/system'),{recursive:true});
-const startCode = `const path=require('node:path'),paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installation-paths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);paths.cliArguments=(command,args)=>[path.join(fixture,'dist/cli/main.js'),command,...args];require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
+const startCode = `const path=require('node:path'),paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installationPaths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);paths.cliArguments=(command,args)=>[path.join(fixture,'dist/cli/main.js'),command,...args];require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
 const child=spawn(process.execPath,['-e',startCode,process.env.SYNC_ENTRY||path.resolve(__dirname,'../../dist/api/index.js'),root],{cwd:root,env:{...process.env,SYSTEM_CONFIG_DIR:state,SYNC_USER:'fixture',SYNC_PASS:'fixture-password'},stdio:'ignore'});
 const closed=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));

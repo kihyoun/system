@@ -31,7 +31,7 @@ function readInput(filename) {
   const budget=input.timeBudgetMilliseconds??3600000;
   requireValue(Number.isSafeInteger(budget)&&budget>=60000&&budget<=7200000,'guided-preview-bounded-budget-required');
   input.timeBudgetMilliseconds=budget;
-  const desired=require('../../dist/modules/project-lifecycle/preview-settings').settings(input.settings);
+  const desired=require('../../dist/modules/project-lifecycle/previewSettings').settings(input.settings);
   requireValue(desired.version===2,'system-beta-shared-source-settings-required');
   return input;
 }

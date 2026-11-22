@@ -4,15 +4,15 @@ const fs = require('node:fs'),
   assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..'),
   dist = path.join(root, 'dist');
-const { PairedUpdateService } = require(dist + '/modules/host/paired-update.service'),
-  { PairedRuntimeService } = require(dist + '/modules/host/paired-runtime.service'),
-  { ReleaseSelectionService, bytesSha } = require(dist + '/modules/host/release-selection.service'),
-  { ControllerUpdateSequenceService } = require(dist + '/modules/host/controller-update-sequence.service'),
+const { PairedUpdateService } = require(dist + '/modules/host/pairedUpdate.service'),
+  { PairedRuntimeService } = require(dist + '/modules/host/pairedRuntime.service'),
+  { ReleaseSelectionService, bytesSha } = require(dist + '/modules/host/releaseSelection.service'),
+  { ControllerUpdateSequenceService } = require(dist + '/modules/host/controllerUpdateSequence.service'),
   { ControllerRollbackSequenceService } = require(
-    dist + '/modules/host/controller-rollback-sequence.service',
+    dist + '/modules/host/controllerRollbackSequence.service',
   ),
   { HostPolicyError, requireValue: ensure } = require(dist + '/modules/host/install'),
-  { environmentAssignments } = require(dist + '/common/runtime/environment-assignments');
+  { environmentAssignments } = require(dist + '/common/runtime/environmentAssignments');
 const image = (value) => 'sha256:' + value.repeat(64),
   reference = (value) => 'docker.io/example/system@' + image(value);
 function fixture(t, { paired = false, selected = false, stopped = false } = {}) {

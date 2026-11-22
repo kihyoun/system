@@ -9,14 +9,20 @@ fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
 process.env.SYSTEM_CONFIG_DIR = path.join(root, 'system');
 process.chdir(path.join(root, 'sync'));
-const bootstrap = require(path.join(source, 'dist/api/projects/project-workflow'));
-const {wizardConfiguration, wizardCi, ensureDefaultWizard} = require(path.join(source, 'dist/api/projects/default-wizard'));
-const Helper = require(path.join(source, 'dist/common/configuration-signature')).default;
-const env = require(path.join(source, 'dist/api/projects/wizard-environment-workflow'));
+const bootstrap = require(path.join(source, 'dist/modules/project-workflow/projectWorkflow'));
+const {ensureDefaultWizard} = require(path.join(source, 'dist/api/projects/defaultWizard'));
+const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/modules/project-workflow/projectConfiguration'));
+const Helper = require(path.join(source, 'dist/common/configurationSignature')).default;
+const {environmentAdapters} = require(path.join(source, 'dist/modules/wizard-environments/nativeEnvironment.adapter'));
+const {WizardEnvironmentsModule} = require(path.join(source, 'dist/modules/wizard-environments/wizardEnvironments.module'));
+const {WizardEnvironmentWorkflowService} = require(path.join(source, 'dist/modules/wizard-environments/wizardEnvironmentWorkflow.service'));
+const {NestFactory} = require('@nestjs/core');
+const env = {environmentAdapters};
+let application;
 const certificateAdapter = env.environmentAdapters.certificate;
 const tlsFixture = path.join('/ssl', 'wizard-environment-fixture-' + process.pid);
-const builds = require(path.join(source, 'dist/api/projects/wizard-build-workflow'));
-const legacy = require(path.join(source, 'dist/modules/project-lifecycle/build-recipe.service')).generate(Helper.textLogo);
+const builds = require(path.join(source, 'dist/api/projects/wizardBuildWorkflow'));
+const legacy = require(path.join(source, 'dist/modules/project-lifecycle/buildRecipe.service')).generate(Helper.textLogo);
 const file = path.join(root, 'system/.projects.env/.wizard.env');
 const mainFile = path.join(root, 'system/.docker.env');
 const platform = {WIZARD_HOST: 'production.example', WIZARD_ENABLE: 'true'};
@@ -45,9 +51,14 @@ bootstrap.rails = value => {calls++; input = value; return new Promise(resolve =
 const tick = () => new Promise(resolve => setTimeout(resolve, 2));
 const wait = async job => {for (let i = 0; job.state === 'running' && i < 1000; i++) await tick(); assert.notEqual(job.state, 'running'); return job;};
 const railStarted = async expected => {for (let i = 0; calls < expected && i < 1000; i++) await tick(); assert.equal(calls, expected);};
+const storageLock = path.join(root, 'system/.storage-operation-lock');
+const clearFixtureLease = async operation => {await tick(); assert.equal(bootstrap.projectBusy(), false); const owner = path.join(storageLock, 'operation.json'); const record = JSON.parse(fs.readFileSync(owner)); assert.equal(record.helperName, 'wizard-environments'); assert.equal(record.operation, operation); assert.deepEqual(fs.readdirSync(storageLock), ['operation.json']); fs.unlinkSync(owner); fs.rmdirSync(storageLock);};
 const enabled = preview => {const settings = clone(preview.settings); settings.review.enabled = true; settings.beta.enabled = true; return settings;};
 const installed = () => ({environments: {...input.environments, activationCommit: '9'.repeat(40), phase: 'recipe-installed'}, message: 'Fixture installed'});
 (async () => {
+  application = await NestFactory.createApplicationContext(WizardEnvironmentsModule, {logger: false});
+  const workflow = application.get(WizardEnvironmentWorkflowService);
+  Object.assign(env, {previewWizardEnvironments: () => workflow.preview(), configureWizardEnvironments: (...args) => workflow.configure(...args), refreshWizardEnvironments: () => workflow.refresh()});
   fs.mkdirSync(tlsFixture, {recursive: true, mode: 0o700});
   const certificate = path.join(tlsFixture, 'certificate.pem'), privateKey = path.join(tlsFixture, 'key.pem');
   require('child_process').execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes',
@@ -68,6 +79,45 @@ const installed = () => ({environments: {...input.environments, activationCommit
   assert.equal(preview.capabilities.productionDeployment, false);
   assert.equal(calls + dns + certificates + applied, 0, 'preview/status-idle must have no external side effects');
   assert(!JSON.stringify(preview).includes('RUN npm'));
+  const {readEnvironmentReceipt} = require(path.join(source, 'dist/modules/wizard-environments/receipt'));
+  const unobserved = clone(baseReceipt);
+  Object.assign(unobserved.wizardWorkflow.build, {pipeline: null, artifact: null, publishing: null});
+  unobserved.repository.generatedCi = null; unobserved.extension = {retained: true};
+  const observed = readEnvironmentReceipt(unobserved);
+  assert.equal(observed.wizardWorkflow.build.pipeline, null);
+  assert.equal(observed.wizardWorkflow.build.artifact, null);
+  assert.equal(observed.wizardWorkflow.build.publishing, null);
+  assert.equal(observed.repository.generatedCi, null);
+  assert.deepEqual(observed.extension, unobserved.extension);
+  const nullable = clone(baseReceipt);
+  Object.assign(nullable.wizardWorkflow.build, {pipeline: null, artifact: null, publishing: null});
+  bootstrap.writeReceipt(file, data, nullable);
+  const nullablePreview = env.previewWizardEnvironments();
+  assert.equal(nullablePreview.capabilities.canActivate, false);
+  assert.match(nullablePreview.capabilities.reasons.join(' '), /Verify the Phase B candidate/);
+  assert.equal(env.refreshWizardEnvironments().state, 'not-activated');
+  assert.throws(() => env.configureWizardEnvironments({previewHash: nullablePreview.previewHash, settings: enabled(nullablePreview)}), /Phase B/);
+  assert.equal(calls + dns + certificates, 0);
+  nullable.wizardWorkflow.build = null; nullable.wizardWorkflow.environments = null;
+  const absent = readEnvironmentReceipt(nullable);
+  assert.equal(absent.wizardWorkflow.build, undefined);
+  assert.equal(absent.wizardWorkflow.environments, undefined);
+  bootstrap.writeReceipt(file, data, nullable);
+  assert.equal(env.previewWizardEnvironments().capabilities.canActivate, false);
+  assert.equal(env.refreshWizardEnvironments().state, 'not-activated');
+  reset();
+  preview = env.previewWizardEnvironments();
+  // Existing native Harvest/upgrade barriers also exclude the standalone path.
+  const {StorageLease} = require(path.join(source, 'dist/modules/storage/lease'));
+  const harvestLease = new StorageLease(path.join(root, 'system'), {helperName: 'fixture-harvest', operation: '4'.repeat(48), imageId: process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE});
+  assert.throws(() => env.configureWizardEnvironments({previewHash: preview.previewHash, settings: enabled(preview)}), /storage-operation-busy/);
+  assert.equal(workflow.inspect().operationLease.owner, 'foreign');
+  harvestLease.release(true);
+  const upgradeLock = path.join(root, 'system/.gitlab-upgrade-lock');
+  fs.mkdirSync(upgradeLock, {mode: 0o700}); fs.writeFileSync(path.join(upgradeLock, 'upgrade-owner.json'), JSON.stringify({format: 'system-gitlab-upgrade-lock-v1', operation: '5'.repeat(32)}), {mode: 0o600});
+  assert.throws(() => env.configureWizardEnvironments({previewHash: preview.previewHash, settings: enabled(preview)}), /storage-operation-busy/);
+  assert.equal(workflow.inspect().operationLease.kind, 'gitlab-upgrade');
+  fs.unlinkSync(path.join(upgradeLock, 'upgrade-owner.json')); fs.rmdirSync(upgradeLock);
   let settings = enabled(preview);
   assert.throws(() => env.configureWizardEnvironments({previewHash: 'stale', settings}), /fresh/);
   assert.throws(() => env.configureWizardEnvironments({previewHash: preview.previewHash, settings: {...settings, production: {}}}), /explicit/);
@@ -95,6 +145,8 @@ const installed = () => ({environments: {...input.environments, activationCommit
   const changed = clone(settings); changed.review.host = 'other.example';
   assert.throws(() => env.configureWizardEnvironments({previewHash: preview.previewHash, settings: changed}), /different settings/);
   await railStarted(1);
+  assert.throws(() => new StorageLease(path.join(root, 'system'), {helperName: 'fixture-harvest'}), /storage-operation-busy/);
+  assert.equal(workflow.inspect().operationLease.operation, started.id);
   assert.equal(input.action, 'wizard-environments');
   assert.equal(input.registryPrefix, 'registry.example/root/wizard');
   assert.equal(input.controller, 'system_bootstrapper_1');
@@ -104,9 +156,10 @@ const installed = () => ({environments: {...input.environments, activationCommit
   assert.equal(fs.readFileSync(mainFile, 'utf8'), main);
   // Simulate a helper checkpoint arriving while Rails is in flight.
   let receipt = saved();
-  receipt.wizardWorkflow.environments.deployments = {review: {pending: {pipelineId: 10}}};
+  receipt.wizardWorkflow.environments.deployments = {review: {pending: require(path.join(source, 'dist/modules/project-lifecycle/state')).record({action: 'deploy', kind: 'review', projectId: 99, pipelineId: 10, jobId: 11, sourceCommit: '8'.repeat(40), mrIid: 1, operation: input.environments.operation}, settings.review.host, 'registry.example/root/wizard@sha256:' + 'e'.repeat(64))}};
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^# BOOTSTRAPPER_PROJECT=.*$/m, '# BOOTSTRAPPER_PROJECT=' + Buffer.from(JSON.stringify(receipt)).toString('base64')));
   finish(installed()); await wait(started); assert.equal(started.state, 'complete', started.message);
+  assert.equal(workflow.inspect().operationLease, undefined, 'Settled owned work must release only its own storage barrier');
   assert.equal(started.environments.phase, 'ready'); assert.equal(applied, 0);
   assert.equal(started.environments.deployments.review.pending.pipelineId, 10);
   receipt = saved();
@@ -164,12 +217,27 @@ const installed = () => ({environments: {...input.environments, activationCommit
   assert.equal(status.environments.phase, 'ready', 'Ruby-shaped read-only status must retain helper-ready state');
   assert.equal(saved().wizardWorkflow.environments.phase, 'ready');
   assert.deepEqual({dns, certificates, applied}, beforeStatus);
+  // Missing build observations remain historical once an environment owns CI.
+  receipt = saved();
+  Object.assign(receipt.wizardWorkflow.build, {pipeline: null, artifact: null, publishing: null});
+  bootstrap.writeReceipt(file, fs.readFileSync(file, 'utf8'), receipt);
+  assert.doesNotThrow(() => env.previewWizardEnvironments());
+  assert.equal(builds.previewWizardBuild().build.phase, 'historical');
   // Uncertain external outcome retains the same operation and never creates another one.
   bootstrap.rails = async () => {throw new Error('Safe interrupted fixture');};
   const failed = env.refreshWizardEnvironments(); await wait(failed);
   assert.equal(failed.state, 'failed'); assert.equal(saved().wizardWorkflow.environments.phase, 'verification-failed');
+  assert.equal(workflow.inspect().operationLease, undefined, 'A definitive settled failure must remain retryable');
   assert.equal(saved().wizardWorkflow.environments.operation, resumed.environments.operation);
+  bootstrap.rails = async value => ({environments: {...value.environments, phase: 'recipe-installed'}, message: 'Nullable observation retry'});
+  const nullableRetry = env.refreshWizardEnvironments(); await wait(nullableRetry);
+  assert.equal(nullableRetry.state, 'complete', nullableRetry.message);
+  assert.equal(nullableRetry.id, resumed.id);
+  assert.equal(saved().wizardWorkflow.build.artifact, null);
+  assert.equal(saved().wizardWorkflow.build.publishing, null);
+  assert.equal(builds.previewWizardBuild().build.phase, 'historical');
   // Failed reconciliation must never become a resumable ordinary failure.
+  bootstrap.rails = async () => {throw new Error('Safe interrupted fixture');};
   receipt = saved(); receipt.wizardWorkflow.environments.phase = 'requires-reconciliation';
   delete receipt.wizardWorkflow.environments.activationCommit;
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^# BOOTSTRAPPER_PROJECT=.*$/m,
@@ -180,11 +248,17 @@ const installed = () => ({environments: {...input.environments, activationCommit
   preview = env.previewWizardEnvironments(); assert(!preview.capabilities.canActivate); assert(!preview.capabilities.canUpdate);
   assert.throws(() => env.configureWizardEnvironments({previewHash: preview.previewHash, settings: preview.settings}), /Reconcile/);
   assert.match(builds.previewWizardBuild().build.message, /historical/);
+  assert.equal(workflow.inspect().operationLease.completion, 'uncertain');
+  assert.throws(() => env.refreshWizardEnvironments(), /storage-operation-busy/);
+  // Only this fixture knows its controlled callback has ended. Model the existing
+  // operator stale-lease investigation, never automatic production adoption.
+  await clearFixtureLease(uncertain.id);
   // A concurrent non-deployment edit must survive all completion/failure paths.
   bootstrap.rails = value => {input = value; return new Promise(resolve => {finish = resolve;});};
   const conflict = env.refreshWizardEnvironments(); fs.appendFileSync(file, '# external edit\n');
   finish({environments: input.environments}); await wait(conflict);
   assert.equal(conflict.state, 'failed'); assert(fs.readFileSync(file, 'utf8').endsWith('# external edit\n'));
+  await clearFixtureLease(conflict.id);
   // A disabled/missing verified build blocks first enable.
   reset(); receipt = saved(); receipt.wizardWorkflow.build.phase = 'checks-failed'; bootstrap.writeReceipt(file, data, receipt);
   preview = env.previewWizardEnvironments(); assert(!preview.capabilities.canActivate);
@@ -233,7 +307,7 @@ const installed = () => ({environments: {...input.environments, activationCommit
   reset();
   const nativeSettings = enabled(env.previewWizardEnvironments());
   const nativeFiles = ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map(path => ({path, sha256: '5'.repeat(64)}));
-  const nativeEnvironment = require(path.join(source, 'dist/modules/project-lifecycle/source-primary-environment')).sourcePrimaryEnvironment(
+  const nativeEnvironment = require(path.join(source, 'dist/modules/project-lifecycle/sourcePrimaryEnvironment')).sourcePrimaryEnvironment(
     {phase: 'ready', operation: '1'.repeat(48), settings: nativeSettings, settingsHash: hash(nativeSettings),
       deployments: {review: {lastPipelineId: 43, stoppedThroughPipelineId: 43}, beta: {lastPipelineId: 44, stoppedThroughPipelineId: 44}}},
     {operation: '2'.repeat(48), helperImage: process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE,
@@ -244,7 +318,7 @@ const installed = () => ({environments: {...input.environments, activationCommit
   receipt.namespaceId = 3;
   receipt.sourcePrimary = {version: 1, adoptionCommit: '3'.repeat(40), ciFiles: nativeFiles};
   receipt.wizardWorkflow = {version: 1, phase: 'source-primary', sourceRevision: '3'.repeat(40),
-    build: {...build, mode: 'source-primary'}, environments: nativeEnvironment};
+    build: {...clone(build), mode: 'source-primary'}, environments: nativeEnvironment};
   bootstrap.writeReceipt(file, data, receipt);
   env.environmentAdapters.resolve = async () => ['203.0.113.1'];
   bootstrap.rails = async value => {
@@ -269,6 +343,125 @@ const installed = () => ({environments: {...input.environments, activationCommit
   const nativeStatus = env.refreshWizardEnvironments(); await wait(nativeStatus);
   assert.equal(nativeStatus.state, 'complete', nativeStatus.message);
   assert.equal(input.action, 'wizard-environments-primary-status');
+  const primaryBaseline = fs.readFileSync(file, 'utf8');
+  const pendingPrimary = saved();
+  Object.assign(pendingPrimary.wizardWorkflow.build, {pipeline: null, artifact: null, publishing: {status: 'failed'}});
+  bootstrap.writeReceipt(file, primaryBaseline, pendingPrimary);
+  const unverifiedPrimary = env.previewWizardEnvironments();
+  assert.equal(unverifiedPrimary.capabilities.canActivate, false);
+  assert.equal(unverifiedPrimary.capabilities.canUpdate, false);
+  assert.match(unverifiedPrimary.capabilities.reasons.join(' '), /Verify the adopted source-primary build/);
+  const nullablePrimaryStatus = env.refreshWizardEnvironments(); await wait(nullablePrimaryStatus);
+  assert.equal(nullablePrimaryStatus.state, 'complete', nullablePrimaryStatus.message);
+  assert.equal(saved().wizardWorkflow.build.artifact, null);
+  assert.equal(env.previewWizardEnvironments().capabilities.canUpdate, false);
+  const {verifiedPrimaryBuild} = require(path.join(source, 'dist/modules/wizard-environments/contextPolicy'));
+  assert.equal(verifiedPrimaryBuild({version: 1, mode: 'source-primary', phase: 'candidate-verified', recipeHash: legacy.recipeHash, pipeline: {}, artifact: {}, publishing: {status: 'failed'}}), false);
+  fs.writeFileSync(file, primaryBaseline);
+  // A launched mutation without an exact complete reply keeps its own intent
+  // and barrier. Only this controlled fixture can prove the callback has ended.
+  const invalidReplies = [
+    () => ({environments: true}),
+    () => ({environments: {phase: 'ready'}}),
+    value => ({environments: value.environments}),
+    value => ({environments: {...value.environments, phase: 'requires-reconciliation'}}),
+    value => ({state: 'failed', environments: {...value.environments, phase: 'requires-reconciliation'}}),
+    value => ({environments: {...value.environments, operation: '0'.repeat(48)}}),
+    value => ({environments: {...value.environments, version: 2}}),
+    value => ({environments: {...value.environments, ciFiles: value.environments.ciFiles.map((entry, index) => index === 0 ? {...entry, sha256: '9'.repeat(64)} : entry)}}),
+  ];
+  for (const [index, reply] of invalidReplies.entries()) {
+    let dispatched;
+    bootstrap.rails = async value => {
+      assert.equal(value.action, 'wizard-environments-primary');
+      dispatched = clone(value.environments);
+      return reply(value);
+    };
+    const before = env.previewWizardEnvironments();
+    const requested = clone(before.settings); requested.review.host = 'invalid-reply-' + index + '.example';
+    const rejected = env.configureWizardEnvironments({previewHash: before.previewHash, settings: requested});
+    await wait(rejected);
+    assert.equal(rejected.state, 'failed'); assert.equal(rejected.uncertain, true);
+    assert.equal(rejected.uncertainAction, 'wizard-environments-primary');
+    assert.match(rejected.id, /^[a-f0-9]{48}$/);
+    assert.notEqual(rejected.id, before.environments.operation);
+    assert.equal(dispatched.operation, rejected.id);
+    const retained = saved().wizardWorkflow.environments;
+    assert.equal(retained.operation, rejected.id);
+    assert.equal(retained.settingsHash, dispatched.settingsHash);
+    assert.equal(retained.controller, dispatched.controller);
+    assert.equal(retained.externalAttempted, true);
+    assert.equal(retained.phase, 'requires-reconciliation');
+    assert.equal(workflow.inspect().operationLease.operation, rejected.id);
+    assert.equal(workflow.inspect().operationLease.completion, 'uncertain');
+    const unresolved = fs.readFileSync(file, 'utf8');
+    assert.throws(() => env.refreshWizardEnvironments(), /storage-operation-busy/);
+    assert.equal(fs.readFileSync(file, 'utf8'), unresolved);
+    await clearFixtureLease(rejected.id);
+    fs.writeFileSync(file, primaryBaseline);
+  }
+  bootstrap.rails = async value => ({state: 'failed', message: 'Definitive fixture refusal', environments: value.environments});
+  const beforeRefusal = env.previewWizardEnvironments();
+  const refusedSettings = clone(beforeRefusal.settings); refusedSettings.review.host = 'definite-refusal.example';
+  const refused = env.configureWizardEnvironments({previewHash: beforeRefusal.previewHash, settings: refusedSettings});
+  await wait(refused);
+  assert.equal(refused.state, 'failed'); assert.equal(refused.uncertain, undefined);
+  assert.equal(saved().wizardWorkflow.environments.phase, 'verification-failed');
+  assert.equal(workflow.inspect().operationLease, undefined);
+  fs.writeFileSync(file, primaryBaseline);
+  // The named standalone command resolves the same providers without an HTTP listener.
+  const http = require('node:http'), originalListen = http.Server.prototype.listen;
+  const {applicationCommand} = require(path.join(source, 'dist/cli/applicationCommands'));
+  const {wizardEnvironmentsMain} = require(path.join(source, 'dist/modules/wizard-environments/entry'));
+  const originalLog = console.log;
+  let cliPreview;
+  http.Server.prototype.listen = () => {throw Error('Standalone environment CLI must not bind HTTP');};
+  console.log = value => {cliPreview = JSON.parse(value);};
+  try {
+    assert.equal(await applicationCommand('wizard-environments', ['preview']), true);
+    assert.deepEqual(cliPreview.settings, env.previewWizardEnvironments().settings);
+    const requestFile = path.join(root, 'environment-request.json');
+    fs.writeFileSync(requestFile, JSON.stringify({previewHash: 'stale', settings: cliPreview.settings}), {mode: 0o600});
+    await assert.rejects(() => wizardEnvironmentsMain(['configure', requestFile]), /fresh/);
+    fs.chmodSync(requestFile, 0o644);
+    await assert.rejects(() => wizardEnvironmentsMain(['configure', requestFile]), /private regular/);
+  } finally {http.Server.prototype.listen = originalListen; console.log = originalLog;}
+  // Unknown transport completion keeps both external intent and the native barrier.
+  reset();
+  bootstrap.rails = async () => {throw Object.assign(Error('Fixture transport outcome unknown'), {uncertain: true, action: 'wizard-environments'});};
+  preview = env.previewWizardEnvironments();
+  const lost = env.configureWizardEnvironments({previewHash: preview.previewHash, settings: enabled(preview)});
+  await wait(lost);
+  assert.equal(lost.state, 'failed');
+  assert.equal(saved().wizardWorkflow.environments.externalAttempted, true);
+  assert.equal(saved().wizardWorkflow.environments.phase, 'requires-reconciliation');
+  assert.equal(workflow.inspect().operationLease.completion, 'uncertain');
+  assert.throws(() => env.refreshWizardEnvironments(), /storage-operation-busy/);
+  const inspected = await wizardEnvironmentsMain(['inspect']);
+  assert.equal(inspected.operationLease.operation, lost.id);
+  await clearFixtureLease(lost.id);
+  // A different owner can never be unlinked by our completed operation.
+  reset(); let settleOwned;
+  bootstrap.rails = value => new Promise(resolve => {settleOwned = () => resolve({environments: {...value.environments, activationCommit: '8'.repeat(40), phase: 'recipe-installed'}});});
+  preview = env.previewWizardEnvironments();
+  const changedOwner = env.configureWizardEnvironments({previewHash: preview.previewHash, settings: enabled(preview)});
+  while (!settleOwned) await tick();
+  const ownerFile = path.join(storageLock, 'operation.json'), foreignOperation = '6'.repeat(48);
+  const foreignOwner = {...JSON.parse(fs.readFileSync(ownerFile)), operation: foreignOperation};
+  fs.writeFileSync(ownerFile, JSON.stringify(foreignOwner));
+  settleOwned(); await wait(changedOwner);
+  assert.equal(changedOwner.state, 'failed'); assert.equal(changedOwner.uncertain, true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(ownerFile)), foreignOwner);
+  await clearFixtureLease(foreignOperation);
+  // Actual SIGKILL cannot execute cleanup and never makes an elapsed lease free.
+  const killedOperation = '7'.repeat(48);
+  const childCode = `const {NativeEnvironmentOperationLeaseAdapter}=require(${JSON.stringify(path.join(source, 'dist/modules/wizard-environments/operationLease.adapter'))}); const lease=new NativeEnvironmentOperationLeaseAdapter({mainFile:()=>${JSON.stringify(mainFile)}}); lease.acquire(${JSON.stringify(killedOperation)},${JSON.stringify(process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE)}); process.kill(process.pid,'SIGKILL');`;
+  const killed = require('child_process').spawnSync(process.execPath, ['-e', childCode], {timeout: 10000, encoding: 'utf8'});
+  assert.equal(killed.signal, 'SIGKILL');
+  assert.equal(workflow.inspect().operationLease.operation, killedOperation);
+  assert.equal(workflow.inspect().operationLease.completion, 'running');
+  assert.throws(() => env.refreshWizardEnvironments(), /storage-operation-busy/);
+  await clearFixtureLease(killedOperation);
   console.log('Wizard environments workflow: explicit preview, immutable operation identity, HTTPS/DNS guards, singleton lease/update guard, helper-lock/CAS merging, interrupted recovery, startup preservation and historical Phase B passed.');
-})().catch(error => {console.error(error); process.exitCode = 1;}).finally(() => {process.chdir(source); fs.rmSync(root, {recursive: true, force: true}); fs.rmSync(tlsFixture, {recursive: true, force: true});});
+})().catch(error => {console.error(error); process.exitCode = 1;}).finally(async () => {if (application) await application.close(); process.chdir(source); fs.rmSync(root, {recursive: true, force: true}); fs.rmSync(tlsFixture, {recursive: true, force: true});});
 

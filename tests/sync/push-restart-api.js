@@ -6,7 +6,7 @@ const path = require('path');
 const http = require('http');
 const {spawn} = require('child_process');
 const entry = process.env.SYNC_ENTRY || path.resolve(__dirname, '../../dist/api/index.js');
-const startCode = `const path=require('node:path');const paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installation-paths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
+const startCode = `const path=require('node:path');const paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installationPaths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function scenario(validArchive) {

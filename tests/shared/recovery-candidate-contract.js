@@ -802,11 +802,11 @@ test('the fresh readonly manifest helper preserves the harvested image check wit
   fs.symlinkSync('snapshots/completed',path.join(seed,'current'));
   const env={...process.env};delete env.GITLAB_IMAGE;
   const execute=environment=>require('child_process').spawnSync(process.execPath,
-    [path.join(__dirname,'../../dist/modules/storage/manifest-entry.js'),'current',seed],{env:environment,encoding:'utf8'});
+    [path.join(__dirname,'../../dist/modules/storage/manifestEntry.js'),'current',seed],{env:environment,encoding:'utf8'});
   assert.notEqual(execute(env).status,0,'a fresh helper really refuses an undeclared harvested image');
   const inner=f.candidate.inner;
   f.candidate.inner=async(args,options)=>{
-    if(!args.includes('/system/dist/modules/storage/manifest-entry.js'))return inner(args,options);
+    if(!args.includes('/system/dist/modules/storage/manifestEntry.js'))return inner(args,options);
     for(let index=0;index<args.length-1;index++)if(args[index]==='--env'){
       const match=/^([A-Z_]+)=(.*)$/.exec(args[++index]);if(match)env[match[1]]=match[2];
     }

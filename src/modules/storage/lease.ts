@@ -8,11 +8,14 @@ export function startupAllowed(
 ) {
   const lock = path.join(state, '.storage-operation-lock');
   const upgrade = path.join(state, '.gitlab-upgrade-lock');
+
   if (
     !fs.lstatSync(lock, { throwIfNoEntry: false }) &&
     !fs.lstatSync(upgrade, { throwIfNoEntry: false })
-  )
+  ) {
     return;
+  }
+
   requireValue(staged, 'storage-operation-busy');
   let identity;
   for (const directory of [lock, upgrade]) {
@@ -47,7 +50,11 @@ export function startupAllowed(
 }
 export function startupBegin(state: string, pid: string | number) {
   const promotion = startupAllowed(state);
-  if (promotion) return 'staged-' + promotion.operation;
+
+  if (promotion) {
+    return 'staged-' + promotion.operation;
+  }
+
   requireValue(/^[1-9][0-9]*$/.test(String(pid)), 'invalid-startup-owner');
   const directory = path.join(state, '.storage-operation-lock'),
     operation = crypto.randomBytes(16).toString('hex');
@@ -68,11 +75,13 @@ export function startupFinish(state: string, operation: string | undefined) {
     operation && /^(startup|staged)-[a-f0-9]{32}$/.test(operation),
     'invalid-startup-owner',
   );
+
   if (operation.startsWith('staged-')) {
     const promotion = startupAllowed(state);
     requireValue(promotion?.operation === operation.slice(7), 'startup-ownership-changed');
     return;
   }
+
   const directory = path.join(state, '.storage-operation-lock'),
     owner = path.join(directory, 'startup-owner.json');
   requireValue(
@@ -103,16 +112,25 @@ export function startupSettled(
     exitCode < 0 ||
     exitCode >= 128 ||
     !/^startup-[a-f0-9]{32}$/.test(operation || '')
-  )
+  ) {
     return;
+  }
+
   const owner = path.join(state, '.storage-operation-lock/startup-owner.json');
-  if (!fs.lstatSync(owner, { throwIfNoEntry: false })) return;
+
+  if (!fs.lstatSync(owner, { throwIfNoEntry: false })) {
+    return;
+  }
+
   requireValue(
     fs.lstatSync(owner).isFile() && !fs.lstatSync(owner).isSymbolicLink(),
     'startup-ownership-changed',
   );
   const record = JSON.parse(fs.readFileSync(owner, 'utf8'));
-  if (record.operation === operation.slice(8)) startupFinish(state, operation);
+
+  if (record.operation === operation.slice(8)) {
+    startupFinish(state, operation);
+  }
 }
 export interface StorageLeaseSpec {
   helperName?: string;
@@ -169,7 +187,11 @@ export class StorageLease {
       this.record('uncertain');
       return;
     }
-    if (this.environmentHeld) fs.rmdirSync(this.environment);
+
+    if (this.environmentHeld) {
+      fs.rmdirSync(this.environment);
+    }
+
     fs.unlinkSync(this.owner);
     fs.rmdirSync(this.directory);
   }

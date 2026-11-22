@@ -1,8 +1,8 @@
 'use strict';
-const {ProxyReloadService}=require('../../dist/modules/projects-routing/proxy-reload.service');
+const {ProxyReloadService}=require('../../dist/modules/projects-routing/proxyReload.service');
 require('../../node_modules/reflect-metadata');
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const {ProjectsRoutingService}=require('../../dist/modules/projects-routing/projects-routing.service');
+const {ProjectsRoutingService}=require('../../dist/modules/projects-routing/projectsRouting.service');
 const {LiteralConfiguration}=require('../../dist/modules/projects-routing/ports');
 const {ProcessFailure}=require('../../dist/common/runtime/process');
 function fixture(t){
@@ -20,7 +20,7 @@ function fixture(t){
  return {root,calls,process,service:new ProjectsRoutingService(process,new LiteralConfiguration(),new ProxyReloadService(process)),command:{action:'reload',root,templates:path.join(root,'templates')}};
 }
 test('Nest routing module resolves the typed service and bounded configuration port',async()=>{
- const {NestFactory}=require('../../node_modules/@nestjs/core'),{ProjectsRoutingModule}=require('../../dist/modules/projects-routing/projects-routing.module');
+ const {NestFactory}=require('../../node_modules/@nestjs/core'),{ProjectsRoutingModule}=require('../../dist/modules/projects-routing/projectsRouting.module');
  const app=await NestFactory.createApplicationContext(ProjectsRoutingModule,{logger:false});
  try{assert(app.get(ProjectsRoutingService) instanceof ProjectsRoutingService);}finally{await app.close();}
 });
@@ -31,8 +31,8 @@ test('literal configuration adapter reads settings without executing them and cl
 });
 test('start/reload/apply retain the signed default Wizard, one route, optional fragments and exact Compose settings',async t=>{
  const f=fixture(t);
- const {wizardConfiguration}=require('../../dist/api/projects/default-wizard');
- const {readReceipt}=require('../../dist/api/projects/project-workflow');
+ const {wizardConfiguration}=require('../../dist/api/projects/defaultWizard');
+ const {readReceipt}=require('../../dist/modules/project-workflow/projectWorkflow');
  const crypto=require('node:crypto');
  const receipt={operation:'b'.repeat(48),defaultProject:true,template:'wizard',state:'pending',repository:{id:1,namespaceId:1,path:'root/wizard',defaultBranch:'main',systemProject:true}};
  const project=path.join(f.root,'config/system/.projects.env/.wizard.env');

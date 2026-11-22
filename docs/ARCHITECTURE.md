@@ -49,6 +49,10 @@ Services use injected process, configuration and evidence ports.
   cancellation and the unlimited foreground prebuilt Sync process.
 - `ProjectLifecycleModule`, `EnvironmentModule` and `CanonicalModule` own project
   deployment transactions, source transfer and canonical environment state.
+  `WizardEnvironmentsModule` separates typed settings, DNS/TLS preflight,
+  activation/status decisions and locked receipt storage. HTTP and the standalone
+  `wizard-environments` command inject the same workflow service; process-local
+  preparation state never replaces durable configuration or operation leases.
   `PreviewOperatorModule`, `AdoptionModule`, `UpgradeModule`, `ProductionModule`
   and `SystemBetaModule` separate setup, source adoption/build upgrades, deliberate
   Wizard Production promotion and accepted-candidate System Beta.

@@ -4,8 +4,8 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {createHash}=require('node:crypto');
-const {ContainerCheckService}=require('../../dist/modules/ci/container-check.service');
-const {ManagedChildProcess}=require('../../dist/common/runtime/managed-child');
+const {ContainerCheckService}=require('../../dist/modules/ci/containerCheck.service');
+const {ManagedChildProcess}=require('../../dist/common/runtime/managedChild');
 function fixture(t, browser=false){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'container-check-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -112,14 +112,14 @@ test('browser image retains reviewed trust and the full native browser suite',()
  const dockerfile=fs.readFileSync(path.join(__dirname,'../wizard-browser.Dockerfile'),'utf8');
  assert.ok(dockerfile.includes('playwright install-deps chromium')&&dockerfile.includes('playwright install chromium'));
  assert.ok(dockerfile.includes('ENV NODE_OPTIONS=--use-openssl-ca'));
- const bundle=dockerfile.indexOf('RUN node src/cli/verify-ca.mts --bundle'),install=dockerfile.indexOf('RUN npm ci');
+ const bundle=dockerfile.indexOf('sha256sum -c -'),install=dockerfile.indexOf('RUN npm ci');
  assert.ok(bundle>=0&&install>bundle,'reviewed CA validation must precede dependency installation');
  const dependencies=dockerfile.indexOf('playwright install-deps chromium');
- const refresh=dockerfile.indexOf('node /candidate/dist/cli/main.js host-bootstrap refresh-ca --checkout /candidate',dependencies);
- const checked=dockerfile.indexOf('node /candidate/dist/cli/main.js host-bootstrap ca-check --checkout /candidate',refresh);
+ const refresh=dockerfile.indexOf('system-bootstrapper host-bootstrap refresh-ca --checkout /candidate',dependencies);
+ const checked=dockerfile.indexOf('system-bootstrapper host-bootstrap ca-check --checkout /candidate',refresh);
  const browser=dockerfile.indexOf('playwright install chromium',dependencies);
  assert.ok(dependencies>=0&&refresh>dependencies&&checked>refresh&&browser>checked,'dependency trust changes must be replaced and verified before browser installation');
- assert.ok(dockerfile.includes('"test:ci"')&&dockerfile.includes('--reporter=list,html,junit'));
+ assert.ok(dockerfile.includes('"browser-suite"')&&dockerfile.includes('--reporter=list,html,junit'));
  assert.equal(dockerfile.includes('--grep'),false);
 });
 test('candidate image uses the same lifecycle and invokes typed runtime validation',async t=>{

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Injectable } from '@nestjs/common';
-import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 
 /** Coordinates the existing candidate checks and removes only this job's images. */
 @Injectable()
@@ -14,7 +14,10 @@ export class PlatformCheckService {
     cleanupOnly = false,
     signal?: AbortSignal,
   ) {
-    if (!/^\d+$/.test(environment.CI_JOB_ID || '')) throw new Error('numeric-ci-job-required');
+    if (!/^\d+$/.test(environment.CI_JOB_ID || '')) {
+      throw new Error('numeric-ci-job-required');
+    }
+
     const env = {
       ...environment,
       SYSTEM_DISPOSABLE_CANDIDATE: 'I_ACCEPT_PRIVILEGED_DISPOSABLE_EXECUTION',
@@ -59,24 +62,38 @@ export class PlatformCheckService {
             8000,
             null,
           );
-          if (!listed.trim()) continue;
+
+          if (!listed.trim()) {
+            continue;
+          }
+
           const rows: unknown = JSON.parse(
             await run('docker', ['image', 'inspect', name], false, 8000, null),
           );
+
           if (
             !Array.isArray(rows) ||
             rows.length !== 1 ||
             rows[0]?.Config?.Labels?.['org.system-bootstrapper.test-job'] !== environment.CI_JOB_ID
-          )
+          ) {
             throw new Error('candidate-image-owner-mismatch');
+          }
+
           await run('docker', ['image', 'rm', name], false, 8000, null);
         } catch (error) {
           failure ??= error;
         }
       }
-      if (failure) throw failure;
+
+      if (failure) {
+        throw failure;
+      }
     };
-    if (cleanupOnly) return cleanup();
+
+    if (cleanupOnly) {
+      return cleanup();
+    }
+
     let primary: unknown;
     try {
       fs.mkdirSync(path.join(root, 'test-results/successor'), { recursive: true });
@@ -100,7 +117,7 @@ export class PlatformCheckService {
       );
       await run(
         process.execPath,
-        [path.join(__dirname, '../release/release-entry.js'), 'successor'],
+        [path.join(__dirname, '../release/releaseEntry.js'), 'successor'],
         true,
         null,
       );
@@ -112,6 +129,9 @@ export class PlatformCheckService {
     } catch (error) {
       primary ??= error;
     }
-    if (primary) throw primary;
+
+    if (primary) {
+      throw primary;
+    }
   }
 }

@@ -4,10 +4,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {spawnSync} = require('child_process');
-const logo = require('../../dist/common/configuration-signature').default.textLogo;
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
 const options = {settings: {review: {enabled: false}, beta: {enabled: false}}, settingsHash: 'a'.repeat(64),
   helperImage: 'sha256:' + 'b'.repeat(64), operation: 'c'.repeat(48), controller: 'system_bootstrapper_1'};
-const run = require('../../dist/modules/project-lifecycle/environment-recipe.service').generate(logo, options).files[0].content;
+const run = require('../../dist/modules/project-lifecycle/environmentRecipe.service').generate(logo, options).files[0].content;
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-environment-launcher-'));
 try {
   const script = path.join(fixture, 'run.sh'), trace = path.join(fixture, 'trace');

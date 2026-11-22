@@ -4,10 +4,10 @@ const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
 const {execFileSync}=require('child_process');
-const {validate}=require('../../dist/modules/source-preparation/wizard-source.service');
+const {validate}=require('../../dist/modules/source-preparation/wizardSource.service');
 const root=path.resolve(__dirname,'../..');
 const securityRelease=require('../../config/gitlab/security-release.json');
-const trust=require('../../dist/modules/host-bootstrap/ca-verification.service');
+const trust=require('../../dist/modules/host-bootstrap/caVerification.service');
 const defaults={
   daemon:'docker:29.9.2-dind@sha256:9e79b879b177fbd72c34376a3dd3d91747da5db49e1f560f76aea59561471977',
   gitlab:securityRelease.toImage,
@@ -36,7 +36,7 @@ function wizardDockerfile(files) {
   return dockerfiles[0].path;
 }
 function guidedSettings() {
-  return require('../../dist/modules/project-lifecycle/preview-settings').settings({
+  return require('../../dist/modules/project-lifecycle/previewSettings').settings({
     version:2,namespace:'root',wizard:{mode:'existing',project:'wizard'},
     review:{enabled:false,host:'',ssl:'',sslKey:''},
     beta:{enabled:true,host:'beta.candidate.test',ssl:'/ssl/live/recovery-fixture/fullchain.pem',sslKey:'/ssl/live/recovery-fixture/privkey.pem'}
@@ -44,7 +44,7 @@ function guidedSettings() {
 }
 
 function privateWizardAcceptance(files,exists=filename=>fs.existsSync(path.join(root,filename))) {
-  const helpers=['src/modules/wizard-recovery/entry.ts','src/modules/wizard-recovery/wizard-recovery.service.ts','src/modules/wizard-recovery/registry.service.ts'];
+  const helpers=['src/modules/wizard-recovery/entry.ts','src/modules/wizard-recovery/wizardRecovery.service.ts','src/modules/wizard-recovery/registry.service.ts'];
   if(!helpers.some(filename=>files.includes(filename)))return false;
   if(!helpers.every(filename=>files.includes(filename))||!exists("tests/e2e/recovery.js")||!exists("tests/e2e/wizard-pin-fixture.js"))throw Error("Private Wizard startup requires the complete private-registry recovery contract.");
   return true;
@@ -95,14 +95,14 @@ async function prepare(){
   try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.source-tree='+sourceTree,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','containers/controller/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
   run(['run','--rm','--network','none','--memory','128m','--cpus','0.25',
     '--entrypoint','/usr/local/bin/node',tags.candidate,
-    '/system/dist/modules/testing/public-upgrade-entry.js','verify-host']);
+    '/system/dist/modules/testing/publicUpgradeEntry.js','verify-host']);
   require('../bootstrapper/log-rotation-docker').run({helperImage:tags.candidate});
   run(['pull',defaults.nginx]);
   require('../persistence/http01-nginx-probe').run({helperImage:tags.candidate,nginxImage:defaults.nginx});
   const snapshot=validate(JSON.parse(fs.readFileSync(path.join(root,'assets/wizard-source/snapshot.json'),'utf8')));
   const context=path.join(output,'wizard-context');fs.mkdirSync(context,{recursive:true});
   for(const file of snapshot.files){const name=path.join(context,file.path);fs.mkdirSync(path.dirname(name),{recursive:true});fs.writeFileSync(name,Buffer.from(file.content,'base64'),{mode:file.mode==='100755'?0o755:0o644});}
-  const recipes=require('../../dist/modules/project-lifecycle/build-recipe.service');
+  const recipes=require('../../dist/modules/project-lifecycle/buildRecipe.service');
   const logo=fs.readFileSync(path.join(root,'config/system/.docker.env.example'),'utf8').slice(0,1184);
   const recipe=recipes.forSource?recipes.forSource(logo,snapshot.sourceRevision):recipes.generate(logo);
   const buildFiles=recipe.files;

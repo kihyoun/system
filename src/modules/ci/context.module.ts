@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
-import { SourcePreparationModule } from '../source-preparation/source-preparation.module';
-import { CONTEXT_PROCESS, NativeContextProcess } from './context-process';
-import { CommittedContextService } from './committed-context.service';
-import { ContextPreparationService } from './context-preparation.service';
-import { WizardBrowserContextService } from './wizard-browser-context.service';
-import { CodeqlContextService } from './codeql-context.service';
+import { SourcePreparationModule } from '../source-preparation/sourcePreparation.module';
+import { contextProcess, NativeContextProcess } from './contextProcess';
+import { CommittedContextService } from './committedContext.service';
+import { ContextPreparationService } from './contextPreparation.service';
+import { WizardBrowserContextService } from './wizardBrowserContext.service';
+import { CodeqlContextService } from './codeqlContext.service';
 @Module({
   imports: [SourcePreparationModule],
   providers: [
-    { provide: CONTEXT_PROCESS, useClass: NativeContextProcess },
+    { provide: contextProcess, useClass: NativeContextProcess },
     CommittedContextService,
     ContextPreparationService,
     WizardBrowserContextService,

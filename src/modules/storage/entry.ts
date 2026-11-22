@@ -5,13 +5,17 @@ import path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { StorageModule } from './storage.module';
 import { StorageService } from './storage.service';
-import { StorageCommandDto, StorageAction } from './storage-command.dto';
-import { normalizePreview } from '../../common/runtime/preview-settings';
-import { directory, writeStatus } from './coordinated-backup';
+import { StorageCommandDto, StorageAction } from './storageCommand.dto';
+import { normalizePreview } from '../../common/runtime/previewSettings';
+import { directory, writeStatus } from './coordinatedBackup';
 
 export async function main(args = process.argv.slice(2), environment = process.env): Promise<void> {
   const [action, operation, ...flags] = args;
-  if (action === 'sync-status') environment = savedSyncEnvironment(environment);
+
+  if (action === 'sync-status') {
+    environment = savedSyncEnvironment(environment);
+  }
+
   const application = await NestFactory.createApplicationContext(
     StorageModule.register({ normalizePreview }),
     { logger: false },
@@ -27,8 +31,12 @@ export async function main(args = process.argv.slice(2), environment = process.e
       backup: environment.SYSTEM_SEED_CONFIGURATION_BACKUP,
     };
     const result = await application.get(StorageService).run(command);
-    if (action === 'startup-begin') console.log(result);
-    else if (action === 'sync-status') console.log(JSON.stringify(result));
+
+    if (action === 'startup-begin') {
+      console.log(result);
+    } else if (action === 'sync-status') {
+      console.log(JSON.stringify(result));
+    }
   } finally {
     await application.close();
   }
@@ -41,13 +49,15 @@ export function reportFailure(error: unknown, args: string[] = process.argv.slic
     const id =
       process.env.SYSTEM_COORDINATED_BACKUP ||
       (inside && JSON.parse(process.env.SYSTEM_STORAGE_SPEC || '{}').coordinatedBackup);
+
     if (id) {
       const root = directory(
         inside ? '/live/configuration' : process.env.SYSTEM_CONFIG_DIR || '/state',
         id,
       );
       const status = JSON.parse(fs.readFileSync(path.join(root, 'status.json'), 'utf8'));
-      if (status.state === 'working' && status.phase === 'preflight')
+
+      if (status.state === 'working' && status.phase === 'preflight') {
         writeStatus(root, {
           ...status,
           state: 'failed',
@@ -56,6 +66,7 @@ export function reportFailure(error: unknown, args: string[] = process.argv.slic
           completedAt: new Date().toISOString(),
           configuration: { status: 'unavailable' },
         });
+      }
     }
   } catch {
     /* Preserve controlled diagnostics when the status artifact is unavailable. */
@@ -63,4 +74,7 @@ export function reportFailure(error: unknown, args: string[] = process.argv.slic
   console.error('Seed operation failed: ' + code + '.');
   process.exitCode = args[0] === 'startup-begin' && code === 'storage-operation-busy' ? 75 : 1;
 }
-if (require.main === module) main().catch(reportFailure);
+
+if (require.main === module) {
+  main().catch(reportFailure);
+}

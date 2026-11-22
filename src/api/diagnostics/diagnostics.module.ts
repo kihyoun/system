@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
-import { diagnosticTargets } from './system-diagnostics';
-import { nativeProbe } from './connection-diagnostics.adapter';
-import { inspectRunner, pullHelper } from './docker-diagnostics.adapter';
+import { diagnosticTargets } from './systemDiagnostics';
+import { nativeProbe } from './connectionDiagnostics.adapter';
+import { inspectRunner, pullHelper } from './dockerDiagnostics.adapter';
 import { DiagnosticsController } from './diagnostics.controller';
-import { DIAGNOSTIC_DEPENDENCIES, DiagnosticsService } from './diagnostics.service';
+import { diagnosticDependencies, DiagnosticsService } from './diagnostics.service';
 
 @Module({
   imports: [AuthModule],
@@ -12,7 +12,7 @@ import { DIAGNOSTIC_DEPENDENCIES, DiagnosticsService } from './diagnostics.servi
   providers: [
     DiagnosticsService,
     {
-      provide: DIAGNOSTIC_DEPENDENCIES,
+      provide: diagnosticDependencies,
       useFactory: () => ({
         targets: diagnosticTargets,
         probe: nativeProbe,

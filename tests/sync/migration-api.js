@@ -11,7 +11,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-migration-'));
 for (const name of ['config/system', 'state']) fs.mkdirSync(path.join(root, name),{recursive:true});
 fs.mkdirSync(path.join(root,'dist/cli'),{recursive:true});
 fs.writeFileSync(path.join(root,'dist/cli/main.js'),'require("node:assert/strict").deepEqual(process.argv.slice(2,4),["lifecycle","stop-intermediate"]);process.exit(0);\n');
-const startCode = `const path=require('node:path');const paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installation-paths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);paths.cliArguments=(command,args)=>[path.join(fixture,'dist/cli/main.js'),command,...args];require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
+const startCode = `const path=require('node:path');const paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installationPaths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);paths.cliArguments=(command,args)=>[path.join(fixture,'dist/cli/main.js'),command,...args];require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
 const entry = path.resolve(__dirname, '../../dist/api/index.js');
 const child = spawn(process.execPath, ['-e', startCode, entry, root], {cwd: root,
   env: {...process.env, SYSTEM_CONFIG_DIR: path.join(root, 'state'), SYNC_USER: 'migration-test', SYNC_PASS: 'test-only'}, stdio: ['ignore','pipe','pipe']});

@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {execFileSync}=require('node:child_process');
 const {DocumentationCheckService}=require('../../dist/modules/ci/documentation.service');
-const {ManagedChildProcess}=require('../../dist/common/runtime/managed-child');
+const {ManagedChildProcess}=require('../../dist/common/runtime/managedChild');
 function fixture(t,directory=os.tmpdir()){
  const root=fs.mkdtempSync(path.join(directory,'documentation-native-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -35,7 +35,7 @@ function fixture(t,directory=os.tmpdir()){
    const selected={};for(let i=0;i<create.length;i++)if(create[i]==='--env'){const [key,...value]=create[++i].split('=');selected[key]=value.join('=');}
    assert.equal(JSON.stringify(selected).includes('sensitive-marker'),false);
    assert.equal(Object.keys(selected).length,7);
-   const program=`const fs=require('fs');fs.mkdirSync('test-results/documentation',{recursive:true});try{const r=require('./runtime/modules/ci/documentation-policy').check();fs.writeFileSync('test-results/documentation/report.json',JSON.stringify({status:'passed',...r}));}catch(e){fs.writeFileSync('test-results/documentation/report.json',JSON.stringify({status:'failed',reason:e.message}));process.exitCode=1;}`;
+   const program=`const fs=require('fs');fs.mkdirSync('test-results/documentation',{recursive:true});try{const r=require('./runtime/modules/ci/documentationPolicy').check();fs.writeFileSync('test-results/documentation/report.json',JSON.stringify({status:'passed',...r}));}catch(e){fs.writeFileSync('test-results/documentation/report.json',JSON.stringify({status:'failed',reason:e.message}));process.exitCode=1;}`;
    try{await native.run(process.execPath,['-e',program],{cwd:received,env:{PATH:process.env.PATH,GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',...selected},timeout:10000});status='0';}catch{status='1';}
    return '';
   }

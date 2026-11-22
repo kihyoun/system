@@ -6,8 +6,8 @@ const path = require('path');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'system-beta-setup-'));
 process.env.SYSTEM_CONFIG_DIR = root;
 process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE = 'sha256:' + 'f'.repeat(64);
-const bootstrap = require('../../dist/api/projects/project-workflow');
-const logo = require('../../dist/common/configuration-signature').default.textLogo;
+const bootstrap = require('../../dist/modules/project-workflow/projectWorkflow');
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
 const config = path.join(root, '.projects.env/.wizard.env'), main = path.join(root, '.docker.env');
 fs.mkdirSync(path.dirname(config));
 const receipt = {defaultProject: true, template: 'wizard', state: 'complete', operation: '1'.repeat(48), namespaceId: 1,
@@ -18,8 +18,8 @@ fs.writeFileSync(main, logo + "GITLAB_HOST='gitlab.example.test'\nGITLAB_REGISTR
 const originalMain = fs.readFileSync(main, 'utf8');
 const desired = {version: 2, namespace: 'team', wizard: {mode: 'existing', project: 'system', origin: ''},
   review: {enabled: false, host: '', ssl: '', sslKey: ''}, beta: {enabled: true, host: 'beta.example.test', ssl: '/ssl/beta/cert', sslKey: '/ssl/beta/key'}};
-let checks = 0, failTls = false, sourceId = 7;
-require('../../dist/api/projects/wizard-environment-workflow').preflightWizardEnvironmentSettings = async value => {
+let checks = 0, failTls = false, sourceId = 7, missingSource = false;
+const preflightEnvironment = async value => {
   assert.equal(value.review.enabled, false); checks++;
   if (failTls) throw Error('TLS fixture refusal');
   return value;
@@ -27,14 +27,30 @@ require('../../dist/api/projects/wizard-environment-workflow').preflightWizardEn
 bootstrap.rails = async input => {
   assert.equal(input.action, 'preview-setup-preflight', 'setup must not mutate projects or start a build');
   assert.equal(input.sourceLayout, 'system-monorepo-v1');
-  return {namespaceId: 1, projects: [{id: sourceId, path: 'team/system', namespaceId: 1, defaultBranch: 'main', sourceRevision: 'a'.repeat(40)}]};
+  return {namespaceId: 1, projects: missingSource ? [] : [{id: sourceId, path: 'team/system', namespaceId: 1, defaultBranch: 'main', sourceRevision: 'a'.repeat(40)}]};
 };
-const setup = require('../../dist/api/projects/preview-setup');
+const nativeSetup = require('../../dist/modules/project-workflow/previewSetup');
+const setup = {...nativeSetup, preflightPreviewSetup: input => nativeSetup.preflightPreviewSetup(input, preflightEnvironment), applyPreviewSetup: input => nativeSetup.applyPreviewSetup(input, preflightEnvironment)};
 const wait = async job => {while (job.state === 'running') await new Promise(resolve => setTimeout(resolve, 5)); return job;};
 (async () => {
   try {
     await assert.rejects(() => setup.preflightPreviewSetup({settings: {...desired, version: 1}}), /Explicitly migrate/);
+    for (const input of [null, [], {settings: 7}]) {
+      await assert.rejects(() => setup.preflightPreviewSetup(input), /Explicitly migrate/);
+    }
+    assert.throws(() => setup.applyPreviewSetup({settings: desired, previewHash: 7}), /Refresh Beta preflight/);
+    await assert.rejects(() => setup.preflightPreviewSetup({settings: desired, extra: true}), /Provide desired Beta settings/);
+    const legacy = path.join(root, 'preview-setup.json');
+    fs.writeFileSync(legacy, JSON.stringify({operation: 7}));
+    assert.throws(() => setup.previewSetupStatus(), /setup status is unavailable/);
+    fs.writeFileSync(legacy, JSON.stringify({operation: 'retained-old-operation', uncertain: true}));
+    assert.equal(setup.previewSetupStatus().operation, 'retained-old-operation');
+    await assert.rejects(() => setup.preflightPreviewSetup({settings: desired}), /unfinished legacy setup/);
+    fs.unlinkSync(legacy);
     const before = fs.readFileSync(config, 'utf8');
+    missingSource = true;
+    await assert.rejects(() => setup.preflightPreviewSetup({settings: desired}), /Shared source identity/);
+    assert.equal(fs.readFileSync(config, 'utf8'), before); missingSource = false;
     const plan = await setup.preflightPreviewSetup({settings: desired});
     assert.equal(fs.readFileSync(config, 'utf8'), before);
     failTls = true; await assert.rejects(() => setup.preflightPreviewSetup({settings: desired}), /TLS/); failTls = false;
@@ -54,6 +70,9 @@ const wait = async job => {while (job.state === 'running') await new Promise(res
     current.wizardWorkflow.environments.deployments.review = {tombstone: {projectId: 1}};
     bootstrap.writeReceipt(config, logo, current);
     await assert.rejects(() => setup.preflightPreviewSetup({settings: desired}), /clean exactly owned/);
+    delete current.wizardWorkflow.environments.settings;
+    bootstrap.writeReceipt(config, logo, current);
+    assert.throws(() => setup.previewSetupStatus(), /Invalid stored environment state/);
     assert(checks >= 4);
     console.log('System Beta setup: no Review host/build, TLS rejection, fresh source binding, inert legacy intent, owned cleanup boundary and preserved repository/history/Production passed.');
   } finally { fs.rmSync(root, {recursive: true, force: true}); }

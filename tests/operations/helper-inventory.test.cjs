@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {helperInventory} = require('../../dist/modules/project-lifecycle/helper-inventory');
+const {helperInventory} = require('../../dist/modules/project-lifecycle/helperInventory');
 test('helper identity includes compiled implementation, native adapters and resolved runtime dependencies', () => {
  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'helper-inventory-'));
  const write = (name, text) => {const file = path.join(root, name); fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(file, text);};

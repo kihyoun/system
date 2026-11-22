@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const evidence=require('../../dist/modules/release/guided-preview-evidence');
+const evidence=require('../../dist/modules/release/guidedPreviewEvidence');
 const legacy=require('./guided-preview-fixture');
 const {proof,results}=require('./system-beta-evidence-fixture');
 test('v2 retains explicit fixture authorization boundary and native lifecycle facts',()=>{

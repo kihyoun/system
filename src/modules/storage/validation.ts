@@ -72,7 +72,10 @@ function resolveHost(value: string, hostRoot = '/host') {
   return selected;
 }
 function checkUuid(uuid: string | undefined, device: string) {
-  if (!uuid) return;
+  if (!uuid) {
+    return;
+  }
+
   requireValue(/^[A-Za-z0-9-]+$/.test(uuid), 'invalid-filesystem-identity');
   const file = '/host/dev/disk/by-uuid/' + uuid;
   let stat;
@@ -104,16 +107,19 @@ export function validate(
   const mode = spec.PERSISTENCE_MODE || (spec.PERSISTENT_MOUNT ? 'volume' : 'local');
   requireValue(['local', 'volume'].includes(mode), 'invalid-persistence-mode');
   const mount = spec.PERSISTENT_MOUNT || '/';
-  if (mode === 'local')
+
+  if (mode === 'local') {
     requireValue(
       mount === '/' && liveRow.device === root.device && liveRow.target === root.target,
       'local-storage-is-not-on-system-disk',
     );
-  else
+  } else {
     requireValue(
       mount !== '/' && liveRow.target === mount && liveRow.device !== root.device,
       'live-volume-unavailable',
     );
+  }
+
   if (spec.SEED_MOUNT) {
     requireValue(
       spec.SEED_MOUNT === '/' || path.posix.normalize(spec.SEED_MOUNT) === spec.SEED_MOUNT,
@@ -129,7 +135,8 @@ export function validate(
     // silently turn a backup into a directory on the live/system filesystem.
     requireValue(seedRow.device === liveRow.device, 'declare-external-seed-mount');
   }
-  if (mode === 'local')
+
+  if (mode === 'local') {
     requireValue(
       spec.SEED_MOUNT &&
         spec.SEED_MOUNT !== '/' &&
@@ -138,15 +145,20 @@ export function validate(
         seedRow.device !== root.device,
       'external-seed-volume-required',
     );
+  }
+
   resolveHost(live, hostRoot);
   resolveHost(seed, hostRoot);
   for (const relative of [...liveDirectories, 'configuration/.projects.env', 'ssl/acme-http01']) {
     const selected = live + '/' + relative;
+
     if (
       ['configuration/.projects.env', 'ssl/acme-http01'].includes(relative) &&
       !fs.lstatSync(hostRoot + selected, { throwIfNoEntry: false })
-    )
+    ) {
       continue;
+    }
+
     resolveHost(selected, hostRoot);
     requireValue(covering(rows, selected).target === liveRow.target, 'nested-live-storage-mount');
   }
@@ -187,7 +199,9 @@ export function prepareLocal(spec: StorageSpec, hostRoot = '/host', mountinfo?: 
   );
   const live = absolute(spec.PERSISTENT_DIR || '/var/lib/system-bootstrapper/platform');
   let existing = hostRoot + live;
-  while (!fs.existsSync(existing)) existing = path.dirname(existing);
+  while (!fs.existsSync(existing)) {
+    existing = path.dirname(existing);
+  }
   requireValue(
     existing === hostRoot || existing.startsWith(hostRoot + '/'),
     'invalid-storage-path',
@@ -208,7 +222,9 @@ export function prepareLocal(spec: StorageSpec, hostRoot = '/host', mountinfo?: 
   for (const relative of ['', ...scaffold]) {
     const selected = path.join(root, relative);
     let ancestor = selected;
-    while (!fs.lstatSync(ancestor, { throwIfNoEntry: false })) ancestor = path.dirname(ancestor);
+    while (!fs.lstatSync(ancestor, { throwIfNoEntry: false })) {
+      ancestor = path.dirname(ancestor);
+    }
     requireValue(
       fs.realpathSync(ancestor) === ancestor && fs.statSync(ancestor).isDirectory(),
       'unsafe-live-storage-path',
@@ -218,13 +234,16 @@ export function prepareLocal(spec: StorageSpec, hostRoot = '/host', mountinfo?: 
       'nested-live-storage-mount',
     );
   }
-  if (fs.lstatSync(marker, { throwIfNoEntry: false }))
+
+  if (fs.lstatSync(marker, { throwIfNoEntry: false })) {
     requireValue(
       fs.lstatSync(marker).isFile() &&
         !fs.lstatSync(marker).isSymbolicLink() &&
         fs.readFileSync(marker, 'utf8') === 'system-bootstrapper-persistence-v1\n',
       'unrecognized-live-storage',
     );
+  }
+
   for (const relative of scaffold) {
     const directory = path.join(root, relative);
     requireValue(

@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const {BuildToolsService,RUNTIME_PACKAGES}=require('../../dist/modules/host-bootstrap/build-tools.service');
+const {BuildToolsService,runtimePackages}=require('../../dist/modules/host-bootstrap/buildTools.service');
 const checkout=path.resolve(__dirname,'../..');
 test('reviewed trust replaces old roots and hash links only after hash verification',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'host-build-trust-'));
@@ -37,7 +37,7 @@ test('runtime installation checks the pinned toolchain and explicit project trus
  const calls=[];const service=new BuildToolsService({async run(binary,args){calls.push([binary,args]);return 'wrong';}});
  await assert.rejects(service.installRuntime(checkout,{}),/Pinned Node/);
  assert.equal(calls.length,1);assert(!calls.some(([binary])=>binary==='apk'));
- assert(RUNTIME_PACKAGES.every(value=>value.includes('=')));
+ assert(runtimePackages.every(value=>value.includes('=')));
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'project-build-runtime-'));
  try{
   const project=path.join(root,'project'),relative='cacert-2026-10-20.crt',commands=[];

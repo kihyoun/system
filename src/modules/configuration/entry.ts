@@ -1,12 +1,16 @@
 import 'reflect-metadata';
-import { fileLock } from '../../common/runtime/file-lock';
+import { fileLock } from '../../common/runtime/fileLock';
 import path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { ConfigurationModule } from './configuration.module';
 import { ConfigurationService } from './configuration.service';
 export async function main(args = process.argv.slice(2), environment = process.env): Promise<void> {
   const [action, root, state, archive] = args;
-  if (!['push', 'delete-projects'].includes(action)) throw Error('Unknown configuration action.');
+
+  if (!['push', 'delete-projects'].includes(action)) {
+    throw Error('Unknown configuration action.');
+  }
+
   const app = await NestFactory.createApplicationContext(ConfigurationModule, {
     logger: false,
     abortOnError: false,
@@ -14,10 +18,12 @@ export async function main(args = process.argv.slice(2), environment = process.e
   let unlock: (() => void) | undefined;
   try {
     unlock = fileLock('/tmp/system-bootstrapper-project-routing.lock', false);
+
     if (action === 'delete-projects') {
       app.get(ConfigurationService).deleteProjects(path.resolve(root), path.resolve(state));
       return;
     }
+
     const mode = app.get(ConfigurationService).push({
       root: path.resolve(root),
       state: path.resolve(state),
@@ -34,8 +40,10 @@ export async function main(args = process.argv.slice(2), environment = process.e
     await app.close();
   }
 }
-if (require.main === module)
+
+if (require.main === module) {
   main().catch((error: unknown) => {
     console.error(error instanceof Error ? error.message : 'Configuration failed.');
     process.exitCode = 1;
   });
+}

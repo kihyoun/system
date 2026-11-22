@@ -4,8 +4,8 @@ const {spawnSync}=require('node:child_process');
 const fs=require('node:fs'),os=require('node:os');
 require('../../node_modules/reflect-metadata');
 const {NestFactory}=require('../../node_modules/@nestjs/core');
-const {GitLabUpgradeModule}=require('../../dist/modules/gitlab-upgrade/gitlab-upgrade.module');
-const {GitLabUpgradeService}=require('../../dist/modules/gitlab-upgrade/gitlab-upgrade.service');
+const {GitLabUpgradeModule}=require('../../dist/modules/gitlab-upgrade/gitlabUpgrade.module');
+const {GitLabUpgradeService}=require('../../dist/modules/gitlab-upgrade/gitlabUpgrade.service');
 const {UpgradeGuardianService}=require('../../dist/modules/gitlab-upgrade/guardian.service');
 const {parseContainer,parseCheckpoint,parseOwner,parseChild}=require('../../dist/modules/gitlab-upgrade/types');
 const base={sourceRevision:'a'.repeat(40),evidence:'/state/evidence.json',stateDir:'/state',persistentDir:'/operator/platform',checkpointDir:'/state/gitlab-upgrades/test',readyTimeoutSeconds:600};
@@ -78,7 +78,7 @@ test('legacy executable validates CLI usage through the typed entry without open
 });
 test('public prerequisite runs the accepted helper while preserving the previous controller identity',async t=>{
  const {release}=require('../../dist/modules/gitlab-upgrade/types');
- const {prerequisiteController}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
+ const {prerequisiteController}=require('../../dist/modules/host/publicGitlabPrerequisite.service');
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'public-prerequisite-evidence-'));
  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
  const candidate='sha256:'+'d'.repeat(64),old='sha256:'+'e'.repeat(64),serviceImage='sha256:'+'f'.repeat(64),
@@ -138,8 +138,8 @@ test('public prerequisite runs the accepted helper while preserving the previous
  }finally{await app.close();}
 });
 test('public prerequisite CLI and mount authority reject unreviewed commands and helper code overlays',async t=>{
- const {parsePublicGitlabInput}=require('../../dist/modules/host/public-gitlab-prerequisite-entry');
- const {prerequisiteMountTarget}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
+ const {parsePublicGitlabInput}=require('../../dist/modules/host/publicGitlabPrerequisiteEntry');
+ const {prerequisiteMountTarget}=require('../../dist/modules/host/publicGitlabPrerequisite.service');
  const common=['--checkout','/reviewed/source','--persistence-env','/private/storage.env','--directory','/platform/configuration/gitlab-prerequisites/to-2-0-0'];
  assert.equal(parsePublicGitlabInput([...common,'--operation','prepare','--target','2.0.0']).operation,'prepare');
  assert.equal(parsePublicGitlabInput([...common,'--operation','rollback','--confirm-checkpoint','a'.repeat(64),'--paired-checkpoint','/platform/recovery/controller-updates/retained']).pairedCheckpoint,'/platform/recovery/controller-updates/retained');
@@ -147,24 +147,24 @@ test('public prerequisite CLI and mount authority reject unreviewed commands and
   ['--operation','plan','--confirm-plan','a'.repeat(64)],['--operation','delete'],['--skip-tested-controller']])assert.throws(()=>parsePublicGitlabInput([...common,...extra]));
  for(const target of ['/','/system','/system/../system','/usr','/usr/local','/usr/local/bin','/usr/local/bin/node'])assert.throws(()=>prerequisiteMountTarget(target),/runtime-overlay/);
  for(const target of ['/state','/srv/gitlab/data','/usr/bin/docker','/operator/platform/runners'])assert.doesNotThrow(()=>prerequisiteMountTarget(target));
- const {publicGitlabHelperMain}=require('../../dist/modules/host/public-gitlab-prerequisite-helper-entry');
- const {HostReleaseAuthorityService}=require('../../dist/modules/host/release-authority.service');
- const {PublicUpgradePreparationService}=require('../../dist/modules/host/public-upgrade-preparation.service');
- const {PublicGitlabPrerequisiteService,prerequisiteController}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
- const {ProjectsRoutingService}=require('../../dist/modules/projects-routing/projects-routing.service');
- const {ROOT}=require('../../dist/modules/gitlab-upgrade/types');
- const privateInput=require('../../dist/modules/host/private-input'),install=require('../../dist/modules/host/install');
- const {bytesSha}=require('../../dist/modules/host/release-selection.service');
+ const {publicGitlabHelperMain}=require('../../dist/modules/host/publicGitlabPrerequisiteHelperEntry');
+ const {HostReleaseAuthorityService}=require('../../dist/modules/host/releaseAuthority.service');
+ const {PublicUpgradePreparationService}=require('../../dist/modules/host/publicUpgradePreparation.service');
+ const {PublicGitlabPrerequisiteService,prerequisiteController}=require('../../dist/modules/host/publicGitlabPrerequisite.service');
+ const {ProjectsRoutingService}=require('../../dist/modules/projects-routing/projectsRouting.service');
+ const {root}=require('../../dist/modules/gitlab-upgrade/types');
+ const privateInput=require('../../dist/modules/host/privateInput'),install=require('../../dist/modules/host/install');
+ const {bytesSha}=require('../../dist/modules/host/releaseSelection.service');
  const filename='/state/gitlab-prerequisites/to-2-0-0/preparation.json',launchFile=path.join(path.dirname(filename),'launch-'+'a'.repeat(32)+'.json');
  const controller={Id:'1'.repeat(64),Name:'/system_bootstrapper_1',Image:'sha256:'+'2'.repeat(64),State:{Running:true},Config:{Labels:{'com.docker.compose.project':'system','com.docker.compose.service':'bootstrapper'}},HostConfig:{RestartPolicy:{Name:'always'}},Mounts:[]};
  const retained={format:'system-public-gitlab-prerequisite-v1',root:'/operator/platform',directory:'/operator/platform/configuration/gitlab-prerequisites/to-2-0-0',checkpointDir:'/operator/platform/configuration/gitlab-upgrades/public-to-2-0-0',metadata:{},proof:'',previous:{images:{controller:{imageId:controller.Image}}},controller:prerequisiteController(controller),timeout:600};
  const bytes=Buffer.from(JSON.stringify(retained)),launch={preparationSha256:bytesSha(bytes),containerId:'3'.repeat(64),controller:retained.controller};
  t.mock.method(privateInput,'readPrivateInput',name=>{assert([filename,launchFile].includes(name));return name===filename?bytes:Buffer.from(JSON.stringify(launch));});
  t.mock.method(install,'writePrivate',(name)=>assert.equal(name,path.join(path.dirname(filename),'accepted-evidence.json')));
- const originalStat=fs.lstatSync,sources=['/state/.docker.env','/state/.projects.env'],destinations=sources.map(name=>path.join(ROOT,'config/system',path.basename(name)));
+ const originalStat=fs.lstatSync,sources=['/state/.docker.env','/state/.projects.env'],destinations=sources.map(name=>path.join(root,'config/system',path.basename(name)));
  t.mock.method(fs,'lstatSync',(name,options)=>sources.includes(name)?{isSymbolicLink:()=>false,isDirectory:()=>name.endsWith('.projects.env'),isFile:()=>name.endsWith('.docker.env')}:destinations.includes(name)?undefined:originalStat(name,options));
  t.mock.method(fs,'symlinkSync',(source,destination)=>assert.equal(destinations[sources.indexOf(source)],destination));
- const trace=[],coreFiles=['.docker.env','config/gitlab/.docker.env','wizard/.docker.env'].map(name=>path.join(ROOT,name));
+ const trace=[],coreFiles=['.docker.env','config/gitlab/.docker.env','wizard/.docker.env'].map(name=>path.join(root,name));
  t.mock.method(fs,'writeFileSync',(name)=>{assert(coreFiles.includes(name));trace.push('core-address');});
  const accepted={graph:{},evidence:{},release:{sourceRevision:'a'.repeat(40)}};
  const session={evidence(){trace.push('evidence');},run(){trace.push('dependency');},async plan(){trace.push('plan');return {ready:true};}};
@@ -173,10 +173,10 @@ test('public prerequisite CLI and mount authority reject unreviewed commands and
   [PublicUpgradePreparationService,{graph:()=>accepted.graph}],
   [PublicGitlabPrerequisiteService,{inspect:()=>controller,docker:()=> '172.20.0.2'}],
   [GitLabUpgradeService,{create:()=>session}],
-  [ProjectsRoutingService,{reconstructProxyRuntime(root){assert.equal(root,ROOT);trace.push('project-proxy-runtime');}}],
+  [ProjectsRoutingService,{reconstructProxyRuntime(root){assert.equal(root,root);trace.push('project-proxy-runtime');}}],
  ]);
  t.mock.method(NestFactory,'createApplicationContext',async module=>{
-  const {ProjectsRoutingModule}=require('../../dist/modules/projects-routing/projects-routing.module');
+  const {ProjectsRoutingModule}=require('../../dist/modules/projects-routing/projectsRouting.module');
   assert(Reflect.getMetadata('imports',module).includes(ProjectsRoutingModule));
   return {get(token){assert(providers.has(token));return providers.get(token);},async close(){trace.push('close');}};
  });
@@ -190,8 +190,8 @@ test('public prerequisite CLI and mount authority reject unreviewed commands and
  assert.deepEqual(trace,['evidence','core-address','core-address','core-address','close'],'invalid project ownership stops before native dependencies or workflow mutations');
 });
 test('completed paired rollback receipts permit a new owned controller ID but reject unverified recovery',t=>{
- const {pairedPrerequisiteRecovery,prerequisiteController}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
- const {bytesSha}=require('../../dist/modules/host/release-selection.service');
+ const {pairedPrerequisiteRecovery,prerequisiteController}=require('../../dist/modules/host/publicGitlabPrerequisite.service');
+ const {bytesSha}=require('../../dist/modules/host/releaseSelection.service');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'public-prerequisite-rebind-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const checkpoint=path.join(root,'recovery/controller-updates/retained'),main=path.join(root,'main.env'),
@@ -247,12 +247,12 @@ test('shared native GitLab status reads durable receipts without requiring any l
  assert.throws(()=>upgradeStatus(root,root),/status-receipt-invalid/);
 });
 test('host prerequisite prepares public recovery payloads and launches only the pinned helper with private bounded inputs',async t=>{
- const {upgradeCommandFailureCodes}=require('../../dist/modules/gitlab-upgrade/command-failure-policy');
- const {PublicGitlabPrerequisiteService,prerequisiteController}=require('../../dist/modules/host/public-gitlab-prerequisite.service');
+ const {upgradeCommandFailureCodes}=require('../../dist/modules/gitlab-upgrade/commandFailurePolicy');
+ const {PublicGitlabPrerequisiteService,prerequisiteController}=require('../../dist/modules/host/publicGitlabPrerequisite.service');
  const {HostPolicyError}=require('../../dist/modules/host/install');
  const {ProcessFailure}=require('../../dist/common/runtime/process');
  const {release}=require('../../dist/modules/gitlab-upgrade/types');
- const {bytesSha}=require('../../dist/modules/host/release-selection.service');
+ const {bytesSha}=require('../../dist/modules/host/releaseSelection.service');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'public-prerequisite-host-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  let helperObservation;
@@ -358,8 +358,8 @@ test('host prerequisite prepares public recovery payloads and launches only the 
  assert.equal(calls.filter(args=>args[0]==='inspect').length,inspectionCount,'status needs no live controller');
 });
 test('future public fixture proves prerequisite authority without exporting unobserved candidate results',()=>{
- const {PublicUpgradePublicationService}=require('../../dist/modules/testing/public-upgrade-publication.service');
- const {HostReleaseAuthorityService}=require('../../dist/modules/host/release-authority.service');
+ const {PublicUpgradePublicationService}=require('../../dist/modules/testing/publicUpgradePublication.service');
+ const {HostReleaseAuthorityService}=require('../../dist/modules/host/releaseAuthority.service');
  const input=require('../shared/public-upgrade-fixture').publicationFixture(),
   edge=require('../../config/releases/upgrade-paths.json').transitions.find(row=>row.databaseMigration),
   security=require('../../config/gitlab/security-release.json');

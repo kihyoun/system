@@ -1,18 +1,18 @@
-import { cliArguments } from '../../common/runtime/installation-paths';
-import { environmentAssignments } from '../../common/runtime/environment-assignments';
-import { GitlabPreflightService } from '../gitlab-preflight/gitlab-preflight.service';
+import { cliArguments } from '../../common/runtime/installationPaths';
+import { environmentAssignments } from '../../common/runtime/environmentAssignments';
+import { GitlabPreflightService } from '../gitlab-preflight/gitlabPreflight.service';
 import {
   controlGitLabServices,
   requireGitLabServicesDown,
   gitLabReadiness,
-} from './service-control';
+} from './serviceControl';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Injectable } from '@nestjs/common';
 import type { UpgradeSession } from './session';
 import {
-  ROOT,
-  GITLAB,
+  root,
+  gitlabConfigurationPath,
   release,
   childJournal,
   readRecord,
@@ -47,15 +47,22 @@ export class UpgradeRuntimeService {
   image(session: UpgradeSession, reference: string): string {
     const prepared = session.imageIds?.[reference];
     const image = parseImage(session.docker(['image', 'inspect', prepared || reference]));
+
     if (prepared) {
-      if (image.Id !== prepared) throw Error('upgrade-image-pin-mismatch');
+      if (image.Id !== prepared) {
+        throw Error('upgrade-image-pin-mismatch');
+      }
+
       return prepared;
     }
+
     if (
       !/^sha256:[a-f0-9]{64}$/.test(image.Id || '') ||
       !image.RepoDigests?.some((ref) => ref.split('@')[1] === reference.split('@')[1])
-    )
+    ) {
       throw Error('upgrade-image-pin-mismatch');
+    }
+
     return image.Id;
   }
 
@@ -67,36 +74,51 @@ export class UpgradeRuntimeService {
     ]) {
       const mount = container.Mounts?.find((m) => m.Destination === target),
         expected = path.posix.join(session.options.persistentDir, suffix);
-      if (!mount || mount.RW !== true) throw Error('upgrade-persistent-mount-mismatch');
+
+      if (!mount || mount.RW !== true) {
+        throw Error('upgrade-persistent-mount-mismatch');
+      }
+
       if (mount.Type === 'volume') {
         const v = readRecord(JSON.parse(session.docker(['volume', 'inspect', mount.Name]))[0]);
+
         if (
           mount.Name !== volume ||
           readRecord(v.Options).device !== expected ||
           readRecord(v.Options).type !== 'none' ||
           readRecord(v.Options).o !== 'bind'
-        )
+        ) {
           throw Error('upgrade-persistent-mount-mismatch');
-      } else if (mount.Type !== 'bind' || mount.Source !== expected)
+        }
+      } else if (mount.Type !== 'bind' || mount.Source !== expected) {
         throw Error('upgrade-persistent-mount-mismatch');
+      }
     }
+
     if (
       container.Config?.Labels?.['com.docker.compose.project'] !== 'system' ||
       container.Config.Labels['com.docker.compose.service'] !== 'gitlab'
-    )
+    ) {
       throw Error('upgrade-owned-gitlab-required');
+    }
   }
 
   async preflight(session: UpgradeSession, version: string): Promise<Container> {
     const gitlab = session.inspect('system_gitlab_1');
     session.verifyMounts(gitlab);
-    if (!gitlab.State?.Running || gitlab.State?.OOMKilled)
+
+    if (!gitlab.State?.Running || gitlab.State?.OOMKilled) {
       throw Error('upgrade-running-gitlab-required');
+    }
+
     const proof = await this.gitlabPreflight.probe(gitlab.Id!, {
       command: (args, timeout, input) => session.docker(args, { timeout: timeout * 1000, input }),
     });
-    if (proof.version !== version || proof.edition !== 'CE')
+
+    if (proof.version !== version || proof.edition !== 'CE') {
       throw Object.assign(Error('upgrade-preflight-identity-mismatch'), { noRetry: true });
+    }
+
     if (
       typeof proof.runningJobs !== 'number' ||
       !Number.isInteger(proof.runningJobs) ||
@@ -104,19 +126,29 @@ export class UpgradeRuntimeService {
       typeof proof.unfinishedBackgroundMigrations !== 'number' ||
       !Number.isInteger(proof.unfinishedBackgroundMigrations) ||
       proof.unfinishedBackgroundMigrations < 0
-    )
+    ) {
       throw Error('upgrade-preflight-refused');
-    if (proof.unfinishedBackgroundMigrations !== 0) throw Error('upgrade-pending-migrations');
-    if (proof.runningJobs !== 0) throw Error('upgrade-jobs-active');
+    }
+
+    if (proof.unfinishedBackgroundMigrations !== 0) {
+      throw Error('upgrade-pending-migrations');
+    }
+
+    if (proof.runningJobs !== 0) {
+      throw Error('upgrade-jobs-active');
+    }
+
     return gitlab;
   }
 
   async stop(session: UpgradeSession): Promise<void> {
     const deadline = Math.floor(childJournal.uptime()) + 200;
+
     if (session.owner) {
       session.owner.quiesceDeadline = deadline;
       session.updateOwner(session.owner.checkpointSha256);
     }
+
     const port = this.control(session);
     await controlGitLabServices(port, 'system_gitlab_1', 'stop', 110, [''], {
       deadline: deadline - 90,
@@ -124,13 +156,19 @@ export class UpgradeRuntimeService {
     });
     await requireGitLabServicesDown(port, 'system_gitlab_1', 5);
     const remaining = Math.min(60, deadline - Math.floor(childJournal.uptime()));
-    if (remaining < 1) throw Error('upgrade-quiesce-deadline-exceeded');
+
+    if (remaining < 1) {
+      throw Error('upgrade-quiesce-deadline-exceeded');
+    }
+
     session.docker(['stop', '--time', String(remaining), 'system_gitlab_1'], {
       timeout: remaining * 1000 + 10000,
     });
     const state = session.inspect('system_gitlab_1').State;
-    if (state.Running || state.ExitCode !== 0 || state.OOMKilled)
+
+    if (state.Running || state.ExitCode !== 0 || state.OOMKilled) {
       throw Error('upgrade-clean-stop-required');
+    }
   }
 
   async ready(session: UpgradeSession, version: string, image: string): Promise<void> {
@@ -140,10 +178,14 @@ export class UpgradeRuntimeService {
       'restarting';
     while (session.now() < until) {
       const container = session.inspect('system_gitlab_1');
-      if (container.Image !== image)
+
+      if (container.Image !== image) {
         throw Object.assign(Error('upgrade-current-image-mismatch'), { noRetry: true });
+      }
+
       const terminal = terminalContainerState(container);
-      if (terminal)
+
+      if (terminal) {
         throw Object.assign(Error('upgrade-service-' + terminal), {
           noRetry: true,
           ...(typeof container.State.ExitCode === 'number' &&
@@ -153,6 +195,8 @@ export class UpgradeRuntimeService {
             ? { exitCode: container.State.ExitCode }
             : {}),
         });
+      }
+
       const state = container.State || {},
         policy = container.HostConfig?.RestartPolicy;
       const restarting =
@@ -169,6 +213,7 @@ export class UpgradeRuntimeService {
                 typeof container.RestartCount === 'number' &&
                 Number.isInteger(container.RestartCount) &&
                 container.RestartCount < policy.MaximumRetryCount))));
+
       if (
         state.Status === 'created' ||
         state.Status === 'removing' ||
@@ -180,8 +225,11 @@ export class UpgradeRuntimeService {
         await session.sleep(3000);
         continue;
       }
-      if (state.Running !== true || state.Paused === true)
+
+      if (state.Running !== true || state.Paused === true) {
         throw Object.assign(Error('upgrade-service-state-invalid'), { noRetry: true });
+      }
+
       // Only curl's explicit HTTP/connection startup states are retryable. A
       // failed Docker exec, missing executable or malformed response is fatal.
       if (!(await gitLabReadiness(this.control(session), 'system_gitlab_1'))) {
@@ -189,6 +237,7 @@ export class UpgradeRuntimeService {
         await session.sleep(3000);
         continue;
       }
+
       try {
         await session.preflight(version);
       } catch (error) {
@@ -197,8 +246,10 @@ export class UpgradeRuntimeService {
           !['upgrade-jobs-active', 'upgrade-pending-migrations'].includes(
             error instanceof Error ? error.message : '',
           )
-        )
+        ) {
           throw error;
+        }
+
         lastRetry =
           (error as Error).message === 'upgrade-jobs-active' ? 'jobs' : 'background-migrations';
         await session.sleep(3000);
@@ -209,19 +260,24 @@ export class UpgradeRuntimeService {
         { timeout: 180000 },
       );
       const migrations = [...status.matchAll(/^\s*(up|down)\s+\d+/gm)];
-      if (!migrations.length) throw Error('upgrade-migration-status-invalid');
+
+      if (!migrations.length) {
+        throw Error('upgrade-migration-status-invalid');
+      }
+
       if (migrations.some((row) => row[1] === 'down')) {
         lastRetry = 'database-migrations';
         await session.sleep(3000);
         continue;
       }
+
       return;
     }
     throw Error('upgrade-readiness-timeout-' + lastRetry);
   }
 
   start(session: UpgradeSession, reference: string, restore = false): void {
-    if (!restore)
+    if (!restore) {
       atomic(
         session.config,
         imageAssignment(
@@ -230,8 +286,10 @@ export class UpgradeRuntimeService {
           session.aliases,
         ),
       );
-    session.run(process.execPath, cliArguments('lifecycle', ['gitlab-start', ROOT], ROOT), {
-      cwd: path.join(ROOT, 'config/gitlab'),
+    }
+
+    session.run(process.execPath, cliArguments('lifecycle', ['gitlab-start', root], root), {
+      cwd: path.join(root, 'config/gitlab'),
       env: {
         ...process.env,
         SYSTEM_CONFIG_DIR: session.state,
@@ -242,7 +300,7 @@ export class UpgradeRuntimeService {
 
   syncIdle(session: UpgradeSession): void {
     const value = parseRecord(
-      session.run(process.execPath, cliArguments('gitlab-maintenance', ['sync-status'], ROOT), {
+      session.run(process.execPath, cliArguments('gitlab-maintenance', ['sync-status'], root), {
         timeout: 15000,
         env: {
           ...process.env,
@@ -253,7 +311,10 @@ export class UpgradeRuntimeService {
         },
       }),
     );
-    if (value.idle !== true) throw Error('upgrade-sync-operation-running');
+
+    if (value.idle !== true) {
+      throw Error('upgrade-sync-operation-running');
+    }
   }
 
   async resumeScheduling(session: UpgradeSession): Promise<void> {

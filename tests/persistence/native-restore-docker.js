@@ -66,7 +66,7 @@ function run({helperImage,configurationExporter,backup}) {
     create(helper,['--mount','type=volume,src='+volume+',dst=/host',...mount('live-root','/live'),
       ...mount('external-seed/seed','/seed'),...['config','logs','data'].flatMap(dir=>mount('live-root/gitlab/'+dir,'/srv/gitlab/'+(dir==='logs'?'log':dir)))]);
     phase='native-restore-and-verification';code(helper,`const fs=require('node:fs'),assert=require('node:assert/strict'),crypto=require('node:crypto'),path=require('node:path');
-      const {StorageService}=require('/system/dist/modules/storage/storage.service'),{nativeProcess}=require('/system/dist/common/runtime/process'),{normalizePreview}=require('/system/dist/common/runtime/preview-settings');
+      const {StorageService}=require('/system/dist/modules/storage/storage.service'),{nativeProcess}=require('/system/dist/common/runtime/process'),{normalizePreview}=require('/system/dist/common/runtime/previewSettings');
       const service=new StorageService(nativeProcess,normalizePreview);
       const operation={...require('/system/dist/modules/storage/configuration'),inside:spec=>service.inside(spec)};
       fs.copyFileSync('/host/bootstrapper.zip','/system/bootstrapper.zip');

@@ -1,11 +1,13 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { nativeProcess } from '../../common/runtime/process';
-import { GitlabPreflightModule } from './gitlab-preflight.module';
-import { GitlabPreflightService } from './gitlab-preflight.service';
+import { GitlabPreflightModule } from './gitlabPreflight.module';
+import { GitlabPreflightService } from './gitlabPreflight.service';
 export async function main(args = process.argv.slice(2)): Promise<void> {
-  if (args.length !== 1 || !/^[a-f0-9]{64}$/.test(args[0]))
+  if (args.length !== 1 || !/^[a-f0-9]{64}$/.test(args[0])) {
     throw Error('usage: gitlab-preflight EXACT_CONTAINER_ID');
+  }
+
   const app = await NestFactory.createApplicationContext(GitlabPreflightModule, { logger: false });
   try {
     const proof = await app.get(GitlabPreflightService).probe(args[0], {
@@ -21,8 +23,10 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     await app.close();
   }
 }
-if (require.main === module)
+
+if (require.main === module) {
   main().catch(() => {
     process.stderr.write('gitlab-preflight-failed\n');
     process.exitCode = 1;
   });
+}

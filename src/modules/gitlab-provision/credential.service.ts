@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { GitlabAuthBootstrapService } from './auth-bootstrap.service';
-import { GitlabAuthJournalService } from './auth-journal.service';
-import { GitlabControllerCredentialService } from './controller-credential.service';
-import { GitlabNativeContextService } from './native-context.service';
-import type { GitlabNativeContext } from './native-api.service';
+import { GitlabAuthBootstrapService } from './authBootstrap.service';
+import { GitlabAuthJournalService } from './authJournal.service';
+import { GitlabControllerCredentialService } from './controllerCredential.service';
+import { GitlabNativeContextService } from './nativeContext.service';
+import type { GitlabNativeContext } from './nativeApi.service';
 export interface GitlabCredentialOptions {
   checkout: string;
   configDirectory?: string;
@@ -28,13 +28,16 @@ export class GitlabCredentialService {
     const directory = options.configDirectory ?? '/srv/gitlab/config';
     const context = await this.contexts.resolve(options.checkout, directory, options.signal);
     const state = await this.bootstrap.initial(context, directory);
+
     if (
       options.identity &&
       state.account &&
       (options.identity.username !== state.account.username ||
         options.identity.email !== state.account.email)
-    )
+    ) {
       throw Error('gitlab-controller-identity-binding-mismatch');
+    }
+
     if (state.phase === 'bootstrap-received') {
       const replacement = await this.controller.prepare(
         context,
@@ -45,6 +48,7 @@ export class GitlabCredentialService {
     } else if (state.phase === 'replacement-verified') {
       await this.bootstrap.complete(context, directory, state.replacement!);
     }
+
     return this.current(context, directory);
   }
 
@@ -54,6 +58,7 @@ export class GitlabCredentialService {
     const context = await this.contexts.resolve(options.checkout, directory, options.signal);
     return this.journals.withJournal(directory, async (journal) => {
       const state = journal.read();
+
       if (
         state?.phase !== 'ready' ||
         !state.account?.userId ||
@@ -61,8 +66,10 @@ export class GitlabCredentialService {
         state.account.userId !== state.replacement.userId ||
         state.renewal ||
         state.retiring
-      )
+      ) {
         throw Error('gitlab-existing-controller-credential-required');
+      }
+
       return {
         context,
         configDirectory: directory,
@@ -104,8 +111,11 @@ export class GitlabCredentialService {
       configDirectory,
       async (journal) => journal.read()?.account,
     );
-    if (!account || account.userId !== credential.userId)
+
+    if (!account || account.userId !== credential.userId) {
       throw Error('gitlab-controller-account-missing');
+    }
+
     return {
       context,
       configDirectory,

@@ -36,9 +36,9 @@ let text=''; process.stdin.on('data', c=>text+=c); process.stdin.on('end',()=>{
 });\n`);
 process.env.SYSTEM_CONFIG_DIR = path.join(root, 'system');
 process.chdir(path.join(root, 'sync'));
-const bootstrap = require(path.join(root, 'dist/api/projects/project-workflow'));
-const {ensureDefaultWizard, wizardConfiguration} = require(path.join(root, 'dist/api/projects/default-wizard'));
-const {preserve} = require(path.join(source, 'dist/modules/projects-routing/managed-project'));
+const bootstrap = require(path.join(root, 'dist/modules/project-workflow/projectWorkflow'));
+const {ensureDefaultWizard, wizardConfiguration} = require(path.join(root, 'dist/api/projects/defaultWizard'));
+const {preserve} = require(path.join(source, 'dist/modules/projects-routing/managedProject'));
 const config = path.join(root, 'system/.docker.env');
 const project = path.join(root, 'system/.projects.env/.wizard.env');
 const signature = data => {

@@ -1,11 +1,12 @@
-import { failureMessage } from '../../common/runtime/operation-error';
+import { failureMessage } from '../../common/runtime/operationError';
 import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Response } from 'express';
-import { wizardConfigPath } from '../config/state-paths';
-import { projectBusy } from '../projects/project-workflow';
-import { ensureDefaultWizard } from '../projects/default-wizard';
+import { wizardConfigPath } from '../../modules/configuration/statePaths';
+import { projectBusy } from '../../modules/project-workflow/projectWorkflow';
+import { environmentOwnsStorageLease } from '../../modules/wizard-environments/operationLease.adapter';
+import { ensureDefaultWizard } from '../projects/defaultWizard';
 
 @Injectable()
 export class RuntimeService {
@@ -26,6 +27,10 @@ export class RuntimeService {
     return fs.existsSync(
       path.join(process.env.SYSTEM_CONFIG_DIR || '/state', '.storage-operation-lock'),
     );
+  }
+
+  ownsEnvironmentOperation() {
+    return environmentOwnsStorageLease(process.env.SYSTEM_CONFIG_DIR || '/state');
   }
 
   upgradeBusy() {
@@ -51,7 +56,10 @@ export class RuntimeService {
 
   /** Start registration only after the listening socket makes the interface available. */
   startDefaultWizard() {
-    if (this.started) return;
+    if (this.started) {
+      return;
+    }
+
     this.started = true;
     this.status.defaultWizardSetupInProgress = true;
     void ensureDefaultWizard()

@@ -2,7 +2,7 @@ import {
   gitLabControlArguments,
   gitLabServiceArguments,
   gitLabServicesDown,
-} from '../gitlab-upgrade/service-control';
+} from '../gitlab-upgrade/serviceControl';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ProcessRunner, nativeProcess, ProcessFailure } from '../../common/runtime/process';
@@ -66,8 +66,9 @@ export function harvest(
   certificateToken?: string,
 ): void {
   const { seed, srv, ssl, certbot, gitlab } = paths;
-  for (const directory of [srv, ssl, certbot])
+  for (const directory of [srv, ssl, certbot]) {
     requireValue(fs.statSync(directory).isDirectory(), 'harvest-source-missing');
+  }
   requireValue(
     !fs.existsSync(path.join(srv, 'gitlab/data/.system-bootstrapper-restore-incomplete')),
     'restore-incomplete',
@@ -104,6 +105,7 @@ export function harvest(
       fs.mkdirSync(certificateLock, { mode: 0o700 });
       certificateHeld = true;
     }
+
     const deadline = runtime.monotonicSeconds() + 120;
     const stop = (args: string[]) => {
       const remaining = deadline - runtime.monotonicSeconds() - 1;
@@ -115,6 +117,7 @@ export function harvest(
     requireValue(['true', 'false'].includes(running), 'gitlab-state-unavailable');
     process.env.GITLAB_IMAGE_ID = stop(['inspect', '--format', '{{.Image}}', gitlab]);
     process.env.GITLAB_IMAGE = stop(['inspect', '--format', '{{.Config.Image}}', gitlab]);
+
     if (running === 'true') {
       resume = true;
       phase = 'gitlab-quiesce';
@@ -149,6 +152,7 @@ export function harvest(
       requireValue(remaining > 0, 'gitlab-stop-deadline');
       stop(['stop', '--time', String(remaining), gitlab]);
     }
+
     phase = 'gitlab-stopped-check';
     const terminal = state(
       stop([
@@ -166,8 +170,9 @@ export function harvest(
     requireValue(terminal.exitCode === 0 && !terminal.oomKilled, 'gitlab-unclean-exit');
     phase = 'stage-create';
     stage = fs.mkdtempSync(path.join(seed, '.harvest-'));
-    for (const name of ['srv', 'ssl', 'letsencrypt'])
+    for (const name of ['srv', 'ssl', 'letsencrypt']) {
       fs.mkdirSync(path.join(stage, name), { mode: 0o700 });
+    }
     phase = 'srv-copy';
     copy(runtime, srv, path.join(stage, 'srv'));
     phase = 'ssl-copy';
@@ -186,7 +191,11 @@ export function harvest(
     stage = '';
   } catch (error) {
     failure = error;
-    if (phase === 'gitlab-stopped-check') runtime.log('Harvest GitLab state: unavailable.');
+
+    if (phase === 'gitlab-stopped-check') {
+      runtime.log('Harvest GitLab state: unavailable.');
+    }
+
     uncertain = (error instanceof ProcessFailure && error.uncertain) || (touched && !quiesced);
     runtime.log('Harvest phase failed: ' + phase + '.');
   } finally {
@@ -195,9 +204,12 @@ export function harvest(
     if (resume && !(touched && !quiesced)) {
       try {
         const running = run(['inspect', '--format', '{{.State.Running}}', gitlab], 4000);
-        if (running === 'false') run(['start', gitlab], 14000);
-        else {
+
+        if (running === 'false') {
+          run(['start', gitlab], 14000);
+        } else {
           requireValue(running === 'true', 'gitlab-state-unavailable');
+
           if (touched) {
             const resumed = run(gitLabServiceArguments(gitlab, 'u', 10), 14000);
             requireValue(
@@ -220,27 +232,38 @@ export function harvest(
         });
       }
     }
+
     // In-flight rsync may still own files on a killed worker. Do not erase its stage or barriers.
     if (!uncertain) {
       try {
-        if (certificateHeld) fs.rmdirSync(certificateLock);
-        if (stage) fs.rmSync(stage, { recursive: true });
+        if (certificateHeld) {
+          fs.rmdirSync(certificateLock);
+        }
+
+        if (stage) {
+          fs.rmSync(stage, { recursive: true });
+        }
+
         fs.rmdirSync(seedLock);
       } catch {
         failure = new StorageError('harvest-cleanup-failed');
       }
     }
   }
+
   if (failure) {
     if (
       uncertain &&
       !(failure instanceof Error && 'uncertain' in failure && failure.uncertain === true)
-    )
+    ) {
       throw Object.assign(new StorageError('harvest-completion-uncertain', true), {
         exitCode: failure instanceof ProcessFailure ? failure.status || 1 : 1,
       });
+    }
+
     throw failure;
   }
+
   runtime.log('Harvest completed; previous snapshots remain available.');
 }
 export function restore(
@@ -249,6 +272,7 @@ export function restore(
 ): void {
   const { seed, srv, ssl, certbot, gitlab } = paths;
   const current = path.join(seed, 'current');
+
   if (
     !fs.lstatSync(current, { throwIfNoEntry: false }) &&
     !fs.existsSync(path.join(seed, 'srv')) &&
@@ -257,6 +281,7 @@ export function restore(
     runtime.log('No seed found; continuing without restore.');
     return;
   }
+
   const seedLock = path.join(seed, '.operation-lock'),
     certificateLock = path.join(certbot, '.system-bootstrapper-certificate-lock');
   fs.mkdirSync(seedLock, { mode: 0o700 });
@@ -300,13 +325,20 @@ export function restore(
   } finally {
     if (!(failure instanceof ProcessFailure && failure.uncertain)) {
       try {
-        if (held) fs.rmdirSync(certificateLock);
+        if (held) {
+          fs.rmdirSync(certificateLock);
+        }
+
         fs.rmdirSync(seedLock);
       } catch {
         failure = new StorageError('restore-cleanup-failed');
       }
     }
   }
-  if (failure) throw failure;
+
+  if (failure) {
+    throw failure;
+  }
+
   runtime.log('Ready. Install host TLS renewal integration before starting services.');
 }

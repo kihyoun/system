@@ -3,8 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const root = path.resolve(__dirname, '../..');
-const logo = require(path.join(root, 'dist/common/configuration-signature')).default.textLogo;
-const recipe = require(path.join(root, 'dist/modules/project-lifecycle/build-recipe.service')).generate(logo);
+const logo = require(path.join(root, 'dist/common/configurationSignature')).default.textLogo;
+const recipe = require(path.join(root, 'dist/modules/project-lifecycle/buildRecipe.service')).generate(logo);
 const {wizardDockerfile} = require('../e2e/prepare-images');
 assert.equal(wizardDockerfile(recipe.files), '.system-bootstrapper/build-v1/Dockerfile');
 assert.equal(recipe.version, 1);
@@ -37,10 +37,10 @@ const lock = JSON.parse(content('smoke/package-lock.json'));
 assert.equal(lock.packages['node_modules/playwright'].version, '1.63.0');
 assert.equal(lock.packages['node_modules/playwright-core'].version, '1.63.0');
 assert.equal(JSON.parse(content('smoke/package.json')).dependencies.playwright, '1.63.0');
-const again = require(path.join(root, 'dist/modules/project-lifecycle/build-recipe.service')).generate(logo);
+const again = require(path.join(root, 'dist/modules/project-lifecycle/buildRecipe.service')).generate(logo);
 assert.equal(recipe.recipeHash, again.recipeHash);
 console.log('Wizard recipe: immutable signature, deterministic manifest, legacy lockfile checks, browser gate, contextual excludes and no deployment passed.');
-const recipes = require(path.join(root, 'dist/modules/project-lifecycle/build-recipe.service'));
+const recipes = require(path.join(root, 'dist/modules/project-lifecycle/buildRecipe.service'));
 const modern = recipes.generate(logo, 'node24-vite8');
 const modernContent = name => modern.files.find(file => file.path.endsWith('/' + name)).content;
 assert.equal(modern.profile, 'node24-vite8');
@@ -62,7 +62,7 @@ for (const file of modern.files) assert.equal(crypto.createHash('sha256').update
 const sourceSnapshot = JSON.parse(fs.readFileSync(path.join(root, 'assets/wizard-source/snapshot.json'), 'utf8'));
 const packageJson = JSON.parse(Buffer.from(sourceSnapshot.files.find(file => file.path === 'package.json').content, 'base64'));
 assert.equal(recipes.forSource(logo, sourceSnapshot.sourceRevision).recipeHash,
-  recipes.generate(logo, sourceSnapshot.files.some(file=>file.path==='.gitlab/producer-v2.json') ? 'node24-vite8-typed-v6' : packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-quickstart-v5' : 'legacy-ca-v4').recipeHash);
+  recipes.generate(logo, sourceSnapshot.version===3 ? 'node24-vite8-cli-v7' : sourceSnapshot.files.some(file=>file.path==='.gitlab/producer-v2.json') ? 'node24-vite8-typed-v6' : packageJson.dependencies?.vite || packageJson.devDependencies?.vite ? 'node24-vite8-quickstart-v5' : 'legacy-ca-v4').recipeHash);
 assert.equal(recipes.forSource(logo, 'f'.repeat(40)).recipeHash, recipes.generate(logo, 'legacy-ca-v4').recipeHash, 'New historical-source reservations retain the legacy toolchain with corrected cleanup');
 console.log('Modern Wizard profile: Node 24, exact browser lock, honest Vitest evidence, strict reservation and backward-compatible legacy hashes passed.');
 const historical = {
@@ -118,11 +118,19 @@ const typedDocker=typed.files.find(file=>file.path.endsWith('/Dockerfile')).cont
 assert(typedDocker.includes('npm run lint && npm test && npm run build && npm run test:config-export'));
 assert(typedDocker.includes('project-ci.cjs refresh-ca'));
 assert(!typedDocker.includes('refresh-ca.sh'));
-const producer=JSON.parse(fs.readFileSync(path.join(root,'wizard/.gitlab/producer-v2.json'),'utf8'));
-assert.equal(producer.version,2);
-const portable=fs.readFileSync(path.join(root,'wizard',producer.runtime));
-assert.equal(producer.runtimeSha256,crypto.createHash('sha256').update(portable).digest('hex'));
-assert.equal(typed.files.find(file=>file.path.endsWith('/runtime/project-ci.cjs')).sha256,producer.runtimeSha256);
+assert.equal(typed.files.find(file=>file.path.endsWith('/runtime/project-ci.cjs')).sha256,crypto.createHash('sha256').update(fs.readFileSync(path.join(root,'templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs'))).digest('hex'));
 const nativeCi=fs.readFileSync(path.join(root,'wizard/.gitlab/primary.yml'),'utf8');
-for(const command of ['browser','mirror','build','verify','environment deploy review','environment stop review','environment deploy beta','environment stop beta'])assert(nativeCi.includes('node .gitlab/runtime/project-ci.cjs '+command));
+for(const command of ['browser','mirror','build','verify','environment deploy review','environment stop review','environment deploy beta','environment stop beta'])assert(nativeCi.includes('system-bootstrapper project-ci '+command));
 assert(!/\bsh \.gitlab|\bsh \.system-bootstrapper/.test(nativeCi));
+
+if(sourceSnapshot.version===3){
+ const cli=recipes.generate(logo,'node24-vite8-cli-v7');
+ assert.equal(wizardDockerfile(cli.files),'.system-bootstrapper/build-v3/Dockerfile');
+ assert(cli.ci.includes(sourceSnapshot.cliArtifact.sha256));
+ assert(cli.ci.includes('npm install --offline --ignore-scripts'));
+ for(const action of ['build','verify'])assert(cli.ci.includes('system-bootstrapper project-ci '+action+' "$CI_PROJECT_DIR"'));
+ assert(!cli.ci.includes('project-ci.cjs')&&!cli.files.some(file=>/\.(?:sh|cjs)$/.test(file.path)));
+ assert.equal(recipes.select(logo,cli.recipeHash).recipeHash,cli.recipeHash);
+ assert.equal(crypto.createHash('md5').update(cli.ci.slice(0,1184)).digest('hex'),'bd4a8426355824593a5e21ad759830c1');
+ console.log('CLI v7: same-source package, native offline install, named shared operations, unchanged gates and exact Cube passed.');
+}

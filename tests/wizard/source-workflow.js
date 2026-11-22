@@ -9,9 +9,9 @@ fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
 process.env.SYSTEM_CONFIG_DIR = path.join(root, 'system');
 process.chdir(path.join(root, 'sync'));
-const bootstrap = require(path.join(source, 'dist/api/projects/project-workflow'));
-const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/api/projects/default-wizard'));
-const {initializeWizardSource, previewWizardSource} = require(path.join(source, 'dist/api/projects/wizard-source-workflow'));
+const bootstrap = require(path.join(source, 'dist/modules/project-workflow/projectWorkflow'));
+const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/api/projects/defaultWizard'));
+const {initializeWizardSource, previewWizardSource} = require(path.join(source, 'dist/api/projects/wizardSourceWorkflow'));
 const config = path.join(root, 'system/.projects.env/.wizard.env');
 const data = wizardConfiguration({WIZARD_HOST: 'localhost'});
 const repository = {id: 99, namespaceId: 1, path: 'root/wizard', defaultBranch: 'main',
@@ -35,6 +35,9 @@ async function wait(job) {
   const preview = previewWizardSource(); assert.equal(preview.repository.id, 99); assert(preview.fileCount > 0);
   assert(!JSON.stringify(preview).includes('content'), 'preview must not expose source blobs');
   assert.throws(() => initializeWizardSource({manifestHash: 'stale'}), /Preview/);
+  for (const input of [null, [], 7, {manifestHash: null}, {manifestHash: 7}]) {
+    assert.throws(() => initializeWizardSource(input), /Preview/);
+  }
   assert.equal(calls, 0);
   const job = initializeWizardSource({manifestHash: preview.manifestHash});
   assert.equal(job.state, 'running'); assert(bootstrap.projectBusy());
@@ -57,6 +60,15 @@ async function wait(job) {
   bootstrap.rails = async () => ({importCommit: 'imported'});
   const recovered = initializeWizardSource({manifestHash: preview.manifestHash}); await wait(recovered);
   assert.equal(recovered.workflow.importCommit, 'imported'); assert.equal(recovered.id, job.id);
+  bootstrap.rails = async () => ({message: 'Missing required source observation'});
+  const malformed = initializeWizardSource({manifestHash: preview.manifestHash}); await wait(malformed);
+  assert.equal(malformed.state, 'failed'); assert.match(malformed.message, /Invalid GitLab operation response/);
+  assert.equal(bootstrap.readReceipt(fs.readFileSync(config, 'utf8')).wizardWorkflow.phase, 'failed');
+  const unowned = JSON.parse(JSON.stringify(receipt)); delete unowned.wizardWorkflow.operation;
+  bootstrap.writeReceipt(config, data, unowned);
+  const missingOperation = fs.readFileSync(config, 'utf8');
+  assert.throws(() => initializeWizardSource({manifestHash: preview.manifestHash}), /different Wizard source revision/);
+  assert.equal(fs.readFileSync(config, 'utf8'), missingOperation);
   receipt.wizardWorkflow.manifestHash = 'another'; bootstrap.writeReceipt(config, data, receipt);
   assert.throws(() => previewWizardSource(), /different Wizard source revision/);
   bootstrap.writeReceipt(config, data.replace('https://www.system-bootstrapper.com', 'http://www.system-bootstrapper.com'), registration);

@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 import { HostInstallService, privateFile, reference } from '../host/install';
-import { readNpmReceipt } from '../release/npm-identity';
-import { QuickstartPreflightService } from './quickstart-preflight.service';
+import { readNpmReceipt } from '../release/npmIdentity';
+import { QuickstartPreflightService } from './quickstartPreflight.service';
 import { UbuntuHostService } from './ubuntu.service';
 
 /** Post-Node fresh installation; every mutation belongs to the accepted CLI runtime. */
@@ -29,6 +29,7 @@ export class QuickstartService {
     const selected = JSON.parse(fs.readFileSync(manifest, 'utf8'));
     const source = selected.source,
       receipt = readNpmReceipt(selected.quickstart?.cli);
+
     if (
       selected.format !== 'system-accepted-release-v1' ||
       source?.sourceLayout !== 'system-monorepo-v1' ||
@@ -41,12 +42,17 @@ export class QuickstartService {
       receipt.sourceTree !== source.tree ||
       selected.acceptance?.requiredChecksPassed !== true ||
       selected.acceptance?.controllerWizardSameAttempt !== true
-    )
+    ) {
       throw Error('Accepted same-source CLI and monorepo release required.');
+    }
+
     const controller = reference(selected.images?.controller?.reference),
       wizard = reference(selected.images?.wizard?.reference);
-    if (!path.isAbsolute(checkout) || fs.lstatSync(checkout, { throwIfNoEntry: false }))
+
+    if (!path.isAbsolute(checkout) || fs.lstatSync(checkout, { throwIfNoEntry: false })) {
       throw Error('Fresh absolute checkout required.');
+    }
+
     await this.preflight.check(env, signal);
     await this.ubuntu.install(env, signal);
     const run = (binary: string, args: string[]) =>
@@ -71,22 +77,28 @@ export class QuickstartService {
       source.revision,
     ]);
     const git = async (...args: string[]) => (await run('git', ['-C', checkout, ...args])).trim();
+
     if (
       (await git('rev-parse', 'HEAD')) !== source.revision ||
       (await git('rev-parse', 'HEAD^{tree}')) !== source.tree ||
       (await git('ls-tree', 'HEAD', 'wizard')) !== `040000 tree ${source.wizardSourceTree}\twizard`
-    )
+    ) {
       throw Error('Accepted source tree mismatch.');
+    }
+
     // The package was hash-checked before its first execution. Reuse those exact
     // compiled bytes and bundled dependencies, without a second build/download.
     for (const name of ['dist', 'node_modules', 'assets']) {
       const destination = path.join(checkout, name),
         origin = path.join(this.packageRoot, name);
+
       if (
         fs.lstatSync(destination, { throwIfNoEntry: false }) ||
         !fs.statSync(origin).isDirectory()
-      )
+      ) {
         throw Error('Fresh compiled runtime destination required.');
+      }
+
       fs.cpSync(origin, destination, { recursive: true, errorOnExist: true, force: false });
     }
     await this.installer.install(
@@ -118,14 +130,23 @@ export class QuickstartService {
         let size = 0,
           html = '';
         try {
-          if (reader)
+          if (reader) {
             while (true) {
               const row = await reader.read();
-              if (row.done) break;
+
+              if (row.done) {
+                break;
+              }
+
               size += row.value.length;
-              if (size > 1024 * 1024) throw Error('Readiness response too large.');
+
+              if (size > 1024 * 1024) {
+                throw Error('Readiness response too large.');
+              }
+
               html += Buffer.from(row.value).toString();
             }
+          }
         } finally {
           await reader?.cancel();
         }
@@ -134,7 +155,10 @@ export class QuickstartService {
           redirect: 'error',
         });
         await sync.body?.cancel();
-        if (configuration.status === 200 && /<html/i.test(html) && sync.status === 401) return;
+
+        if (configuration.status === 200 && /<html/i.test(html) && sync.status === 401) {
+          return;
+        }
       } catch {
         signal?.throwIfAborted();
       }

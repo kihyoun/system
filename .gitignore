@@ -21,3 +21,7 @@ test-results/
 .candidate-images/
 .codeql-context/
 __pycache__/
+
+# Source-built CI command installation.
+/.ci-cli/
+/.ci-cli-package/

@@ -25,5 +25,7 @@ export interface ApplicationRoute extends AliasRoute {
   key: string;
 }
 export function requireValue(value: unknown, message: string): asserts value {
-  if (!value) throw Error(message);
+  if (!value) {
+    throw Error(message);
+  }
 }

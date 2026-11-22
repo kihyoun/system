@@ -1,7 +1,7 @@
 'use strict';
 // Stateful reconciliation cases consolidated from the former Python suite.
 const assert=require('node:assert/strict');
-const {RenovateSetupService,protectedDefaultRules,BOT_MARKER}=require('../../dist/modules/renovate/setup.service');
+const {RenovateSetupService,protectedDefaultRules,botMarker}=require('../../dist/modules/renovate/setup.service');
 const {RenovateApi}=require('../../dist/modules/renovate/api');
 const protection=(name='main',push=40,merge=40)=>({name,push_access_levels:[{access_level:push}],merge_access_levels:[{access_level:merge}]});
 class GitLab {
@@ -66,13 +66,13 @@ module.exports=async function run(){
   {const f=fixture();f.api.rules[10]=[protection('m*'),protection('release/*',30,30)];f.api.rules[11]=[protection(),{...protection('*',0,40),inherited:true},protection('M*',30,30)];await f.run();}
   {const f=fixture();f.api.rules[11]=[protection(),{...protection('m*',40,30),inherited:true}];await assert.rejects(f.run());}
   {const pages=new RenovateApi('https://gitlab.example.com/api/v4','fixture');let count=0;pages.call=async()=>++count===1?[protection(),...Array.from({length:99},(_,i)=>protection('release/'+i))]:[protection('*',40,30)];await assert.rejects(protectedDefaultRules(pages,{id:10,default_branch:'main'}));assert.equal(count,2);}
-  {const f=fixture();f.api.user={id:9,name:BOT_MARKER,is_admin:true,state:'active'};await assert.rejects(f.run());assert.equal(f.api.tokens.length,0);}
+  {const f=fixture();f.api.user={id:9,name:botMarker,is_admin:true,state:'active'};await assert.rejects(f.run());assert.equal(f.api.tokens.length,0);}
   {const f=fixture();await f.run();f.api.calls=[];await assert.rejects(f.run({},{}));readOnly(f);}
-  {const f=fixture(),original=f.api.call.bind(f.api);f.api.call=async(...args)=>{const value=await original(...args);if(args[0]==='POST'&&args[1]==='/users')throw Error('response loss');return value;};await assert.rejects(f.run(),/response loss/);assert.equal(f.journal.user_id,undefined);assert.equal(f.api.user.note,BOT_MARKER+': '+f.journal.ownership_nonce);assert(f.api.user.force_random_password);assert.equal(f.api.user.reset_password,false);f.api.call=original;await f.run({},f.journal);assert.equal(f.api.calls.filter(c=>c[0]==='POST'&&c[1]==='/users').length,1);}
+  {const f=fixture(),original=f.api.call.bind(f.api);f.api.call=async(...args)=>{const value=await original(...args);if(args[0]==='POST'&&args[1]==='/users')throw Error('response loss');return value;};await assert.rejects(f.run(),/response loss/);assert.equal(f.journal.user_id,undefined);assert.equal(f.api.user.note,botMarker+': '+f.journal.ownership_nonce);assert(f.api.user.force_random_password);assert.equal(f.api.user.reset_password,false);f.api.call=original;await f.run({},f.journal);assert.equal(f.api.calls.filter(c=>c[0]==='POST'&&c[1]==='/users').length,1);}
   {const f=fixture();await f.run();const recovered={};await f.run({recoverUserId:9},recovered);assert.notEqual(recovered.ownership_nonce,f.state.ownership_nonce);assert(f.api.tokens[0].revoked);}
   {const f=fixture();await f.run();f.api.user.can_create_group=true;f.api.calls=[];await assert.rejects(f.run({recoverUserId:9},{}));readOnly(f);}
   const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-  const {savePrivate}=require('../../dist/modules/renovate/setup-entry'),{privateJson}=require('../../dist/modules/renovate/private-files');
+  const {savePrivate}=require('../../dist/modules/renovate/setupEntry'),{privateJson}=require('../../dist/modules/renovate/privateFiles');
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'renovate-private-'));
   try{const file=path.join(tmp,'state.json');savePrivate(file,{ok:true});assert.equal(fs.statSync(file).mode&0o777,0o600);assert.deepEqual(privateJson(file),{ok:true});fs.chmodSync(file,0o644);assert.throws(()=>privateJson(file),/0600/);assert.throws(()=>savePrivate(file,{}),/0600/);}finally{fs.rmSync(tmp,{recursive:true,force:true});}
   console.log('PASS: native Renovate reconciliation, protected rules, interrupted ownership and token recovery');

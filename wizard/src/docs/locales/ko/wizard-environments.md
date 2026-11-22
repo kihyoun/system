@@ -139,3 +139,30 @@ CI 식별 정보, 이전 기록, 중지 tombstone 및 세대 하한을 보존합
 보존된 Review 바인딩 및 리소스 검사는 소유한 리소스 정리에만 사용할 수 있습니다.
 
 보존된 관리 애플리케이션 저장소는 `ManagedEnvironmentService`를 Sync와 operations CLI `managed-recipe`를 통해 사용합니다. 기존 프로젝트별 PostgreSQL advisory 키를 보존하고 기록한 빌드와 이전 레시피를 확인하며 배포가 진행 또는 대기 중이면 설정 갱신을 거부합니다. 커밋 요청은 결과가 확인될 때까지 GitLab 설정 볼륨에 비공개로 크기를 제한한 내용/부모 증거를 보존합니다. 응답이 중단되면 같은 예약을 새로 조회하세요. 증거가 없으면 변경 장벽을 유지하고 다른 쓰기를 허용하지 않습니다. 레시피 커밋은 파이프라인을 시작하지 않으며 예약된 과거 빌드 파일을 변경하지 않습니다. `node tests/gitlab/environment-upgrade.js`는 주입한 저장소와 잠금 공급자로 이 계약을 검사합니다.
+
+## 공통 구성 워크플로
+
+`WizardEnvironmentsModule`은 보존된 관리 Wizard의 구성 워크플로를 담당합니다.
+순수하고 구체적인 형식의 설정 규칙, 주입형 DNS/TLS 검사, 활성화/상태 조정 및
+`EnvironmentStoreService`를 분리합니다. 저장소는 서명과 기록 식별 정보를 검사하고
+기존 도우미 잠금을 획득하며 쓰기 전에 구성 바이트를 비교합니다. 같은 작업의 배포
+갱신은 보존하지만 다른 구성 변경과 오래된 미리보기는 쓰기를 거부합니다. GitLab을
+호출하기 전에 외부 작업 의도를 영구 저장하여 중단된 작업의 예약을 보존합니다.
+
+인증된 `/projects/wizard/environments` 엔드포인트와 독립 실행 명령
+`system-bootstrapper wizard-environments`는 같은 Nest 공급자를 사용합니다.
+`preview`와 `status`는 상태를 읽고 `preflight SETTINGS_FILE`은 명시적 설정을
+검사합니다. `configure REQUEST_FILE`은 비공개 JSON 파일에서 미리보기 해시와
+설정을 읽습니다. CLI는 HTTP 서버를 시작하지 않습니다. 일반 프로젝트 Review/Beta와
+별도의 선택적 System Beta에 대한 기존 소유권 경계는 유지합니다.
+
+활성화와 상태 갱신은 기존 공통 저장소 잠금도 유지하므로 Harvest와 GitLab
+업그레이드가 같은 구성 작업과 경쟁할 수 없습니다. 성공하거나 명확히 실패하여
+종료된 호출은 변경되지 않은 자신의 잠금만 해제합니다. 전송 완료가 불확실하거나
+소유권이 변경되거나 프로세스가 강제 종료되면 잠금과 조정 상태를 보존합니다.
+`system-bootstrapper wizard-environments inspect`로 이를 읽을 수 있습니다.
+이 명령은 정제된 소유자/작업 메타데이터만 보고하며 정리하지 않습니다. 다음 상태
+갱신 전에 [중단된 작업 조사](../../../docs/RECOVERY_CONTRACT.md)를 따르세요.
+이전 소유자와 그 소유자가 실행한 작업이 종료되었음을 확실히 입증하고 해당
+소유자의 중단된 잠금만 해결하세요. CLI는 시간이 지났다는 이유만으로 다른 소유자
+또는 해결되지 않은 장벽을 인수하지 않습니다.

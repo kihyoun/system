@@ -188,7 +188,7 @@ docker run --rm --network host --mount type=bind,src=/operator/configuration,dst
 
 ## 런타임 경계
 
-호환되는 `run.js`, `binding.js`, `source-installation.js` 진입점은 컴파일된 operations
+호환되는 `run.js`, `binding.js`, `sourceInstallation.js` 진입점은 컴파일된 operations
 런타임을 로드합니다. `AdoptionModule`은 계획, 최신 증거 수집, 확인 및 잠금으로 보호된
 구성 트랜잭션을 담당합니다. 소스 설치 검증과 기본 소스 파이프라인 정책은 타입이
 지정된 operations 기능입니다. 이 진입점을 사용하기 전에 operations 패키지를 빌드하세요.

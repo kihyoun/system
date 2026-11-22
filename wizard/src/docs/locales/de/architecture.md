@@ -54,6 +54,10 @@ Deployment-Berechtigung. Dienste verwenden injizierte Prozess-, Konfigurations- 
   Abbruch und den zeitlich unbegrenzten, vorgebauten Sync-Prozess im Vordergrund.
 - `ProjectLifecycleModule`, `EnvironmentModule` und `CanonicalModule` steuern
   Deployment-Transaktionen, Quellübertragung und kanonischen Umgebungszustand.
+  `WizardEnvironmentsModule` trennt typisierte Einstellungen, DNS-/TLS-Vorprüfung,
+  Aktivierungs-/Statusentscheidungen und gesperrte Nachweisspeicherung. HTTP und
+  der eigenständige Befehl `wizard-environments` verwenden denselben injizierten
+  Workflow-Dienst. Prozesslokale Vorbereitung ersetzt keine dauerhafte Sperre.
   `PreviewOperatorModule`, `AdoptionModule`, `UpgradeModule`, `ProductionModule`
   und `SystemBetaModule` trennen Einrichtung, Quellübernahme/Build-Upgrades,
   bewusste Wizard-Production-Freigabe und System-Beta eines akzeptierten Kandidaten.

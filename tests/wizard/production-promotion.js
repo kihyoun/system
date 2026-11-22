@@ -3,8 +3,8 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {Promotion, hash, signature} = require('../../dist/modules/project-lifecycle/production-session');
-const logo = require('../../dist/common/configuration-signature').default.textLogo;
+const {Promotion, hash, signature} = require('../../dist/modules/project-lifecycle/productionSession');
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
 const oldId = 'sha256:' + 'a'.repeat(64), nextId = 'sha256:' + 'b'.repeat(64);
 const ref = 'registry.example.test/root/wizard@sha256:' + 'c'.repeat(64);
 const proof = {version: 1, projectId: 3, projectPath: 'root/wizard', pipelineId: 21,
@@ -185,7 +185,7 @@ async function test(name, callback) { const fixture = new Fixture(); try { await
   });
   const {NestFactory}=require('../../node_modules/@nestjs/core');
   const {ProductionModule}=require('../../dist/modules/project-lifecycle/production.module');
-  const {DeploymentEvidenceService}=require('../../dist/modules/project-lifecycle/deployment-evidence.service');
+  const {DeploymentEvidenceService}=require('../../dist/modules/project-lifecycle/deploymentEvidence.service');
   const app=await NestFactory.createApplicationContext(ProductionModule.register(),{logger:false,abortOnError:false});
   try {assert.strictEqual(app.get(Promotion).evidence,app.get(DeploymentEvidenceService));}
   finally {await app.close();}

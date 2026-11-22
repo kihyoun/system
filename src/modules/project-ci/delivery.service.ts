@@ -2,15 +2,19 @@ import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { DeliverySessionService } from './delivery-session.service';
-import { candidateReference, deliveryIdentity } from './delivery-policy';
-const prefix = '.system-bootstrapper/build-v2';
+import { DeliverySessionService } from './deliverySession.service';
+import { candidateReference, deliveryIdentity } from './deliveryPolicy';
+const buildPrefix = (root: string) =>
+  fs.existsSync(path.join(root, '.system-bootstrapper/build-v3/Dockerfile'))
+    ? '.system-bootstrapper/build-v3'
+    : '.gitlab/build-v3';
 @Injectable()
 export class DeliveryService {
   constructor(private readonly sessions: DeliverySessionService) {}
 
   async build(root: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
     const identity = deliveryIdentity(env);
+    const prefix = buildPrefix(root);
     await this.sessions.use(root, env, identity, signal, async (session) => {
       const image = `${identity.registryImage}:wizard-${identity.source}-${identity.pipeline}-${identity.job}-${session.operation}`;
       await session.login();
@@ -65,6 +69,7 @@ export class DeliveryService {
   async verify(root: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<void> {
     const identity = deliveryIdentity(env),
       ref = candidateReference(env.WIZARD_IMAGE_REF || '', identity);
+    const prefix = buildPrefix(root);
     await this.sessions.use(root, env, identity, signal, async (session) => {
       const name = session.builder,
         browserImage = name + '-browser-image',
@@ -111,11 +116,17 @@ export class DeliveryService {
           ready = true;
           break;
         } catch (error) {
-          if (signal?.aborted) throw error;
+          if (signal?.aborted) {
+            throw error;
+          }
         }
         await delay(1000, undefined, { signal });
       }
-      if (!ready) throw Error('Candidate HTTP readiness failed');
+
+      if (!ready) {
+        throw Error('Candidate HTTP readiness failed');
+      }
+
       const browser = await session.createContainer(name + '-browser', [
         '--memory',
         '1g',
@@ -136,11 +147,19 @@ export class DeliveryService {
       try {
         await session.run(['cp', browser + ':/evidence/.', evidence], 15000, true);
       } catch (error) {
-        if (!failure) throw error;
+        if (!failure) {
+          throw error;
+        }
       }
-      if (failure) throw failure;
-      if (!fs.statSync(path.join(evidence, 'browser.json')).isFile())
+
+      if (failure) {
+        throw failure;
+      }
+
+      if (!fs.statSync(path.join(evidence, 'browser.json')).isFile()) {
         throw Error('Browser evidence missing');
+      }
+
       fs.writeFileSync(
         path.join(root, 'wizard-evidence.json'),
         JSON.stringify({

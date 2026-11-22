@@ -9,8 +9,8 @@ Vite 스냅샷은 Node 24/Vite 프로필을 선택합니다.
 과거 Node 13/CRA/Jest 레시피는 기존 예약과 증거의 정확한 해시를 유지하는 용도로만 남아 있습니다.
 컨트롤러 런타임은 지원되는 Node 24 도구 모음을 사용합니다.
 
-`recipe.js`는 결정적인 버전/해시, 관리형 CI 및
-`.system-bootstrapper/build-v1/` 아래의 파일을 반환합니다.
+`BuildRecipeService`는 결정적인 버전/해시, 관리형 CI 및 버전이 지정된
+`.system-bootstrapper/build-v1`, `build-v2` 또는 `build-v3` 경로의 파일을 반환합니다.
 관리형 Dockerfile은 전용 컨텍스트 제외 파일로 Git 메타데이터, dotenv 재정의 및 비공개 자료를 제외합니다.
 현대 프로필 검사는 린트, Vitest, TypeScript/Vite 빌드 및 설정 내보내기를 실행합니다.
 레거시 프로필은 소스 가져오기 도구에서 안전성이 확인된 사전 검사 설정만 CRA에 제공하고,
@@ -66,7 +66,7 @@ Sync 모듈은 미리보기, 활성화, 상태 기능을 제공합니다. 서버
 
 레거시 `build-v1` 레시피는 기록된 해시와 과거 GitLab 증거를 위해 바이트 단위로 유지됩니다.
 검증된 스냅샷이 Vite를 사용하는 새 소스 가져오기는 Node 24 / Vite 8 계열을 선택합니다.
-새 예약은 `node24-vite8-quickstart-v5`를 사용하며
+현재 v3 소스 예약은 `node24-vite8-cli-v7`을 사용하며
 Node 24.22.0/npm 11.19.1, 잠금 파일 설치, 린트, Vitest,
 TypeScript/Vite 빌드 및 Playwright 1.64.1 브라우저 검사를 수행합니다.
 두 프로필은 동일한 범위 제한 작업 이름과 아티팩트/다이제스트 계약을 사용합니다.
@@ -87,7 +87,8 @@ Review/Beta 예약은 일치하는 빌드 레시피 해시를 유지하고,
 태그가 없는 브라우저 이미지는 Docker에 `:latest`로 기록되어
 과거의 정리 비교가 성공을 보고하면서도 작업 태그를 남길 수 있습니다.
 
-현재 예약되지 않은 빌드는 `legacy-ca-v4` 또는 `node24-vite8-quickstart-v5`를 사용합니다.
+현재 v3 소스 빌드는 `node24-vite8-cli-v7`을 사용하며 이전 스냅샷은
+`legacy-ca-v4`, `node24-vite8-quickstart-v5` 등 소스에 맞는 프로필을 선택합니다.
 버전별 cleanup-v2 프로필의 수정된 정리 구현을 상속하며,
 현대 프로필은 아래의 이동 검사도 상속합니다.
 정리 로직은 마지막 저장소 경로 요소에 태그가 없을 때만 `:latest`를 추가합니다.
@@ -161,9 +162,32 @@ CI 검증, 정리 및 공개 신뢰 파일을 상속합니다.
 관리형 컨테이너 기본값은 `http://wizard-candidate`와 `/evidence`이며,
 선택한 원본 밖의 모든 요청은 차단됩니다.
 
-`.gitlab/producer-v2.json`이 있는 새 Node 24 소스 스냅샷은 `node24-vite8-typed-v6`를 선택합니다. 그 `.system-bootstrapper/build-v2` 파일에는 검토한 이식 가능한 런타임, Dockerfile, 브라우저 검사 및 CA 번들이 있습니다. 작업은 `node .../runtime/project-ci.cjs build` 또는 `verify`로 공유 Nest 작업 서비스를 호출합니다. Node Alpine 작업은 먼저 build-v2 디렉터리로 `prepare-runtime`을 호출합니다. 애플리케이션은 계속 Nginx가 제공하는 정적 SPA입니다.
+현재 소스 스냅샷은 `.gitlab/producer-v3.json`을 선언하고
+`node24-vite8-cli-v7`을 선택합니다. 소스에 연결된 일반 CLI 아카이브, 영수증 및
+체크섬을 `.gitlab/cli`로 내보냅니다. 네이티브 소스 `.gitlab/build-v3`와 관리형
+`.system-bootstrapper/build-v3`에는 Docker/빌드 입력과 고정된 Playwright 의존성
+잠금 파일만 포함됩니다. 작업은 아카이브 해시를 확인하고 수명 주기 스크립트 없이
+오프라인으로 설치한 뒤 `system-bootstrapper project-ci build|verify CHECKOUT`을
+호출합니다. 브라우저 검사는 같은 일반 CLI의 TypeScript 서비스인
+`system-bootstrapper project-ci browser-smoke CHECKOUT`을 통해 실행합니다.
+환경 작업은 해당 CLI의 환경 서비스를 호출합니다. Wizard는 계속 Nginx가 제공하는
+정적 SPA입니다.
 
-`typed-v6/runtime`의 버전별 런타임은 예약된 레시피 해시의 일부입니다. 후속 레시피를 도입할 때 이 바이트를 보존하세요. 현재 이식 가능한 번들 변경은 기존 예약을 다시 쓸 권한을 부여하지 않습니다. 런타임이 버전별 레시피와 다른 새 소스 스냅샷은 검토한 후속 프로필을 제공할 때까지 선택에 실패합니다. 기존 build-v1 레시피 선택과 해시는 정확히 유지합니다. v6에 바인딩된 환경 예약은 같은 런타임으로 수동 Review/Beta 작업을 생성하며, 과거 environment-v1 선택은 `wizard-environments/historical`의 보관된 스크립트를 읽습니다.
+[운영 가이드](../../../docs/OPERATIONS.md)는 npm에 게시하기 전에 같은 빌드의
+동반 아카이브를 만들고 명시적으로 선택하는 방법을 설명합니다. 소스 리비전, Git
+트리, 버전 및 정확한 SHA-256은 소스 내보내기와 일치해야 합니다. 아카이브는 자기
+npm 패키지 밖에 보관합니다. 설치된 패키지를 알리지 않고 다시 포장하거나
+레지스트리 다운로드로 대체하지 않습니다.
+
+기존 관리형 가져오기 또는 소스 기본 프로젝트는 일치하는 소스와 함께
+`"buildProfile": "node24-vite8-cli-v7"`을 명시하여 마이그레이션합니다. 보호된
+계획은 CI를 변경하기 전에 기존 관리 파일과 소유권을 확인합니다. 사용자 변경은
+덮어쓰지 않고 충돌로 처리하며 v7은 이전 검사로 다운그레이드할 수 없습니다.
+과거 스냅샷 v1/v2와 이전의 모든 예약 프로필은 정확하게 보존합니다. 특히
+`.gitlab/producer-v2.json`은 동결된 `node24-vite8-typed-v6` 런타임을 계속
+선택합니다. `typed-v6/runtime`과 그 라이선스는 변경하지 마세요. 예약된 과거
+해시를 재현하는 용도로만 보존합니다. 과거 environment-v1 선택은
+`wizard-environments/historical`을 읽습니다.
 
 관리되는 빌드 활성화와 상태는 `ManagedBuildService`를 공유 operations 명령 `managed-recipe` 및 Sync API를 통해 사용합니다. 네이티브 세션은 과거의 프로젝트 및 작업별 PostgreSQL advisory 키를 유지합니다. Git 커밋은 보호된 파일 갱신을 사용하며 파이프라인 생성은 먼저 작업 체크포인트를 기록합니다. 비공개 쓰기 증거는 응답이 유실되어도 요청을 재실행하지 않고 남습니다. 상태는 동일한 예약 레시피, 필수 작업, 아티팩트 다이제스트를 확인하며 파이프라인을 시작하지 않습니다. 조정은 정확한 커밋만 검색하고 최대 20개의 파이프라인 변수 집합을 검사하며 모호하거나 검색 한도를 소진한 경우 거부합니다.
 

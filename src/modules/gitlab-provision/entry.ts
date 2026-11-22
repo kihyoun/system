@@ -1,25 +1,31 @@
 #!/usr/bin/env node
-import { ManagedRecipeOperationService } from './managed-recipe-operation.service';
-import { WizardSourceOperationService } from './wizard-source.service';
-import { GitlabTokenMetadataService } from './token-metadata.service';
+import { ManagedRecipeOperationService } from './managedRecipeOperation.service';
+import { WizardSourceOperationService } from './wizardSource.service';
+import { GitlabTokenMetadataService } from './tokenMetadata.service';
 import 'reflect-metadata';
-import { PreviewSetupService } from './preview-setup.service';
-import { ProjectProvisionService } from './project-provision.service';
-import { SourcePrimaryOperationService } from './source-primary-operation.service';
-import { GitlabProjectCredentialService } from './project-credential.service';
-import { readPrivateInput } from '../host/private-input';
+import { PreviewSetupService } from './previewSetup.service';
+import { ProjectProvisionService } from './projectProvision.service';
+import { SourcePrimaryOperationService } from './sourcePrimaryOperation.service';
+import { GitlabProjectCredentialService } from './projectCredential.service';
+import { readPrivateInput } from '../host/privateInput';
 import path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
-import { GitlabProvisionModule } from './gitlab-provision.module';
+import { GitlabProvisionModule } from './gitlabProvision.module';
 import { GitlabCredentialService } from './credential.service';
 function privateToken(filename: string): string {
-  if (!path.isAbsolute(filename))
+  if (!path.isAbsolute(filename)) {
     throw Error('Absolute private administrator-token file required.');
+  }
+
   const token = readPrivateInput(filename, 4096, { owner: process.getuid?.(), mode: 0o600 })
     .toString('utf8')
     .replace(/\r?\n$/, '');
-  if (!token || /[\r\n\0]/.test(token)) throw Error('Invalid administrator-token file.');
+
+  if (!token || /[\r\n\0]/.test(token)) {
+    throw Error('Invalid administrator-token file.');
+  }
+
   return token;
 }
 export async function main(args: string[]): Promise<void> {
@@ -29,8 +35,10 @@ export async function main(args: string[]): Promise<void> {
     );
     return;
   }
+
   const command = args[0],
     values: Record<string, string> = {};
+
   if (
     ![
       'initialize',
@@ -44,11 +52,14 @@ export async function main(args: string[]): Promise<void> {
       'wizard-source',
       'managed-recipe',
     ].includes(command)
-  )
+  ) {
     throw Error('Unsupported GitLab credential action.');
+  }
+
   for (let index = 1; index < args.length; index += 2) {
     const key = args[index],
       value = args[index + 1];
+
     if (
       ![
         '--checkout',
@@ -62,10 +73,13 @@ export async function main(args: string[]): Promise<void> {
       !value ||
       value.startsWith('--') ||
       key in values
-    )
+    ) {
       throw Error('Invalid GitLab credential arguments.');
+    }
+
     values[key] = value;
   }
+
   if (
     !values['--checkout'] ||
     !path.isAbsolute(values['--checkout']) ||
@@ -88,8 +102,10 @@ export async function main(args: string[]): Promise<void> {
     (command === 'renew-project' &&
       (!/^[1-9][0-9]*$/.test(values['--project-id'] ?? '') || !values['--project-path'])) ||
     (command !== 'renew-project' && Boolean(values['--project-id'] || values['--project-path']))
-  )
+  ) {
     throw Error('Invalid GitLab credential arguments.');
+  }
+
   const administrator = values['--administrator-token-file']
     ? privateToken(values['--administrator-token-file'])
     : undefined;
@@ -100,6 +116,7 @@ export async function main(args: string[]): Promise<void> {
   let app: INestApplicationContext | undefined;
   try {
     app = await NestFactory.createApplicationContext(GitlabProvisionModule, { logger: false });
+
     if (
       [
         'activate',
@@ -113,12 +130,15 @@ export async function main(args: string[]): Promise<void> {
       let input = Buffer.alloc(0);
       for await (const chunk of process.stdin) {
         input = Buffer.concat([input, Buffer.from(chunk)]);
+
         if (
           input.length >
           (['wizard-source', 'managed-recipe'].includes(command) ? 64 : 2) * 1024 * 1024
-        )
+        ) {
           throw Error('GitLab operation input is too large.');
+        }
       }
+
       if (command === 'managed-recipe') {
         console.log(
           JSON.stringify(
@@ -129,6 +149,7 @@ export async function main(args: string[]): Promise<void> {
         );
         return;
       }
+
       if (command === 'wizard-source') {
         console.log(
           JSON.stringify(
@@ -139,6 +160,7 @@ export async function main(args: string[]): Promise<void> {
         );
         return;
       }
+
       if (command === 'token-metadata') {
         const result = await app
           .get(GitlabTokenMetadataService)
@@ -151,6 +173,7 @@ export async function main(args: string[]): Promise<void> {
         console.log(JSON.stringify(result));
         return;
       }
+
       const service =
         command === 'preview'
           ? app.get(PreviewSetupService)
@@ -165,6 +188,7 @@ export async function main(args: string[]): Promise<void> {
       console.log(JSON.stringify(result));
       return;
     }
+
     const service = app.get(GitlabCredentialService);
     const options = {
       checkout: values['--checkout'],
@@ -174,6 +198,7 @@ export async function main(args: string[]): Promise<void> {
         : undefined,
       signal: abort.signal,
     };
+
     if (command === 'renew-project') {
       const authority = await service.ensure(options);
       const token = await app
@@ -199,6 +224,7 @@ export async function main(args: string[]): Promise<void> {
       );
       return;
     }
+
     const result =
       command === 'initialize'
         ? await service.ensure(options)
@@ -219,10 +245,12 @@ export async function main(args: string[]): Promise<void> {
     await app?.close();
   }
 }
-if (require.main === module)
+
+if (require.main === module) {
   void main(process.argv.slice(2)).catch(() => {
     console.error(
       'GitLab credential operation did not complete; retain its private journal and retry the matching documented recovery action.',
     );
     process.exitCode = 1;
   });
+}

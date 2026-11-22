@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
-const {SourcePreparationService}=require('../../dist/modules/source-preparation/source-preparation.service');
+const {SourcePreparationService}=require('../../dist/modules/source-preparation/sourcePreparation.service');
 for(const historical of [false,true])test(`source preparation preserves ${historical?'historical gitlink':'shared tree'} Git authority`,t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'source-preparation-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  fs.mkdirSync(path.join(root,'.git'));fs.mkdirSync(path.join(root,'wizard'));

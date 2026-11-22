@@ -2,9 +2,9 @@ import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
 import { initializationGuard } from '../host/install';
-import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 import { RetainedRecoveryService } from './recovery.service';
-import { RuntimeVerificationService } from './runtime-verification.service';
+import { RuntimeVerificationService } from './runtimeVerification.service';
 import { UbuntuHostService } from './ubuntu.service';
 import { HostCertificateService } from './certificate.service';
 export interface InitializeOptions {
@@ -33,7 +33,10 @@ export class HostInitializeService {
     env: NodeJS.ProcessEnv,
     signal?: AbortSignal,
   ): Promise<void> {
-    if (process.geteuid?.() !== 0) throw Error('Host initialization requires root.');
+    if (process.geteuid?.() !== 0) {
+      throw Error('Host initialization requires root.');
+    }
+
     const checkout = fs.realpathSync(options.checkout),
       receipt = path.join(
         fs.realpathSync(path.dirname(path.resolve(options.receiptDir))),
@@ -41,13 +44,16 @@ export class HostInitializeService {
       ),
       swap = options.swapGiB ?? 0,
       timeout = options.timeout ?? 1200;
+
     if (
       !path.isAbsolute(options.receiptDir) ||
       receipt === '/' ||
       receipt === checkout ||
       receipt.startsWith(checkout + '/')
-    )
+    ) {
       throw Error('Private receipt directory outside checkout required.');
+    }
+
     if (
       !Number.isInteger(swap) ||
       swap < 0 ||
@@ -55,12 +61,20 @@ export class HostInitializeService {
       !Number.isInteger(timeout) ||
       timeout < 0 ||
       timeout > 3600
-    )
+    ) {
       throw Error('Invalid initialization bounds.');
-    if (fs.lstatSync(receipt, { throwIfNoEntry: false }))
+    }
+
+    if (fs.lstatSync(receipt, { throwIfNoEntry: false })) {
       throw Error('Receipt directory already exists.');
+    }
+
     const selector = env.PERSISTENCE_ENV_FILE;
-    if (!selector) throw Error('Select the private persistence environment.');
+
+    if (!selector) {
+      throw Error('Select the private persistence environment.');
+    }
+
     const release = this.guard();
     try {
       // Validate retained storage and configuration before packages, receipts or service mutations.
@@ -95,35 +109,46 @@ export class HostInitializeService {
           env,
           signal,
         );
+
         if (swap && !(await run('swapon', ['--show=NAME', '--noheadings'], 'swap.log')).trim()) {
-          if (fs.lstatSync('/swapfile', { throwIfNoEntry: false }))
+          if (fs.lstatSync('/swapfile', { throwIfNoEntry: false })) {
             throw Error('Existing swapfile must be managed deliberately.');
+          }
+
           const usage = fs.statfsSync('/');
-          if (usage.bavail * usage.bsize <= (swap + 2) * 1024 ** 3)
+
+          if (usage.bavail * usage.bsize <= (swap + 2) * 1024 ** 3) {
             throw Error('Insufficient root filesystem reserve for swap.');
+          }
+
           await run('fallocate', ['-l', String(swap * 1024 ** 3), '/swapfile'], 'swap.log');
           fs.chmodSync('/swapfile', 0o600);
           await run('mkswap', ['/swapfile'], 'swap.log');
           await run('swapon', ['/swapfile'], 'swap.log');
+
           if (
             !fs
               .readFileSync('/etc/fstab', 'utf8')
               .split('\n')
               .some((line) => line.trim().split(/\s+/)[0] === '/swapfile')
-          )
+          ) {
             fs.appendFileSync('/etc/fstab', '/swapfile none swap sw 0 0\n');
+          }
         }
+
         if (options.installHost) {
           phase('Installing native Ubuntu dependencies');
           await this.ubuntu.install(env, signal);
           await run('apt-get', ['install', '-y', 'certbot'], 'install.log');
         }
+
         await run('docker', ['--host=unix:///var/run/docker.sock', 'version'], 'preflight.log');
         await run('certbot', ['--version'], 'preflight.log');
         phase('Recovering retained platform');
         await this.recovery.recover(checkout, env, false, signal);
         phase('Verifying running platform');
         await this.verification.execute({ ...verification, operation: 'check' }, env, signal);
+
         if (options.renewalDryRun) {
           phase('Testing certificate renewal');
           const renewal = await this.certificates.renew(
@@ -133,19 +158,23 @@ export class HostInitializeService {
             signal,
           );
           fs.writeFileSync(path.join(receipt, 'certificate-renewal.log'), renewal, { mode: 0o600 });
+
           if (
             /Hook .*returned error code [1-9]/.test(renewal) ||
             !renewal.includes('all simulated renewals succeeded')
-          )
+          ) {
             throw Error(
               'Certificate renewal simulation did not confirm successful renewal and hooks.',
             );
+          }
+
           await this.verification.execute(
             { ...verification, operation: 'check', timeout: 60 },
             env,
             signal,
           );
         }
+
         phase('Initialization and runtime verification completed');
       } catch (error) {
         phase('Initialization failed; preserve retained state and inspect private receipts.');

@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),crypto=require('node:crypto');
-const {HostReleaseAuthorityService}=require('../../dist/modules/host/release-authority.service');
-const profile=require('../../config/gitlab/security-release.json'),lifecycle=require('../../dist/modules/release/guided-preview-evidence'),fixture=require('../../tests/shared/guided-preview-fixture');
+const {HostReleaseAuthorityService}=require('../../dist/modules/host/releaseAuthority.service');
+const profile=require('../../config/gitlab/security-release.json'),lifecycle=require('../../dist/modules/release/guidedPreviewEvidence'),fixture=require('../../tests/shared/guided-preview-fixture');
 const revision='a'.repeat(40),sourceTree='b'.repeat(40),wizardTree='c'.repeat(40),id=n=>'sha256:'+n.repeat(64);
 const monorepo={sourceLayout:'system-monorepo-v1',sourceRevision:revision,sourceTree,wizardSourceTree:wizardTree};
 function proof(){return {runId:'f'.repeat(24),sourceRevision:revision,fullAcceptance:true,images:{candidate:id('1'),wizard:id('2'),runner:id('3')},results:[
@@ -30,7 +30,7 @@ test('host authority binds actual candidate CI and source to full System Beta pr
 
 test('candidate GitLab transport keeps credentials on fixed origin and bounds pagination',async()=>{
  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
- const {CandidateGitLabService}=require('../../dist/modules/host/candidate-gitlab.service');
+ const {CandidateGitLabService}=require('../../dist/modules/host/candidateGitlab.service');
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-api-')),token=path.join(directory,'token');
  fs.writeFileSync(token,'private-test-token',{mode:0o600});
  try {
@@ -48,7 +48,7 @@ test('candidate GitLab transport keeps credentials on fixed origin and bounds pa
  } finally {fs.rmSync(directory,{recursive:true,force:true});}
 });
 test('native candidate authority freezes pipeline jobs, historical receipts and paired source publication',async()=>{
- const {CandidateAuthorityService}=require('../../dist/modules/host/candidate-authority.service'),{hostRequiredJobs,hostComponents}=require('../../dist/modules/host/release-authority.service');
+ const {CandidateAuthorityService}=require('../../dist/modules/host/candidateAuthority.service'),{hostRequiredJobs,hostComponents}=require('../../dist/modules/host/releaseAuthority.service');
  const host={environment:{},runner:{run(_binary,args){return {stdout:args.at(-1)==='submodule.wizard.path'?'wizard':'https://github.com/example/wizard.git'};}}};
  const service=new CandidateAuthorityService(host,{});
  const release={format:'system-successor-release-v1',projectId:4,pipelineId:17,candidateJobId:29,sourceRevision:revision,sourceTree,wizardRevision:wizardTree,imageId:id('1'),wizardImageId:id('2'),registryRepository:'registry.example.test/system/successor',registryReference:'registry.example.test/system/successor@'+id('7'),wizardRegistryReference:'registry.example.test/system/successor-wizard@'+id('8'),candidateEvidenceSha256:'a'.repeat(64)};

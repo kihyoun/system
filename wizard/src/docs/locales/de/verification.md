@@ -255,24 +255,20 @@ fehlschlagen; es gibt keine Ausnahmen für Abfragen oder Schweregrade. Das festg
 Der Scan-Kindcontainer hat weder Netzwerk noch Docker-Socket oder Zugangsdaten
 und kann keine Anwendungs-Builds ausführen.
 
-Der Scan analysiert die kanonischen eigenen Quellen statt dieser drei generierten
-Kopien derselben portablen Laufzeit:
+Der Scan analysiert die kanonischen eigenen Quellen. Aktuelle v3-Kontexte lassen
+nur das unveränderliche historische Artefakt
+`templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs` aus,
+nachdem dessen fester SHA-256, regulärer Dateimodus und Lizenz-Hash geprüft wurden.
+Pfade und Hashes bleiben in `scan-source.json`; die reguläre CLI und alle eigenen
+TypeScript-Quellen werden analysiert. Alte v2-Kontexte behalten die strenge
+Prüfung aller drei Kopien samt Producer und Lizenzen. Unvollständige, geänderte
+oder verlinkte Artefakte werden abgelehnt; weitere generierte Pfade erhalten
+diese Ausnahme nicht.
 
-```text
-templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs
-wizard/.system-bootstrapper/build-v2/runtime/project-ci.cjs
-wizard/.gitlab/runtime/project-ci.cjs
-```
-
-Vor dem Auslassen verlangt die Vorbereitung alle drei regulären versionierten
-Dateien, identische Bytes und übereinstimmende Lizenzbegleiter sowie den
-aufgezeichneten Producer-Hash. Unvollständige, geänderte oder verlinkte Artefakte
-werden abgelehnt. Pfade und Hashes bleiben in `scan-source.json` getrennt von
-den analysierten Dateien erhalten. Alle eigenen Quellen und historischen
-Rezeptquellen werden weiterhin analysiert; ein zusätzlicher Bundlepfad erhält
-diese Ausnahme nicht. Der erforderliche Job `test:wizard-browser` führt den
-Generator unabhängig mit `--check` gegen die kompilierten gemeinsamen Quellen,
-alle drei Kopien, Producer-Metadaten und Lizenzhinweise aus.
+`tests/operations/project-ci-artifact.test.cjs` prüft unabhängig das reguläre
+npm-Paket, den Nachweis, die Prüfsumme und die Quellbindung einschließlich
+abweichender Quellen und Archivbytes. CLI-Adaptertests prüfen den Aufruf ohne
+HTTP-Dienst. Die Browserausführung bleibt ein separates erforderliches Gate.
 
 Damit entfällt bewusst die doppelte SAST-Prüfung generierten Codes und eingebetteter
 Fremdbibliotheken. Der eingebettete Bibliothekscode wird durch diese Bundles nicht

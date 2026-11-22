@@ -220,7 +220,7 @@ erstellt keine gelöschte Registry neu und macht alte Sicherungen nicht unabhän
 
 ## Laufzeitgrenze
 
-Die kompatiblen Einstiege `run.js`, `binding.js` und `source-installation.js` laden
+Die kompatiblen Einstiege `run.js`, `binding.js` und `sourceInstallation.js` laden
 die kompilierte Operations-Laufzeit. `AdoptionModule` übernimmt Planung, Sammlung
 aktueller Nachweise, Bestätigung und die gesperrte Konfigurationstransaktion.
 Quellinstallationsprüfung und Pipeline-Richtlinien für primäre Quellen sind typisierte

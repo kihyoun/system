@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { HostLifecycleService } = require('../../dist/modules/host-lifecycle/lifecycle.service');
-const { HostLifecycleModule } = require('../../dist/modules/host-lifecycle/host-lifecycle.module');
+const { HostLifecycleModule } = require('../../dist/modules/host-lifecycle/hostLifecycle.module');
 const { HostPersistenceService } = require('../../dist/modules/host-lifecycle/persistence.service');
 const { NestFactory } = require('@nestjs/core');
 function fixture(t, active = true, failure = false, runtime = {version: '2.0.0', cli: true}) {

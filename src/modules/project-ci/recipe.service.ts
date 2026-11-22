@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
-export const TYPED_BUILD_PROFILE = 'node24-vite8-typed-v6';
+export const typedBuildProfile = 'node24-vite8-typed-v6';
 @Injectable()
 export class ProjectBuildRecipeService {
   generate(logo: string, checkout: string) {
@@ -18,14 +18,17 @@ export function generateTypedBuildRecipe(logo: string, checkout: string) {
     'Dockerfile.dockerignore',
     'Browser.Dockerfile',
     'Browser.Dockerfile.dockerignore',
-  ])
+  ]) {
     locations[file] = 'templates/project-bootstrap/wizard-build/typed-v6/' + file;
+  }
   locations['smoke/check.js'] = 'templates/project-bootstrap/wizard-build/quickstart-v5/check.js';
-  for (const file of ['package.json', 'package-lock.json'])
+  for (const file of ['package.json', 'package-lock.json']) {
     locations['smoke/' + file] = 'templates/project-bootstrap/wizard-build/modern/smoke/' + file;
-  for (const file of ['project-ci.cjs', 'LICENSES.txt'])
+  }
+  for (const file of ['project-ci.cjs', 'LICENSES.txt']) {
     locations['runtime/' + file] =
       'templates/project-bootstrap/wizard-build/typed-v6/runtime/' + file;
+  }
   // Keep the managed project's installed path stable while reading the canonical source asset.
   locations['bootstrapper/ca/cacert-2026-10-20.crt'] = 'config/ca/cacert-2026-10-20.crt';
   const files = Object.entries(locations).map(([relative, source]) => {
@@ -81,7 +84,7 @@ test:wizard:
   };
   return {
     ...manifest,
-    profile: TYPED_BUILD_PROFILE,
+    profile: typedBuildProfile,
     recipeHash: hash(JSON.stringify(manifest)),
     ci,
     files,

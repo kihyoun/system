@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const {test} = require('node:test');
-const aliases = require('../../dist/modules/projects-routing/wizard-aliases');
+const aliases = require('../../dist/modules/projects-routing/wizardAliases');
 const cube = fs.readFileSync(path.resolve(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 const main = {
   WIZARD_ENABLE: 'true', WIZARD_HOST: 'wizard.example.test', WIZARD_DOMAIN_MODE: '2',

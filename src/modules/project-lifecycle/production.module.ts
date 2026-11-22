@@ -1,10 +1,10 @@
 import { DynamicModule, Module } from '@nestjs/common';
-import { ProductionOptions } from './production-types';
-import { Promotion } from './production-session';
+import { ProductionOptions } from './productionTypes';
+import { Promotion } from './productionSession';
 import { ProductionService } from './production.service';
-import { DeploymentEvidenceModule } from './deployment-evidence.module';
-import { DeploymentEvidenceService } from './deployment-evidence.service';
-const PRODUCTION_OPTIONS = Symbol('PRODUCTION_OPTIONS');
+import { DeploymentEvidenceModule } from './deploymentEvidence.module';
+import { DeploymentEvidenceService } from './deploymentEvidence.service';
+const productionOptions = Symbol('PRODUCTION_OPTIONS');
 @Module({})
 export class ProductionModule {
   static register(options: ProductionOptions = {}): DynamicModule {
@@ -12,12 +12,12 @@ export class ProductionModule {
       module: ProductionModule,
       imports: [DeploymentEvidenceModule],
       providers: [
-        { provide: PRODUCTION_OPTIONS, useValue: options },
+        { provide: productionOptions, useValue: options },
         {
           provide: Promotion,
           useFactory: (configuration: ProductionOptions, evidence: DeploymentEvidenceService) =>
             new Promotion(configuration, evidence),
-          inject: [PRODUCTION_OPTIONS, DeploymentEvidenceService],
+          inject: [productionOptions, DeploymentEvidenceService],
         },
         ProductionService,
       ],

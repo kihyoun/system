@@ -1,4 +1,4 @@
-import { cliPath } from '../../common/runtime/installation-paths';
+import { cliPath } from '../../common/runtime/installationPaths';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -6,8 +6,8 @@ import { isDeepStrictEqual } from 'node:util';
 import { Injectable } from '@nestjs/common';
 import type { UpgradeSession } from './session';
 import {
-  ROOT,
-  GITLAB,
+  root,
+  gitlabConfigurationPath,
   release,
   parseEvidence,
   type EvidenceReceipt,
@@ -39,6 +39,7 @@ export class UpgradeWorkflowService {
     const bytes = jsonBytes(session.options.evidence),
       value = parseEvidence(bytes.toString('utf8')),
       p = value.evidence?.gitlabUpgrade;
+
     if (
       value.sourceRevision !== session.options.sourceRevision ||
       !Array.isArray(value.results) ||
@@ -55,8 +56,10 @@ export class UpgradeWorkflowService {
       value.images.gitlab !== session.image(release.toImage) ||
       p.toImageId !== value.images.gitlab ||
       p.fromImageId !== session.image(release.fromImage)
-    )
+    ) {
       throw Error('upgrade-passing-successor-evidence-required');
+    }
+
     if (
       p.runnerImage !== release.runner.toImage ||
       p.runnerImageId !== value.images.runner ||
@@ -70,17 +73,22 @@ export class UpgradeWorkflowService {
       p.runnerImageId !== session.image(release.runner.toImage) ||
       p.helperImageId !== session.image(release.runner.helperImage) ||
       p.fromHelperImageId !== session.image(release.runner.fromHelperImage)
-    )
+    ) {
       throw Error('upgrade-security-trust-evidence-required');
+    }
+
     for (const stage of [
       'gitlab-upgrade-migrated-data',
       'gitlab-upgrade-registry-ci',
       'gitlab-upgrade-restored-checkpoint',
       'gitlab-upgrade-security-trust',
-    ])
-      if (!value.results.some((r) => r.name === stage && r.status === 'passed'))
+    ]) {
+      if (!value.results.some((r) => r.name === stage && r.status === 'passed')) {
         throw Error('upgrade-passing-successor-evidence-required');
+      }
+    }
     const execution = session.publicExecution;
+
     if (execution) {
       const helper = session.inspect(execution.containerId),
         controller = session.inspect('system_bootstrapper_1');
@@ -91,6 +99,7 @@ export class UpgradeWorkflowService {
         mounts = recovery
           ? helper.Mounts?.filter((mount) => mount.Destination !== recovery)
           : helper.Mounts;
+
       if (
         !/^[a-f0-9]{64}$/.test(execution.containerId) ||
         !/^[a-f0-9]{64}$/.test(execution.preparationSha256) ||
@@ -121,10 +130,13 @@ export class UpgradeWorkflowService {
           },
           execution.controller,
         )
-      )
+      ) {
         throw Error('upgrade-public-helper-identity-mismatch');
-    } else if (session.inspect('system_bootstrapper_1').Image !== value.images.candidate)
+      }
+    } else if (session.inspect('system_bootstrapper_1').Image !== value.images.candidate) {
       throw Error('upgrade-tested-controller-required');
+    }
+
     return { sha256: hash(bytes), candidateImage: value.images.candidate };
   }
 
@@ -133,11 +145,17 @@ export class UpgradeWorkflowService {
       old = session.image(release.fromImage),
       target = session.image(release.toImage),
       current = await session.preflight(release.fromVersion);
-    if (current.Image !== old) throw Error('upgrade-current-image-mismatch');
+
+    if (current.Image !== old) {
+      throw Error('upgrade-current-image-mismatch');
+    }
+
     const value = {
       format: 'system-gitlab-upgrade-plan-v1',
       sourceRevision: session.options.sourceRevision,
-      releaseSha256: hash(fs.readFileSync(path.join(GITLAB, 'security-release.json'))),
+      releaseSha256: hash(
+        fs.readFileSync(path.join(gitlabConfigurationPath, 'security-release.json')),
+      ),
       evidence,
       containerId: current.Id,
       fromImageId: old,
@@ -151,12 +169,14 @@ export class UpgradeWorkflowService {
 
   async migrate(session: UpgradeSession, plan: UpgradePlan): Promise<OperationReceipt> {
     await session.quiesceScheduling();
+
     if (plan.runner) {
       session.owner.runnersStopped = true;
       session.updateOwner(session.owner.checkpointSha256);
       session.runnerPool('stop');
       session.runnersStopped(plan.runner);
     }
+
     await session.stop();
     const receipt = session.snapshot(plan);
     session.checkpoint(receipt.checkpointSha256);
@@ -169,7 +189,8 @@ export class UpgradeWorkflowService {
         checkpointSha256: receipt.checkpointSha256,
       }),
     );
-    if (plan.runner)
+
+    if (plan.runner) {
       atomic(
         session.config,
         runnerAssignment(
@@ -178,13 +199,19 @@ export class UpgradeWorkflowService {
           session.runnerAliases,
         ),
       );
+    }
+
     session.start(release.toImage);
     await session.ready(release.toVersion, plan.toImageId);
-    if (plan.runner) session.runnersReady(plan.runner);
+
+    if (plan.runner) {
+      session.runnersReady(plan.runner);
+    }
+
     session.run(
       process.execPath,
-      [cliPath(ROOT), 'projects-routing', 'routing', 'start', ROOT, '/templates'],
-      { cwd: ROOT },
+      [cliPath(root), 'projects-routing', 'routing', 'start', root, '/templates'],
+      { cwd: root },
     );
     atomic(
       path.join(session.checkpoints, 'operation.json'),
@@ -210,34 +237,57 @@ export class UpgradeWorkflowService {
     try {
       session.syncIdle();
       const value = await session.plan();
-      if (value.planSha256 !== expected) throw Error('upgrade-reviewed-plan-mismatch');
+
+      if (value.planSha256 !== expected) {
+        throw Error('upgrade-reviewed-plan-mismatch');
+      }
+
       entered = true;
       return await session.migrate(value.plan);
     } catch (error) {
-      if (!entered) session.unlock();
+      if (!entered) {
+        session.unlock();
+      }
+
       throw error;
     }
   }
 
   async abort(session: UpgradeSession, expected: string): Promise<OperationReceipt> {
-    if (!fs.existsSync(path.join(session.state, '.gitlab-upgrade-lock')))
+    if (!fs.existsSync(path.join(session.state, '.gitlab-upgrade-lock'))) {
       throw Error('upgrade-interrupted-operation-required');
+    }
+
     session.adopt(expected, 'planSha256');
     await session.quiesceFinished();
-    if (session.owner.checkpointSha256)
+
+    if (session.owner.checkpointSha256) {
       throw Error('upgrade-completed-checkpoint-requires-rollback');
+    }
+
     const current = session.inspect('system_gitlab_1');
     session.verifyMounts(current);
-    if (current.Image !== session.image(release.fromImage))
+
+    if (current.Image !== session.image(release.fromImage)) {
       throw Error('upgrade-current-image-mismatch');
-    if (!current.State.Running) session.docker(['start', 'system_gitlab_1']);
-    else session.docker(['exec', 'system_gitlab_1', 'gitlab-ctl', 'start']);
+    }
+
+    if (!current.State.Running) {
+      session.docker(['start', 'system_gitlab_1']);
+    } else {
+      session.docker(['exec', 'system_gitlab_1', 'gitlab-ctl', 'start']);
+    }
+
     await session.ready(release.fromVersion, current.Image);
-    if (session.owner.runnersStopped) session.runnersReady(session.runnerPlan(false), true);
+
+    if (session.owner.runnersStopped) {
+      session.runnersReady(session.runnerPlan(false), true);
+    }
+
     session.run(
       process.execPath,
-      [cliPath(ROOT), 'projects-routing', 'routing', 'start', ROOT, '/templates'],
-      { cwd: ROOT },
+      [cliPath(root), 'projects-routing', 'routing', 'start', root, '/templates'],
+      { cwd: root },
     );
     session.unlock();
     return { status: 'previous-generation-resumed' };
@@ -253,26 +303,38 @@ export class UpgradeWorkflowService {
     await session.quiesceFinished();
     const current = session.inspect('system_gitlab_1');
     session.verifyMounts(current);
-    if (![checkpoint.plan.fromImageId, checkpoint.plan.toImageId].includes(current.Image))
+
+    if (![checkpoint.plan.fromImageId, checkpoint.plan.toImageId].includes(current.Image)) {
       throw Error('upgrade-current-image-mismatch');
+    }
+
     // The replacement data is discarded, so an exit1/OOM from a failed B is
     // not a reason to reject a verified cold A checkpoint. No writer may run.
     if (checkpoint.plan.runner) {
       session.runnerPool('stop');
       session.runnersStopped(checkpoint.plan.runner);
     }
-    if (current.State.Running)
+
+    if (current.State.Running) {
       session.docker(['stop', '--time', '60', 'system_gitlab_1'], { timeout: 70000 });
-    if (session.inspect('system_gitlab_1').State.Running)
+    }
+
+    if (session.inspect('system_gitlab_1').State.Running) {
       throw Error('upgrade-restore-writer-still-running');
+    }
+
     session.restoreCheckpoint(checkpoint);
     session.start(release.fromImage, true);
     await session.ready(release.fromVersion, checkpoint.plan.fromImageId);
-    if (checkpoint.plan.runner) session.runnersReady(checkpoint.plan.runner, true);
+
+    if (checkpoint.plan.runner) {
+      session.runnersReady(checkpoint.plan.runner, true);
+    }
+
     session.run(
       process.execPath,
-      [cliPath(ROOT), 'projects-routing', 'routing', 'start', ROOT, '/templates'],
-      { cwd: ROOT },
+      [cliPath(root), 'projects-routing', 'routing', 'start', root, '/templates'],
+      { cwd: root },
     );
     atomic(
       path.join(session.checkpoints, 'operation.json'),

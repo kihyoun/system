@@ -598,13 +598,13 @@ function recover(report,exec=docker) {
       if(typeof report.evidence.storage[key]==='boolean')storage[key]=report.evidence.storage[key];
     if(Object.keys(storage).length)evidence.storage=storage;
   }
-  if(report.evidence?.guidedPreview){const clean=require('../../dist/modules/release/guided-preview-evidence').sanitize(report.evidence.guidedPreview);if(clean)evidence.guidedPreview=clean;}
+  if(report.evidence?.guidedPreview){const clean=require('../../dist/modules/release/guidedPreviewEvidence').sanitize(report.evidence.guidedPreview);if(clean)evidence.guidedPreview=clean;}
   if(report.evidence?.gitlabUpgrade){const clean=require('../e2e/gitlab-upgrade').sanitizeEvidence(report.evidence.gitlabUpgrade);if(clean)evidence.gitlabUpgrade=clean;}
   if(report.evidence?.gitlabUpgradeFailure){const clean=require('../e2e/public-upgrade').sanitizeGitlabFailure(report.evidence.gitlabUpgradeFailure);if(clean)evidence.gitlabUpgradeFailure=clean;}
   Object.assign(instance,{id:report.runId,name,resources:report.resources,results,exec,
     startedAt:typeof report.startedAt==='string'&&Number.isFinite(Date.parse(report.startedAt))?Date.parse(report.startedAt):undefined,
     evidence:Object.keys(evidence).length?evidence:undefined,
-    guidedPreviewReceipt:require('../../dist/modules/release/publication-runtime').createPublicationRuntime(require('../../config/gitlab/security-release.json')).evidence.sanitizeGuidedReceipt(report.guidedPreviewReceipt),
+    guidedPreviewReceipt:require('../../dist/modules/release/publicationRuntime').createPublicationRuntime(require('../../config/gitlab/security-release.json')).evidence.sanitizeGuidedReceipt(report.guidedPreviewReceipt),
     spec:{images,...(report.sourceLayout==='system-monorepo-v1'?{sourceLayout:report.sourceLayout,sourceTree:/^[a-f0-9]{40}$/.test(report.sourceTree||'')?report.sourceTree:undefined,wizardSourceTree:/^[a-f0-9]{40}$/.test(report.wizardSourceTree||'')?report.wizardSourceTree:undefined}:{}),ciIdentity:ciIdentity(report.ciIdentity),sourceRevision:/^[a-f0-9]{40}$/.test(report.sourceRevision||'')?report.sourceRevision:undefined,daemonImage:/^[a-z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(report.daemonImage||'')?report.daemonImage:undefined,fullAcceptance:report.fullAcceptance===true}});
   return instance;
 }

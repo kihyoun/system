@@ -19,7 +19,7 @@ const os=require('node:os');
 const path=require('node:path');
 const {NpmPublicationService,ReleaseModule}=require('../../dist/modules/release');
 const {NestFactory}=require('../../node_modules/@nestjs/core');
-const {PUBLIC_PACKAGE_PAYLOAD}=require('../../dist/common/public-payload');
+const {publicPackagePayload}=require('../../dist/common/publicPayload');
 for(const value of [null,[],{...receipt,pipelineId:NaN},{...receipt,pipelineId:9007199254740992},{...receipt,version:'02.0.0'},{...receipt,sourceRevision:'invalid'}])assert.throws(()=>validate(value,metadata,env,bytes));
 assert.throws(()=>validate(receipt,metadata,{...env,CI_DEFAULT_BRANCH:undefined,CI_COMMIT_BRANCH:undefined},bytes));
 async function scenario(change={}){
@@ -74,7 +74,7 @@ for(const failure of [undefined,'dirty','filename','source','pipeline','version'
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'npm-prepare-test-'));
  try{
   fs.mkdirSync(path.join(root,'assets'),{recursive:true});
-  for(const file of [...PUBLIC_PACKAGE_PAYLOAD,'assets/public-runtime.json']){fs.mkdirSync(path.dirname(path.join(root,file)),{recursive:true});fs.copyFileSync(path.join(__dirname,'../..',file),path.join(root,file));}
+  for(const file of [...publicPackagePayload,'assets/public-runtime.json']){fs.mkdirSync(path.dirname(path.join(root,file)),{recursive:true});fs.copyFileSync(path.join(__dirname,'../..',file),path.join(root,file));}
   fs.writeFileSync(path.join(root,'VERSION'),'2.0.0\n');
   fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({name:receipt.name,version:failure==='version'?'1.0.0':'2.0.0'}));
   const calls=[];

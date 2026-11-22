@@ -158,3 +158,34 @@ vor Erwerb einer kanonischen Sperre. Erhaltene Review-Bindungs- und Ressourcenpr
 dienen ausschließlich der Bereinigung eigener Ressourcen.
 
 Beibehaltene verwaltete Anwendungs-Repositories verwenden `ManagedEnvironmentService` über Sync und die Operations-CLI `managed-recipe`. Der Dienst erhält den bisherigen PostgreSQL-Advisory-Schlüssel je Projekt, prüft den aufgezeichneten Build und das vorherige Rezept und lehnt Einstellungsänderungen bei aktiver oder ausstehender Bereitstellung ab. Commit-Anfragen behalten private begrenzte Inhalts-/Elternnachweise im GitLab-Konfigurationsvolume, bis ihre Ergebnisse geprüft sind. Aktualisiere nach einer unterbrochenen Antwort dieselbe Reservierung; fehlende Nachweise halten die Änderungssperre aufrecht und erlauben keinen weiteren Schreibvorgang. Der Rezept-Commit startet keine Pipeline und lässt reservierte historische Build-Dateien unverändert. `node tests/gitlab/environment-upgrade.js` prüft diesen Vertrag mit injiziertem Repository- und Sperrprovider.
+
+## Gemeinsamer Konfigurationsablauf
+
+`WizardEnvironmentsModule` steuert den Konfigurationsablauf des beibehaltenen
+verwalteten Wizards. Reine typisierte Einstellungsregeln, injizierte DNS-/TLS-
+Prüfungen, Aktivierungs-/Statussteuerung und `EnvironmentStoreService` sind
+getrennt. Der Speicher prüft Signatur und Nachweisidentität, erwirbt die bestehende
+Helfersperre und vergleicht die Konfigurationsbytes vor dem Schreiben. Deployment-
+Updates derselben Operation bleiben erhalten; fremde Änderungen und veraltete
+Previews verweigern Schreibzugriff. Externe Absicht wird vor dem GitLab-Aufruf
+dauerhaft gespeichert, damit unterbrochene Operationen ihre Reservierung behalten.
+
+Die authentifizierten Endpunkte `/projects/wizard/environments` und
+`system-bootstrapper wizard-environments` verwenden dieselben Nest-Provider.
+`preview` und `status` lesen den Zustand; `preflight SETTINGS_FILE` prüft explizite
+Einstellungen. `configure REQUEST_FILE` liest Preview-Hash und Einstellungen aus
+einer privaten JSON-Datei. Die CLI startet keinen HTTP-Server. Die Eigentumsgrenzen
+gewöhnlicher Projekt-Review/Beta und der getrennten optionalen System-Beta bleiben.
+
+Aktivierung und Statusänderungen halten außerdem die bestehende gemeinsame
+Speichersperre, damit Harvest und GitLab-Upgrades nicht mit demselben
+Konfigurationsvorgang konkurrieren. Ein erfolgreich oder eindeutig fehlgeschlagen
+abgeschlossener Aufruf gibt nur seine unveränderte eigene Sperre frei. Bei
+ungewissem Transportabschluss, geänderter Eigentümerschaft oder hartem
+Prozessabbruch bleiben Sperre und Abgleichzustand erhalten. Lies diese mit
+`system-bootstrapper wizard-environments inspect`; der Befehl meldet nur
+bereinigte Eigentümer-/Operationsdaten und führt keine Bereinigung aus. Befolge
+vor einer weiteren Statusänderung die [Untersuchung verwaister Operationen](../../../docs/RECOVERY_CONTRACT.md):
+Weise positiv nach, dass der vorherige Eigentümer und seine gestartete Arbeit
+beendet sind, und löse ausschließlich deren verwaiste Sperre auf. Die CLI
+übernimmt keine fremde oder ungeklärte Sperre allein aufgrund verstrichener Zeit.

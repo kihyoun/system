@@ -24,8 +24,10 @@ export interface SeedManifest {
 }
 
 export function inventory(root: string): SeedEntry[] {
-  if (fs.existsSync(path.join(root, 'srv/gitlab/data/.system-bootstrapper-restore-incomplete')))
+  if (fs.existsSync(path.join(root, 'srv/gitlab/data/.system-bootstrapper-restore-incomplete'))) {
     throw new Error('Seed contains an incomplete restore');
+  }
+
   const entries: SeedEntry[] = [];
   function visit(relative: string) {
     const full = path.join(root, relative);
@@ -36,6 +38,7 @@ export function inventory(root: string): SeedEntry[] {
       uid: stat.uid,
       gid: stat.gid,
     };
+
     if (stat.isSymbolicLink()) {
       record.type = 'link';
       record.target = fs.readlinkSync(full);
@@ -50,22 +53,30 @@ export function inventory(root: string): SeedEntry[] {
       const buffer = Buffer.allocUnsafe(1024 * 1024);
       try {
         let count;
-        while ((count = fs.readSync(descriptor, buffer, 0, buffer.length, null)))
+        while ((count = fs.readSync(descriptor, buffer, 0, buffer.length, null))) {
           digest.update(buffer.subarray(0, count));
+        }
       } finally {
         fs.closeSync(descriptor);
       }
       record.sha256 = digest.digest('hex');
-    } else throw new Error('Unsupported Seed entry type');
+    } else {
+      throw new Error('Unsupported Seed entry type');
+    }
+
     entries.push(record);
-    if (record.type === 'directory')
+
+    if (record.type === 'directory') {
       fs.readdirSync(full)
         .sort()
         .forEach((name) => visit(path.posix.join(relative, name)));
+    }
   }
   for (const directory of ['srv', 'ssl', 'letsencrypt']) {
-    if (!fs.existsSync(path.join(root, directory)))
+    if (!fs.existsSync(path.join(root, directory))) {
       throw new Error(`Incomplete Seed: missing ${directory}`);
+    }
+
     visit(directory);
   }
   return entries;
@@ -111,8 +122,11 @@ export function verify(root: string, verifyImage = true): SeedManifest {
     JSON.stringify(inventory(root)) === JSON.stringify(manifest.entries),
     'seed-payload-invalid',
   );
-  if (verifyImage && manifest.gitlabImage && manifest.gitlabImage !== process.env.GITLAB_IMAGE)
+
+  if (verifyImage && manifest.gitlabImage && manifest.gitlabImage !== process.env.GITLAB_IMAGE) {
     throw new Error('Restore requires the harvested GitLab version and edition');
+  }
+
   return manifest;
 }
 export function publish(seed: string, stage: string) {
@@ -122,6 +136,7 @@ export function publish(seed: string, stage: string) {
   fs.renameSync(stage, path.join(seed, relative));
   durableDirectory(path.join(seed, 'snapshots'));
   const next = path.join(seed, '.current-next');
+
   if (
     fs.existsSync(next) ||
     (() => {
@@ -131,21 +146,37 @@ export function publish(seed: string, stage: string) {
         return false;
       }
     })()
-  )
+  ) {
     fs.unlinkSync(next);
+  }
+
   fs.symlinkSync(relative, next);
   fs.renameSync(next, path.join(seed, 'current'));
   durableDirectory(seed);
 }
 export function current(seed: string, verifyImage = true) {
   const link = path.join(seed, 'current');
-  if (!fs.lstatSync(link).isSymbolicLink()) throw new Error('Seed current must be a snapshot link');
+
+  if (!fs.lstatSync(link).isSymbolicLink()) {
+    throw new Error('Seed current must be a snapshot link');
+  }
+
   const relative = fs.readlinkSync(link);
-  if (!/^snapshots\/[A-Za-z0-9.-]+$/.test(relative)) throw new Error('Invalid Seed snapshot path');
+
+  if (!/^snapshots\/[A-Za-z0-9.-]+$/.test(relative)) {
+    throw new Error('Invalid Seed snapshot path');
+  }
+
   const root = path.join(seed, relative);
-  if (fs.realpathSync(root) !== path.resolve(seed, relative))
+
+  if (fs.realpathSync(root) !== path.resolve(seed, relative)) {
     throw new Error('Seed snapshot escapes its root');
-  if (fs.lstatSync(root).isSymbolicLink()) throw new Error('Unsafe Seed snapshot');
+  }
+
+  if (fs.lstatSync(root).isSymbolicLink()) {
+    throw new Error('Unsafe Seed snapshot');
+  }
+
   verify(root, verifyImage);
   return root;
 }
@@ -175,8 +206,11 @@ export function finishRestore(source: string, srv: string, ssl: string, certbot:
   // including symlinks and removals, before clearing the restore barrier.
   for (const entry of manifest.entries.filter((entry) => entry.type === 'directory').reverse()) {
     const [root, ...relative] = entry.path.split('/');
-    if (!roots[root] || relative.some((part) => part === '..' || !part))
+
+    if (!roots[root] || relative.some((part) => part === '..' || !part)) {
       throw new Error('Invalid restore directory');
+    }
+
     const descriptor = io.openSync(path.join(roots[root], ...relative), 'r');
     try {
       io.fsyncSync(descriptor);

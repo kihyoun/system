@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
-const {validate} = require('../../dist/modules/source-preparation/wizard-source.service');
+const {validate} = require('../../dist/modules/source-preparation/wizardSource.service');
 const root = path.resolve(__dirname, '../..');
 const cataloguePath = 'src/i18n/nativeOperationMessages.ts';
 const args = process.argv.slice(2);
@@ -26,16 +26,22 @@ try {
   };
   const messages = new Set();
   for (const filename of [
-    'src/api/projects/preview-setup.ts',
-    'src/api/projects/system-beta-setup.ts',
-    'src/modules/project-lifecycle/preview-settings.ts',
-    'src/modules/project-lifecycle/source-transfer.service.ts',
-    'src/modules/gitlab-provision/preview-setup.service.ts',
-    'src/modules/gitlab-provision/preview-evidence.ts',
-    'src/modules/project-lifecycle/preview-producers.ts',
-    'src/modules/project-lifecycle/adoption-session.ts',
-    'src/modules/project-lifecycle/source-primary-binding.ts',
-    'src/api/projects/wizard-environment-workflow.ts'
+    'src/modules/project-workflow/previewSetup.ts',
+    'src/modules/project-workflow/systemBetaSetup.ts',
+    'src/modules/project-lifecycle/previewSettings.ts',
+    'src/modules/project-lifecycle/sourceTransfer.service.ts',
+    'src/modules/gitlab-provision/previewSetup.service.ts',
+    'src/modules/gitlab-provision/previewEvidence.ts',
+    'src/modules/project-lifecycle/previewProducers.ts',
+    'src/modules/project-lifecycle/adoptionSession.ts',
+    'src/modules/project-lifecycle/sourcePrimaryBinding.ts',
+    'src/modules/wizard-environments/settings.ts',
+    'src/modules/wizard-environments/contextPolicy.ts',
+    'src/modules/wizard-environments/environmentContext.service.ts',
+    'src/modules/wizard-environments/environmentStore.service.ts',
+    'src/modules/wizard-environments/environmentPreflight.service.ts',
+    'src/modules/wizard-environments/wizardEnvironmentWorkflow.service.ts',
+    'src/modules/wizard-environments/nativeEnvironment.adapter.ts'
   ]) {
     const extracted = messagesIn(filename);
     assert(extracted.length >= 2, 'No native public messages extracted from ' + filename);
@@ -53,8 +59,8 @@ try {
     assert(message, 'Native API fixture disappeared: ' + prefix);
     messages.add(message);
   }
-  const environments = fs.readFileSync(path.join(root, 'src/api/projects/wizard-environment-workflow.ts'), 'utf8');
-  const dynamic = /throw new Error\(\s*'([^'\n]+)' \+ name \+ '([^'\n]+)'\s*,?\s*\)/.exec(environments);
+  const environments = fs.readFileSync(path.join(root, 'src/modules/wizard-environments/environmentPreflight.service.ts'), 'utf8');
+  const dynamic = /throw new Error\(\s*'([^'\n]+)'\s*\+\s*name\s*\+\s*'([^'\n]+)'\s*,?\s*\)/.exec(environments);
   assert(dynamic, 'Native exact-host certificate diagnostic changed.');
   for (const name of ['review', 'beta']) messages.add(dynamic[1] + name + dynamic[2]);
   for (const message of messages) {

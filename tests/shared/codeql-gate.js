@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {assessCodeql:assess,extractorIncludes:includes} = require('../../dist/modules/ci/codeql-policy');
+const {assessCodeql:assess,extractorIncludes:includes} = require('../../dist/modules/ci/codeqlPolicy');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codeql-includes-'));
 try {

@@ -2,12 +2,14 @@ import { Settings, SemanticState, RoutingSnapshot } from './types';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import * as routing from './wizard-aliases';
-import * as application from './application-aliases';
-import { managed } from './managed-project';
+import * as routing from './wizardAliases';
+import * as application from './applicationAliases';
+import { managed } from './managedProject';
 function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw Error('Invalid project receipt.');
+  }
+
   return value as Record<string, unknown>;
 }
 const routeKey =
@@ -24,24 +26,43 @@ export function ownership(content: string, values: Settings) {
     .filter((line) => /^# BOOTSTRAPPER_(?:PROJECT|REPOSITORY)=/.test(line));
   const receipts = lines.filter((line) => line.startsWith('# BOOTSTRAPPER_PROJECT='));
   const annotations = lines.filter((line) => line.startsWith('# BOOTSTRAPPER_REPOSITORY='));
-  if (receipts.length > 1 || annotations.length > 1)
+
+  if (receipts.length > 1 || annotations.length > 1) {
     throw Error('Duplicate project ownership metadata.');
+  }
+
   let repository: unknown;
-  if (annotations.length)
+
+  if (annotations.length) {
     repository = JSON.parse(
       decodeURIComponent(annotations[0].slice('# BOOTSTRAPPER_REPOSITORY='.length)),
     );
-  if (!receipts.length) return lines;
+  }
+
+  if (!receipts.length) {
+    return lines;
+  }
+
   const encoded = receipts[0].slice('# BOOTSTRAPPER_PROJECT='.length),
     bytes = Buffer.from(encoded, 'base64');
-  if (bytes.toString('base64') !== encoded || !Buffer.from(bytes.toString('utf8')).equals(bytes))
+
+  if (bytes.toString('base64') !== encoded || !Buffer.from(bytes.toString('utf8')).equals(bytes)) {
     throw Error('Invalid project receipt.');
+  }
+
   const parsed: unknown = JSON.parse(bytes.toString('utf8'));
   const receipt = object(parsed);
-  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt))
+
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) {
     throw Error('Invalid project receipt.');
-  if (!receipt.repository) return lines;
+  }
+
+  if (!receipt.repository) {
+    return lines;
+  }
+
   const authoritative = object(receipt.repository);
+
   if (
     receipt.state !== 'complete' ||
     receipt.template !== values.PROJECT_TEMPLATE ||
@@ -57,14 +78,18 @@ export function ownership(content: string, values: Settings) {
     !authoritative.path ||
     typeof authoritative.defaultBranch !== 'string' ||
     !authoritative.defaultBranch
-  )
+  ) {
     throw Error('Invalid project repository identity.');
+  }
+
   if (
     repository !== undefined &&
     repository !== null &&
     stable(repository) !== stable(authoritative)
-  )
+  ) {
     throw Error('Project repository annotation differs from its receipt.');
+  }
+
   // Save can precede repository creation. Fetch derives this annotation from
   // the receipt; only that verified projection may be absent/null/refreshed.
   // Retain the authoritative line byte-for-byte in comparisons/fingerprints.
@@ -82,7 +107,7 @@ export function mainSemantic(content: string) {
   const result = semantic(content);
   // The established Wizard export omits inactive TLS fields. Their omission
   // must not turn an ordinary HTTP installation's routing edit into downtime.
-  for (const prefix of ['GITLAB', 'GITLAB_REGISTRY', 'SYNC', 'WIZARD'])
+  for (const prefix of ['GITLAB', 'GITLAB_REGISTRY', 'SYNC', 'WIZARD']) {
     if (
       ['0', '1'].includes(result.values[prefix + '_DOMAIN_MODE']) &&
       !(prefix === 'WIZARD' && result.values.WIZARD_ALIASES?.trim())
@@ -90,6 +115,7 @@ export function mainSemantic(content: string) {
       delete result.values[prefix + '_SSL'];
       delete result.values[prefix + '_SSL_KEY'];
     }
+  }
   return result;
 }
 export function impact(archive: string, current: string) {
@@ -114,21 +140,33 @@ export function impact(archive: string, current: string) {
   let mode: 'restart' | 'routing' | 'none' = 'restart',
     projects: string[] = [];
   try {
-    if (extraFiles.some((file) => file.incoming !== file.previous))
+    if (extraFiles.some((file) => file.incoming !== file.previous)) {
       throw Error('Additional configuration changed.');
+    }
+
     const oldMain = mainSemantic(snapshot.main),
       newMain = mainSemantic(incoming.main);
-    if (stable(oldMain) !== stable(newMain)) throw Error('Main settings changed.');
+
+    if (stable(oldMain) !== stable(newMain)) {
+      throw Error('Main settings changed.');
+    }
+
     if (
       stable(previous.map((file) => file.name)) !==
       stable(incoming.projects.map((file) => file.name).sort())
-    )
+    ) {
       throw Error('Project set changed.');
+    }
+
     for (const file of incoming.projects) {
       const old = previous.find((item) => item.name === file.name);
       const before = semantic(old!.content),
         after = semantic(file.content);
-      if (stable(before) === stable(after)) continue;
+
+      if (stable(before) === stable(after)) {
+        continue;
+      }
+
       if (
         managed(old!.content) ||
         before.values.PROJECT_TEMPLATE === 'wizard' ||
@@ -136,12 +174,16 @@ export function impact(archive: string, current: string) {
         !/^[a-z0-9]+$/.test(after.values.PROJECT_NAME) ||
         file.name !== '.' + after.values.PROJECT_NAME + '.env' ||
         stable(before.ownership) !== stable(after.ownership)
-      )
+      ) {
         throw Error('Project ownership changed.');
+      }
+
       const changed = new Set([...Object.keys(before.values), ...Object.keys(after.values)]);
-      for (const key of changed)
-        if (before.values[key] !== after.values[key] && !routeKey.test(key))
+      for (const key of changed) {
+        if (before.values[key] !== after.values[key] && !routeKey.test(key)) {
           throw Error('Non-routing project settings changed.');
+        }
+      }
       projects.push(after.values.PROJECT_NAME);
     }
     mode = projects.length ? 'routing' : 'none';

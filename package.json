@@ -4,7 +4,7 @@
   "description": "Shared System Bootstrapper operations runtime",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc && node dist/modules/build/package-assets-entry.js",
+    "build": "tsc && node dist/modules/build/packageAssetsEntry.js",
     "check": "tsc --noEmit",
     "lint": "eslint src",
     "test": "node --test tests/operations/*.test.cjs",
@@ -163,8 +163,12 @@
     "templates/project-bootstrap/wizard-production/README.md",
     "templates/project-bootstrap/wizard-source-primary/README.md",
     "templates/project-bootstrap/wizard-upgrade/README.md",
-    "wizard/.gitlab/runtime/LICENSES.txt",
-    "wizard/.gitlab/runtime/project-ci.cjs"
+    "templates/project-bootstrap/wizard-build/cli-v7/Dockerfile",
+    "templates/project-bootstrap/wizard-build/cli-v7/Dockerfile.dockerignore",
+    "templates/project-bootstrap/wizard-build/cli-v7/Browser.Dockerfile",
+    "templates/project-bootstrap/wizard-build/cli-v7/Browser.Dockerfile.dockerignore",
+    "templates/project-bootstrap/wizard-build/cli-v7/browser/package.json",
+    "templates/project-bootstrap/wizard-build/cli-v7/browser/package-lock.json"
   ],
   "bin": {
     "system-bootstrapper": "dist/cli/main.js"

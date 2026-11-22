@@ -1,12 +1,12 @@
-import { cliPath } from '../../common/runtime/installation-paths';
-import { environmentAssignments } from '../../common/runtime/environment-assignments';
+import { cliPath } from '../../common/runtime/installationPaths';
+import { environmentAssignments } from '../../common/runtime/environmentAssignments';
 import { storageEnvironment } from '../host-lifecycle/persistence.service';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { nativeProcess, type ProcessRunner } from '../../common/runtime/process';
-import { imageId, revision, readSourceIdentity, record } from '../release/source-identity';
+import { imageId, revision, readSourceIdentity, record } from '../release/sourceIdentity';
 
 export class HostPolicyError extends Error {
   constructor(readonly code: string) {
@@ -15,7 +15,9 @@ export class HostPolicyError extends Error {
   }
 }
 export function requireValue(value: unknown, code: string): asserts value {
-  if (!value) throw new HostPolicyError(code);
+  if (!value) {
+    throw new HostPolicyError(code);
+  }
 }
 export type InstalledSource = {
   sourceCommit: string;
@@ -75,7 +77,11 @@ export function reference(input: unknown): string {
 export function sourceIdentity(commit: string, tree: string, entry: string): InstalledSource {
   requireValue(revision(commit) && revision(tree), 'release-source-identities-required');
   const gitlink = /^160000 commit ([a-f0-9]{40})\twizard$/.exec(entry);
-  if (gitlink) return { sourceCommit: commit, sourceTree: tree, wizardSourceRevision: gitlink[1] };
+
+  if (gitlink) {
+    return { sourceCommit: commit, sourceTree: tree, wizardSourceRevision: gitlink[1] };
+  }
+
   const source = /^040000 tree ([a-f0-9]{40})\twizard$/.exec(entry);
   requireValue(source, 'release-source-identities-required');
   return {
@@ -86,7 +92,10 @@ export function sourceIdentity(commit: string, tree: string, entry: string): Ins
   };
 }
 function canonical(filename: string): string {
-  if (fs.lstatSync(filename, { throwIfNoEntry: false })) return fs.realpathSync(filename);
+  if (fs.lstatSync(filename, { throwIfNoEntry: false })) {
+    return fs.realpathSync(filename);
+  }
+
   const parent = path.dirname(filename);
   return path.join(canonical(parent), path.basename(filename));
 }
@@ -99,7 +108,10 @@ export function privateFile(filename: string): void {
   );
 }
 export function writePrivate(filename: string, data: Buffer): void {
-  if (fs.lstatSync(filename, { throwIfNoEntry: false })) privateFile(filename);
+  if (fs.lstatSync(filename, { throwIfNoEntry: false })) {
+    privateFile(filename);
+  }
+
   const temporary = path.join(
     path.dirname(filename),
     '.' + path.basename(filename) + '-' + crypto.randomBytes(12).toString('hex'),
@@ -117,7 +129,9 @@ export function writePrivate(filename: string, data: Buffer): void {
       fs.closeSync(fd);
     }
   } finally {
-    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+    if (fs.existsSync(temporary)) {
+      fs.unlinkSync(temporary);
+    }
   }
 }
 export function fresh(root: string, checkout: string): void {
@@ -140,8 +154,9 @@ export function fresh(root: string, checkout: string): void {
     'configuration/.storage-operation-lock',
     'configuration/.gitlab-upgrade-lock',
     'gitlab/data/.system-bootstrapper-restore-incomplete',
-  ])
+  ]) {
     requireValue(!exists(path.join(root, name)), 'unfinished-operation-blocks-fresh-install');
+  }
 }
 export function checkedImage(
   selected: string,
@@ -189,11 +204,14 @@ export function checkedImage(
     revision(expected) && labels['org.opencontainers.image.revision'] === expected,
     'release-image-source-mismatch',
   );
-  if (wizard)
+
+  if (wizard) {
     requireValue(
       labels['org.system-bootstrapper.source-revision'] === identity.sourceCommit,
       'wizard-release-system-source-mismatch',
     );
+  }
+
   return {
     reference: selected,
     imageId: image.Id,
@@ -207,7 +225,10 @@ export function acceptedMetadata(
   controller: string,
   wizard: string,
 ): AcceptedMetadata | undefined {
-  if (!filename) return undefined;
+  if (!filename) {
+    return undefined;
+  }
+
   const stat = fs.lstatSync(filename);
   requireValue(
     stat.isFile() && !stat.isSymbolicLink() && stat.size <= 1024 * 1024,
@@ -301,7 +322,10 @@ export class HostInstallService {
       ...(environment || this.environment),
       DOCKER_HOST: 'unix:///var/run/docker.sock',
     };
-    for (const key of ['DOCKER_CONTEXT', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']) delete env[key];
+    for (const key of ['DOCKER_CONTEXT', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']) {
+      delete env[key];
+    }
+
     if (this.deadline !== undefined) {
       requireValue(
         Number.isFinite(this.deadline) && this.deadline > Date.now(),
@@ -309,6 +333,7 @@ export class HostInstallService {
       );
       timeout = Math.min(timeout, this.deadline - Date.now());
     }
+
     try {
       return this.runner.run(binary, args, {
         env,
@@ -343,7 +368,11 @@ export class HostInstallService {
     );
     const stat = fs.lstatSync(persistence, { throwIfNoEntry: false });
     requireValue(!stat?.isSymbolicLink(), 'storage-selector-must-not-be-symlink');
-    if (stat) privateFile(persistence);
+
+    if (stat) {
+      privateFile(persistence);
+    }
+
     const resolved = storageEnvironment({
       ...this.environment,
       ...(stat ? environmentAssignments(fs.readFileSync(persistence, 'utf8')) : {}),
@@ -366,7 +395,7 @@ export class HostInstallService {
     for (const selector of [
       'name=^/system_bootstrapper_1$',
       'label=com.docker.compose.project=system',
-    ])
+    ]) {
       requireValue(
         !this.run('docker', [
           ...docker,
@@ -380,6 +409,7 @@ export class HostInstallService {
         ]).trim(),
         'fresh-install-existing-system-container',
       );
+    }
     requireValue(
       !this.run('docker', [
         ...docker,
@@ -421,13 +451,16 @@ export class HostInstallService {
     const release = this.guard();
     try {
       fresh(root, checkout);
-      if (args.installHost)
+
+      if (args.installHost) {
         this.run(
           process.execPath,
           [cliPath(), 'host-bootstrap', 'install-host', '--checkout', checkout],
           undefined,
           1800000,
         );
+      }
+
       this.noExistingServices();
       const pair = {
         controller: this.image(controller, identity),
@@ -437,8 +470,9 @@ export class HostInstallService {
         pair.controller.candidateJobId === pair.wizard.candidateJobId,
         'release-images-must-share-one-accepted-candidate-job',
       );
-      if (accepted)
-        for (const role of ['controller', 'wizard'] as const)
+
+      if (accepted) {
+        for (const role of ['controller', 'wizard'] as const) {
           requireValue(
             [
               accepted.images[role].imageId,
@@ -448,6 +482,9 @@ export class HostInstallService {
               pair[role].candidateJobId === accepted.acceptance.candidateJobId,
             'pulled-images-differ-from-accepted-public-attempt',
           );
+        }
+      }
+
       requireValue(
         JSON.stringify(this.source(checkout)) === JSON.stringify(identity),
         'release-source-changed-during-download',
@@ -465,6 +502,7 @@ export class HostInstallService {
         payload = Buffer.from(
           'BOOTSTRAPPER_IMAGE=' + controller + '\nWIZARD_IMAGE=' + wizard + '\n',
         );
+
       if (fs.lstatSync(profile, { throwIfNoEntry: false })) {
         privateFile(profile);
         requireValue(
@@ -472,6 +510,7 @@ export class HostInstallService {
           'fresh-release-selection-already-differs',
         );
       }
+
       writePrivate(profile, payload);
       const receipt = path.join(root, 'configuration/.release-images.json');
       const result = {
@@ -492,6 +531,7 @@ export class HostInstallService {
       };
       const save = () => writePrivate(receipt, Buffer.from(JSON.stringify(result, null, 2) + '\n'));
       save();
+
       if (!fs.existsSync(args.persistenceEnv)) {
         requireValue(
           !fs
@@ -510,6 +550,7 @@ export class HostInstallService {
           ),
         );
       }
+
       try {
         this.run(
           process.execPath,

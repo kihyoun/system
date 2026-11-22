@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { CanonicalPayload, CanonicalSession } from './canonical-session';
+import { CanonicalPayload, CanonicalSession } from './canonicalSession';
 @Injectable()
 export class CanonicalService {
   constructor(@Inject(CanonicalSession) private readonly session: CanonicalSession) {}

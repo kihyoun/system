@@ -10,8 +10,8 @@ select the Node 24/Vite profile. Historical Node 13/CRA/Jest recipes remain
 available only so existing reservations and evidence retain their exact hashes.
 The controller runtime uses the supported Node 24 toolchain.
 
-`recipe.js` returns a deterministic version/hash, managed CI and files under
-`.system-bootstrapper/build-v1/`. The managed Dockerfiles use specific context
+`BuildRecipeService` returns a deterministic version/hash, managed CI and files
+under its versioned `.system-bootstrapper/build-v1`, `build-v2` or `build-v3` path. The managed Dockerfiles use specific context
 ignore files to exclude Git metadata, dotenv overrides and private material.
 Modern checks run lint, Vitest, TypeScript/Vite build and configuration export.
 The legacy profile supplies only the source importer's known-safe preflight
@@ -75,7 +75,7 @@ and verify native job cleanup before promoting a candidate.
 
 The legacy `build-v1` recipe is retained byte-for-byte for its recorded hashes
 and historical GitLab evidence. New source imports whose verified snapshot uses
-Vite select the Node 24 / Vite 8 family (`node24-vite8-quickstart-v5` for new
+Vite select the Node 24 / Vite 8 family (`node24-vite8-cli-v7` for current v3 source
 reservations): Node 24.22.0/npm 11.19.1, locked install,
 lint, Vitest, TypeScript/Vite build and Playwright 1.64.1 browser checks. Both
 profiles use the same bounded job names and artifact/digest contract; modern
@@ -98,7 +98,8 @@ limitation: an untagged browser image is recorded by Docker as `:latest`, and
 that older cleanup comparison can leave its job tag behind while reporting
 success.
 
-Current unreserved builds use `legacy-ca-v4` or `node24-vite8-quickstart-v5`.
+Current v3 source builds use `node24-vite8-cli-v7`; older snapshots select their
+source-compatible profile, including `legacy-ca-v4` and `node24-vite8-quickstart-v5`.
 These inherit the corrected cleanup implementation from the versioned cleanup-v2
 profiles, and the modern profile also inherits the navigation checks below. The
 cleanup adds `:latest` only when the final repository path component has no tag;
@@ -174,21 +175,31 @@ To run the exact smoke script against an isolated local build, set
 directory. The managed container defaults remain `http://wizard-candidate` and
 `/evidence`; all requests outside the selected origin are blocked.
 
-New Node 24 source snapshots with `.gitlab/producer-v2.json` select
-`node24-vite8-typed-v6`. Its `.system-bootstrapper/build-v2` files contain the
-reviewed portable runtime, Dockerfiles, browser checks and CA bundle. Jobs invoke
-shared Nest operation services with `node .../runtime/project-ci.cjs build` or
-`verify`; Node Alpine jobs first invoke `prepare-runtime` with the build-v2 directory.
-The application remains a static SPA served by Nginx.
+Current source snapshots declare `.gitlab/producer-v3.json` and select
+`node24-vite8-cli-v7`. The source-bound regular CLI archive, receipt and checksum
+are exported under `.gitlab/cli`; native source `.gitlab/build-v3` and managed `.system-bootstrapper/build-v3`
+contain only Docker/build inputs and the pinned Playwright dependency lock. Jobs verify the
+archive hash, install it offline without lifecycle scripts, and invoke
+`system-bootstrapper project-ci build|verify CHECKOUT`. Browser checks run through
+`system-bootstrapper project-ci browser-smoke CHECKOUT`, the TypeScript service in
+the same ordinary CLI. Environment jobs invoke that CLI's environment service.
+The Wizard remains a static SPA served by Nginx.
 
-The versioned runtime in `typed-v6/runtime` is part of the reserved recipe hash.
-Keep these bytes when introducing a successor recipe; changing the current
-portable bundle does not authorize rewriting an existing reservation. A new source
-snapshot whose runtime differs from its versioned recipe fails selection until a
-reviewed successor profile is provided. Existing build-v1 recipe selections and
-hashes remain exact. Environment reservations bound to v6 produce manual Review
-and Beta jobs through the same runtime; historical environment-v1 selections read
-the archived scripts in `wizard-environments/historical`.
+The [operations guide](../../../docs/OPERATIONS.md) documents creation and explicit
+selection of the same-build companion before any npm publication. Its source
+revision, Git tree, version and exact SHA-256 must match the source export. The
+archive stays outside its own npm payload; an installed package is never silently
+repacked or replaced by a registry download.
+
+An existing managed import or source-primary project migrates explicitly with
+`"buildProfile": "node24-vite8-cli-v7"` and its matching source. The guarded plan
+checks existing managed files and ownership before changing CI. User edits cause
+a conflict instead of being overwritten; v7 cannot downgrade to older checks.
+Historical snapshots v1/v2 and all earlier reserved profiles remain exact. In
+particular `.gitlab/producer-v2.json` continues to select the frozen
+`node24-vite8-typed-v6` runtime. Keep `typed-v6/runtime` and its license unchanged;
+it is retained solely to reproduce reserved historical hashes. Historical
+environment-v1 selections read `wizard-environments/historical`.
 
 Managed build activation and status use `ManagedBuildService` through the shared
 `managed-recipe` operations command and Sync API. The native session retains the

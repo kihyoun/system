@@ -11,9 +11,9 @@ const mainConfig = path.join(root, 'system/.docker.env');
 fs.writeFileSync(mainConfig, 'GITLAB_REGISTRY_URL=http://registry.localhost\nGITLAB_REGISTRY_DOMAIN_MODE=0\n');
 process.env.SYSTEM_CONFIG_DIR = path.join(root, 'system');
 process.chdir(path.join(root, 'sync'));
-const bootstrap = require(path.join(source, 'dist/api/projects/project-workflow'));
-const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/api/projects/default-wizard'));
-const {previewWizardBuild, activateWizardBuild, refreshWizardBuild} = require(path.join(source, 'dist/api/projects/wizard-build-workflow'));
+const bootstrap = require(path.join(source, 'dist/modules/project-workflow/projectWorkflow'));
+const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/api/projects/defaultWizard'));
+const {previewWizardBuild, activateWizardBuild, refreshWizardBuild} = require(path.join(source, 'dist/api/projects/wizardBuildWorkflow'));
 const file = path.join(root, 'system/.projects.env/.wizard.env');
 const data = wizardConfiguration({WIZARD_HOST: 'localhost'});
 const receipt = {operation: 'registration', namespaceId: 1, defaultProject: true, template: 'wizard', state: 'complete',
@@ -37,6 +37,9 @@ const wait = async job => {while (job.state === 'running') await new Promise(res
   assert(/^[a-f0-9]{64}$/.test(preview.recipeHash)); assert.equal(calls, 0);
   assert(!JSON.stringify(preview).includes('RUN npm'), 'Preview exposed recipe blobs');
   assert.throws(() => activateWizardBuild({recipeHash: 'stale'}), /Preview/);
+  for (const input of [null, [], 7, {recipeHash: null}, {recipeHash: 7}]) {
+    assert.throws(() => activateWizardBuild(input), /Preview/);
+  }
   const job = activateWizardBuild({recipeHash: preview.recipeHash});
   assert.equal(calls, 1); assert(bootstrap.projectBusy());
   assert.equal(activateWizardBuild({recipeHash: preview.recipeHash}), job);
@@ -84,6 +87,16 @@ const wait = async job => {while (job.state === 'running') await new Promise(res
   finishConflicted(); await wait(conflicted);
   assert.equal(conflicted.state, 'failed'); assert(conflicted.message.includes('changed during'));
   assert(fs.readFileSync(file, 'utf8').endsWith('# external configuration edit\n'), 'Async completion overwrote a concurrent configuration edit');
+  const unobserved = JSON.parse(JSON.stringify(saved));
+  Object.assign(unobserved.wizardWorkflow.build, {pipeline: null, artifact: null, publishing: null});
+  bootstrap.writeReceipt(file, data, unobserved);
+  assert.equal(previewWizardBuild().build.pipeline, null);
+  assert.equal(previewWizardBuild().build.artifact, null);
+  const unowned = JSON.parse(JSON.stringify(unobserved)); delete unowned.wizardWorkflow.build.operation;
+  bootstrap.writeReceipt(file, data, unowned);
+  const missingOperation = fs.readFileSync(file, 'utf8');
+  assert.throws(() => activateWizardBuild({recipeHash: preview.recipeHash}), /different build recipe/);
+  assert.equal(fs.readFileSync(file, 'utf8'), missingOperation);
   saved.wizardWorkflow.build.recipeHash = 'unexpected'; bootstrap.writeReceipt(file, data, saved);
   assert.throws(() => previewWizardBuild(), /different build recipe/);
   receipt.wizardWorkflow.phase = 'pending'; bootstrap.writeReceipt(file, data, receipt);

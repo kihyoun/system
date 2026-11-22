@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { row, positive, projectIds, type RenovateReader } from './verification.service';
 
-export const BOT_MARKER = 'System Bootstrapper Renovate bot';
-export const SCHEDULE_MARKER = 'System Bootstrapper dependency discovery';
+export const botMarker = 'System Bootstrapper Renovate bot';
+export const scheduleMarker = 'System Bootstrapper dependency discovery';
 type Row = Record<string, unknown>;
 export interface RenovateSetupApi extends RenovateReader {
   call(method: string, route: string, data?: unknown, missing?: boolean): Promise<unknown>;
@@ -20,7 +20,9 @@ export interface SetupOptions {
   recoverUserId?: number;
 }
 function ensure(value: unknown, message: string): asserts value {
-  if (!value) throw Error(message);
+  if (!value) {
+    throw Error(message);
+  }
 }
 function text(value: unknown): string {
   ensure(
@@ -57,7 +59,7 @@ export async function protectedDefaultRules(api: RenovateReader, project: Row): 
     return new RegExp('^' + pattern + '$', 's').test(branch);
   });
   ensure(matches.length, 'Default branches must deny Developer push and merge.');
-  for (const rule of matches)
+  for (const rule of matches) {
     for (const permission of ['push_access_levels', 'merge_access_levels']) {
       const entries = records(rule[permission]);
       ensure(entries.length, 'Missing default-branch permissions.');
@@ -74,6 +76,7 @@ export async function protectedDefaultRules(api: RenovateReader, project: Row): 
         );
       }
     }
+  }
 }
 
 @Injectable()
@@ -90,7 +93,11 @@ export class RenovateSetupService {
     const username = text(config.username),
       email = text(config.email),
       endpoint = text(config.endpoint);
-    if (options.recoverUserId !== undefined) positive(options.recoverUserId);
+
+    if (options.recoverUserId !== undefined) {
+      positive(options.recoverUserId);
+    }
+
     const projects: Row[] = [];
     for (const id of ids) {
       const project = row(await api.get(`/projects/${id}`));
@@ -104,6 +111,7 @@ export class RenovateSetupService {
     const users = records(await api.get('/users?username=' + encodeURIComponent(username)));
     let user: Row,
       created = false;
+
     if (!users.length) {
       ensure(
         !state.user_id && !options.recoverUserId,
@@ -119,13 +127,13 @@ export class RenovateSetupService {
       user = row(
         await api.call('POST', '/users', {
           username,
-          name: BOT_MARKER,
+          name: botMarker,
           email,
           force_random_password: true,
           reset_password: false,
           skip_confirmation: true,
           private_profile: true,
-          note: BOT_MARKER + ': ' + text(state.ownership_nonce),
+          note: botMarker + ': ' + text(state.ownership_nonce),
           admin: false,
           can_create_group: false,
           projects_limit: 0,
@@ -137,8 +145,9 @@ export class RenovateSetupService {
       ensure(users.length === 1, 'Ambiguous bot username.');
       user = row(await api.get('/users/' + positive(users[0].id)));
     }
+
     ensure(
-      user.name === BOT_MARKER && !user.is_admin && user.state === 'active',
+      user.name === botMarker && !user.is_admin && user.state === 'active',
       'Refuse unrelated, inactive or administrator identity.',
     );
     ensure(
@@ -155,7 +164,7 @@ export class RenovateSetupService {
       !state.user_id &&
       isDeepStrictEqual(state.binding, binding) &&
       state.ownership_nonce &&
-      user.note === BOT_MARKER + ': ' + state.ownership_nonce;
+      user.note === botMarker + ': ' + state.ownership_nonce;
     const recovery = options.recoverUserId === uid;
     ensure(
       created || known || interrupted || recovery,
@@ -170,31 +179,42 @@ export class RenovateSetupService {
     );
     const tokens = records(await api.all(`/personal_access_tokens?user_id=${uid}&state=active`));
     ensure(
-      tokens.every(
-        (token) => token.name === BOT_MARKER && isDeepStrictEqual(token.scopes, ['api']),
-      ),
+      tokens.every((token) => token.name === botMarker && isDeepStrictEqual(token.scopes, ['api'])),
       'Bot has unrelated access tokens.',
     );
+
     if (recovery) {
       ensure(
         memberships.every((member) => member.access_level === 30),
         'Recovery requires restricted Developer memberships.',
       );
-      for (const key of Object.keys(state)) delete state[key];
+      for (const key of Object.keys(state)) {
+        delete state[key];
+      }
       state.ownership_nonce = randomUUID().replaceAll('-', '');
     }
+
     Object.assign(state, { user_id: uid, binding });
     await port.save(state);
-    if (recovery)
-      await api.call('PUT', `/users/${uid}`, { note: BOT_MARKER + ': ' + state.ownership_nonce });
+
+    if (recovery) {
+      await api.call('PUT', `/users/${uid}`, { note: botMarker + ': ' + state.ownership_nonce });
+    }
+
     for (const id of ids) {
       const route = `/projects/${id}/members/${uid}`,
         found = await api.call('GET', route, undefined, true);
+
       if (found) {
-        if (row(found).access_level !== 30) await api.call('PUT', route, { access_level: 30 });
-      } else await api.call('POST', `/projects/${id}/members`, { user_id: uid, access_level: 30 });
+        if (row(found).access_level !== 30) {
+          await api.call('PUT', route, { access_level: 30 });
+        }
+      } else {
+        await api.call('POST', `/projects/${id}/members`, { user_id: uid, access_level: 30 });
+      }
     }
     const today = date(port.now().toISOString().slice(0, 10));
+
     if (
       options.rotate ||
       !state.token ||
@@ -202,7 +222,7 @@ export class RenovateSetupService {
     ) {
       const token = row(
         await api.call('POST', `/users/${uid}/personal_access_tokens`, {
-          name: BOT_MARKER,
+          name: botMarker,
           scopes: ['api'],
           expires_at: new Date(today + 90 * 86400000).toISOString().slice(0, 10),
         }),
@@ -215,11 +235,13 @@ export class RenovateSetupService {
         user_id: uid,
       });
       await port.save(state);
-    } else
+    } else {
       ensure(
         tokens.some((token) => token.id === state.token_id && !token.revoked),
         'Saved bot token is no longer active; rotate it.',
       );
+    }
+
     const bot = row(await port.bot(text(state.token)).get('/user'));
     ensure(bot.id === uid && !bot.is_admin, 'Token identity mismatch.');
     for (const [key, value, masked] of [
@@ -247,7 +269,7 @@ export class RenovateSetupService {
     }
     const route = `/projects/${system.id}/pipeline_schedules`;
     const schedules = records(await api.all(route)).filter(
-      (schedule) => schedule.description === SCHEDULE_MARKER,
+      (schedule) => schedule.description === scheduleMarker,
     );
     ensure(schedules.length <= 1, 'Duplicate owned schedules; resolve explicitly.');
     const schedule = row(
@@ -255,7 +277,7 @@ export class RenovateSetupService {
         schedules.length ? 'PUT' : 'POST',
         schedules.length ? route + '/' + positive(schedules[0].id) : route,
         {
-          description: SCHEDULE_MARKER,
+          description: scheduleMarker,
           ref: text(system.default_branch),
           cron: text(config.cron ?? '0 4 * * 1'),
           cron_timezone: text(config.timezone ?? 'UTC'),
@@ -275,9 +297,11 @@ export class RenovateSetupService {
       scheduleRoute + '/variables' + (variable ? '/RENOVATE_ENABLED' : ''),
       { key: 'RENOVATE_ENABLED', value: 'true' },
     );
-    for (const token of tokens)
-      if (token.id !== state.token_id)
+    for (const token of tokens) {
+      if (token.id !== state.token_id) {
         await api.call('DELETE', '/personal_access_tokens/' + positive(token.id));
+      }
+    }
     Object.assign(state, { schedule_id: scheduleId, project_ids: ids });
     await port.save(state);
     return {

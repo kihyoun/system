@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { PublicUpgradePlanService } = require('../../dist/modules/host/public-upgrade-plan.service');
-const { UpgradeLifecycleService } = require('../../dist/modules/host/upgrade-lifecycle.service');
+const { PublicUpgradePlanService } = require('../../dist/modules/host/publicUpgradePlan.service');
+const { UpgradeLifecycleService } = require('../../dist/modules/host/upgradeLifecycle.service');
 
 test('interrupted plan is retryable but passed preflight is preserved', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'upgrade-interruption-'));
@@ -19,7 +19,7 @@ test('interrupted plan is retryable but passed preflight is preserved', () => {
         { mode: 0o600 },
       );
     service.interrupt(directory, attemptId);
-    const {readPrivateInput}=require('../../dist/modules/host/private-input');
+    const {readPrivateInput}=require('../../dist/modules/host/privateInput');
     const privatePath=path.join(directory,'private.json'),replacement=path.join(directory,'replacement.json');
     fs.writeFileSync(privatePath,'original',{mode:0o600});fs.writeFileSync(replacement,'replacement',{mode:0o600});
     const originalStat=fs.fstatSync;
@@ -72,7 +72,7 @@ test('native callback worker handles separate attempts without retaining request
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'upgrade-worker-'));
   const child = spawn(
     process.execPath,
-    [path.resolve(__dirname, '../../dist/modules/host/public-upgrade-plan-entry.js'), '--worker'],
+    [path.resolve(__dirname, '../../dist/modules/host/publicUpgradePlanEntry.js'), '--worker'],
     { stdio: ['pipe', 'pipe', 'ignore'] },
   );
   const lines = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]();

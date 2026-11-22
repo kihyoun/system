@@ -11,7 +11,7 @@ assert.equal(stableEndpoint(config.replace('system_gitlab', 'unmanaged')), confi
 console.log('Managed runner endpoint migration preserves tokens, external URLs and unrelated networks.');
 
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-const {RunnerComposeService}=require('../../dist/modules/lifecycle/runner-compose.service');
+const {RunnerComposeService}=require('../../dist/modules/lifecycle/runnerCompose.service');
 const {RunnerLifecycleService}=require('../../dist/modules/lifecycle/runner.service');
 const {ProcessFailure}=require('../../dist/common/runtime/process');
 (async()=>{

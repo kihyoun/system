@@ -1,24 +1,24 @@
-import { RecoveryArchiveService } from './recovery-archive.service';
-import { PublicReleaseAssetsService } from './public-release-assets.service';
-import { lifecyclePolicy } from '../release/lifecycle-policy';
-import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
+import { RecoveryArchiveService } from './recoveryArchive.service';
+import { PublicReleaseAssetsService } from './publicReleaseAssets.service';
+import { lifecyclePolicy } from '../release/lifecyclePolicy';
+import { PublicUpgradePreparationService } from './publicUpgradePreparation.service';
 import {
   RuntimeVerificationService,
   cube,
   serviceOrigin,
   type RuntimeBaseline,
   type VerificationOptions,
-} from '../host-bootstrap/runtime-verification.service';
+} from '../host-bootstrap/runtimeVerification.service';
 import 'reflect-metadata';
 import {
   RecoveryPublicationService,
   recoverySource,
   releaseInstalledSource,
-} from './recovery-publication.service';
-import { UpgradeLifecycleService } from './upgrade-lifecycle.service';
+} from './recoveryPublication.service';
+import { UpgradeLifecycleService } from './upgradeLifecycle.service';
 import fs from 'node:fs';
-import { UpgradePrerequisiteService } from './upgrade-prerequisite.service';
-import { HostReleaseAuthorityService } from './release-authority.service';
+import { UpgradePrerequisiteService } from './upgradePrerequisite.service';
+import { HostReleaseAuthorityService } from './releaseAuthority.service';
 import {
   runtimeImageSelectors,
   runnerCount,
@@ -28,11 +28,11 @@ import {
   failedStoppedController,
   type RuntimeConfig,
   type ContainerRow,
-} from './runtime-inspection';
+} from './runtimeInspection';
 import { HostSourceService } from './source';
-import { validateUpgradeGraph, upgradePath } from './upgrade-graph';
-import { RecoveryImageService } from './recovery-images';
-import { RecoveryManifestService, type RecoveryManifest } from './recovery-manifest';
+import { validateUpgradeGraph, upgradePath } from './upgradeGraph';
+import { RecoveryImageService } from './recoveryImages';
+import { RecoveryManifestService, type RecoveryManifest } from './recoveryManifest';
 import path from 'node:path';
 import {
   HostInstallService,
@@ -50,7 +50,10 @@ let retainedContext:
   | Promise<Awaited<ReturnType<typeof import('@nestjs/core').NestFactory.createApplicationContext>>>
   | undefined;
 export async function closeCompatibilityContext() {
-  if (retainedContext) await (await retainedContext).close();
+  if (retainedContext) {
+    await (await retainedContext).close();
+  }
+
   retainedContext = undefined;
 }
 
@@ -119,10 +122,10 @@ export async function compatibility(
       return writePrivate(String(args[0]), Buffer.from(String(args[1]), 'base64'));
   }
   const create = async () => {
-    const { NestFactory } = await import('@nestjs/core');
-    const { HostModule } = await import('./host.module.js');
-    return NestFactory.createApplicationContext(
-      HostModule.register({
+    const { NestFactory: nestFactory } = await import('@nestjs/core');
+    const { HostModule: hostModule } = await import('./host.module.js');
+    return nestFactory.createApplicationContext(
+      hostModule.register({
         lifecycleEvidence: lifecyclePolicy(),
       }),
       { logger: false },
@@ -135,15 +138,20 @@ export async function compatibility(
     host.environment = input.environment ?? process.env;
     switch (input.operation) {
       case 'publicReleaseAsset':
-        if (args.length !== 3 || !args.every((value) => typeof value === 'string'))
+        if (args.length !== 3 || !args.every((value) => typeof value === 'string')) {
           throw Error('invalid-public-release-location');
+        }
+
         return (
           await app
             .get(PublicReleaseAssetsService)
             .load(args[0] as string, args[1] as string, args[2] as string)
         ).toString('base64');
       case 'verifyPublicUpgradeHost':
-        if (args.length !== 1) throw Error('invalid-public-upgrade-host-request');
+        if (args.length !== 1) {
+          throw Error('invalid-public-upgrade-host-request');
+        }
+
         return app.get(PublicUpgradePreparationService).verifyHost(args[0]);
       case 'runtimeVerification': {
         const service = app.get(RuntimeVerificationService),
@@ -303,7 +311,9 @@ export async function compatibility(
         throw Error('unknown-host-operation');
     }
   } finally {
-    if (!retain) await app.close();
+    if (!retain) {
+      await app.close();
+    }
   }
 }
 export function installArguments(argv: string[]): InstallOptions {
@@ -314,18 +324,23 @@ export function installArguments(argv: string[]): InstallOptions {
   };
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
+
     if (key === '--install-host') {
       result.installHost = true;
       continue;
     }
+
     const mapped = {
       '--controller': 'controller',
       '--wizard': 'wizard',
       '--persistence-env': 'persistenceEnv',
       '--release-metadata': 'releaseMetadata',
     }[key];
-    if (!mapped || !argv[i + 1] || argv[i + 1].startsWith('--'))
+
+    if (!mapped || !argv[i + 1] || argv[i + 1].startsWith('--')) {
       throw Error('invalid-install-arguments');
+    }
+
     result[mapped as 'controller' | 'wizard' | 'persistenceEnv' | 'releaseMetadata'] = argv[++i];
   }
   reference(result.controller);
@@ -335,7 +350,7 @@ export function installArguments(argv: string[]): InstallOptions {
 export async function hostMain(): Promise<void> {
   try {
     if (process.argv[2] === '--worker') {
-      const { compatibilityWorker } = await import('./compatibility-worker.js');
+      const { compatibilityWorker } = await import('./compatibilityWorker.js');
       await compatibilityWorker(compatibility, closeCompatibilityContext);
     } else if (process.argv[2] === '--compatibility') {
       const result = await compatibility(JSON.parse(fs.readFileSync(0, 'utf8')));
@@ -345,9 +360,9 @@ export async function hostMain(): Promise<void> {
         'install-release --controller IMAGE@sha256:DIGEST --wizard IMAGE@sha256:DIGEST [--persistence-env FILE] [--release-metadata FILE] [--install-host]\n',
       );
     } else {
-      const { NestFactory } = await import('@nestjs/core');
-      const { HostModule } = await import('./host.module.js');
-      const app = await NestFactory.createApplicationContext(HostModule.register(), {
+      const { NestFactory: nestFactory } = await import('@nestjs/core');
+      const { HostModule: hostModule } = await import('./host.module.js');
+      const app = await nestFactory.createApplicationContext(hostModule.register(), {
         logger: false,
       });
       try {
@@ -366,11 +381,17 @@ export async function hostMain(): Promise<void> {
       error instanceof Error && /^[a-z][a-zA-Z0-9:-]+$/.test(error.message)
         ? error.message
         : 'invalid-private-input-or-filesystem';
-    if (process.argv[2] === '--compatibility')
+
+    if (process.argv[2] === '--compatibility') {
       process.stdout.write(JSON.stringify({ error: code }) + '\n');
-    else process.stderr.write('Public release installation: ' + code + '\n');
+    } else {
+      process.stderr.write('Public release installation: ' + code + '\n');
+    }
+
     process.exitCode = 1;
   }
 }
 
-if (require.main === module) void hostMain();
+if (require.main === module) {
+  void hostMain();
+}

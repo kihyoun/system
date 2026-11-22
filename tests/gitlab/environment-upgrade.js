@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
-const {ManagedEnvironmentService}=require('../../dist/modules/gitlab-provision/managed-environment.service');
-const {advisoryKey}=require('../../dist/modules/gitlab-provision/managed-recipe');
+const {ManagedEnvironmentService}=require('../../dist/modules/gitlab-provision/managedEnvironment.service');
+const {advisoryKey}=require('../../dist/modules/gitlab-provision/managedRecipe');
 const row=(content,commit)=>({content:Buffer.from(content).toString('base64'),last_commit_id:commit});
 const legacy={version:1,recipeHash:'build-recipe',ci:'legacy managed CI',files:[{path:'.system-bootstrapper/build-v1/build.sh',content:'legacy checks'}]};
 const recipe={version:1,recipeHash:'environment-recipe',settingsHash:'1'.repeat(64),helperImage:'sha256:'+'2'.repeat(64),ci:'environment managed CI',files:[{path:'.system-bootstrapper/environments-v1/run.sh',content:'immutable environment helper invocation'}]};

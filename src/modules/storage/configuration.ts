@@ -1,4 +1,4 @@
-import { environmentAssignments } from '../../common/runtime/environment-assignments';
+import { environmentAssignments } from '../../common/runtime/environmentAssignments';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -52,13 +52,18 @@ export function configuration(
     ? readAssignments(filename, fields, environment, runner)
     : Object.fromEntries(fields.map((key) => [key, environment[key] || '']));
   requireValue(!host || fs.existsSync(filename), 'storage-selector-unavailable');
-  for (const key of fields.filter((key) => key !== 'GITLAB_IMAGE'))
-    if (!host && Object.hasOwn(environment, key)) spec[key] = environment[key];
+  for (const key of fields.filter((key) => key !== 'GITLAB_IMAGE')) {
+    if (!host && Object.hasOwn(environment, key)) {
+      spec[key] = environment[key];
+    }
+  }
   spec.PERSISTENCE_MODE ||= spec.PERSISTENT_MOUNT ? 'volume' : 'local';
+
   if (spec.PERSISTENCE_MODE === 'local') {
     spec.PERSISTENT_MOUNT ||= '/';
     spec.PERSISTENT_DIR ||= '/var/lib/system-bootstrapper/platform';
   }
+
   return spec;
 }
 export function imageFromConfiguration(
@@ -110,7 +115,11 @@ export function validateBackup(filename: string, runner: ProcessRunner = nativeP
 function managed(data: string): boolean {
   try {
     const line = data.split('\n').find((value) => value.startsWith('# BOOTSTRAPPER_PROJECT='));
-    if (!line) return false;
+
+    if (!line) {
+      return false;
+    }
+
     const value = JSON.parse(
       Buffer.from(line.slice('# BOOTSTRAPPER_PROJECT='.length), 'base64').toString('utf8'),
     );
@@ -126,7 +135,9 @@ function writePrivate(filename: string, bytes: Buffer) {
     fs.renameSync(next, filename);
     durableDirectory(path.dirname(filename));
   } finally {
-    if (fs.existsSync(next)) fs.unlinkSync(next);
+    if (fs.existsSync(next)) {
+      fs.unlinkSync(next);
+    }
   }
 }
 /** Restore-only import: caller owns the live and environment leases, and no
@@ -157,9 +168,13 @@ export function importFreshConfiguration(
     fs.mkdirSync(projects, { recursive: true, mode: 0o700 });
     const wizard = path.join(projects, '.wizard.env');
     const prior = fs.existsSync(wizard) ? fs.readFileSync(wizard, 'utf8') : '';
+
     if (fs.existsSync(path.join(stage, '.projects.env'))) {
       for (const name of fs.readdirSync(projects)) {
-        if (name === '.wizard.env.environments.lock') continue;
+        if (name === '.wizard.env.environments.lock') {
+          continue;
+        }
+
         const selected = path.join(projects, name);
         requireValue(
           fs.lstatSync(selected).isFile() && !fs.lstatSync(selected).isSymbolicLink(),
@@ -167,13 +182,18 @@ export function importFreshConfiguration(
         );
         fs.unlinkSync(selected);
       }
-      for (const name of fs.readdirSync(path.join(stage, '.projects.env')))
+      for (const name of fs.readdirSync(path.join(stage, '.projects.env'))) {
         writePrivate(
           path.join(projects, name),
           fs.readFileSync(path.join(stage, '.projects.env', name)),
         );
-      if (managed(prior)) writePrivate(wizard, Buffer.from(prior));
+      }
+
+      if (managed(prior)) {
+        writePrivate(wizard, Buffer.from(prior));
+      }
     }
+
     // Publish main last: absence remains the retry signal for an interrupted import.
     writePrivate(path.join(state, '.docker.env'), main);
   } finally {

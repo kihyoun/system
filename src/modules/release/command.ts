@@ -8,7 +8,11 @@ export function publicationCommand(processes: ProcessRunner): Execute {
       maxBuffer: 4 * 1024 ** 2,
       ...options,
     });
-    if (result.status !== 0) throw Error('Successor publication operation failed.');
+
+    if (result.status !== 0) {
+      throw Error('Successor publication operation failed.');
+    }
+
     return result.stdout.trim();
   };
 }

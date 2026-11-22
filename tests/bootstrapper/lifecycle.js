@@ -1,10 +1,10 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {LifecycleService}=require('../../dist/modules/lifecycle/lifecycle.service');
-const {RootPasswordService}=require('../../dist/modules/lifecycle/root-password.service');
-const {RunnerComposeService}=require('../../dist/modules/lifecycle/runner-compose.service');
+const {RootPasswordService}=require('../../dist/modules/lifecycle/rootPassword.service');
+const {RunnerComposeService}=require('../../dist/modules/lifecycle/runnerCompose.service');
 const {RunnerLifecycleService}=require('../../dist/modules/lifecycle/runner.service');
-const {ManagedChildProcess}=require('../../dist/common/runtime/managed-child');
+const {ManagedChildProcess}=require('../../dist/common/runtime/managedChild');
 const {NativeProcessRunner,ProcessFailure}=require('../../dist/common/runtime/process');
 const {LiteralConfiguration}=require('../../dist/modules/projects-routing/ports');
 function fixture(t){
@@ -101,7 +101,7 @@ test('managed foreground child has no time limit and cancellation kills only its
 });
 
 test('nested runner lifecycle requires identical upgrade owners and a live ancestor identity',t=>{
- const f=fixture(t),{inheritedUpgrade}=require('../../dist/modules/lifecycle/upgrade-lease');
+ const f=fixture(t),{inheritedUpgrade}=require('../../dist/modules/lifecycle/upgradeLease');
  const operation='b'.repeat(32),owner={format:'system-gitlab-upgrade-lock-v1',operation,pid:process.pid,start:fs.readFileSync('/proc/self/stat','utf8').split(' ').at(21)};
  const files=['.gitlab-upgrade-lock','.storage-operation-lock','.projects.env/.wizard.env.environments.lock'].map(name=>{const directory=path.join(f.context.state,name);fs.mkdirSync(directory,{recursive:true});const file=path.join(directory,'upgrade-owner.json');fs.writeFileSync(file,JSON.stringify(owner));return file;});
  assert.equal(inheritedUpgrade(f.context.state,operation),true);assert.equal(inheritedUpgrade(f.context.state,undefined),false);assert.throws(()=>inheritedUpgrade(f.context.state,'c'.repeat(32)));

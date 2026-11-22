@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {NativeHostAttachedProcess} = require('../../dist/modules/host/attached-process');
+const {NativeHostAttachedProcess} = require('../../dist/modules/host/attachedProcess');
 
 test('attached host process forwards termination and treats even a clean child exit as uncertain', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'host-attachment-'));

@@ -1,8 +1,8 @@
-import { extractorIncludes, assessCodeql } from './codeql-policy';
+import { extractorIncludes, assessCodeql } from './codeqlPolicy';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Injectable } from '@nestjs/common';
-import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 /** Run the pinned extractor and repository coverage gate against public source only. */
 @Injectable()
 export class CodeqlService {
@@ -14,12 +14,15 @@ export class CodeqlService {
     environment: NodeJS.ProcessEnv,
     signal?: AbortSignal,
   ) {
-    if (!path.isAbsolute(source) || !path.isAbsolute(reports))
+    if (!path.isAbsolute(source) || !path.isAbsolute(reports)) {
       throw Error('absolute-scan-paths-required');
+    }
+
     fs.mkdirSync(reports, { recursive: true });
     const env = { ...environment };
-    for (const key of ['LGTM_INDEX_EXCLUDE', 'LGTM_INDEX_FILTERS', 'LGTM_REPOSITORY_FOLDERS_CSV'])
+    for (const key of ['LGTM_INDEX_EXCLUDE', 'LGTM_INDEX_FILTERS', 'LGTM_REPOSITORY_FOLDERS_CSV']) {
       delete env[key];
+    }
     const run = (binary: string, args: string[], inherit = false) =>
       this.process.run(binary, args, {
         cwd: source,
@@ -32,13 +35,16 @@ export class CodeqlService {
     const codeql = env.CODEQL_BINARY || '/opt/codeql/codeql';
     const version = await run(codeql, ['version', '--format=json']);
     const metadata: unknown = JSON.parse(version);
+
     if (
       !metadata ||
       typeof metadata !== 'object' ||
       !('version' in metadata) ||
       metadata.version !== '2.27.4'
-    )
+    ) {
       throw Error('pinned-codeql-version-required');
+    }
+
     fs.writeFileSync(path.join(reports, 'tool.json'), version);
     env.LGTM_INDEX_INCLUDE = extractorIncludes(source).join('\n');
     await run(
@@ -76,6 +82,9 @@ export class CodeqlService {
       JSON.parse(fs.readFileSync(path.join(source, 'scan-source.json'), 'utf8')),
     );
     fs.writeFileSync(path.join(reports, 'gate.json'), JSON.stringify(gate) + '\n');
-    if (!gate.passed) throw Error('codeql-findings');
+
+    if (!gate.passed) {
+      throw Error('codeql-findings');
+    }
   }
 }

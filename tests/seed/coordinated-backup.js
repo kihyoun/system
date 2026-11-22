@@ -4,10 +4,10 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const backup=require('../../dist/modules/storage/coordinated-backup');
+const backup=require('../../dist/modules/storage/coordinatedBackup');
 const seedOperation=require('../../dist/modules/storage/lease');
-const {normalizePreview}=require('../../dist/common/runtime/preview-settings');
-const logo=fs.readFileSync(path.join(__dirname,'../../src/common/configuration-signature.ts'),'utf8').match(/return `([\s\S]*?)`;/)[1];
+const {normalizePreview}=require('../../dist/common/runtime/previewSettings');
+const logo=fs.readFileSync(path.join(__dirname,'../../src/common/configurationSignature.ts'),'utf8').match(/return `([\s\S]*?)`;/)[1];
 function fixture(run) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'coordinated-backup-'));
   try {

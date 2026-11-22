@@ -1,25 +1,30 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { checkRegistry, DiagnosticDependencies } from './system-diagnostics';
-import { SyncHttpError } from '../http/sync-http-error';
+import { checkRegistry, DiagnosticDependencies } from './systemDiagnostics';
+import { SyncHttpError } from '../http/syncHttpError';
 
-export const DIAGNOSTIC_DEPENDENCIES = Symbol('DiagnosticDependencies');
+export const diagnosticDependencies = Symbol('DiagnosticDependencies');
 
 @Injectable()
 export class DiagnosticsService {
   private active = 0;
   private pulling = false;
-  constructor(@Inject(DIAGNOSTIC_DEPENDENCIES) private readonly deps: DiagnosticDependencies) {}
+  constructor(@Inject(diagnosticDependencies) private readonly deps: DiagnosticDependencies) {}
 
   private async bounded<T>(work: () => Promise<T>): Promise<T> {
-    if (this.active >= 2)
+    if (this.active >= 2) {
       throw new SyncHttpError(429, {
         message: 'Diagnostics are busy. Retry after the current checks finish.',
       });
+    }
+
     this.active++;
     try {
       return await work();
     } catch (error) {
-      if (error instanceof SyncHttpError) throw error;
+      if (error instanceof SyncHttpError) {
+        throw error;
+      }
+
       throw new SyncHttpError(503, {
         message:
           'Diagnostics could not inspect the configured service or runner. Check server configuration and daemon availability.',
@@ -39,8 +44,10 @@ export class DiagnosticsService {
         !input ||
         Object.keys(input).length !== 1 ||
         !['registry', 'helper'].includes(input.target)
-      )
+      ) {
         throw new SyncHttpError(400, { message: 'Choose a configured registry target.' });
+      }
+
       const targets = await this.deps.targets();
       return checkRegistry(
         input.target === 'registry' ? targets.registry : targets.helper,
@@ -51,23 +58,33 @@ export class DiagnosticsService {
 
   pull(input: any) {
     return this.bounded(async () => {
-      if (!input || Object.keys(input).length !== 1 || typeof input.runner !== 'string')
+      if (!input || Object.keys(input).length !== 1 || typeof input.runner !== 'string') {
         throw new SyncHttpError(400, { message: 'Choose a configured runner manager.' });
-      if (this.pulling)
+      }
+
+      if (this.pulling) {
         throw new SyncHttpError(429, { message: 'A helper pull is already in progress.' });
+      }
+
       this.pulling = true;
       try {
         const targets = await this.deps.targets();
-        if (!targets.runners.includes(input.runner))
+
+        if (!targets.runners.includes(input.runner)) {
           throw new SyncHttpError(400, {
             message: 'The selected runner is not an available configured manager.',
           });
+        }
+
         const context = await this.deps.inspect(input.runner);
-        if (context.image !== targets.helperImage)
+
+        if (context.image !== targets.helperImage) {
           throw new SyncHttpError(409, {
             message:
               'The runner helper image differs from the configured immutable helper image. Review runner configuration before retrying.',
           });
+        }
+
         const start = performance.now();
         const result = await this.deps.pull(context);
         return {

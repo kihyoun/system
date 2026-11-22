@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const {recoveryObservation} = require('../../dist/api/operations/recovery-observation');
+const {recoveryObservation} = require('../../dist/api/operations/recoveryObservation');
 const id = n => 'sha256:' + n.repeat(64), sha = 'a'.repeat(40), wizard = 'b'.repeat(40);
 const row = (name, image, source) => ({Name: '/' + name, State: {Running: true}, Image: image,
   Config: {Image: 'example/' + name + '@' + image, Env: ['SYNC_PASS=must-not-leak'], Labels: {

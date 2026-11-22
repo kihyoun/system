@@ -1,17 +1,17 @@
 // Native runtime policy with the existing paired fixture's external I/O ports.
 require('../../node_modules/reflect-metadata');
-const { NativeEntryRuntime } = require('../../dist/modules/host/native-entry-runtime');
+const { NativeEntryRuntime } = require('../../dist/modules/host/nativeEntryRuntime');
 const { HostModule } = require('../../dist/modules/host/host.module');
 const {
   RuntimeVerificationService,
-} = require('../../dist/modules/host-bootstrap/runtime-verification.service');
+} = require('../../dist/modules/host-bootstrap/runtimeVerification.service');
 const {
   ControllerUpdateSequenceService,
-} = require('../../dist/modules/host/controller-update-sequence.service');
+} = require('../../dist/modules/host/controllerUpdateSequence.service');
 const {
   ControllerRollbackSequenceService,
-} = require('../../dist/modules/host/controller-rollback-sequence.service');
-const { RuntimeInspectionService } = require('../../dist/modules/host/runtime-inspection');
+} = require('../../dist/modules/host/controllerRollbackSequence.service');
+const { RuntimeInspectionService } = require('../../dist/modules/host/runtimeInspection');
 const runtime = new NativeEntryRuntime(),
   channel = runtime.channel;
 async function main() {

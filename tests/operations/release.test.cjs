@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const api=require('../../dist/modules/release');
 const profile=require('../../config/gitlab/security-release.json');
-const lifecycle=require('../../dist/modules/release/guided-preview-evidence');
+const lifecycle=require('../../dist/modules/release/guidedPreviewEvidence');
 const fixture=require('../../tests/shared/guided-preview-fixture');
 const revision='a'.repeat(40),sourceTree='b'.repeat(40),wizardTree='c'.repeat(40);
 const id=n=>'sha256:'+n.repeat(64);

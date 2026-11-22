@@ -38,7 +38,10 @@ export function selectControlledFailureCode(
   stderr: string,
   codes?: Readonly<Record<string, string>>,
 ): string | undefined {
-  if (!codes) return;
+  if (!codes) {
+    return;
+  }
+
   const lines = new Set((stdout + '\n' + stderr).split(/\r?\n/));
   const matched = new Set(
     Object.entries(codes)
@@ -65,8 +68,10 @@ export class NativeProcessRunner implements ProcessRunner {
       input: options.input,
       shell: false,
     });
+
     if (result.error || result.status !== 0 || result.signal !== null) {
       let controlledCode: string | undefined;
+
       if (
         options.controlledFailureCodes &&
         !result.error &&
@@ -80,6 +85,7 @@ export class NativeProcessRunner implements ProcessRunner {
           options.controlledFailureCodes,
         );
       }
+
       throw new ProcessFailure(
         binary,
         result.status,
@@ -88,6 +94,7 @@ export class NativeProcessRunner implements ProcessRunner {
         controlledCode,
       );
     }
+
     return { stdout: result.stdout, stderr: result.stderr, status: 0 };
   }
 }

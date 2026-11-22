@@ -10,7 +10,7 @@ export interface MirrorPort {
   transport(args: string[], context: MirrorContext): Promise<boolean>;
   command(binary: string, args: string[], context: MirrorContext): string;
 }
-export const MIRROR_PORT = Symbol('MIRROR_PORT');
+export const mirrorPort = Symbol('MIRROR_PORT');
 export class NativeMirrorPort implements MirrorPort {
   private readonly process = new NativeProcessRunner();
   command(binary: string, args: string[], context: MirrorContext): string {
@@ -24,7 +24,10 @@ export class NativeMirrorPort implements MirrorPort {
   }
 
   async transport(args: string[], context: MirrorContext): Promise<boolean> {
-    if (context.signal?.aborted) throw Error('mirror cancelled');
+    if (context.signal?.aborted) {
+      throw Error('mirror cancelled');
+    }
+
     const child = startTransport(
       args,
       Number(context.env.GITHUB_BACKUP_TIMEOUT_SECONDS || 30),
@@ -34,7 +37,11 @@ export class NativeMirrorPort implements MirrorPort {
     context.signal?.addEventListener('abort', child.cancel, { once: true });
     try {
       const result = await child.done;
-      if (context.signal?.aborted) throw Error('mirror cancelled');
+
+      if (context.signal?.aborted) {
+        throw Error('mirror cancelled');
+      }
+
       return result === 0;
     } finally {
       context.signal?.removeEventListener('abort', child.cancel);

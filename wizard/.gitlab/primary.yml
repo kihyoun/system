@@ -5,7 +5,10 @@ default:
   tags: [docker]
   interruptible: true
   before_script:
-    - node .gitlab/runtime/project-ci.cjs refresh-ca .system-bootstrapper/build-v2
+    - (cd .gitlab/cli && sha256sum -c system-bootstrapper.tgz.sha256)
+    - npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .system-bootstrapper/cli ./.gitlab/cli/system-bootstrapper.tgz
+    - export PATH="$CI_PROJECT_DIR/.system-bootstrapper/cli/node_modules/.bin:$PATH"
+    - system-bootstrapper host-bootstrap refresh-ca --checkout "$CI_PROJECT_DIR/.system-bootstrapper/cli/node_modules/@systembootstrapper/cli"
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -45,8 +48,8 @@ test:browser:
   script:
     - npm ci --no-audit --no-fund
     - npx playwright install --with-deps chromium
-    - node .gitlab/runtime/project-ci.cjs refresh-ca .system-bootstrapper/build-v2
-    - node .gitlab/runtime/project-ci.cjs browser
+    - system-bootstrapper host-bootstrap refresh-ca --checkout "$CI_PROJECT_DIR/.system-bootstrapper/cli/node_modules/@systembootstrapper/cli"
+    - system-bootstrapper project-ci browser "$CI_PROJECT_DIR"
   artifacts:
     when: always
     expire_in: 7 days
@@ -56,7 +59,10 @@ test:browser:
 .wizard-delivery:
   image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   before_script:
-    - node .gitlab/runtime/project-ci.cjs prepare-runtime .system-bootstrapper/build-v2
+    - (cd .gitlab/cli && sha256sum -c system-bootstrapper.tgz.sha256)
+    - npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .system-bootstrapper/cli ./.gitlab/cli/system-bootstrapper.tgz
+    - export PATH="$CI_PROJECT_DIR/.system-bootstrapper/cli/node_modules/.bin:$PATH"
+    - system-bootstrapper host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR/.system-bootstrapper/cli/node_modules/@systembootstrapper/cli"
   cache: []
   timeout: 30 minutes
   allow_failure: false
@@ -70,7 +76,7 @@ build:wizard:
     - job: build:source
       artifacts: false
   script:
-    - node .gitlab/runtime/project-ci.cjs build
+    - system-bootstrapper project-ci build "$CI_PROJECT_DIR"
   artifacts:
     expire_in: 7 days
     when: always
@@ -84,7 +90,7 @@ test:wizard:
     - job: build:wizard
       artifacts: true
   script:
-    - node .gitlab/runtime/project-ci.cjs verify
+    - system-bootstrapper project-ci verify "$CI_PROJECT_DIR"
   artifacts:
     when: always
     expire_in: 7 days
@@ -110,7 +116,7 @@ deploy:github:
       when: on_success
     - when: never
   script:
-    - node .gitlab/runtime/project-ci.cjs mirror
+    - system-bootstrapper project-ci mirror
 
 # Optional candidate environments. The Bootstrapper must explicitly adopt this
 # source project and provision the immutable helper before a job can deploy.
@@ -137,7 +143,7 @@ deploy:review:
       allow_failure: true
     - when: never
   script:
-    - node .gitlab/runtime/project-ci.cjs environment deploy review
+    - system-bootstrapper project-ci environment deploy review
 stop:review:
   extends: .wizard-environment
   resource_group: 'wizard-review-host-$CI_PROJECT_ID'
@@ -150,7 +156,7 @@ stop:review:
       allow_failure: true
     - when: never
   script:
-    - node .gitlab/runtime/project-ci.cjs environment stop review
+    - system-bootstrapper project-ci environment stop review
 deploy:beta:
   extends: .wizard-environment
   resource_group: 'wizard-beta-host-$CI_PROJECT_ID'
@@ -164,7 +170,7 @@ deploy:beta:
       allow_failure: true
     - when: never
   script:
-    - node .gitlab/runtime/project-ci.cjs environment deploy beta
+    - system-bootstrapper project-ci environment deploy beta
 stop:beta:
   extends: .wizard-environment
   resource_group: 'wizard-beta-host-$CI_PROJECT_ID'
@@ -177,4 +183,4 @@ stop:beta:
       allow_failure: true
     - when: never
   script:
-    - node .gitlab/runtime/project-ci.cjs environment stop beta
+    - system-bootstrapper project-ci environment stop beta

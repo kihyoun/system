@@ -1,11 +1,7 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { NativeProcessRunner } from '../../common/runtime/process';
-import { PreviewNormalizer } from './coordinated-backup';
-import {
-  StorageService,
-  STORAGE_PROCESS_RUNNER,
-  STORAGE_PREVIEW_NORMALIZER,
-} from './storage.service';
+import { PreviewNormalizer } from './coordinatedBackup';
+import { StorageService, storageProcessRunner, storagePreviewNormalizer } from './storage.service';
 
 @Module({})
 export class StorageModule {
@@ -13,11 +9,11 @@ export class StorageModule {
     return {
       module: StorageModule,
       providers: [
-        { provide: STORAGE_PROCESS_RUNNER, useClass: NativeProcessRunner },
-        { provide: STORAGE_PREVIEW_NORMALIZER, useValue: options.normalizePreview },
+        { provide: storageProcessRunner, useClass: NativeProcessRunner },
+        { provide: storagePreviewNormalizer, useValue: options.normalizePreview },
         StorageService,
       ],
-      exports: [StorageService, STORAGE_PROCESS_RUNNER],
+      exports: [StorageService, storageProcessRunner],
     };
   }
 }

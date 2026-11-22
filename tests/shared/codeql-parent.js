@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const crypto=require('node:crypto');
-const {CodeqlParentService}=require('../../dist/modules/ci/codeql-parent.service');
+const {CodeqlParentService}=require('../../dist/modules/ci/codeqlParent.service');
 function fixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'codeql-parent-test-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));

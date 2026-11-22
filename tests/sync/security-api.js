@@ -6,7 +6,7 @@ const os=require('node:os');
 const http=require('node:http');
 const {spawn}=require('node:child_process');
 const {allowedBrowserOrigin}=require('../../dist/api/http/security');
-const {projectConfigPath}=require('../../dist/api/config/state-paths');
+const {projectConfigPath}=require('../../dist/modules/configuration/statePaths');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'sync-security-'));
 const previous=process.env.SYSTEM_CONFIG_DIR;process.env.SYSTEM_CONFIG_DIR=root;
 fs.writeFileSync(path.join(root,'.docker.env'), "WIZARD_HOST='wizard.example.test'\nWIZARD_DOMAIN_MODE=2\nSYNC_ALLOWED_ORIGINS='http://127.0.0.1:5173'\n");

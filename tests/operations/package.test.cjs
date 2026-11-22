@@ -12,13 +12,13 @@ test('public tarball carries compiled CLI and offline validation assets without 
     const [record]=JSON.parse(execFileSync('npm',['pack','--json','--ignore-scripts','--pack-destination',temporary],{cwd:root,encoding:'utf8'}));
     const files=record.files.map(file=>file.path);
     assert(!files.includes('assets/project-bootstrap/preview-setup/settings.js'));
-    for(const required of ['dist/cli/main.js','dist/index.js','dist/modules/storage/entry.js','dist/modules/project-lifecycle/preview-settings.js','README.md','LICENSE'])assert(files.includes(required),required);
-    const {PUBLIC_PACKAGE_PAYLOAD}=require('../../dist/common/public-payload');
-    assert.equal(PUBLIC_PACKAGE_PAYLOAD.length,106);
+    for(const required of ['dist/cli/main.js','dist/index.js','dist/modules/storage/entry.js','dist/modules/project-lifecycle/previewSettings.js','README.md','LICENSE'])assert(files.includes(required),required);
+    const {publicPackagePayload}=require('../../dist/common/publicPayload');
+    assert.equal(publicPackagePayload.length,110);
     const metadataFiles=new Set(['assets/source.json','assets/public-runtime.json','README.md','LICENSE','package.json','wizard/README.md','wizard/LICENSE']);
     const npmOmissions=new Set(['angular','react','web'].map(template=>'templates/project-bootstrap/templates/'+template+'/.gitignore'));
     const publicFiles=files.filter(file=>!file.startsWith('dist/')&&!file.startsWith('node_modules/')&&!metadataFiles.has(file));
-    assert.deepEqual(publicFiles.sort(),PUBLIC_PACKAGE_PAYLOAD.filter(file=>!npmOmissions.has(file)).sort());
+    assert.deepEqual(publicFiles.sort(),publicPackagePayload.filter(file=>!npmOmissions.has(file)).sort());
     // Full source checkouts contain optional Wizard package metadata; verified
     // deployment snapshots deliberately omit these non-runtime documentation files.
     for(const file of ['wizard/README.md','wizard/LICENSE']){
@@ -32,9 +32,9 @@ test('public tarball carries compiled CLI and offline validation assets without 
     execFileSync('npm',['install','--offline','--ignore-scripts','--no-audit','--no-fund','--prefix',installed,path.join(temporary,record.filename)],{cwd:temporary,stdio:'pipe',env:{...process.env,npm_config_cache:path.join(temporary,'empty-cache'),npm_config_userconfig:path.join(temporary,'user.npmrc'),npm_config_globalconfig:path.join(temporary,'global.npmrc')}});
     const packageRoot=path.join(installed,'node_modules/@systembootstrapper/cli');
     for(const file of ['wizard/README.md','wizard/LICENSE'])if(files.includes(file))assert(fs.readFileSync(path.join(packageRoot,file)).equals(fs.readFileSync(path.join(root,file))),file);
-    for(const file of ['guided-preview-evidence.js','guided-preview-evidence-v1.js','job-diagnostics.js','evidence-values.js'])
+    for(const file of ['guidedPreviewEvidence.js','guidedPreviewEvidenceV1.js','jobDiagnostics.js','evidenceValues.js'])
       assert(fs.readFileSync(path.join(packageRoot,'dist/modules/release',file)).equals(fs.readFileSync(path.join(root,'dist/modules/release',file))),file);
-    const policy=require(path.join(packageRoot,'dist/modules/release/lifecycle-policy')).lifecyclePolicy();
+    const policy=require(path.join(packageRoot,'dist/modules/release/lifecyclePolicy')).lifecyclePolicy();
     assert.equal(typeof policy.validateAuthority,'function');assert(policy.stagesV2.includes('system-beta-native-deploy'));
     const metadata=JSON.parse(fs.readFileSync(path.join(packageRoot,'package.json')));
     for(const script of ['preinstall','install','postinstall','prepare'])assert.equal(metadata.scripts[script],undefined);
@@ -46,7 +46,7 @@ test('public tarball carries compiled CLI and offline validation assets without 
     const api=require(packageRoot);
     assert.equal(typeof api.StorageModule.register,'function');
     assert.equal(typeof api.StorageService,'function');
-    const {publicPayloadFiles}=require(path.join(packageRoot,'dist/common/public-payload'));
+    const {publicPayloadFiles}=require(path.join(packageRoot,'dist/common/publicPayload'));
     const runtime=path.join(temporary,'host-runtime'),manifestBytes=fs.readFileSync(path.join(packageRoot,'assets/public-runtime.json'));
     const payload=JSON.parse(manifestBytes);
     for(const template of ['angular','react','web']){
@@ -67,7 +67,7 @@ test('public tarball carries compiled CLI and offline validation assets without 
     const selected=()=>publicPayloadFiles(runtime,prefix);
     const baseline=selected();assert(baseline.length>0);
     assert(!payload.files.some(file=>file.path==='config/system/.projects.env'),'mutable State link is outside the immutable inventory');
-    for(const name of [prefix+'/src/App.tsx','config/ca/cacert-2026-10-20.crt','wizard/.gitlab/runtime/project-ci.cjs']){
+    for(const name of [prefix+'/src/App.tsx','config/ca/cacert-2026-10-20.crt','templates/project-bootstrap/wizard-build/typed-v6/runtime/project-ci.cjs']){
       const destination=path.join(runtime,name),before=fs.readFileSync(destination);
       fs.appendFileSync(destination,'\nchanged immutable bytes\n');
       assert.throws(selected,/public-payload-file-hash-mismatch/,name);
@@ -93,7 +93,7 @@ test('public tarball carries compiled CLI and offline validation assets without 
     fs.unlinkSync(templateDirectory);fs.renameSync(moved,templateDirectory);fs.writeFileSync(ignore,ignoreBytes);
     assert.deepEqual(selected(),baseline);
     assert.equal(fs.readFileSync(projects,'utf8'),'PROJECTS=retained\n');
-    const adapter=require(path.join(packageRoot,'dist/common/runtime/preview-settings.js'));
+    const adapter=require(path.join(packageRoot,'dist/common/runtime/previewSettings.js'));
     assert.equal(adapter.normalizePreview({version:2,namespace:'example',wizard:{mode:'existing',project:'system'},review:{enabled:false,host:'',ssl:'',sslKey:''},beta:{enabled:false,host:'',ssl:'',sslKey:''}}).version,2);
   } finally {fs.rmSync(temporary,{recursive:true,force:true});}
 });

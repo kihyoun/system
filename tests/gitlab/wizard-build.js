@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
-const {ManagedBuildService}=require('../../dist/modules/gitlab-provision/managed-build.service');
-const {advisoryKey}=require('../../dist/modules/gitlab-provision/managed-recipe');
+const {ManagedBuildService}=require('../../dist/modules/gitlab-provision/managedBuild.service');
+const {advisoryKey}=require('../../dist/modules/gitlab-provision/managedRecipe');
 const row=(content,commit)=>({content:Buffer.from(content).toString('base64'),last_commit_id:commit});
 const initial={action:'wizard-build',operation:'registration',repository:{id:1,path:'root/wizard',defaultBranch:'main'},workflow:{importCommit:'a'.repeat(40),sourceRevision:'c'.repeat(40),manifestHash:'f'.repeat(64)},build:{version:1,operation:'d'.repeat(48),recipeHash:'recipe'},expectedCi:'disabled',recipe:{version:1,recipeHash:'recipe',ci:'managed no-deploy CI',files:[{path:'.system-bootstrapper/build-v1/check.sh',content:'checks'}]},registryPrefix:'registry.localhost:5050/root/wizard'};
 const project={id:1,description:'System Bootstrapper operation registration',visibility:'private',path_with_namespace:'root/wizard',default_branch:'main',ci_config_path:'.system-bootstrapper/ci.yml'};

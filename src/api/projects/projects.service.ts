@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import fs from 'node:fs';
-import { projectConfigPath } from '../config/state-paths';
+import { projectConfigPath } from '../../modules/configuration/statePaths';
 import {
   createProject,
   queryGitlab,
@@ -8,26 +8,27 @@ import {
   validProjectKey,
   projectBusy,
   validateProject,
-} from './project-workflow';
-import { initializeWizardSource, previewWizardSource } from './wizard-source-workflow';
+} from '../../modules/project-workflow/projectWorkflow';
+import { initializeWizardSource, previewWizardSource } from './wizardSourceWorkflow';
+import { activateWizardBuild, previewWizardBuild, refreshWizardBuild } from './wizardBuildWorkflow';
+import { WizardEnvironmentWorkflowService } from '../../modules/wizard-environments/wizardEnvironmentWorkflow.service';
+import { EnvironmentPreflightService } from '../../modules/wizard-environments/environmentPreflight.service';
 import {
-  activateWizardBuild,
-  previewWizardBuild,
-  refreshWizardBuild,
-} from './wizard-build-workflow';
-import {
-  configureWizardEnvironments,
-  previewWizardEnvironments,
-  refreshWizardEnvironments,
-} from './wizard-environment-workflow';
-import { previewSetupStatus, preflightPreviewSetup, applyPreviewSetup } from './preview-setup';
+  previewSetupStatus,
+  preflightPreviewSetup,
+  applyPreviewSetup,
+} from '../../modules/project-workflow/previewSetup';
 import { RuntimeService } from '../runtime/runtime.service';
-import { SyncHttpError } from '../http/sync-http-error';
-import { failureMessage } from '../../common/runtime/operation-error';
+import { SyncHttpError } from '../http/syncHttpError';
+import { failureMessage } from '../../common/runtime/operationError';
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly runtime: RuntimeService) {}
+  constructor(
+    private readonly runtime: RuntimeService,
+    private readonly environmentsWorkflow: WizardEnvironmentWorkflowService,
+    private readonly environmentPreflight: EnvironmentPreflightService,
+  ) {}
 
   private conflict<T>(work: () => T): T {
     try {
@@ -42,20 +43,26 @@ export class ProjectsService {
       this.runtime.status.runnerSetupInProgress ||
       this.runtime.status.defaultWizardSetupInProgress ||
       (checkEnvironment && this.runtime.environmentHelperBusy())
-    )
+    ) {
       throw new SyncHttpError(409, { message: 'Wait for system setup to finish.' });
+    }
   }
 
   private ensureIdle() {
-    if (this.runtime.operationBusy())
+    if (this.runtime.operationBusy()) {
       throw new SyncHttpError(409, {
         message: 'Wait for the current platform operation to finish.',
       });
+    }
   }
 
   job(id: string) {
     const result = lookupJob(id);
-    if (!result) throw new SyncHttpError(404);
+
+    if (!result) {
+      throw new SyncHttpError(404);
+    }
+
     return result;
   }
 
@@ -67,25 +74,29 @@ export class ProjectsService {
     }
   }
 
-  async preflight(input: any) {
+  async preflight(input: unknown) {
     this.ensureIdle();
     try {
-      return await preflightPreviewSetup(input);
+      return await preflightPreviewSetup(input, (settings) =>
+        this.environmentPreflight.validateSettings(settings),
+      );
     } catch (error) {
       throw new SyncHttpError(409, { message: failureMessage(error) });
     }
   }
 
-  applyPreview(input: any) {
+  applyPreview(input: unknown) {
     this.ensureIdle();
-    return this.conflict(() => applyPreviewSetup(input));
+    return this.conflict(() =>
+      applyPreviewSetup(input, (settings) => this.environmentPreflight.validateSettings(settings)),
+    );
   }
 
   source() {
     return this.conflict(() => previewWizardSource());
   }
 
-  initializeSource(input: any) {
+  initializeSource(input: unknown) {
     this.ensureSetupFinished();
     return this.conflict(() => initializeWizardSource(input));
   }
@@ -94,7 +105,7 @@ export class ProjectsService {
     return this.conflict(() => previewWizardBuild());
   }
 
-  activateBuild(input: any) {
+  activateBuild(input: unknown) {
     this.ensureSetupFinished();
     // The native module deduplicates its running job and rejects other locks.
     return this.conflict(() => activateWizardBuild(input));
@@ -106,17 +117,17 @@ export class ProjectsService {
   }
 
   environments() {
-    return this.conflict(() => previewWizardEnvironments());
+    return this.conflict(() => this.environmentsWorkflow.preview());
   }
 
-  configureEnvironments(input: any) {
+  configureEnvironments(input: unknown) {
     this.ensureSetupFinished();
-    return this.conflict(() => configureWizardEnvironments(input));
+    return this.conflict(() => this.environmentsWorkflow.configure(input));
   }
 
   environmentStatus() {
     this.ensureSetupFinished(false);
-    return this.conflict(() => refreshWizardEnvironments());
+    return this.conflict(() => this.environmentsWorkflow.refresh());
   }
 
   namespaces() {
@@ -128,10 +139,14 @@ export class ProjectsService {
   }
 
   availability(projectKey: unknown, namespaceId: unknown) {
-    if (!validProjectKey(projectKey) || !/^[1-9][0-9]*$/.test(String(namespaceId)))
+    if (!validProjectKey(projectKey) || !/^[1-9][0-9]*$/.test(String(namespaceId))) {
       throw new SyncHttpError(400, { message: 'Invalid Project Key or namespace.' });
-    if (fs.existsSync(projectConfigPath(projectKey)))
+    }
+
+    if (fs.existsSync(projectConfigPath(projectKey))) {
       return { occupied: true, result: { state: 'complete', availability: 'occupied' } };
+    }
+
     try {
       return {
         occupied: false,
@@ -142,14 +157,16 @@ export class ProjectsService {
     }
   }
 
-  create(input: any) {
+  create(input: unknown) {
     if (
       this.runtime.status.runnerSetupInProgress ||
       this.runtime.status.defaultWizardSetupInProgress ||
       projectBusy() ||
       this.runtime.environmentHelperBusy()
-    )
+    ) {
       throw new SyncHttpError(409, { message: 'Wait for runner or project setup to finish.' });
+    }
+
     try {
       validateProject(input);
     } catch (error) {

@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { execFile, execFileSync } from 'node:child_process';
-import { checkoutRoot, cliArguments } from '../../common/runtime/installation-paths';
+import { checkoutRoot, cliArguments } from '../../common/runtime/installationPaths';
 import { RuntimeService } from '../runtime/runtime.service';
 import {
   startBackupWorkflow,
   backupWorkflowStatus,
   backupWorkflowDownload,
-} from './coordinated-backup-workflow';
-import { tokenOverview } from './token-overview';
-import { operationFailed, SyncHttpError } from '../http/sync-http-error';
+} from './coordinatedBackupWorkflow';
+import { tokenOverview } from './tokenOverview';
+import { operationFailed, SyncHttpError } from '../http/syncHttpError';
 
 @Injectable()
 export class OperationsService {
@@ -19,10 +19,11 @@ export class OperationsService {
   }
 
   private ensureIdle() {
-    if (this.runtime.operationBusy())
+    if (this.runtime.operationBusy()) {
       throw new SyncHttpError(409, {
         message: 'Wait for the current platform operation to finish.',
       });
+    }
   }
 
   credentials() {
@@ -131,6 +132,7 @@ export class OperationsService {
         { cwd: checkoutRoot(), maxBuffer: 1024 * 1024 },
         (error, out) => {
           this.runtime.status.harvestInProgress = false;
+
           if (error) {
             reject(
               new SyncHttpError(500, {
@@ -140,6 +142,7 @@ export class OperationsService {
             );
             return;
           }
+
           resolve({
             message: 'Harvesting complete.',
             status: this.runtime.status,
@@ -159,6 +162,7 @@ export class OperationsService {
         { cwd: checkoutRoot(), timeout: 900000 },
         (error, out) => {
           this.runtime.status.runnerSetupInProgress = false;
+
           if (error) {
             reject(
               new SyncHttpError(500, {
@@ -168,6 +172,7 @@ export class OperationsService {
             );
             return;
           }
+
           resolve({
             message: 'Runner registration completed.',
             status: this.runtime.status,

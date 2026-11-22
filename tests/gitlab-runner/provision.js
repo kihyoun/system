@@ -14,8 +14,8 @@ async function durableRequests() {
   const fs = require('fs');
   const path = require('path');
   const os = require('os');
-  const {GitlabRunnerRequestService} = require('../../dist/modules/gitlab-provision/runner-request.service');
-  const {GitlabLockExecService} = require('../../dist/modules/gitlab-provision/lock-exec.service');
+  const {GitlabRunnerRequestService} = require('../../dist/modules/gitlab-provision/runnerRequest.service');
+  const {GitlabLockExecService} = require('../../dist/modules/gitlab-provision/lockExec.service');
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-request-'));
   const parent = path.join(directory, 'system-bootstrapper-auth');
   fs.mkdirSync(parent, {mode: 0o700});
@@ -84,7 +84,7 @@ durableRequests().then(() => console.log('Runner requests retain exact exec iden
 
 async function credentials() {
   const fs=require('fs'), path=require('path'), os=require('os');
-  const {GitlabRunnerCredentialService}=require('../../dist/modules/gitlab-provision/runner-credential.service');
+  const {GitlabRunnerCredentialService}=require('../../dist/modules/gitlab-provision/runnerCredential.service');
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'runner-credential-'));
   let stored, runner, calls=[], requests=0, cleanup=0, execProof={running:false,exitCode:0};
   const authority={context:{checkout:root,containerId:'a'.repeat(64)},configDirectory:root,credential:{token:'glpat-admin'}};
@@ -139,7 +139,7 @@ credentials().then(()=>console.log('Runner credentials preserve owned manager ID
 function startupReconciliation() {
   const fs=require('fs'),os=require('os'),path=require('path'),{spawnSync}=require('child_process');
   const {startupBegin}=require('../../dist/modules/storage/lease');
-  const {attachRunnerStartup,runnerStartupRecovery}=require('../../dist/modules/lifecycle/runner-startup');
+  const {attachRunnerStartup,runnerStartupRecovery}=require('../../dist/modules/lifecycle/runnerStartup');
   const state=fs.mkdtempSync(path.join(os.tmpdir(),'runner-startup-'));
   try {
     const operation=startupBegin(state,process.pid);
@@ -149,7 +149,7 @@ function startupReconciliation() {
     assert.throws(()=>runnerStartupRecovery(state,operation,state,'1'.repeat(48)),/legacy-or-foreign/);
     const owner=path.join(state,'.storage-operation-lock/startup-owner.json');
     fs.unlinkSync(owner);fs.rmdirSync(path.dirname(owner));
-    const entry=require.resolve('../../dist/modules/lifecycle/runner-startup');
+    const entry=require.resolve('../../dist/modules/lifecycle/runnerStartup');
     const lease=require.resolve('../../dist/modules/storage/lease');
     const child=spawnSync(process.execPath,['-e',`const {startupBegin}=require(${JSON.stringify(lease)});const {attachRunnerStartup}=require(${JSON.stringify(entry)});const op=startupBegin(${JSON.stringify(state)},process.pid);attachRunnerStartup(${JSON.stringify(state)},op,${JSON.stringify(state)},'provision');console.log(op);`],{encoding:'utf8'});
     assert.equal(child.status,0,child.stderr);

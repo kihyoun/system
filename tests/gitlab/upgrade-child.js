@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {spawn}=require('node:child_process');
 const {Upgrade,atomic}=require('../../dist/modules/gitlab-upgrade/compatibility');
-const {stat,activeGroup,worker}=require('../../dist/modules/gitlab-upgrade/child-process');
+const {stat,activeGroup,worker}=require('../../dist/modules/gitlab-upgrade/childProcess');
 const options={sourceRevision:'a'.repeat(40),stateDir:'/state',persistentDir:'/operator/platform',checkpointDir:'/state/gitlab-upgrades/test',evidence:'/state/input.json',readyTimeoutSeconds:600};
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function fixture(t){const state=fs.mkdtempSync(path.join(os.tmpdir(),'upgrade-child-'));t.after(()=>fs.rmSync(state,{recursive:true,force:true}));const lease=path.join(state,'.gitlab-upgrade-lock');fs.mkdirSync(lease);const owner={format:'system-gitlab-upgrade-lock-v1',operation:'a'.repeat(32)};atomic(path.join(lease,'upgrade-owner.json'),JSON.stringify(owner));const engine=new Upgrade(options);engine.state=state;engine.owner=owner;return {state,lease,engine};}
@@ -15,7 +15,7 @@ test('worker refuses a spawn failure even when the child reports status zero',as
     await worker(async()=>({binary:'fixture',args:[]}),()=>result);
     assert.equal(process.exitCode,expected);
     assert(!output.includes('private-command-data')&&!output.includes('PRIVATE_SECRET_CODE'));
-    if(expected!==0){const {workerFailureFacts}=require('../../dist/modules/gitlab-upgrade/command-failure-policy');const facts=workerFailureFacts('',output);assert(facts);
+    if(expected!==0){const {workerFailureFacts}=require('../../dist/modules/gitlab-upgrade/commandFailurePolicy');const facts=workerFailureFacts('',output);assert(facts);
       assert.equal(facts.kind,result.error?({ENOBUFS:'output-limit',ENOENT:'spawn-not-found',EACCES:'spawn-permission',ETIMEDOUT:'timeout'}[result.error.code]||'native-error'):result.signal?'signal':'nonzero-exit');}
   }
 });

@@ -102,12 +102,16 @@ refresh does not install files or create pipelines.
 
 ## Toolchain profiles
 
-New source imports with Vite select the `node24-vite8-quickstart-v5` profile: the
+Current source imports select the source-bound `node24-vite8-cli-v7` profile: the
 pinned Node 24/npm toolchain, locked install, lint, Vitest, TypeScript/Vite build,
 configuration-export checks and Playwright browser checks. Browser evidence
 includes rendered UI, Projects, SPA navigation, a configuration ZIP and exact
 Cube validation. Use `wizard/package.json` and the managed recipe for the exact
 pinned versions.
+The regular CLI package travels with SourceSnapshot v3 under `.gitlab/cli` and
+is checked against its exact source/version/hash receipt. Jobs install it offline
+and call `system-bootstrapper project-ci`; they require no npm publication. See
+[package preparation](OPERATIONS.md) for the explicit companion input.
 
 This profile retains exact-tag cleanup and the build/browser images' public CA
 trust from the reviewed, checksummed
@@ -123,8 +127,8 @@ ZIP/Cube and check nested SPA and direct `/configuration` routes. This profile
 requires that current interface. Existing overview-v3 and CA-v4 reservations
 retain their historical **Getting Started** / **Open Wizard** checks.
 
-For an existing managed import, use the guarded build/environment-only upgrade
-with `"buildProfile": "node24-vite8-quickstart-v5"` alongside the matching source.
+For an existing managed import, use the guarded source/toolchain migration
+with `"buildProfile": "node24-vite8-cli-v7"` alongside the matching source.
 An adopted source-primary project instead uses its
 [native source merge and binding refresh](../templates/project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe).
 Every earlier profile retains its exact historical hash. The equivalent current

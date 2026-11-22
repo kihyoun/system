@@ -107,12 +107,17 @@ Eine Statusaktualisierung installiert keine Dateien und erzeugt keine Pipelines.
 
 ## Werkzeugkettenprofile
 
-Neue Quellcodeimporte mit Vite wählen das Profil `node24-vite8-quickstart-v5`: die
+Aktuelle Quellcodeimporte wählen das Profil `node24-vite8-cli-v7`: die
 festgelegte Node-24-/npm-Werkzeugkette, Installation per Lockdatei, Lint, Vitest,
 TypeScript-/Vite-Build, Konfigurationsexportprüfungen und Playwright-Browserprüfungen.
 Browsernachweise enthalten die dargestellte Oberfläche, Projekte, SPA-Navigation,
 eine Konfigurations-ZIP und die exakte Cube-Prüfung. Die genau festgelegten Versionen
 stehen in `wizard/package.json` und im verwalteten Rezept.
+Das reguläre CLI-Paket wird mit SourceSnapshot v3 unter `.gitlab/cli` übertragen
+und anhand seines exakten Quell-/Versions-/Hashnachweises geprüft. Jobs
+installieren es offline und rufen `system-bootstrapper project-ci` auf; eine
+npm-Veröffentlichung ist nicht erforderlich. Die [Paketvorbereitung](OPERATIONS.md)
+beschreibt die ausdrückliche Auswahl des Begleitarchivs.
 
 Dieses Profil behält die Bereinigung exakter Tags und das öffentliche CA-Vertrauen
 der Build-/Browser-Images aus dem geprüften Mozilla-Paket mit Prüfsumme bei, das mit
@@ -131,7 +136,7 @@ Overview-v3- und CA-v4-Reservierungen behalten ihre historischen Prüfungen für
 **Erste Schritte** / **Wizard öffnen**.
 
 Verwende für einen vorhandenen verwalteten Import das abgesicherte Upgrade nur für
-Build/Umgebungen mit `"buildProfile": "node24-vite8-quickstart-v5"` zusammen mit dem
+Build/Umgebungen mit `"buildProfile": "node24-vite8-cli-v7"` zusammen mit dem
 passenden Quellcode. Ein übernommenes quellcodeführendes Projekt verwendet stattdessen
 seinen [nativen Quellcode-Merge und die Bindungsaktualisierung](../templates/project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe).
 Jedes frühere Profil behält seinen exakten historischen Hash. Das entsprechende aktuelle

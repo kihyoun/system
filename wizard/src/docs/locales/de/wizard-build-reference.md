@@ -12,8 +12,9 @@ Jest-Rezepte bleiben nur verfügbar, damit bestehende Reservierungen und
 Nachweise ihre exakten Hashes behalten. Die Controller-Laufzeit verwendet die
 unterstützte Node-24-Werkzeugkette.
 
-`recipe.js` liefert eine deterministische Version/einen Hash, verwaltete CI
-und Dateien unter `.system-bootstrapper/build-v1/`. Die verwalteten Dockerfiles
+`BuildRecipeService` liefert eine deterministische Version/einen Hash, verwaltete CI
+und Dateien unter seinem versionierten Pfad `.system-bootstrapper/build-v1`,
+`build-v2` oder `build-v3`. Die verwalteten Dockerfiles
 verwenden eigene Kontext-Ausschlussdateien, um Git-Metadaten, Dotenv-
 Überschreibungen und private Inhalte auszuschließen. Moderne Prüfungen führen
 Lint, Vitest, TypeScript-/Vite-Build und Konfigurationsexport aus. Das Legacy-Profil
@@ -84,7 +85,7 @@ privat auf und prüfe vor einer Kandidatenfreigabe die native Job-Bereinigung.
 Das bisherige Rezept `build-v1` bleibt für seine aufgezeichneten Hashes und
 historischen GitLab-Nachweise bytegetreu erhalten. Neue Quellcodeimporte,
 deren verifizierter Schnappschuss Vite verwendet, wählen die Familie Node 24 /
-Vite 8 (`node24-vite8-quickstart-v5` für neue Reservierungen): Node 24.22.0/npm 11.19.1,
+Vite 8 (`node24-vite8-cli-v7` für aktuelle v3-Reservierungen): Node 24.22.0/npm 11.19.1,
 Installation anhand der Lockdatei, Lint, Vitest, TypeScript-/Vite-Build und
 Playwright-1.64.1-Browserprüfungen. Beide Profile verwenden dieselben begrenzten
 Jobnamen und denselben Artefakt-/Digest-Vertrag; moderne Artefakte melden
@@ -109,8 +110,8 @@ Einschränkung bei der Bereinigung: Ein Browser-Image ohne Tag wird von Docker
 als `:latest` aufgezeichnet, und der ältere Bereinigungsvergleich kann dessen
 Job-Tag zurücklassen, obwohl Erfolg gemeldet wird.
 
-Aktuelle nicht reservierte Builds verwenden `legacy-ca-v4` oder
-`node24-vite8-quickstart-v5`. Diese übernehmen die korrigierte Bereinigungsimplementierung
+Aktuelle v3-Quellbuilds verwenden `node24-vite8-cli-v7`; ältere Snapshots wählen
+ihr quellkompatibles Profil, darunter `legacy-ca-v4` und `node24-vite8-quickstart-v5`. Diese übernehmen die korrigierte Bereinigungsimplementierung
 aus den versionierten Cleanup-v2-Profilen; das moderne Profil übernimmt außerdem
 die unten beschriebenen Navigationsprüfungen. Die Bereinigung ergänzt `:latest`
 nur, wenn die letzte Komponente des Repository-Pfads kein Tag hat; ein
@@ -195,9 +196,36 @@ Um das exakte Smoke-Skript gegen einen isolierten lokalen Build auszuführen, se
 Ausgabeverzeichnis. Die Standardwerte im verwalteten Container bleiben `http://wizard-candidate`
 und `/evidence`; alle Anfragen außerhalb des gewählten Ursprungs werden blockiert.
 
-Neue Node-24-Quellsnapshots mit `.gitlab/producer-v2.json` wählen `node24-vite8-typed-v6`. Dessen `.system-bootstrapper/build-v2`-Dateien enthalten die geprüfte portable Laufzeit, Dockerfiles, Browserprüfungen und das CA-Bundle. Jobs rufen gemeinsame Nest-Operationsdienste mit `node .../runtime/project-ci.cjs build` oder `verify` auf; Node-Alpine-Jobs rufen zuerst `prepare-runtime` mit dem build-v2-Verzeichnis auf. Die Anwendung bleibt eine von Nginx ausgelieferte statische SPA.
+Aktuelle Quellsnapshots deklarieren `.gitlab/producer-v3.json` und wählen
+`node24-vite8-cli-v7`. Das quellgebundene reguläre CLI-Archiv, sein Nachweis und
+seine Prüfsumme werden unter `.gitlab/cli` exportiert. Die nativen Quelldateien
+unter `.gitlab/build-v3` und die verwalteten Dateien unter
+`.system-bootstrapper/build-v3` enthalten nur Docker-/Build-Eingaben und die
+festgeschriebene Playwright-Abhängigkeitssperrdatei. Jobs prüfen den Archivhash,
+installieren das Archiv offline ohne Lifecycle-Skripte und rufen
+`system-bootstrapper project-ci build|verify CHECKOUT` auf. Browserprüfungen
+laufen über `system-bootstrapper project-ci browser-smoke CHECKOUT`, den
+TypeScript-Dienst derselben regulären CLI. Umgebungsjobs rufen den Umgebungsdienst
+dieser CLI auf. Der Wizard bleibt eine von Nginx ausgelieferte statische SPA.
 
-Die versionierte Laufzeit in `typed-v6/runtime` ist Teil des reservierten Rezept-Hashes. Bewahre diese Bytes bei Einführung eines Nachfolgerezepts; eine Änderung des aktuellen portablen Bundles erlaubt nicht das Umschreiben einer bestehenden Reservierung. Ein neuer Quellsnapshot mit einer vom versionierten Rezept abweichenden Laufzeit wird bei der Auswahl abgelehnt, bis ein geprüftes Nachfolgeprofil vorliegt. Bestehende build-v1-Rezeptauswahlen und Hashes bleiben exakt erhalten. An v6 gebundene Umgebungsreservierungen erzeugen manuelle Review- und Beta-Jobs über dieselbe Laufzeit; historische environment-v1-Auswahlen lesen die archivierten Skripte in `wizard-environments/historical`.
+Der [Operationsleitfaden](../../../docs/OPERATIONS.md) beschreibt die Erstellung
+und ausdrückliche Auswahl des Begleitarchivs aus demselben Build vor einer
+npm-Veröffentlichung. Quellrevision, Git-Baum, Version und exakter SHA-256 müssen
+mit dem Quellexport übereinstimmen. Das Archiv bleibt außerhalb seines eigenen
+npm-Pakets; ein installiertes Paket wird niemals stillschweigend neu gepackt
+oder durch einen Registry-Download ersetzt.
+
+Bestehende verwaltete Importe oder quellcodeführende Projekte migrieren
+ausdrücklich mit `"buildProfile": "node24-vite8-cli-v7"` und dem passenden
+Quellcode. Der geschützte Plan prüft bestehende verwaltete Dateien und Eigentum,
+bevor er CI ändert. Benutzeränderungen führen zu einem Konflikt, statt
+überschrieben zu werden; v7 darf nicht auf ältere Prüfungen zurückgestuft werden.
+Historische Snapshots v1/v2 und alle früheren reservierten Profile bleiben exakt
+erhalten. Insbesondere wählt `.gitlab/producer-v2.json` weiterhin die eingefrorene
+Laufzeit `node24-vite8-typed-v6`. Bewahre `typed-v6/runtime` und dessen Lizenz
+unverändert; sie bleiben ausschließlich zur Reproduktion reservierter
+historischer Hashes erhalten. Historische environment-v1-Auswahlen lesen
+`wizard-environments/historical`.
 
 Verwaltete Build-Aktivierung und Status verwenden `ManagedBuildService` über den gemeinsamen Operationsbefehl `managed-recipe` und die Sync-API. Die native Sitzung erhält den historischen projekt- und operationsbezogenen PostgreSQL-Advisory-Schlüssel. Git-Commits verwenden geschützte Dateiaktualisierungen; die Pipeline-Erstellung zeichnet zuerst ihren Operations-Checkpoint auf. Private Schreibnachweise überstehen verlorene Antworten ohne erneute Anfrage. Der Status prüft dasselbe reservierte Rezept, erforderliche Jobs und Artefakt-Digest und startet niemals eine Pipeline. Der Abgleich sucht nur nach dem exakten Commit und prüft höchstens 20 Pipeline-Variablensätze; mehrdeutige oder ausgeschöpfte Suchen werden abgelehnt.
 

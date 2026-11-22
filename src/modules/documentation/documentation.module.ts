@@ -1,6 +1,6 @@
-import { DocumentationSourceCheckService } from './documentation-source-check.service';
+import { DocumentationSourceCheckService } from './documentationSourceCheck.service';
 import { Module } from '@nestjs/common';
-import { DocumentationExportService } from './documentation-export.service';
+import { DocumentationExportService } from './documentationExport.service';
 
 @Module({
   providers: [DocumentationExportService, DocumentationSourceCheckService],

@@ -16,7 +16,10 @@ function proc(pid: number): ProcessIdentity | undefined {
         .split(/\s+/);
     return { state: fields[0], group: Number(fields[2]), start: fields[19] };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return;
+    }
+
     throw error;
   }
 }
@@ -29,10 +32,14 @@ function members(group: number): number[] {
   for (const name of fs.readdirSync('/proc').filter((name) => /^[0-9]+$/.test(name))) {
     try {
       const value = proc(Number(name));
-      if (value && value.group === group && value.state !== 'Z') result.push(Number(name));
+
+      if (value && value.group === group && value.state !== 'Z') {
+        result.push(Number(name));
+      }
     } catch (error) {
-      if (!['ENOENT', 'EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code || ''))
+      if (!['ENOENT', 'EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code || '')) {
         throw error;
+      }
     }
   }
   return result;
@@ -41,7 +48,10 @@ export function groupLive(group: number): boolean {
   return Number.isInteger(group) && group > 0 && members(group).length > 0;
 }
 export function stopOwnedGroup(group: number, start: string | undefined, operation: string): void {
-  if (!groupLive(group)) return;
+  if (!groupLive(group)) {
+    return;
+  }
+
   const current = processStart(group);
   requireValue(!current || !start || current === start, 'host-child-group-leader-identity-changed');
   const marker = Buffer.from('SYSTEM_CONTROLLER_CHILD_OWNER=' + operation);
@@ -59,14 +69,17 @@ export function stopOwnedGroup(group: number, start: string | undefined, operati
       if (
         (error as NodeJS.ErrnoException).code !== 'ENOENT' &&
         (error as NodeJS.ErrnoException).code !== 'ESRCH'
-      )
+      ) {
         throw error;
+      }
     }
   }
   try {
     process.kill(-group, 'SIGKILL');
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+      throw error;
+    }
   }
 }
 interface GuardianOptions {
@@ -103,13 +116,17 @@ export async function guardCommand(args: GuardianOptions): Promise<number> {
     start: string | undefined,
     canceled = false;
   const stop = () => {
-    if (child?.pid) stopOwnedGroup(child.pid, start, args.operation);
+    if (child?.pid) {
+      stopOwnedGroup(child.pid, start, args.operation);
+    }
   };
   const terminate = () => {
     canceled = true;
     stop();
   };
-  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, terminate);
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
+    process.on(signal, terminate);
+  }
   try {
     const payload = fs.readFileSync(0);
     requireValue(!canceled, 'host-child-canceled-before-start');
@@ -127,10 +144,13 @@ export async function guardCommand(args: GuardianOptions): Promise<number> {
     let outputSize = 0;
     const capture = (target: Buffer[], bytes: Buffer) => {
       outputSize += bytes.length;
+
       if (outputSize > 4 * 1024 ** 2) {
         failure = Error('host-child-output-limit');
         stop();
-      } else target.push(bytes);
+      } else {
+        target.push(bytes);
+      }
     };
     child.stdin!.on('error', () => {
       failure = Error('host-child-input-failed');
@@ -169,8 +189,15 @@ export async function guardCommand(args: GuardianOptions): Promise<number> {
       await sleep(20);
     }
     requireValue(!groupLive(child.pid), 'owned-host-command-group-still-running');
-    if (failure) throw failure;
-    if (timeout) code = 124;
+
+    if (failure) {
+      throw failure;
+    }
+
+    if (timeout) {
+      code = 124;
+    }
+
     Object.assign(record, { phase: 'completed', exitCode: code });
     publish();
     process.stdout.write(Buffer.concat(output));
@@ -186,7 +213,9 @@ export async function guardCommand(args: GuardianOptions): Promise<number> {
       }
       requireValue(!child?.pid || !groupLive(child.pid), 'owned-host-command-group-still-running');
     } finally {
-      for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.off(signal, terminate);
+      for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
+        process.off(signal, terminate);
+      }
       fs.closeSync(args.guardFd);
     }
   }
@@ -203,8 +232,12 @@ async function worker(command: string[]): Promise<number> {
     permit.once('data', (bytes) => {
       clearTimeout(timer);
       permit.destroy();
-      if (bytes[0] === 71) resolve();
-      else reject(Error('host-child-start-refused'));
+
+      if (bytes[0] === 71) {
+        resolve();
+      } else {
+        reject(Error('host-child-start-refused'));
+      }
     });
     permit.once('end', () => {
       clearTimeout(timer);
@@ -218,6 +251,7 @@ async function worker(command: string[]): Promise<number> {
     child.once('exit', (code, signal) => resolve(code ?? (signal === 'SIGKILL' ? 137 : 1)));
   });
 }
+
 if (require.main === module) {
   const argv = process.argv.slice(2),
     separator = argv.indexOf('--'),

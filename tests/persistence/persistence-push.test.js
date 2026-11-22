@@ -7,7 +7,7 @@ const {spawnSync} = require('node:child_process');
 const {test} = require('node:test');
 
 const script = path.resolve(__dirname, '../../dist/modules/configuration/entry.js');
-const {WizardPublicSettingsService} = require('../../dist/modules/lifecycle/public-settings.service');
+const {WizardPublicSettingsService} = require('../../dist/modules/lifecycle/publicSettings.service');
 const publicService = new WizardPublicSettingsService();
 const publish = publicService.publish.bind(publicService);
 // Small stored ZIP fixtures keep this acceptance test independent of Python or

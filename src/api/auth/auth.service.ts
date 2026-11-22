@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import jwt from 'jsonwebtoken';
 import { randomBytes } from 'node:crypto';
-import { SyncHttpError } from '../http/sync-http-error';
+import { SyncHttpError } from '../http/syncHttpError';
 
 @Injectable()
 export class AuthService {
@@ -12,7 +12,10 @@ export class AuthService {
   private refreshTokens: string[] = [];
 
   authenticate(authorization: string | undefined) {
-    if (!authorization) throw new SyncHttpError(401);
+    if (!authorization) {
+      throw new SyncHttpError(401);
+    }
+
     try {
       return jwt.verify(authorization.split(' ')[1], this.serverSecret);
     } catch {
@@ -22,8 +25,11 @@ export class AuthService {
 
   login(input: any) {
     const { username, password } = input;
-    if (username !== this.username || password !== this.password)
+
+    if (username !== this.username || password !== this.password) {
       throw new SyncHttpError(401, 'Username or Password incorrect', true);
+    }
+
     const accessToken = jwt.sign({ username }, this.serverSecret, { expiresIn: '20m' });
     const refreshToken = jwt.sign({ username }, this.serverTokenSecret);
     this.refreshTokens.push(refreshToken);
@@ -32,8 +38,15 @@ export class AuthService {
 
   refresh(input: any) {
     const { token } = input;
-    if (!token) throw new SyncHttpError(401);
-    if (!this.refreshTokens.includes(token)) throw new SyncHttpError(403);
+
+    if (!token) {
+      throw new SyncHttpError(401);
+    }
+
+    if (!this.refreshTokens.includes(token)) {
+      throw new SyncHttpError(403);
+    }
+
     try {
       const user = jwt.verify(token, this.serverTokenSecret) as jwt.JwtPayload;
       return {

@@ -7,13 +7,17 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { ObservationFailure, ObservationProcess } from './process';
 export const timestamp = () => new Date().toISOString();
 export function number(value: unknown): number | null {
-  if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '')
+  if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') {
     return null;
+  }
+
   if (
     typeof value === 'string' &&
     !/^[+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:e[+-]?[0-9]+)?$/i.test(value.trim())
-  )
+  ) {
     return null;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
@@ -21,7 +25,11 @@ export function quantity(value: unknown): number | null {
   const match = /^\s*([0-9]+(?:\.[0-9]+)?)\s*(B|kB|KB|MB|GB|TB|KiB|MiB|GiB|TiB)\s*$/.exec(
     String(value),
   );
-  if (!match) return null;
+
+  if (!match) {
+    return null;
+  }
+
   const units: Record<string, number> = {
     B: 1,
     kB: 1000,
@@ -67,9 +75,19 @@ function counters(file: string): Record<string, number> {
 }
 export function role(value: unknown): string {
   const name = String(value).toLowerCase().replace(/^\//, '');
-  if (name.startsWith('runner-') && name.includes('-project-')) return 'ci-job';
-  if (name.includes('buildkit')) return 'build-cache-worker';
-  if (name.includes('runner')) return 'runner-manager';
+
+  if (name.startsWith('runner-') && name.includes('-project-')) {
+    return 'ci-job';
+  }
+
+  if (name.includes('buildkit')) {
+    return 'build-cache-worker';
+  }
+
+  if (name.includes('runner')) {
+    return 'runner-manager';
+  }
+
   for (const [fragment, result] of [
     ['gitlab', 'gitlab'],
     ['registry', 'registry'],
@@ -78,8 +96,11 @@ export function role(value: unknown): string {
     ['nginx', 'nginx'],
     ['_sync_', 'sync-proxy'],
     ['_web_', 'nginx'],
-  ])
-    if (name.includes(fragment)) return result;
+  ]) {
+    if (name.includes(fragment)) {
+      return result;
+    }
+  }
   return 'other';
 }
 export function runnerSettings(text: string): Record<string, number[]> {
@@ -88,7 +109,10 @@ export function runnerSettings(text: string): Record<string, number[]> {
     const match = /^\s*(concurrent|limit|request_concurrency)\s*=\s*([0-9]+)\s*(?:#.*)?$/.exec(
       line,
     );
-    if (match) result[match[1]].push(Number(match[2]));
+
+    if (match) {
+      result[match[1]].push(Number(match[2]));
+    }
   }
   return result;
 }
@@ -136,8 +160,9 @@ export function validateOptions(value: CollectionOptions): void {
     !Number.isInteger(value.maxContainers) ||
     value.maxContainers < 1 ||
     value.maxContainers > 128
-  )
+  ) {
     throw Error('resource-options-out-of-bounds');
+  }
 }
 export const limitations = [
   'No workload was started; background activity is not classified as idle.',
@@ -158,7 +183,7 @@ export function summary(samples: ResourceSample[]) {
       string,
       { containerObservations: number; measuredObservations: number; incompleteSamples: number }
     > = {};
-  for (const sample of samples)
+  for (const sample of samples) {
     for (const category of new Set(sample.containers.map((row) => row.role))) {
       const values = sample.containers
           .filter((row) => row.role === category)
@@ -171,15 +196,18 @@ export function summary(samples: ResourceSample[]) {
         });
       count.containerObservations += values.length;
       count.measuredObservations += measured.length;
+
       if (measured.length !== values.length) {
         count.incompleteSamples++;
         roles[category] = null;
-      } else if (roles[category] !== null)
+      } else if (roles[category] !== null) {
         roles[category] = Math.max(
           roles[category] || 0,
           measured.reduce((a, b) => a + b, 0),
         );
+      }
     }
+  }
   return {
     sampledLinuxUsedMemoryMaximumBytes: host.length ? Math.max(...host) : null,
     sampledRoleWorkingSetMaximumBytesApprox: roles,
@@ -212,14 +240,19 @@ export class ResourceCollectorService {
 
   async run(args: string[], metric: string, signal?: AbortSignal): Promise<string | null> {
     const remaining = this.deadline - performance.now();
+
     if (remaining <= 0) {
       this.unavailable.push(metric + ':sample-budget');
       return null;
     }
+
     try {
       return await this.transport.run(args, Math.min(3000, remaining), signal);
     } catch (error) {
-      if (signal?.aborted) throw error;
+      if (signal?.aborted) {
+        throw error;
+      }
+
       this.unavailable.push(
         metric + ':' + (error instanceof ObservationFailure ? error.reason : 'command-unavailable'),
       );
@@ -233,10 +266,18 @@ export class ResourceCollectorService {
     signal?: AbortSignal,
   ): Promise<Record<string, unknown> | null> {
     const text = await this.run(args, metric, signal);
-    if (text === null) return null;
+
+    if (text === null) {
+      return null;
+    }
+
     try {
       const value: unknown = JSON.parse(text);
-      if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error();
+
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw Error();
+      }
+
       return value as Record<string, unknown>;
     } catch {
       this.unavailable.push(metric + ':invalid-response');
@@ -256,13 +297,20 @@ export class ResourceCollectorService {
         .split(/\s+/)
         .slice(1, 9)
         .map(Number);
-      if (fields.length !== 8 || fields.some((value) => !Number.isFinite(value))) throw Error();
+
+      if (fields.length !== 8 || fields.some((value) => !Number.isFinite(value))) {
+        throw Error();
+      }
+
       const ticks = fields.reduce((a, b) => a + b, 0),
         idle = fields[3] + fields[4];
-      if (this.previousCpu && ticks > this.previousCpu[0])
+
+      if (this.previousCpu && ticks > this.previousCpu[0]) {
         cpu =
           Math.round(10000 * (1 - (idle - this.previousCpu[1]) / (ticks - this.previousCpu[0]))) /
           100;
+      }
+
       this.previousCpu = [ticks, idle];
     } catch {
       this.unavailable.push('linux-cpu:proc-unavailable');
@@ -272,13 +320,15 @@ export class ResourceCollectorService {
     try {
       for (const line of fs.readFileSync(path.join(this.proc, 'diskstats'), 'utf8').split('\n')) {
         const fields = line.trim().split(/\s+/);
-        if (fields.length >= 14 && /^(?:sd[a-z]+|vd[a-z]+|nvme[0-9]+n[0-9]+)$/.test(fields[2]))
+
+        if (fields.length >= 14 && /^(?:sd[a-z]+|vd[a-z]+|nvme[0-9]+n[0-9]+)$/.test(fields[2])) {
           disks.push({
             device: fields[2],
             readBytesCounter: Number(fields[5]) * 512,
             writtenBytesCounter: Number(fields[9]) * 512,
             ioMillisecondsCounter: Number(fields[12]),
           });
+        }
       }
     } catch {
       this.unavailable.push('linux-disk-io:proc-unavailable');
@@ -318,7 +368,10 @@ export class ResourceCollectorService {
   }
 
   cgroup(pid: unknown, id: string): Record<string, unknown> | null {
-    if (!Number.isInteger(pid) || Number(pid) <= 0) return null;
+    if (!Number.isInteger(pid) || Number(pid) <= 0) {
+      return null;
+    }
+
     try {
       const line = fs
         .readFileSync(path.join(this.proc, String(pid), 'cgroup'), 'utf8')
@@ -328,10 +381,18 @@ export class ResourceCollectorService {
             value.startsWith('0::') &&
             new RegExp('(?:^|[^a-f0-9])' + id + '(?:[^a-f0-9]|$)').test(value),
         );
-      if (!line) return null;
+
+      if (!line) {
+        return null;
+      }
+
       const root = fs.realpathSync(this.cgroups),
         location = fs.realpathSync(path.join(root, line.slice(3).replace(/^\//, '')));
-      if (!location.startsWith(root + path.sep)) return null;
+
+      if (!location.startsWith(root + path.sep)) {
+        return null;
+      }
+
       const memory = counters(path.join(location, 'memory.stat'));
       return {
         version: 2,
@@ -387,15 +448,21 @@ export class ResourceCollectorService {
         signal,
       ),
       statistics: Record<string, Record<string, unknown>> = {};
-    if (statsText)
+
+    if (statsText) {
       try {
         for (const line of statsText.trim().split('\n')) {
           const row = JSON.parse(line) as Record<string, unknown>;
-          if (/^[a-f0-9]{64}$/.test(String(row.ID))) statistics[String(row.ID)] = row;
+
+          if (/^[a-f0-9]{64}$/.test(String(row.ID))) {
+            statistics[String(row.ID)] = row;
+          }
         }
       } catch {
         this.unavailable.push('docker-stats:invalid-response');
       }
+    }
+
     const ids = (
         (await this.run(
           ['docker', 'ps', '--all', '--quiet', '--no-trunc'],
@@ -414,7 +481,11 @@ export class ResourceCollectorService {
         'container-inspect',
         signal,
       );
-      if (!raw) continue;
+
+      if (!raw) {
+        continue;
+      }
+
       const category = role(raw.name),
         stat = statistics[id] || {},
         memory = pair(stat.MemUsage);
@@ -446,6 +517,7 @@ export class ResourceCollectorService {
         },
         cgroup: this.cgroup(raw.pid, id),
       };
+
       if (category === 'runner-manager' && raw.running) {
         const settings = await this.run(
           [
@@ -461,6 +533,7 @@ export class ResourceCollectorService {
         );
         row.runnerConcurrency = settings === null ? null : runnerSettings(settings);
       }
+
       containers.push(row);
     }
     return {
@@ -487,7 +560,10 @@ export class ResourceCollectorService {
       samples: ResourceSample[] = [];
     for (let index = 0; index < options.samples; index++) {
       samples.push(await collector.sample(signal));
-      if (index + 1 < options.samples) await delay(options.interval * 1000, undefined, { signal });
+
+      if (index + 1 < options.samples) {
+        await delay(options.interval * 1000, undefined, { signal });
+      }
     }
     return {
       schemaVersion: 1,

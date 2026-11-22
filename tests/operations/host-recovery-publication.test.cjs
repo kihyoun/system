@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {RecoveryPublicationService,recoverySource}=require('../../dist/modules/host/recovery-publication.service');
+const {RecoveryPublicationService,recoverySource}=require('../../dist/modules/host/recoveryPublication.service');
 const id=n=>'sha256:'+n.repeat(64);
 test('monorepo recovery publication retains old archives and removes obsolete active gitlink identity',()=>{
  const old={sourceCommit:'1'.repeat(40),sourceTree:'2'.repeat(40),wizardSourceRevision:'3'.repeat(40),archives:[{file:'images/old.tar.gz',imageId:id('1')}],localImages:[{tag:'system_bootstrapper',imageId:id('1')},{tag:'controller:old',imageId:id('1')}],publicImages:[{reference:'gitlab/gitlab-ce:old@'+id('2'),tag:'gitlab/gitlab-ce:old',imageId:id('2')}],currentController:{imageId:id('1'),packagedWizardSourceRevision:'3'.repeat(40)}};
@@ -15,14 +15,14 @@ test('historical tuple source remains readable without inventing monorepo identi
 });
 
 test('native release assignments preserve Cube, multiline literals and every unrelated byte',()=>{
- const {imageAssignment}=require('../../dist/modules/host/release-selection.service');
- const {BOOTSTRAPPER_CUBE}=require('../../dist/cli/presentation');
+ const {imageAssignment}=require('../../dist/modules/host/releaseSelection.service');
+ const {bootstrapperCube}=require('../../dist/cli/presentation');
  const reference='example/controller@'+id('1'),next='example/controller@'+id('2');
- const raw=Buffer.from(BOOTSTRAPPER_CUBE+`export BOOTSTRAPPER_IMAGE='${reference}'\n`);
+ const raw=Buffer.from(bootstrapperCube+`export BOOTSTRAPPER_IMAGE='${reference}'\n`);
  const secret=Buffer.from("export OTHER='한국어 literal\nexport BOOTSTRAPPER_IMAGE=inside-secret\nlast line'\n");
  const result=imageAssignment(Buffer.concat([raw,secret]),next);
  assert(result.subarray(0,1184).equals(raw.subarray(0,1184)));assert(result.subarray(-secret.length).equals(secret));
- assert.equal(result.toString(),BOOTSTRAPPER_CUBE+`export BOOTSTRAPPER_IMAGE='${next}'\n`+secret);
+ assert.equal(result.toString(),bootstrapperCube+`export BOOTSTRAPPER_IMAGE='${next}'\n`+secret);
  assert.deepEqual(imageAssignment(Buffer.from(raw.toString().replace('export BOOTSTRAPPER_IMAGE=','  export\tBOOTSTRAPPER_IMAGE=')),next),imageAssignment(raw,next));
  assert.throws(()=>imageAssignment(Buffer.concat([raw,Buffer.from(`\t export\tBOOTSTRAPPER_IMAGE='${reference}'\n`)]),next),/duplicate-or-header/);
  assert.throws(()=>imageAssignment(Buffer.concat([raw,Buffer.from("export SECRET='unclosed\n")]),next),/incomplete-controller/);
@@ -34,7 +34,7 @@ test('native release assignments preserve Cube, multiline literals and every unr
 
 test('native release selection retains exact metadata and resumes mixed publication or rollback safely',()=>{
  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
- const {ReleaseSelectionService}=require('../../dist/modules/host/release-selection.service');
+ const {ReleaseSelectionService}=require('../../dist/modules/host/releaseSelection.service');
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'native-release-selection-')),service=new ReleaseSelectionService();
  const release={sourceRevision:'a'.repeat(40),sourceTree:'b'.repeat(40),wizardRevision:'c'.repeat(40)},
    accepted={version:'2.0.0',tag:'v2.0.0',source:{revision:release.sourceRevision}},

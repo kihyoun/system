@@ -4,16 +4,16 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { ProcessRunner, ProcessFailure } from '../../common/runtime/process';
 import { StorageSpec, requireValue } from './types';
-import { StorageCommandDto } from './storage-command.dto';
+import { StorageCommandDto } from './storageCommand.dto';
 import * as validation from './validation';
 import * as leases from './lease';
 import * as manifest from './manifest';
 import * as config from './configuration';
 import * as helper from './helper';
-import * as coordinated from './coordinated-backup';
+import * as coordinated from './coordinatedBackup';
 import { harvest, restore, nativeCopyRuntime } from './copy';
-export const STORAGE_PROCESS_RUNNER = Symbol('STORAGE_PROCESS_RUNNER');
-export const STORAGE_PREVIEW_NORMALIZER = Symbol('STORAGE_PREVIEW_NORMALIZER');
+export const storageProcessRunner = Symbol('STORAGE_PROCESS_RUNNER');
+export const storagePreviewNormalizer = Symbol('STORAGE_PREVIEW_NORMALIZER');
 
 export function storageSpec(input: unknown): StorageSpec {
   requireValue(
@@ -34,29 +34,31 @@ export function storageSpec(input: unknown): StorageSpec {
     'helperName',
     'imageId',
     'coordinatedBackup',
-  ])
+  ]) {
     requireValue(
       record[key] === undefined || typeof record[key] === 'string',
       'invalid-storage-spec',
     );
+  }
   requireValue(
     record.operation === undefined ||
       record.operation === 'harvest' ||
       record.operation === 'restore',
     'invalid-seed-operation',
   );
-  for (const key of ['checkOnly', 'backup'])
+  for (const key of ['checkOnly', 'backup']) {
     requireValue(
       record[key] === undefined || typeof record[key] === 'boolean',
       'invalid-storage-spec',
     );
+  }
   return record as StorageSpec;
 }
 @Injectable()
 export class StorageService {
   constructor(
-    @Inject(STORAGE_PROCESS_RUNNER) private readonly runner: ProcessRunner,
-    @Inject(STORAGE_PREVIEW_NORMALIZER)
+    @Inject(storageProcessRunner) private readonly runner: ProcessRunner,
+    @Inject(storagePreviewNormalizer)
     private readonly normalizePreview: coordinated.PreviewNormalizer,
   ) {}
 
@@ -119,6 +121,7 @@ export class StorageService {
     const environment = options.environment ?? process.env,
       run = helper.dockerRun(this.runner);
     const spec = config.configuration(environment, options.host, this.runner);
+
     if (environment.SYSTEM_COORDINATED_BACKUP) {
       requireValue(
         operation === 'harvest' && /^[a-f0-9]{32}$/.test(environment.SYSTEM_COORDINATED_BACKUP),
@@ -126,6 +129,7 @@ export class StorageService {
       );
       spec.coordinatedBackup = environment.SYSTEM_COORDINATED_BACKUP;
     }
+
     requireValue(spec.SEED_DIR, 'seed-target-unavailable');
     const image = options.host
       ? environment.SYSTEM_SEED_CONTROLLER_IMAGE
@@ -168,11 +172,13 @@ export class StorageService {
         );
         requireValue(row.State.Running === false, 'seed-helper-still-running');
         run(['rm', name]);
-        if (spec.coordinatedBackup)
+
+        if (spec.coordinatedBackup) {
           coordinated.helperCompleted(
             environment.SYSTEM_CONFIG_DIR || '/state',
             spec.coordinatedBackup,
           );
+        }
       }
     }
   }
@@ -208,19 +214,25 @@ export class StorageService {
       '.storage-operation-lock',
       '.gitlab-upgrade-lock',
       '.projects.env/.wizard.env.environments.lock',
-    ])
+    ]) {
       requireValue(
         !fs.lstatSync(path.join(state, name), { throwIfNoEntry: false }),
         'storage-operation-busy',
       );
+    }
     requireValue(
       !fs.lstatSync('/seed/.operation-lock', { throwIfNoEntry: false }),
       'storage-operation-busy',
     );
-    if (spec.backup) config.validateBackup('/system/bootstrapper.zip', this.runner);
+
+    if (spec.backup) {
+      config.validateBackup('/system/bootstrapper.zip', this.runner);
+    }
+
     const image = helper.configurationImage(spec, this.runner);
     process.env.GITLAB_IMAGE = image;
     helper.gitlabOwnership(spec, image, run);
+
     if (spec.operation === 'restore') {
       validation.restoreEmpty();
       const current = manifest.current('/seed'),
@@ -236,11 +248,13 @@ export class StorageService {
         'live-target-insufficient-space',
       );
     }
+
     const writable = fs.statfsSync('/seed');
     requireValue(
       writable.bavail * writable.bsize > 16 * 1024 * 1024,
       'seed-target-insufficient-space',
     );
+
     if (spec.operation === 'harvest') {
       const size = this.runner.run('du', [
         '-sk',
@@ -258,22 +272,34 @@ export class StorageService {
         'seed-target-insufficient-space',
       );
     }
-    if (spec.checkOnly) return;
+
+    if (spec.checkOnly) {
+      return;
+    }
+
     const held = new leases.StorageLease(state, spec);
     let safeRelease = true;
     try {
-      if (spec.operation === 'restore') validation.restoreEmpty();
+      if (spec.operation === 'restore') {
+        validation.restoreEmpty();
+      }
+
       requireValue(
         !fs.lstatSync(path.join(state, '.gitlab-upgrade-lock'), { throwIfNoEntry: false }),
         'storage-operation-busy',
       );
       helper.gitlabOwnership(spec, image, run);
       held.acquireEnvironment();
-      if (spec.operation === 'harvest') helper.controllerIdle(spec, run);
+
+      if (spec.operation === 'harvest') {
+        helper.controllerIdle(spec, run);
+      }
+
       if (spec.backup) {
         requireValue(spec.operation === 'restore', 'restore-configuration-already-exists');
         config.importFreshConfiguration('/system/bootstrapper.zip', state, this.runner);
       }
+
       const main = path.join(state, '.docker.env');
       requireValue(fs.existsSync(main), 'matching-configuration-backup-required');
       config.cube(fs.readFileSync(main));
@@ -295,17 +321,23 @@ export class StorageService {
       const runtime = { ...nativeCopyRuntime, process: this.runner };
       const perform = (token?: string) => {
         try {
-          if (spec.operation === 'harvest') harvest(paths, runtime, token);
-          else restore(paths, runtime);
+          if (spec.operation === 'harvest') {
+            harvest(paths, runtime, token);
+          } else {
+            restore(paths, runtime);
+          }
         } catch (error) {
           if (
             (error instanceof ProcessFailure && error.uncertain) ||
             (error instanceof Error && 'uncertain' in error && error.uncertain === true)
-          )
+          ) {
             safeRelease = false;
+          }
+
           throw error;
         }
       };
+
       if (spec.coordinatedBackup) {
         requireValue(spec.operation === 'harvest', 'invalid-backup-operation');
         coordinated.runWorkflow({
@@ -318,7 +350,9 @@ export class StorageService {
           seedTarget: selected.seed,
           normalizePreview: this.normalizePreview,
         });
-      } else perform();
+      } else {
+        perform();
+      }
     } finally {
       try {
         held.release(safeRelease);
@@ -334,6 +368,7 @@ export class StorageService {
             configuration: { status: 'unavailable' },
           });
         }
+
         throw error;
       }
     }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Injectable } from '@nestjs/common';
-import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managed-child';
+import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 import { ProcessFailure } from '../../common/runtime/process';
 
 @Injectable()
@@ -9,8 +9,10 @@ export class DocumentationCheckService {
   constructor(private readonly process: LifecycleProcess = new ManagedChildProcess()) {}
 
   async execute(root: string, env: NodeJS.ProcessEnv, cleanupOnly = false, signal?: AbortSignal) {
-    if (![env.CI_PROJECT_ID, env.CI_JOB_ID].every((value) => /^\d+$/.test(value || '')))
+    if (![env.CI_PROJECT_ID, env.CI_JOB_ID].every((value) => /^\d+$/.test(value || ''))) {
       throw Error('numeric-ci-identities-required');
+    }
+
     const resource = `system-documentation-${env.CI_PROJECT_ID}-${env.CI_JOB_ID}`;
     const label = 'org.system-bootstrapper.documentation-job';
     const owner = `${env.CI_PROJECT_ID}:${env.CI_JOB_ID}`;
@@ -33,18 +35,25 @@ export class DocumentationCheckService {
       let failure: unknown;
       try {
         const names = (await list(true)).trim();
+
         if (names) {
-          if (names !== resource) throw Error('documentation-cleanup-name-mismatch');
+          if (names !== resource) {
+            throw Error('documentation-cleanup-name-mismatch');
+          }
+
           const rows: unknown = JSON.parse(
             await docker(['container', 'inspect', resource], 8000, true),
           );
+
           if (
             !Array.isArray(rows) ||
             rows.length !== 1 ||
             rows[0]?.Config?.Labels?.[label] !== owner ||
             !/^[0-9a-f]{64}$/.test(rows[0]?.Id || '')
-          )
+          ) {
             throw Error('documentation-cleanup-owner-mismatch');
+          }
+
           await docker(['container', 'rm', '--force', rows[0].Id], 8000, true);
         }
       } catch (error) {
@@ -54,11 +63,20 @@ export class DocumentationCheckService {
         path.join(report, `cleanup-${phase}.json`),
         JSON.stringify({ status: failure ? 'failed' : 'passed' }) + '\n',
       );
-      if (failure) throw failure;
+
+      if (failure) {
+        throw failure;
+      }
     };
-    if (cleanupOnly) return cleanup('after-script');
-    if (!/^[0-9a-f]{40}$/.test(env.CI_COMMIT_SHA || ''))
+
+    if (cleanupOnly) {
+      return cleanup('after-script');
+    }
+
+    if (!/^[0-9a-f]{40}$/.test(env.CI_COMMIT_SHA || '')) {
       throw Error('full-source-revision-required');
+    }
+
     const git = (args: string[], cwd = root, input?: string, inputFile?: string) =>
       this.process.run('git', ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null', ...args], {
         cwd,
@@ -69,8 +87,11 @@ export class DocumentationCheckService {
         signal,
         maxBuffer: 8 * 1024 * 1024,
       });
-    if ((await git(['rev-parse', '--verify', 'HEAD^{commit}'])).trim() !== env.CI_COMMIT_SHA)
+
+    if ((await git(['rev-parse', '--verify', 'HEAD^{commit}'])).trim() !== env.CI_COMMIT_SHA) {
       throw Error('documentation-checkout-revision-mismatch');
+    }
+
     let base = '';
     switch (env.CI_PIPELINE_SOURCE) {
       case 'merge_request_event':
@@ -90,13 +111,25 @@ export class DocumentationCheckService {
       default:
         throw Error('unsupported-documentation-pipeline-source');
     }
-    if (base && !/^[0-9a-f]{40}$/.test(base)) throw Error('invalid-documentation-base');
+
+    if (base && !/^[0-9a-f]{40}$/.test(base)) {
+      throw Error('invalid-documentation-base');
+    }
+
     if (base === '0'.repeat(40)) {
-      if (env.CI_PIPELINE_SOURCE !== 'push') throw Error('invalid-zero-documentation-base');
+      if (env.CI_PIPELINE_SOURCE !== 'push') {
+        throw Error('invalid-zero-documentation-base');
+      }
+
       base = '';
-    } else if (!base && ['push', 'merge_request_event'].includes(env.CI_PIPELINE_SOURCE || ''))
+    } else if (!base && ['push', 'merge_request_event'].includes(env.CI_PIPELINE_SOURCE || '')) {
       throw Error('missing-documentation-base');
-    if ((await list()).trim()) throw Error('documentation-resource-already-exists');
+    }
+
+    if ((await list()).trim()) {
+      throw Error('documentation-resource-already-exists');
+    }
+
     // Git creates pack temporaries in its object directory before renaming them
     // beside the output prefix. Keep that rename on the same filesystem, even
     // when the checkout or a linked worktree's common Git directory is mounted.
@@ -119,7 +152,11 @@ export class DocumentationCheckService {
         ...(base ? [base] : []),
       ]);
       const pack = (await git(['pack-objects', path.join(temporary, 'objects')], root, ids)).trim();
-      if (!/^[0-9a-f]{40}$/.test(pack)) throw Error('invalid-documentation-pack');
+
+      if (!/^[0-9a-f]{40}$/.test(pack)) {
+        throw Error('invalid-documentation-pack');
+      }
+
       await git(
         ['index-pack', '--stdin'],
         candidate,
@@ -132,9 +169,9 @@ export class DocumentationCheckService {
       // The CI build compiles these sources from the pinned candidate checkout.
       const runtime = path.resolve(__dirname, '../..');
       for (const file of [
-        'modules/ci/documentation-check-entry.js',
-        'modules/ci/documentation-policy.js',
-        'modules/ci/documentation-git.js',
+        'modules/ci/documentationCheckEntry.js',
+        'modules/ci/documentationPolicy.js',
+        'modules/ci/documentationGit.js',
       ]) {
         const destination = path.join(candidate, 'runtime', file);
         fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -143,10 +180,13 @@ export class DocumentationCheckService {
       const readable = (directory: string) => {
         for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
           const name = path.join(directory, entry.name);
+
           if (entry.isDirectory()) {
             readable(name);
             fs.chmodSync(name, 0o755);
-          } else fs.chmodSync(name, 0o644);
+          } else {
+            fs.chmodSync(name, 0o644);
+          }
         }
       };
       readable(candidate);
@@ -195,7 +235,7 @@ export class DocumentationCheckService {
           '--entrypoint',
           'node',
           image,
-          '/candidate/runtime/modules/ci/documentation-check-entry.js',
+          '/candidate/runtime/modules/ci/documentationCheckEntry.js',
         ],
         10000,
       );
@@ -203,10 +243,12 @@ export class DocumentationCheckService {
       await docker(['start', resource]);
       try {
         const status = (await docker(['wait', resource], 45000)).trim();
-        if (status !== '0')
+
+        if (status !== '0') {
           primary = /^\d+$/.test(status)
             ? new ProcessFailure('documentation-check', Number(status), null, false)
             : Error('invalid-documentation-exit');
+        }
       } catch (error) {
         primary = error;
       }
@@ -233,6 +275,9 @@ export class DocumentationCheckService {
       primary ??= error;
     }
     fs.rmSync(temporary, { recursive: true, force: true });
-    if (primary) throw primary;
+
+    if (primary) {
+      throw primary;
+    }
   }
 }

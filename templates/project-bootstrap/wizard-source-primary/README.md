@@ -198,7 +198,7 @@ does not recreate a deleted registry or make old backups independent of it.
 
 ## Runtime boundary
 
-The compatible `run.js`, `binding.js` and `source-installation.js` entrypoints
+The compatible `run.js`, `binding.js` and `sourceInstallation.js` entrypoints
 load the compiled operations runtime. `AdoptionModule` owns planning, fresh
 evidence collection, confirmation and the locked configuration transaction.
 Source installation validation and source-primary pipeline policy are typed

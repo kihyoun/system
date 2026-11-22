@@ -20,7 +20,7 @@ childProcess.execFile = (command, args, options, callback) => {
   });
   return child;
 };
-const {rails, startJob} = require('../../dist/api/projects/project-workflow');
+const {rails, startJob} = require('../../dist/modules/project-workflow/projectWorkflow');
 (async () => {
   for (const action of ['preview-setup-project', 'preview-setup-revoke'])
    for (scenario of ['timeout', 'transport-loss', 'client-exit', 'truncated-json', 'invalid-json-shape', 'oversized-output']) {

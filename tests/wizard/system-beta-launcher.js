@@ -2,9 +2,9 @@
 const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
-const {run} = require('../../dist/modules/project-lifecycle/system-beta-entry');
-const {request, writeEnvironment, WORK_BUDGET, CLEANUP_BUDGET} = require('../../dist/modules/project-lifecycle/system-beta-session');
-const {environmentHash} = require('../../dist/modules/project-lifecycle/system-beta-binding');
+const {run} = require('../../dist/modules/project-lifecycle/systemBetaEntry');
+const {request, writeEnvironment, workBudget, cleanupBudget} = require('../../dist/modules/project-lifecycle/systemBetaSession');
+const {environmentHash} = require('../../dist/modules/project-lifecycle/systemBetaBinding');
 const copy = value => JSON.parse(JSON.stringify(value));
 const image = char => 'sha256:' + char.repeat(64);
 const operation = 'a'.repeat(48), sourceCommit = 'b'.repeat(40), containerId = 'c'.repeat(64);
@@ -142,9 +142,9 @@ const removals = result => commands(result).filter(call => ['stop', 'rm'].includ
 
 (async () => {
   let result = await exercise(); assert.ifError(result.error);
-  assert(WORK_BUDGET + CLEANUP_BUDGET + 120000 < 12 * 60000, 'CI script budget must reserve installation and owned cleanup.');
+  assert(workBudget + cleanupBudget + 120000 < 12 * 60000, 'CI script budget must reserve installation and owned cleanup.');
   result = await exercise({pullMilliseconds: 100000}); assert.ifError(result.error);
-  assert.equal(commands(result).find(call => call.command[0] === 'start').options.timeout, WORK_BUDGET - 200000,
+  assert.equal(commands(result).find(call => call.command[0] === 'start').options.timeout, workBudget - 200000,
     'Attach must receive only the remaining overall work budget.');
   result = await exercise({pullMilliseconds: 200000}); assert.match(result.error.message, /reserved time budget/);
   assert(!commands(result).some(call => call.command[0] === 'create'), 'Expired preload must not create or launch a helper.');

@@ -1,7 +1,7 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
-const {EnvironmentLauncherService}=require('../../dist/modules/project-ci/environment-launcher.service');
-const {BrowserCheckService}=require('../../dist/modules/project-ci/browser-check.service');
+const {EnvironmentLauncherService}=require('../../dist/modules/project-ci/environmentLauncher.service');
+const {BrowserCheckService}=require('../../dist/modules/project-ci/browserCheck.service');
 const image='sha256:'+'a'.repeat(64),operation='b'.repeat(48),id='c'.repeat(64);
 const env={SYSTEM_WIZARD_ENVIRONMENT_IMAGE:image,SYSTEM_WIZARD_ENVIRONMENT_OPERATION:operation,CI_PROJECT_ID:'1',CI_PIPELINE_ID:'2',CI_JOB_ID:'3',CI_COMMIT_SHA:'d'.repeat(40),CI_MERGE_REQUEST_IID:'4'};
 function fixture(mode){const calls=[];const port={run:async(binary,args,options)=>{calls.push({binary,args,options});if(args[0]==='create'){if(mode==='occupied')throw Error('name occupied');return id;}if(args[0]==='container')return `${id} ${mode==='foreign'?'foreign':image} ${operation}`;if(args[0]==='start'&&mode==='failed')throw Error('helper failed');return '';}};return{calls,service:new EnvironmentLauncherService(port)};}
@@ -17,44 +17,43 @@ if(fail)await assert.rejects(service.run(root,{}),/browser failed/);else await s
 assert(cancelled);assert.equal(fs.readFileSync(path.join(root,'test-results/preview.log'),'utf8'),'preview diagnostic');
 });
 test('native diagnostic callback preserves bounded stdout and stderr',async()=>{
- const {ManagedChildProcess}=require('../../dist/common/runtime/managed-child');const chunks=[];
+ const {ManagedChildProcess}=require('../../dist/common/runtime/managedChild');const chunks=[];
  await new ManagedChildProcess().run(process.execPath,['-e','process.stdout.write("out");process.stderr.write("err")'],{cwd:process.cwd(),env:process.env,timeout:5000,output:chunk=>chunks.push(chunk.toString())});
  assert.equal(chunks.join('').split('').sort().join(''),'eorrtu');
 });
 
 const {spawnSync}=require('node:child_process');
-const source=path.resolve(__dirname,'../../wizard/.gitlab/runtime/project-ci.cjs');
+const cli=path.resolve(__dirname,'../../dist/cli/main.js');
 function isolated(t,args,env={}) {
-  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'portable-project-ci-'));
-  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
-  const script=path.join(directory,'project-ci.cjs');
-  fs.copyFileSync(source,script);
-  return spawnSync(process.execPath,[script,...args],{cwd:directory,env:{PATH:path.dirname(process.execPath),...env},encoding:'utf8',timeout:15000});
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'named-project-ci-'));
+ t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ return spawnSync(process.execPath,[cli,'project-ci',...args.map(arg=>arg==='CHECKOUT'?directory:arg)],{cwd:directory,env:{PATH:path.dirname(process.execPath),...env},encoding:'utf8',timeout:15000});
 }
-test('portable shared Nest runtime starts without source checkout or installed dependencies',t=>{
- const result=isolated(t,['mirror']);
- assert.equal(result.status,0,result.stderr);
- assert.match(result.stdout,/skip/i);
+test('named CLI starts shared project CI without a running HTTP service',t=>{
+ const result=isolated(t,['mirror']);assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/skip/i);
 });
-test('portable environment boundary rejects mutable helper identity before native execution',t=>{
+test('named CLI rejects mutable environment helpers before native execution',t=>{
  const result=isolated(t,['environment','deploy','review'],{SYSTEM_WIZARD_ENVIRONMENT_IMAGE:'latest'});
- assert.equal(result.status,1);
- assert.match(result.stderr,/Immutable/);
- assert.doesNotMatch(result.stderr,/Cannot find module|ENOENT/);
+ assert.equal(result.status,1);assert.match(result.stderr,/operation-failed/);assert.doesNotMatch(result.stderr,/Cannot find module|ENOENT/);
 });
-test('portable browser boundary requires prepared source artifacts',t=>{
- const result=isolated(t,['browser']);
- assert.equal(result.status,1);
- assert.doesNotMatch(result.stderr,/Cannot find module/);
+test('browser adapter rejects absent prepared artifacts before native execution',async t=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'missing-browser-artifacts-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ let called=false;const service=new BrowserCheckService({run:async()=>{called=true;throw Error('unexpected-native-command');}},{ready:async()=>true,sleep:async()=>{}});
+ await assert.rejects(service.run(directory,{}),/artifacts missing/);assert.equal(called,false);
 });
-test('portable artifact carries reproducible package notices without checkout paths',()=>{
- const content=fs.readFileSync(source,'utf8');
- assert.doesNotMatch(content,/\/home\/codex\//);
- const licenses=fs.readFileSync(path.join(path.dirname(source),'LICENSES.txt'),'utf8');
- for(const pkg of ['@nestjs/core@12.5.1','@nestjs/common@12.5.1','reflect-metadata@0.2.2','rxjs@7.8.2']) assert(licenses.includes(pkg),pkg);
+test('named browser CLI requires prepared source artifacts',t=>{
+ const result=isolated(t,['browser','CHECKOUT']);assert.equal(result.status,1);assert.match(result.stderr,/operation-failed/);assert.doesNotMatch(result.stderr,/Cannot find module/);
+});
+test('active source CI installs a regular local CLI package and uses its named command',()=>{
+ const root=path.resolve(__dirname,'../..');
+ for(const name of ['.gitlab-ci.yml','wizard/.gitlab/primary.yml']){
+  const ci=fs.readFileSync(path.join(root,name),'utf8');assert(ci.includes('system-bootstrapper'));
+  assert(ci.includes('npm install --offline --ignore-scripts'));assert.doesNotMatch(ci,/node (?:dist\/cli\/main\.js|\.gitlab\/runtime\/project-ci\.cjs)/);
+ }
+ assert(!fs.existsSync(path.join(root,'wizard/.gitlab/runtime/project-ci.cjs')));
 });
 const {DeliveryService}=require('../../dist/modules/project-ci/delivery.service');
-const {DeliverySessionService}=require('../../dist/modules/project-ci/delivery-session.service');
+const {DeliverySessionService}=require('../../dist/modules/project-ci/deliverySession.service');
 const deliveryEnv={CI_PROJECT_ID:'1',CI_PIPELINE_ID:'2',CI_JOB_ID:'3',CI_COMMIT_SHA:'d'.repeat(40),CI_REGISTRY_IMAGE:'registry.example/group/project',CI_REGISTRY:'registry.example',CI_REGISTRY_USER:'job',CI_REGISTRY_PASSWORD:'private'};
 function deliveryFixture(t,mode='success'){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'delivery-ci-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const calls=[];let builder='';
