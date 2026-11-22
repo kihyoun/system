@@ -511,14 +511,24 @@ existing database rollback continues. The final normal controller starts and
 passes authenticated Fetch after full physical backup detachment. Failed steps
 publish no upgrade success.
 
+Unexpected public plan failures retain a finite, source-owned step code through
+the helper diagnostic and candidate report, including settings, lock acquisition
+and the checks before the plan directory exists. Known policy and native error
+categories keep their existing diagnostics. Step context preserves the original
+exception and never serializes its message, arguments, output or private paths.
+An early failure does not create a journal in an unvalidated directory; later
+failures retain the existing failed preflight state. The existing offline
+fixtures verify both boundaries without another platform scenario.
+
 A bounded 512-MiB/one-CPU helper uses the declared candidate image and its pinned
 Node runtime. Its thin Node entry invokes the production public-upgrade service;
 only publication transport and disposable host facts use fixture providers.
 Docker/Compose transports are thin Node adapters backed by a test-only Nest module. Preparation copies the
-exact candidate's Node binary, bundled operations, Docker/Compose binaries, musl
+exact candidate's Node binary, compiled application, Docker/Compose binaries, musl
 loader and declared C++/GCC libraries with native filesystem APIs. The copied fixture
-runtime also retains the candidate's exact `config/gitlab/security-release.json` and
-`gitlab/upgrade-child.js` loader inputs beside operations. Read-only mounts
+runtime retains the complete `dist/`, dependencies and packaged assets, including
+the compiled native child entries, plus the exact `config/gitlab/security-release.json`.
+Read-only mounts
 supply that runtime at an explicit path in both the helper and historical
 controller; no Node installation in the old image is assumed. The existing runtime
 probes load the copied interpreter and full public-upgrade Host entry in both images

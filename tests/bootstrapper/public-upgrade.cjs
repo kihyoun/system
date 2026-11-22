@@ -151,6 +151,43 @@ test('public native plan and apply retain independent archives before backup and
   assert(fs.existsSync(path.join(f.publicInput.directory, 'post-backup-verification.json')));
   assert.equal(f.rows.system_bootstrapper_1.Image, image('1'));
 });
+test('public native plan preserves private early and late errors with finite failed-step context', async (t) => {
+  const { fixtureDiagnostic } = require('../../dist/modules/testing/public-upgrade-host-entry'),
+    { publicUpgradePlanFailureStep } = require('../../dist/modules/host/public-upgrade-failure-context'),
+    diagnostics = require('../e2e/public-upgrade-diagnostics.json');
+  for (const step of ['backup-target', 'capture', 'data-sample']) {
+    const f = publicFixture(t),
+      sentinel = 'private-plan-token:/private/operator/' + step,
+      error = Object.freeze(new Error(sentinel)),
+      fail = () => { throw error; };
+    if (step === 'backup-target') {
+      f.publicInput.directory = path.join(f.directory, 'unvalidated-plan');
+      f.publicService.backup.target = fail;
+    } else if (step === 'capture') f.publicService.runtime.capture = fail;
+    else f.publicService.data.sample = async () => fail();
+    await assert.rejects(f.plan(), (caught) => {
+      assert.strictEqual(caught, error);
+      assert.equal(caught.message, sentinel);
+      assert(caught instanceof Error);
+      assert.equal(publicUpgradePlanFailureStep(caught), step);
+      const marker = diagnostics.marker + fixtureDiagnostic(caught, diagnostics);
+      assert.equal(marker, diagnostics.marker + 'plan-step-' + step + '-failed');
+      assert(!marker.includes(sentinel));
+      return true;
+    });
+    if (step === 'backup-target') {
+      assert(!fs.existsSync(f.publicInput.directory), 'early failure creates no unvalidated journal');
+    } else {
+      assert.equal(
+        JSON.parse(fs.readFileSync(path.join(f.publicInput.directory, 'preflight.json'))).phase,
+        'failed',
+      );
+      assert(!fs.existsSync(path.join(f.publicInput.directory, 'plan.json')));
+      for (const name of fs.readdirSync(f.publicInput.directory))
+        assert(!fs.readFileSync(path.join(f.publicInput.directory, name), 'utf8').includes(sentinel));
+    }
+  }
+});
 test('public native apply refuses unconfirmed plans before external calls and retains recovery inputs on backup, health, update or sample failures', async (t) => {
   for (const mode of ['confirmation', 'backup', 'health', 'update', 'sample']) {
     const f = publicFixture(t),

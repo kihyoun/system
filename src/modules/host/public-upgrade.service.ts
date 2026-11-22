@@ -14,6 +14,7 @@ import { HostInstallService, requireValue as ensure } from './install';
 import { PublicUpgradePreparationService } from './public-upgrade-preparation.service';
 import { PublicUpgradeBackupService } from './public-upgrade-backup.service';
 import { PublicUpgradePlanService } from './public-upgrade-plan.service';
+import { publicUpgradePlanStep, publicUpgradePlanStepSync } from './public-upgrade-failure-context';
 import { PublicUpgradeApplyService } from './public-upgrade-apply.service';
 import { PairedControllerService } from './paired-controller.service';
 import { PairedUpdateService } from './paired-update.service';
@@ -92,11 +93,12 @@ export class PublicUpgradeService {
     );
     for (const filename of [input.checkout, input.persistenceEnv, input.directory])
       ensure(path.isAbsolute(filename), 'absolute-public-upgrade-input-required');
-    const config = await this.runtime.settings(
-      input.persistenceEnv,
-      input.checkout,
-      this.host.environment,
-    );
+    const settings = () =>
+        this.runtime.settings(input.persistenceEnv, input.checkout, this.host.environment),
+      config =
+        input.operation === 'plan'
+          ? await publicUpgradePlanStep('settings', settings)
+          : await settings();
     if (input.operation === 'status' || input.operation === 'recover')
       return this.status(input, config);
     ensure(input.tokenFile, 'own-installation-API-token-required');
@@ -165,7 +167,9 @@ export class PublicUpgradeService {
       });
     };
     if (input.operation === 'plan') {
-      const unlock = fileLock(path.join(path.dirname(config._main), '.public-upgrade-plan.lock'));
+      const unlock = publicUpgradePlanStepSync('lock', () =>
+        fileLock(path.join(path.dirname(config._main), '.public-upgrade-plan.lock')),
+      );
       const attemptId = crypto.randomBytes(16).toString('hex');
       try {
         const result = await this.plans.plan(

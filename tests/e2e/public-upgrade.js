@@ -295,7 +295,7 @@ class NativeCLI {
     const operation=args[0]==='gitlab' ? 'gitlab-'+requested : hooks.includes(requested) && requested!=='restore-original' ? 'initialize' : requested;
     const failureCodes = Object.fromEntries([...new Set([
       ...Object.values(diagnostics.errors), ...Object.values(diagnostics.dockerOperations),
-      ...Object.values(diagnostics.exceptionTypes), diagnostics.fallback
+      ...Object.values(diagnostics.exceptionTypes), ...Object.values(diagnostics.planSteps), diagnostics.fallback
     ])].map(code => [diagnostics.marker + code, 'public-upgrade-native-' + operation + '-' + code]));
     try {
       const raw = await candidate.inner([...command, candidate.spec.images.candidate.id,

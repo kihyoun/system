@@ -510,10 +510,10 @@ test('fixed native diagnostic markers survive the real Docker sanitizer and nati
       'upgrade-command-preflight-sql-timeout','upgrade-command-migration-status-nonzero-exit',
       'public-gitlab-prerequisite-not-declared','public-gitlab-retained-input-mismatch','public-gitlab-installed-controller-mismatch',
       'public-gitlab-helper-runtime-overlay-refused','public-gitlab-helper-authority-mismatch','public-gitlab-helper-outcome-uncertain',
-      ...Object.values(diagnostics.dockerOperations)];
+      ...Object.values(diagnostics.dockerOperations), ...Object.values(diagnostics.planSteps)];
     // Cover every distinct sanitizer code and phase without their redundant Cartesian product.
     for(let index=0;index<Math.max(phases.length,codes.length);index++){
-      const operation=phases[index%phases.length],code=codes[index%codes.length];
+      const code=codes[index%codes.length],operation=Object.values(diagnostics.planSteps).includes(code)?'plan':phases[index%phases.length];
       process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR='private-token\n'+diagnostics.marker+code+'\nprivate-stderr';
       const args=operation.startsWith('gitlab-')?['gitlab','--operation',operation.slice(7)]:['initialize','restore-original'].includes(operation)?[operation]:['--operation',operation];
       await assert.rejects(()=>native.invoke(args),error=>{
@@ -524,7 +524,8 @@ test('fixed native diagnostic markers survive the real Docker sanitizer and nati
     }
     for(const message of [diagnostics.marker+'private-token',diagnostics.marker+'docker-command-failed private-token',
       'prefix '+diagnostics.marker+'docker-command-failed',diagnostics.marker+'docker-data-sample-failed private-token',
-      diagnostics.marker+'public-gitlab-retained-input-mismatch private-token']){
+      diagnostics.marker+'public-gitlab-retained-input-mismatch private-token',
+      diagnostics.marker+'plan-step-private-token-failed',diagnostics.marker+'plan-step-capture-failed private-token']){
       process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR=message;
       await assert.rejects(()=>native.invoke(['--operation','plan']),error=>error.message==='public-upgrade-native-plan-failed'&&error.exitCode===7);
     }
@@ -615,13 +616,40 @@ test('future publication fixture is deterministic and verified by the production
 
 });
 
-test('native host fixture keeps diagnostics fixed and runs initialization through the shared Nest module', async () => {
+test('native host fixture keeps diagnostics fixed and runs initialization through the shared Nest module', async (t) => {
   const {upgradeCommandFailureCodes}=require('../../dist/modules/gitlab-upgrade/command-failure-policy');
   const {fixtureDiagnostic}=require('../../dist/modules/testing/public-upgrade-host-entry');
   const {PublicUpgradeHostService}=require('../../dist/modules/testing/public-upgrade-host.service');
   const {HostPolicyError}=require('../../dist/modules/host/install');
+  const {publicUpgradePlanSteps,publicUpgradePlanStep,publicUpgradePlanStepSync,publicUpgradePlanFailureStep}=require('../../dist/modules/host/public-upgrade-failure-context');
   const diagnostics=require('../e2e/public-upgrade-diagnostics.json');
   for(const code of upgradeCommandFailureCodes)assert.equal(diagnostics.errors[code],code);
+  assert.deepEqual(Object.keys(diagnostics.planSteps),publicUpgradePlanSteps);
+  for(const step of publicUpgradePlanSteps){
+    const error=Object.freeze(new Error('private-token:/private/operator'));
+    await assert.rejects(publicUpgradePlanStep('local',()=>publicUpgradePlanStep(step,()=>{throw error;})),caught=>caught===error);
+    assert.equal(publicUpgradePlanFailureStep(error),step,'outer context preserves the precise inner step');
+    assert.equal(fixtureDiagnostic(error,diagnostics),'plan-step-'+step+'-failed');
+    assert.deepEqual(Object.getOwnPropertyNames(error),['stack','message'],'context does not mutate errors');
+  }
+  for(const error of [new HostPolicyError('completed-native-gitlab-upgrade-required'),
+    Object.assign(new Error('/private/secret'),{code:'ENOENT'}),new SyntaxError('private-token'),new TypeError('private-token')]){
+    const expected=fixtureDiagnostic(error,diagnostics);
+    await assert.rejects(publicUpgradePlanStep('capture',()=>Promise.reject(error)),caught=>caught===error);
+    assert.equal(fixtureDiagnostic(error,diagnostics),expected,'known diagnostics take precedence over step context');
+  }
+  const lockError=Object.freeze(new Error('private-lock-path'));
+  assert.throws(()=>publicUpgradePlanStepSync('lock',()=>{throw lockError;}),caught=>caught===lockError);
+  assert.equal(publicUpgradePlanFailureStep(lockError),'lock');
+  for(const value of ['private-token',null,7]){
+    await assert.rejects(publicUpgradePlanStep('capture',()=>Promise.reject(value)),caught=>caught===value);
+    assert.equal(publicUpgradePlanFailureStep(value),undefined);
+    assert.equal(fixtureDiagnostic(value,diagnostics),diagnostics.fallback);
+  }
+  const uncommitted=Object.freeze(new Error('private-token'));
+  await assert.rejects(publicUpgradePlanStep('private-token',()=>Promise.reject(uncommitted)),caught=>caught===uncommitted);
+  assert.equal(publicUpgradePlanFailureStep(uncommitted),undefined);
+  assert.equal(fixtureDiagnostic(uncommitted,diagnostics),diagnostics.fallback);
   for(const [label,code] of Object.entries(diagnostics.errors)){
     assert.equal(fixtureDiagnostic(new HostPolicyError(label),diagnostics),code);
     for(const error of [new Error(label),new HostPolicyError(label+':private-token'),new HostPolicyError('private-token:'+label)])
@@ -633,6 +661,32 @@ test('native host fixture keeps diagnostics fixed and runs initialization throug
     const root=path.resolve(__dirname,'../..'), input=require('./public-upgrade-fixture').publicationFixture();
     input.live=path.join(directory,'live');fs.mkdirSync(path.join(input.live,'configuration'),{recursive:true});
     fs.symlinkSync(root,path.join(directory,'source'),'dir');
+    const {publicUpgradeHostMain}=require('../../dist/modules/testing/public-upgrade-host-entry');
+    const factory=require('../../node_modules/@nestjs/core').NestFactory;
+    const previousExitCode=process.exitCode;
+    for(const mode of ['bootstrap','request','inner','non-plan']){
+      const error=Object.freeze(new Error('private-bootstrap-token:/private/operator'));
+      let output='',closed=0;
+      const create=t.mock.method(factory,'createApplicationContext',async()=>{
+        if(mode==='bootstrap'||mode==='non-plan')throw error;
+        return {get:()=>({execute:()=>mode==='inner'?publicUpgradePlanStep('backup-target',()=>{throw error;}):Promise.reject(error)}),close:async()=>{closed++;}};
+      });
+      const stderr=t.mock.method(process.stderr,'write',value=>{output+=value;return true;});
+      try{
+        const operation=mode==='non-plan'?'status':'plan';
+        await publicUpgradeHostMain(['--operation',operation,'--checkout',root,'--persistence-env',path.join(directory,'storage.env'),'--plan-dir',path.join(directory,'unvalidated-plan')],directory);
+        const step=mode==='inner'?'backup-target':mode==='non-plan'?undefined:'request';
+        assert.equal(publicUpgradePlanFailureStep(error),step);
+        assert.equal(output,diagnostics.marker+(step?diagnostics.planSteps[step]:diagnostics.fallback)+'\n');
+        assert(!output.includes('private'));
+        assert.equal(error.message,'private-bootstrap-token:/private/operator');
+        assert.equal(process.exitCode,1);
+        assert.equal(closed,mode==='request'||mode==='inner'?1:0);
+        assert(!fs.existsSync(path.join(directory,'unvalidated-plan')));
+      }finally{
+        create.mock.restore();stderr.mock.restore();process.exitCode=previousExitCode;
+      }
+    }
     fs.writeFileSync(path.join(directory,'fixture.json'),JSON.stringify(input),{mode:0o600});
     const main=path.join(input.live,'configuration/.docker.env');
     fs.writeFileSync(main,Buffer.concat([fs.readFileSync(path.join(root,'config/system/.docker.env.example')),Buffer.from("\nexport BOOTSTRAPPER_IMAGE='"+input.spec.images.candidate.id+"'\nexport WIZARD_IMAGE='"+input.spec.images.wizard.id+"'\n")]),{mode:0o600});

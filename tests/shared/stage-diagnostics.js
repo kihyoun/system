@@ -6,7 +6,7 @@ const REASONS = new Set([
   ...['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover',
     'gitlab-prepare', 'gitlab-plan', 'gitlab-promote', 'gitlab-status', 'gitlab-abort', 'gitlab-rollback'].flatMap(operation =>
     [...Object.values(publicUpgrade.errors), ...Object.values(publicUpgrade.dockerOperations),
-      ...Object.values(publicUpgrade.exceptionTypes), publicUpgrade.fallback]
+      ...Object.values(publicUpgrade.exceptionTypes), ...Object.values(publicUpgrade.planSteps), publicUpgrade.fallback]
       .map(code => 'public-upgrade-native-' + operation + '-' + code)),
   'public-upgrade-data-inventory-invalid',
   'public-upgrade-data-inventory-limit',

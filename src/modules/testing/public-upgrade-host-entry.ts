@@ -10,6 +10,10 @@ import {
 import { parsePublicUpgradeInput } from '../host/public-upgrade-entry';
 import { HostPolicyError } from '../host/install';
 import { record } from '../release/source-identity';
+import {
+  publicUpgradePlanFailureStep,
+  publicUpgradePlanStep,
+} from '../host/public-upgrade-failure-context';
 
 export function fixtureDiagnostic(error: unknown, diagnosticsValue: unknown): string {
   const diagnostics = record(diagnosticsValue),
@@ -23,6 +27,9 @@ export function fixtureDiagnostic(error: unknown, diagnosticsValue: unknown): st
   }
   if (error instanceof SyntaxError) return 'json-invalid';
   if (error instanceof TypeError) return 'type-error';
+  const step = publicUpgradePlanFailureStep(error),
+    steps = record(diagnostics.planSteps);
+  if (step && Object.hasOwn(steps, step)) return String(steps[step]);
   return String(diagnostics.fallback);
 }
 export async function publicUpgradeHostMain(
@@ -50,11 +57,17 @@ export async function publicUpgradeHostMain(
             ].includes(args[0])
           ? (args[0] as PublicUpgradeFixtureOperation)
           : parsePublicUpgradeInput(args);
-    app = await NestFactory.createApplicationContext(
-      PublicUpgradeHostModule.register(directory, checkout),
-      { logger: false, abortOnError: false },
-    );
-    const result = await app.get(PublicUpgradeHostService).execute(directory, input);
+    const execute = async () => {
+      app = await NestFactory.createApplicationContext(
+        PublicUpgradeHostModule.register(directory, checkout),
+        { logger: false, abortOnError: false },
+      );
+      return app.get(PublicUpgradeHostService).execute(directory, input);
+    };
+    const result =
+      typeof input === 'object' && 'operation' in input && input.operation === 'plan'
+        ? await publicUpgradePlanStep('request', execute)
+        : await execute();
     process.stdout.write(JSON.stringify(result) + '\n');
   } catch (error) {
     process.stderr.write(String(diagnostics.marker) + fixtureDiagnostic(error, diagnostics) + '\n');

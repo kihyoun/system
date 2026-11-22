@@ -318,7 +318,18 @@
     "upgrade-command-native-spawn-permission": "upgrade-command-native-spawn-permission",
     "upgrade-command-native-spawn-resource": "upgrade-command-native-spawn-resource",
     "upgrade-command-native-output-limit": "upgrade-command-native-output-limit",
-    "upgrade-command-native-native-error": "upgrade-command-native-native-error"
+    "upgrade-command-native-native-error": "upgrade-command-native-native-error",
+    "gitlab-prerequisite-security-profile-mismatch": "gitlab-prerequisite-security-profile-mismatch",
+    "retained-gitlab-upgrade-checkpoint-required": "retained-gitlab-upgrade-checkpoint-required",
+    "private-gitlab-upgrade-receipt-required": "private-gitlab-upgrade-receipt-required",
+    "completed-native-gitlab-upgrade-required": "completed-native-gitlab-upgrade-required",
+    "gitlab-prerequisite-checkpoint-changed": "gitlab-prerequisite-checkpoint-changed",
+    "gitlab-prerequisite-runner-transition-required": "gitlab-prerequisite-runner-transition-required",
+    "gitlab-prerequisite-services-required": "gitlab-prerequisite-services-required",
+    "gitlab-prerequisite-running-image-mismatch": "gitlab-prerequisite-running-image-mismatch",
+    "gitlab-prerequisite-running-version-mismatch": "gitlab-prerequisite-running-version-mismatch",
+    "accepted-controller-image-version-unavailable": "accepted-controller-image-version-unavailable",
+    "unsupported-controller-image-layout-version": "unsupported-controller-image-layout-version"
   },
   "dockerOperations": {
     "data-sample": "docker-data-sample-failed",
@@ -337,5 +348,24 @@
     "ImportError": "import-failed",
     "ModuleNotFoundError": "module-missing"
   },
-  "fallback": "unclassified-error"
+  "fallback": "unclassified-error",
+  "planSteps": {
+    "request": "plan-step-request-failed",
+    "settings": "plan-step-settings-failed",
+    "lock": "plan-step-lock-failed",
+    "local": "plan-step-local-failed",
+    "public-inputs": "plan-step-public-inputs-failed",
+    "verify-checkout": "plan-step-verify-checkout-failed",
+    "installed": "plan-step-installed-failed",
+    "prerequisite": "plan-step-prerequisite-failed",
+    "host": "plan-step-host-failed",
+    "sync-idle": "plan-step-sync-idle-failed",
+    "free-bytes": "plan-step-free-bytes-failed",
+    "backup-target": "plan-step-backup-target-failed",
+    "selection-before": "plan-step-selection-before-failed",
+    "capture": "plan-step-capture-failed",
+    "paired-preflight": "plan-step-paired-preflight-failed",
+    "selection-after": "plan-step-selection-after-failed",
+    "data-sample": "plan-step-data-sample-failed"
+  }
 }

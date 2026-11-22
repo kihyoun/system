@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { record } from '../release/source-identity';
 import { requireValue as ensure, privateFile, writePrivate } from './install';
 import { upgradePath } from './upgrade-graph';
+import { publicUpgradePlanStep } from './public-upgrade-failure-context';
 type NativeResult<T> = T | Promise<T>;
 type Row = Record<string, unknown>;
 export interface PublicUpgradePlanInput {
@@ -74,14 +75,25 @@ export class PublicUpgradePlanService {
     input: PublicUpgradePlanInput,
     port: PublicUpgradePlanPort = this.port,
   ): Promise<{ value: Row; sha256: string }> {
+    return publicUpgradePlanStep('local', () => this.createPlan(input, port));
+  }
+
+  private async createPlan(
+    input: PublicUpgradePlanInput,
+    port: PublicUpgradePlanPort,
+  ): Promise<{ value: Row; sha256: string }> {
     ensure(/^[a-f0-9]{32}$/.test(input.attemptId), 'public-upgrade-attempt-identity-required');
-    const authority = await port.publicInputs(input.repository, input.target);
+    const authority = await publicUpgradePlanStep('public-inputs', () =>
+      port.publicInputs(input.repository, input.target),
+    );
     ensure(
       input.target === fs.readFileSync(path.join(input.checkout, 'VERSION'), 'utf8').trim(),
       'run-the-selected-target-release-checkout',
     );
-    await port.verifyCheckout();
-    const previous = await port.installed(input.repository, input.target),
+    await publicUpgradePlanStep('verify-checkout', () => port.verifyCheckout());
+    const previous = await publicUpgradePlanStep('installed', () =>
+        port.installed(input.repository, input.target),
+      ),
       route = upgradePath(authority.graph, String(previous.version), input.target);
     ensure(
       route.status === 'supported',
@@ -104,17 +116,21 @@ export class PublicUpgradePlanService {
         route.transitions.length === 1 && input.gitlabCheckpoint,
         'complete-native-gitlab-upgrade-first-and-select-retained-checkpoint',
       );
-      prerequisite = await port.prerequisite(input.gitlabCheckpoint);
+      prerequisite = await publicUpgradePlanStep('prerequisite', () =>
+        port.prerequisite(input.gitlabCheckpoint!),
+      );
     }
-    await port.host();
-    await port.syncIdle();
+    await publicUpgradePlanStep('host', () => port.host());
+    await publicUpgradePlanStep('sync-idle', () => port.syncIdle());
     const required = Math.max(...route.transitions.map((edge) => edge.minimumFreeGiB)) * 1024 ** 3;
-    const free = await port.freeBytes();
+    const free = await publicUpgradePlanStep('free-bytes', () => port.freeBytes());
     ensure(
       free.length === 2 && free.every((bytes) => Number.isFinite(bytes) && bytes >= required),
       'insufficient-upgrade-checkpoint-or-image-storage',
     );
-    const backup = await port.backupTarget(input.backupFile);
+    const backup = await publicUpgradePlanStep('backup-target', () =>
+      port.backupTarget(input.backupFile),
+    );
     const directory = input.directory,
       boundary = path.join(input.root, 'recovery/public-upgrades');
     let ancestor = directory;
@@ -176,13 +192,15 @@ export class PublicUpgradePlanService {
       save('target.json', raw);
       save('provenance.json', proof);
       json('previous-release.json', previous);
-      const selected = await port.selection();
+      const selected = await publicUpgradePlanStep('selection-before', () => port.selection());
       save('previous-selection.json', Buffer.from(selected.json, 'base64'));
       save('previous-selection.env', Buffer.from(selected.environment, 'base64'));
-      json('baseline.json', await port.capture());
+      json('baseline.json', await publicUpgradePlanStep('capture', () => port.capture()));
       if (route.transitions.length === 1)
-        await port.invoke(checkpoint, path.join(directory, 'target.json'));
-      const current = await port.selection();
+        await publicUpgradePlanStep('paired-preflight', () =>
+          port.invoke(checkpoint, path.join(directory, 'target.json')),
+        );
+      const current = await publicUpgradePlanStep('selection-after', () => port.selection());
       const value: Row = {
         format: 'system-public-upgrade-plan-v1',
         installedVersion: previous.version,
@@ -195,7 +213,7 @@ export class PublicUpgradePlanService {
         provenanceSha256: sha(proof),
         selectionSha256: sha(Buffer.from(current.json, 'base64')),
         configurationSha256: current.configurationSha256,
-        dataSample: await port.dataSample(),
+        dataSample: await publicUpgradePlanStep('data-sample', () => port.dataSample()),
         baselineSha256: sha(fs.readFileSync(path.join(directory, 'baseline.json'))),
         checkpoint,
         backupDestination: input.backupDestination,
