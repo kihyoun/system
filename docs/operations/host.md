@@ -97,12 +97,15 @@ accepted image with a read-only `/host` mount. Calling the in-container host
 configuration reader directly on the native host does not provide this mount or
 its trusted image selector and is unsupported.
 
-The storage launch path follows the declared version inside that immutable image,
-not the checkout supplied for host configuration. A read-only, network-disabled
-probe reads `/system/VERSION` without mounting host data. Unknown or unreadable
-image versions fail before persistence preparation or storage launch. This allows
-an upgrade checkout to validate a backup through the still-installed previous
-controller without calling a newer entry point that its image does not contain.
+The storage launch path follows the start command declared in that immutable
+image's Docker configuration, independently of the checkout supplied for host
+configuration. Only the exact historical and native command arrays are supported.
+Read-only image inspection starts no container and mounts no host data. An
+unreadable, malformed or unknown command fails before persistence preparation or
+storage launch. Historical published images need not contain the checkout's
+version file. This allows an upgrade checkout to validate a backup through the
+still-installed previous controller without calling a newer entry point that its
+image does not contain. Checkout-version validation remains independent.
 
 `HostReleaseAuthorityService` validates retained successor receipts and public
 upgrade provenance. Explicit monorepo receipts require the full shared System

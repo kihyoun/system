@@ -59,25 +59,30 @@ for (const [version,imageVersion] of [['1.2.0','1.2.0'],['2.0.0','2.0.0'],['2.0.
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'host-storage-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  fs.writeFileSync(path.join(root,'VERSION'),version+'\n');
  const selector=path.join(root,'persistence.env');fs.writeFileSync(selector,'',{mode:0o600});
- const calls=[],id='sha256:'+'a'.repeat(64),container='b'.repeat(64);let name,uncertain=false,observedVersion=imageVersion,probeFails=false;
- const host={rootUser:()=>true,environment:{DOCKER_CONTEXT:'remote'},storage:()=>({selected:{},root}),run(binary,args,env,timeout){calls.push([binary,args]);if(args.includes('create')){name=args[args.indexOf('--name')+1];return container;}if(args.includes('image'))return id;if(args.includes('run')){assert.equal(timeout,10000);if(probeFails)throw Error('private-probe-detail');return observedVersion+'\n';}if(args.includes('inspect'))return JSON.stringify([{Id:container,Image:id,Config:{Labels:{'system.storage.launcher':name}},State:{Status:'exited',Running:false,ExitCode:0}}]);return '';}};
+ const calls=[],id='sha256:'+'a'.repeat(64),container='b'.repeat(64),imageCommand=imageVersion==='2.0.0'?['system-bootstrapper','lifecycle','start','/system']:['/bin/bash','./start.sh'];let name,uncertain=false,observedCommand=JSON.stringify(imageCommand),inspectionFails=false;
+ const host={rootUser:()=>true,environment:{DOCKER_CONTEXT:'remote'},storage:()=>({selected:{},root}),run(binary,args,env,timeout){calls.push([binary,args]);if(args.includes('create')){name=args[args.indexOf('--name')+1];return container;}if(args[1]==='image'&&args[2]==='inspect'){if(args[4]==='{{.Id}}')return id;if(args[4]==='{{json .Config.Cmd}}'){assert.equal(args.at(-1),id);assert.equal(timeout,10000);if(inspectionFails)throw Error('private-inspection-detail');return observedCommand+'\n';}}if(args[1]==='container'&&args[2]==='inspect')return JSON.stringify([{Id:container,Image:id,Config:{Labels:{'system.storage.launcher':name}},State:{Status:'exited',Running:false,ExitCode:0}}]);if(args[1]==='rm')return '';throw Error('unsupported-test-host-command');}};
  const attached={async run(binary,args,env){calls.push([binary,args]);assert(!env.DOCKER_CONTEXT);assert(args.includes('--attach'));assert(args.includes('--interactive'));if(uncertain)throw Error('host-storage-launch-outcome-uncertain');}};
  const persistence={async prepare(){calls.push(['persistence.prepare',[]]);}};
  const service=new HostStorageService(host,attached,persistence),command={operation:'harvest',image:'accepted:image',checkout:root,persistenceEnv:selector,checkOnly:true};
  await service.execute(command);
  const args=calls.find(([,args])=>args.includes('create'))[1];assert.deepEqual(args.slice(args.indexOf(id)+1),imageVersion==='2.0.0'?['/system/dist/cli/main.js','storage','host','harvest','--check-only']:['/system/system/seed-operation.js','host','harvest','--check-only']);assert(args.includes('type=bind,src=/,dst=/host,readonly'));assert(args.includes(`SYSTEM_SEED_CONTROLLER_IMAGE=${id}`));assert(args.includes('--check-only'));assert(!calls.some(([binary])=>binary==='bash'));assert(calls.at(-1)[1].includes('rm'));
- const probe=calls.find(([,args])=>args.includes('run'))[1];assert.deepEqual(probe.slice(probe.indexOf(id)),[id,'/system/VERSION']);assert(probe.includes('--read-only'));assert(probe.includes('--pull=never'));assert.equal(probe[probe.indexOf('--network')+1],'none');assert.equal(probe[probe.indexOf('--entrypoint')+1],'/bin/cat');assert(probe.includes('--rm'));assert(probe.includes('no-new-privileges'));assert.equal(probe[probe.indexOf('--cap-drop')+1],'ALL');assert(!probe.includes('--mount'));assert(!probe.includes('--env'));assert(!calls.some(([binary])=>binary==='persistence.prepare'));
+ const inspection=calls.find(([,args])=>args.includes('{{json .Config.Cmd}}'))[1];assert.deepEqual(inspection,['--host=unix:///var/run/docker.sock','image','inspect','--format','{{json .Config.Cmd}}',id]);assert(!calls.some(([,args])=>args.includes('run')));assert(!calls.some(([binary])=>binary==='persistence.prepare'));
  calls.length=0;uncertain=true;await assert.rejects(service.execute(command),/outcome-uncertain/);assert(!calls.some(([,args])=>args.includes('rm')));
  await assert.rejects(service.execute({...command,operation:'bad'}),/invalid-host-storage-operation/);
  if(version==='2.0.0'&&imageVersion==='1.2.0'){
   uncertain=false;
-  for(const invalid of ['', '2.0.1', '1.2.0\n2.0.0']){
-   observedVersion=invalid;calls.length=0;
-   await assert.rejects(service.execute({...command,checkOnly:false}),error=>error.code==='unsupported-controller-image-layout-version');
+  for(const invalid of [null,[],{},'', ['/bin/bash'], ['bash','./start.sh'], ['/bin/bash','./start.sh','extra'], ['system-bootstrapper','lifecycle','start'], ['system-bootstrapper','lifecycle','start','/other']]){
+   observedCommand=JSON.stringify(invalid);calls.length=0;
+   await assert.rejects(service.execute({...command,checkOnly:false}),error=>error.code==='unsupported-controller-image-layout');
    assert(!calls.some(([binary,args])=>binary==='persistence.prepare'||args.includes('create')||args.includes('start')));
   }
-  observedVersion=imageVersion;probeFails=true;calls.length=0;
-  await assert.rejects(service.execute({...command,checkOnly:false}),error=>error.code==='accepted-controller-image-version-unavailable');
+  for(const invalid of ['', '<no value>', '{private-layout-detail']){
+   observedCommand=invalid;calls.length=0;
+   await assert.rejects(service.execute({...command,checkOnly:false}),error=>error.code==='accepted-controller-image-layout-unavailable');
+   assert(!calls.some(([binary,args])=>binary==='persistence.prepare'||args.includes('create')||args.includes('start')));
+  }
+  observedCommand=JSON.stringify(imageCommand);inspectionFails=true;calls.length=0;
+  await assert.rejects(service.execute({...command,checkOnly:false}),error=>error.code==='accepted-controller-image-layout-unavailable');
   assert(!calls.some(([binary,args])=>binary==='persistence.prepare'||args.includes('create')||args.includes('start')));
  }
 });

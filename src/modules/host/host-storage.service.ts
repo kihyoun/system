@@ -1,4 +1,4 @@
-import { checkoutLayout, releaseLayout } from '../../common/runtime/checkout-layout';
+import { checkoutLayout } from '../../common/runtime/checkout-layout';
 import fs from 'node:fs';
 import { HostPersistenceService } from '../host-lifecycle/persistence.service';
 import { randomBytes } from 'node:crypto';
@@ -22,40 +22,34 @@ export class HostStorageService {
   ) {}
 
   private runtime(imageId: string): string[] {
-    let version: string;
+    let command: unknown;
     try {
-      version = this.host
-        .run(
+      command = JSON.parse(
+        this.host.run(
           'docker',
           [
             '--host=unix:///var/run/docker.sock',
-            'run',
-            '--rm',
-            '--pull=never',
-            '--read-only',
-            '--network',
-            'none',
-            '--cap-drop',
-            'ALL',
-            '--security-opt',
-            'no-new-privileges',
-            '--entrypoint',
-            '/bin/cat',
+            'image',
+            'inspect',
+            '--format',
+            '{{json .Config.Cmd}}',
             imageId,
-            '/system/VERSION',
           ],
           undefined,
           10000,
-        )
-        .trim();
+        ),
+      );
     } catch {
-      throw new HostPolicyError('accepted-controller-image-version-unavailable');
+      throw new HostPolicyError('accepted-controller-image-layout-unavailable');
     }
-    const layout = releaseLayout(version);
-    requireValue(layout, 'unsupported-controller-image-layout-version');
-    return layout === 'native'
-      ? ['/system/dist/cli/main.js', 'storage', 'host']
-      : ['/system/system/seed-operation.js', 'host'];
+    const matches = (expected: readonly string[]): boolean =>
+      Array.isArray(command) &&
+      command.length === expected.length &&
+      command.every((value, index) => value === expected[index]);
+    if (matches(['/bin/bash', './start.sh'])) return ['/system/system/seed-operation.js', 'host'];
+    if (matches(['system-bootstrapper', 'lifecycle', 'start', '/system']))
+      return ['/system/dist/cli/main.js', 'storage', 'host'];
+    throw new HostPolicyError('unsupported-controller-image-layout');
   }
 
   async execute(command: HostStorageCommand): Promise<void> {

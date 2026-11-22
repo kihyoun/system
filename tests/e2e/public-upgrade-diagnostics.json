@@ -329,7 +329,9 @@
     "gitlab-prerequisite-running-image-mismatch": "gitlab-prerequisite-running-image-mismatch",
     "gitlab-prerequisite-running-version-mismatch": "gitlab-prerequisite-running-version-mismatch",
     "accepted-controller-image-version-unavailable": "accepted-controller-image-version-unavailable",
-    "unsupported-controller-image-layout-version": "unsupported-controller-image-layout-version"
+    "unsupported-controller-image-layout-version": "unsupported-controller-image-layout-version",
+    "accepted-controller-image-layout-unavailable": "accepted-controller-image-layout-unavailable",
+    "unsupported-controller-image-layout": "unsupported-controller-image-layout"
   },
   "dockerOperations": {
     "data-sample": "docker-data-sample-failed",
