@@ -215,7 +215,21 @@ function nativeProof(args, proof={}) {
   assert.throws(() => session.command(0), /session-invalid/);
   const sampler = new (require('../../dist/modules/gitlab-preflight/gitlab-data-sample.service').GitlabDataSampleService)(database);
   const sampled = {projects: [[1, 'team/full', 'a'.repeat(40)], [2, 'team/empty', null]], users: [[1, 'root']], issues: [[2, 1, 1]], mergeRequests: [[3, 1, 1]], registries: [[4, 1, '']]};
-  let sampleClosed = false, sampleQueries = 0, sampleGets = [];
+  let sampleClosed = false, sampleQueries = 0, sampleGets = [], invalidSampleApi = false;
+  const sampleOrigin = 'https://gitlab.example.test', sampleCredential = 'private-sample-token', sampleToken = path.join(root, 'sample-token');
+  fs.writeFileSync(sampleToken, sampleCredential, {mode: 0o600});
+  const sampleApi = new (require('../../dist/modules/host/candidate-gitlab.service').CandidateGitLabService)(async (url, requestOptions) => {
+    sampleGets.push({url, options: requestOptions});
+    const responses = {
+      [sampleOrigin + '/api/v4/projects/1']: {id: 1, path_with_namespace: 'team/full', empty_repo: false},
+      [sampleOrigin + '/api/v4/projects/2']: {id: 2, path_with_namespace: 'team/empty', empty_repo: true},
+      [sampleOrigin + '/api/v4/projects/1/repository/commits/HEAD']: {id: 'a'.repeat(40)}
+    };
+    assert(Object.hasOwn(responses, url), 'Sampler requests stay on the fixed GitLab API origin');
+    assert.deepEqual(requestOptions.headers, {'PRIVATE-TOKEN': sampleCredential, Accept: 'application/json'});
+    assert.equal(requestOptions.redirect, 'manual'); assert.equal(requestOptions.body, undefined);
+    return new Response(JSON.stringify(invalidSampleApi ? {id: 999} : responses[url]), {status: 200});
+  }).connect(sampleOrigin, sampleToken);
   const samplePort = {
     command(args) {
       if (args.includes('rm')) sampleClosed = true;
@@ -228,18 +242,14 @@ function nativeProof(args, proof={}) {
       }
       return nativeProof(args, {topology});
     },
-    async get(route) {
-      sampleGets.push(route);
-      if (route === 'projects/1') return {id: 1, path_with_namespace: 'team/full', empty_repo: false};
-      if (route === 'projects/2') return {id: 2, path_with_namespace: 'team/empty', empty_repo: true};
-      assert.equal(route, 'projects/1/repository/commits/HEAD'); return {id: 'a'.repeat(40)};
-    }
+    get: sampleApi.get
   };
   const dataProof = await sampler.sample(running.Id, samplePort);
   assert.equal(dataProof.sha256, require('crypto').createHash('sha256').update(JSON.stringify(sampled)).digest('hex'));
   assert.equal(dataProof.sampledProjects, 2); assert.equal(sampleQueries, 5); assert.equal(sampleGets.length, 3); assert(sampleClosed);
-  sampleClosed = false;
-  await assert.rejects(() => sampler.sample(running.Id, {...samplePort, get: async () => ({id: 999})}), /data-sample-unavailable/);
+  assert.deepEqual(sampleGets.map(call => call.url), [sampleOrigin + '/api/v4/projects/1', sampleOrigin + '/api/v4/projects/1/repository/commits/HEAD', sampleOrigin + '/api/v4/projects/2']);
+  sampleClosed = false; invalidSampleApi = true;
+  await assert.rejects(() => sampler.sample(running.Id, samplePort), /data-sample-unavailable/);
   assert(sampleClosed, 'Failed API evidence must close private DB session');
   const privateInputs=[], privateCommands=[];
   await probe.probe(running.Id,{command(args,timeout,input){privateCommands.push(args);if(input!==undefined)privateInputs.push(input);return nativeProof(args,{topology:tlsTopology});}});

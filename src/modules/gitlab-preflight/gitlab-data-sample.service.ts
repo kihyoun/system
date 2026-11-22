@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { GitlabDatabaseService, type GitlabDatabasePort } from './gitlab-database.service';
 
 export interface GitlabDataSamplePort extends GitlabDatabasePort {
-  /** Authenticated, local, read-only GitLab API request. Never create credentials here. */
+  /** Authenticated, local, read-only GitLab API request using a leading-slash route. Never create credentials here. */
   get(route: string): Promise<unknown>;
 }
 function requireValue(value: unknown): asserts value {
@@ -48,7 +48,7 @@ export class GitlabDataSampleService {
       const projectIds = await select('projects', 'id', (row) => row.length === 1);
       const projects: unknown[][] = [];
       for (const [projectId] of projectIds) {
-        const project = record(await port.get(`projects/${projectId}`));
+        const project = record(await port.get(`/projects/${projectId}`));
         requireValue(
           project.id === projectId &&
             typeof project.path_with_namespace === 'string' &&
@@ -57,7 +57,7 @@ export class GitlabDataSampleService {
         );
         let head: string | null = null;
         if (!project.empty_repo) {
-          const commit = record(await port.get(`projects/${projectId}/repository/commits/HEAD`));
+          const commit = record(await port.get(`/projects/${projectId}/repository/commits/HEAD`));
           requireValue(
             typeof commit.id === 'string' && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit.id),
           );
