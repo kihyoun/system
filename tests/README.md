@@ -148,7 +148,7 @@ conditional and Production promotion remains manual.
 
 `check:documentation` uses the platform's existing trusted `docker` runner pool;
 no separate documentation runner or coordinator registration is required. Its
-committed `node dist/modules/ci/entry.js documentation "$CI_PROJECT_DIR"` parent uses that runner's Docker authority
+committed `system-bootstrapper ci documentation "$CI_PROJECT_DIR"` parent uses that runner's Docker authority
 to launch a short-lived, digest-pinned Node child as user 1000 with no network,
 host socket, bind mounts, extra capabilities or inherited CI credentials. This
 isolates the actual checker, not the trusted parent: arbitrary unreviewed code
@@ -189,7 +189,7 @@ stale artifacts fail before Docker execution.
 
 Eight component matrix jobs run before publishing. Each is a trusted parent
 using the pinned Docker CLI, `services: []` and the existing `docker` runner tag.
-It calls `node dist/modules/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"`, builds from the verified stdin
+It calls `system-bootstrapper ci isolated "$CI_PROJECT_DIR" "$COMPONENT"`, builds from the verified stdin
 archive, then runs a socket-free/network-disabled child with no inherited CI
 credentials. Reports leave through `docker cp`, since a job's checkout path
 need not exist on the Docker host.
@@ -239,7 +239,7 @@ exact image identity and JUnit results.
 Reproduce packaging and construction after preparing the Wizard snapshot:
 
 ```sh
-node tests/prepare-candidate.js
+system-bootstrapper ci prepare-candidate "$PWD"
 docker build -f containers/controller/Dockerfile -t system-candidate:local - < .candidate-context/context.tar
 ```
 
@@ -297,14 +297,16 @@ must establish its own licensing eligibility before running this job. The
 project's MIT license does not grant a CodeQL license, and this job purchases no
 subscription. Runner compute and storage remain the operator's responsibility.
 
-`node tests/prepare-codeql.js` packages committed inputs after the ordinary Wizard
-source preparation. `node dist/modules/ci/entry.js codeql-parent "$CI_PROJECT_DIR"` runs that verified context on the
+`system-bootstrapper ci prepare-codeql "$PWD"` packages committed inputs after the ordinary Wizard
+source preparation. `system-bootstrapper ci codeql-parent "$CI_PROJECT_DIR"` runs that verified context on the
 selected trusted Docker runner with its ordinary CI identity variables. The
 child is bounded to 6 GiB RAM and two CPUs; image preparation and scanning each
 have a 15-minute ceiling. This static job does not start a disposable platform.
 SARIF results, extraction coverage, source identities and cleanup evidence are
 retained under `test-results/codeql/`. Missing coverage or any finding fails the
-job. Broader quality suites can be run separately for triage; their additional
+job. Container creation and startup failures also retain bounded, credential-redacted
+output and phase/exit-status evidence before a scan can begin.
+Broader quality suites can be run separately for triage; their additional
 heuristics are not equivalent to this default security gate.
 
 ## Explicit live adapters

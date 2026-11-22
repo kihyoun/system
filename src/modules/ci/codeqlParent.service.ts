@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { StringDecoder } from 'node:string_decoder';
 import { Injectable } from '@nestjs/common';
 import { ManagedChildProcess, type LifecycleProcess } from '../../common/runtime/managedChild';
 import { dockerBuild } from './dockerBuild';
@@ -31,6 +32,83 @@ export class CodeqlParentService {
         inputFile,
         signal: cleanup ? undefined : signal,
       });
+    // OCI startup can fail before scanner logs exist. Keep private, bounded evidence.
+    const startup = async (phase: 'create' | 'start', args: string[]): Promise<void> => {
+      const chunks: Buffer[] = [];
+      const limit = 16 * 1024;
+      let bytes = 0;
+      let failure: unknown;
+      let failed = false;
+      try {
+        await this.process.run('docker', args, {
+          cwd: root,
+          env,
+          timeout: 15000,
+          signal,
+          output: (chunk) => {
+            const available = Math.max(0, limit - bytes);
+
+            if (available) {
+              chunks.push(chunk.subarray(0, available));
+            }
+
+            bytes += Math.min(chunk.length, available);
+          },
+        });
+      } catch (error) {
+        failure = error;
+        failed = true;
+      }
+
+      let text = new StringDecoder('utf8').write(Buffer.concat(chunks));
+      const secrets = Object.entries(env)
+        .flatMap(([key, value]) =>
+          /token|pass(?:word)?|secret|credential|auth/i.test(key) &&
+          typeof value === 'string' &&
+          value.length >= 4
+            ? [value, encodeURIComponent(value)]
+            : [],
+        )
+        .sort((a, b) => b.length - a.length);
+      for (const secret of secrets) {
+        text = text.split(secret).join('[REDACTED]');
+        for (let size = Math.min(secret.length - 1, text.length); size > 0; size--) {
+          if (text.endsWith(secret.slice(0, size))) {
+            text = text.slice(0, -size) + '[REDACTED]';
+            break;
+          }
+        }
+      }
+      text = text.replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[REDACTED]@');
+      text = text.replace(/(https?:\/\/)[^\s/@]+:[^\s/@]*$/gi, '$1[REDACTED]');
+      text = new StringDecoder('utf8').write(Buffer.from(text).subarray(0, limit));
+      const outcome = {
+        phase,
+        outcome: failed ? 'failed' : 'passed',
+        status: failed ? (failure instanceof ProcessFailure ? failure.status : null) : 0,
+        signal: failure instanceof ProcessFailure ? failure.signal : null,
+        uncertain: failed ? !(failure instanceof ProcessFailure) || failure.uncertain : false,
+      };
+      for (const [extension, content] of [
+        ['log', text],
+        ['json', JSON.stringify(outcome) + '\n'],
+      ]) {
+        try {
+          fs.writeFileSync(path.join(report, `startup-${phase}.${extension}`), content, {
+            mode: 0o600,
+          });
+        } catch (error) {
+          if (!failed) {
+            failure = error;
+            failed = true;
+          }
+        }
+      }
+
+      if (failed) {
+        throw failure;
+      }
+    };
     const cleanup = async (phase: string) => {
       let failure: unknown;
       for (const [kind, name, filter, format] of [
@@ -143,7 +221,7 @@ export class CodeqlParentService {
         { cwd: root, env, timeout: 900000, inputFile: archive, signal },
         path.join(report, 'build.log'),
       );
-      await run([
+      await startup('create', [
         '--config',
         config,
         'create',
@@ -170,7 +248,7 @@ export class CodeqlParentService {
         'no-new-privileges',
         image,
       ]);
-      await run(['start', resource]);
+      await startup('start', ['start', resource]);
       let status: string | undefined;
       try {
         status = (await run(['wait', resource], 900000)).trim();

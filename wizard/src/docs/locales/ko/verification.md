@@ -123,7 +123,7 @@ operations 런타임 검사는 독립된 임시 디렉터리를 사용하는 격
 
 `check:documentation`은 플랫폼의 기존 신뢰된 `docker` Runner 풀을 사용합니다.
 별도 문서 Runner나 조정자 등록은 필요하지 않습니다. 커밋된
-`node dist/modules/ci/entry.js documentation "$CI_PROJECT_DIR"` 부모는 해당 Runner의 Docker 권한으로 다이제스트 고정
+`system-bootstrapper ci documentation "$CI_PROJECT_DIR"` 부모는 해당 Runner의 Docker 권한으로 다이제스트 고정
 Node 자식을 사용자 1000으로 짧게 실행합니다. 네트워크, 호스트 소켓, 바인드 마운트,
 추가 capability 및 상속된 CI 자격 증명은 없습니다. 실제 검사기를 격리하는 것이며
 신뢰된 부모까지 격리하는 것은 아닙니다. 임의의 미검토 코드를 공유 소켓 Runner에
@@ -159,7 +159,7 @@ CI 자체 변경 시 필수 런타임 파이프라인을 대체하지 않습니�
 
 게시 전에 8개 구성 요소 매트릭스 작업이 실행됩니다. 각각 고정 Docker CLI,
 `services: []` 및 기존 `docker` Runner 태그를 사용하는 신뢰된 부모입니다.
-`node dist/modules/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"`를 호출하고 검증된 stdin 아카이브로 빌드한 뒤,
+`system-bootstrapper ci isolated "$CI_PROJECT_DIR" "$COMPONENT"`를 호출하고 검증된 stdin 아카이브로 빌드한 뒤,
 CI 자격 증명을 상속하지 않는 소켓 없는/네트워크 비활성 자식을 실행합니다. 작업의
 체크아웃 경로가 Docker 호스트에 없을 수도 있으므로 보고서는 `docker cp`로 가져옵니다.
 
@@ -205,7 +205,7 @@ GNU와 BusyBox tar를 지원합니다. 전체 이미지는 고정 Sync 의존성
 Wizard 스냅샷을 준비한 후 패키징과 빌드를 재현하세요.
 
 ```sh
-node tests/prepare-candidate.js
+system-bootstrapper ci prepare-candidate "$PWD"
 docker build -f containers/controller/Dockerfile -t system-candidate:local - < .candidate-context/context.tar
 ```
 
@@ -260,13 +260,15 @@ CodeQL CLI에는 별도의 [라이선스 조건](https://github.com/github/codeq
 합니다. 프로젝트의 MIT 라이선스는 CodeQL 라이선스를 부여하지 않으며 이 작업은
 유료 구독을 구매하지 않습니다. Runner의 연산 및 저장 공간은 운영자가 부담합니다.
 
-`node tests/prepare-codeql.js`는 일반적인 Wizard 소스 준비 후 커밋된 입력을
-패키징합니다. `node dist/modules/ci/entry.js codeql-parent "$CI_PROJECT_DIR"`는 선택한 신뢰된 Docker Runner에서 일반 CI
+`system-bootstrapper ci prepare-codeql "$PWD"`는 일반적인 Wizard 소스 준비 후 커밋된 입력을
+패키징합니다. `system-bootstrapper ci codeql-parent "$CI_PROJECT_DIR"`는 선택한 신뢰된 Docker Runner에서 일반 CI
 식별 변수와 함께 검증된 컨텍스트를 실행합니다. 자식 컨테이너는 RAM 6 GiB와
 CPU 두 개로 제한하며 이미지 준비와 검사는 각각 최대 15분입니다. 이 정적
 작업은 폐기 가능한 플랫폼을 시작하지 않습니다. SARIF 결과, 추출 범위, 소스
 식별 정보 및 정리 근거는 `test-results/codeql/` 아래에 보존합니다. 추출 범위가
-누락되거나 발견 사항이 하나라도 있으면 작업이 실패합니다. 더 넓은 품질 검사
+누락되거나 발견 사항이 하나라도 있으면 작업이 실패합니다. 컨테이너 생성이나 시작이
+실패하면 검사가 시작되기 전에도 자격 증명을 제거하고 크기를 제한한 출력과 단계 및
+종료 상태 근거를 보존합니다. 더 넓은 품질 검사
 모음은 별도로 실행하여 검토할 수 있지만, 추가 휴리스틱은 이 기본 보안 게이트와
 동일하지 않습니다.
 

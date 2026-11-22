@@ -133,7 +133,7 @@ bedingt und die Production-Freigabe manuell.
 
 `check:documentation` verwendet den bestehenden vertrauenswürdigen `docker`-Runner-Pool der Plattform;
 weder ein separater Dokumentationsrunner noch eine Koordinatorregistrierung sind erforderlich. Sein
-versionierter Elternprozess `node dist/modules/ci/entry.js documentation "$CI_PROJECT_DIR"` nutzt die Docker-Befugnis dieses Runners,
+versionierter Elternprozess `system-bootstrapper ci documentation "$CI_PROJECT_DIR"` nutzt die Docker-Befugnis dieses Runners,
 um ein kurzlebiges, per Digest festgelegtes Node-Kind als Benutzer 1000 ohne Netzwerk,
 Host-Socket, Bind-Mounts, zusätzliche Fähigkeiten oder geerbte CI-Zugangsdaten zu starten. Dies
 isoliert die eigentliche Prüfung, nicht den vertrauenswürdigen Elternprozess: Beliebiger ungeprüfter Code
@@ -172,7 +172,7 @@ veraltete Artefakte führen vor der Docker-Ausführung zum Fehler.
 
 Acht Komponentenmatrix-Jobs laufen vor der Veröffentlichung. Jeder ist ein vertrauenswürdiger Elternprozess
 mit festgelegter Docker CLI, `services: []` und dem bestehenden Runner-Tag `docker`.
-Er ruft `node dist/modules/ci/entry.js isolated "$CI_PROJECT_DIR" "$COMPONENT"` auf, baut aus dem geprüften stdin-
+Er ruft `system-bootstrapper ci isolated "$CI_PROJECT_DIR" "$COMPONENT"` auf, baut aus dem geprüften stdin-
 Archiv und führt dann ein socketfreies, netzwerkdeaktiviertes Kind ohne geerbte CI-
 Zugangsdaten aus. Berichte verlassen es über `docker cp`, da der Checkout-Pfad eines Jobs
 auf dem Docker-Host nicht existieren muss.
@@ -221,7 +221,7 @@ exakte Image-Identität und JUnit-Ergebnisse.
 Bilden Sie Paketierung und Bau nach Vorbereitung des Wizard-Snapshots nach:
 
 ```sh
-node tests/prepare-candidate.js
+system-bootstrapper ci prepare-candidate "$PWD"
 docker build -f containers/controller/Dockerfile -t system-candidate:local - < .candidate-context/context.tar
 ```
 
@@ -284,15 +284,17 @@ Ausführung dieses Jobs klären. Die MIT-Lizenz des Projekts gewährt keine Code
 und der Job schließt kein Abonnement ab. Rechenleistung und Speicher des Runners
 liegen weiterhin in der Verantwortung des Betreibers.
 
-`node tests/prepare-codeql.js` paketiert nach der normalen Wizard-Quellvorbereitung
-die versionierten Eingaben. `node dist/modules/ci/entry.js codeql-parent "$CI_PROJECT_DIR"` führt diesen geprüften Kontext
+`system-bootstrapper ci prepare-codeql "$PWD"` paketiert nach der normalen Wizard-Quellvorbereitung
+die versionierten Eingaben. `system-bootstrapper ci codeql-parent "$CI_PROJECT_DIR"` führt diesen geprüften Kontext
 auf dem ausgewählten vertrauenswürdigen Docker-Runner mit dessen üblichen
 CI-Identitätsvariablen aus. Der Kindcontainer ist auf 6 GiB RAM und zwei CPUs
 begrenzt; Image-Vorbereitung und Scan haben jeweils ein Zeitlimit von 15 Minuten.
 Dieser statische Job startet keine verwerfbare Plattform. SARIF-Ergebnisse,
 Extraktionsabdeckung, Quellidentitäten und Bereinigungsnachweise werden unter
 `test-results/codeql/` aufbewahrt. Fehlende Abdeckung oder ein beliebiger Befund
-lassen den Job fehlschlagen. Breitere Qualitätssuites können getrennt zur
+lassen den Job fehlschlagen. Auch Fehler beim Erstellen und Starten des Containers
+halten begrenzte, von Zugangsdaten bereinigte Ausgaben sowie Phase und Exit-Status
+fest, bevor ein Scan beginnen kann. Breitere Qualitätssuites können getrennt zur
 Einzelfallprüfung ausgeführt werden; ihre zusätzlichen Heuristiken sind nicht
 mit dieser Standard-Sicherheitsprüfung gleichzusetzen.
 

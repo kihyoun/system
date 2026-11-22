@@ -39,7 +39,7 @@
   "dependency-security": "78e613ab89a3db37cc1998a163f3b1ba49115310c05c65ef7ece0272a54125cf",
   "development-previews": "b160e068d523f3533d36533f116d4edeeb4f735cf9aa436773e0f2cacad45210",
   "controller-reference": "5e2aec133c86bcd70bec6691654e6e5f40f7afadd07234075ce63494bebd5f69",
-  "verification": "8d68c75a86e8cfdb19346b80c28e6db8c2d432a94baff2c3925239ce5bacbf18",
+  "verification": "1ddb195e3ef2b7abd6d79eb3b57e1dd85fa140ac2e6ee5f7b9db9ec1b6225a88",
   "candidate-testing": "c2026f43efa07dbda923f33ac859ffd431a2b5c5bc160fea89c58f1886b009e9",
   "guided-preview-acceptance": "076c4a6b18f5bd3e4b5b10e9b10980b39aebd0f64e311cb89651b26b98a39666"
 }
