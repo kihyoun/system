@@ -1,10 +1,10 @@
-import { checkoutLayout } from '../../common/runtime/checkout-layout';
+import { checkoutLayout, releaseLayout } from '../../common/runtime/checkout-layout';
 import fs from 'node:fs';
 import { HostPersistenceService } from '../host-lifecycle/persistence.service';
 import { randomBytes } from 'node:crypto';
 import { NativeHostAttachedProcess, type HostAttachedProcess } from './attached-process';
 import path from 'node:path';
-import { HostInstallService, privateFile, requireValue } from './install';
+import { HostInstallService, HostPolicyError, privateFile, requireValue } from './install';
 export interface HostStorageCommand {
   operation: 'harvest' | 'restore';
   image: string;
@@ -21,6 +21,43 @@ export class HostStorageService {
     readonly persistence = new HostPersistenceService(),
   ) {}
 
+  private runtime(imageId: string): string[] {
+    let version: string;
+    try {
+      version = this.host
+        .run(
+          'docker',
+          [
+            '--host=unix:///var/run/docker.sock',
+            'run',
+            '--rm',
+            '--pull=never',
+            '--read-only',
+            '--network',
+            'none',
+            '--cap-drop',
+            'ALL',
+            '--security-opt',
+            'no-new-privileges',
+            '--entrypoint',
+            '/bin/cat',
+            imageId,
+            '/system/VERSION',
+          ],
+          undefined,
+          10000,
+        )
+        .trim();
+    } catch {
+      throw new HostPolicyError('accepted-controller-image-version-unavailable');
+    }
+    const layout = releaseLayout(version);
+    requireValue(layout, 'unsupported-controller-image-layout-version');
+    return layout === 'native'
+      ? ['/system/dist/cli/main.js', 'storage', 'host']
+      : ['/system/system/seed-operation.js', 'host'];
+  }
+
   async execute(command: HostStorageCommand): Promise<void> {
     requireValue(this.host.rootUser(), 'host-storage-requires-root');
     requireValue(
@@ -35,17 +72,9 @@ export class HostStorageService {
       path.isAbsolute(command.checkout) && fs.statSync(command.checkout).isDirectory(),
       'explicit-host-checkout-required',
     );
-    const runtime =
-      checkoutLayout(command.checkout) === 'native'
-        ? ['/system/dist/cli/main.js', 'storage', 'host']
-        : ['/system/system/seed-operation.js', 'host'];
+    checkoutLayout(command.checkout);
     privateFile(command.persistenceEnv);
     const { selected } = this.host.storage(command.persistenceEnv, command.checkout);
-    if (!command.checkOnly)
-      await this.persistence.prepare({
-        ...this.host.environment,
-        ...selected,
-      });
     const id = this.host
       .run('docker', [
         '--host=unix:///var/run/docker.sock',
@@ -57,6 +86,13 @@ export class HostStorageService {
       ])
       .trim();
     requireValue(/^sha256:[a-f0-9]{64}$/.test(id), 'accepted-controller-image-id-required');
+    // During an upgrade the target checkout and installed image have different layouts.
+    const runtime = this.runtime(id);
+    if (!command.checkOnly)
+      await this.persistence.prepare({
+        ...this.host.environment,
+        ...selected,
+      });
     const backup = command.configurationBackup ?? '';
     if (backup) {
       const stat = fs.lstatSync(backup);

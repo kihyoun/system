@@ -97,6 +97,13 @@ accepted image with a read-only `/host` mount. Calling the in-container host
 configuration reader directly on the native host does not provide this mount or
 its trusted image selector and is unsupported.
 
+The storage launch path follows the declared version inside that immutable image,
+not the checkout supplied for host configuration. A read-only, network-disabled
+probe reads `/system/VERSION` without mounting host data. Unknown or unreadable
+image versions fail before persistence preparation or storage launch. This allows
+an upgrade checkout to validate a backup through the still-installed previous
+controller without calling a newer entry point that its image does not contain.
+
 `HostReleaseAuthorityService` validates retained successor receipts and public
 upgrade provenance. Explicit monorepo receipts require the full shared System
 Beta policy, bound to source trees, image IDs and the actual candidate attempt.

@@ -55,18 +55,31 @@ test('standalone Host module injects shared native adapter without running opera
 });
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {HostStorageService}=require('../../dist/modules/host/host-storage.service');
-for (const version of ['1.2.0','2.0.0']) test('host storage '+version+' preserves operation-owned duration and retains uncertain launchers',async t=>{
+for (const [version,imageVersion] of [['1.2.0','1.2.0'],['2.0.0','2.0.0'],['2.0.0','1.2.0'],['1.2.0','2.0.0']]) test('host storage checkout '+version+' / image '+imageVersion+' preserves operation-owned duration and retains uncertain launchers',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'host-storage-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  fs.writeFileSync(path.join(root,'VERSION'),version+'\n');
  const selector=path.join(root,'persistence.env');fs.writeFileSync(selector,'',{mode:0o600});
- const calls=[],id='sha256:'+'a'.repeat(64),container='b'.repeat(64);let name,uncertain=false;
- const host={rootUser:()=>true,environment:{DOCKER_CONTEXT:'remote'},storage:()=>({selected:{},root}),run(binary,args){calls.push([binary,args]);if(args.includes('create')){name=args[args.indexOf('--name')+1];return container;}if(args.includes('image'))return id;if(args.includes('inspect'))return JSON.stringify([{Id:container,Image:id,Config:{Labels:{'system.storage.launcher':name}},State:{Status:'exited',Running:false,ExitCode:0}}]);return '';}};
+ const calls=[],id='sha256:'+'a'.repeat(64),container='b'.repeat(64);let name,uncertain=false,observedVersion=imageVersion,probeFails=false;
+ const host={rootUser:()=>true,environment:{DOCKER_CONTEXT:'remote'},storage:()=>({selected:{},root}),run(binary,args,env,timeout){calls.push([binary,args]);if(args.includes('create')){name=args[args.indexOf('--name')+1];return container;}if(args.includes('image'))return id;if(args.includes('run')){assert.equal(timeout,10000);if(probeFails)throw Error('private-probe-detail');return observedVersion+'\n';}if(args.includes('inspect'))return JSON.stringify([{Id:container,Image:id,Config:{Labels:{'system.storage.launcher':name}},State:{Status:'exited',Running:false,ExitCode:0}}]);return '';}};
  const attached={async run(binary,args,env){calls.push([binary,args]);assert(!env.DOCKER_CONTEXT);assert(args.includes('--attach'));assert(args.includes('--interactive'));if(uncertain)throw Error('host-storage-launch-outcome-uncertain');}};
- const service=new HostStorageService(host,attached),command={operation:'harvest',image:'accepted:image',checkout:root,persistenceEnv:selector,checkOnly:true};
+ const persistence={async prepare(){calls.push(['persistence.prepare',[]]);}};
+ const service=new HostStorageService(host,attached,persistence),command={operation:'harvest',image:'accepted:image',checkout:root,persistenceEnv:selector,checkOnly:true};
  await service.execute(command);
- const args=calls.find(([,args])=>args.includes('create'))[1];assert.deepEqual(args.slice(args.indexOf(id)+1),version==='2.0.0'?['/system/dist/cli/main.js','storage','host','harvest','--check-only']:['/system/system/seed-operation.js','host','harvest','--check-only']);assert(args.includes('type=bind,src=/,dst=/host,readonly'));assert(args.includes(`SYSTEM_SEED_CONTROLLER_IMAGE=${id}`));assert(args.includes('--check-only'));assert(!calls.some(([binary])=>binary==='bash'));assert(calls.at(-1)[1].includes('rm'));
+ const args=calls.find(([,args])=>args.includes('create'))[1];assert.deepEqual(args.slice(args.indexOf(id)+1),imageVersion==='2.0.0'?['/system/dist/cli/main.js','storage','host','harvest','--check-only']:['/system/system/seed-operation.js','host','harvest','--check-only']);assert(args.includes('type=bind,src=/,dst=/host,readonly'));assert(args.includes(`SYSTEM_SEED_CONTROLLER_IMAGE=${id}`));assert(args.includes('--check-only'));assert(!calls.some(([binary])=>binary==='bash'));assert(calls.at(-1)[1].includes('rm'));
+ const probe=calls.find(([,args])=>args.includes('run'))[1];assert.deepEqual(probe.slice(probe.indexOf(id)),[id,'/system/VERSION']);assert(probe.includes('--read-only'));assert(probe.includes('--pull=never'));assert.equal(probe[probe.indexOf('--network')+1],'none');assert.equal(probe[probe.indexOf('--entrypoint')+1],'/bin/cat');assert(probe.includes('--rm'));assert(probe.includes('no-new-privileges'));assert.equal(probe[probe.indexOf('--cap-drop')+1],'ALL');assert(!probe.includes('--mount'));assert(!probe.includes('--env'));assert(!calls.some(([binary])=>binary==='persistence.prepare'));
  calls.length=0;uncertain=true;await assert.rejects(service.execute(command),/outcome-uncertain/);assert(!calls.some(([,args])=>args.includes('rm')));
  await assert.rejects(service.execute({...command,operation:'bad'}),/invalid-host-storage-operation/);
+ if(version==='2.0.0'&&imageVersion==='1.2.0'){
+  uncertain=false;
+  for(const invalid of ['', '2.0.1', '1.2.0\n2.0.0']){
+   observedVersion=invalid;calls.length=0;
+   await assert.rejects(service.execute({...command,checkOnly:false}),error=>error.code==='unsupported-controller-image-layout-version');
+   assert(!calls.some(([binary,args])=>binary==='persistence.prepare'||args.includes('create')||args.includes('start')));
+  }
+  observedVersion=imageVersion;probeFails=true;calls.length=0;
+  await assert.rejects(service.execute({...command,checkOnly:false}),error=>error.code==='accepted-controller-image-version-unavailable');
+  assert(!calls.some(([binary,args])=>binary==='persistence.prepare'||args.includes('create')||args.includes('start')));
+ }
 });
 test('compatibility storage argument parser preserves environment and selectors',()=>{
  const {storageArguments}=require('../../dist/modules/host/storage-entry');
