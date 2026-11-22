@@ -109,6 +109,8 @@ async function nativeProvisionContracts() {
   const binding={id:42,namespaceId:7,path:'team/application',webUrl:'https://gitlab.example.test/team/application',defaultBranch:'main',pipelineUrl:'https://gitlab.example.test/team/application/-/pipelines',ciPath:'.system-bootstrapper/ci.yml',template:'angular',templateVersion:1,generatedCi:payload.ci,deploymentState:'awaiting-pipeline'};
   function fixture(){
     const state={exists:true,project:{id:42,path_with_namespace:'team/application',namespace:{id:7},visibility:'private',description:'System Bootstrapper operation owned-operation',default_branch:'main',ci_config_path:'.system-bootstrapper/ci.yml',web_url:binding.webUrl},files:{'.system-bootstrapper/ci.yml':'user-edited CI with product checks','src/app.ts':'user application source'},requests:[],pipelines:[],lose:null,loseMethod:null,createStatus:201,commitStatus:201,namespacePath:'team',projectKey:'application',controllerId:9,member:null,memberWriteStatus:null,memberWriteApplied:true,branchProtection:{name:'main',push_access_levels:[{access_level:40}],merge_access_levels:[{access_level:40}]}};
+    state.branchPush = [true];
+    state.branchSignals = [];
     const credentials={async ensure(){return {context:{checkout:'/checkout',containerId:'a'.repeat(64)},credential:{token:'private-api-token'},account:{id:state.controllerId}};}};
     const api={async request(context,token,method,route,body){
       assert.equal(token,'private-api-token');assert.equal(context.checkout,'/checkout');
@@ -125,6 +127,24 @@ async function nativeProvisionContracts() {
         status=state.memberWriteStatus??(method==='POST'?201:200);
         if(state.memberWriteApplied)state.member={id:state.controllerId,access_level:40,state:'active',expires_at:null};
         value=state.member||{};
+      }
+      else if (method === 'GET' && route === 'projects/42/repository/branches/main') {
+        assert(context.signal instanceof AbortSignal, 'Every readiness read is cancellation bounded.');
+        state.branchSignals.push(context.signal);
+
+        if (state.blockBranchRead) {
+          await new Promise((resolve, reject) => {
+            context.signal.throwIfAborted();
+            context.signal.addEventListener('abort', () => reject(context.signal.reason), {once: true});
+            state.onBranchRead?.();
+          });
+        }
+
+        status = state.branchStatus ?? 200;
+        value = Object.hasOwn(state, 'branchReply') ? state.branchReply : {
+          name: 'main', default: true, commit: {id: 'a'.repeat(40)},
+          can_push: state.branchPush.length > 1 ? state.branchPush.shift() : state.branchPush[0],
+        };
       }
       else if(method==='POST'&&route==='projects/42/repository/commits'){
         assert(state.member?.access_level>=state.branchProtection.push_access_levels[0].access_level,'protected default branch requires explicit controller membership');
@@ -180,6 +200,69 @@ async function nativeProvisionContracts() {
   const commit=f.state.requests.findIndex(row=>row.route==='projects/42/repository/commits');
   assert(memberWrite>0&&memberProof>memberWrite&&commit>memberProof,'membership is read back before installing owned CI');
   assert(!f.state.requests.some(row=>/protected_branches/.test(row.route)));
+  f = fixture();
+  delete f.state.files['.system-bootstrapper/ci.yml'];
+  f.state.member = {id: 9, access_level: 40, state: 'active', expires_at: null};
+  f.state.branchPush = [false, false, true];
+  assert.equal((await f.invoke()).repository.id, 42);
+  const readinessReads = f.state.requests.map((value, index) => ({...value, index}))
+    .filter(value => value.route === 'projects/42/repository/branches/main');
+  const installedCommits = f.state.requests.map((value, index) => ({...value, index}))
+    .filter(value => value.route === 'projects/42/repository/commits');
+  assert.equal(readinessReads.length, 3, 'A direct member can still await asynchronous effective authorization.');
+  assert.equal(installedCommits.length, 1, 'The installation write is never retried.');
+  assert(installedCommits[0].index > readinessReads[2].index, 'Commit only follows positive effective push permission.');
+  assert(!f.state.requests.some(value => value.route.includes('/members') && value.method !== 'GET'));
+  const branchProof = {name: 'main', default: true, can_push: true, commit: {id: 'a'.repeat(40)}};
+  for (const refusal of [
+    ...[401, 403, 404, 500].map(status => ({status})),
+    ...[null, [], true, {}, {...branchProof, name: 'other'}, {...branchProof, default: false},
+      {...branchProof, can_push: 'true'}, {...branchProof, can_push: undefined},
+      {...branchProof, can_push: false, commit: null}, {...branchProof, commit: {id: 'foreign'}}]
+      .map(value => ({value})),
+  ]) {
+    f = fixture();
+    delete f.state.files['.system-bootstrapper/ci.yml'];
+    f.state.member = {id: 9, access_level: 40, state: 'active', expires_at: null};
+    f.state.branchStatus = refusal.status;
+
+    if (Object.hasOwn(refusal, 'value')) {
+      f.state.branchReply = refusal.value;
+    }
+
+    assert.deepEqual(await f.invoke(), {state: 'failed', message: 'CI installation failed; retry Save'});
+    assert.equal(f.state.branchSignals.length, 1, 'Only validated can_push=false may be polled.');
+    assert(f.state.requests.every(value => value.method === 'GET'), 'A refusal never attempts installation or activation.');
+    assert(!Object.hasOwn(f.state.files, '.system-bootstrapper/ci.yml'));
+  }
+  f = fixture();
+  delete f.state.files['.system-bootstrapper/ci.yml'];
+  f.state.member = {id: 9, access_level: 40, state: 'active', expires_at: null};
+  f.state.blockBranchRead = true;
+  const blockedReadStarted = Date.now();
+  assert.deepEqual(await f.invoke(), {state: 'failed', message: 'CI installation failed; retry Save'});
+  assert(Date.now() - blockedReadStarted < 10000, 'The readiness deadline includes an unfinished read.');
+  assert.equal(f.state.branchSignals.length, 1);
+  assert.equal(f.state.branchSignals[0].aborted, true);
+  assert(f.state.requests.every(value => value.method === 'GET'));
+  f = fixture();
+  delete f.state.files['.system-bootstrapper/ci.yml'];
+  f.state.member = {id: 9, access_level: 40, state: 'active', expires_at: null};
+  f.state.branchPush = [false];
+  const deniedReadStarted = Date.now();
+  assert.deepEqual(await f.invoke(), {state: 'failed', message: 'CI installation failed; retry Save'});
+  assert(Date.now() - deniedReadStarted < 10000, 'Valid negative observations remain bounded.');
+  assert(f.state.branchSignals.length > 1);
+  assert(f.state.requests.every(value => value.method === 'GET'), 'An unconfirmed permission never starts a commit.');
+  f = fixture();
+  delete f.state.files['.system-bootstrapper/ci.yml'];
+  f.state.member = {id: 9, access_level: 40, state: 'active', expires_at: null};
+  f.state.blockBranchRead = true;
+  const cancellation = new AbortController();
+  f.state.onBranchRead = () => cancellation.abort();
+  assert.equal((await f.service.execute('/checkout', payload, cancellation.signal)).state, 'failed');
+  assert.equal(f.state.branchSignals[0].aborted, true, 'Caller cancellation reaches the in-flight read.');
+  assert(f.state.requests.every(value => value.method === 'GET'));
   for(const level of [30,40,50]){
     f=fixture();delete f.state.files['.system-bootstrapper/ci.yml'];f.state.member={id:9,access_level:level,state:'active',expires_at:null};
     assert.equal((await f.invoke()).repository.id,42);
@@ -219,7 +302,7 @@ async function nativeProvisionContracts() {
   const {GitlabProvisionModule}=require('../../dist/modules/gitlab-provision/gitlabProvision.module');
   const app=await NestFactory.createApplicationContext(GitlabProvisionModule,{logger:false,abortOnError:false});
   try{assert(app.get(ProjectProvisionService) instanceof ProjectProvisionService);}finally{await app.close();}
-  console.log('Native project provisioning: paginated read-only discovery, exact resume identity, unchanged edited source, protected-branch controller membership, creation races, interrupted writes and pipeline retry reconciliation passed.');
+  console.log('Native project provisioning: paginated read-only discovery, exact resume identity, unchanged edited source, bounded effective protected-branch authorization, creation races, interrupted writes and pipeline retry reconciliation passed.');
 }
 
 let child;

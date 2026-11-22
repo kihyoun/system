@@ -312,15 +312,15 @@ Prepare는 공개 메타데이터/검증 자료와 설치된 릴리스를 검증
 sudo system-bootstrapper gitlab-upgrade \
   --operation prepare --checkout "$PWD" --target 2.0.0 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
 sudo system-bootstrapper gitlab-upgrade \
   --operation plan --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
 sudo system-bootstrapper gitlab-upgrade \
   --operation promote --checkout "$PWD" --confirm-plan GITLAB_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
 ```
 
 반환된 `checkpointDir`와 `checkpointSha256`을 보관하세요. 첫 번째 값은 아래 쌍
@@ -334,7 +334,7 @@ sudo system-bootstrapper upgrade \
   --checkout "$PWD" --target 2.0.0 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
-  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2.0.0 \
+  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2-0-0 \
   --backup-file /mnt/backup/configuration-before-2.0.0.zip \
   --token-file /root/system-api-token
 sudo system-bootstrapper upgrade \
@@ -356,7 +356,7 @@ sudo system-bootstrapper upgrade \
 sudo system-bootstrapper gitlab-upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
 ```
 
 쌍 업데이트가 중단되면 `system-bootstrapper upgrade --operation recover`를 같은 계획

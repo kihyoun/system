@@ -354,15 +354,15 @@ Controller ausgewählt bleibt.
 sudo system-bootstrapper gitlab-upgrade \
   --operation prepare --checkout "$PWD" --target 2.0.0 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
 sudo system-bootstrapper gitlab-upgrade \
   --operation plan --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
 sudo system-bootstrapper gitlab-upgrade \
   --operation promote --checkout "$PWD" --confirm-plan GITLAB_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
 ```
 
 Die zurückgegebenen Werte `checkpointDir` und `checkpointSha256` behalten. Der
@@ -377,7 +377,7 @@ sudo system-bootstrapper upgrade \
   --checkout "$PWD" --target 2.0.0 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
-  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2.0.0 \
+  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2-0-0 \
   --backup-file /mnt/backup/configuration-before-2.0.0.zip \
   --token-file /root/system-api-token
 sudo system-bootstrapper upgrade \
@@ -399,7 +399,7 @@ sudo system-bootstrapper upgrade \
 sudo system-bootstrapper gitlab-upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2.0.0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
 ```
 
 Bei einer Paar-Unterbrechung `system-bootstrapper upgrade --operation recover`

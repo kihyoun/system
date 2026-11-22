@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { setTimeout as delay } from 'node:timers/promises';
 import { GitlabCredentialService } from './credential.service';
 import {
   GitlabNativeApiService,
@@ -206,6 +207,17 @@ export class ProjectProvisionService {
         // Administrative API access does not grant push rights on a protected branch.
         // Only the exact owned project's missing CI installation needs membership.
         await this.controllerMembership(request, Number(project.id), authorization.account.id);
+        await this.controllerPushReadiness(
+          (readSignal) =>
+            this.api.request(
+              { ...authorization.context, signal: readSignal },
+              authorization.credential.token,
+              'GET',
+              `projects/${project.id}/repository/branches/${encode(branch)}`,
+            ),
+          branch,
+          signal,
+        );
         const commit = await request('POST', `projects/${project.id}/repository/commits`, {
           branch,
           commit_message: input.files
@@ -270,6 +282,48 @@ export class ProjectProvisionService {
         message:
           'GitLab operation failed. Check readiness and namespace permissions, then retry Save.',
       };
+    }
+  }
+
+  private async controllerPushReadiness(
+    read: (signal: AbortSignal) => Promise<GitlabApiResult>,
+    branch: string,
+    signal?: AbortSignal,
+  ) {
+    const deadline = new AbortController();
+    const readSignal = AbortSignal.any([deadline.signal, ...(signal ? [signal] : [])]);
+    // Leave the native process adapter its existing five-second cancellation reap window.
+    const timer = setTimeout(() => deadline.abort(), 5000);
+    try {
+      while (!readSignal.aborted) {
+        const response = await read(readSignal);
+        readSignal.throwIfAborted();
+        ensure(response.status === 200, 'CI installation failed; retry Save');
+        const proof = row(response.value),
+          commit = row(proof.commit);
+        ensure(
+          proof.name === branch &&
+            proof.default === true &&
+            typeof proof.can_push === 'boolean' &&
+            typeof commit.id === 'string' &&
+            /^[a-f0-9]{40}$/.test(commit.id),
+          'CI installation failed; retry Save',
+        );
+
+        if (proof.can_push) {
+          return;
+        }
+
+        // Membership and its effective protected-branch authorization settle separately.
+        // Only a valid negative observation can be polled; writes are never retried.
+        await delay(200, undefined, { signal: readSignal });
+      }
+      throw new ProjectProvisionError('CI installation failed; retry Save');
+    } catch {
+      signal?.throwIfAborted();
+      throw new ProjectProvisionError('CI installation failed; retry Save');
+    } finally {
+      clearTimeout(timer);
     }
   }
 
