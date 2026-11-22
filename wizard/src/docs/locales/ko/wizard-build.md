@@ -100,7 +100,7 @@ Runner/시작 작업과 다른 프로젝트 변경은 보호됩니다.
 일반 CLI 패키지는 SourceSnapshot v3의 `.gitlab/cli`에 포함되며 정확한
 소스/버전/해시 영수증을 검증합니다. 작업은 패키지를 오프라인으로 설치하고
 `system-bootstrapper project-ci`를 호출하므로 npm 게시가 필요하지 않습니다.
-명시적인 동반 아카이브 입력은 [패키지 준비](OPERATIONS.md)를 참조하세요.
+명시적인 동반 아카이브 입력은 [패키지 준비](../templates/project-bootstrap/wizard-build/README.md#prepare-the-cli-companion-package)를 참조하세요.
 
 이 프로필은 정확한 태그 정리와 빌드/브라우저 이미지의 공개 CA 신뢰를 유지합니다.
 신뢰 데이터는 System 소스에 포함된 검토되고 체크섬이 확인된 Mozilla 번들에서 가져옵니다.

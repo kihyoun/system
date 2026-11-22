@@ -85,6 +85,6 @@ test('platform job retains preparation, independent cleanup and artifact reserve
   assert(script>=candidate.deadline+5*60000,'preparation/publication must fit outside the shared lifecycle');
   assert(total>=script+cleanup+3*60000,'independent cleanup and artifact collection need job time');
   assert.match(job,/before_script: \*runtime-tools/);
-  assert.match(job,/after_script:\n\s+- node dist\/cli\/main\.js ci platform "\$CI_PROJECT_DIR" cleanup/);
+  assert.match(job,/after_script:\n\s+- export PATH="\$CI_PROJECT_DIR\/\.ci-cli\/node_modules\/\.bin:\$PATH"\n\s+- system-bootstrapper ci platform "\$CI_PROJECT_DIR" cleanup/);
   assert.match(job,/allow_failure: false/);
 });

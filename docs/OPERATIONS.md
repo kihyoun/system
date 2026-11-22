@@ -107,47 +107,11 @@ Nest `ProjectCiModule`; browser checks, builds, verification, deployment and
 cleanup use the same services as the controller. Node, npm and native tools remain
 explicit pinned job prerequisites.
 
-A source export carries the **regular bundled npm package** from that same build,
-its SHA-256 and a receipt binding package version, System Git revision and Git tree.
-The tarball remains outside its own npm payload. The explicit
-`SYSTEM_CLI_ARTIFACT` absolute path selects the retained archive;
-`SYSTEM_CLI_RECEIPT` optionally selects its receipt (default: archive path plus
-`.json`). Missing or mismatched input fails closed. Archives are limited to 8 MiB. Jobs checksum the exact local
-archive and install it with `npm install --offline --ignore-scripts`; registry
-publication and a floating package version are not required.
-
-From a clean reviewed checkout, install the exact Node/npm versions in
-`package.json`, run `npm ci --ignore-scripts --no-audit --no-fund` and prepare the
-local package before exporting source:
-
-```sh
-npm run build
-mkdir -p .ci-cli-package
-npm pack --offline --ignore-scripts --pack-destination .ci-cli-package
-npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .ci-cli "./.ci-cli-package/systembootstrapper-cli-$(cat VERSION).tgz"
-export PATH="$PWD/.ci-cli/node_modules/.bin:$PATH"
-system-bootstrapper project-ci package "$PWD" "$PWD/assets/cli-companion"
-export SYSTEM_CLI_ARTIFACT="$PWD/assets/cli-companion/systembootstrapper-cli-$(cat VERSION).tgz"
-system-bootstrapper project-ci artifact-check "$SYSTEM_CLI_ARTIFACT"
-system-bootstrapper source-prepare "$PWD"
-node --test tests/operations/project-ci.test.cjs tests/operations/project-ci-artifact.test.cjs
-```
-
-Alternatively install an already reviewed regular CLI tarball into an explicitly
-selected npm prefix and add its `node_modules/.bin` directory to `PATH`. Preserve
-the original companion bytes and receipt; reinstalling and repacking does not prove
-identical bytes. Candidate controller images retain their selected package under
-`/opt/system-bootstrapper/cli-artifact`; standalone npm users must supply a
-matching companion explicitly before source/project export.
-
-SourceSnapshot v3 adds the derived `.gitlab/cli` package, checksum and receipt
-and native `.gitlab/build-v3` Docker/lock inputs to the committed Wizard source. Snapshots v1/v2 keep their original strict contracts.
-The current `node24-vite8-cli-v7` recipe binds the archive hash and uses
-`.system-bootstrapper/build-v3`; existing reservations, including the frozen
-`typed-v6/runtime` artifact, keep their exact historical bytes. Use the guarded
-source/toolchain or source-primary migration with an explicit v7 profile and the
-matching source to update an existing project. Controller replacement alone does
-not update a reservation.
+For the source-bound regular npm package, retained archive and receipt, follow
+the canonical [CLI companion package preparation](../templates/project-bootstrap/wizard-build/README.md#prepare-the-cli-companion-package).
+That reference contains the reproducible local build, packaging, offline install,
+artifact verification and source-export procedure, plus the guarded migration
+rules for existing reservations.
 
 Starter React, Angular and Web projects use the same regular CLI package with
 `system-bootstrapper project-ci application CHECKOUT build|verify` and

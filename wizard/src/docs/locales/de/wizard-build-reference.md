@@ -208,12 +208,42 @@ laufen über `system-bootstrapper project-ci browser-smoke CHECKOUT`, den
 TypeScript-Dienst derselben regulären CLI. Umgebungsjobs rufen den Umgebungsdienst
 dieser CLI auf. Der Wizard bleibt eine von Nginx ausgelieferte statische SPA.
 
-Der [Operationsleitfaden](../../../docs/OPERATIONS.md) beschreibt die Erstellung
-und ausdrückliche Auswahl des Begleitarchivs aus demselben Build vor einer
-npm-Veröffentlichung. Quellrevision, Git-Baum, Version und exakter SHA-256 müssen
-mit dem Quellexport übereinstimmen. Das Archiv bleibt außerhalb seines eigenen
-npm-Pakets; ein installiertes Paket wird niemals stillschweigend neu gepackt
-oder durch einen Registry-Download ersetzt.
+## CLI-Begleitpaket vorbereiten
+
+Ein Quellexport enthält das **reguläre gebündelte npm-Paket** aus demselben Build,
+seinen SHA-256 und einen Nachweis, der Paketversion, System-Git-Revision und Git-Baum
+verknüpft. Das Archiv bleibt außerhalb seines eigenen npm-Pakets. Der ausdrückliche
+absolute Pfad `SYSTEM_CLI_ARTIFACT` wählt das aufbewahrte Archiv aus;
+`SYSTEM_CLI_RECEIPT` wählt optional seinen Nachweis aus (Standard: Archivpfad plus
+`.json`). Fehlende oder abweichende Eingaben werden sicher abgelehnt. Archive sind
+auf 8 MiB begrenzt. Jobs prüfen die Prüfsumme des exakten lokalen Archivs und
+installieren es mit `npm install --offline --ignore-scripts`; eine Veröffentlichung
+in der Registry oder eine gleitende Paketversion ist nicht erforderlich.
+
+Installiere in einem sauberen, geprüften Checkout die exakten Node-/npm-Versionen
+aus `package.json`, führe `npm ci --ignore-scripts --no-audit --no-fund` aus und
+bereite das lokale Paket vor dem Quellexport vor:
+
+```sh
+npm run build
+mkdir -p .ci-cli-package
+npm pack --offline --ignore-scripts --pack-destination .ci-cli-package
+npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .ci-cli "./.ci-cli-package/systembootstrapper-cli-$(cat VERSION).tgz"
+export PATH="$PWD/.ci-cli/node_modules/.bin:$PATH"
+system-bootstrapper project-ci package "$PWD" "$PWD/assets/cli-companion"
+export SYSTEM_CLI_ARTIFACT="$PWD/assets/cli-companion/systembootstrapper-cli-$(cat VERSION).tgz"
+system-bootstrapper project-ci artifact-check "$SYSTEM_CLI_ARTIFACT"
+system-bootstrapper source-prepare "$PWD"
+node --test tests/operations/project-ci.test.cjs tests/operations/project-ci-artifact.test.cjs
+```
+
+Alternativ installiere ein bereits geprüftes reguläres CLI-Archiv in einem
+ausdrücklich gewählten npm-Präfix und füge dessen Verzeichnis `node_modules/.bin`
+zu `PATH` hinzu. Bewahre die ursprünglichen Bytes und den Nachweis des Begleitarchivs
+auf; erneutes Installieren und Packen beweist keine Bytegleichheit. Kandidaten-
+Controller-Images bewahren ihr ausgewähltes Paket unter
+`/opt/system-bootstrapper/cli-artifact` auf; Nutzer der eigenständigen npm-Installation
+müssen vor einem Quell-/Projektexport ausdrücklich ein passendes Begleitarchiv angeben.
 
 Bestehende verwaltete Importe oder quellcodeführende Projekte migrieren
 ausdrücklich mit `"buildProfile": "node24-vite8-cli-v7"` und dem passenden

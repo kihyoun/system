@@ -111,7 +111,7 @@ pinned versions.
 The regular CLI package travels with SourceSnapshot v3 under `.gitlab/cli` and
 is checked against its exact source/version/hash receipt. Jobs install it offline
 and call `system-bootstrapper project-ci`; they require no npm publication. See
-[package preparation](OPERATIONS.md) for the explicit companion input.
+[package preparation](../templates/project-bootstrap/wizard-build/README.md#prepare-the-cli-companion-package) for the explicit companion input.
 
 This profile retains exact-tag cleanup and the build/browser images' public CA
 trust from the reviewed, checksummed

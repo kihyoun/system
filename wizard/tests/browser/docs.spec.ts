@@ -92,7 +92,7 @@ test('installation screenshots, code highlighting and detailed links work offlin
   const screenshot = page.getByRole('img', { name: 'Overview with the platform introduction and Quick Install' });
   await screenshot.scrollIntoViewIfNeeded();
   await expect(screenshot).toBeVisible();
-  expect(await screenshot.evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true);
+  await expect.poll(() => screenshot.evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true);
   expect(await page.locator('pre code span[style]').count()).toBeGreaterThan(0);
   await page.getByRole('link', { name: 'persistence guide', exact: true }).click();
   await expect(page).toHaveURL(/#docs\/storage$/);

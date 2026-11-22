@@ -455,8 +455,8 @@ const installed = () => ({environments: {...input.environments, activationCommit
   await clearFixtureLease(foreignOperation);
   // Actual SIGKILL cannot execute cleanup and never makes an elapsed lease free.
   const killedOperation = '7'.repeat(48);
-  const childCode = `const {NativeEnvironmentOperationLeaseAdapter}=require(${JSON.stringify(path.join(source, 'dist/modules/wizard-environments/operationLease.adapter'))}); const lease=new NativeEnvironmentOperationLeaseAdapter({mainFile:()=>${JSON.stringify(mainFile)}}); lease.acquire(${JSON.stringify(killedOperation)},${JSON.stringify(process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE)}); process.kill(process.pid,'SIGKILL');`;
-  const killed = require('child_process').spawnSync(process.execPath, ['-e', childCode], {timeout: 10000, encoding: 'utf8'});
+  const childCode = `const {NativeEnvironmentOperationLeaseAdapter}=require(process.argv[1]); const lease=new NativeEnvironmentOperationLeaseAdapter({mainFile:()=>process.argv[2]}); lease.acquire(process.argv[3],process.argv[4]); process.kill(process.pid,'SIGKILL');`;
+  const killed = require('child_process').spawnSync(process.execPath, ['-e', childCode, path.join(source, 'dist/modules/wizard-environments/operationLease.adapter'), mainFile, killedOperation, process.env.SYSTEM_WIZARD_ENVIRONMENT_IMAGE], {timeout: 10000, encoding: 'utf8'});
   assert.equal(killed.signal, 'SIGKILL');
   assert.equal(workflow.inspect().operationLease.operation, killedOperation);
   assert.equal(workflow.inspect().operationLease.completion, 'running');

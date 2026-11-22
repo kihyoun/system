@@ -173,11 +173,40 @@ CI 검증, 정리 및 공개 신뢰 파일을 상속합니다.
 환경 작업은 해당 CLI의 환경 서비스를 호출합니다. Wizard는 계속 Nginx가 제공하는
 정적 SPA입니다.
 
-[운영 가이드](../../../docs/OPERATIONS.md)는 npm에 게시하기 전에 같은 빌드의
-동반 아카이브를 만들고 명시적으로 선택하는 방법을 설명합니다. 소스 리비전, Git
-트리, 버전 및 정확한 SHA-256은 소스 내보내기와 일치해야 합니다. 아카이브는 자기
-npm 패키지 밖에 보관합니다. 설치된 패키지를 알리지 않고 다시 포장하거나
-레지스트리 다운로드로 대체하지 않습니다.
+## CLI 동반 패키지 준비
+
+소스 내보내기에는 같은 빌드의 **일반 번들 npm 패키지**, SHA-256 및 패키지 버전,
+System Git 리비전과 Git 트리를 연결하는 영수증이 포함됩니다. 아카이브는 자기
+npm 패키지 밖에 보관합니다. 명시적인 절대 경로 `SYSTEM_CLI_ARTIFACT`로 보관한
+아카이브를 선택하며, `SYSTEM_CLI_RECEIPT`로 영수증을 선택할 수 있습니다
+(기본값: 아카이브 경로에 `.json` 추가). 입력이 없거나 일치하지 않으면 안전하게
+거부합니다. 아카이브 크기는 8 MiB로 제한됩니다. 작업은 정확한 로컬 아카이브의
+체크섬을 확인하고 `npm install --offline --ignore-scripts`로 설치하므로
+레지스트리 게시나 고정되지 않은 패키지 버전이 필요하지 않습니다.
+
+깨끗하고 검토된 체크아웃에서 `package.json`에 지정된 정확한 Node/npm 버전을
+설치하고 `npm ci --ignore-scripts --no-audit --no-fund`를 실행한 뒤,
+소스를 내보내기 전에 로컬 패키지를 준비하세요.
+
+```sh
+npm run build
+mkdir -p .ci-cli-package
+npm pack --offline --ignore-scripts --pack-destination .ci-cli-package
+npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .ci-cli "./.ci-cli-package/systembootstrapper-cli-$(cat VERSION).tgz"
+export PATH="$PWD/.ci-cli/node_modules/.bin:$PATH"
+system-bootstrapper project-ci package "$PWD" "$PWD/assets/cli-companion"
+export SYSTEM_CLI_ARTIFACT="$PWD/assets/cli-companion/systembootstrapper-cli-$(cat VERSION).tgz"
+system-bootstrapper project-ci artifact-check "$SYSTEM_CLI_ARTIFACT"
+system-bootstrapper source-prepare "$PWD"
+node --test tests/operations/project-ci.test.cjs tests/operations/project-ci-artifact.test.cjs
+```
+
+또는 이미 검토된 일반 CLI 아카이브를 명시적으로 선택한 npm 접두 경로에 설치하고,
+그 `node_modules/.bin` 디렉터리를 `PATH`에 추가하세요. 원본 동반 아카이브의
+바이트와 영수증을 보존하세요. 다시 설치하고 포장해도 동일한 바이트임이 입증되지는
+않습니다. 후보 컨트롤러 이미지는 선택한 패키지를
+`/opt/system-bootstrapper/cli-artifact`에 보관하며, 독립 npm 사용자는 소스/프로젝트를
+내보내기 전에 일치하는 동반 아카이브를 명시적으로 제공해야 합니다.
 
 기존 관리형 가져오기 또는 소스 기본 프로젝트는 일치하는 소스와 함께
 `"buildProfile": "node24-vite8-cli-v7"`을 명시하여 마이그레이션합니다. 보호된

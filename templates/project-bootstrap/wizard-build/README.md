@@ -185,11 +185,40 @@ archive hash, install it offline without lifecycle scripts, and invoke
 the same ordinary CLI. Environment jobs invoke that CLI's environment service.
 The Wizard remains a static SPA served by Nginx.
 
-The [operations guide](../../../docs/OPERATIONS.md) documents creation and explicit
-selection of the same-build companion before any npm publication. Its source
-revision, Git tree, version and exact SHA-256 must match the source export. The
-archive stays outside its own npm payload; an installed package is never silently
-repacked or replaced by a registry download.
+## Prepare the CLI companion package
+
+A source export carries the **regular bundled npm package** from that same build,
+its SHA-256 and a receipt binding package version, System Git revision and Git tree.
+The tarball remains outside its own npm payload. The explicit
+`SYSTEM_CLI_ARTIFACT` absolute path selects the retained archive;
+`SYSTEM_CLI_RECEIPT` optionally selects its receipt (default: archive path plus
+`.json`). Missing or mismatched input fails closed. Archives are limited to 8 MiB. Jobs checksum the exact local
+archive and install it with `npm install --offline --ignore-scripts`; registry
+publication and a floating package version are not required.
+
+From a clean reviewed checkout, install the exact Node/npm versions in
+`package.json`, run `npm ci --ignore-scripts --no-audit --no-fund` and prepare the
+local package before exporting source:
+
+```sh
+npm run build
+mkdir -p .ci-cli-package
+npm pack --offline --ignore-scripts --pack-destination .ci-cli-package
+npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .ci-cli "./.ci-cli-package/systembootstrapper-cli-$(cat VERSION).tgz"
+export PATH="$PWD/.ci-cli/node_modules/.bin:$PATH"
+system-bootstrapper project-ci package "$PWD" "$PWD/assets/cli-companion"
+export SYSTEM_CLI_ARTIFACT="$PWD/assets/cli-companion/systembootstrapper-cli-$(cat VERSION).tgz"
+system-bootstrapper project-ci artifact-check "$SYSTEM_CLI_ARTIFACT"
+system-bootstrapper source-prepare "$PWD"
+node --test tests/operations/project-ci.test.cjs tests/operations/project-ci-artifact.test.cjs
+```
+
+Alternatively install an already reviewed regular CLI tarball into an explicitly
+selected npm prefix and add its `node_modules/.bin` directory to `PATH`. Preserve
+the original companion bytes and receipt; reinstalling and repacking does not prove
+identical bytes. Candidate controller images retain their selected package under
+`/opt/system-bootstrapper/cli-artifact`; standalone npm users must supply a
+matching companion explicitly before source/project export.
 
 An existing managed import or source-primary project migrates explicitly with
 `"buildProfile": "node24-vite8-cli-v7"` and its matching source. The guarded plan

@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {Upgrade,release,hash,atomic,run,json,inputJsonMaxBytes,checkpointJsonMaxBytes}=require('../../dist/modules/gitlab-upgrade/compatibility');
+const {Upgrade,release,hash,atomic,run,json,INPUT_JSON_MAX_BYTES:inputJsonMaxBytes,CHECKPOINT_JSON_MAX_BYTES:checkpointJsonMaxBytes}=require('../../dist/modules/gitlab-upgrade/compatibility');
 const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
 const old='sha256:'+'b'.repeat(64),next='sha256:'+'c'.repeat(64);
 function fixture(t){

@@ -116,7 +116,7 @@ stehen in `wizard/package.json` und im verwalteten Rezept.
 Das reguläre CLI-Paket wird mit SourceSnapshot v3 unter `.gitlab/cli` übertragen
 und anhand seines exakten Quell-/Versions-/Hashnachweises geprüft. Jobs
 installieren es offline und rufen `system-bootstrapper project-ci` auf; eine
-npm-Veröffentlichung ist nicht erforderlich. Die [Paketvorbereitung](OPERATIONS.md)
+npm-Veröffentlichung ist nicht erforderlich. Die [Paketvorbereitung](../templates/project-bootstrap/wizard-build/README.md#prepare-the-cli-companion-package)
 beschreibt die ausdrückliche Auswahl des Begleitarchivs.
 
 Dieses Profil behält die Bereinigung exakter Tags und das öffentliche CA-Vertrauen

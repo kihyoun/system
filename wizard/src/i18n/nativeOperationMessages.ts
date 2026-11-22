@@ -495,6 +495,11 @@ const messages: [string, string, string][] = [
     '현재 플랫폼 작업이 끝날 때까지 기다리세요.',
   ],
   [
+    'Invalid stored environment state.',
+    'Der gespeicherte Umgebungszustand ist ungültig.',
+    '저장된 환경 상태가 유효하지 않습니다.',
+  ],
+  [
     'Development preview setup status is unavailable.',
     'Der Status der Entwicklungsvorschau-Einrichtung ist nicht verfügbar.',
     '개발 미리보기 설정 상태를 확인할 수 없습니다.',

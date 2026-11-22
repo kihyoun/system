@@ -152,7 +152,7 @@ test('public prerequisite CLI and mount authority reject unreviewed commands and
  const {PublicUpgradePreparationService}=require('../../dist/modules/host/publicUpgradePreparation.service');
  const {PublicGitlabPrerequisiteService,prerequisiteController}=require('../../dist/modules/host/publicGitlabPrerequisite.service');
  const {ProjectsRoutingService}=require('../../dist/modules/projects-routing/projectsRouting.service');
- const {root}=require('../../dist/modules/gitlab-upgrade/types');
+ const {root:upgradeSourceRoot}=require('../../dist/modules/gitlab-upgrade/types');
  const privateInput=require('../../dist/modules/host/privateInput'),install=require('../../dist/modules/host/install');
  const {bytesSha}=require('../../dist/modules/host/releaseSelection.service');
  const filename='/state/gitlab-prerequisites/to-2-0-0/preparation.json',launchFile=path.join(path.dirname(filename),'launch-'+'a'.repeat(32)+'.json');
@@ -161,10 +161,10 @@ test('public prerequisite CLI and mount authority reject unreviewed commands and
  const bytes=Buffer.from(JSON.stringify(retained)),launch={preparationSha256:bytesSha(bytes),containerId:'3'.repeat(64),controller:retained.controller};
  t.mock.method(privateInput,'readPrivateInput',name=>{assert([filename,launchFile].includes(name));return name===filename?bytes:Buffer.from(JSON.stringify(launch));});
  t.mock.method(install,'writePrivate',(name)=>assert.equal(name,path.join(path.dirname(filename),'accepted-evidence.json')));
- const originalStat=fs.lstatSync,sources=['/state/.docker.env','/state/.projects.env'],destinations=sources.map(name=>path.join(root,'config/system',path.basename(name)));
+ const originalStat=fs.lstatSync,sources=['/state/.docker.env','/state/.projects.env'],destinations=sources.map(name=>path.join(upgradeSourceRoot,'config/system',path.basename(name)));
  t.mock.method(fs,'lstatSync',(name,options)=>sources.includes(name)?{isSymbolicLink:()=>false,isDirectory:()=>name.endsWith('.projects.env'),isFile:()=>name.endsWith('.docker.env')}:destinations.includes(name)?undefined:originalStat(name,options));
  t.mock.method(fs,'symlinkSync',(source,destination)=>assert.equal(destinations[sources.indexOf(source)],destination));
- const trace=[],coreFiles=['.docker.env','config/gitlab/.docker.env','wizard/.docker.env'].map(name=>path.join(root,name));
+ const trace=[],coreFiles=['.docker.env','config/gitlab/.docker.env','wizard/.docker.env'].map(name=>path.join(upgradeSourceRoot,name));
  t.mock.method(fs,'writeFileSync',(name)=>{assert(coreFiles.includes(name));trace.push('core-address');});
  const accepted={graph:{},evidence:{},release:{sourceRevision:'a'.repeat(40)}};
  const session={evidence(){trace.push('evidence');},run(){trace.push('dependency');},async plan(){trace.push('plan');return {ready:true};}};
@@ -173,7 +173,7 @@ test('public prerequisite CLI and mount authority reject unreviewed commands and
   [PublicUpgradePreparationService,{graph:()=>accepted.graph}],
   [PublicGitlabPrerequisiteService,{inspect:()=>controller,docker:()=> '172.20.0.2'}],
   [GitLabUpgradeService,{create:()=>session}],
-  [ProjectsRoutingService,{reconstructProxyRuntime(root){assert.equal(root,root);trace.push('project-proxy-runtime');}}],
+  [ProjectsRoutingService,{reconstructProxyRuntime(root){assert.equal(root,upgradeSourceRoot);trace.push('project-proxy-runtime');}}],
  ]);
  t.mock.method(NestFactory,'createApplicationContext',async module=>{
   const {ProjectsRoutingModule}=require('../../dist/modules/projects-routing/projectsRouting.module');
