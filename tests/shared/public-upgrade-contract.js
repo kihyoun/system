@@ -6,7 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
-const {download, prepare, archiveConfigDigest, prepareSource, run, preserved, replaceController, controllerFixture, waitForServices, NativeCLI} = require('../e2e/public-upgrade');
+const {download, prepare, archiveConfigDigest, prepareSource, run, preserved, replaceController, replaceControllerAndWait, webReconciliation, controllerFixture, waitForServices, NativeCLI} = require('../e2e/public-upgrade');
 const {preparationFailure} = require('../e2e/prepare-images');
 const edge = require('../../config/releases/upgrade-paths.json').transitions.find(row => row.to === fs.readFileSync(path.join(__dirname, '../../VERSION'), 'utf8').trim());
 const id = char => 'sha256:' + char.repeat(64);
@@ -166,6 +166,114 @@ test('native readiness reports terminal service exits but permits scheduled rest
    }
   }
 });
+test('explicit controller reconciliation waits for a new healthy web identity within the existing budget', async () => {
+  const {Candidate} = require('./disposable-candidate');
+  const names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'];
+  const selected = {system_bootstrapper_1: id('3'), system_wizard_1: id('4')};
+  const oldId = 'a'.repeat(64), newId = 'b'.repeat(64), imageId = id('7');
+  const web = {previousId: oldId, imageId, controllerImageId: selected.system_bootstrapper_1};
+  const state = {Status: 'running', Running: true, OOMKilled: false, Dead: false, Paused: false, Restarting: false, ExitCode: 0};
+  const healthy = names.map((name, index) => ({Name: '/' + name, Id: name === 'system_web_1' ? newId : String(index + 1).repeat(64),
+    Image: selected[name] || imageId, State: {...state, Health: {Status: 'healthy'}}, HostConfig: {RestartPolicy: {Name: 'no'}}}));
+  const sampleWeb = (previousId, changes = {}) => healthy.map(row => row.Name === '/system_web_1' ?
+    {...row, Id: previousId, ...changes} : row);
+  let time = 0, inspections = 0, sample;
+  const candidate = {spec: {images: {nginx: {id: imageId}}}, deadline: 100000, now: () => time,
+    sleep: async milliseconds => { time += milliseconds; }, wait: Candidate.prototype.wait,
+    inner: async args => { assert.deepEqual(args, ['inspect', ...names]); inspections++; return JSON.stringify(sample()); }};
+  const sequence = [
+    sampleWeb(oldId),
+    sampleWeb(oldId, {State: {...state, Status: 'exited', Running: false}}),
+    undefined,
+    sampleWeb(oldId, {State: {...state, Status: 'removing', Running: false}}),
+    healthy,
+  ];
+  sample = () => {
+    const value = sequence[inspections - 1];
+
+    if (!value) {
+      throw Error('missing-web-during-native-recreate');
+    }
+
+    return value;
+  };
+  await waitForServices(candidate, 6000, selected, web);
+  assert.equal(inspections, 5);
+  assert.equal(time, 4000, 'Old healthy, clean exit, absence and removal all await the new healthy identity.');
+  time = 0; inspections = 0; sample = () => sampleWeb(oldId);
+  await assert.rejects(waitForServices(candidate, 2000, selected, web), /^Error: readiness-timeout$/);
+  assert.equal(time, 2000, 'The old healthy identity never satisfies readiness or extends the budget.');
+  for (const invalid of [
+    {...web, previousId: 'invalid'}, {...web, imageId: 'invalid'}, {...web, controllerImageId: id('f')},
+  ]) {
+    inspections = 0;
+    await assert.rejects(waitForServices(candidate, 2000, selected, invalid), /public-upgrade-selected-images-differ/);
+    assert.equal(inspections, 0);
+  }
+  const exited = {Status: 'exited', Running: false, OOMKilled: false, Dead: false, ExitCode: 0};
+  const badCases = [
+    sampleWeb(newId, {State: exited}),
+    sampleWeb(oldId, {State: {...exited, ExitCode: 23}}),
+    sampleWeb(oldId, {State: {...exited, OOMKilled: true}}),
+    sampleWeb(oldId, {State: {...exited, Dead: true}}),
+    sampleWeb(newId, {State: {...exited, OOMKilled: true}}),
+    sampleWeb(newId, {State: {...exited, Dead: true}}),
+    sampleWeb(newId, {State: {...exited, Status: 'removing', Dead: true}}),
+    sampleWeb(oldId, {Image: id('f'), State: exited}),
+    sampleWeb(newId, {Image: id('f')}),
+    sampleWeb('invalid'),
+    sampleWeb(oldId, {Name: '/unrelated', State: exited}),
+    sampleWeb(oldId, {State: exited}).map(row => row.Name === '/system_bootstrapper_1' ? {...row, Image: id('f')} : row),
+    sampleWeb(oldId, {State: exited}).map(row => row.Name === '/system_bootstrapper_1' ? {...row, State: exited} : row),
+    sampleWeb(oldId, {State: exited}).map(row => row.Name === '/runner_docker_1' ? {...row, State: exited} : row),
+  ];
+  for (const rows of badCases) {
+    time = 0; inspections = 0; sample = () => rows;
+    await assert.rejects(waitForServices(candidate, 6000, selected, web), error => error.noRetry === true);
+    assert.equal(inspections, 1, 'Foreign/new exits, wrong images, failed controllers and real failures remain terminal.');
+    assert.equal(time, 0);
+  }
+  sample = () => sampleWeb(newId, {State: {...exited, Dead: true, OOMKilled: true, ExitCode: 137}});
+  await assert.rejects(waitForServices(candidate, 6000, selected, web),
+    error => error.message === 'public-upgrade-service-oom' && error.exitCode === 137 && error.noRetry === true);
+  time = 0; inspections = 0;
+  sample = () => inspections === 1 ? sampleWeb(newId, {State: {...state, Health: {Status: 'starting'}}}) : healthy;
+  await waitForServices(candidate, 3000, selected, web);
+  assert.equal(inspections, 2, 'The replacement must pass its own health gate.');
+});
+test('controller replacement captures only its exact running owned web before any mutation and waits once', async () => {
+  const selected = {system_bootstrapper_1: id('3'), system_wizard_1: id('4')}, oldId = 'a'.repeat(64);
+  const web = {Name: '/system_web_1', Id: oldId, Image: id('7'),
+    State: {Status: 'running', Running: true, OOMKilled: false, Dead: false, Paused: false, Restarting: false}};
+  let sample = [web];
+  const calls = [], candidate = {spec: {images: {nginx: {id: id('7')}}},
+    inner: async args => { calls.push(args); return JSON.stringify(sample); }};
+  assert.deepEqual(await webReconciliation(candidate, selected), {previousId: oldId, imageId: id('7'), controllerImageId: id('3')});
+  const baseline = {...controllerBaseline(), Mounts: [], HostConfig: {RestartPolicy: {Name: 'always'}}};
+  for (const rows of [[], [web, web], [null], [{...web, Name: '/other'}], [{...web, Id: 'invalid'}],
+    [{...web, Image: id('f')}], ...[
+      {...web.State, Status: 'exited'}, {...web.State, Running: false}, {...web.State, OOMKilled: true},
+      {...web.State, Dead: true}, {...web.State, Paused: true}, {...web.State, Restarting: true},
+      {...web.State, Health: {Status: 'starting'}},
+    ].map(state => [{...web, State: state}])]) {
+    sample = rows; calls.length = 0;
+    await assert.rejects(replaceControllerAndWait(candidate, baseline, id('3'), id('4')), /public-upgrade-selected-images-differ/);
+    assert(calls.every(args => args[0] === 'inspect'), 'Invalid baseline refuses before stop/remove/create/start.');
+  }
+  sample = [web]; calls.length = 0;
+  let waits = 0;
+  candidate.wait = async (check, milliseconds) => {
+    assert.equal(milliseconds, 600000);
+    waits++;
+    sample = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'].map((name, index) => ({
+      ...web, Name: '/' + name, Id: name === 'system_web_1' ? 'b'.repeat(64) : String(index + 1).repeat(64), Image: selected[name] || id('7')
+    }));
+    assert.equal(await check(), true);
+  };
+  await replaceControllerAndWait(candidate, baseline, id('3'), id('4'));
+  assert.deepEqual(calls.map(args => args[0]), ['inspect', 'stop', 'rm', 'create', 'start', 'inspect']);
+  assert.equal(waits, 1, 'One native replacement consumes exactly its existing readiness budget once.');
+});
 test('previous public fixture is selected explicitly and redirects stay anonymous on approved TLS origins', async () => {
   const metadata = fixture();
   assert.deepEqual(await download('example/system', edge.from, async () => Response.json(metadata)), metadata);
@@ -278,11 +386,20 @@ test('source preparation keeps exact target and previous Git objects with a clea
   } finally { fs.rmSync(directory, {recursive: true, force: true}); }
 });
 test('same candidate drives real CLI operations, interrupted offline recovery and restart before recording evidence', async () => {
-  const metadata = fixture(), events = [];
+  const metadata = fixture(), events = [], reconciliations = [];
   const files = {'.docker.env': "# fixture\nexport BOOTSTRAPPER_IMAGE='old'\nexport WIZARD_IMAGE='custom'\nKEEP='yes'\n", '.projects.env/.demo.env': 'project-source-preserved\n'};
   let selected = [id('5'), id('6')], working = {...files}, phase = 'planned', controller = 'not-started', interrupt = false;
-  const candidate = {spec: {restore: {base: '/recovered-data/platform'}, publicUpgrade: {metadata, edge}, images: {candidate: {id: id('5')}, wizard: {id: id('6')}}},
-    evidence: {}, stage: async (_name, action) => action(), call: async () => {}, inner: async () => ''};
+  const candidate = {spec: {restore: {base: '/recovered-data/platform'}, publicUpgrade: {metadata, edge}, images: {candidate: {id: id('5')}, wizard: {id: id('6')}, nginx: {id: id('7')}}},
+    evidence: {}, stage: async (_name, action) => action(), call: async () => {}, inner: async args => {
+      if (args[0] === 'inspect') {
+        assert.deepEqual(args, ['inspect', 'system_web_1']);
+        return JSON.stringify([{Name: '/system_web_1', Id: 'd'.repeat(64), Image: id('7'),
+          State: {Status: 'running', Running: true, OOMKilled: false, Dead: false}}]);
+      }
+
+      assert.deepEqual(args, ['restart', 'system_bootstrapper_1']);
+      return '';
+    }};
   const native = {createCredential: async () => {}, initialize: async () => { events.push('initialize'); selected = [id('3'), id('4')]; },
     cli: async (operation, confirmation) => {
       events.push(operation);
@@ -304,12 +421,21 @@ test('same candidate drives real CLI operations, interrupted offline recovery an
     revokeCredential: async () => events.push('revoke')};
   const dependencies = {configuration: async () => working, native,
     storage: {attach: async () => events.push('backup-attached'), detach: async () => events.push('backup-detached')}, baseline: {Image: id('5')},
-    verify: async () => {}, dataSample: async () => ({sha256: 'a'.repeat(64), sampledProjects: 1}), imageIds: async () => selected};
+    verify: async (web, images) => {
+      if (web) {
+        assert.deepEqual(web, {previousId: 'd'.repeat(64), imageId: id('7'), controllerImageId: id('3')});
+        assert.deepEqual(images, {system_bootstrapper_1: id('3'), system_wizard_1: id('4')});
+        reconciliations.push(web);
+      } else {
+        assert.equal(images, undefined, 'Completed native apply/recover retain ordinary strict verification.');
+      }
+    }, dataSample: async () => ({sha256: 'a'.repeat(64), sampledProjects: 1}), imageIds: async () => selected};
   await run(candidate, {}, dependencies);
   assert.deepEqual(events, ['backup-attached', 'initialize', 'plan', 'apply', 'apply', 'status', 'backup-detached', 'old-images-removed',
     'recover', 'status', 'recover', 'status', 'restore-original', 'finish', 'revoke']);
   assert.equal(candidate.evidence.publicUpgrade.rollbackVerified, true);
   assert.equal(candidate.evidence.publicUpgrade.fromSourceRevision, metadata.source.revision);
+  assert.equal(reconciliations.length, 1, 'Explicit recovery restart uses the injected verifier once with its bound web baseline.');
   // The real combined flow has already migrated GitLab. Reuse that session and
   // leave recovered selectors intact until the one final database rollback.
   events.length=0;working={...files};selected=[id('5'),id('6')];

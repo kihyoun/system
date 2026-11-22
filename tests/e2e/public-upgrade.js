@@ -165,14 +165,68 @@ function controllerFixture(baseline, fixture) {
     extra_hosts: baseline.HostConfig.ExtraHosts || []}}};
 }
 
-async function waitForServices(candidate, milliseconds = 600000, selectedImages = {}) {
+async function webReconciliation(candidate, selectedImages) {
+  required(/^sha256:[a-f0-9]{64}$/.test(selectedImages.system_bootstrapper_1 || '') &&
+    /^sha256:[a-f0-9]{64}$/.test(selectedImages.system_wizard_1 || '') &&
+    /^sha256:[a-f0-9]{64}$/.test(candidate.spec.images.nginx?.id || ''), 'public-upgrade-selected-images-differ');
+  const rows = JSON.parse(await candidate.inner(['inspect', 'system_web_1']));
+  required(Array.isArray(rows) && rows.length === 1, 'public-upgrade-selected-images-differ');
+  const web = rows[0];
+  required(web?.Name === '/system_web_1' && /^[a-f0-9]{64}$/.test(web.Id || '') &&
+    web.Image === candidate.spec.images.nginx.id && web.State?.Status === 'running' &&
+    web.State.Running === true && web.State.OOMKilled === false && web.State.Dead === false &&
+    !['Paused', 'Restarting'].some(key => web.State[key]) &&
+    (!web.State.Health || web.State.Health.Status === 'healthy'), 'public-upgrade-selected-images-differ');
+  return {previousId: web.Id, imageId: web.Image, controllerImageId: selectedImages.system_bootstrapper_1};
+}
+
+async function replaceControllerAndWait(candidate, baseline, image, wizard, fixture) {
+  const selectedImages = {system_bootstrapper_1: image, system_wizard_1: wizard};
+  const web = await webReconciliation(candidate, selectedImages);
+  await replaceController(candidate, baseline, image, fixture);
+  await waitForServices(candidate, 600000, selectedImages, web);
+}
+
+async function waitForServices(candidate, milliseconds = 600000, selectedImages = {}, web) {
   const names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'];
   required(Object.entries(selectedImages).every(([name, image]) =>
     names.includes(name) && /^sha256:[a-f0-9]{64}$/.test(image)), 'public-upgrade-selected-images-differ');
+
+  if (web !== undefined) {
+    required(web && /^[a-f0-9]{64}$/.test(web.previousId || '') &&
+      /^sha256:[a-f0-9]{64}$/.test(web.imageId || '') &&
+      /^sha256:[a-f0-9]{64}$/.test(web.controllerImageId || '') &&
+      selectedImages.system_bootstrapper_1 === web.controllerImageId &&
+      /^sha256:[a-f0-9]{64}$/.test(selectedImages.system_wizard_1 || ''), 'public-upgrade-selected-images-differ');
+  }
+
   await candidate.wait(async () => {
     const rows = JSON.parse(await candidate.inner(['inspect', ...names]));
+    const controller = rows.find(row => row.Name === '/system_bootstrapper_1');
+    const reconciling = web && controller?.Image === web.controllerImageId &&
+      controller.State?.Status === 'running' && controller.State.Running === true &&
+      controller.State.OOMKilled === false && controller.State.Dead === false &&
+      !['Paused', 'Restarting'].some(key => controller.State[key]);
     for (const row of rows) {
-      const terminal = terminalContainerState(row);
+      const reconcilingWeb = web && row.Name === '/system_web_1';
+
+      if (reconcilingWeb) {
+        if (!/^[a-f0-9]{64}$/.test(row.Id || '') || row.Image !== web.imageId) {
+          throw Object.assign(Error('public-upgrade-selected-images-differ'), {noRetry: true});
+        }
+
+        // Explicit native controller startup recreates this exact previous proxy.
+        // Its clean exit is pending replacement, never evidence of readiness.
+        if (reconciling && row.Id === web.previousId && row.State?.Status === 'exited' &&
+          row.State.Running === false && row.State.ExitCode === 0 &&
+          row.State.OOMKilled === false && row.State.Dead === false &&
+          row.State.Paused !== true && row.State.Restarting !== true) {
+          continue;
+        }
+      }
+
+      const terminal = terminalContainerState(row) ||
+        (reconcilingWeb && row.Id !== web.previousId && row.State?.Dead === true ? 'dead' : undefined);
       if (terminal) throw Object.assign(Error('public-upgrade-service-' + terminal), {noRetry: true,
         ...(Number.isInteger(row.State.ExitCode) && row.State.ExitCode >= 0 && row.State.ExitCode <= 255 ? {exitCode: row.State.ExitCode} : {})});
     }
@@ -182,6 +236,8 @@ async function waitForServices(candidate, milliseconds = 600000, selectedImages 
         return names.includes(name) && row.State?.Running === true &&
           row.State.Status !== 'removing' &&
           (!Object.hasOwn(selectedImages, name) || row.Image === selectedImages[name]) &&
+          (!web || name !== 'system_web_1' || (row.Id !== web.previousId &&
+            row.State.Status === 'running' && row.State.OOMKilled === false && row.State.Dead === false)) &&
           !['Paused', 'Restarting', 'Dead'].some(key => row.State[key]) &&
           (!row.State.Health || row.State.Health.Status === 'healthy');
       });
@@ -259,13 +315,10 @@ class NativeCLI {
       await this.invoke(['gitlab-previous-selectors']);
       await this.invoke(['freeze-publication']);
     }
-    await replaceController(candidate, baseline, previous.images.controller.imageId, this.fixture);
     // The previous controller reconciles its services asynchronously. Healthy
     // containers from the restored candidate are not the selected public pair.
-    await waitForServices(candidate, 600000, {
-      system_bootstrapper_1: previous.images.controller.imageId,
-      system_wizard_1: previous.images.wizard.imageId
-    });
+    await replaceControllerAndWait(candidate, baseline, previous.images.controller.imageId,
+      previous.images.wizard.imageId, this.fixture);
   }
 
   async invoke(args) {
@@ -353,11 +406,8 @@ class NativeCLI {
     required(result.status==='promoted' && result.toImage===security.toImage && /^[a-f0-9]{64}$/.test(result.checkpointSha256||''),'upgrade-checkpoint-proof-invalid');
     await this.invoke(['save-migrated-public-selection']);
     await this.invoke(['candidate-pair-selectors']);
-    await replaceController(this.candidate,this.originalBaseline,this.originalBaseline.Image,this.fixture);
-    await waitForServices(this.candidate,600000,{
-      system_bootstrapper_1:this.originalBaseline.Image,
-      system_wizard_1:this.candidate.spec.images.wizard.id
-    });
+    await replaceControllerAndWait(this.candidate, this.originalBaseline, this.originalBaseline.Image,
+      this.candidate.spec.images.wizard.id, this.fixture);
     return result;
   }
 
@@ -376,11 +426,9 @@ class NativeCLI {
     const branch=await this.candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),this.token.token);
     required(/^[a-f0-9]{40}$/.test(branch.commit?.id||''),'public-upgrade-existing-head-required');this.baselineHead=branch.commit.id;
     await this.invoke(['restore-migrated-public-selection']);
-    await replaceController(this.candidate,this.originalBaseline,this.candidate.spec.publicUpgrade.metadata.images.controller.imageId,this.fixture);
-    await waitForServices(this.candidate,600000,{
-      system_bootstrapper_1:this.candidate.spec.publicUpgrade.metadata.images.controller.imageId,
-      system_wizard_1:this.candidate.spec.publicUpgrade.metadata.images.wizard.imageId
-    });
+    const previous = this.candidate.spec.publicUpgrade.metadata.images;
+    await replaceControllerAndWait(this.candidate, this.originalBaseline, previous.controller.imageId,
+      previous.wizard.imageId, this.fixture);
   }
 
   rollback(checkpoint) {return this.gitlab('rollback',checkpoint);}
@@ -410,11 +458,8 @@ class NativeCLI {
   }
 
   async finish(_files, baseline) {
-    await replaceController(this.candidate, baseline, baseline.Image);
-    await waitForServices(this.candidate,600000,{
-      system_bootstrapper_1:baseline.Image,
-      system_wizard_1:this.candidate.spec.images.wizard.id
-    });
+    await replaceControllerAndWait(this.candidate, baseline, baseline.Image,
+      this.candidate.spec.images.wizard.id);
   }
 
   async revokeCredential() {
@@ -429,8 +474,8 @@ async function run(candidate, expected, dependencies = {}) {
   const read = dependencies.configuration || configuration;
   let currentExpected = expected;
   let verificationAuth;
-  const verify = dependencies.verify || (async () => {
-    await waitForServices(candidate);
+  const verify = dependencies.verify || (async (web, selectedImages = {}) => {
+    await waitForServices(candidate, 600000, selectedImages, web);
     await candidate.wait(async () => { const value = await recovery.syncFetch(candidate); return !!value.main?.data; }, 600000);
     // This includes the exact existing registry tag/digest. Reuse the native
     // registry job immediately before this stage; do not create more commits
@@ -453,8 +498,8 @@ async function run(candidate, expected, dependencies = {}) {
     else await native.initialize(baseline, expected);
     verificationAuth = native.token;
     currentExpected = {...expected, head: native.baselineHead || expected.head};
-    const check = async (controller, wizard) => {
-      await verify();
+    const check = async (controller, wizard, web) => {
+      await verify(web, web ? {system_bootstrapper_1: controller, system_wizard_1: wizard} : undefined);
       required(JSON.stringify(await sample()) === JSON.stringify(dataBefore), 'public-upgrade-data-sample-changed');
       required(preserved(await read(candidate)) === before, 'public-upgrade-configuration-changed');
       const actual = dependencies.imageIds ? await dependencies.imageIds() : JSON.parse(await candidate.inner(['inspect', 'system_bootstrapper_1', 'system_wizard_1'])).map(row => row.Image);
@@ -488,8 +533,11 @@ async function run(candidate, expected, dependencies = {}) {
       new RegExp('^export ' + key + "='system-bootstrapper-recovery:[a-f0-9]{64}'$", 'm').test(recovered['.docker.env'])),
     'public-upgrade-recovery-selectors-not-persistent');
     // A separate process restart must re-source the durable recovery aliases.
+    const restartedWeb = await webReconciliation(candidate, {
+      system_bootstrapper_1: oldController, system_wizard_1: oldWizard
+    });
     await candidate.inner(['restart', 'system_bootstrapper_1']);
-    await check(oldController, oldWizard);
+    await check(oldController, oldWizard, restartedWeb);
     required((await native.cli('status')).operation.phase === 'rolled-back', 'public-upgrade-recovery-status-not-durable');
     if(native.preparedMigration) {
       native.pairedCheckpoint=native.live+'/recovery/controller-updates/'+path.basename(native.planDir);
@@ -518,4 +566,4 @@ async function prepareGitlabMigration(candidate,expected) {
   candidate.publicUpgradeNative=native;
   return native;
 }
-module.exports = {sanitizeGitlabFailure, prepareGitlabMigration, download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, controllerFixture, waitForServices, NativeCLI, run};
+module.exports = {sanitizeGitlabFailure, prepareGitlabMigration, download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, replaceControllerAndWait, webReconciliation, controllerFixture, waitForServices, NativeCLI, run};
