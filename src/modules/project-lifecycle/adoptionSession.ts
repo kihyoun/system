@@ -1,4 +1,8 @@
-import { cliArtifactFiles, selectedCliArtifact } from '../project-ci/cliArtifact';
+import {
+  cliArtifactFiles,
+  selectedCliArtifact,
+  validateCliCompanion,
+} from '../project-ci/cliArtifact';
 import { producerPaths } from './sourcePrimaryEnvironment';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -466,7 +470,11 @@ export class Adoption {
 
     const retainedRecipe = bootstrap
       ? builds.generate(current.text.slice(0, 1184), input.buildProfile)
-      : builds.select(current.text.slice(0, 1184), old.wizardWorkflow!.build.recipeHash);
+      : builds.select(
+          current.text.slice(0, 1184),
+          old.wizardWorkflow!.build.recipeHash,
+          builds.retainedCliArtifactSha256(old.wizardWorkflow?.build, old.sourcePrimary),
+        );
 
     if (
       upgradeBuild &&
@@ -503,11 +511,32 @@ export class Adoption {
       : retainedRecipe;
 
     if (recipe.profile === 'node24-vite8-cli-v7') {
-      for (const file of cliArtifactFiles(selectedCliArtifact())) {
+      const descriptor = verifiedFiles.get('.gitlab/cli/system-bootstrapper.tgz.json');
+      const checksum = verifiedFiles.get('.gitlab/cli/system-bootstrapper.tgz.sha256');
+      const companion = descriptor
+        ? validateCliCompanion(JSON.parse(descriptor.toString()))
+        : undefined;
+
+      if (
+        !companion ||
+        companion.sha256 !== recipe.cliArtifactSha256 ||
+        !checksum?.equals(Buffer.from(companion.sha256 + '  system-bootstrapper.tgz\n'))
+      ) {
+        throw Error(
+          'The CLI build profile requires matching source files. Use the source migration first.',
+        );
+      }
+
+      const expected =
+        upgradeBuild || bootstrap
+          ? cliArtifactFiles(selectedCliArtifact()).map((file) => ({
+              path: file.path,
+              sha256: b.hash(file.bytes),
+            }))
+          : [{ path: '.gitlab/cli/system-bootstrapper.tgz', sha256: recipe.cliArtifactSha256 }];
+      for (const file of expected) {
         if (
-          !input.ciFiles.some(
-            (entry) => entry.path === file.path && entry.sha256 === b.hash(file.bytes),
-          )
+          !input.ciFiles.some((entry) => entry.path === file.path && entry.sha256 === file.sha256)
         ) {
           throw Error(
             'The CLI build profile requires matching source files. Use the source migration first.',
@@ -558,6 +587,7 @@ export class Adoption {
         version: 1,
         mode: 'source-primary',
         recipeHash: recipe.recipeHash,
+        ...(recipe.cliArtifactSha256 ? { cliArtifactSha256: recipe.cliArtifactSha256 } : {}),
         phase: 'candidate-verified',
         pipeline: {
           id: proof.pipeline.id,

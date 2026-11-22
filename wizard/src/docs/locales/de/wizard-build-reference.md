@@ -102,6 +102,15 @@ bestehenden importierten Projekts vor Ort erfordert weiterhin eine separat
 geprüfte Migration; ein neuer Schnappschussimport kann das unterstützte Profil
 direkt verwenden.
 
+Eine v7-Reservierung bewahrt `cliArtifactSha256` unabhängig vom aktuell gewählten
+Zielpaket. Der echte Archivhash bleibt Bestandteil des genauen Rezepthashes.
+Source-primary-Nachweise können diese Identität aus ihrem genehmigten CI-
+Dateimanifest rekonstruieren. Fehlt einem älteren verwalteten Nachweis der Hash,
+verweigert die Offline-Prüfung von Build und Umgebungen den Zugriff, ohne
+Konfiguration oder Sperren zu verändern. Der native Upgradeplan der ursprünglich
+importierten Quellen rekonstruiert die Identität aus dem passenden v3-Schnappschuss
+und geprüften Datei-/Commitnachweisen. Ersetze sie niemals durch das neue Zielpaket.
+
 ## Exakte Standard-Tag-Bereinigung
 
 Die aufgezeichneten Rezepte `legacy` und `node24-vite8` bleiben für ihre bestehenden

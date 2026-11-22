@@ -83,7 +83,7 @@ export interface EnvironmentRecipePort {
     previous: EnvironmentReservation,
     options: { operation: string; helperImage: string; activationCommit: string; ciFiles: unknown },
   ): EnvironmentReservation;
-  select(logo: string, recipeHash: string): BuildRecipe;
+  select(logo: string, recipeHash: string, cliArtifactSha256?: string): BuildRecipe;
   forSource(logo: string, revision: string): BuildRecipe;
 }
 export interface EnvironmentOperationLease {

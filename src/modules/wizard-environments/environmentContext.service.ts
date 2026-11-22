@@ -1,3 +1,4 @@
+import { retainedCliArtifactSha256 } from '../project-lifecycle/buildRecipe.service';
 import { Inject, Injectable } from '@nestjs/common';
 import crypto from 'node:crypto';
 import Helper from '../../common/configurationSignature';
@@ -60,7 +61,11 @@ export class EnvironmentContextService {
     const legacyRecipe = primary
       ? undefined
       : build
-        ? this.recipes.select(Helper.textLogo, build.recipeHash)
+        ? this.recipes.select(
+            Helper.textLogo,
+            build.recipeHash,
+            retainedCliArtifactSha256(build, receipt.sourcePrimary),
+          )
         : this.recipes.forSource(Helper.textLogo, receipt.wizardWorkflow.sourceRevision);
     const registry = registryPrefix(platform, receipt.repository.path);
 
@@ -160,6 +165,7 @@ export class EnvironmentContextService {
       operation: reservation.operation,
       controller: reservation.controller,
       buildRecipeHash: reservation.buildRecipeHash,
+      cliArtifactSha256: reservation.cliArtifactSha256,
     });
   }
 
@@ -171,10 +177,22 @@ export class EnvironmentContextService {
     const updating = !!value.current && selectedHash !== value.current.settingsHash;
 
     if (value.current && !updating) {
-      return value.current;
+      return {
+        ...value.current,
+        ...(value.legacyRecipe?.cliArtifactSha256
+          ? { cliArtifactSha256: value.legacyRecipe.cliArtifactSha256 }
+          : {}),
+      };
     }
 
-    const previous = value.current ? { ...value.current } : undefined;
+    const previous = value.current
+      ? {
+          ...value.current,
+          ...(value.legacyRecipe?.cliArtifactSha256
+            ? { cliArtifactSha256: value.legacyRecipe.cliArtifactSha256 }
+            : {}),
+        }
+      : undefined;
 
     if (previous) {
       delete previous.previous;
@@ -211,6 +229,9 @@ export class EnvironmentContextService {
       helperImage: value.helperImage,
       controller: value.controller,
       ...(value.legacyRecipe?.profile ? { buildRecipeHash: value.legacyRecipe.recipeHash } : {}),
+      ...(value.legacyRecipe?.cliArtifactSha256
+        ? { cliArtifactSha256: value.legacyRecipe.cliArtifactSha256 }
+        : {}),
       ...(previous ? { previous, deployments: previous.deployments || {} } : {}),
     };
   }

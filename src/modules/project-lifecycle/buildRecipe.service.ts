@@ -11,6 +11,7 @@ export interface BuildRecipe {
   ciHash: string;
   recipeHash: string;
   profile?: string;
+  cliArtifactSha256?: string;
   ci: string;
   files: { path: string; content: string; sha256: string }[];
 }
@@ -197,7 +198,56 @@ export function generate(logo: string, profile = 'legacy'): BuildRecipe {
   };
   return { ...manifest, profile, recipeHash: hash(JSON.stringify(manifest)), ci, files };
 }
-export function select(logo: string, recipeHash: string): BuildRecipe {
+/** Recover only the package hash bound by the server-owned reservation/native CI manifest. */
+export function retainedCliArtifactSha256(
+  build: { cliArtifactSha256?: string } | null | undefined,
+  sourcePrimary?: unknown,
+): string | undefined {
+  let retained = build?.cliArtifactSha256;
+  const primary =
+    sourcePrimary && typeof sourcePrimary === 'object' && !Array.isArray(sourcePrimary)
+      ? sourcePrimary
+      : undefined;
+  const files = primary && 'ciFiles' in primary ? primary.ciFiles : undefined;
+
+  if (Array.isArray(files)) {
+    const archives = files.filter(
+      (file: unknown) =>
+        file &&
+        typeof file === 'object' &&
+        'path' in file &&
+        file.path === '.gitlab/cli/system-bootstrapper.tgz',
+    );
+
+    if (archives.length > 1) {
+      throw Error(
+        'The CLI build profile requires matching source files. Use the source migration first.',
+      );
+    }
+
+    const archive: unknown = archives[0];
+
+    if (archive && typeof archive === 'object' && 'sha256' in archive) {
+      if (typeof archive.sha256 !== 'string' || (retained && retained !== archive.sha256)) {
+        throw Error(
+          'The CLI build profile requires matching source files. Use the source migration first.',
+        );
+      }
+
+      retained = archive.sha256;
+    }
+  }
+
+  if (retained !== undefined && !/^[a-f0-9]{64}$/.test(retained)) {
+    throw Error(
+      'The CLI build profile requires matching source files. Use the source migration first.',
+    );
+  }
+
+  return retained;
+}
+
+export function select(logo: string, recipeHash: string, cliArtifactSha256?: string): BuildRecipe {
   for (const profile of [
     'legacy',
     'node24-vite8',
@@ -206,7 +256,6 @@ export function select(logo: string, recipeHash: string): BuildRecipe {
     ...Object.keys(caProfiles),
     quickstartProfile,
     'node24-vite8-typed-v6',
-    ...(process.env.SYSTEM_CLI_ARTIFACT ? [cliBuildProfile] : []),
   ]) {
     const recipe = generate(logo, profile);
 
@@ -214,8 +263,20 @@ export function select(logo: string, recipeHash: string): BuildRecipe {
       return recipe;
     }
   }
+
+  if (cliArtifactSha256 !== undefined || process.env.SYSTEM_CLI_ARTIFACT) {
+    const recipe = generateCliBuildRecipe(logo, sourceRoot, cliArtifactSha256);
+
+    if (recipe.recipeHash === recipeHash) {
+      return recipe;
+    }
+  }
+
   throw new Error(
-    'A different build recipe is reserved (Unknown reserved Wizard build recipe). Use a reviewed versioned recipe upgrade.',
+    'A different build recipe is reserved (Unknown reserved Wizard build recipe). Use a reviewed versioned recipe upgrade.' +
+      (cliArtifactSha256 === undefined
+        ? ' For v7, recover the retained CLI package hash through the verified original-source upgrade plan.'
+        : ''),
   );
 }
 export function forSource(logo: string, sourceRevision: string): BuildRecipe {
@@ -277,8 +338,8 @@ export class BuildRecipeService {
     return generate(logo, profile);
   }
 
-  select(logo: string, recipeHash: string): BuildRecipe {
-    return select(logo, recipeHash);
+  select(logo: string, recipeHash: string, cliArtifactSha256?: string): BuildRecipe {
+    return select(logo, recipeHash, cliArtifactSha256);
   }
 
   forSource(logo: string, sourceRevision: string): BuildRecipe {

@@ -19,6 +19,7 @@ export interface EnvironmentRequest {
 }
 export type EnvironmentDeployments = Partial<Record<EnvironmentKind, DeploymentSlot>>;
 export interface EnvironmentReservation {
+  cliArtifactSha256?: string;
   version: number;
   operation: string;
   phase: string;
@@ -55,6 +56,7 @@ export interface ArtifactObservation {
   [key: string]: unknown;
 }
 export interface BuildObservation {
+  cliArtifactSha256?: string;
   version?: number;
   operation?: string;
   recipeHash: string;

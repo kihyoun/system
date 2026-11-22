@@ -13,8 +13,17 @@ export const cliRecipeFiles = [
   'browser/package-lock.json',
 ] as const;
 const hash = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
-export function generateCliBuildRecipe(logo: string, checkout: string) {
-  const artifact = selectedCliArtifact();
+export function generateCliBuildRecipe(
+  logo: string,
+  checkout: string,
+  cliArtifactSha256 = selectedCliArtifact().sha256,
+) {
+  if (!/^[a-f0-9]{64}$/.test(cliArtifactSha256)) {
+    throw Error(
+      'The CLI build profile requires matching source files. Use the source migration first.',
+    );
+  }
+
   const prefix = '.system-bootstrapper/build-v3/';
   const files = cliRecipeFiles.map((relative) => {
     const content = fs.readFileSync(
@@ -30,7 +39,7 @@ image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8
 default:
   tags: [docker]
   before_script:
-    - echo '${artifact.sha256}  .gitlab/cli/system-bootstrapper.tgz' | sha256sum -c -
+    - echo '${cliArtifactSha256}  .gitlab/cli/system-bootstrapper.tgz' | sha256sum -c -
     - npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .system-bootstrapper/cli ./.gitlab/cli/system-bootstrapper.tgz
     - export PATH="$CI_PROJECT_DIR/.system-bootstrapper/cli/node_modules/.bin:$PATH"
     - system-bootstrapper host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR/.system-bootstrapper/cli/node_modules/@systembootstrapper/cli"
@@ -75,6 +84,7 @@ test:wizard:
   return {
     ...manifest,
     profile: cliBuildProfile,
+    cliArtifactSha256,
     recipeHash: hash(JSON.stringify(manifest)),
     ci,
     files,

@@ -202,8 +202,8 @@ export class NativeEnvironmentRecipeAdapter implements EnvironmentRecipePort {
     return readEnvironmentReservation(primary.sourcePrimaryEnvironment(previous, options));
   }
 
-  select(logo: string, recipeHash: string) {
-    return legacy.select(logo, recipeHash);
+  select(logo: string, recipeHash: string, cliArtifactSha256?: string) {
+    return legacy.select(logo, recipeHash, cliArtifactSha256);
   }
 
   forSource(logo: string, revision: string) {

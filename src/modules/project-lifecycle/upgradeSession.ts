@@ -1,4 +1,8 @@
-import { cliArtifactFiles, selectedCliArtifact } from '../project-ci/cliArtifact';
+import {
+  cliArtifactFiles,
+  selectedCliArtifact,
+  validateCliCompanion,
+} from '../project-ci/cliArtifact';
 import { helperInventory } from './helperInventory';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -396,8 +400,20 @@ export class Upgrade {
       });
     }
     files.sort((a, b) => a.path.localeCompare(b.path, 'en'));
+    const companion = files.some((file) => file.path === '.gitlab/producer-v3.json')
+      ? validateCliCompanion(
+          JSON.parse(
+            Buffer.from(
+              files.find((file) => file.path === '.gitlab/cli/system-bootstrapper.tgz.json')
+                ?.content || '',
+              'base64',
+            ).toString(),
+          ),
+        )
+      : undefined;
     return validate({
-      version: workflow.sourceLayout ? 2 : 1,
+      version: companion ? 3 : workflow.sourceLayout ? 2 : 1,
+      ...(companion ? { cliArtifact: companion } : {}),
       sourceRevision: workflow.sourceRevision,
       ...sourceMetadata(workflow),
       manifestHash: workflow.manifestHash,
@@ -498,8 +514,15 @@ export class Upgrade {
       head,
       workflow.importCommit,
     );
-    const oldBuild = builds.select(logo, workflow.build.recipeHash),
-      oldEnvironment = this.recipe(logo, workflow.environments);
+    const oldBuild = builds.select(
+        logo,
+        workflow.build.recipeHash,
+        builds.retainedCliArtifactSha256(workflow.build) ?? original.cliArtifact?.sha256,
+      ),
+      oldEnvironment = this.recipe(logo, {
+        ...workflow.environments,
+        ...(oldBuild.cliArtifactSha256 ? { cliArtifactSha256: oldBuild.cliArtifactSha256 } : {}),
+      });
 
     if (oldEnvironment.recipeHash !== workflow.environments.recipeHash) {
       throw Error('Old environment recipe changed.');
@@ -647,6 +670,7 @@ export class Upgrade {
       ...copy(workflow.environments),
       helperImage: this.helperImage,
       buildRecipeHash: modern.recipeHash,
+      cliArtifactSha256: modern.cliArtifactSha256,
     };
     const recipe = this.recipe(logo, environment);
     environment.recipeHash = recipe.recipeHash;
@@ -665,6 +689,7 @@ export class Upgrade {
       sourceRevision: buildOnly ? workflow.sourceRevision : this.snapshot.sourceRevision,
       manifestHash: buildOnly ? workflow.manifestHash : this.snapshot.manifestHash,
       buildRecipeHash: modern.recipeHash,
+      ...(modern.cliArtifactSha256 ? { cliArtifactSha256: modern.cliArtifactSha256 } : {}),
       environmentRecipeHash: recipe.recipeHash,
       helperImage: this.helperImage,
       branch: 'system-wizard-upgrade-v1-' + operation.slice(0, 16),
@@ -997,12 +1022,19 @@ export class Upgrade {
       const preparationPaths = [
         ...(buildOnly ? [] : value.original.files.map((file) => file.path)),
         ...builds
-          .select(value.text.slice(0, 1184), value.receipt.wizardWorkflow.build.recipeHash)
+          .select(
+            value.text.slice(0, 1184),
+            value.receipt.wizardWorkflow.build.recipeHash,
+            builds.retainedCliArtifactSha256(value.receipt.wizardWorkflow.build) ??
+              value.original.cliArtifact?.sha256,
+          )
           .files.map((file) => file.path),
-        ...this.recipe(
-          value.text.slice(0, 1184),
-          value.receipt.wizardWorkflow.environments,
-        ).files.map((file) => file.path),
+        ...this.recipe(value.text.slice(0, 1184), {
+          ...value.receipt.wizardWorkflow.environments,
+          cliArtifactSha256:
+            builds.retainedCliArtifactSha256(value.receipt.wizardWorkflow.build) ??
+            value.original.cliArtifact?.sha256,
+        }).files.map((file) => file.path),
         ...(buildOnly ? [] : [buildReceiptPath]),
         environmentReceiptPath,
       ];
@@ -1065,6 +1097,9 @@ export class Upgrade {
         version: 1,
         operation: value.publicPlan.operation,
         recipeHash: value.modern.recipeHash,
+        ...(value.modern.cliArtifactSha256
+          ? { cliArtifactSha256: value.modern.cliArtifactSha256 }
+          : {}),
       };
       const marker = buildMarker(build, workflow);
       const buildActions = [
@@ -1153,11 +1188,16 @@ export class Upgrade {
     const previous = checkpoint.receipt,
       workflow = previous.wizardWorkflow,
       logo = text.slice(0, 1184);
-    const modern = builds.select(logo, checkpoint.plan.buildRecipeHash);
+    const modern = builds.select(
+      logo,
+      checkpoint.plan.buildRecipeHash,
+      checkpoint.plan.cliArtifactSha256,
+    );
     const environment = {
       ...copy(workflow.environments),
       helperImage: this.helperImage,
       buildRecipeHash: modern.recipeHash,
+      cliArtifactSha256: modern.cliArtifactSha256,
     };
     const recipe = this.recipe(logo, environment);
     environment.recipeHash = recipe.recipeHash;
@@ -1174,6 +1214,7 @@ export class Upgrade {
       version: 1,
       operation,
       recipeHash: modern.recipeHash,
+      ...(modern.cliArtifactSha256 ? { cliArtifactSha256: modern.cliArtifactSha256 } : {}),
       activationCommit: checkpoint.commits.build,
     };
     const head = await this.branch(receipt),

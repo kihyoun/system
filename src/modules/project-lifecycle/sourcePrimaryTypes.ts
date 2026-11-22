@@ -17,6 +17,7 @@ export interface PrimaryWorkflow {
   phase?: string;
   sourceRevision?: string;
   build: {
+    cliArtifactSha256?: string;
     version?: number;
     mode?: string;
     recipeHash: string;

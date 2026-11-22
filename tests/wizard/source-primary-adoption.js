@@ -14,8 +14,8 @@ const env = require('../../dist/modules/project-lifecycle/sourcePrimaryEnvironme
 const sha = 'a'.repeat(40), image = 'registry.example.test/team/system-wizard@sha256:' + 'b'.repeat(64);
 const oldImage = 'registry.example.test/root/wizard@sha256:' + 'c'.repeat(64), helperImage = 'sha256:' + 'd'.repeat(64);
 const publicImage = 'docker.io/example/wizard@sha256:' + '9'.repeat(64);
-function fixture(profile = 'node24-vite8-overview-v3') {
-  const recipe = builds.generate(logo, profile);
+function fixture(profile = 'node24-vite8-overview-v3', companion) {
+  const recipe = companion ? require('../../dist/modules/project-ci/cliRecipe').generateCliBuildRecipe(logo,path.resolve(__dirname,'../..'),companion.sha256) : builds.generate(logo, profile);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-source-primary-'));
   const config = path.join(root, '.projects.env/.wizard.env'), mainConfig = path.join(root, '.docker.env'), directory = path.join(root, 'adoption');
   fs.mkdirSync(path.dirname(config));
@@ -24,14 +24,14 @@ function fixture(profile = 'node24-vite8-overview-v3') {
   const tombstone = {projectId: 1, pipelineId: 23, jobId: 40, state: 'stopped', operation: '0'.repeat(48)};
   const receipt = {defaultProject: true, template: 'wizard', state: 'complete', operation: '1'.repeat(48), namespaceId: 1,
     repository: {id: 1, namespaceId: 1, path: 'root/wizard', defaultBranch: 'main', ciPath: '.system-bootstrapper/ci.yml', systemProject: true},
-    wizardWorkflow: {version: 1, importCommit: '2'.repeat(40), build: {version: 1, recipeHash: recipe.recipeHash}, environments: {
+    wizardWorkflow: {version: 1, importCommit: '2'.repeat(40), build: {version: 1, recipeHash: recipe.recipeHash, ...(recipe.cliArtifactSha256 ? {cliArtifactSha256:recipe.cliArtifactSha256} : {})}, environments: {
       version: 1, phase: 'ready', operation: '3'.repeat(48), settings, settingsHash: b.hash(JSON.stringify(settings)), helperImage, controller: 'system_bootstrapper_1',
       deployments: {review: {lastPipelineId: 23, stoppedThroughPipelineId: 23, tombstone}, beta: {lastPipelineId: 24, stoppedThroughPipelineId: 24}}}}};
   const text = logo + '\n# BOOTSTRAPPER_PROJECT=' + Buffer.from(JSON.stringify(receipt)).toString('base64') + '\n';
   fs.writeFileSync(config, text);
   fs.writeFileSync(mainConfig, logo + "\nexport GITLAB_HOST='gitlab.example.test'\nexport GITLAB_REGISTRY_URL='https://registry.example.test'\nexport GITLAB_REGISTRY_DOMAIN_MODE='2'\nexport WIZARD_IMAGE='" + oldImage + "'\n");
   const scripts = [...recipe.files, {path: b.ci, content: '# native CI\n'}, {path: '.gitlab/delivery/environment.sh', content: fs.readFileSync(path.resolve(__dirname, '../../templates/project-bootstrap/wizard-environments/historical/source-primary-v1.sh'), 'utf8')}];
-  if(profile==='node24-vite8-cli-v7'){const {cliArtifactFiles,selectedCliArtifact}=require('../../dist/modules/project-ci/cliArtifact');for(const file of cliArtifactFiles(selectedCliArtifact()))scripts.push({path:file.path,content:file.bytes});scripts.push({path:'.gitlab/producer-v3.json',content:fs.readFileSync(path.resolve(__dirname,'../../wizard/.gitlab/producer-v3.json'))});}
+  if(profile==='node24-vite8-cli-v7'){const {cliArtifactFiles,selectedCliArtifact}=require('../../dist/modules/project-ci/cliArtifact');for(const file of cliArtifactFiles(companion || selectedCliArtifact()))scripts.push({path:file.path,content:file.bytes});scripts.push({path:'.gitlab/producer-v3.json',content:fs.readFileSync(path.resolve(__dirname,'../../wizard/.gitlab/producer-v3.json'))});}
   const input = {version: 1, projectId: 7, projectPath: 'team/system-wizard', namespaceId: 9, defaultBranch: 'master', pipelineId: 31, sourceCommit: sha,
     imageRef: image, helperImage, ciFiles: scripts.map(file => ({path: file.path, sha256: b.hash(file.content)}))};
   const rows = {
@@ -52,7 +52,7 @@ function fixture(profile = 'node24-vite8-overview-v3') {
   const request = async route => {calls.push(route); assert(Object.hasOwn(rows, route), 'Unexpected mutation or lookup: ' + route); return JSON.parse(JSON.stringify(rows[route]));};
   return {root, config, mainConfig, directory, receipt, text, input, rows, calls, adoption: new Adoption({config, mainConfig, directory, request, environments: env.sourcePrimaryEnvironment})};
 }
-async function use(run, profile) { const f = fixture(profile); try {await run(f);} finally {fs.rmSync(f.root, {recursive: true, force: true});} }
+async function use(run, profile, companion) { const f = fixture(profile, companion); try {await run(f);} finally {fs.rmSync(f.root, {recursive: true, force: true});} }
 function nativeCollector(f) {
   const {collectedReads} = require('../../dist/modules/project-lifecycle/previewReads');
   const phases = [];
@@ -69,10 +69,14 @@ function nativeCollector(f) {
   };
   return phases;
 }
-async function buildUpdate(f, profile = 'node24-vite8-ca-v4') {
+async function buildUpdate(f, profile = 'node24-vite8-ca-v4', inspectRetained) {
   const initial = await f.adoption.plan(f.input);
   await f.adoption.apply(f.input, initial.planHash);
   fs.writeFileSync(f.mainConfig, fs.readFileSync(f.mainConfig, 'utf8').replace(oldImage, image));
+  if (inspectRetained) {
+    await inspectRetained();
+  }
+
   const target = builds.generate(logo, profile), sourceCommit = 'e'.repeat(40), pipelineId = 32;
   const imageRef = image.replace('b'.repeat(64), 'f'.repeat(64));
   const scripts = [...target.files, {path: b.ci, content: '# reviewed native CI\n'},
@@ -304,6 +308,110 @@ async function bindingRefresh(f) {
       await assert.rejects(f.adoption.plan(input),/exact approved file manifest|matching source files/);
     },'node24-vite8-typed-v6');
     await use(async f=>{const {input}=await buildUpdate(f,'node24-vite8-typed-v6');await assert.rejects(f.adoption.plan(input),/Retain the Quick Install-compatible/);},'node24-vite8-cli-v7');
+  }
+  {
+    const pair = require('../shared/cli-companion-fixture').companionPair(),
+      [old, next] = pair.artifacts;
+    const previousArtifact = process.env.SYSTEM_CLI_ARTIFACT,
+      previousReceipt = process.env.SYSTEM_CLI_RECEIPT;
+    process.env.SYSTEM_CLI_ARTIFACT = next.filename;
+    delete process.env.SYSTEM_CLI_RECEIPT;
+    try {
+      await use(
+        async (f) => {
+          const oldRecipe =
+            require('../../dist/modules/project-ci/cliRecipe').generateCliBuildRecipe(
+              logo,
+              path.resolve(__dirname, '../..'),
+              old.artifact.sha256,
+            );
+          let before;
+          const { input, target } = await buildUpdate(f, 'node24-vite8-cli-v7', async () => {
+            before = b.read(f.config);
+            delete before.receipt.wizardWorkflow.build.cliArtifactSha256;
+            fs.writeFileSync(
+              f.config,
+              before.text.replace(
+                /^# BOOTSTRAPPER_PROJECT=.*$/m,
+                '# BOOTSTRAPPER_PROJECT=' +
+                  Buffer.from(JSON.stringify(before.receipt)).toString('base64'),
+              ),
+            );
+            const bootstrap = require('../../dist/modules/project-workflow/projectWorkflow'),
+              previousDirectory = process.env.SYSTEM_CONFIG_DIR,
+              previousRails = bootstrap.rails;
+            process.env.SYSTEM_CONFIG_DIR = f.root;
+            try {
+              const status = require('../../dist/api/projects/wizardBuildWorkflow');
+              assert.equal(status.previewWizardBuild().build.recipeHash, oldRecipe.recipeHash);
+              bootstrap.rails = async (value) => ({
+                sourceRevision: sha,
+                build: value.build,
+                message: 'Retained source-bound status',
+              });
+              const job = status.refreshWizardBuild();
+              while (job.state === 'running') {
+                await new Promise((resolve) => setTimeout(resolve, 2));
+              }
+              assert.equal(job.state, 'complete', job.message);
+              assert.equal(job.build.cliArtifactSha256, old.artifact.sha256);
+              assert.equal(
+                b.read(f.config).receipt.wizardWorkflow.build.cliArtifactSha256,
+                old.artifact.sha256,
+              );
+            } finally {
+              bootstrap.rails = previousRails;
+
+              if (previousDirectory === undefined) {
+                delete process.env.SYSTEM_CONFIG_DIR;
+              } else {
+                process.env.SYSTEM_CONFIG_DIR = previousDirectory;
+              }
+            }
+          });
+          const plan = await f.adoption.plan(input);
+          assert.equal(plan.publicPlan.previousBuildRecipeHash, oldRecipe.recipeHash);
+          assert.equal(plan.publicPlan.buildRecipeHash, target.recipeHash);
+          assert.notEqual(oldRecipe.recipeHash, target.recipeHash);
+          assert.equal(plan.next.wizardWorkflow.build.cliArtifactSha256, next.artifact.sha256);
+          const owned = fs.readFileSync(f.config, 'utf8');
+          const changed = structuredClone(before.receipt);
+          changed.sourcePrimary.ciFiles.find(
+            (file) => file.path === '.gitlab/cli/system-bootstrapper.tgz',
+          ).sha256 = next.artifact.sha256;
+          fs.writeFileSync(
+            f.config,
+            owned.replace(
+              /^# BOOTSTRAPPER_PROJECT=.*$/m,
+              '# BOOTSTRAPPER_PROJECT=' + Buffer.from(JSON.stringify(changed)).toString('base64'),
+            ),
+          );
+          await assert.rejects(() => f.adoption.plan(input), /Unknown reserved/);
+          fs.writeFileSync(f.config, owned);
+          await f.adoption.apply(input, plan.planHash);
+          assert.equal(
+            b.read(f.config).receipt.wizardWorkflow.build.cliArtifactSha256,
+            next.artifact.sha256,
+          );
+        },
+        'node24-vite8-cli-v7',
+        old.artifact,
+      );
+    } finally {
+      if (previousArtifact === undefined) {
+        delete process.env.SYSTEM_CLI_ARTIFACT;
+      } else {
+        process.env.SYSTEM_CLI_ARTIFACT = previousArtifact;
+      }
+
+      if (previousReceipt === undefined) {
+        delete process.env.SYSTEM_CLI_RECEIPT;
+      } else {
+        process.env.SYSTEM_CLI_RECEIPT = previousReceipt;
+      }
+
+      fs.rmSync(pair.root, { recursive: true, force: true });
+    }
   }
   await use(async f => {
     const {input} = await buildUpdate(f);

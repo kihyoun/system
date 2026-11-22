@@ -23,12 +23,14 @@ export interface Recipe {
   files: { path: string; content: string; sha256: string }[];
 }
 export interface BuildReservation {
+  cliArtifactSha256?: string;
   version: number;
   operation: string;
   recipeHash: string;
   activationCommit?: string;
 }
 export interface EnvironmentReservation {
+  cliArtifactSha256?: string;
   version?: number;
   managementMode?: string;
   systemSource?: Record<string, unknown>;
@@ -68,6 +70,7 @@ export interface UpgradeReceipt {
   wizardWorkflow: Workflow;
 }
 export interface UpgradePlan {
+  cliArtifactSha256?: string;
   version: number;
   operation: string;
   projectId: number;

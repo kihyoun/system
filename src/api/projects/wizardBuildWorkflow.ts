@@ -63,7 +63,11 @@ function context() {
         .join('\n'),
       receipt,
       workflow,
-      recipe: recipes.select(Helper.textLogo, workflow.build?.recipeHash || ''),
+      recipe: recipes.select(
+        Helper.textLogo,
+        workflow.build?.recipeHash || '',
+        recipes.retainedCliArtifactSha256(workflow.build, receipt.sourcePrimary),
+      ),
       registryPrefix: registry.host + '/' + receipt.repository.path,
     };
   }
@@ -98,7 +102,11 @@ function context() {
   });
   const build = workflow.build;
   const recipe = build
-    ? recipes.select(Helper.textLogo, build.recipeHash || '')
+    ? recipes.select(
+        Helper.textLogo,
+        build.recipeHash || '',
+        recipes.retainedCliArtifactSha256(build, receipt.sourcePrimary),
+      )
     : recipes.forSource(Helper.textLogo, workflow.sourceRevision || '');
 
   if (build && (build.version !== 1 || build.recipeHash !== recipe.recipeHash)) {
@@ -217,12 +225,17 @@ function operation(mode: 'activate' | 'status', input?: unknown) {
 
         if (
           !result.build ||
+          result.build.recipeHash !== recipe.recipeHash ||
           typeof result.sourceRevision !== 'string' ||
           !/^[a-f0-9]{40}$/.test(result.sourceRevision)
         ) {
           throw new Error('Invalid GitLab operation response.');
         }
 
+        const observedBuild = {
+          ...result.build,
+          ...(recipe.cliArtifactSha256 ? { cliArtifactSha256: recipe.cliArtifactSha256 } : {}),
+        };
         const lock = configPath() + '.environments.lock';
         fs.mkdirSync(lock, { mode: 0o700 });
         try {
@@ -237,7 +250,7 @@ function operation(mode: 'activate' | 'status', input?: unknown) {
             wizardWorkflow: {
               ...workflow,
               sourceRevision: result.sourceRevision,
-              build: result.build,
+              build: observedBuild,
             },
           };
           writeReceipt(configPath(), data, next);
@@ -245,7 +258,7 @@ function operation(mode: 'activate' | 'status', input?: unknown) {
           fs.rmdirSync(lock);
         }
         return {
-          build: result.build,
+          build: observedBuild,
           sourceRevision: result.sourceRevision,
           message: result.message,
         };
@@ -299,6 +312,7 @@ function operation(mode: 'activate' | 'status', input?: unknown) {
         version: 1,
         operation: crypto.randomBytes(24).toString('hex'),
         recipeHash: recipe.recipeHash,
+        ...(recipe.cliArtifactSha256 ? { cliArtifactSha256: recipe.cliArtifactSha256 } : {}),
         phase: 'pending',
       };
   const previous = lookupJob(build.operation);
@@ -334,6 +348,7 @@ function operation(mode: 'activate' | 'status', input?: unknown) {
           build: {
             ...build,
             ...result.build,
+            ...(recipe.cliArtifactSha256 ? { cliArtifactSha256: recipe.cliArtifactSha256 } : {}),
             message: result.build?.phase === 'requires-reconciliation' ? result.message : '',
           },
         };

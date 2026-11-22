@@ -292,6 +292,7 @@ export class WizardEnvironmentWorkflowService {
         next.controller !== current.controller ||
         next.managementMode !== current.managementMode ||
         next.buildRecipeHash !== current.buildRecipeHash ||
+        next.cliArtifactSha256 !== current.cliArtifactSha256 ||
         !same(next.ciFiles, current.ciFiles) ||
         (current.activationCommit && next.activationCommit !== current.activationCommit)
       ) {

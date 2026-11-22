@@ -495,6 +495,11 @@ const messages: [string, string, string][] = [
     '현재 플랫폼 작업이 끝날 때까지 기다리세요.',
   ],
   [
+    'A different build recipe is reserved (Unknown reserved Wizard build recipe). Use a reviewed versioned recipe upgrade. For v7, recover the retained CLI package hash through the verified original-source upgrade plan.',
+    'Ein anderes Buildrezept ist reserviert; das reservierte Wizard-Rezept ist unbekannt. Verwende ein geprüftes versioniertes Rezept-Upgrade. Stelle für v7 den gespeicherten CLI-Pakethash über den geprüften Upgradeplan der ursprünglich importierten Quellen wieder her.',
+    '다른 빌드 레시피가 예약되어 있으며 예약된 Wizard 레시피를 확인할 수 없습니다. 검토된 버전별 레시피 업그레이드를 사용하세요. v7에서는 검증된 원본 소스 업그레이드 계획을 통해 보존된 CLI 패키지 해시를 복구하세요.',
+  ],
+  [
     'Invalid stored environment state.',
     'Der gespeicherte Umgebungszustand ist ungültig.',
     '저장된 환경 상태가 유효하지 않습니다.',

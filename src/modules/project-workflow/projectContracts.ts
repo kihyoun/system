@@ -38,6 +38,7 @@ export interface BuildArtifact {
 }
 
 export interface WizardBuildState {
+  cliArtifactSha256?: string;
   version?: number;
   operation?: string;
   mode?: string;
@@ -74,6 +75,7 @@ export interface DeploymentFootprint {
 }
 
 export interface EnvironmentSummary {
+  cliArtifactSha256?: string;
   version?: number;
   phase?: string;
   operation?: string;

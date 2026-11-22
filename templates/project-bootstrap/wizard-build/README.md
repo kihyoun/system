@@ -90,6 +90,15 @@ invalidate current deployment checkpoints. An existing imported project's
 in-place source/toolchain upgrade still requires a separately reviewed migration;
 a new snapshot import can use the supported profile directly.
 
+A v7 reservation retains `cliArtifactSha256` independently of the currently
+selected target package. Its real archive hash still participates in the exact
+recipe hash. Source-primary receipts can recover that identity from their
+approved CI file manifest. If an older managed receipt lacks the retained hash,
+offline Build/Environment inspection refuses without changing configuration or
+leases. Use the native original-source upgrade plan to recover the identity from
+the matching imported v3 snapshot and its verified file/commit evidence; never
+substitute the newly selected package.
+
 ## Exact default-tag cleanup
 
 The recorded `legacy` and `node24-vite8` recipes remain byte-for-byte available

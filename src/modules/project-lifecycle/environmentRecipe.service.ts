@@ -11,6 +11,7 @@ export interface EnvironmentRecipeOptions {
   operation: string;
   controller: string;
   buildRecipeHash?: string;
+  cliArtifactSha256?: string;
 }
 const recipeRoot = path.resolve(
   __dirname,
@@ -32,7 +33,7 @@ export function generate(logo: string, options: EnvironmentRecipeOptions) {
   }
 
   const buildRecipe = options.buildRecipeHash
-    ? legacy.select(logo, options.buildRecipeHash)
+    ? legacy.select(logo, options.buildRecipeHash, options.cliArtifactSha256)
     : legacy.generate(logo);
 
   if (['node24-vite8-typed-v6', 'node24-vite8-cli-v7'].includes(buildRecipe.profile || '')) {
