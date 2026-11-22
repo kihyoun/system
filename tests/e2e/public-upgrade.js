@@ -9,6 +9,7 @@ const graph = require('../../config/releases/upgrade-paths.json');
 const {createPublicationRuntime} = require('../../dist/modules/release/publication-runtime');
 const recovery = require('./recovery');
 const {terminalContainerState} = require('../../dist/modules/gitlab-upgrade/policy');
+const {fixtureRuntime,runtimeVolumes} = require('../../dist/modules/testing/public-upgrade-transport.service');
 const diagnostics = require('./public-upgrade-diagnostics.json');
 const security = require('../../config/gitlab/security-release.json');
 const {manifest} = createPublicationRuntime(security).images;
@@ -121,13 +122,6 @@ function prepareSource(output, previous, env = process.env, execute = execFileSy
     execute('tar', ['-czf', archive, '-C', source, '.'], {timeout: 120000});
     return {archive, sha256: recovery.hashFile(archive)};
   } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
-}
-const fixtureRuntime = '/opt/system-public-upgrade';
-function runtimeVolumes(fixture) {
-  return [fixture + '/runtime:' + fixtureRuntime + ':ro',
-    ...['/lib/ld-musl-x86_64.so.1', '/usr/lib/libstdc++.so.6', '/usr/lib/libgcc_s.so.1']
-      .map(file => fixture + '/runtime' + file + ':' + file + ':ro'),
-    fixture + '/runtime/lib/ld-musl-x86_64.so.1:/lib/libc.musl-x86_64.so.1:ro'];
 }
 async function replaceController(candidate, baseline, image, fixture) {
   const labels = Object.fromEntries(Object.entries(baseline.Config.Labels || {})
@@ -293,10 +287,15 @@ class NativeCLI {
     const requested = args[0] === 'gitlab' ? args[args.indexOf('--operation')+1] : args[0] === '--operation' ? args[1] : args[0];
     required(args[0]==='gitlab' ? ['prepare','plan','promote','status','abort','rollback'].includes(requested) : [...hooks,'plan','apply','status','recover'].includes(requested), 'public-upgrade-native-operation-invalid');
     const operation=args[0]==='gitlab' ? 'gitlab-'+requested : hooks.includes(requested) && requested!=='restore-original' ? 'initialize' : requested;
-    const failureCodes = Object.fromEntries([...new Set([
+    const storageFailures=Object.entries(diagnostics.storageErrors).map(([code,value])=>
+      ['Seed operation failed: '+code+'.','public-upgrade-native-'+operation+'-'+value]);
+    const storageWrapper=([message])=>['seed-helper-command-failed','seed-helper-operation-failed','seed-operation-failed']
+      .some(code=>message==='Seed operation failed: '+code+'.');
+    const failureCodes = Object.fromEntries([...storageFailures.filter(row=>!storageWrapper(row)), ...[...new Set([
       ...Object.values(diagnostics.errors), ...Object.values(diagnostics.dockerOperations),
       ...Object.values(diagnostics.exceptionTypes), ...Object.values(diagnostics.planSteps), diagnostics.fallback
-    ])].map(code => [diagnostics.marker + code, 'public-upgrade-native-' + operation + '-' + code]));
+    ])].map(code => [diagnostics.marker + code, 'public-upgrade-native-' + operation + '-' + code]),
+    ...storageFailures.filter(storageWrapper)]);
     try {
       const raw = await candidate.inner([...command, candidate.spec.images.candidate.id,
         this.fixture + '/source/tests/e2e/public-upgrade-host.js', ...args], {timeout: 1200000, failureCodes});

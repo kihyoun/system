@@ -9,6 +9,13 @@ export const runtimeLibraries = [
   '/usr/lib/libstdc++.so.6',
   '/usr/lib/libgcc_s.so.1',
 ];
+export function runtimeVolumes(fixture: string): string[] {
+  return [
+    fixture + '/runtime:' + fixtureRuntime + ':ro',
+    ...runtimeLibraries.map((file) => fixture + '/runtime' + file + ':' + file + ':ro'),
+    fixture + '/runtime/lib/ld-musl-x86_64.so.1:/lib/libc.musl-x86_64.so.1:ro',
+  ];
+}
 export type TransportResult = { status: number; signal?: NodeJS.Signals };
 export const PUBLIC_UPGRADE_OUTPUT = Symbol('PUBLIC_UPGRADE_OUTPUT');
 class FixtureRefusal extends Error {
@@ -18,6 +25,205 @@ class FixtureRefusal extends Error {
   ) {
     super(message);
   }
+}
+function ownedStorage(value: unknown): asserts value {
+  if (!value)
+    throw new FixtureRefusal(86, 'Seed operation failed: storage-fixture-transport-refused.');
+}
+
+function record(value: unknown): Record<string, unknown> {
+  ownedStorage(value && typeof value === 'object' && !Array.isArray(value));
+  return value as Record<string, unknown>;
+}
+
+function storagePath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.startsWith('/') &&
+    value !== '/' &&
+    path.posix.normalize(value) === value &&
+    !/[\x00-\x1f,:]/.test(value)
+  );
+}
+
+/** Only the exact storage commands emitted by the owned controller inherit this adapter. */
+function storageArguments(input: string[], offset: number, fixture: string): string[] {
+  const args = input.slice(offset);
+  if (args[0] !== 'create' && args[0] !== 'run') return input;
+  const script = args.findIndex(
+    (value, index) =>
+      value === '/system/system/seed-operation.js' ||
+      (value === '/system/dist/cli/main.js' && args[index + 1] === 'storage'),
+  );
+  const storageLike = args.some(
+    (value) =>
+      /^(SYSTEM_STORAGE_SPEC|SYSTEM_SEED_CONTROLLER_IMAGE|PERSISTENCE_ENV_FILE)=/.test(value) ||
+      /^(system\.storage\.launcher|org\.system-bootstrapper\.storage-operation)=/.test(value),
+  );
+  if (script < 0 && !storageLike) return input;
+  ownedStorage(script > 1 && storagePath(fixture));
+  let data: Record<string, unknown>;
+  try {
+    data = record(JSON.parse(fs.readFileSync(path.join(fixture, 'fixture.json'), 'utf8')));
+  } catch {
+    ownedStorage(false);
+  }
+  const live = data.live;
+  ownedStorage(storagePath(live));
+  const previous = record(record(data.previous).images),
+    images = record(record(data.spec).images);
+  const image = args[script - 1];
+  ownedStorage(
+    /^sha256:[a-f0-9]{64}$/.test(image) &&
+      [record(previous.controller).imageId, record(images.candidate).id].includes(image),
+  );
+  const runtime =
+    args[script] === '/system/system/seed-operation.js'
+      ? ['/system/system/seed-operation.js']
+      : ['/system/dist/cli/main.js', 'storage'];
+  const suffix = args.slice(script + runtime.length);
+  const environment = (key: string): string => {
+    const values = args
+      .slice(0, script - 1)
+      .flatMap((value, index) =>
+        value === '--env' && args[index + 1]?.startsWith(key + '=')
+          ? [args[index + 1].slice(key.length + 1)]
+          : [],
+      );
+    ownedStorage(values.length === 1);
+    return values[0];
+  };
+  let expected: string[];
+  if (suffix[0] === 'host') {
+    const name = args[args.indexOf('--name') + 1],
+      backup = environment('SYSTEM_SEED_CONFIGURATION_BACKUP');
+    ownedStorage(
+      /^system-storage-launcher-[a-f0-9]{24}$/.test(name) &&
+        ['harvest', 'restore'].includes(suffix[1]) &&
+        (suffix.length === 2 || (suffix.length === 3 && suffix[2] === '--check-only')) &&
+        environment('PERSISTENCE_ENV_FILE') === live + '/public-upgrade-storage.env' &&
+        environment('SYSTEM_SEED_CONTROLLER_IMAGE') === image &&
+        (backup === '' || (suffix[1] === 'restore' && storagePath(backup))),
+    );
+    expected = [
+      'create',
+      '--interactive',
+      '--name',
+      name,
+      '--label',
+      'system.storage.launcher=' + name,
+      '--network',
+      'none',
+      '--entrypoint',
+      'node',
+      '--mount',
+      'type=bind,src=/,dst=/host,readonly',
+      '--mount',
+      'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock',
+      '--env',
+      'PERSISTENCE_ENV_FILE=' + live + '/public-upgrade-storage.env',
+      '--env',
+      'SYSTEM_SEED_CONTROLLER_IMAGE=' + image,
+      '--env',
+      'SYSTEM_SEED_CONFIGURATION_BACKUP=' + backup,
+    ];
+  } else {
+    const raw = environment('SYSTEM_STORAGE_SPEC');
+    let spec: Record<string, unknown>;
+    try {
+      spec = record(JSON.parse(raw));
+    } catch {
+      ownedStorage(false);
+    }
+    ownedStorage(spec.PERSISTENT_DIR === live && storagePath(spec.SEED_DIR));
+    if (suffix.length === 1 && suffix[0] === 'validate') {
+      expected = [
+        'run',
+        '--rm',
+        '--network',
+        'none',
+        '--entrypoint',
+        'node',
+        '--mount',
+        'type=bind,src=/,dst=/host,readonly',
+        '--env',
+        'SYSTEM_STORAGE_SPEC=' + raw,
+      ];
+    } else {
+      const name = args[args.indexOf('--name') + 1];
+      ownedStorage(
+        suffix.length === 1 &&
+          suffix[0] === 'inside' &&
+          ['harvest', 'restore'].includes(String(spec.operation)) &&
+          /^system-storage-(harvest|restore)-[a-f0-9]{24}$/.test(name) &&
+          name.startsWith('system-storage-' + String(spec.operation) + '-') &&
+          spec.helperName === name &&
+          spec.imageId === image &&
+          typeof spec.checkOnly === 'boolean' &&
+          typeof spec.backup === 'boolean',
+      );
+      expected = [
+        'create',
+        '--name',
+        name,
+        '--network',
+        'none',
+        '--init',
+        '--pids-limit',
+        '256',
+        '--label',
+        'org.system-bootstrapper.storage-operation=' + name,
+        '--entrypoint',
+        'node',
+        '--mount',
+        'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock',
+        '--mount',
+        'type=bind,src=/,dst=/host,readonly',
+        '--mount',
+        'type=bind,src=' + live + ',dst=/live',
+        '--mount',
+        'type=bind,src=' + live + '/gitlab/config,dst=/srv/gitlab/config',
+        '--mount',
+        'type=bind,src=' + live + '/gitlab/logs,dst=/srv/gitlab/log',
+        '--mount',
+        'type=bind,src=' + live + '/gitlab/data,dst=/srv/gitlab/data',
+        '--mount',
+        'type=bind,src=' + spec.SEED_DIR + ',dst=/seed',
+      ];
+      if (spec.backup) {
+        const mount = args.find((value) =>
+          value.endsWith(',dst=/system/bootstrapper.zip,readonly'),
+        );
+        const backup = mount?.slice(
+          'type=bind,src='.length,
+          -',dst=/system/bootstrapper.zip,readonly'.length,
+        );
+        ownedStorage(spec.operation === 'restore' && storagePath(backup));
+        expected.push(
+          '--mount',
+          'type=bind,src=' + backup + ',dst=/system/bootstrapper.zip,readonly',
+        );
+      }
+      expected.push('--env', 'SYSTEM_STORAGE_SPEC=' + raw);
+    }
+  }
+  expected.push(image, ...runtime, ...suffix);
+  // Existing overlays and any unknown options are ambiguous; never replace them.
+  ownedStorage(
+    args.length === expected.length && args.every((value, index) => value === expected[index]),
+  );
+  return [
+    ...input.slice(0, offset),
+    ...args.slice(0, script - 1),
+    '--env',
+    'SYSTEM_PUBLIC_UPGRADE_FIXTURE=' + fixture,
+    ...[
+      fixture + ':' + fixture + ':ro',
+      fixture + '/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker:ro',
+      ...runtimeVolumes(fixture),
+    ].flatMap((volume) => ['--volume', volume]),
+    ...args.slice(script - 1),
+  ];
 }
 /** Test-only publication transport; never imported by production operation modules. */
 @Injectable()
@@ -156,6 +362,7 @@ export class PublicUpgradeTransportService {
         }
         return this.execute(path.join(fixture, 'docker-compose.native'), args, env);
       }
+      args = storageArguments(args, commandOffset, fixture);
       let original: string | undefined;
       args = args.map((value) => {
         const mapped = map(value);

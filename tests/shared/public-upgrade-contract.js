@@ -348,6 +348,7 @@ test('registry adapter preserves arguments and disables previous digest transpor
     fs.symlinkSync(path.resolve(__dirname,'../../node_modules'),path.join(directory,'runtime/node_modules'));
     fs.writeFileSync(path.join(directory, 'docker.native'), '#!'+process.execPath+'\n'+
       `const fs=require('node:fs');fs.writeFileSync(process.env.SYSTEM_PUBLIC_UPGRADE_FIXTURE+'/arguments',process.argv.slice(2).join('\\n')+'\\n');
+       if(process.env.SYSTEM_TEST_NATIVE_INPUT){process.stdout.write(fs.readFileSync(0));process.stderr.write('native-attach-stderr\\n');process.exit(19);}
        if(process.env.SYSTEM_TEST_NATIVE_SIGNAL)process.kill(process.pid,process.env.SYSTEM_TEST_NATIVE_SIGNAL);
        if(process.env.SYSTEM_TEST_NATIVE_FAILURE){console.log('[{"RepoDigests":[]}]');process.exit(Number(process.env.SYSTEM_TEST_NATIVE_FAILURE));}
        console.log(process.env.SYSTEM_TEST_NATIVE_INSPECT||JSON.stringify([{Id:${JSON.stringify(image)},RepoDigests:[]}]))`, {mode:0o755});
@@ -380,10 +381,80 @@ test('registry adapter preserves arguments and disables previous digest transpor
       error => error.status === 17, 'failed native inspection must never become successful fabricated identity');
     await assert.rejects(() => invoke(docker, ['info'], {env:{...env,SYSTEM_TEST_NATIVE_FAILURE:'23'},stdio:'pipe'}),error=>error.status===23);
     assert.throws(() => execFileSync(process.execPath,[docker,'info'], {env:{...env,SYSTEM_TEST_NATIVE_SIGNAL:'SIGTERM'},stdio:'pipe'}),error=>error.signal==='SIGTERM');
+    assert.throws(()=>execFileSync(process.execPath,[docker,'--host=unix:///var/run/docker.sock','start','--attach','system-storage-harvest-'+'a'.repeat(24)],
+      {env:{...env,SYSTEM_TEST_NATIVE_INPUT:'1'},input:'attached stdin\n',stdio:'pipe'}),error=>{
+      assert.equal(error.status,19);assert.equal(error.signal,null);
+      assert.equal(error.stdout.toString(),'attached stdin\n');assert.equal(error.stderr.toString(),'native-attach-stderr\n');return true;
+    });
     await invoke(docker, ['--host=unix:///var/run/docker.sock','pull','docker.io/'+reference], {env});
     assert.deepEqual(fs.readFileSync(path.join(directory,'arguments'),'utf8').trim().split('\n'),['image','inspect',image]);
     await invoke(docker, ['exec', 'fixture', 'printf', '%s', 'one two'], {env});
     assert.equal(fs.readFileSync(path.join(directory, 'arguments'), 'utf8').split('\n').at(-2), 'one two');
+    const live='/recovered-data/platform',seed='/external-seed/system',name='system-storage-harvest-'+'b'.repeat(24);
+    fs.writeFileSync(path.join(directory,'fixture.json'),JSON.stringify({live,previous:fixture(),spec:{images:{candidate:{id:id('5')}}}}));
+    const spec={PERSISTENCE_MODE:'local',PERSISTENT_MOUNT:'/',PERSISTENT_DIR:live,PERSISTENT_UUID:'',
+      SEED_DIR:seed,SEED_MOUNT:'/external-seed',SEED_UUID:'',GITLAB_IMAGE:'example/gitlab@'+id('6'),
+      coordinatedBackup:'c'.repeat(32)};
+    const overlay=['--env','SYSTEM_PUBLIC_UPGRADE_FIXTURE='+directory,
+      ...[directory+':'+directory+':ro',
+        directory+'/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker:ro',
+        directory+'/runtime:/opt/system-public-upgrade:ro',
+        ...['/lib/ld-musl-x86_64.so.1','/usr/lib/libstdc++.so.6','/usr/lib/libgcc_s.so.1'].map(file=>directory+'/runtime'+file+':'+file+':ro'),
+        directory+'/runtime/lib/ld-musl-x86_64.so.1:/lib/libc.musl-x86_64.so.1:ro'].flatMap(value=>['--volume',value])];
+    const {helperArguments}=require('../../dist/modules/storage/helper');
+    const nativeArguments=()=>fs.readFileSync(path.join(directory,'arguments'),'utf8').trimEnd().split('\n');
+    for(const [ownedImage,runtime]of [[id('3'),['/system/system/seed-operation.js']],
+      [id('5'),['/system/dist/cli/main.js','storage']]]){
+      const launcherName='system-storage-launcher-'+'a'.repeat(24);
+      const launcher=['create','--interactive','--name',launcherName,'--label','system.storage.launcher='+launcherName,
+        '--network','none','--entrypoint','node','--mount','type=bind,src=/,dst=/host,readonly',
+        '--mount','type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock',
+        '--env','PERSISTENCE_ENV_FILE='+live+'/public-upgrade-storage.env',
+        '--env','SYSTEM_SEED_CONTROLLER_IMAGE='+ownedImage,'--env','SYSTEM_SEED_CONFIGURATION_BACKUP=',
+        ownedImage,...runtime,'host','harvest','--check-only'];
+      const validate=['run','--rm','--network','none','--entrypoint','node','--mount','type=bind,src=/,dst=/host,readonly',
+        '--env','SYSTEM_STORAGE_SPEC='+JSON.stringify(spec),ownedImage,...runtime,'validate'];
+      const commands=[launcher,validate];
+      for(const operation of ['harvest','restore'])for(const checkOnly of [false,true]){
+        const helperName=name.replace('harvest',operation),backup=operation==='restore'?'/retained/configuration.zip':'';
+        const inside=helperArguments(spec,ownedImage,helperName,operation,checkOnly,backup);
+        inside.splice(inside.indexOf('/system/dist/cli/main.js'),3,...runtime,'inside');
+        commands.push(inside);
+      }
+      for(const original of commands){
+        const before=JSON.stringify(original),imageIndex=original.indexOf(ownedImage);
+        await invoke(docker,['--host=unix:///var/run/docker.sock',...original],{env});
+        assert.deepEqual(nativeArguments(),['--host=unix:///var/run/docker.sock',...original.slice(0,imageIndex),...overlay,...original.slice(imageIndex)],
+          'owned storage boundary forwards adapters while preserving image, operation, check-only, spec and original binds');
+        assert.equal(JSON.stringify(original),before);
+      }
+      const rejected=[
+        launcher.map(value=>value==='system.storage.launcher='+launcherName?'system.storage.launcher=foreign':value),
+        launcher.map(value=>value===ownedImage?id('9'):value),
+        launcher.map(value=>value==='node'?'sh':value),
+        [...launcher.slice(0,launcher.indexOf(ownedImage)),'--env','SYSTEM_PUBLIC_UPGRADE_FIXTURE=/foreign',...launcher.slice(launcher.indexOf(ownedImage))],
+        [...validate.slice(0,validate.indexOf(ownedImage)),'--volume','/foreign:/usr/bin/docker:ro',...validate.slice(validate.indexOf(ownedImage))],
+        validate.map(value=>value.startsWith('SYSTEM_STORAGE_SPEC=')?'SYSTEM_STORAGE_SPEC='+JSON.stringify({...spec,PERSISTENT_DIR:'/unowned'}):value),
+        validate.map(value=>value.startsWith('SYSTEM_STORAGE_SPEC=')?'SYSTEM_STORAGE_SPEC={':value),
+        validate.map(value=>value==='validate'?'unknown':value),
+        validate.map(value=>value==='type=bind,src=/,dst=/host,readonly'?'type=bind,src=/foreign,dst=/host,readonly':value)
+      ];
+      for(const args of rejected){
+        fs.writeFileSync(path.join(directory,'arguments'),'not-executed');
+        const previousWrite=process.stderr.write;let refusal='';
+        try{
+          process.stderr.write=bytes=>{refusal+=bytes.toString();return true;};
+          await assert.rejects(()=>invoke(docker,args,{env}),error=>error.status===86,'ambiguous storage invocation refuses before Docker');
+        }finally{process.stderr.write=previousWrite;}
+        assert.equal(refusal,'Seed operation failed: storage-fixture-transport-refused.\n','refusal never exposes image arguments, paths or JSON');
+        assert.equal(fs.readFileSync(path.join(directory,'arguments'),'utf8'),'not-executed');
+      }
+    }
+    for(const args of [['run','--rm',image,'printf','system-storage-launcher-example'],
+      ['create','--name','unrelated','--entrypoint','node',image,'/system/dist/cli/main.js','other'],
+      ['exec','unrelated','node','/system/system/seed-operation.js','inside']]){
+      await invoke(docker,args,{env});assert.deepEqual(nativeArguments(),args,'unrelated commands retain exact argv');
+    }
     const composed = await invoke(compose, ['-f', '/source/system/docker-compose.yml', 'up', '--no-build', '-d', 'bootstrapper'],
       {env: {...env, BOOTSTRAPPER_IMAGE: reference}, encoding: 'utf8'});
     assert.equal(composed, image);
@@ -526,6 +597,31 @@ test('fixed native diagnostic markers survive the real Docker sanitizer and nati
       'prefix '+diagnostics.marker+'docker-command-failed',diagnostics.marker+'docker-data-sample-failed private-token',
       diagnostics.marker+'public-gitlab-retained-input-mismatch private-token',
       diagnostics.marker+'plan-step-private-token-failed',diagnostics.marker+'plan-step-capture-failed private-token']){
+      process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR=message;
+      await assert.rejects(()=>native.invoke(['--operation','plan']),error=>error.message==='public-upgrade-native-plan-failed'&&error.exitCode===7);
+    }
+    for(const code of ['seed-target-unavailable','gitlab-image-does-not-match-configuration','operation-bind-source-changed','storage-fixture-transport-refused',
+      'seed-helper-command-failed','seed-helper-operation-failed','seed-operation-failed']){
+      process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR='private-token\nSeed operation failed: '+code+'.\n'+
+        diagnostics.marker+'plan-step-backup-target-failed\nSeed operation failed: seed-helper-operation-failed.\nprivate-stderr';
+      const selected=['seed-helper-command-failed','seed-helper-operation-failed','seed-operation-failed'].includes(code)?'plan-step-backup-target-failed':code;
+      await assert.rejects(()=>native.invoke(['--operation','plan']),error=>{
+        assert.equal(error.message,'public-upgrade-native-plan-'+selected);
+        assert.equal(failureReason(error.message),error.message);assert.equal(error.exitCode,7);
+        assert(!JSON.stringify(error).includes('private'));return true;
+      });
+    }
+    let storageCodes;
+    const mappedNative=new NativeCLI({id:candidate.id,spec:candidate.spec,inner:async(_args,options)=>{storageCodes=options.failureCodes;return '{}';}});
+    await mappedNative.invoke(['--operation','plan']);
+    for(const [code,value]of Object.entries(diagnostics.storageErrors)){
+      const reason='public-upgrade-native-plan-'+value;
+      assert.equal(storageCodes['Seed operation failed: '+code+'.'],reason);
+      assert.equal(failureReason(reason),reason);
+    }
+    for(const message of ['Seed operation failed: private-token.','prefix Seed operation failed: seed-target-unavailable.',
+      'Seed operation failed: seed-target-unavailable. suffix','Seed operation failed: seed-target-unavailable',
+      'Seed operation failed: seed-target-unavailable..']){
       process.env.SYSTEM_TEST_PUBLIC_UPGRADE_ERROR=message;
       await assert.rejects(()=>native.invoke(['--operation','plan']),error=>error.message==='public-upgrade-native-plan-failed'&&error.exitCode===7);
     }

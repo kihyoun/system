@@ -519,11 +519,17 @@ exception and never serializes its message, arguments, output or private paths.
 An early failure does not create a journal in an unvalidated directory; later
 failures retain the existing failed preflight state. The existing offline
 fixtures verify both boundaries without another platform scenario.
+Known storage refusal lines are reduced to a committed finite code before a
+generic plan wrapper can hide the inner failure; arbitrary output is discarded.
 
 A bounded 512-MiB/one-CPU helper uses the declared candidate image and its pinned
 Node runtime. Its thin Node entry invokes the production public-upgrade service;
 only publication transport and disposable host facts use fixture providers.
-Docker/Compose transports are thin Node adapters backed by a test-only Nest module. Preparation copies the
+Docker/Compose transports are thin Node adapters backed by a test-only Nest module.
+Storage launchers, validation containers and inner storage helpers inherit these
+adapters only after their image, command and ownership inputs match the declared
+fixture. Native storage checks, data mounts and saved configuration remain unchanged.
+Preparation copies the
 exact candidate's Node binary, compiled application, Docker/Compose binaries, musl
 loader and declared C++/GCC libraries with native filesystem APIs. The copied fixture
 runtime retains the complete `dist/`, dependencies and packaged assets, including
