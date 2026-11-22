@@ -17,7 +17,7 @@ COPY config ./config
 COPY templates ./templates
 COPY containers ./containers
 RUN npm run build
-RUN npm link --global --offline --ignore-scripts --no-audit --no-fund
+RUN npm link --offline --ignore-scripts --no-audit --no-fund
 RUN system-bootstrapper ci image-compatibility /system
 RUN system-bootstrapper host-bootstrap install-runtime --checkout /system
 RUN system-bootstrapper host-bootstrap ca-check --checkout /system

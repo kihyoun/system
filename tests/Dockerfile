@@ -16,7 +16,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
 RUN npm run build
-RUN npm link --global --offline --ignore-scripts --no-audit --no-fund
+RUN npm link --offline --ignore-scripts --no-audit --no-fund
 ENV SYSTEM_CLI_ARTIFACT=/candidate/assets/cli-companion/system-bootstrapper.tgz
 RUN system-bootstrapper ci image-compatibility /candidate
 RUN system-bootstrapper host-bootstrap refresh-ca --checkout /candidate

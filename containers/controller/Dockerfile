@@ -17,7 +17,7 @@ COPY config ./config
 COPY templates ./templates
 COPY containers ./containers
 RUN npm run build
-RUN npm link --global --offline --ignore-scripts --no-audit --no-fund
+RUN npm link --offline --ignore-scripts --no-audit --no-fund
 
 FROM runtime-build AS configuration-export
 COPY config ./config
@@ -40,7 +40,7 @@ COPY --from=runtime-build /system/assets/public-runtime.json ./assets/public-run
 COPY --from=configuration-export /wizard/build-tools/export-configuration.cjs /opt/system-bootstrapper/export-configuration.cjs
 COPY assets/cli-companion /opt/system-bootstrapper/cli-artifact
 ENV SYSTEM_CLI_ARTIFACT=/opt/system-bootstrapper/cli-artifact/system-bootstrapper.tgz
-RUN npm link --global --offline --ignore-scripts --no-audit --no-fund
+RUN npm link --offline --ignore-scripts --no-audit --no-fund
 RUN system-bootstrapper host-bootstrap install-runtime --checkout /system
 RUN system-bootstrapper ci image-compatibility /system
 RUN system-bootstrapper source-prepare /system --verify

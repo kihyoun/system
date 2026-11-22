@@ -25,7 +25,7 @@ ENV NODE_OPTIONS=--use-openssl-ca \
     SSL_CERT_DIR=/runtime/config/ca/empty \
     CURL_CA_BUNDLE=/runtime/config/ca/cacert-2026-10-20.crt \
     SYSTEM_CODEQL_IMAGE_BUILD=1
-RUN npm link --global --offline --ignore-scripts --no-audit --no-fund
+RUN npm link --offline --ignore-scripts --no-audit --no-fund
 RUN system-bootstrapper ci codeql-toolchain /runtime
 RUN system-bootstrapper host-bootstrap refresh-ca --checkout /runtime
 RUN system-bootstrapper host-bootstrap ca-check --checkout /runtime
