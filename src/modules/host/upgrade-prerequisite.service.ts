@@ -101,29 +101,36 @@ export class UpgradePrerequisiteService {
       'gitlab-prerequisite-checkpoint-changed',
     );
     const runner = record(plan.runner),
-      runnerSecurity = record(security.runner);
+      runnerSecurity = record(security.runner),
+      scale = runner.scale;
     ensure(
       typeof runnerSecurity.toImage === 'string' &&
         imageId(runner.toImageId) &&
         imageId(runner.fromImageId) &&
-        runner.toImageId !== runner.fromImageId,
+        runner.toImageId !== runner.fromImageId &&
+        typeof scale === 'number' &&
+        Number.isInteger(scale) &&
+        scale >= 0 &&
+        scale <= 50,
       'gitlab-prerequisite-runner-transition-required',
     );
+    const expectedServices: [string, unknown][] = [['system_gitlab_1', plan.toImageId]];
+    for (let index = 1; index <= scale; index++)
+      expectedServices.push(['runner_docker_' + index, runner.toImageId]);
     const rows: unknown = JSON.parse(
       this.host.run('docker', [
         '--host=unix:///var/run/docker.sock',
         'inspect',
-        'system_gitlab_1',
-        'runner_docker_1',
+        ...expectedServices.map(([name]) => name),
       ]),
     );
-    ensure(Array.isArray(rows) && rows.length === 2, 'gitlab-prerequisite-services-required');
+    ensure(
+      Array.isArray(rows) && rows.length === expectedServices.length,
+      'gitlab-prerequisite-services-required',
+    );
     const services = rows.map(record);
-    for (const [name, id] of [
-      ['/system_gitlab_1', plan.toImageId],
-      ['/runner_docker_1', runner.toImageId],
-    ]) {
-      const row = services.find((row) => row.Name === name);
+    for (const [name, id] of expectedServices) {
+      const row = services.find((row) => row.Name === '/' + name);
       ensure(
         row && row.Image === id && record(row.State).Running === true,
         'gitlab-prerequisite-running-image-mismatch',
