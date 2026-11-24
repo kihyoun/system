@@ -70,7 +70,7 @@ export class ContainerCheckService {
     fs.mkdirSync(report, { recursive: true });
     const run = async (
       args: string[],
-      timeout: number | null = 15000,
+      timeout: number | null = 120000,
       inputFile?: string,
       independent = false,
     ) => {
@@ -157,7 +157,7 @@ export class ContainerCheckService {
 
           await run(
             [type, 'rm', ...(type === 'container' ? ['--force'] : []), rows[0].Id],
-            8000,
+            60000,
             undefined,
             true,
           );
