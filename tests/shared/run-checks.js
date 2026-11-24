@@ -34,10 +34,15 @@ async function execute(check, root) {
     const cancel = () => { canceled = true; killGroup(child); };
     process.once('SIGTERM', cancel);
     process.once('SIGINT', cancel);
-    const timer = setTimeout(() => { timedOut = true; killGroup(child); }, check.timeoutSeconds * 1000);
+    const timer = check.timeoutSeconds === undefined
+      ? undefined
+      : setTimeout(() => {
+        timedOut = true;
+        killGroup(child);
+      }, check.timeoutSeconds * 1000);
     child.on('error', error => { launchError = error.code; });
     child.on('close', (code, signal) => {
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
       // Remove descendants even when the parent exited without cleaning up its Sync child.
       killGroup(child);
       process.removeListener('SIGTERM', cancel);

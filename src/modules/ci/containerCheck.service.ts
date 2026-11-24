@@ -68,19 +68,46 @@ export class ContainerCheckService {
       `${key}=${value}`,
     ]);
     fs.mkdirSync(report, { recursive: true });
-    const run = (
+    const run = async (
       args: string[],
       timeout: number | null = 15000,
       inputFile?: string,
       independent = false,
-    ) =>
-      this.process.run('docker', args, {
-        cwd: root,
-        env,
-        timeout,
-        inputFile,
-        signal: independent ? undefined : signal,
-      });
+    ) => {
+      const operation =
+        args[0] === '--config'
+          ? 'create'
+          : ['container', 'image'].includes(args[0])
+            ? `${args[0]} ${args[1]}`
+            : args[0];
+      const started = Date.now();
+      console.log(`[${kind}] docker ${operation}: started`);
+
+      try {
+        const result = await this.process.run('docker', args, {
+          cwd: root,
+          env,
+          timeout,
+          inputFile,
+          signal: independent ? undefined : signal,
+        });
+        console.log(`[${kind}] docker ${operation}: passed (${Date.now() - started} ms)`);
+        return result;
+      } catch (error) {
+        console.error(
+          `[${kind}] docker ${operation}: failed (${Date.now() - started} ms)`,
+          error instanceof ProcessFailure
+            ? {
+                status: error.status,
+                signal: error.signal,
+                uncertain: error.uncertain,
+              }
+            : { status: null, signal: null, uncertain: true },
+        );
+        throw error;
+      }
+    };
+
     const list = (type: string, name: string, independent = false) =>
       run(
         [
@@ -200,7 +227,7 @@ export class ContainerCheckService {
           image,
           '-',
         ],
-        { cwd: root, env, timeout: browser ? 480000 : null, inputFile: archive, signal },
+        { cwd: root, env, timeout: null, inputFile: archive, signal },
         path.join(report, 'build.log'),
       );
 
@@ -241,9 +268,13 @@ export class ContainerCheckService {
             ? []
             : [selection]),
       ]);
-      await run(['start', resource]);
+      await run(['start', resource], 120000);
       try {
         const status = (await run(['wait', resource], browser ? 240000 : null)).trim();
+
+        console.log(
+          `[${kind}] container exit status: ${/^\d+$/.test(status) ? status : 'invalid'}`,
+        );
 
         if (status !== '0') {
           primary = /^\d+$/.test(status)

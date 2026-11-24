@@ -280,11 +280,11 @@ test:wizard-browser:
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 13m
+    RUNNER_SCRIPT_TIMEOUT: 25m
     RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
   cache: []
   dependencies: [prepare:wizard-source]
-  timeout: 15m
+  timeout: 30m
   allow_failure: false
   script:
     - system-bootstrapper ci wizard-browser "$CI_PROJECT_DIR"

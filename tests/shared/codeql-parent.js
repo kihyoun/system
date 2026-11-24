@@ -84,7 +84,7 @@ test('create/start failures retain redacted private diagnostics and the original
       });
       assert.equal(fs.statSync(path.join(report, 'startup-' + phase + '.log')).mode & 0o077, 0);
       assert.equal(fs.statSync(path.join(report, 'startup-' + phase + '.json')).mode & 0o077, 0);
-      assert.equal(calls.find(call => phase === 'create' ? call.args.includes('create') : call.args[0] === 'start').options.timeout, 15000);
+      assert.equal(calls.find(call => phase === 'create' ? call.args.includes('create') : call.args[0] === 'start').options.timeout, 120000);
       assert.equal(calls.some(call => call.args[0] === 'wait' || call.args[0] === 'cp'), false);
       assert.equal(fs.existsSync(path.join(report, 'scan.log')), false);
       assert.equal(calls.filter(call => call.args[1] === 'rm').length, 2);

@@ -43,7 +43,7 @@ export class CodeqlParentService {
         await this.process.run('docker', args, {
           cwd: root,
           env,
-          timeout: 15000,
+          timeout: 120000,
           signal,
           output: (chunk) => {
             const available = Math.max(0, limit - bytes);

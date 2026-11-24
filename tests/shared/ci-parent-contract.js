@@ -63,6 +63,7 @@ test('failed browser wait still exports reports and retains original failure',as
  const {root,env}=fixture(t,true),calls=[],failure=Error('wait-lost');
  const adapter={async run(binary,args,options){calls.push({args,options});if(args[0]==='wait')throw failure;return '';}};
  await assert.rejects(new ContainerCheckService(adapter).execute('wizard-browser',root,env,'run'),e=>e===failure);
+ assert.equal(calls.find(c=>c.args[0]==='build').options.timeout,null);
  const copy=calls.find(c=>c.args[0]==='cp');assert.ok(copy);assert.equal(copy.options.signal,undefined);
  assert.match(fs.readFileSync(path.join(root,'test-results/wizard-browser/junit.xml'),'utf8'),/failures="1"/);
 });
@@ -131,6 +132,8 @@ test('candidate image uses the same lifecycle and invokes typed runtime validati
   return '';
  }};
  await new ContainerCheckService(adapter).execute('candidate-image',root,env,'run');
+ assert.equal(calls.find(c=>c.args.includes('create')).options.timeout,120000);
+ assert.equal(calls.find(c=>c.args[0]==='start').options.timeout,120000);
  const create=calls.find(c=>c.args.includes('create')).args;
  assert.equal(create[create.indexOf('--entrypoint')+1],'node');
  assert.equal(create[create.indexOf('--memory')+1],'1g');
