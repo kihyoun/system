@@ -623,6 +623,38 @@ test('registry adapter preserves arguments and disables previous digest transpor
     }
     await invoke(docker,['image','inspect',support],{env});
 
+    // The GitLab cold checkpoint restores both previous public selectors even
+    // after the paired controller recovery has disabled public digest transport.
+    const restoredEnv={...env,BOOTSTRAPPER_IMAGE:reference,WIZARD_IMAGE:reference,GITLAB_IMAGE:support,GITLAB_RUNNER_IMAGE:support};
+    const system=['--compatibility','-f','/system/config/system/docker-compose.yml'];
+    const runner=['--compatibility','-p','runner','-f','/tmp/system-runner-compose-Ab1234/compose.json'];
+    const web=['--compatibility','-f','docker-compose.yml','up','--build','--remove-orphans','--force-recreate','-d','web'];
+    for(const command of [
+      [...system,'up','-d','gitlab'],
+      [...system,'-f','/system/config/gitlab/docker-compose.omnibus.yml','up','--force-recreate','-d','gitlab'],
+      [...runner,'up','--remove-orphans','-d'],
+      [...runner,'down','--remove-orphans'],
+      web
+    ]){
+      for(const key of ['BOOTSTRAPPER_IMAGE','WIZARD_IMAGE']){
+        assert.equal(await invoke(docker,['--host=unix:///var/run/docker.sock','compose',...command],
+          {env:{...restoredEnv,SYSTEM_TEST_COMPOSE_KEY:key}}),reference,'unused public selector remains unchanged offline');
+      }
+      assert.equal(await invoke(docker,['--host=unix:///var/run/docker.sock','compose',...command],
+        {env:{...restoredEnv,SYSTEM_TEST_COMPOSE_KEY:'GITLAB_IMAGE'}}),image,'support pin still resolves offline');
+    }
+    for(const command of [
+      [...system,'up','-d','bootstrapper'],
+      [...system,'up','-d','wizard'],
+      [...system,'up','-d'],
+      [...system,'up','-d','gitlab','wizard']
+    ]){
+      fs.writeFileSync(path.join(directory,'arguments'),'not-executed');
+      await assert.rejects(()=>invoke(docker,['compose',...command],{env:restoredEnv}),error=>error.status===87);
+      assert.equal(fs.readFileSync(path.join(directory,'arguments'),'utf8'),'not-executed');
+    }
+    await assert.rejects(()=>invoke(docker,['pull',reference],{env}),error=>error.status===87);
+
     await assert.rejects(() => invoke(docker, args, {env, stdio: 'pipe'}), error => error.status === 87);
     await invoke(docker, ['image', 'inspect', 'system-bootstrapper-recovery:' + 'a'.repeat(64)], {env});
     fs.writeFileSync(path.join(directory, 'fail-recovery-once'), 'once');

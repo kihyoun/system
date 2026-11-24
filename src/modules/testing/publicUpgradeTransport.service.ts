@@ -16,6 +16,50 @@ export function runtimeVolumes(fixture: string): string[] {
     fixture + '/runtime/lib/ld-musl-x86_64.so.1:/lib/libc.musl-x86_64.so.1:ro',
   ];
 }
+/** These source-owned Compose invocations cannot start either public pair service. */
+function composeWithoutPublicPair(args: string[]): boolean {
+  const exact = (expected: string[]) =>
+    args.length === expected.length && args.every((value, index) => value === expected[index]);
+  const system = ['--compatibility', '-f', '/system/config/system/docker-compose.yml'];
+  for (const prefix of [
+    system,
+    [...system, '-f', '/system/config/gitlab/docker-compose.omnibus.yml'],
+  ]) {
+    if (
+      exact([...prefix, 'up', '-d', 'gitlab']) ||
+      exact([...prefix, 'up', '--force-recreate', '-d', 'gitlab'])
+    ) {
+      return true;
+    }
+  }
+
+  if (
+    args[0] === '--compatibility' &&
+    args[1] === '-p' &&
+    /^[a-z0-9][a-z0-9_-]*$/.test(args[2] ?? '') &&
+    args[3] === '-f' &&
+    /^\/tmp\/system-runner-compose-[A-Za-z0-9]{6}\/compose\.json$/.test(args[4] ?? '')
+  ) {
+    const prefix = args.slice(0, 5);
+    return (
+      exact([...prefix, 'up', '--remove-orphans', '-d']) ||
+      exact([...prefix, 'down', '--remove-orphans'])
+    );
+  }
+
+  return exact([
+    '--compatibility',
+    '-f',
+    'docker-compose.yml',
+    'up',
+    '--build',
+    '--remove-orphans',
+    '--force-recreate',
+    '-d',
+    'web',
+  ]);
+}
+
 export type TransportResult = { status: number; signal?: NodeJS.Signals };
 export const publicUpgradeOutput = Symbol('PUBLIC_UPGRADE_OUTPUT');
 class FixtureRefusal extends Error {
@@ -381,6 +425,11 @@ export class PublicUpgradeTransportService {
           args = args.slice(commandOffset + 1);
         }
 
+        // The GitLab checkpoint restores the original public pair selectors.
+        // During offline recovery these unused values must not block GitLab,
+        // its runner pools or the web proxy. Keep them verbatim, not mapped.
+        const inactivePair =
+          fs.existsSync(path.join(fixture, 'offline-recovery')) && composeWithoutPublicPair(args);
         for (const key of [
           'BOOTSTRAPPER_IMAGE',
           'WIZARD_IMAGE',
@@ -388,6 +437,9 @@ export class PublicUpgradeTransportService {
           'GITLAB_RUNNER_IMAGE',
           'GITLAB_RUNNER_HELPER_IMAGE',
         ]) {
+          if (inactivePair && (key === 'BOOTSTRAPPER_IMAGE' || key === 'WIZARD_IMAGE')) {
+            continue;
+          }
           if (env[key]) {
             env[key] = map(env[key]!);
           }
