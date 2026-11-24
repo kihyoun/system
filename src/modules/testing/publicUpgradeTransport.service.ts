@@ -440,6 +440,7 @@ export class PublicUpgradeTransportService {
           if (inactivePair && (key === 'BOOTSTRAPPER_IMAGE' || key === 'WIZARD_IMAGE')) {
             continue;
           }
+
           if (env[key]) {
             env[key] = map(env[key]!);
           }
