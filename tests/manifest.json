@@ -1,6 +1,6 @@
 [
   {"component":"gitlab","file":"gitlab/npm-publication.js","timeoutSeconds":15},
-  {"component":"bootstrapper","file":"bootstrapper/operations-runtime.js","timeoutSeconds":60},
+  {"component":"bootstrapper","file":"bootstrapper/operations-runtime.js"},
   {"component":"sync","file":"sync/nest-application.js","timeoutSeconds":15},
   {"component":"sync","file":"sync/security-api.js","timeoutSeconds":30,"port":8071},
   {"component":"shared","file":"shared/codeql-gate.js","timeoutSeconds":15},
