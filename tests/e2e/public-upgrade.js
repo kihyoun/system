@@ -138,7 +138,15 @@ async function replaceController(candidate, baseline, image, fixture) {
   for (const value of baseline.HostConfig.ExtraHosts || []) args.push('--add-host', value);
   for (const mount of baseline.Mounts) {
     required(['bind', 'volume'].includes(mount.Type), 'public-upgrade-unexpected-candidate-mount');
-    args.push('--mount', 'type=' + mount.Type + ',src=' + (mount.Type === 'volume' ? mount.Name : mount.Source) + ',dst=' + mount.Destination + (mount.RW ? '' : ',readonly'));
+    const source = mount.Type === 'volume' ? mount.Name : mount.Source;
+    // Match the native Compose short syntax for named volumes and the Docker
+    // socket. Its long bind syntax for runners and host-letsencrypt uses --mount.
+    // Paired recovery compares the actual retained Mounts, including Mode.
+    if (fixture && (mount.Type === 'volume' || mount.Destination === '/var/run/docker.sock')) {
+      args.push('--volume', source + ':' + mount.Destination + ':' + (mount.RW ? 'rw' : 'ro'));
+    } else {
+      args.push('--mount', 'type=' + mount.Type + ',src=' + source + ',dst=' + mount.Destination + (mount.RW ? '' : ',readonly'));
+    }
   }
   if (fixture) args.push('--env', 'SYSTEM_PUBLIC_UPGRADE_FIXTURE=' + fixture,
     '--volume', fixture + ':' + fixture + ':ro',

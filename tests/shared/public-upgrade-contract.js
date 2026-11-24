@@ -54,6 +54,34 @@ test('manual controller replacement remains discoverable by native Compose witho
     assert.equal(JSON.stringify(baseline), before);
   }
 });
+test('public upgrade fixture uses the native Compose mount syntax for paired recovery', async () => {
+  const calls = [], candidate = {inner: async args => calls.push(args)};
+  const fixture = '/recovered-data/platform/fixture';
+  const baseline = {...controllerBaseline(), HostConfig: {...controllerBaseline().HostConfig, RestartPolicy: {Name: 'always'}}, Mounts: [
+    {Type: 'bind', Source: '/var/run/docker.sock', Destination: '/var/run/docker.sock', Mode: '', RW: true, Propagation: 'rprivate'},
+    {Type: 'bind', Source: '/old-live/host/letsencrypt', Destination: '/host-letsencrypt', Mode: '', RW: true, Propagation: 'rprivate'},
+    {Type: 'bind', Source: '/old-live/runners', Destination: '/old-live/runners', Mode: '', RW: true, Propagation: 'rprivate'},
+    {Type: 'volume', Name: 'system_configuration', Source: '/var/lib/docker/volumes/system_configuration/_data', Destination: '/state', Driver: 'local', Mode: 'z', RW: true, Propagation: ''},
+  ]};
+  const before = JSON.stringify(baseline);
+  const values = (args, flag) => args.flatMap((value, index) => value === flag ? [args[index + 1]] : []);
+  await replaceController(candidate, baseline, id('3'), fixture);
+  assert.deepEqual(calls.map(args => args[0]), ['stop', 'rm', 'create', 'start']);
+  assert.deepEqual(values(calls[2], '--mount'), [
+    'type=bind,src=/old-live/host/letsencrypt,dst=/host-letsencrypt',
+    'type=bind,src=/old-live/runners,dst=/old-live/runners',
+  ]);
+  assert.deepEqual(values(calls[2], '--volume'), [
+    '/var/run/docker.sock:/var/run/docker.sock:rw',
+    'system_configuration:/state:rw',
+    ...controllerFixture(baseline, fixture).services.bootstrapper.volumes,
+  ]);
+  assert.equal(JSON.stringify(baseline), before);
+  calls.length = 0;
+  await replaceController(candidate, baseline, id('3'));
+  assert.equal(values(calls[2], '--mount').length, baseline.Mounts.length);
+  assert.deepEqual(values(calls[2], '--volume'), []);
+});
 test('controller override retains fixture adapters while native Compose owns images, storage and staged startup', () => {
   const baseline = controllerBaseline(), before = JSON.stringify(baseline);
   const selected = controllerFixture(baseline, '/recovered-data/platform/fixture').services.bootstrapper;
