@@ -82,7 +82,7 @@
   {"component":"bootstrapper","file":"bootstrapper/native-initialization.js","timeoutSeconds":45},
   {"component":"bootstrapper","file":"bootstrapper/public-upgrade.cjs","timeoutSeconds":30},
   {"component":"gitlab","file":"gitlab/public-upgrade-release.js","timeoutSeconds":30},
-  {"component":"shared","file":"shared/public-upgrade-contract.js","timeoutSeconds":20},
+  {"component":"shared","file":"shared/public-upgrade-contract.js"},
   {"component":"shared","file":"shared/public-upgrade-data.js","timeoutSeconds":20},
   {"component":"bootstrapper","file":"seed/configuration-backup.js","timeoutSeconds":30},
   {"component":"gitlab","file":"gitlab/candidate-capacity.js","timeoutSeconds":15},
