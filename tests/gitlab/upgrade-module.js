@@ -167,11 +167,12 @@ test('public prerequisite CLI and mount authority reject unreviewed commands and
  const trace=[],coreFiles=['.docker.env','config/gitlab/.docker.env','wizard/.docker.env'].map(name=>path.join(upgradeSourceRoot,name));
  t.mock.method(fs,'writeFileSync',(name)=>{assert(coreFiles.includes(name));trace.push('core-address');});
  const accepted={graph:{},evidence:{},release:{sourceRevision:'a'.repeat(40)}};
- const session={evidence(){trace.push('evidence');},run(){trace.push('dependency');},async plan(){trace.push('plan');return {ready:true};}};
+ let gitlabRunning=true,gitlabAddress='172.20.0.2';
+ const session={evidence(){trace.push('evidence');},run(){trace.push('dependency');},async plan(){trace.push('plan');return {ready:true};},async abort(){trace.push('abort');return {status:'previous-generation-resumed'};},async rollback(){trace.push('rollback');return {status:'restored-checkpoint'};}};
  const providers=new Map([
   [HostReleaseAuthorityService,{publicInputs:()=>accepted}],
   [PublicUpgradePreparationService,{graph:()=>accepted.graph}],
-  [PublicGitlabPrerequisiteService,{inspect:()=>controller,docker:()=> '172.20.0.2'}],
+  [PublicGitlabPrerequisiteService,{inspect:name=>name==='system_gitlab_1'?{State:{Running:gitlabRunning}}:controller,docker:args=>args.at(-1)==='system_gitlab_1'?gitlabAddress:'172.20.0.2'}],
   [GitLabUpgradeService,{create:()=>session}],
   [ProjectsRoutingService,{reconstructProxyRuntime(root){assert.equal(root,upgradeSourceRoot);trace.push('project-proxy-runtime');}}],
  ]);
@@ -188,6 +189,19 @@ test('public prerequisite CLI and mount authority reject unreviewed commands and
  trace.length=0;
  await assert.rejects(publicGitlabHelperMain([filename,launchFile,'plan','']),/project-proxy-runtime-identity-required/);
  assert.deepEqual(trace,['evidence','core-address','core-address','core-address','close'],'invalid project ownership stops before native dependencies or workflow mutations');
+ providers.get(ProjectsRoutingService).reconstructProxyRuntime=()=>trace.push('project-proxy-runtime');
+ gitlabRunning=false;gitlabAddress='invalid IP';
+ for(const operation of ['abort','rollback']){
+  trace.length=0;
+  await publicGitlabHelperMain([filename,launchFile,operation,'e'.repeat(64)]);
+  assert.deepEqual(trace,['evidence','core-address','core-address','project-proxy-runtime','dependency','dependency',operation,'close']);
+ }
+ trace.length=0;
+ await assert.rejects(publicGitlabHelperMain([filename,launchFile,'plan','']),/public-gitlab-service-address-required/);
+ assert(!trace.includes('plan'));
+ gitlabRunning=true;trace.length=0;
+ await assert.rejects(publicGitlabHelperMain([filename,launchFile,'abort','e'.repeat(64)]),/public-gitlab-service-address-required/);
+ assert(!trace.includes('abort'));
 });
 test('completed paired rollback receipts permit a new owned controller ID but reject unverified recovery',t=>{
  const {pairedPrerequisiteRecovery,prerequisiteController}=require('../../dist/modules/host/publicGitlabPrerequisite.service');
@@ -356,6 +370,14 @@ test('host prerequisite prepares public recovery payloads and launches only the 
  const inspectionCount=calls.filter(args=>args[0]==='inspect').length;
  assert.equal((await service.execute({...input,operation:'status'})).phase,'not-checkpointed');
  assert.equal(calls.filter(args=>args[0]==='inspect').length,inspectionCount,'status needs no live controller');
+ helperObservation=undefined;
+ for(const operation of ['promote','rollback']){
+  runtime.child.run=async(binary,args,options)=>{
+   assert.equal(options.timeout,null,'cold I/O is bounded by its owned watchdog, not the attachment');
+   return JSON.stringify({status:operation==='promote'?'promoted':'restored-checkpoint'})+'\n';
+  };
+  await service.execute({...input,operation,confirmation:'e'.repeat(64)});
+ }
 });
 test('future public fixture proves prerequisite authority without exporting unobserved candidate results',()=>{
  const {PublicUpgradePublicationService}=require('../../dist/modules/testing/publicUpgradePublication.service');

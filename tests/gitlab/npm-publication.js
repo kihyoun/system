@@ -27,14 +27,16 @@ async function scenario(change={}){
  const files={'test-results/npm-package/receipt.json':Buffer.from(JSON.stringify(receipt)),['test-results/npm-package/'+receipt.filename]:bytes,'test-results/public-release/system-release-v2.0.0.json':Buffer.from(JSON.stringify(metadata))};
  for(const [file,value] of Object.entries(files)){fs.mkdirSync(path.dirname(path.join(root,file)),{recursive:true});fs.writeFileSync(path.join(root,file),value);}
  const jobs=[{name:'test:npm-package',id:17},{name:'deploy:github-release',id:18}].map(job=>({...job,status:'success',allow_failure:false,commit:{id:revision},pipeline:{id:42}}));
- const requests=[],commands=[],temporaries=[];let published=false;
+ const requests=[],commands=[],temporaries=[],sleeps=[];let published=false;let pending=change.delayed??0;
  const ports={
   evidence:async()=>({projectId:1,pipelineId:42,sourceRevision:revision,jobs:change.jobs?change.jobs(jobs):jobs,artifact:async(id,file)=>change.corruptArtifact?Buffer.from('foreign'):files[file]}),
   token:()=>change.token??'npm_testCredential',
+  sleep:async ms=>{assert.equal(ms,30000);sleeps.push(ms);for(const directory of temporaries)assert.equal(fs.existsSync(directory),false);},
   request:async(url,options)=>{
    requests.push(url);assert.equal(options.redirect,'error');assert.match(url,/^https:\/\/registry\.npmjs\.org\/%40systembootstrapper%2Fcli\/2\.0\.0$/);
    if(change.unavailable)return {ok:false,status:503};
    if(!published&&!change.exists)return {ok:false,status:404};
+   if(published&&pending>0){pending--;return {ok:false,status:404};}
    return {ok:true,status:200,json:async()=>({name:receipt.name,version:receipt.version,dist:{integrity:change.different?'sha512-different':receipt.integrity}})};
   },
   processes:{run(binary,args,options){
@@ -52,17 +54,20 @@ async function scenario(change={}){
    const result=app.get(NpmPublicationService).publish({...env,NPM_CONFIG_REGISTRY:'https://attacker.invalid',NODE_OPTIONS:'--require evil',SYSTEM_RELEASE_GITLAB_TOKEN:'private'},root);
    if(change.reject)await assert.rejects(result);else assert.deepEqual(await result,receipt);
   }finally{await app.close();}
-  assert.equal(commands.length,change.commands??0);for(const directory of temporaries)assert.equal(fs.existsSync(directory),false);
+  assert.equal(commands.length,change.commands??0);assert.equal(sleeps.length,change.sleeps??0);for(const directory of temporaries)assert.equal(fs.existsSync(directory),false);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 }
 (async()=>{
  await scenario({commands:1});
+ await scenario({commands:1,delayed:3,sleeps:3});
+ await scenario({commands:1,throw:true,delayed:2,sleeps:2});
+ await scenario({commands:1,delayed:2,sleeps:2,different:true,reject:true});
  await scenario({exists:true});
  await scenario({exists:true,different:true,reject:true});
  await scenario({unavailable:true,reject:true});
  await scenario({throw:true,commands:1});
- await scenario({throw:true,lost:true,commands:1,reject:true});
- await scenario({lost:true,commands:1,reject:true});
+ await scenario({throw:true,lost:true,commands:1,sleeps:39,reject:true});
+ await scenario({lost:true,commands:1,sleeps:39,reject:true});
  await scenario({token:'bad\nregistry=https://attacker.invalid',reject:true});
  await scenario({corruptArtifact:true,reject:true});
  for(const jobs of [j=>j.slice(1),j=>[...j,j[0]],j=>j.map(x=>({...x,status:'failed'})),j=>j.map(x=>({...x,allow_failure:true})),j=>j.map(x=>({...x,pipeline:{id:41}})),j=>j.map(x=>({...x,commit:{id:'c'.repeat(40)}})),j=>j.map(x=>({...x,id:x.id+1}))])await scenario({jobs,reject:true});

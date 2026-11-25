@@ -31,6 +31,7 @@ export interface NpmPublicationPorts {
   request: typeof fetch;
   evidence(env: Environment, root: string, layout: unknown): Promise<NpmEvidence>;
   token(env: Environment): string;
+  sleep?(ms: number): Promise<void>;
 }
 function readArtifact(filename: string): Buffer {
   const stat = fs.lstatSync(filename);
@@ -131,6 +132,23 @@ export class NpmPublicationService {
     return true;
   }
 
+  private async awaitRegistry(receipt: NpmReceipt): Promise<boolean> {
+    // Immutable releases can remain temporarily invisible after npm accepts them.
+    // Only retry absence; mismatched integrity and other registry errors remain fatal.
+    const sleep =
+      this.ports.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (await this.registryState(receipt)) {
+        return true;
+      }
+
+      if (attempt < 39) {
+        await sleep(30000);
+      }
+    }
+    return false;
+  }
+
   async publish(env: Environment, root: string): Promise<NpmReceipt> {
     const directory = path.join(root, 'test-results/npm-package');
     const receiptPath = 'test-results/npm-package/receipt.json';
@@ -187,6 +205,7 @@ export class NpmPublicationService {
       return receipt;
     }
 
+    let failure = 'public-npm-package-verification-failed';
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'system-npm-'));
     fs.chmodSync(temporary, 0o700);
     try {
@@ -229,13 +248,12 @@ export class NpmPublicationService {
         );
       } catch {
         // A lost command response may follow a successful immutable publication.
-        requireNpm(await this.registryState(receipt), 'npm-publication-failed');
-        return receipt;
+        failure = 'npm-publication-failed';
       }
     } finally {
       fs.rmSync(temporary, { recursive: true, force: true });
     }
-    requireNpm(await this.registryState(receipt), 'public-npm-package-verification-failed');
+    requireNpm(await this.awaitRegistry(receipt), failure);
     return receipt;
   }
 }

@@ -397,7 +397,11 @@ export class PublicGitlabPrerequisiteService {
           cwd: input.checkout,
           env: this.host.environment,
           signal: input.signal,
-          timeout: (input.timeout * 2 + 2400) * 1000,
+          // The owned copy watchdogs and service readiness enforce their own budgets.
+          // Do not terminate the foreground migration/restore attachment during cold I/O.
+          timeout: ['promote', 'rollback'].includes(input.operation)
+            ? null
+            : (input.timeout * 2 + 2400) * 1000,
           controlledFailureCodes: helperFailureCodes,
         },
       );

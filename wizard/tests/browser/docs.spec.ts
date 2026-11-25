@@ -142,10 +142,10 @@ test('long chapters fit mobile and desktop with accessible chapter selection', a
       await selectVersionWithKeyboard(source, ['Home', ...Array(5).fill('ArrowDown')]);
       await expect(source).toHaveValue('1.1.3');
       await selectVersionWithKeyboard(target, ['End']);
-      await expect(target).toHaveValue('2.0.0');
+      await expect(target).toHaveValue('2.0.1');
       await expect(guide.getByRole('status').first()).toContainText(supported);
       await expect(guide.getByRole('heading', { name: '1.1.3 → 1.2.0', exact: true })).toBeVisible();
-      await expect(guide.getByRole('heading', { name: '1.2.0 → 2.0.0', exact: true })).toBeVisible();
+      await expect(guide.getByRole('heading', { name: '1.2.0 → 2.0.1', exact: true })).toBeVisible();
       for (const control of [source, target]) await expectSeparatedVersionLabel(control);
       await expectNoHorizontalOverflow(page, `${locale}/${width}: supported migration`);
     }

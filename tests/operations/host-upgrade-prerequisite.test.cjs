@@ -1,13 +1,30 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');
 const {UpgradePrerequisiteService}=require('../../dist/modules/host/upgradePrerequisite.service');
-const {validateUpgradeGraph}=require('../../dist/modules/host/upgradeGraph');
+const {validateUpgradeGraph,upgradePath}=require('../../dist/modules/host/upgradeGraph');
+const {releaseLayout}=require('../../dist/common/runtime/checkoutLayout');
 const security=require('../../config/gitlab/security-release.json');
 const id=n=>'sha256:'+n.repeat(64),sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 test('database transition declares native prerequisite without preservation claims',()=>{
  const graph=require('../../config/releases/upgrade-paths.json');validateUpgradeGraph(graph);
  const edge=graph.transitions.find(e=>e.to==='2.0.0');assert.equal(edge.from,'1.2.0');assert.equal(edge.databaseMigration,true);assert.equal(edge.serviceImagesPreserved,false);
  for(const mutate of [e=>e.serviceImagesPreserved=true,e=>delete e.gitlabPrerequisite,e=>e.gitlabPrerequisite.toVersion='19.7.0']){const bad=structuredClone(graph);mutate(bad.transitions.at(-1));assert.throws(()=>validateUpgradeGraph(bad));}
+});
+test('current patch release has one explicitly tested direct predecessor and preserves historical edges',()=>{
+ const graph=require('../../config/releases/upgrade-paths.json');validateUpgradeGraph(graph);
+ const current=fs.readFileSync(path.join(__dirname,'../../VERSION'),'utf8').trim();
+ assert.equal(current,'2.0.1');
+ assert.equal(require('../../package.json').version,current);
+ assert.equal(require('../../package-lock.json').version,current);
+ assert.equal(require('../../package-lock.json').packages[''].version,current);
+ const incoming=graph.transitions.filter(e=>e.to===current);assert.equal(incoming.length,1);
+ const old=graph.transitions.find(e=>e.from==='1.2.0'&&e.to==='2.0.0');
+ assert.deepEqual(incoming[0],{...old,to:current,requiredStage:'public-release-upgrade-1-2-0-to-2-0-1'});
+ assert.deepEqual(upgradePath(graph,'1.2.0',current).transitions,incoming);
+ assert.deepEqual(upgradePath(graph,'1.1.3',current).transitions.map(e=>e.to),['1.2.0',current]);
+ assert.equal(upgradePath(graph,'2.0.0',current).status,'unsupported');
+ assert.equal(releaseLayout('1.2.0'),'historical');assert.equal(releaseLayout('2.0.0'),'native');
+ assert.equal(releaseLayout(current),'native');assert.equal(releaseLayout('2.0.2'),undefined);
 });
 function prerequisiteFixture(t,scale){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'upgrade-gate-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const directory=path.join(root,'checkpoint');fs.mkdirSync(directory);

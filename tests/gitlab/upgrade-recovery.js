@@ -39,6 +39,21 @@ test('cold checkpoint is verified before B starts, and an exit1/OOM successor ca
   assert.equal(fs.readFileSync(f.engine.config,'utf8'),f.originalConfig);assert(!fs.existsSync(path.join(f.serviceData,'data/.system-bootstrapper-restore-incomplete')));
   assert(!fs.existsSync(path.join(f.state,'.gitlab-upgrade-lock')));
 });
+test('cold checkpoint sizing, creation and restore have an explicit data I/O budget',async t=>{
+  const f=fixture(t),nativeRun=f.engine.run,copies=[];
+  f.engine.run=(binary,args,options)=>{
+    if(binary==='du'||binary==='rsync'){
+      assert.equal(options?.timeout,1800000);
+      copies.push([binary,args.includes('--delete')]);
+    }
+    return nativeRun(binary,args,options);
+  };
+  f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);f.crash();
+  await f.engine.rollback(migrated.checkpointSha256);
+  assert(copies.some(([binary])=>binary==='du'));
+  assert.equal(copies.filter(([binary,restore])=>binary==='rsync'&&!restore).length,3);
+  assert.equal(copies.filter(([binary,restore])=>binary==='rsync'&&restore).length,3);
+});
 test('corrupt cold checkpoint fails before restoring or acquiring operation leases',async t=>{
   const f=fixture(t);f.engine.lock('a'.repeat(64));const migrated=await f.engine.migrate(f.plan);fs.writeFileSync(path.join(f.engine.checkpoints,'gitlab/data/original'),'corrupted');
   await assert.rejects(()=>f.engine.rollback(migrated.checkpointSha256),/verification/);assert(!fs.existsSync(path.join(f.state,'.gitlab-upgrade-lock')));
@@ -146,4 +161,30 @@ test('a job assigned before HTTP ingress drains resumes old API without stopping
   const names=f.events.map(event=>event[0]);assert(names.includes('previous-ingress-resumed'));assert(!names.includes('cold-stop'));assert(!names.includes('start'));
   assert(!fs.existsSync(f.engine.checkpoints));assert(!fs.existsSync(path.join(f.state,'.gitlab-upgrade-lock')));
   assert.equal(fs.readFileSync(f.engine.config,'utf8'),f.originalConfig);assert.equal(fs.readFileSync(path.join(f.serviceData,'data/original'),'utf8'),'saved-data');
+});
+
+test('public abort restores the stopped GitLab address before runner and routing recovery',async t=>{
+  const {UpgradeWorkflowService}=require('../../dist/modules/gitlab-upgrade/workflow.service');
+  const files=require('../../dist/modules/gitlab-upgrade/checkpointFiles');
+  const {root}=require('../../dist/modules/gitlab-upgrade/types');
+  const f=fixture(t),events=[];fs.mkdirSync(path.join(f.state,'.gitlab-upgrade-lock'));
+  const originalAtomic=files.atomic;
+  t.mock.method(files,'atomic',(filename,bytes)=>{
+    if(filename===path.join(root,'config/gitlab/.docker.env')){
+      assert.equal(bytes,'export GITLAB_IP=172.20.0.9\n');events.push('address');return;
+    }
+    return originalAtomic(filename,bytes);
+  });
+  const session={state:f.state,publicExecution:{},owner:{runnersStopped:true},
+    adopt:()=>events.push('adopt'),quiesceFinished:async()=>events.push('quiesce'),
+    inspect:()=>({Image:old,State:{Running:false}}),verifyMounts:()=>events.push('mounts'),image:()=>old,
+    docker:args=>{if(args[0]==='start'){events.push('start');return '';}assert.equal(args[0],'inspect');return '172.20.0.9';},
+    ready:async()=>events.push('ready'),runnerPlan:()=>({}),runnersReady:()=>events.push('runners'),
+    run:()=>events.push('routing'),unlock:()=>events.push('unlock')};
+  const result=await new UpgradeWorkflowService().abort(session,'a'.repeat(64));
+  assert.equal(result.status,'previous-generation-resumed');
+  assert.deepEqual(events,['adopt','quiesce','mounts','start','ready','address','runners','routing','unlock']);
+  events.length=0;session.docker=args=>args[0]==='inspect'?'invalid IP':'';
+  await assert.rejects(new UpgradeWorkflowService().abort(session,'a'.repeat(64)),/public-gitlab-service-address-required/);
+  assert(!events.includes('runners')&&!events.includes('unlock'));
 });

@@ -141,7 +141,7 @@ Das folgende Beispiel gehört zum **historischen Checkout 1.2.0**. Sein Python-
 Einstiegspunkt bleibt in diesem genauen Tag erhalten; er gehört nicht zur Laufzeit
 von 2.0. Für jeden erforderlichen Zwischenstopp die versionsspezifischen Befehle
 verwenden. Für 2.0 die native CLI-Laufzeit vorbereiten und die separat geprüfte
-[GitLab-Migration](#native-upgrade-from-120-to-200) vor der anschließenden Release-Paarphase abschließen.
+[GitLab-Migration](#native-upgrade-from-120-to-201) vor der anschließenden Release-Paarphase abschließen.
 
 1. Den Quellcode des ausgewählten Ziel-Releases samt genauem Wizard-Gitlink
    beziehen. Den alten Checkout und die Wiederherstellungseingaben unabhängig
@@ -278,7 +278,7 @@ prüfen und nur diese beiden Auswahlen über den normalen Konfigurationsablauf
 wiederherstellen. Keine anderen aktuellen Einstellungen ersetzen und die
 Wiederherstellungseingaben nicht löschen.
 
-Der aktuelle Graph deklariert außerdem **1.2.0 → 2.0.0** mit einer GitLab-
+Der aktuelle Graph deklariert außerdem **1.2.0 → 2.0.0** und **1.2.0 → 2.0.1**, jeweils mit einer GitLab-
 Datenbankmigration vor dem Controller-/Wizard-Paarupdate. Ein Image-Rollback
 macht keine Datenbankmigration rückgängig. Deklarierte Service-Übergänge nutzen die
 [GitLab-Migration und kalte Checkpoint-Wiederherstellung](HANDBOOK.md#5-evolving-a-running-system)
@@ -317,7 +317,7 @@ aus öffentlichen Metadaten statt privaten Pins. Ohne passende erfolgreiche
 Laufzeitnachweise lehnt der Publisher den Übergang ab; geänderte Metadaten
 erzeugen keine Kompatibilität.
 
-### Natives Upgrade von 1.2.0 auf 2.0.0
+### Natives Upgrade von 1.2.0 auf 2.0.1
 
 Eine saubere offizielle Installation von 1.2.0 auf unterstütztem Ubuntu x86_64
 mit passender Konfigurations-/Seed-Sicherung verwenden. Laufende Jobs und offene
@@ -334,8 +334,8 @@ kein Wizard-Submodul.
 ```bash
 git clone https://github.com/kihyoun/system.git system-upgrade-2
 cd system-upgrade-2
-git checkout --detach v2.0.0
-sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
+git checkout --detach v2.0.1
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.1
 test ! -e dist && test ! -e node_modules && test ! -e assets && \
 sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist dist && \
 sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules node_modules && \
@@ -352,17 +352,17 @@ Controller ausgewählt bleibt.
 
 ```bash
 sudo system-bootstrapper gitlab-upgrade \
-  --operation prepare --checkout "$PWD" --target 2.0.0 \
+  --operation prepare --checkout "$PWD" --target 2.0.1 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-1
 sudo system-bootstrapper gitlab-upgrade \
   --operation plan --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-1
 sudo system-bootstrapper gitlab-upgrade \
   --operation promote --checkout "$PWD" --confirm-plan GITLAB_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-1
 ```
 
 Die zurückgegebenen Werte `checkpointDir` und `checkpointSha256` behalten. Der
@@ -374,16 +374,16 @@ passende Sicherung. Diesen eigenen Plan prüfen und `PAIR_PLAN_SHA256` ausdrück
 
 ```bash
 sudo system-bootstrapper upgrade \
-  --checkout "$PWD" --target 2.0.0 \
+  --checkout "$PWD" --target 2.0.1 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
-  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2-0-0 \
-  --backup-file /mnt/backup/configuration-before-2.0.0.zip \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.1 \
+  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2-0-1 \
+  --backup-file /mnt/backup/configuration-before-2.0.1.zip \
   --token-file /root/system-api-token
 sudo system-bootstrapper upgrade \
   --operation apply --checkout "$PWD" --confirm-plan PAIR_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.1 \
   --token-file /root/system-api-token
 ```
 
@@ -395,11 +395,11 @@ den Status prüfen; niemals zum Wiederholen eine Lease löschen.
 sudo system-bootstrapper upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.1
 sudo system-bootstrapper gitlab-upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-1
 ```
 
 Bei einer Paar-Unterbrechung `system-bootstrapper upgrade --operation recover`
@@ -409,7 +409,7 @@ GitLab ausdrücklich nicht zurück. Falls auch ein Datenbank-Rollback benötigt 
 zuerst diese Paar-Wiederherstellung abschließen und dann
 `system-bootstrapper gitlab-upgrade --operation rollback` mit demselben
 Vorbereitungsverzeichnis, `--confirm-checkpoint GITLAB_CHECKPOINT_SHA256` und
-`--paired-checkpoint /var/lib/system-bootstrapper/platform/recovery/controller-updates/to-2.0.0`
+`--paired-checkpoint /var/lib/system-bootstrapper/platform/recovery/controller-updates/to-2.0.1`
 verwenden. Der Helfer prüft die abgeschlossene Paar-Wiederherstellung, bevor er den
 neu erstellten alten Controller akzeptiert. Solange kein abgeschlossener GitLab-
 Checkpoint existiert, setzt das separate

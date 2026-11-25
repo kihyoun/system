@@ -116,7 +116,7 @@ fails closed for monorepo acceptance. Public provenance still requires native
 successful publication, browser, candidate and component jobs. Fixture lifecycle
 identifiers never replace those outer publication identities.
 
-The 1.2.0 → 2.0.0 graph explicitly includes the GitLab 19.5.3 → 19.6.1 database
+The 1.2.0 → 2.0.0 and 1.2.0 → 2.0.1 edges explicitly include the GitLab 19.5.3 → 19.6.1 database
 migration and Runner transition. Complete the native GitLab upgrade with its
 retained cold checkpoint before planning the paired Controller/Wizard phase, then
 pass `--gitlab-checkpoint` to `system-bootstrapper upgrade --operation plan`.

@@ -773,7 +773,7 @@ The dedicated runtime lives under `/opt/system-bootstrapper-runtime`.
 For an explicitly selected accepted release, prepare its runtime before recovery:
 
 ```sh
-sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.1
 ```
 
 Invoke the retained CLI with an explicit reviewed checkout. This mode installs

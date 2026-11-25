@@ -24,6 +24,9 @@ import {
   CHECKPOINT_JSON_MAX_BYTES,
 } from './policy';
 
+// Cold-copy size and throughput are operator-dependent, not service readiness.
+const checkpointIo = { timeout: 1800000 };
+
 @Injectable()
 export class UpgradeCheckpointService {
   configuration(session: UpgradeSession): string {
@@ -51,7 +54,8 @@ export class UpgradeCheckpointService {
           path.join(session.runnerData, row.path),
         ),
       ].reduce(
-        (sum, directory) => sum + Number(session.run('du', ['-sb', directory]).split(/\s/)[0]),
+        (sum, directory) =>
+          sum + Number(session.run('du', ['-sb', directory], checkpointIo).split(/\s/)[0]),
         0,
       ),
       space = fs.statfsSync(session.checkpoints);
@@ -67,14 +71,18 @@ export class UpgradeCheckpointService {
     fs.mkdirSync(path.join(session.checkpoints, 'gitlab'), { mode: 0o700 });
     fs.mkdirSync(path.join(session.checkpoints, 'configuration'), { mode: 0o700 });
     for (const name of ['config', 'data', 'log']) {
-      session.run('rsync', [
-        '-a',
-        '--no-specials',
-        '--no-devices',
-        '--fsync',
-        session.serviceData + '/' + name + '/',
-        path.join(session.checkpoints, 'gitlab', name) + '/',
-      ]);
+      session.run(
+        'rsync',
+        [
+          '-a',
+          '--no-specials',
+          '--no-devices',
+          '--fsync',
+          session.serviceData + '/' + name + '/',
+          path.join(session.checkpoints, 'gitlab', name) + '/',
+        ],
+        checkpointIo,
+      );
     }
     for (const name of ['.docker.env', 'sync-auth.env']) {
       regular(path.join(session.state, name));
@@ -103,14 +111,11 @@ export class UpgradeCheckpointService {
         }
 
         fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
-        session.run('rsync', [
-          '-a',
-          '--no-specials',
-          '--no-devices',
-          '--fsync',
-          source + '/',
-          destination + '/',
-        ]);
+        session.run(
+          'rsync',
+          ['-a', '--no-specials', '--no-devices', '--fsync', source + '/', destination + '/'],
+          checkpointIo,
+        );
       }
     }
 
@@ -184,17 +189,21 @@ export class UpgradeCheckpointService {
     const marker = path.join(session.serviceData, 'data/.system-bootstrapper-restore-incomplete');
     atomic(marker, 'gitlab-upgrade-checkpoint-restore\n');
     for (const name of ['config', 'data', 'log']) {
-      session.run('rsync', [
-        '-a',
-        '--no-specials',
-        '--no-devices',
-        '--fsync',
-        '--checksum',
-        '--delete',
-        '--exclude=.system-bootstrapper-restore-incomplete',
-        path.join(session.checkpoints, 'gitlab', name) + '/',
-        session.serviceData + '/' + name + '/',
-      ]);
+      session.run(
+        'rsync',
+        [
+          '-a',
+          '--no-specials',
+          '--no-devices',
+          '--fsync',
+          '--checksum',
+          '--delete',
+          '--exclude=.system-bootstrapper-restore-incomplete',
+          path.join(session.checkpoints, 'gitlab', name) + '/',
+          session.serviceData + '/' + name + '/',
+        ],
+        checkpointIo,
+      );
     }
     atomic(
       session.config,
@@ -209,16 +218,20 @@ export class UpgradeCheckpointService {
       path: 'configuration/runners/' + row.path,
     }));
     for (const root of runnerRoots) {
-      session.run('rsync', [
-        '-a',
-        '--no-specials',
-        '--no-devices',
-        '--fsync',
-        '--checksum',
-        '--delete',
-        path.join(session.checkpoints, root.path) + '/',
-        root.full + '/',
-      ]);
+      session.run(
+        'rsync',
+        [
+          '-a',
+          '--no-specials',
+          '--no-devices',
+          '--fsync',
+          '--checksum',
+          '--delete',
+          path.join(session.checkpoints, root.path) + '/',
+          root.full + '/',
+        ],
+        checkpointIo,
+      );
     }
     const expectedEntries = checkpoint.entries.filter(
       (entry) =>

@@ -36,6 +36,15 @@ test('host stop drains the running controller before Compose down and forwards c
   assert.equal(writes[0][2].signal, signal);
   assert.equal(writes[0][2].env.SELECTOR, 'fixture');
 });
+test('host stop uses the native CLI for 2.0.1 and refuses an absent CLI', async t => {
+  const f = fixture(t, true, false, {version:'2.0.1', cli:true});
+  await f.service.execute('stop', f.root, {});
+  assert(f.calls.some(c=>c[1].includes('/system/dist/cli/main.js')));
+  assert(f.calls.some(c=>c[1].at(-1)==='down'));
+  const broken = fixture(t, true, false, {version:'2.0.1', cli:false});
+  await assert.rejects(broken.service.execute('stop', broken.root, {}), /controller-lifecycle-cli-missing/);
+  assert(!broken.calls.some(c=>c[1].at(-1)==='down'));
+});
 test('host stop preserves services after failed controller drain', async t => {
   const f = fixture(t, true, true);
   await assert.rejects(f.service.execute('stop', f.root, {}), /stop failed/);

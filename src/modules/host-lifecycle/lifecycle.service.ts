@@ -1,4 +1,4 @@
-import { checkoutConfiguration } from '../../common/runtime/checkoutLayout';
+import { checkoutConfiguration, releaseLayout } from '../../common/runtime/checkoutLayout';
 import { cliArguments } from '../../common/runtime/installationPaths';
 import { environmentAssignments } from '../../common/runtime/environmentAssignments';
 import { ProcessFailure } from '../../common/runtime/process';
@@ -140,11 +140,9 @@ export class HostLifecycleService {
 
         let command: string[];
 
-        if (runtime.version === '2.0.0' && runtime.cli) {
+        if (releaseLayout(runtime.version) === 'native' && runtime.cli) {
           command = ['node', '/system/dist/cli/main.js', 'lifecycle', 'stop', '/system'];
-        } else if (
-          ['1.0.0', '1.1.0', '1.1.1', '1.1.2', '1.1.3', '1.2.0'].includes(runtime.version)
-        ) {
+        } else if (releaseLayout(runtime.version) === 'historical') {
           // Immutable pre-Nest release only.
           command = ['bash', '/system/system/stop.sh'];
         } else {

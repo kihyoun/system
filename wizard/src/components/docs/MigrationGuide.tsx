@@ -260,7 +260,7 @@ export default function MigrationGuide({ graph = upgradeGraph }: { graph?: Upgra
                     {edge.gitlabPrerequisite.toVersion}
                   </strong>{' '}
                   <Link
-                    href={`https://github.com/kihyoun/system/blob/v${edge.to}/gitlab/UPGRADE.md`}
+                    href={`https://github.com/kihyoun/system/blob/v${edge.to}/docs/GITLAB_UPGRADE.md`}
                   >
                     {text.gitlabGuide}
                   </Link>

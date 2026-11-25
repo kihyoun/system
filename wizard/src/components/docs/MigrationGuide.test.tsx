@@ -75,7 +75,7 @@ describe('Offline migration guide', () => {
   it('distinguishes same release, unsupported downgrade and unknown source', () => {
     render(<MigrationGuide />);
     const source = screen.getByRole('combobox', { name: 'Installed version' });
-    fireEvent.change(source, { target: { value: '2.0.0' } });
+    fireEvent.change(source, { target: { value: '2.0.1' } });
     expect(screen.getAllByRole('status')[0]).toHaveTextContent('No release upgrade is necessary');
     fireEvent.change(screen.getByRole('combobox', { name: 'Target version' }), {
       target: { value: '1.1.3' },
@@ -91,20 +91,25 @@ describe('Offline migration guide', () => {
       '1.2.0',
       '2.0.0',
     ]);
+    expect(upgradePath('1.1.3', '2.0.1').transitions.map((edge) => edge.to)).toEqual([
+      '1.2.0',
+      '2.0.1',
+    ]);
+    expect(upgradePath('1.2.0', '2.0.1').transitions.map((edge) => edge.to)).toEqual(['2.0.1']);
     render(<MigrationGuide />);
     fireEvent.change(screen.getByRole('combobox', { name: 'Installed version' }), {
       target: { value: '1.1.3' },
     });
     expect(screen.getAllByRole('heading', { level: 3 }).map((node) => node.textContent)).toEqual([
       '1.1.3 → 1.2.0',
-      '1.2.0 → 2.0.0',
+      '1.2.0 → 2.0.1',
     ]);
     expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(12);
     const examples = document.querySelectorAll('pre');
     expect(examples[0]).toHaveTextContent('python3 bootstrapper/upgrade-release.py');
     expect(examples[0]).toHaveTextContent('--target 1.2.0');
     expect(examples[4]).toHaveTextContent('dist/cli/main.js upgrade');
-    expect(examples[4]).toHaveTextContent('--target 2.0.0');
+    expect(examples[4]).toHaveTextContent('--target 2.0.1');
     const prerequisite = screen.getByRole('checkbox', { name: '1.1.3 → 1.2.0: Prerequisites' });
     fireEvent.click(prerequisite);
     fireEvent.change(screen.getByRole('combobox', { name: 'Target version' }), {
@@ -128,14 +133,14 @@ describe('Offline migration guide', () => {
       fireEvent.change(screen.getByRole('combobox', { name: source }), {
         target: { value: '1.2.0' },
       });
-      expect(screen.getByRole('combobox', { name: target })).toHaveValue('2.0.0');
+      expect(screen.getByRole('combobox', { name: target })).toHaveValue('2.0.1');
       expect(screen.getAllByRole('status')[0]).toHaveTextContent(supported);
       expect(screen.getByRole('alert')).toHaveTextContent('GitLab 19.5.3 → 19.6.1');
       expect(document.querySelector('pre')).toHaveTextContent('--gitlab-checkpoint');
       expect(document.querySelector('pre')).toHaveTextContent('dist/cli/main.js upgrade');
       expect(screen.getByRole('alert').querySelector('a')).toHaveAttribute(
         'href',
-        'https://github.com/kihyoun/system/blob/v2.0.0/gitlab/UPGRADE.md',
+        'https://github.com/kihyoun/system/blob/v2.0.1/docs/GITLAB_UPGRADE.md',
       );
     });
 });
