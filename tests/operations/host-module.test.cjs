@@ -122,20 +122,50 @@ test('native controller lease preserves critical ownership, excludes contenders 
  recovery.release();assert(!fs.existsSync(ownerPath));
  const fresh=new ControllerLeaseService();fresh.acquire({root});fresh.release();
  const {spawn}=require('node:child_process');
- const coordinator=spawn(process.execPath,['-e',`const {ControllerLeaseService}=require(${JSON.stringify(require.resolve('../../dist/modules/host/controllerLease.service'))});const lease=new ControllerLeaseService();lease.acquire({root:process.argv[1]});lease.critical=true;lease.command([process.execPath,'-e','setTimeout(()=>{},1200)']).catch(()=>{});`,root],{stdio:'ignore'});
- t.after(()=>{try{coordinator.kill('SIGKILL')}catch{}});
+ const gate=path.join(root,'release-orphan-worker');
+ const worker='const fs=require("node:fs");const timer=setInterval(()=>{if(fs.existsSync(process.argv[1])||!fs.existsSync(process.argv[2]))clearInterval(timer)},20)';
+ const coordinator=spawn(process.execPath,['-e',`const {ControllerLeaseService}=require(${JSON.stringify(require.resolve('../../dist/modules/host/controllerLease.service'))});const lease=new ControllerLeaseService();lease.acquire({root:process.argv[1]});lease.critical=true;lease.command([process.execPath,'-e',${JSON.stringify(worker)},process.argv[2],process.argv[1]]).catch(error=>{console.error(error.message);process.exitCode=1});`,root,gate],{stdio:['ignore','ignore','pipe']});
+ let spawnError,stderr='';
+ coordinator.on('error',error=>{spawnError=error;});
+ coordinator.stderr.on('data',bytes=>{stderr+=bytes.toString();});
+ const ended=new Promise(resolve=>coordinator.once('exit',(code,signal)=>resolve({code,signal})));
  const journal=path.join(root,'configuration/.gitlab-upgrade-lock/host-child.json');
- const until=Date.now()+5000;
- while((!fs.existsSync(journal)||JSON.parse(fs.readFileSync(journal)).phase!=='running')&&Date.now()<until)await new Promise(resolve=>setTimeout(resolve,10));
- assert.equal(JSON.parse(fs.readFileSync(journal)).phase,'running');
- const orphanOperation=JSON.parse(fs.readFileSync(ownerPath)).operation;
- const ended=new Promise(resolve=>coordinator.once('exit',resolve));coordinator.kill('SIGKILL');await ended;
- assert.throws(()=>new ControllerLeaseService().adopt({root},orphanOperation),/still-running/);
- while(JSON.parse(fs.readFileSync(journal)).phase!=='completed'&&Date.now()<until)await new Promise(resolve=>setTimeout(resolve,20));
- // Completion is published before the guardian finally closes its inherited flock.
- let orphan;
- while(Date.now()<until){try{orphan=new ControllerLeaseService();orphan.adopt({root},orphanOperation);break;}catch(error){assert.match(error.message,/still-running/);await new Promise(resolve=>setTimeout(resolve,20));}}
- assert(orphan?.guardFd>=0);orphan.release();
+ const readJournal=()=>fs.existsSync(journal)?JSON.parse(fs.readFileSync(journal)):null;
+ // Bound a failed test, not the lifetime of the worker being tested. Each phase gets its own wait budget.
+ const waitFor=async(predicate,message)=>{
+  const until=performance.now()+60000;
+  while(!predicate()){
+   assert(performance.now()<until,message);
+   await new Promise(resolve=>setTimeout(resolve,20));
+  }
+ };
+ try{
+  await waitFor(()=>{
+   assert.ifError(spawnError);
+   assert(coordinator.exitCode===null&&coordinator.signalCode===null,`coordinator exited before worker readiness: ${stderr}`);
+   const phase=readJournal()?.phase;
+   assert.notEqual(phase,'completed','worker completed before explicit release');
+   return phase==='running';
+  },'guardian did not publish a running child journal');
+  const orphanOperation=JSON.parse(fs.readFileSync(ownerPath)).operation;
+  assert(coordinator.kill('SIGKILL'));assert.equal((await ended).signal,'SIGKILL');
+  assert.throws(()=>new ControllerLeaseService().adopt({root},orphanOperation),/still-running/);
+  // Release only after proving that a dead coordinator cannot be adopted while its worker is alive.
+  fs.writeFileSync(gate,'');
+  await waitFor(()=>readJournal()?.phase==='completed','guardian did not publish completion');
+  assert.equal(readJournal().exitCode,0);
+  // Completion is published before the guardian finally closes its inherited flock.
+  let orphan;
+  await waitFor(()=>{
+   try{orphan=new ControllerLeaseService();orphan.adopt({root},orphanOperation);return true;}
+   catch(error){assert.match(error.message,/still-running/);return false;}
+  },'completed orphan could not be adopted');
+  assert(orphan.guardFd>=0);orphan.release();
+ }finally{
+  // The test worker also exits if the temporary root is removed by the registered cleanup.
+  fs.writeFileSync(gate,'');
+  if(coordinator.exitCode===null&&coordinator.signalCode===null&&!spawnError){coordinator.kill('SIGKILL');await ended;}
+ }
 
 });
 test('cold maintenance shares awaited native sequencing, bounded drain and fail-closed recovery',async()=>{
