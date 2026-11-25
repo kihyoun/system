@@ -6,8 +6,8 @@ const vm = require('vm');
 const {EventEmitter} = require('events');
 const root = path.resolve(__dirname, '../..');
 const source = fs.readFileSync(path.join(__dirname, 'live/build.js'), 'utf8');
-let example = fs.readFileSync(path.join(root, 'system/.docker.env.example'), 'utf8');
-if (example[807] !== '$') example = require('child_process').execFileSync('git', ['show', 'HEAD:system/.docker.env.example'], {cwd:root, encoding:'utf8'});
+let example = fs.readFileSync(path.join(root, 'config/system/.docker.env.example'), 'utf8');
+if (example[807] !== '$') example = require('child_process').execFileSync('git', ['show', 'HEAD:config/system/.docker.env.example'], {cwd:root, encoding:'utf8'});
 const projectData = example.slice(0,1184) + '\nPROD_HOST="wizard.example.test"\n';
 
 async function scenario(options={}) {

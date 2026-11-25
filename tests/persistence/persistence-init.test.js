@@ -4,9 +4,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {test} = require('node:test');
-const {initializeState} = require('../../system/persistence-init');
-const {fields, defaults, publicSettings, requireMountedDirectory, publish} = require('../../system/wizard-public');
-const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+const {initializeState} = require('../../dist/modules/storage/persistence');
+const {fields, defaults, publicSettings, requireMountedDirectory, WizardPublicSettingsService} = require('../../dist/modules/lifecycle/publicSettings.service');
+const publicService = new WizardPublicSettingsService();
+const publish = publicService.publish.bind(publicService);
+const cube = fs.readFileSync(path.join(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 const quote = value => '"' + String(value).replace(/[\\"$`]/g, '\\$&') + '"';
 
 function fixture(t) {
@@ -159,11 +161,12 @@ test('public generator requires exact dedicated mounts rather than root-disk fal
   assert.equal(requireMountedDirectory(state, '2 1 1:2 / ' + state + ' rw - ext4 volume rw\n'), state);
   const link = path.join(runtime, 'linked'); fs.symlinkSync(state, link);
   assert.throws(() => requireMountedDirectory(link, '2 1 1:2 / ' + link + ' rw - ext4 volume rw\n'), /persistent mounts/);
-  const compose = fs.readFileSync(path.join(__dirname, '../../system/docker-compose.yml'), 'utf8');
+  const compose = fs.readFileSync(path.join(__dirname, '../../config/system/docker-compose.yml'), 'utf8');
   assert.match(compose, /wizardPublic:\/wizard-public/);
   assert.match(compose, /wizardPublic:\/usr\/share\/nginx\/wizard-public:ro/);
   assert.match(compose, /device: "\$\{PERSISTENT_DIR:\?PERSISTENT_DIR must be set\}\/wizard-public"/);
-  const start = fs.readFileSync(path.join(__dirname, '../../system/start.sh'), 'utf8');
-  assert(start.indexOf('node ./persistence-init.js') < start.indexOf('node ./wizard-public.js'));
-  assert(start.indexOf('node ./wizard-public.js') < start.indexOf('source .docker.env'));
+  const start = fs.readFileSync(path.join(__dirname, '../../src/modules/lifecycle/lifecycle.service.ts'), 'utf8');
+  assert(start.includes('initializeMountedState(') && start.includes('this.publicSettings.publishMounted(') && start.includes('await this.intermediate(active'));
+  assert(start.indexOf('initializeMountedState(') < start.indexOf('this.publicSettings.publishMounted('));
+  assert(start.indexOf('this.publicSettings.publishMounted(') < start.indexOf('await this.intermediate(active'));
 });

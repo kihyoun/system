@@ -4,9 +4,10 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const backup=require('../../system/coordinated-backup');
-const seedOperation=require('../../system/seed-operation');
-const logo=fs.readFileSync(path.join(__dirname,'../../sync/src/Helper.ts'),'utf8').match(/return `([\s\S]*?)`;/)[1];
+const backup=require('../../dist/modules/storage/coordinatedBackup');
+const seedOperation=require('../../dist/modules/storage/lease');
+const {normalizePreview}=require('../../dist/common/runtime/previewSettings');
+const logo=fs.readFileSync(path.join(__dirname,'../../src/common/configurationSignature.ts'),'utf8').match(/return `([\s\S]*?)`;/)[1];
 function fixture(run) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'coordinated-backup-'));
   try {
@@ -20,7 +21,7 @@ function fixture(run) {
       if(fs.existsSync(path.join(seed,'current')))fs.unlinkSync(path.join(seed,'current'));
       fs.symlinkSync('snapshots/'+generation,path.join(seed,'current'));
     };
-    publish('old');run({state,seed,certbot,id,publish});
+    publish('old');run({state,seed,certbot,id,publish,normalizePreview});
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 }
 test('native lease spans exact capture, Harvest and export; prior generations retained',()=>fixture(options=>{
@@ -33,7 +34,7 @@ test('native lease spans exact capture, Harvest and export; prior generations re
     },exporter:(input,output)=>{
       const captured=JSON.parse(fs.readFileSync(input));
       assert.equal(captured.seedAssociation.generation,'new');
-      assert.deepEqual(captured.seedAssociation.configurationFiles,backup.checksums(backup.capture(options.state)));
+      assert.deepEqual(captured.seedAssociation.configurationFiles,backup.checksums(backup.capture(options.state,normalizePreview)));
       assert.ok(fs.existsSync(path.join(options.certbot,'.system-bootstrapper-certificate-lock')));
       fs.writeFileSync(output,'fixture ZIP');
     }});
@@ -90,10 +91,10 @@ test('native capture exports validated portable preview intent without server ID
     review:{enabled:true,host:'review.example.test',ssl:'/ssl/review/fullchain.pem',sslKey:'/ssl/review/privkey.pem'},
     beta:{enabled:false,host:'',ssl:'',sslKey:''}};
   fs.writeFileSync(path.join(options.state,'preview-setup.json'),JSON.stringify({settings:intent,operation:'server-only',projects:{wizard:{id:991}},pipeline:{id:992},token:'must-not-copy'}));
-  const input=backup.capture(options.state);
+  const input=backup.capture(options.state,normalizePreview);
   assert.deepEqual(input.previewSetup,intent);
   assert.ok(!JSON.stringify(input).includes('server-only'));
   assert.ok(!JSON.stringify(input).includes('must-not-copy'));
   fs.writeFileSync(path.join(options.state,'preview-setup.json'),JSON.stringify({settings:{...intent,projects:{id:991}}}));
-  assert.throws(()=>backup.capture(options.state));
+  assert.throws(()=>backup.capture(options.state,normalizePreview));
 }));

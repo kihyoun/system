@@ -34,7 +34,9 @@ async function assertAbsent(candidate) {
 async function verifyLocalLive(candidate,base) {
   if(!['/candidate-data/platform','/recovered-data/platform'].includes(base))throw Error('storage-owned-root-required');
   const result=await candidate.call(['exec',candidate.daemon,'sh','-ec',
-    'test "$(stat -c %d /)" = "$(stat -c %d '+base+')"; test ! -e '+SEED+'; printf local']);
+    'if ! test "$(stat -c %d /)" = "$(stat -c %d '+base+')"; then printf storage-live-not-on-root; exit 1; fi; '+
+    'if test -e '+SEED+'; then printf storage-backup-still-attached; exit 1; fi; printf local'],
+    {failureCodes:{...failureCodes('storage-live-not-on-root'),...failureCodes('storage-backup-still-attached')}});
   if(result!=='local')throw Error('storage-live-not-on-root');
   const marker=await candidate.call(['exec',candidate.daemon,'cat',base+'/.system-bootstrapper-volume']);
   if(marker!=='system-bootstrapper-persistence-v1')throw Error('storage-live-marker-invalid');
@@ -48,14 +50,14 @@ async function prepareLocal(candidate,base) {
   if(!['/candidate-data/platform','/recovered-data/platform'].includes(base))throw Error('storage-owned-root-required');
   await candidate.inner(['run','--rm','--network','none','--entrypoint','node',
     '--mount','type=bind,src=/,dst=/host','--env','PERSISTENCE_MODE=local','--env','PERSISTENT_MOUNT=/',
-    '--env','PERSISTENT_DIR='+base,'system-candidate:under-test','/system/system/seed-operation.js','prepare-local']);
+    '--env','PERSISTENT_DIR='+base,'system-candidate:under-test','/system/dist/cli/main.js','storage','prepare-local']);
 }
 function failureCodes(code) {
   return {[code]:code,['Seed operation failed: '+code+'.']:code};
 }
 async function refused(candidate,code,operation='harvest') {
   try {
-    await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','bash',operation==='restore'?'seed.sh':'harvest.sh'],
+    await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/storage/entry.js','launch',operation],
       {timeout:30000,failureCodes:failureCodes(code)});
   } catch(error) {if(error.message===code)return;throw error;}
   throw Error('storage-refusal-not-enforced');

@@ -16,7 +16,6 @@
     "custom.regex"
   ],
   "ignorePaths": [
-    "wizard/**",
     "**/node_modules/**",
     "**/.test-context/**",
     "**/wizard-source/**",
@@ -98,7 +97,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^system/Dockerfile$/"
+        "/^containers/controller/Dockerfile$/"
       ],
       "matchStrings": [
         "ARG IMAGE=(?<depName>node):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
@@ -109,10 +108,10 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^gitlab-runner/register\\.sh$/"
+        "/^src/modules/lifecycle/runner\\.service\\.ts$/"
       ],
       "matchStrings": [
-        "--docker-image (?<depName>docker):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+        "'(?<depName>docker):(?<currentValue>[^@'\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})'"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
@@ -120,7 +119,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^project-bootstrap/wizard-build/modern/(?:build|verify)\\.sh$/"
+        "/^templates/project-bootstrap/wizard-build/modern/(?:build|verify)\\.sh$/"
       ],
       "matchStrings": [
         "--driver-opt image=(?<depName>moby/buildkit):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"

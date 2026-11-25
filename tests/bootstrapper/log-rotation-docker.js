@@ -25,7 +25,7 @@ function run({helperImage}) {
         '--network', 'none', '--read-only', '--log-driver', 'none', '--memory', '128m', '--cpus', '0.5', '--pids-limit', '32',
         '-e', 'PERSISTENT_DIR=/logging-fixture-unmounted', '-e', 'SYSTEM_LOG_MAX_SIZE=20m', '-e', 'SYSTEM_LOG_MAX_FILES=4',
         '--entrypoint', 'docker', image, 'compose', '--env-file', '/dev/null',
-        '-f', '/system/' + component + '/docker-compose.yml', 'config', '--format', 'json']));
+        '-f', '/system/config/' + component + '/docker-compose.yml', 'config', '--format', 'json']));
       for (const service of Object.values(config.services))
         assert.deepEqual(service.logging, {driver: 'json-file', options: {'max-size': '20m', 'max-file': '4'}});
     }

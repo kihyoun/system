@@ -3,8 +3,8 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {Promotion, hash, signature} = require('../../project-bootstrap/wizard-production/run');
-const logo = require('../../sync/dist/Helper').default.textLogo;
+const {Promotion, hash, signature} = require('../../dist/modules/project-lifecycle/productionSession');
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
 const oldId = 'sha256:' + 'a'.repeat(64), nextId = 'sha256:' + 'b'.repeat(64);
 const ref = 'registry.example.test/root/wizard@sha256:' + 'c'.repeat(64);
 const proof = {version: 1, projectId: 3, projectPath: 'root/wizard', pipelineId: 21,
@@ -27,7 +27,9 @@ class Fixture {
     this.originalConfig = logo + "\nexport WIZARD_ENABLE='true'\nexport WIZARD_HOST='system-bootstrapper.com'\nexport WIZARD_IMAGE='old-tag'\n";
     this.originalTemplate = '# Preserve all other services\nupstream gitlab { server 172.18.0.3:80; }\nupstream wizard {\n    server 172.18.0.2:80;\n}\ninclude /etc/nginx/templates/wizard-environments/*.conf;\n';
     fs.writeFileSync(this.config, this.originalConfig); fs.writeFileSync(this.template, this.originalTemplate); fs.writeFileSync(this.wizardEnv, 'WIZARD_IP=172.18.0.2\n');
-    this.promotion = new Promotion({...this, command: this.command.bind(this), pause: async () => undefined, ownerAlive: () => false});
+    this.promotion = new Promotion({...this, command: this.command.bind(this), pause: async () => undefined, ownerAlive: () => false}, {
+      verify: async (_checkout, kind, received) => {assert.equal(kind,'production');assert.deepEqual(received,proof);this.events.push('proof');if(this.afterProof)this.afterProof();return {ok:!this.badProof};}
+    });
   }
   container(id, imageId, address, labels) { return {id, imageId, labels, networks: {system_default: {IPAddress: address}}}; }
   async command(args) {
@@ -61,11 +63,13 @@ class Fixture {
       return '<title>System Bootstrapper</title><div id="root"></div>';
     }
     if (args[0] === 'exec' && args[1] === 'system_bootstrapper_1') {
-      if (args[2] === 'node') {
+      if (args[2] === 'node' && args[3] === '/system/dist/cli/main.js' && args[4] === 'public-settings') {
+        assert.deepEqual(args.slice(4), ['public-settings', 'verify', '/state', '/wizard-public']);
         if (this.badPublication) throw Error('Public publication filesystem or content check failed');
         return JSON.stringify({ok: true});
       }
-      const snapshot = args[args.indexOf('--') + 1]; const data = fs.readFileSync(snapshot, 'utf8');
+      assert.deepEqual(args.slice(2,6), ['node','/system/dist/modules/lifecycle/entry.js','wizard-apply-image','/system']);
+      const snapshot = args[6]; const data = fs.readFileSync(snapshot, 'utf8');
       const references = [...data.matchAll(/export WIZARD_IMAGE='([^']+)'/g)];
       const image = references.pop()[1] === oldId ? oldId : nextId; this.events.push('compose-' + (image === oldId ? 'old' : 'new'));
       this.containers.get('system_wizard_1').imageId = image;
@@ -179,4 +183,10 @@ async function test(name, callback) { const fixture = new Fixture(); try { await
     await assert.rejects(f.apply(), /EEXIST/); assert.equal(f.containers.size, 1);
     assert.equal(hash(f.originalConfig), hash(fs.readFileSync(f.config)));
   });
+  const {NestFactory}=require('../../node_modules/@nestjs/core');
+  const {ProductionModule}=require('../../dist/modules/project-lifecycle/production.module');
+  const {DeploymentEvidenceService}=require('../../dist/modules/project-lifecycle/deploymentEvidence.service');
+  const app=await NestFactory.createApplicationContext(ProductionModule.register(),{logger:false,abortOnError:false});
+  try {assert.strictEqual(app.get(Promotion).evidence,app.get(DeploymentEvidenceService));}
+  finally {await app.close();}
 })().catch(error => { console.error(error); process.exitCode = 1; });

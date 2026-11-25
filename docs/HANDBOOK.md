@@ -1,5 +1,13 @@
 # System Bootstrapper Handbook
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `dist`, `node_modules` and `assets`
+available offline before maintenance.
+
 Choose the complete installation path for your environment:
 
 - [Quick Install](QUICKSTART.md): one command on a fresh supported Ubuntu host,
@@ -22,7 +30,7 @@ Choose the complete installation path for your environment:
 
 ### Quick Install on a fresh Ubuntu host
 
-On Ubuntu 24.04 / 26.04 LTS x86_64 with sudo access, curl, Python 3, internet,
+On Ubuntu 24.04 / 26.04 LTS x86_64 with sudo access, curl, internet,
 at least 8 GiB RAM, 40 GiB free for data plus 1 GiB for source and free ports
 80/443, run this command in the host’s terminal:
 
@@ -68,7 +76,9 @@ trusted release evidence. These are operator inputs: replace the placeholders
 below with that release's values. Public Docker Hub pulls do not require an
 account. The declared release targets `linux/amd64`.
 
-Install Git and check out that exact release, including its Wizard submodule:
+Install Git and check out that exact release including its Wizard source. New
+releases include wizard/ directly; submodule initialization below applies only
+to historical releases that record a Wizard gitlink:
 
 ```bash
 sudo apt-get update
@@ -94,7 +104,7 @@ for the difference between a complete controller and a runtime base.
 Install the required Docker tools:
 
 ```bash
-sudo bash bootstrapper/install.sh
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 The installer installs Docker and Compose and checks Docker using a test
@@ -102,7 +112,7 @@ container. For the local HTTP test, also configure the local hostnames and the
 registry's HTTP exception:
 
 ```bash
-sudo bash bootstrapper/prepare-local.sh
+sudo system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"
 ```
 
 WSL may regenerate `/etc/hosts` at startup. If the registry or other local
@@ -119,6 +129,14 @@ first installation does not run their Dockerfiles or resolve Alpine APK packages
 Building a changed version remains a separate reviewed development operation.
 
 ### 0.3 Start the Bootstrapper for the first time
+
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `dist`, `node_modules` and `assets`
+available offline before maintenance.
 
 Fresh Ubuntu/WSL installations use local working data at
 `/var/lib/system-bootstrapper/platform` on the system disk. No second disk, USB
@@ -151,13 +169,13 @@ Then run this command from the project's root directory:
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  python3 bootstrapper/install-release.py \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 ```
 
 The installer requires clean source matching the controller release and its
-pinned Wizard commit. It refuses existing GitLab data or saved main configuration;
+recorded Wizard tree (or separate commit in a historical gitlink release). It refuses existing GitLab data or saved main configuration;
 use the replacement/recovery procedure for an existing installation. It records
 the selected public images in the private working configuration directory and
 starts with builds disabled. Later normal startup reuses that release profile;
@@ -481,7 +499,7 @@ git checkout --detach "$SYSTEM_REVISION"
 git submodule update --init --recursive
 CONTROLLER_RELEASE='docker.io/your-namespace/system@sha256:REPLACE_WITH_64_HEX_DIGEST'
 WIZARD_RELEASE='docker.io/your-namespace/wizard@sha256:REPLACE_WITH_64_HEX_DIGEST'
-sudo bash bootstrapper/install.sh
+sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"
 ```
 
 Choose the source revision and both public image digests from one accepted
@@ -495,10 +513,18 @@ Use Certbot **2.3.0 or newer**, which supports `reconfigure`; the Ubuntu 24.04
 The host integration below invokes
 `/usr/bin/certbot` and `certbot.timer`, so this recipe uses the distribution
 package, rather than a separate Snap installation. Do not run
-`bootstrapper/prepare-local.sh`: public DNS and a trusted HTTPS registry replace
+`system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"`: public DNS and a trusted HTTPS registry replace
 its local hosts-file and insecure-registry changes.
 
 ### Public 2. Select working storage and install certificate integration
+
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `dist`, `node_modules` and `assets`
+available offline before maintenance.
 
 This fresh installation keeps live data on the server's system disk. Create an
 explicit selector so the certificate integration and lifecycle tools share the
@@ -512,11 +538,11 @@ PERSISTENT_MOUNT=/
 PERSISTENT_DIR=/var/lib/system-bootstrapper/platform
 EOF
 sudo chmod 0600 /etc/system-bootstrapper/persistence.env
-sudo bash bootstrapper/install-volume-host.sh
+sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"
 sudo systemctl stop certbot.timer
 ```
 
-Despite its compatibility name, `install-volume-host.sh` supports local storage.
+The `system-bootstrapper host-bootstrap install-volume-host` command also supports local storage.
 It validates working storage, connects `/etc/letsencrypt` to
 `PERSISTENT_DIR/host/letsencrypt`, and installs the `system-certbot` lock wrapper
 and certificate deploy hook. It does not add a Docker or renewal dependency on
@@ -574,7 +600,7 @@ server, start the fresh installation:
 
 ```bash
 sudo env GITLAB_SSH_BIND=127.0.0.1:2222 GITLAB_REGISTRY_BIND=127.0.0.1:5050 \
-  python3 bootstrapper/install-release.py \
+  system-bootstrapper install --checkout "$PWD" \
   --controller "$CONTROLLER_RELEASE" --wizard "$WIZARD_RELEASE" \
   --persistence-env /etc/system-bootstrapper/persistence.env
 sudo docker ps
@@ -631,7 +657,7 @@ adornment displayed beside an input is not a replacement for that prefix. Use
 hostnames without a scheme in the `*_HOST` fields. The generated GitLab and
 registry external URLs must be `https://gitlab.example.com` and
 `https://registry.example.com`, without `:5050`. The historical
-`system/.docker.env.example` contains `/live/...` paths without the `/ssl` mount
+`config/system/.docker.env.example` contains `/live/...` paths without the `/ssl` mount
 prefix; those paths are inactive in HTTP mode and must not be copied unchanged
 when enabling HTTPS. Review **General → Website** and
 replace the public operator examples before publishing your site.
@@ -742,7 +768,7 @@ systemctl list-timers certbot.timer
 ```
 
 `reconfigure` tests against the CA staging service, then saves the successful
-webroot method for future renewals. `install-volume-host.sh` rebinds existing
+webroot method for future renewals. `system-bootstrapper host-bootstrap install-volume-host` rebinds existing
 **webroot** paths on recovery; it does not convert a standalone lineage into
 webroot renewal for you. Do not finish setup if reconfiguration or the dry-run
 fails. If a lock reports an active/interrupted renewal or Harvest, resolve the
@@ -923,8 +949,8 @@ the same image and persistent data. From the host, run the existing entry points
 inside the accepted controller:
 
 ```bash
-sudo docker exec -w /system/gitlab system_bootstrapper_1 bash -e ./start.sh
-sudo docker exec -w /system/nginx system_bootstrapper_1 bash -e ./start.sh reload
+sudo docker exec system_bootstrapper_1 system-bootstrapper lifecycle gitlab-start /system
+sudo docker exec system_bootstrapper_1 system-bootstrapper projects-routing routing reload /system /templates
 ```
 
 The NGINX reload regenerates HTTPS/registry upstreams if GitLab's container IP
@@ -949,7 +975,7 @@ git ls-remote git@gitlab.example.com:namespace/project.git HEAD
 ```
 
 This validates repository read access, not push permission. The
-[native runtime verifier](../bootstrapper/README.md#reviewed-replacement-host-initialization)
+[native runtime verifier](BOOTSTRAPPER.md#reviewed-replacement-host-initialization)
 checks the platform's other application/storage contracts; it does not replace
 these SSH and firewall checks.
 
@@ -1051,19 +1077,19 @@ are observations, not an installation-time guarantee.
    failures that are resolved within the attempt. Record each milestone's UTC
    and elapsed time privately; do not reset the clock after a failed probe.
 3. For fresh initialization, follow the [public HTTPS walkthrough](#public-server-own-domain-and-https)
-   using `bootstrapper/install.sh`, `bootstrapper/install-release.py` and
-   `bootstrapper/install-volume-host.sh` from the reviewed release checkout.
+   using `system-bootstrapper host-bootstrap install-host --checkout "$PWD"`, `system-bootstrapper install` and
+   `system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` from the reviewed release checkout.
    Use the release's immutable controller and matching Wizard image selections.
    Configure through Wizard Fetch, Backup and Push; set four managers if
    reproducing this run's count. Complete first certificate issuance and the
    documented webroot renewal/deploy-hook check with `system-certbot`.
 4. For recovery, follow [external Seed restore](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation),
    including native storage preparation and
-   `bootstrapper/seed-operation.sh restore --check-only` before the actual
+   `system-bootstrapper restore --check-only` before the actual
    restore with the matching configuration backup. Keep GitLab stopped until
    restore verification finishes. After the helper completes, unmount the
    backup medium before startup to reproduce this run's storage separation.
-   Install host certificate integration and start through `start.sh`. The
+   Install host certificate integration and start through `system-bootstrapper start --checkout /absolute/reviewed/source`. The
    [native private-Wizard recovery](RECOVERY_CONTRACT.md#pulling-a-restored-private-wizard-image)
    preserves its saved digest and cleans up scoped temporary registry access.
 5. Check the public Wizard, GitLab and registry with trusted TLS, authenticated
@@ -1074,7 +1100,7 @@ are observations, not an installation-time guarantee.
    registry content and the expected saved settings. Declare any additional
    managed-image or application checks and include their recovery and temporary
    credential cleanup in your ready boundary. In workflows using the
-   [native runtime verifier](../bootstrapper/README.md#reviewed-replacement-host-initialization),
+   [native runtime verifier](BOOTSTRAPPER.md#reviewed-replacement-host-initialization),
    supply its private API-token file to verify recent manager contact and
    `--redirect-from` when a canonical Wizard alias is required. A skipped check
    must remain marked as skipped.
@@ -1109,8 +1135,8 @@ Perform each run as follows; preserve receipts outside the source checkout:
    kernel, held packages and existing failed units. Defer on unexpected identity,
    storage, package-lock, `dpkg --audit` or unfinished platform-operation state.
 2. From the remote accepted checkout, capture a new private baseline and run
-   `bootstrapper/verify-runtime.py check` against it before changes. Use its
-   [documented options](../bootstrapper/README.md#reviewed-replacement-host-initialization).
+   `system-bootstrapper host-bootstrap verify-runtime check` against it before changes. Use its
+   [documented options](BOOTSTRAPPER.md#reviewed-replacement-host-initialization).
    Keep saved configuration/auth hashes and exact image identities unchanged.
    Refresh indexes with `sudo apt-get update`, then inspect
    `sudo apt-get -s --with-new-pkgs --no-remove upgrade`. Respect package holds
@@ -1124,7 +1150,8 @@ Perform each run as follows; preserve receipts outside the source checkout:
    including environment leases, must be absent. Run the committed GitLab check:
 
    ```bash
-   sudo docker exec -i system_gitlab_1 gitlab-rails runner - < gitlab/upgrade-preflight.rb
+   GITLAB_CONTAINER_ID="$(sudo docker inspect --format '{{.Id}}' system_gitlab_1)"
+   sudo docker exec system_bootstrapper_1 system-bootstrapper gitlab-preflight "$GITLAB_CONTAINER_ID"
    ```
 
    Its JSON must show the accepted CE version, `runningJobs: 0` and
@@ -1136,14 +1163,15 @@ Perform each run as follows; preserve receipts outside the source checkout:
    repeat the preflight before stopping databases. A raced job means resume the
    same GitLab services/proxy and defer with runners/controller untouched.
    Only after this final jobs-zero proof, stop the main runner pool through
-   `docker exec -w /system/gitlab-runner system_bootstrapper_1 bash -e ./stop.sh main`,
+   `docker exec system_bootstrapper_1 system-bootstrapper lifecycle runner-stop /system main`,
    preserving registrations. Privately record the original controller/GitLab
    restart policies, then `docker update --restart=no system_bootstrapper_1 system_gitlab_1`
    so a package-triggered Docker restart cannot revive these writers
    ([restart-policy semantics](https://docs.docker.com/engine/containers/start-containers-automatically/)). Stop the
    retained controller with `docker stop --time 30 system_bootstrapper_1`;
    wait for outstanding GitLab Docker execs to drain.
-   Do not use top-level `stop.sh` or `bootstrapper/stop.sh`, which remove containers.
+   Do not use the host CLI `stop` command here: it removes the controller
+   container instead of retaining it for this maintenance procedure.
    Stop all GitLab services with `gitlab-ctl stop`, verify every runit service is
    down, then `docker stop --time 60 system_gitlab_1`; require exit zero and no OOM.
 5. Install only the reviewed plan, keeping modified package configuration files:
@@ -1222,6 +1250,14 @@ diagnoses, size/count rotation, preserved configuration and deliberate recreatio
 
 ## Replace a host while retaining its data volume
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `dist`, `node_modules` and `assets`
+available offline before maintenance.
+
 This section is the explicit volume-backed reuse path. For fresh local working
 storage populated from an external backup instead, use the
 [configuration-plus-Seed restore procedure](RECOVERY_CONTRACT.md#restore-an-external-seed-into-a-fresh-local-installation).
@@ -1249,7 +1285,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
 
 1. On the replacement Ubuntu host, fetch source as in section 0.1. Select a
    reviewed tools revision containing the initialization entry point and initialize
-   its exact submodules. A prepublished accepted source mirror or Git bundle
+   its exact source, initializing submodules only for historical layouts. A prepublished accepted source mirror or Git bundle
    containing the required commits can provide this checkout while the platform's
    own GitLab is unavailable:
 
@@ -1262,8 +1298,8 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
    A plain source ZIP without Git history does not satisfy the initialization
    tool's commit/tree verification. Keep the checkout clean. The recorded
    controller source in the image manifest may be an earlier accepted revision;
-   the tool checks its tree and Wizard
-   gitlink separately and records the host-tools revision too. Do not update a
+   the tool checks its tree and layout-specific Wizard
+   identity separately and records the host-tools revision too. Do not update a
    submodule to its latest branch or change saved service versions to match the
    fresh-install examples.
 
@@ -1301,7 +1337,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
 3. Verify that `platform/recovery/images.json` describes the recorded source,
    exact image IDs, local aliases and checksummed archives. The full manifest
    schema and input requirements are in the
-   [initialization tool documentation](../bootstrapper/README.md). Missing source
+   [initialization tool documentation](BOOTSTRAPPER.md). Missing source
    identities or aliases are a preparation failure, not permission to substitute
    a different image or copy a private recovery script onto the host.
 
@@ -1319,7 +1355,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
 
    ```bash
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/initialize.sh \
+     system-bootstrapper host-bootstrap initialize \
        --install-host \
        --receipt-dir /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID \
        --timeout 1200
@@ -1359,7 +1395,7 @@ not apply the local HTTP preparation from section 0.2 to this deployment.
    committed verifier and add the optional token/redirect arguments as needed:
 
    ```bash
-   sudo python3 bootstrapper/verify-runtime.py check \
+   sudo system-bootstrapper host-bootstrap verify-runtime --checkout "$PWD" check \
      --persistence-env /etc/system-bootstrapper/persistence.env \
      --baseline /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/baseline.json \
      --output /var/log/system-bootstrapper/initialize-REPLACE_WITH_OPERATION_ID/recheck.json \
@@ -1386,7 +1422,7 @@ bypass guards or restore a stale Seed to make a host replacement continue.
 | Register / Unregister | Checks/registers or unregisters configured runner managers |
 | Harvest | Publishes a cold snapshot of GitLab data, certificates and certificate-renewal state in the seed directory |
 | Harvest and configuration backup | Coordinates a native Harvest with a matching configuration ZIP to download and store independently |
-| Set up development previews | Explicitly prepares canonical source/build bindings for optional Review and Beta while preserving Production |
+| Configure System Beta | Explicitly reserves an existing shared source project and optional fixed Beta address; no extra build or Production change |
 | Credential expiry | Reads selected automation credential metadata and shows known dates, warnings and unknown states |
 | System diagnostics | Checks configured registry connectivity; an optional separate action pulls the exact helper image through the selected runner daemon |
 | Seed | Validates a completed Seed and restores into fresh live service-data directories |
@@ -1517,22 +1553,33 @@ continues to be managed through Push/Fetch and Open/Backup.
 
 ### 2.4 Local functional test
 
-For an explicitly disposable local test instance, `tests/gitlab-runner/live/runner.py` creates
-a private test project and pipeline, checks the runner and downloads the generated
-result file. It creates a separate temporary test access token with the `api`
-scope and revokes it afterwards. This is a test helper; actual runner setup only
-requires `create_runner`.
+For an explicitly disposable test instance, the native runner audit creates a
+private, uniquely marked smoke project and pipeline, checks the actual runner,
+downloads its result and verifies authenticated Fetch. It reads the existing
+ready automation credential without minting a Rails token or renewing credentials.
+The audit creates a short-lived project token, revokes that exact token and requests
+deletion only of its own marked project; GitLab deletion is asynchronous.
+
+Run inside the reviewed controller after normal setup, with an immutable job image
+you have selected and made available to its runner:
+
+```bash
+sudo docker exec -w /system system_bootstrapper_1 node tests/gitlab-runner/live/runner.js \
+  --allow-disposable-project \
+  --job-image 'alpine@sha256:REPLACE_WITH_64_HEX_DIGEST' --timeout 720
+```
+
+This opt-in operation must not target Production. A private metadata-only receipt
+under the controller state records the exact owned project and cleanup status.
+After an interrupted audit, inspect the reported receipt and use the same entry
+with `--allow-disposable-project --cleanup-record /state/live-runner-audit-OPERATION.json`.
+Cleanup never deletes a project whose identity or ownership marker changed.
+The existing disposable candidate also verifies real runner/registry job execution;
+this optional manual audit adds no pipeline stage.
 
 If runner setup fails, platform startup continues so you can correct the
 configuration in the Wizard. Check the Bootstrapper output, correct the settings
 and try **Register** again.
-
-```bash
-sudo python3 tests/gitlab-runner/live/runner.py
-```
-
-Prerequisites are running local services, Docker access, and the addresses
-`gitlab.localhost` and `sync.localhost` on the local HTTP proxy.
 
 ## 3. Configuring applications and environments
 
@@ -1585,104 +1632,49 @@ for the complete instructions, including recovery after errors.
 
 ### 3.2 The automatically registered System Wizard
 
-After the platform has a main configuration and GitLab is available, startup
-automatically registers **wizard** as the first project when the Wizard is
-enabled. Use Fetch after registration completes. Its Production URL, HTTP/HTTPS
-mode and certificate paths come from the actual Wizard settings under General;
-locally, the existing interface remains at `http://localhost`.
+Startup retains the managed Wizard project and its Production identity. Use
+Fetch to read its existing repository and routing settings. The running Wizard
+address and certificates remain configured under General; repeated startup does
+not replace the interface or overwrite an unrelated repository.
 
-The project starts with a private `root/wizard` repository scaffold containing
-README and managed CI. Expand its row and select **Initialize Wizard source**
-to preview and explicitly import the pinned application source. See the
-[source initialization guide](WIZARD_SOURCE.md) for preparation and safe retry.
-This source-only action does not start a pipeline or deploy another interface.
-After initialization, **Build and verify Wizard** opens a separate read-only
-preview. **Enable build pipeline** explicitly installs the managed recipe and
-starts or recovers its initial pipeline. See the [build workflow guide](WIZARD_BUILD.md)
-for required matching versions, verified candidate evidence and safe recovery.
-Build activation does not deploy the candidate. Optional Review and Beta
-environments require explicit configuration and manual GitLab deployment jobs;
-Production promotion uses its separate guarded operator workflow. The existing
-Wizard container and Production route are reused, with no duplicate project proxy.
-Manage the interface settings under General; the system project is read-only in
-the project list. Its repository links and configuration survive Fetch, Backup,
-Open, Push and restart. Repeated startup reuses the same repository.
+System and Wizard now share one repository, with ordinary application source
+under wizard/. Develop, review and test their changes together in the System
+pipeline. The System row no longer offers separate source import, standalone
+build activation or System Review deployment. Ordinary application projects
+retain their independent Review, Beta and Production environments.
 
-If a local `wizard` key or an unrelated GitLab repository already exists, the
-Bootstrapper reports the conflict without overwriting it. A registration failure
-does not replace or stop the working interface. Check the Bootstrapper output,
-resolve the reported conflict/readiness problem and restart to retry.
+Choose **Configure System Beta** to select an existing private System source
+project, a protected default branch, a suitable runner and an optional fixed
+HTTPS Beta address with valid certificates. Preflight is read-only; confirmation
+reserves settings without creating projects, starting builds or deploying.
+Follow the [System Beta guide](SYSTEM_CANDIDATE_REVIEW.md) to bind the already
+accepted System candidate and deliberately run its manual Deploy or Stop job.
+The Beta uses that candidate's exact Wizard image and creates no additional build.
 
-#### Build and check the Wizard manually
+Old JSON/ZIP configuration and fetched settings remain readable. Explicitly
+migrate version 1 preview settings through Configure System Beta; a saved Review
+hostname never becomes a Beta hostname automatically. Retain repository/import
+history, source edits, bindings, generation floors and tombstones. Stop legacy
+resources using their original owned job and helper before migration; active,
+pending, retired or uncleared stopped routes block setup. Never delete receipts
+to bypass these checks. Configuration backup and matching Harvest/Seed recovery
+remain separate requirements.
 
-Before starting, use matching System and Wizard versions that expose the source
-and build actions. The System image must contain its prepared pinned Wizard
-source package. GitLab, its project registry and a shared runner accepting the
-`docker` tag must be available. The runner needs the reviewed Docker executor
-setup used by the managed recipe, including Docker/Buildx access and registry
-connectivity. Confirm sufficient physical disk and RAM for the build; avoid
-running competing infrastructure builds at the same time. New imports use the
-pinned Node 24/React 19/Vite 8 source and matching modern build recipe. Existing
-legacy imports require the explicit [upgrade procedure](../project-bootstrap/wizard-upgrade/README.md);
-reimporting source is not an upgrade mechanism.
+#### Inspect the shared candidate
 
-For the local WSL setup, run `sudo bash bootstrapper/prepare-local.sh` again
-after a WSL restart if `registry.localhost` no longer resolves. WSL can regenerate
-`/etc/hosts`. The preparation reloads Docker configuration without restarting
-the running containers; retry the failed job in the same pipeline afterwards.
+Open the selected System project's pipeline and wait for all required component,
+image, browser and disposable platform checks. A green job alone is insufficient:
+the Beta binding checks the candidate release artifact, shared commit, Wizard
+source tree, exact image identities and ownership. Expired or inconsistent
+artifacts prevent a new deployment. Stop uses the retained binding and helper.
+Production stays selected until a separate deliberate, verified promotion.
 
-1. Open the existing Wizard address. Use the pencil icon beside **Connect** to
-   enter the configured Sync address and your current Sync credentials, then
-   choose **Submit**. After first setup, use the configured Sync domain rather
-   than assuming the initial `http://localhost/sync` path is still correct.
-2. Select **Synchronize → Fetch**. In **Projects**, expand the first **wizard**
-   entry. Check its repository link and the existing Production address. If the
-   managed entry is missing, resolve registration first; do not create a second
-   Wizard project with **Add Project**.
-3. If source is already initialized, retain its receipt and skip to step 4;
-   do not reimport after managed build activation. Otherwise choose
-   **Initialize Wizard source**. Check the preview's **Repository**,
-   **Source revision** and **Files**, then choose **Import source**. Wait for
-   completion. This imports the source pinned by this System version without
-   starting a pipeline. If source was already imported, retain that receipt;
-   reimporting is not a source-upgrade mechanism.
-4. Close the source dialog and choose **Build and verify Wizard**. Check the
-   **Repository**, **Imported commit** and **Recipe version**. The preview alone
-   does not create a pipeline or change the repository.
-5. Choose **Enable build pipeline** once. Wait for the controller operation to
-   finish; it records the managed recipe and initial pipeline. An interrupted
-   browser response is a reason to inspect/refresh the saved operation, not to
-   delete its receipt or create another project.
-6. Choose **Open pipeline** in the build dialog. In GitLab, inspect the same
-   pipeline's `build:wizard` and `test:wizard` jobs. The first runs the
-   pinned application checks and production build, then publishes a candidate
-   image. The second pulls the immutable image and checks HTTP, rendered UI, Projects and SPA
-   navigation in an isolated browser candidate. A pending runner or running job
-   has not passed these checks.
-7. Return to the Wizard and choose **Refresh status** after the jobs finish.
-   Wait for **Candidate checks and the immutable artifact are verified** and
-   **Verified candidate image**. Record the pipeline and the image reference
-   ending in `@sha256:…`. A green pipeline alone does not replace the controller's
-   required-job and matching-artifact verification.
-8. Inspect the GitLab job artifacts if evidence is needed: `build-evidence.json`
-   from `build:wizard`, and `wizard-evidence.json` plus `browser-evidence/` from
-   `test:wizard`. Evidence belongs to that pipeline and commit. The recipe
-   currently retains these artifacts for seven days; an expired artifact may
-   prevent a later verification even when an earlier job was green.
-9. Confirm the existing Wizard still opens at its original address. Fetch again
-   and check that the same project/repository and Production address remain.
-   Build verification does not replace the running interface. To deploy the
-   candidate, configure the [managed Review and Beta environments](../project-bootstrap/wizard-environments/README.md)
-   and use their manual GitLab jobs. Production promotion and rollback use the
-   separate [guarded operator procedure](../project-bootstrap/wizard-production/README.md).
+The disposable platform test runs real shared setup, binding, Beta containers,
+TLS, Stop and cleanup. Its authorization verifier uses explicit contract fixtures
+because the parent candidate is still running. This is lifecycle coverage plus
+positive and negative production-verifier contracts, not proof of authorization
+by a completed native candidate pipeline. See the [acceptance boundary](../tests/e2e/GUIDED_PREVIEW_ACCEPTANCE.md).
 
-For failures, use the [build status and recovery table](WIZARD_BUILD.md#status-and-safe-continuation).
-Retry failed jobs in the same GitLab pipeline, then refresh status. Resume only
-when the dialog offers **Resume activation**, after **Refresh preview** confirms
-the current state. **Pipeline creation has an uncertain outcome. Refresh only.** permits refresh
-only and needs administrator inspection; never clear its durable checkpoint to
-force another pipeline. Keep credentials out of screenshots, issue comments and
-job-log excerpts.
 
 ### 3.3 Shared and additional runners
 
@@ -1717,9 +1709,9 @@ to the shared instance pool.
 | Four configured runner containers appear as one GitLab runner | Open the runner detail page and inspect **Runner managers**; the shared pool has one entry with independent manager system IDs |
 | Startup reports missing persistent storage | Check the selected mode and directory; mount an explicitly selected live volume instead of changing modes to bypass its guard |
 | A pipeline waits for its runner after a GitLab restart | Register checks the pool and updates managed internal IP endpoints to the stable Docker service name |
-| A pipeline cannot resolve `registry.localhost` | Run `sudo bash bootstrapper/prepare-local.sh` again in Ubuntu; WSL may reset local hosts entries at startup |
-| MongoDB fails before database initialization | Run `bootstrapper/container-preflight.py` on the daemon host; distinguish CPU, Ubuntu upstream kernel and image execution using the [host operations guide](HOST_OPERATIONS.md) |
-| Container logs have no verified rotation | Inspect the exact containers with `bootstrapper/log-policy.py`; apply and verify the bounded policy through a deliberate deployment, with no assumed maximum age |
+| A pipeline cannot resolve `registry.localhost` | Run `sudo system-bootstrapper host-bootstrap prepare-local --checkout "$PWD"` again in Ubuntu; WSL may reset local hosts entries at startup |
+| MongoDB fails before database initialization | Run `system-bootstrapper host-bootstrap container-preflight --checkout "$PWD"` on the daemon host; distinguish CPU, Ubuntu upstream kernel and image execution using the [host operations guide](HOST_OPERATIONS.md) |
+| Container logs have no verified rotation | Inspect the exact containers with `system-bootstrapper host-bootstrap log-policy --checkout "$PWD"`; apply and verify the bounded policy through a deliberate deployment, with no assumed maximum age |
 | `docker ps` shows no separate Sync Node container | Expected: Node runs inside the Bootstrapper container. `system_sync_1` is the NGINX access point at first startup |
 
 See [Prepare-Host.md](../Prepare-Host.md) for further technical details.
@@ -1760,7 +1752,7 @@ Before opening the change, prepare the following:
 
 | Input | Requirement |
 | --- | --- |
-| Accepted source | A clean, reviewed System revision and its exact recursive Wizard submodule commit. Every initialization, recovery, verification and deployment entry point must be versioned in that checkout. |
+| Accepted source | A clean, reviewed System revision including its Wizard source tree (or the exact Wizard gitlink for a historical release). Every initialization, recovery, verification and deployment entry point must be versioned in that checkout. |
 | Existing generation | Record the GitLab version and edition, immutable service-image references and controller/Wizard source identities. Saved configuration takes precedence over first-install examples. |
 | Candidate resources | A trusted runner/host with capacity for Production and a separate disposable platform, including image archives and database copies. Obtain the resource lease before starting the heavy job. The current harness allows 12 GiB candidate RAM; this is not the total host requirement. |
 | Isolated state | Separate candidate containers, networks, Docker daemon and data directories. Never attach A's writable database or registry directories to B while A is running. |
@@ -1810,14 +1802,14 @@ these required checks on the protected default branch or a protected version
 tag. It copies the accepted complete controller and matching Wizard rather
 than rebuilding either after acceptance. Each receives a full-source-commit
 tag; a protected `vX.Y.Z` tag can add a version alias. The release receipt binds
-source revision/tree, Wizard gitlink, image IDs and immutable Docker Hub
+source revision/tree, layout-specific Wizard source identity, image IDs and immutable Docker Hub
 references. Existing conflicting aliases are rejected, and anonymous pull
 verification checks that both public images can be retrieved without publisher
 credentials. See [publisher configuration](../Prepare-Host.md#publish-your-own-public-releases).
 
 Public publication does not promote Production or back up service data. A new
 operator selects that accepted source plus the two digest references and uses
-`bootstrapper/install-release.py` through the fresh-install handbook path.
+`system-bootstrapper install` through the fresh-install handbook path.
 Existing installations retain their saved selectors and require the appropriate
 reviewed promotion/migration procedure instead.
 
@@ -1835,17 +1827,20 @@ acceptance without an automatic extension.
 
 The full platform CI job allows a 115-minute runner script, a separate two-minute
 `after_script` and a 120-minute job limit for preparation, execution, publication
-and artifact collection. Both combined-scenario ceilings include three actual native Wizard
-pipelines (imported default branch, merge request and merged default branch), each
-with four required jobs, plus manual Review/Beta Deploy and Stop. This ceiling is
-an upper bound, not a runtime guarantee. The candidate remains limited to 12 GiB
-RAM and four CPUs. Only the original guided platform's single managed Docker
-runner allows two concurrent jobs, each capped at 2 GiB RAM and one CPU; all nested
-work shares the candidate ceiling. Completed subprocess failures abort their step
-immediately. Readiness polling retries temporary startup conditions; confirmed
-terminal container or identity failures abort immediately. Per-operation deadlines
-remain in force, and reports distinguish a timed-out invocation from a process
-exit. The overall ceiling is an additional safeguard, not a required wait.
+and artifact collection. The shared System Beta scenario reuses the existing
+candidate images and starts no additional Wizard build or System pipeline. Its
+native setup, binding, Beta deployment, TLS, Stop and owned cleanup are verified;
+authorization uses contract fixtures because the parent candidate has not yet
+completed. This does not prove authorization by a completed native pipeline.
+Ordinary application Review/Beta checks remain required. The deadline is an upper
+bound, not a runtime guarantee or a measured saving. The candidate remains limited
+to 12 GiB RAM and four CPUs. All nested work shares this ceiling. Completed
+subprocess failures abort their step immediately. Readiness polling retries
+transient startup states; confirmed container or identity failures abort
+immediately. Per-operation deadlines remain in force, and reports distinguish a
+timed-out invocation from a process exit. The overall ceiling is an additional
+safeguard, not a required wait.
+
 Documentation-only changes retain their short
 lane. No earlier passing fixture or MR run replaces the required acceptance for
 the exact merged source being promoted.
@@ -1882,12 +1877,17 @@ migration results for an upgrade.
 
 ### 5.4 Example: a GitLab security patch is a system evolution
 
-The committed [security release profile](../gitlab/security-release.json)
-declares a GitLab CE **19.4.3 → 19.5.3** transition and a GitLab Runner
-**19.4.0 → 19.5.1** transition with its matching helper. The linked upstream
-[patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-5-3-released/)
+The committed [security release profile](../config/gitlab/security-release.json)
+declares a GitLab CE **19.5.3 → 19.6.1** transition and a GitLab Runner
+**19.5.1 → 19.6.0** transition with its matching helper. The linked upstream
+[patch advisory](https://docs.gitlab.com/releases/patches/patch-release-gitlab-19-6-1-released/)
 and [Docker upgrade guidance](https://docs.gitlab.com/update/docker/) describe
-its prerequisites. Required database and post-deployment migrations must finish;
+its prerequisites. The already completed 19.5 upgrade stop permits this direct
+transition; see the
+[operator procedure](#migrate-gitlab-through-the-accepted-controller). Earlier
+installations must complete their accepted upgrade path to 19.5.3 first. Preflight
+rejects unfinished background migrations in every configured database, including
+failed or paused work. Required database and post-deployment migrations must finish;
 check the source/target upgrade path rather than treating any newer image as an
 interchangeable patch.
 
@@ -1915,12 +1915,21 @@ Before stopping A, retain the accepted source and required tools outside the
 GitLab service being upgraded. Preserve the exact image evidence and a verified
 checkpoint on storage that remains accessible during maintenance. Preload the
 required images if their registry will be unavailable during the switch. A
-prepublished accepted mirror or Git bundle, including the required pinned
+prepublished accepted mirror or Git bundle, including any historical pinned
 submodule sources, breaks the dependency on needing GitLab to recover GitLab; a
 private local script does not.
 
 To retain source independently, run these standard Git commands from the clean
 accepted checkout on your management host while its sources are available:
+
+New releases include ordinary wizard/ source in the System bundle. The conditional
+Wizard bundle commands apply only to a historical commit whose tree records a
+gitlink; preserve that exact second repository for its historical recovery.
+Source identity is layout-specific: shared releases record sourceLayout as
+system-monorepo-v1, sourceRevision as the System commit and wizardSourceTree as
+the Wizard directory tree. A missing source layout retains the strict historical
+gitlink interpretation. Neither configuration imports nor Seed restores rewrite
+this evidence or published Git history.
 
 ```bash
 umask 077
@@ -1928,9 +1937,11 @@ git submodule update --init --recursive
 SOURCE_BUNDLE_DIR=/root/system-successor/source
 install -d -m 0700 "$SOURCE_BUNDLE_DIR"
 git bundle create "$SOURCE_BUNDLE_DIR/system.bundle" HEAD
-git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
 git bundle verify "$SOURCE_BUNDLE_DIR/system.bundle"
-git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+if git ls-tree HEAD wizard | grep -q '^160000 '; then
+  git -C wizard bundle create "$SOURCE_BUNDLE_DIR/wizard.bundle" HEAD
+  git -C wizard bundle verify "$SOURCE_BUNDLE_DIR/wizard.bundle"
+fi
 git rev-parse HEAD
 ```
 
@@ -1941,16 +1952,18 @@ recorded revision and initialize the Wizard without contacting GitLab or GitHub:
 ```bash
 git clone "$SOURCE_BUNDLE_DIR/system.bundle" /opt/system
 git -C /opt/system checkout --detach "$SYSTEM_TOOLS_REVISION"
-git -C /opt/system \
-  -c protocol.file.allow=always \
-  -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
-  submodule update --init --recursive
+if git -C /opt/system ls-tree HEAD wizard | grep -q '^160000 '; then
+  git -C /opt/system \
+    -c protocol.file.allow=always \
+    -c submodule.wizard.url="$SOURCE_BUNDLE_DIR/wizard.bundle" \
+    submodule update --init --recursive
+fi
 ```
 
 Transfer the private bundles to that host first and set `SOURCE_BUNDLE_DIR` and
 `SYSTEM_TOOLS_REVISION` deliberately. The file-protocol override applies only to
-this invocation using the verified local bundles. These commands cover the repository's Wizard
-submodule; include equivalent recorded bundles if your fork adds more submodules.
+this invocation using the verified local bundles. The conditional commands cover historical Wizard
+submodules; include equivalent recorded bundles if your fork adds more submodules.
 A plain source ZIP does not contain the Git objects needed by initialization.
 
 Production promotion uses the committed operator entry point from that accepted
@@ -1959,21 +1972,21 @@ candidate results and exact existing installation. Run it from the host or an
 independent management connection, rather than relying on a CI job to survive
 stopping the GitLab that coordinates it.
 
-For the declared CE 19.4.3 → 19.5.3 transition,
-[`gitlab/security-release.json`](../gitlab/security-release.json) contains the
+For the declared CE 19.5.3 → 19.6.1 transition,
+[`config/gitlab/security-release.json`](../config/gitlab/security-release.json) contains the
 allowed image pins. Before planning or entering downtime, pull all six image
 references: `fromImage`, `toImage`, `runner.fromImage`, `runner.toImage`,
 `runner.fromHelperImage` and `runner.helperImage`. These include both GitLab
 versions and the previous and target Runner/Helper pairs. First deploy the
 **exact tested full controller image** containing the
-accepted tools, while preserving the saved 19.4.3 GitLab selection. Do not rebuild
+accepted tools, while preserving the saved 19.5.3 GitLab selection. Do not rebuild
 another image from the same tag and assume it has the tested identity. The helper
 requires the running controller to match the image recorded by the accepted
 candidate evidence; publishing a runtime base alone does not meet this condition.
 
 #### Stage the accepted controller from the host
 
-Check out the accepted merged source with its pinned submodules. Download these
+Check out the accepted merged source, including any historical pinned submodules. Download these
 **frozen** artifacts from its `test:platform-candidate` job:
 
 - `test-results/successor/release.json`
@@ -1997,7 +2010,7 @@ internal runtime test. Other pipeline failures block promotion.
 First run the source/CI input check:
 
 ```bash
-sudo python3 bootstrapper/promote-controller.py \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation promote \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
@@ -2030,12 +2043,12 @@ If this **controller** operation is interrupted, use its same checkpoint with
 the committed status and, when appropriate, abort actions:
 
 ```bash
-sudo python3 bootstrapper/promote-controller.py \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation status \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID
 
-sudo python3 bootstrapper/promote-controller.py \
+sudo system-bootstrapper promote --checkout "$PWD" \
   --operation abort \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --checkpoint-dir /mnt/bootstrapper-data/platform/recovery/controller-promotions/REPLACE_WITH_OPERATION_ID \
@@ -2078,7 +2091,7 @@ From an independent host terminal, request the read-only plan:
 
 ```bash
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js plan /state/upgrade-options.json
+  system-bootstrapper gitlab-maintenance plan /state/upgrade-options.json
 ```
 
 Inspect the returned plan and `planSha256`. It binds the accepted evidence,
@@ -2090,7 +2103,7 @@ use its hash as the confirmation:
 ```bash
 PLAN_SHA256=REPLACE_WITH_REVIEWED_PLAN_SHA256
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js promote /state/upgrade-options.json "$PLAN_SHA256"
+  system-bootstrapper gitlab-maintenance promote /state/upgrade-options.json "$PLAN_SHA256"
 ```
 
 Run this host command outside the GitLab CI job that will lose its server.
@@ -2121,7 +2134,7 @@ After GitLab migration and acceptance, run the committed recovery exporter from
 the same clean accepted checkout:
 
 ```bash
-sudo python3 bootstrapper/record-recovery-images.py \
+sudo node dist/modules/host/recoveryExportEntry.js --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
   --release /root/system-successor/release.json \
   --evidence /root/system-successor/candidate-results.json \
@@ -2144,7 +2157,7 @@ the new manifest before relying on it:
 
 ```bash
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/recover-volume.sh --verify
+  system-bootstrapper host-bootstrap recover-volume --checkout "$PWD" --verify
 ```
 
 This check validates inputs without restarting services. The next
@@ -2159,7 +2172,7 @@ If migration or acceptance fails, inspect the committed helper's recorded phase:
 
 ```bash
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js status /state/upgrade-options.json
+  system-bootstrapper gitlab-maintenance status /state/upgrade-options.json
 ```
 
 Before the helper records an accepted checkpoint hash, its `abort` action accepts
@@ -2173,12 +2186,12 @@ the durable receipt and ensure no original operation is still running.
 ```bash
 # Only for a confirmed failure before checkpoint acceptance:
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js abort /state/upgrade-options.json "$PLAN_SHA256"
+  system-bootstrapper gitlab-maintenance abort /state/upgrade-options.json "$PLAN_SHA256"
 
 # For a confirmed completed-checkpoint recovery:
 CHECKPOINT_SHA256=REPLACE_WITH_VERIFIED_CHECKPOINT_SHA256
 sudo docker exec -w /system system_bootstrapper_1 \
-  node gitlab/upgrade.js rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
+  system-bootstrapper gitlab-maintenance rollback /state/upgrade-options.json "$CHECKPOINT_SHA256"
 ```
 
 Use only the action appropriate to the recorded phase; the commands are
@@ -2198,7 +2211,7 @@ sudo docker restart system_bootstrapper_1
 
 If GitLab is restored to the old image while an accepted controller remains
 staged, develop any correction through a new merge request and its required
-checks. Use the documented [staged-controller replacement](../bootstrapper/README.md#replacing-an-accepted-controller-before-gitlab-migration)
+checks. Use the documented [staged-controller replacement](BOOTSTRAPPER.md#replacing-an-accepted-controller-before-gitlab-migration)
 with the previous completed controller checkpoint and a new operation directory.
 The tool authenticates the prior candidate separately while keeping the new
 candidate's current-default-branch gates strict. Do not edit saved selectors or

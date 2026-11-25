@@ -5,13 +5,15 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const {spawn} = require('node:child_process');
-const cube = fs.readFileSync(path.resolve(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+const cube = fs.readFileSync(path.resolve(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 const configuration = index => cube + '\nexport MIGRATION_FIXTURE="configuration-' + index + '"\n';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-migration-'));
-for (const name of ['sync', 'system', 'state']) fs.mkdirSync(path.join(root, name));
-fs.writeFileSync(path.join(root, 'system/stop-intermediate.sh'), 'exit 0\n');
-const entry = path.resolve(__dirname, '../../sync/dist/index.js');
-const child = spawn(process.execPath, [entry], {cwd: path.join(root, 'sync'),
+for (const name of ['config/system', 'state']) fs.mkdirSync(path.join(root, name),{recursive:true});
+fs.mkdirSync(path.join(root,'dist/cli'),{recursive:true});
+fs.writeFileSync(path.join(root,'dist/cli/main.js'),'require("node:assert/strict").deepEqual(process.argv.slice(2,4),["lifecycle","stop-intermediate"]);process.exit(0);\n');
+const startCode = `const path=require('node:path');const paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installationPaths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);paths.cliArguments=(command,args)=>[path.join(fixture,'dist/cli/main.js'),command,...args];require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
+const entry = path.resolve(__dirname, '../../dist/api/index.js');
+const child = spawn(process.execPath, ['-e', startCode, entry, root], {cwd: root,
   env: {...process.env, SYSTEM_CONFIG_DIR: path.join(root, 'state'), SYNC_USER: 'migration-test', SYNC_PASS: 'test-only'}, stdio: ['ignore','pipe','pipe']});
 let logs='';
 for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>{logs=(logs+chunk.toString()).slice(-65536);});
@@ -72,7 +74,7 @@ function multipart(field, count) {
     const fetched = await request('/config/main', 'GET', undefined, accessToken);
     assert.equal(fetched.status, 200);
     assert.equal(JSON.parse(fetched.text).data, configuration(0));
-    assert(!fs.existsSync(path.join(root, 'system/.docker.env')), 'writes must use the mounted configuration directory');
+    assert(!fs.existsSync(path.join(root, 'config/system/.docker.env')), 'writes must use the mounted configuration directory');
     assert.equal((await request('/config/main', 'DELETE', undefined, accessToken)).status, 200);
     assert(!fs.existsSync(path.join(root, 'state/.docker.env')));
     assert.equal((await request('/config/main', 'GET', undefined, accessToken)).status, 404);

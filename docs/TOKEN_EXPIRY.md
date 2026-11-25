@@ -4,7 +4,7 @@ Open **Credential expiry** in the connected Wizard to inspect metadata for the
 operator-selected automation projects. The overview is read-only: it does not
 rotate credentials, create an administrator token, change a CI variable, or test
 a secret against an external service. Secret values and private token lookup stay
-inside GitLab Rails; the browser receives only filtered purpose, provider, project,
+inside the controller and its local GitLab connection; the browser receives only filtered purpose, provider, project,
 expiry and status fields.
 
 ## Select projects and save monitoring settings
@@ -42,10 +42,15 @@ and key is accepted. A value could be:
 
 The server reads only four fixed CI-variable keys in the selected projects:
 `RENOVATE_TOKEN`, `SYSTEM_RELEASE_GITLAB_TOKEN`, `GITHUB_RELEASE_TOKEN` and
-`DOCKERHUB_TOKEN`. It does not return their values. For the first two keys, GitLab
-Rails resolves the existing local GitLab personal-access-token metadata without
-creating or retaining a new administrator token. Existing GitLab metadata can
-report an expiry date and revocation.
+`DOCKERHUB_TOKEN`. It does not return their values. The shared native service reads key presence from the CI database without
+reading encrypted variable values. For the first two keys only, an already saved
+controller credential reads the selected variable through the local GitLab API.
+The service matches its SHA-256 digest to local personal-access-token metadata,
+including expired or revoked tokens. Status lookup never initializes or renews
+that controller credential. If it is missing or unusable, GitLab expiry metadata
+remains unavailable until credential initialization or renewal is completed;
+configured-key presence remains observable. External-provider values are never
+read or decrypted.
 
 For GitHub and Docker Hub, expiry remains **unknown** unless the operator records
 an expiry date. Such a date is marked **operator-recorded**; it is an assertion
@@ -70,7 +75,7 @@ stale after independent rotation; update or remove them deliberately.
 ## Renew credentials through their owning tools
 
 Use the renewal link for the affected purpose and follow the corresponding
-repository-owned procedure. For Renovate, the existing `gitlab/renovate/setup.py`
+repository-owned procedure. For Renovate, the existing `system-bootstrapper renovate setup`
 workflow supports `--apply --rotate --enable` with the operator's private configuration.
 For release metadata access, create a replacement project-scoped GitLab token
 with the Reporter role, `read_api` scope and an explicit expiry date, then replace

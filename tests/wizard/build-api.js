@@ -7,14 +7,15 @@ const source = path.resolve(__dirname, '../..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-build-api-'));
 fs.mkdirSync(path.join(root, 'sync'));
 fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
+process.env.SYSTEM_CONFIG_DIR = path.join(root, 'system');
 process.chdir(path.join(root, 'sync'));
 let server, application;
 const child = require('child_process');
 child.execSync = child.execFile = child.spawn = () => { throw Error('Build API fixture forbids shell/container calls'); };
 process.env.SYNC_USER = 'fixture'; process.env.SYNC_PASS = 'fixture-password';
-const bootstrap = require(path.join(source, 'sync/dist/ProjectBootstrap'));
-const Helper = require(path.join(source, 'sync/dist/Helper')).default;
-const {wizardConfiguration, wizardCi} = require(path.join(source, 'sync/dist/DefaultWizard'));
+const bootstrap = require(path.join(source, 'dist/modules/project-workflow/projectWorkflow'));
+const Helper = require(path.join(source, 'dist/common/configurationSignature')).default;
+const {wizardConfiguration, wizardCi} = require(path.join(source, 'dist/api/projects/defaultWizard'));
 const file = path.join(root, 'system/.projects.env/.wizard.env');
 fs.writeFileSync(path.join(root, 'system/.docker.env'), Helper.textLogo + 'GITLAB_REGISTRY_URL=http://registry.localhost:5050\n');
 bootstrap.writeReceipt(file, wizardConfiguration({WIZARD_HOST: 'localhost'}), {
@@ -27,7 +28,7 @@ bootstrap.writeReceipt(file, wizardConfiguration({WIZARD_HOST: 'localhost'}), {
 let calls = 0, finish, input;
 bootstrap.rails = value => { calls++; input = value; return new Promise(resolve => { finish = resolve; }); };
 const log = console.log; console.log = () => {};
-const {bootstrap: startSync} = require(path.join(source, 'sync/dist/bootstrap'));
+const {bootstrap: startSync} = require(path.join(source, 'dist/api/bootstrap'));
 const wait = async job => { while (job.state === 'running') await new Promise(resolve => setTimeout(resolve, 5)); };
 (async () => {
   application = await startSync({port: 0, host: '127.0.0.1'});
@@ -48,6 +49,9 @@ const wait = async job => { while (job.state === 'running') await new Promise(re
   const idle = await request('/projects/wizard/build/status', {headers});
   assert.equal(idle.status, 200); assert.equal((await idle.json()).state, 'not-activated');
   assert.equal((await request('/projects/wizard/build', {method: 'POST', headers, body: JSON.stringify({recipeHash: 'stale'})})).status, 409);
+  for (const input of [[], {recipeHash: null}, {recipeHash: 7}]) {
+    assert.equal((await request('/projects/wizard/build', {method: 'POST', headers, body: JSON.stringify(input)})).status, 409);
+  }
   assert.equal(calls, 0);
   let release;
   const other = bootstrap.withProjectLock('other-project', () => bootstrap.startJob('other-project',

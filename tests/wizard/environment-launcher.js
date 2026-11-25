@@ -4,10 +4,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {spawnSync} = require('child_process');
-const logo = require('../../sync/dist/Helper').default.textLogo;
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
 const options = {settings: {review: {enabled: false}, beta: {enabled: false}}, settingsHash: 'a'.repeat(64),
   helperImage: 'sha256:' + 'b'.repeat(64), operation: 'c'.repeat(48), controller: 'system_bootstrapper_1'};
-const run = require('../../project-bootstrap/wizard-environments/recipe').generate(logo, options).files[0].content;
+const run = require('../../dist/modules/project-lifecycle/environmentRecipe.service').generate(logo, options).files[0].content;
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-environment-launcher-'));
 try {
   const script = path.join(fixture, 'run.sh'), trace = path.join(fixture, 'trace');
@@ -36,7 +36,7 @@ esac
   assert(calls.includes('stop --time 120 ' + 'd'.repeat(64)));
   assert(calls.includes('rm -f ' + 'd'.repeat(64)));
   assert(!calls.includes('rm -f wizard-environment-'));
-  fs.writeFileSync(script, fs.readFileSync(require.resolve('../../project-bootstrap/wizard-environments/source-primary.sh'), 'utf8'));
+  fs.writeFileSync(script, fs.readFileSync(require.resolve('../../templates/project-bootstrap/wizard-environments/historical/source-primary-v1.sh'), 'utf8'));
   fs.writeFileSync(trace, '');
   const nativeEnvironment = {...environment, MODE: 'owned', SYSTEM_WIZARD_ENVIRONMENT_IMAGE: options.helperImage,
     SYSTEM_WIZARD_ENVIRONMENT_OPERATION: options.operation};

@@ -5,9 +5,16 @@ const os=require('node:os');
 const path=require('node:path');
 const {test}=require('node:test');
 const {execFileSync,spawnSync}=require('node:child_process');
-const operation=require('../../system/seed-operation');
+const {StorageService}=require('../../dist/modules/storage/storage.service');
+const {nativeProcess}=require('../../dist/common/runtime/process');
+const {normalizePreview}=require('../../dist/common/runtime/previewSettings');
+const storage=new StorageService(nativeProcess,normalizePreview);
+const operation=Object.assign({},...['validation','configuration','lease','helper'].map(name=>require('../../dist/modules/storage/'+name)),{
+  inside:spec=>storage.inside(spec),launch:(operation,options)=>storage.launch(operation,options),
+});
 const mounts='1 0 0:1 / / rw - overlay overlay rw\n2 1 8:2 / /external-seed rw - ext4 /dev/vdb rw\n';
 function fixture(t) {
+  t.mock.method(fs,'statfsSync',()=>({bavail:2*1024*1024,bsize:4096}));
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'storage-operation-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const spec={PERSISTENCE_MODE:'local',PERSISTENT_MOUNT:'/',PERSISTENT_DIR:'/data/platform',
@@ -50,7 +57,7 @@ test('only an exact owned image receives the temporary Seed mount',()=>{
   assert(args.includes('type=bind,src=/external-seed/seed,dst=/seed'));
   assert(args.includes('type=bind,src=/data/platform/gitlab/logs,dst=/srv/gitlab/log'));
   assert.throws(()=>operation.helperArguments(spec,'controller:latest',name,'harvest'),/invalid-helper-identity/);
-  assert(!fs.readFileSync(path.join(__dirname,'../../system/docker-compose.yml'),'utf8').includes(':/seed'));
+  assert(!fs.readFileSync(path.join(__dirname,'../../config/system/docker-compose.yml'),'utf8').includes(':/seed'));
 });
 test('local preparation is source-owned and independent of any backup path',t=>{
   const f=fixture(t);
@@ -155,14 +162,19 @@ test('unchanged Wizard JSZip DOS backups and mixed Unix entries retain strict me
 });
 test('a real configuration import preserves the acquired server-owned environment mutex',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',system=f.root+'/source/system';
-  fs.mkdirSync(system,{recursive:true});fs.mkdirSync(f.root+'/source/project-bootstrap');fs.mkdirSync(f.root+'/source/nginx');
-  for(const relative of ['system/push.sh','nginx/wizard-aliases.js','nginx/application-aliases.js','project-bootstrap/routing-impact.js','project-bootstrap/configuration-archive.js','project-bootstrap/preserve-system-project.js'])
-    fs.copyFileSync(path.join(__dirname,'../..',relative),f.root+'/source/'+relative);
+  fs.mkdirSync(system,{recursive:true});
+  fs.symlinkSync(path.resolve(__dirname,'../../dist'),f.root+'/source/dist','dir');
+  fs.symlinkSync(path.resolve(__dirname,'../../node_modules'),f.root+'/source/node_modules','dir');
   execFileSync('python3',['-c',
     'import zipfile,sys\nwith zipfile.ZipFile(sys.argv[1],"w") as z:\n z.writestr(".docker.env","export SYNC_ENABLE=true\\n")\n z.writestr(".projects.env/new.env","export PROJECT=new\\n")',f.root+'/source/bootstrapper.zip']);
   const held=new operation.StorageLease(state,{operation:'restore',helperName:'fixture',imageId:'sha256:'+'a'.repeat(64)});
   held.acquireEnvironment();const inode=fs.statSync(held.environment).ino;
-  execFileSync('bash',['push.sh'],{cwd:system,env:{...process.env,SYSTEM_CONFIG_DIR:state},encoding:'utf8'});
+  const base={...process.env,SYSTEM_CONFIG_DIR:state};
+  for(const spec of [undefined,{...held.spec,helperName:'foreign'},{...held.spec,operation:'harvest'}]){
+    assert.throws(()=>execFileSync(process.execPath,[path.resolve(__dirname,'../../dist/modules/configuration/entry.js'),'push',f.root+'/source',state,f.root+'/source/bootstrapper.zip'],{cwd:system,env:{...base,...(spec?{SYSTEM_STORAGE_SPEC:JSON.stringify(spec)}:{})},encoding:'utf8',stdio:'pipe'}));
+    assert.equal(fs.statSync(held.environment).ino,inode);
+  }
+  execFileSync(process.execPath,[path.resolve(__dirname,'../../dist/modules/configuration/entry.js'),'push',f.root+'/source',state,f.root+'/source/bootstrapper.zip'],{cwd:system,env:{...base,SYSTEM_STORAGE_SPEC:JSON.stringify(held.spec)},encoding:'utf8'});
   assert.equal(fs.statSync(held.environment).ino,inode);
   assert.equal(fs.readFileSync(state+'/.projects.env/new.env','utf8'),'export PROJECT=new\n');
   held.release(true);
@@ -202,8 +214,7 @@ test('controller restart refuses running, uncertain, or unowned storage operatio
   operation.startupAllowed(state,true);
   fs.writeFileSync(path.join(upgrade,'upgrade-owner.json'),'{}');
   assert.throws(()=>operation.startupAllowed(state,true),/storage-operation-busy/);
-  const start=fs.readFileSync(path.join(__dirname,'../../system/start.sh'),'utf8');
-  assert(start.indexOf('startup-begin') < start.indexOf('node ./persistence-init.js'));
+
 });
 test('startup and cold backup take the same atomic barrier across the writer-start interval',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',spec={operation:'harvest',helperName:'helper',imageId:'sha256:'+'a'.repeat(64)};
@@ -232,14 +243,16 @@ test('a settled startup failure retries while killed or unknown work retains its
 });
 test('a busy controller waits without writers while settled startup failures remain retryable',t=>{
   const f=fixture(t),state=f.root+'/data/platform/configuration',system=f.root+'/source/system';fs.mkdirSync(system,{recursive:true});
-  for(const file of ['start.sh','seed-operation.js'])fs.copyFileSync(path.join(__dirname,'../../system',file),path.join(system,file));
-  fs.writeFileSync(system+'/persistence-init.js','process.exit(1);\n');
+  fs.symlinkSync(path.resolve(__dirname,'../../dist'),f.root+'/source/dist','dir');
+  fs.symlinkSync(path.resolve(__dirname,'../../node_modules'),f.root+'/source/node_modules','dir');
+  // No dedicated state mount: after the busy lease settles, native initialization
+  // must reject this fixture before starting a service and release its own lease.
   const env={...process.env,SYSTEM_CONFIG_DIR:state},held=new operation.StorageLease(state,{operation:'harvest',helperName:'fixture',imageId:'sha256:'+'a'.repeat(64)});
-  const busy=spawnSync('timeout',['--kill-after=1','0.5','bash','start.sh'],{cwd:system,env,encoding:'utf8'});
+  const busy=spawnSync('timeout',['--kill-after=1','3',process.execPath,path.resolve(__dirname,'../../dist/modules/lifecycle/entry.js'),'start',f.root+'/source'],{cwd:system,env,encoding:'utf8'});
   assert.equal(busy.status,124,busy.stderr);assert.match(busy.stderr,/Startup paused/);
   assert(fs.existsSync(held.owner));held.release(true);
   for(let attempt=0;attempt<2;attempt++){
-    const settled=spawnSync('bash',['start.sh'],{cwd:system,env,encoding:'utf8',timeout:5000});
+    const settled=spawnSync(process.execPath,[path.resolve(__dirname,'../../dist/modules/lifecycle/entry.js'),'start',f.root+'/source'],{cwd:system,env,encoding:'utf8',timeout:5000});
     assert.equal(settled.status,1,settled.stderr);
     assert(!fs.existsSync(path.join(state,'.storage-operation-lock')));
   }
@@ -255,15 +268,16 @@ test('authenticated controller quiescence rejects active or unknown queues after
   operation.controllerIdle({},args=>{assert.equal(args[0],'exec');assert(!args.join(' ').includes('password'));return '{"idle":true}';});
 });
 test('controller status uses saved authentication over first-setup generated defaults',t=>{
-  const f=fixture(t),state=f.root+'/data/platform/configuration',bin=f.root+'/bin';fs.mkdirSync(bin);
+  const f=fixture(t),state=f.root+'/data/platform/configuration';
   fs.writeFileSync(state+'/sync-auth.env','export SYNC_USER=first_setup\nexport SYNC_PASS=first_setup_fixture\n');
   fs.writeFileSync(state+'/.docker.env','export SYNC_USER=saved_user\nexport SYNC_PASS=saved_fixture\n');
-  fs.writeFileSync(bin+'/node',`#!/bin/sh
-[ "$SYNC_USER" = saved_user ] && [ "$SYNC_PASS" = saved_fixture ] || exit 1
-printf '{"idle":true}'
-`,{mode:0o700});
-  operation.controllerIdle({},args=>execFileSync('bash',['-ec',args[4]],
-    {env:{...process.env,SYSTEM_CONFIG_DIR:state,PATH:bin+':'+process.env.PATH},encoding:'utf8'}));
+  const saved=operation.savedSyncEnvironment({...process.env,SYSTEM_CONFIG_DIR:state});
+  assert.equal(saved.SYNC_USER,'saved_user');assert.equal(saved.SYNC_PASS,'saved_fixture');
+  operation.controllerIdle({},args=>{
+    assert.deepEqual(args.slice(2),['node','/system/dist/cli/main.js','storage','sync-status']);
+    assert(!args.join(' ').includes('saved_fixture'));
+    return '{"idle":true}';
+  });
 });
 test('a stopped or running GitLab must actually own every selected data source',()=>{
   const calls=[], image='sha256:'+'a'.repeat(64),spec={operation:'harvest',PERSISTENT_DIR:'/data/platform'};
@@ -277,7 +291,7 @@ test('a stopped or running GitLab must actually own every selected data source',
   assert(!calls.some(args=>['stop','exec','start'].includes(args[0])));
 });
 test('effective pinned runtime image remains available when an old configuration omits it',()=>{
-  const cube=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example')).subarray(0,1184);
+  const cube=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example')).subarray(0,1184);
   const selected='gitlab/gitlab-ce:fixed@sha256:'+'a'.repeat(64);
   assert.equal(operation.imageFromConfiguration(Buffer.concat([cube,Buffer.from('\nexport SYNC_ENABLE=true\n')]),selected),selected);
   assert.equal(operation.imageFromConfiguration(Buffer.concat([cube,Buffer.from('\nexport GITLAB_IMAGE="declared:fixed"\n')]),selected),'declared:fixed');

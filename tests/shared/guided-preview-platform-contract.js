@@ -13,11 +13,11 @@ function toml(text){
 }
 function platform(){
   const calls=[],stages=[];
-  const settings={version:1,namespace:'root',wizard:{mode:'import',project:'wizard-source',origin:'https://github.com/example/wizard.git'},
-    review:{enabled:true,host:fixture.HOSTS.review,ssl:fixture.LEAF,sslKey:fixture.KEY},
+  const settings={version:2,namespace:'root',wizard:{mode:'existing',project:'wizard',origin:''},
+    review:{enabled:false,host:'',ssl:'',sslKey:''},
     beta:{enabled:true,host:fixture.HOSTS.beta,ssl:fixture.LEAF,sslKey:fixture.KEY}};
   const candidate={id:'a'.repeat(24),daemon:'b'.repeat(64),spec:{fullAcceptance:true,guidedPreviewAcceptance:true,guidedPreviewSettings:settings,
-    sourceRevision:'c'.repeat(40),sourceTree:'d'.repeat(40),wizardSourceRevision:'e'.repeat(40),
+    sourceRevision:'c'.repeat(40),sourceTree:'d'.repeat(40),wizardSourceTree:'e'.repeat(40),sourceLayout:'system-monorepo-v1',
     images:{candidate:{id:'sha256:'+'1'.repeat(64)},wizard:{id:'sha256:'+'2'.repeat(64)}}},
     stage:async(name,action)=>{stages.push(name);return action();},
     wait:async action=>{assert(await action());},
@@ -33,7 +33,7 @@ function platform(){
     rails:async(script)=>{calls.push({rails:script});return {id:9,tags:['docker','wizard-source-primary']};}};
   const authority={original:candidate,ready:true,issue:async(actual,options)=>{
     assert.equal(actual,candidate);calls.push({issue:options});return {serial:'AA',account:'fixture',keyHash:'retained',certificateHash:'leaf'};}};
-  const dependencies={node:async(actual,action,input)=>{
+  const dependencies={waitForRegistration:async actual=>{assert.equal(actual,candidate);calls.push({registration:true});},node:async(actual,action,input)=>{
     assert.equal(actual,candidate);calls.push({node:action.toString(),input});
     if(input.root)return {root:'-----BEGIN CERTIFICATE-----\npublic fixture root\n-----END CERTIFICATE-----\n',
       bundle:'public Mozilla bundle plus fixture root\n',rootSha256:'f'.repeat(64),publicBundleSha256:'0'.repeat(64)};
@@ -43,19 +43,20 @@ function platform(){
 }
 test('fixture TLS uses one existing authority and extends its exact owned SANs',async()=>{
   const f=platform(),result=await fixture.prepare(f.candidate,f.authority,f.dependencies);
-  assert.deepEqual(result.domains,['wizard.candidate.test','sync.candidate.test','alias.candidate.test','app.candidate.test','oldapp.candidate.test','gitlab.candidate.test','review.candidate.test','beta.candidate.test']);
+  assert.deepEqual(result.domains,['wizard.candidate.test','sync.candidate.test','alias.candidate.test','app.candidate.test','oldapp.candidate.test','gitlab.candidate.test','beta.candidate.test']);
+  assert.equal(f.calls[0].registration,true,'registration completes before TLS file writes, issuance or GitLab recreation');
   assert.equal(f.calls.filter(call=>call.issue).length,1);
   assert.equal(f.candidate.guidedAcmeIdentity.serial,'AA');
   assert.equal(f.calls.filter(call=>call.probe).length,3);
-  const configure=f.calls.find(call=>call.inner?.includes('/system/gitlab')).inner;
-  assert(configure.includes('start.sh'),'the native committed GitLab configuration entrypoint is required');
+  const configure=f.calls.find(call=>call.inner?.includes('gitlab-start')).inner;
+  assert(configure.includes('gitlab-start'),'the native committed GitLab configuration entrypoint is required');
   const tls=f.calls.find(call=>call.input?.settings).input;
   assert.equal(tls.settings.GITLAB_EXTERNAL_URL,'https://gitlab.candidate.test');
   assert.equal(tls.settings.GITLAB_DOMAIN_MODE,'2');
   assert(!Object.hasOwn(tls.settings,'GITLAB_REGISTRY_URL'));
   assert(!Object.hasOwn(tls.settings,'WIZARD_IMAGE'));assert(!Object.hasOwn(tls.settings,'BOOTSTRAPPER_IMAGE'));
-  const recording=f.calls.find(call=>call.inner?.includes('/system/bootstrapper/record-source-installation.js')).inner;
-  for(const value of [f.candidate.spec.sourceRevision,f.candidate.spec.sourceTree,f.candidate.spec.wizardSourceRevision,
+  const recording=f.calls.find(call=>call.inner?.includes('/system/dist/modules/lifecycle/sourceInstallationEntry.js')).inner;
+  for(const value of [f.candidate.spec.sourceRevision,f.candidate.spec.sourceTree,f.candidate.spec.sourceRevision,
     f.candidate.spec.images.candidate.id,f.candidate.spec.images.wizard.id])assert(recording.includes(value));
   assert.equal(f.stages.at(-1),'guided-preview-native-source-installation-record');
 });
@@ -143,7 +144,7 @@ test('capacity ceiling arithmetic retains room beneath the existing hard candida
   const boundary=fs.readFileSync(path.join(__dirname,'disposable-candidate.js'),'utf8');
   assert(boundary.includes("'--privileged','--memory','12g','--cpus','4'"));
   for(const file of ['build.sh','verify.sh']){
-    const producer=fs.readFileSync(path.join(__dirname,'../../project-bootstrap/wizard-build/modern',file),'utf8');
+    const producer=fs.readFileSync(path.join(__dirname,'../../templates/project-bootstrap/wizard-build/modern',file),'utf8');
     assert(producer.includes('--driver-opt memory=4g --driver-opt cpu-period=100000 --driver-opt cpu-quota=200000'));
     if(file==='verify.sh')assert(producer.includes('docker run --memory 1g --cpus 1'));
   }
@@ -188,10 +189,10 @@ test('supplementary hashed trust preserves the exact public CA gate and supports
   const result=spawnSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=Owned fixture root',
     '-addext','basicConstraints=critical,CA:TRUE','-addext','subjectAltName=DNS:fixture.local','-keyout',key,'-out',certificate],{stdio:'ignore'});
   assert.equal(result.status,0);
-  const root=fs.readFileSync(certificate,'utf8'),bundle=fs.readFileSync(path.join(__dirname,'../../bootstrapper/ca/cacert-2026-10-20.crt'),'utf8');
+  const root=fs.readFileSync(certificate,'utf8'),bundle=fs.readFileSync(path.join(__dirname,'../../config/ca/cacert-2026-10-20.crt'),'utf8');
   const hash=spawnSync('openssl',['x509','-subject_hash','-noout'],{input:root,encoding:'utf8'});
   assert.equal(hash.status,0);const subjectHash=hash.stdout.trim();
-  const publicBundleSha256=require('../../gitlab/security-release.json').jobCaBundleSha256;
+  const publicBundleSha256=require('../../config/gitlab/security-release.json').jobCaBundleSha256;
   const anchors=path.join(directory,'anchors'),empty=path.join(directory,'empty');fs.mkdirSync(anchors);fs.mkdirSync(empty);
   const canonical=path.join(anchors,'ca-certificates.crt');fs.writeFileSync(canonical,bundle);
   fs.symlinkSync('existing-unrelated-anchor.pem',path.join(anchors,subjectHash+'.0'));
@@ -202,11 +203,11 @@ test('supplementary hashed trust preserves the exact public CA gate and supports
   assert(!fs.existsSync(path.join(anchors,subjectHash+'.2')),'repeat installation retains the exact anchor');
   const server=require('node:https').createServer({cert:root,key:fs.readFileSync(key)},(_request,response)=>response.end('verified'));
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
-  const check=path.resolve(__dirname,'../../bootstrapper/ca/check.js');
-  const program="const proof=require(process.argv[1]).system();require('https').get({hostname:'fixture.local',port:Number(process.argv[2]),lookup:(_host,options,done)=>options.all?done(null,[{address:'127.0.0.1',family:4}]):done(null,'127.0.0.1',4)},response=>{response.resume();response.on('end',()=>process.stdout.write(JSON.stringify({...proof,status:response.statusCode})));}).on('error',error=>{process.stderr.write(error.code||'tls-failed');process.exitCode=1;});";
+  const check=path.resolve(__dirname,'../../dist/modules/host-bootstrap/caVerification.service.js');
+  const program="const proof=new (require(process.argv[1]).CaVerificationService)().system(process.cwd());require('https').get({hostname:'fixture.local',port:Number(process.argv[2]),lookup:(_host,options,done)=>options.all?done(null,[{address:'127.0.0.1',family:4}]):done(null,'127.0.0.1',4)},response=>{response.resume();response.on('end',()=>process.stdout.write(JSON.stringify({...proof,status:response.statusCode})));}).on('error',error=>{process.stderr.write(error.code||'tls-failed');process.exitCode=1;});";
   const run=certDirectory=>new Promise(resolve=>{
     const env={...process.env,NODE_OPTIONS:'--use-openssl-ca',SSL_CERT_FILE:canonical,SSL_CERT_DIR:certDirectory};delete env.NODE_EXTRA_CA_CERTS;
-    const child=spawn(process.execPath,['-e',program,check,String(server.address().port)],{env,stdio:['ignore','pipe','pipe']});let stdout='',stderr='';
+    const child=spawn(process.execPath,['-e',program,check,String(server.address().port)],{env,cwd:path.resolve(__dirname,'../..'),stdio:['ignore','pipe','pipe']});let stdout='',stderr='';
     child.stdout.on('data',part=>stdout+=part);child.stderr.on('data',part=>stderr+=part);child.on('close',code=>resolve({code,stdout,stderr}));
   });
   const trusted=await run(anchors);assert.equal(trusted.code,0,trusted.stderr);
@@ -219,12 +220,16 @@ test('invalid fixture ownership/settings fail before mutations and bootstrap pri
   for(const change of [
     f=>{f.candidate.spec.fullAcceptance=false;},
     f=>{f.candidate.spec.sourceTree='invalid';},
-    f=>{f.candidate.spec.guidedPreviewSettings.review.host='live.example.com';},
+    f=>{f.candidate.spec.guidedPreviewSettings.beta.host='live.example.com';},
     f=>{f.authority.original={};},
     f=>{f.authority.ready=false;},
   ]){
     const f=platform();change(f);await assert.rejects(()=>fixture.prepare(f.candidate,f.authority,f.dependencies));assert.equal(f.calls.length,0);
   }
+  const registration=platform();
+  registration.dependencies.waitForRegistration=async()=>{throw Error('registration-incomplete');};
+  await assert.rejects(()=>fixture.prepare(registration.candidate,registration.authority,registration.dependencies),/registration-incomplete/);
+  assert.equal(registration.calls.length,0,'registration failure must precede certificate writes and GitLab recreation');
   const f=platform(),original=f.candidate.inner;
   f.candidate.inner=async(args,options)=>{
     if(args.some(value=>value.endsWith('/openssl')))throw Error('issuance-bootstrap-failed');return original(args,options);
@@ -237,54 +242,23 @@ test('additional ACME SANs stay within the disposable DNS namespace',()=>{
   assert(acme.issuanceDomains(['gitlab.candidate.test','wizard.candidate.test']).includes('gitlab.candidate.test'));
   for(const domains of [['live.example.com'],['*.candidate.test'],['127.0.0.1'],['https://gitlab.candidate.test']])assert.throws(()=>acme.issuanceDomains(domains),/owned-certificate-domains/);
 });
-test('binding proof validates actual source-primary receipts and both stopped generations without returning configuration',async t=>{
-  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'guided-binding-'));
-  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
-  const binding=require('../../project-bootstrap/wizard-source-primary/binding');
-  const source=require('../../project-bootstrap/wizard-environments/source-primary');
-  const state=require('../../project-bootstrap/wizard-environments/state');
-  const sha=value=>require('node:crypto').createHash('sha256').update(value).digest('hex');
-  const operation='a'.repeat(48),settings={review:{enabled:true,host:fixture.HOSTS.review},beta:{enabled:true,host:fixture.HOSTS.beta}};
-  const ciFiles=[{path:'.gitlab/primary.yml',sha256:'b'.repeat(64)},{path:'.gitlab/delivery/environment.sh',sha256:'c'.repeat(64)}];
-  const environment={version:1,managementMode:'source-primary',phase:'ready',operation,settings,settingsHash:sha(JSON.stringify(settings)),
-    helperImage:'sha256:'+'d'.repeat(64),controller:'system_bootstrapper_1',activationCommit:'e'.repeat(40),ciFiles,deployments:{}};
-  environment.recipeHash=source.reservation(environment).recipeHash;
-  for(const [index,kind]of ['review','beta'].entries()){
-    const stopped={...state.record({action:'deploy',kind,projectId:7,pipelineId:20+index,jobId:40+index,
-      sourceCommit:'f'.repeat(40),mrIid:kind==='review'?3:0,operation},settings[kind].host,'registry.candidate.test/root/wizard@sha256:'+'1'.repeat(64)),state:'stopped'};
-    environment.deployments[kind]={tombstone:stopped,lastPipelineId:stopped.pipelineId,stoppedThroughPipelineId:stopped.pipelineId};
-  }
-  const receipt={defaultProject:true,template:'wizard',state:'complete',namespaceId:4,
-    repository:{id:7,namespaceId:4,path:'root/wizard',defaultBranch:'master',systemProject:true,managementMode:'source-primary',ciPath:'.gitlab/primary.yml'},
-    sourcePrimary:{version:1,operation,adoptionCommit:'e'.repeat(40),ciFiles},wizardWorkflow:{environments:environment}};
-  const filename=path.join(directory,'.wizard.env'),cube=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184);
-  let text;
-  const save=value=>{text=cube+'\n'+binding.PREFIX+Buffer.from(JSON.stringify(value)).toString('base64')+'\n';fs.writeFileSync(filename,text);};
-  save(receipt);
+test('binding proof validates shared source and stopped Beta identity without configuration disclosure',async t=>{
+  const state=require('../../dist/modules/project-lifecycle/state'),binding=require('../../dist/modules/project-lifecycle/systemBetaBinding');
+  const operation='a'.repeat(48),source='b'.repeat(40),image='sha256:'+'c'.repeat(64),hash=value=>require('crypto').createHash('sha256').update(value).digest('hex');
+  const settings={review:{enabled:false},beta:{enabled:true,host:'beta.candidate.test'}};
+  const stopped={...state.record({action:'deploy',kind:'beta',delivery:'system',projectId:7,pipelineId:20,jobId:40,sourceCommit:source,mrIid:0,operation},settings.beta.host,'registry.candidate.test/root/wizard@'+image),state:'stopped'};
+  const environment={phase:'ready',managementMode:'system-monorepo',operation,controller:'system_bootstrapper_1',settings,systemSource:{id:7,path:'root/wizard',namespaceId:4,defaultBranch:'main'},deployments:{beta:{tombstone:stopped,lastPipelineId:20,stoppedThroughPipelineId:20}}};
+  const receipt={repository:{id:7,namespaceId:4,path:'root/wizard',defaultBranch:'main'},wizardWorkflow:{environments:environment}};
+  const selected={version:2,sourceLayout:'system-monorepo-v1',mrIid:0,operation,projectId:7,projectPath:'root/wizard',namespaceId:4,defaultBranch:'main',pipelineId:20,candidateJobId:30,sourceCommit:source,wizardSourceTree:'d'.repeat(40),helperImage:image,wizardImageId:image,wizardImageRef:'registry.candidate.test/root/wizard@'+image,wizardProjectId:7,wizardProjectPath:'root/wizard',wizardDefaultBranch:'main',environmentHash:binding.environmentHash(environment)};
+  let current=receipt;
   const execute=async(_candidate,action,input)=>vm.runInNewContext('('+action.toString()+')',{require(name){
-    if(name==='/system/project-bootstrap/wizard-source-primary/binding')return {...binding,read:()=>binding.read(filename)};
-    if(name==='/system/project-bootstrap/wizard-environments/source-primary')return source;
-    if(name==='/system/project-bootstrap/wizard-environments/state')return state;
-    if(name==='fs')return {readFileSync:()=>fs.readFileSync(filename,'utf8')};return require(name);
+    if(name==='/system/dist/modules/project-workflow/projectWorkflow')return {readReceipt:()=>current};
+    if(name==='/system/dist/modules/project-lifecycle/systemBetaBinding')return binding;
+    if(name==='/system/dist/modules/project-lifecycle/state')return state;
+    if(name==='fs')return {readFileSync:file=>file.endsWith('.system-beta.json')?JSON.stringify(selected):'retained configuration'};return require(name);
   }})(input);
-  const result=await fixture.bindingProof({}, {node:execute});
-  assert.equal(result.projectId,7);assert.equal(result.operation,operation);assert.equal(result.receiptSha256,sha(JSON.stringify(receipt)));
-  fs.writeFileSync(filename,text+'\n# Retained configuration formatting\n');
-  assert.equal((await fixture.bindingProof({}, {node:execute})).receiptSha256,result.receiptSha256);
-  assert.equal(result.settingsSha256,sha(JSON.stringify(settings)));
-  assert.equal(Object.keys(result).sort().join(','),'operation,projectId,receiptSha256,settingsSha256');
-  for(const change of [
-    value=>{value.repository.managementMode='managed';},
-    value=>{value.sourcePrimary.adoptionCommit='invalid';},
-    value=>{value.wizardWorkflow.environments.deployments.review.active={};},
-    value=>{value.wizardWorkflow.environments.deployments.beta.pending={};},
-    value=>{delete value.wizardWorkflow.environments.deployments.beta.tombstone;},
-    value=>{value.wizardWorkflow.environments.deployments.review.stoppedThroughPipelineId=0;},
-    value=>{value.wizardWorkflow.environments.deployments.beta.lastPipelineId=0;},
-    value=>{value.wizardWorkflow.environments.deployments.review.tombstone.projectId=8;},
-    value=>{value.wizardWorkflow.environments.deployments.beta.tombstone.operation='2'.repeat(48);},
-  ]){
-    const changed=JSON.parse(JSON.stringify(receipt));change(changed);save(changed);
-    await assert.rejects(()=>fixture.bindingProof({}, {node:execute}));
+  const result=await fixture.bindingProof({}, {node:execute});assert.equal(result.projectId,7);assert.equal(result.receiptSha256,hash(JSON.stringify(receipt)));
+  for(const mutate of [r=>r.wizardWorkflow.environments.deployments.beta.pending={},r=>r.wizardWorkflow.environments.deployments.beta.tombstone.operation='f'.repeat(48),r=>r.wizardWorkflow.environments.settings.review.enabled=true,r=>r.wizardWorkflow.environments.deployments.beta.lastPipelineId=0]){
+    current=JSON.parse(JSON.stringify(receipt));mutate(current);await assert.rejects(()=>fixture.bindingProof({}, {node:execute}));
   }
 });

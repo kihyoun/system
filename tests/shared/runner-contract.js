@@ -14,7 +14,11 @@ const {runChecks} = require('./run-checks');
     const marker = path.join(root,'descendant-survived');
     const descendant = "setTimeout(() => require('fs').writeFileSync(process.env.FIXTURE_MARKER, 'unexpected'), 800);";
     fs.writeFileSync(path.join(root,'tests/hang.js'), `require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], {stdio:'ignore',env:{...process.env,FIXTURE_MARKER:require('path').join(__dirname,'../descendant-survived')}}); setInterval(() => {}, 1000);\n`);
-    const checks = ['pass','fail','hang'].map(name => ({component:'fixture',file:name+'.js',timeoutSeconds:0.2}));
+    const checks = [
+      {component:'fixture',file:'pass.js'},
+      {component:'fixture',file:'fail.js'},
+      {component:'fixture',file:'hang.js',timeoutSeconds:0.2},
+    ];
     const reportDirectory = path.join(root,'reports');
     const results = await runChecks(checks, {root,reportDirectory,log:()=>{}});
     assert.deepStrictEqual(results.map(item=>item.status), ['passed','failed','timeout']);
@@ -22,7 +26,7 @@ const {runChecks} = require('./run-checks');
     assert(fs.readFileSync(path.join(reportDirectory,'junit.xml'),'utf8').includes('result &lt; &amp; &gt;'));
     assert.equal(JSON.parse(fs.readFileSync(path.join(reportDirectory,'results.json'))).results.length,3);
     const signal = setTimeout(() => process.kill(process.pid,'SIGTERM'),100);
-    const canceled = await runChecks([{component:'fixture',file:'hang.js',timeoutSeconds:2}], {root,reportDirectory,log:()=>{}});
+    const canceled = await runChecks([{component:'fixture',file:'hang.js'}], {root,reportDirectory,log:()=>{}});
     clearTimeout(signal);
     assert.equal(canceled[0].status,'canceled');
     await new Promise(resolve=>setTimeout(resolve,900));

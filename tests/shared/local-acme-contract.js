@@ -14,7 +14,7 @@ function fixture(t){
   const archive=path.join(directory,'client.tar');fs.writeFileSync(archive,Buffer.from([0,255,128,10]));
   const images=Object.fromEntries(['pebble','dns','certbot'].map((role,n)=>[role,{reference:acme.PINNED[role],id:'sha256:'+String(n+1).repeat(64)}]));
   Object.assign(images.certbot,{archive,sha256:crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex')});
-  const spec={acmeImages:images,images:{wizard:{id:'sha256:'+'5'.repeat(64)}}};
+  const spec={acmeImages:images,images:{wizard:{id:'sha256:'+'5'.repeat(64)},candidate:{id:'sha256:'+'6'.repeat(64)}}};
   return {directory,archive,spec};
 }
 function owners(f,options={}){
@@ -24,11 +24,17 @@ function owners(f,options={}){
     inner:async(args,input)=>{calls.push({inner:args,input});return JSON.stringify({status:200,body:'{}'});}};
   class Owner{
     constructor(spec){this.spec=spec;this.id=String(instances.length+1).repeat(24);this.name='system-candidate-'+this.id;this.resources=[];instances.push(this);}
+
     report(){calls.push({report:this.id});}
+
     async create(kind,args){calls.push({create:kind,args});const id=kind==='volume'?this.name:this.id.repeat(2)+'0'.repeat(16);this.resources.push({kind,id,name:this.name});return id;}
+
     async start(){throw Error('heavy Candidate.start must never be used');}
+
     async call(args,input){calls.push({args,input});return this.exec(args);}
+
     exec(args){
+      if(args[0]==='image'&&args.at(-1)===f.spec.images.candidate.id)return JSON.stringify({Id:args.at(-1),Config:{}});
       if(args[0]==='image'){const item=Object.values(f.spec.acmeImages).find(image=>image.reference===args.at(-1));return JSON.stringify({Id:item.id,RepoDigests:[item.reference],Config:{Volumes:options.imageVolumes}});}
       if(args[0]==='wait')return '0';
       if(args[0]==='inspect')return JSON.stringify({[instances[0].name]:{IPAddress:'172.29.0.'+(instances.indexOf(this)+2)}});
@@ -36,9 +42,10 @@ function owners(f,options={}){
       if(args[0]==='container'&&args[1]==='inspect')return JSON.stringify([{Id:original.daemon,Name:'/'+original.name,Config:{Labels:{[LABEL]:options.foreign?'foreign':original.id}},NetworkSettings:{Networks:{[instances[0].name]:{}}}}]);
       return '';
     }
+
     cleanup(){calls.push({cleanup:this.id});return !options.cleanupFailure;}
   }
-  const instance=new acme.LocalAcme(original,()=>f.directory,{Owner,scripts:{lease:'echo actual-lease-source',install:'echo actual-install-source'}});
+  const instance=new acme.LocalAcme(original,()=>f.directory,{Owner});
   return {original,instance,calls,instances};
 }
 test('ACME inputs require exact public pins, a regular verified client archive and the exact fixture trust',t=>{
@@ -76,8 +83,8 @@ test('independent CA/DNS owners journal only bounded tiny resources with no publ
   const dns=containers.find(call=>call.args.includes(acme.PINNED.dns)).args;
   assert.equal(Number(ca[ca.indexOf('--memory')+1].slice(0,-1))+Number(dns[dns.indexOf('--memory')+1].slice(0,-1)),256);
   assert(ca.includes('PEBBLE_AUTHZREUSE=0'));assert(ca.includes('-dnsserver'));
-  const init=containers.find(call=>call.args.includes('python')).args;
-  assert(init.includes('/etc/letsencrypt')&&init.includes('/var/lib/letsencrypt'),'declared client VOLUMES cannot create anonymous outer volumes');
+  const init=containers.find(call=>call.args.includes(f.spec.images.candidate.id)).args;
+  assert(init.includes('node'));assert(!init.includes('python'));assert(init.includes('--read-only'));
   assert(init.includes('none'));
   assert.equal(acme.pebbleConfiguration().pebble.httpPort,80);
   assert.equal(acme.pebbleConfiguration().pebble.tlsPort,443);
@@ -114,15 +121,46 @@ test('fixture cleanup failure retains the authority dependencies for targeted re
   assert.equal(x.instance.cleanup(),false);
   assert.equal(x.calls.filter(call=>call.cleanup).length,1);
 });
-test('host integration uses real source scripts and a Docker-only Certbot transport with isolated trust',t=>{
-  const f=fixture(t),x=owners(f);
-  const script=acme.hostProgram(acme.basePaths('/recovered-data/platform'),'172.29.0.2',acme.PINNED.certbot,x.instance.scripts);
-  assert.equal(spawnSync('bash',['-n'],{input:script}).status,0);
-  assert(script.includes('actual-lease-source'));assert(script.includes('actual-install-source'));
-  assert(script.includes('REQUESTS_CA_BUNDLE=/fixture-tools/pebble.minica.pem'));
-  assert(script.includes('--deploy-hook'));assert(script.includes('/recovered-data/platform/ssl/acme-http01'));
-  assert(!script.includes('--no-verify-ssl'));assert(!script.includes('--dry-run'));assert(!script.split(/[\s'\"]+/).some(value => { try { return new URL(value).hostname === 'acme-v02.api.letsencrypt.org'; } catch { return false; } }));
-  assert.throws(()=>acme.basePaths('/srv/production'),/owned-data-root/);
+test('native host integration holds the real lease through Certbot hook, private publication and proxy reload',async t=>{
+  const f=fixture(t),root=path.join(f.directory,'host'),data=path.join(root,'data'),state=path.join(data,'host/letsencrypt');
+  const paths={base:data,parent:root,state,tools:path.join(data,'tools'),webroot:path.join(data,'ssl/acme-http01')};
+  for(const directory of [state,paths.tools,paths.webroot,path.join(root,'etc/letsencrypt/live/recovery-fixture')])fs.mkdirSync(directory,{recursive:true});
+  fs.writeFileSync(path.join(data,'.system-bootstrapper-volume'),'system-bootstrapper-persistence-v1\n');
+  const lineage=path.join(root,'etc/letsencrypt/live/recovery-fixture');
+  fs.writeFileSync(path.join(lineage,'fullchain.pem'),'actual-certbot-output');fs.writeFileSync(path.join(lineage,'privkey.pem'),'actual-private-key');
+  const lock=path.join(state,'.system-bootstrapper-certificate-lock'),marker=path.join(state,'.fixture-deploy-fired');
+  const calls=[];let fail=false,fire=true;
+  const native={async run(binary,args,options){
+    assert.equal(binary,'docker');assert(fs.existsSync(lock),'native service lease must protect Certbot and deploy hook');calls.push(args);
+    assert(options.signal instanceof AbortSignal);
+    if(args.includes('run')){
+      assert(args.includes('acme-certbot:under-test'));assert(args.includes('REQUESTS_CA_BUNDLE=/fixture-tools/pebble.minica.pem'));
+      assert(args.includes(paths.webroot+':'+paths.webroot));assert(args.includes('--deploy-hook'));
+      assert(!args.includes('--no-verify-ssl'));assert(!args.includes('--dry-run'));
+      if(fail)throw Error('real-validation-failed');
+      if(fire)fs.writeFileSync(marker,'');return 'Certbot completed';
+    }
+    if(args.includes('inspect'))return 'true';
+    assert(args.includes('system_web_1'));return '';
+  }};
+  const input={base:'/recovered-data/platform',caAddress:'172.29.0.2',certbotReference:'acme-certbot:under-test',args:['renew','--server',acme.DIRECTORY,'--force-renewal']};
+  const dependencies={native,systemRoot:root,paths,selector:path.join(f.directory,'selector.env'),checkout:f.directory};
+  const {run}=require('../e2e/acme-host-runtime');
+  await run(input,dependencies);
+  const published=path.join(data,'ssl/live/recovery-fixture');assert.equal(fs.readFileSync(path.join(published,'fullchain.pem'),'utf8'),'actual-certbot-output');
+  assert.equal(fs.statSync(path.join(published,'privkey.pem')).mode&0o777,0o600);
+  assert.deepEqual(calls.slice(-2).map(args=>args.slice(-2)),[['nginx','-t'],['-s','reload']]);
+  assert(!fs.existsSync(lock));assert(!fs.existsSync(dependencies.selector));
+  fs.writeFileSync(path.join(lineage,'fullchain.pem'),'should-not-publish');fail=true;calls.length=0;
+  await assert.rejects(run(input,dependencies),/real-validation-failed/);assert.equal(calls.length,1);assert(!fs.existsSync(lock));assert(!fs.existsSync(marker));
+  assert.equal(fs.readFileSync(path.join(published,'fullchain.pem'),'utf8'),'actual-certbot-output');
+  fail=false;fire=false;await assert.rejects(run(input,dependencies),/deploy hook did not fire/);assert(!fs.existsSync(lock));
+  await assert.rejects(run({...input,base:'/srv/production'},dependencies),/owned-data-root/);
+  const x=owners(f);x.instance.caAddress=input.caAddress;let observed;
+  x.original.inner=async(args,options)=>{observed={args,options};};
+  await x.instance.certbot(x.original,input.base,input.args);
+  assert(observed.args.includes('system-candidate:under-test'));assert(observed.args.includes('/system/tests/e2e/acme-host-runtime.js'));assert(!observed.args.includes('/bin/bash'));
+  assert.deepEqual(JSON.parse(observed.options.input),input);
 });
 test('negative HTTP validation must fail before real renewal can establish evidence',async t=>{
   const f=fixture(t),x=owners(f),events=[];

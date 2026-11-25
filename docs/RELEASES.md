@@ -25,14 +25,16 @@ Each stable release provides:
 - A create-only GitHub presentation tag pointing at the exact mirrored accepted
   System commit, plus user-facing notes from the reviewed changelog.
 - `system-release-vX.Y.Z.json` and its SHA-256 sidecar: the exact System commit,
-  source tree and Wizard gitlink; matching public controller/Wizard references,
+  source tree and Wizard source identity; matching public controller/Wizard references,
   immutable manifest/config digests and accepted image IDs; same-attempt evidence
   hash and tested host compatibility; installation/upgrade/recovery links.
 - `quickstart.sh`, bound to that release tag, and `release-notes.md`.
 
-The public manifest format is `system-accepted-release-v1`. All data is generated
-from the accepted same-pipeline candidate, Docker Hub publication and exact Wizard
-source-publication receipts. Raw internal receipts, private registry URLs,
+The public manifest format remains `system-accepted-release-v1`. Releases from the
+shared repository explicitly declare `sourceLayout: system-monorepo-v1` and the
+exact `wizardSourceTree`. Historical releases record the separate Wizard gitlink.
+All data comes from the accepted same-pipeline candidate, Docker Hub publication
+and matching source-publication evidence. Raw internal receipts, private registry URLs,
 configuration, Seeds, credentials and operating logs are not release assets.
 Metadata and checksum are both obtained from the trusted GitHub release; their
 checksum detects inconsistent transfer, not an independent signing identity.
@@ -45,7 +47,8 @@ curl -fLO https://github.com/kihyoun/system/releases/download/v1.0.0/system-rele
 sha256sum -c system-release-v1.0.0.json.sha256
 ```
 
-Check out the manifest's `source.revision` and initialize its pinned submodule:
+For the historical 1.0.0 release, check out the manifest's `source.revision` and
+initialize its pinned submodule:
 
 ```bash
 git clone https://github.com/kihyoun/system.git
@@ -56,14 +59,21 @@ git rev-parse HEAD HEAD^{tree}
 git ls-tree HEAD wizard
 ```
 
-Compare these outputs with the manifest. GitHub's plain source archives omit
+Compare these outputs with the manifest. Historical GitHub source archives omit
 Wizard submodule contents; they are not a complete recursive checkout. Retained
 Wizard release refs make the pinned gitlink publicly retrievable without changing
 the Wizard default branch.
 
-Install a fresh host using [Quickstart](QUICKSTART.md), or pass the manifest's
+For 2.0.0 and later shared-source releases, check out the exact recorded System
+revision. Wizard is an ordinary directory in that commit: compare
+`git rev-parse HEAD:wizard` with the recorded Wizard tree. No separate Wizard clone, source
+publication or submodule initialization is needed for this layout.
+
+Install a fresh host using [Quickstart](QUICKSTART.md), which prepares its runtime.
+For the explicit path, complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime)
+first, then pass the manifest's
 `images.controller.reference` and `images.wizard.reference` to
-`bootstrapper/install-release.py --controller ... --wizard ... --release-metadata ...`.
+`system-bootstrapper install --controller ... --wizard ... --release-metadata ...`.
 The native installer verifies exact source and pulled image identity. References
 alone do not preserve image payloads: retain verified image archives or make sure
 public/private registries remain recoverable for the required recovery period.
@@ -88,8 +98,9 @@ additional server-side protection against writers outside this workflow.
 
 Configure these protected variables on trusted GitLab runners:
 
-- `GITHUB_RELEASE_PUBLISH_ENABLED=true`, plus the existing Docker Hub, GitHub
-  backup and Wizard-source publication enable flags and credentials.
+- `GITHUB_RELEASE_PUBLISH_ENABLED=true`, plus the existing Docker Hub and GitHub
+  backup enable flags and credentials. Separate Wizard-source publication is
+  required only for historical gitlink releases.
 - `GITHUB_RELEASE_REPOSITORY=kihyoun/system` (or the operator's public mirror).
 - `GITHUB_RELEASE_TOKEN_FILE`: external mode-0600 file containing a scoped GitHub
   token with Contents write access to only the release repository. A protected
@@ -118,6 +129,12 @@ must publish matching transition evidence before CLI preflight accepts it.
 Unknown releases, changed image/source identities, private Wizard substitutions,
 downgrades and undeclared service/database transitions fail before maintenance.
 No required database stop is implied by compatible product version numbers.
+
+The following example belongs to the **historical 1.2.0 checkout**. Its Python
+entry remains in that exact tag; it is not part of the 2.0 runtime. Use the
+version-specific commands for each required stop. For 2.0, prepare the native
+CLI runtime and complete the separately reviewed
+[GitLab migration](#native-upgrade-from-120-to-200) before the paired release phase.
 
 1. Obtain the selected target release source and its exact Wizard gitlink. Keep
    the old checkout and recovery inputs separately available. Use the version
@@ -244,11 +261,12 @@ digest references from that checkpoint, verify their recorded image IDs, and
 restore those two selectors through the normal configuration workflow. Do not
 replace any other current setting or delete the retained recovery inputs.
 
-The current public graph contains only controller/Wizard transitions. A
-container rollback cannot reverse a database migration. Future declared service
-transitions must use the existing [GitLab migration and cold-checkpoint recovery](HANDBOOK.md#5-evolving-a-running-system)
-procedure with its required intermediate versions and independently retained
-recovery inputs; the public CLI rejects unimplemented transition kinds. Full
+The current graph also declares **1.2.0 → 2.0.0**, including a GitLab database
+migration before the paired controller/Wizard update. A container rollback cannot
+reverse a database migration. Declared service transitions use the existing
+[GitLab migration and cold-checkpoint recovery](HANDBOOK.md#5-evolving-a-running-system)
+with required intermediate versions and independently retained recovery inputs;
+the public CLI rejects unimplemented transition kinds. Full
 [configuration and Seed recovery](RECOVERY_CONTRACT.md) remains the fresh-storage
 recovery path. A graph path with intermediate releases is shown in order; apply
 requires the first intermediate release's own checkout, new backup and separately
@@ -269,7 +287,7 @@ HTTPS and its reviewed publication workflow. Hashes establish a consistent
 publication; a checksum alongside its payload is not an independent signature.
 No consumer check disables the publisher's native merge or acceptance gates.
 
-Maintain `bootstrapper/upgrade-paths.json` with each supported release. Add only
+Maintain `config/releases/upgrade-paths.json` with each supported release. Add only
 explicitly exercised ascending edges, prerequisites, ordered steps and the named
 candidate stage; preserve mandatory intermediate releases. The CLI and offline
 Wizard bundle use this same metadata. Export the Docs bundle, review English,
@@ -278,3 +296,98 @@ the existing candidate's targeted previous-public-release transition. Previous
 images are obtained from their public metadata, not maintainer-owned pins. The
 publisher refuses an edge without matching passed runtime transition evidence;
 changing metadata does not manufacture compatibility.
+
+### Native upgrade from 1.2.0 to 2.0.0
+
+Use a clean official 1.2.0 installation, supported Ubuntu x86_64 and the matching
+configuration/Seed backup. Wait for active jobs and unfinished background
+migrations. Keep the old accepted release and recovery tools independently
+available. Select your own storage, domains and private installation API token.
+The following paths are examples; substitute the actual persistent root and
+mounted backup filesystem throughout.
+
+Fetch the exact target and prepare its verified offline runtime before downtime.
+The current Wizard is part of the System tree; this tag needs no Wizard submodule.
+
+```bash
+git clone https://github.com/kihyoun/system.git system-upgrade-2
+cd system-upgrade-2
+git checkout --detach v2.0.0
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
+test ! -e dist && test ! -e node_modules && test ! -e assets && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist dist && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules node_modules && \
+sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/assets assets
+```
+
+Prepare validates the public metadata/provenance and installed release, then
+pulls the accepted helper and the six exact GitLab/Runner/Helper pins before
+maintenance. It does not upgrade services. No publisher account or private
+pipeline artifact is required. Plan prints a GitLab plan hash; inspect it and
+replace `GITLAB_PLAN_SHA256` before promote. The accepted target helper runs the
+shared Nest migration services while the previous controller stays selected.
+
+```bash
+sudo system-bootstrapper gitlab-upgrade \
+  --operation prepare --checkout "$PWD" --target 2.0.0 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+sudo system-bootstrapper gitlab-upgrade \
+  --operation plan --checkout "$PWD" \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+sudo system-bootstrapper gitlab-upgrade \
+  --operation promote --checkout "$PWD" --confirm-plan GITLAB_PLAN_SHA256 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+```
+
+Retain the returned `checkpointDir` and `checkpointSha256`; the former is the
+host directory passed to the paired plan below. Inspect the GitLab operation with
+status before proceeding. The paired plan validates the completed checkpoint,
+actual migrated images/version and published transition evidence. Apply retains
+controller/Wizard recovery payloads and takes the coordinated matching backup.
+Inspect this separate plan and replace `PAIR_PLAN_SHA256` explicitly.
+
+```bash
+sudo system-bootstrapper upgrade \
+  --checkout "$PWD" --target 2.0.0 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
+  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2-0-0 \
+  --backup-file /mnt/backup/configuration-before-2.0.0.zip \
+  --token-file /root/system-api-token
+sudo system-bootstrapper upgrade \
+  --operation apply --checkout "$PWD" --confirm-plan PAIR_PLAN_SHA256 \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
+  --token-file /root/system-api-token
+```
+
+Completion requires the same native verification described above. Keep the
+preparation directory, both checkpoints, configuration ZIP and Seed. Inspect
+status after interruption; never delete a lease to retry.
+
+```bash
+sudo system-bootstrapper upgrade \
+  --operation status --checkout "$PWD" \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0
+sudo system-bootstrapper gitlab-upgrade \
+  --operation status --checkout "$PWD" \
+  --persistence-env /etc/system-bootstrapper/persistence.env \
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+```
+
+For paired interruption use `system-bootstrapper upgrade --operation recover`
+with the same plan directory, private token and `--confirm-plan PAIR_PLAN_SHA256`.
+It restores the previous controller/Wizard pair and explicitly does not rewind
+GitLab. If database rollback is also required, first complete that paired recovery,
+then use `system-bootstrapper gitlab-upgrade --operation rollback` with the same
+preparation directory, `--confirm-checkpoint GITLAB_CHECKPOINT_SHA256` and
+`--paired-checkpoint /var/lib/system-bootstrapper/platform/recovery/controller-updates/to-2.0.0`.
+The helper verifies the completed paired recovery before accepting the recreated
+old controller. Before a completed GitLab checkpoint exists, the separate
+`--operation abort --confirm-plan GITLAB_PLAN_SHA256` resumes the old generation.
+Database rollback discards writes after the cold checkpoint. Preserve the offline
+runtime and accepted helper image; recovery does not download or rebuild them.

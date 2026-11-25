@@ -3,8 +3,9 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http');
 const {spawn}=require('node:child_process');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'upgrade-sync-')),state=path.join(root,'state');fs.mkdirSync(state);
-fs.mkdirSync(path.join(root,'sync'));fs.mkdirSync(path.join(root,'system'));
-const child=spawn(process.execPath,[process.env.SYNC_ENTRY||path.resolve(__dirname,'../../sync/dist/index.js')],{cwd:path.join(root,'sync'),env:{...process.env,SYSTEM_CONFIG_DIR:state,SYNC_USER:'fixture',SYNC_PASS:'fixture-password'},stdio:'ignore'});
+fs.mkdirSync(path.join(root,'config/system'),{recursive:true});
+const startCode = `const path=require('node:path'),paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installationPaths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);paths.cliArguments=(command,args)=>[path.join(fixture,'dist/cli/main.js'),command,...args];require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
+const child=spawn(process.execPath,['-e',startCode,process.env.SYNC_ENTRY||path.resolve(__dirname,'../../dist/api/index.js'),root],{cwd:root,env:{...process.env,SYSTEM_CONFIG_DIR:state,SYNC_USER:'fixture',SYNC_PASS:'fixture-password'},stdio:'ignore'});
 const closed=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const request=(route,method='GET',token,body)=>new Promise((resolve,reject)=>{const req=http.request({hostname:'127.0.0.1',port:8071,path:route,method,headers:{'Content-Type':'application/json',...(body&&method!=='GET'?{'Content-Length':Buffer.byteLength(body)}:{}),...(token?{Authorization:'Bearer '+token}:{})}},res=>{let raw='';res.on('data',p=>raw+=p);res.on('end',()=>resolve({status:res.statusCode,body:raw}));});req.on('error',error=>reject(Object.assign(error,{route})));req.end(method==='GET'?undefined:body);});
@@ -21,13 +22,19 @@ const request=(route,method='GET',token,body)=>new Promise((resolve,reject)=>{co
   assert.notEqual((await request('/config/main','GET',token)).status,409);
   for(const [route,method] of [['/config/zip','POST'],['/command/restart','PATCH'],['/command/harvest','PATCH'],['/command/seed','PATCH'],['/projects','POST'],['/projects/wizard/source','POST'],['/config/main','DELETE'],['/projects/wizard/environments/status','GET']])assert.equal((await request(route,method,token,'{}')).status,409,route+' must respect the live-state storage lease');
   fs.rmdirSync(path.join(state,'.storage-operation-lock'));assert.notEqual((await request('/config/zip','POST',token,'{}')).status,409);
-  const calls=path.join(root,'system','calls');
-  fs.writeFileSync(path.join(root,'system','stop-intermediate.sh'),'#!/bin/sh\necho stop >> calls\n');
-  fs.writeFileSync(path.join(root,'system','seed.sh'),'#!/bin/sh\necho native-restore >> calls\nexit 1\n');
+  const calls=path.join(root,'config/system','calls');
+  fs.mkdirSync(path.join(root,'dist/modules/storage'),{recursive:true});
+  fs.mkdirSync(path.join(root,'dist/cli'),{recursive:true});
+  fs.writeFileSync(path.join(root,'dist/cli/main.js'), 'if(process.argv[2]==="lifecycle"){require("node:fs").appendFileSync('+JSON.stringify(calls)+',"stop\\n");process.exit(1);}if(process.argv[2]!=="storage")throw Error("unexpected native command");process.argv.splice(2,1);require("../modules/storage/entry.js");\n');
+  const restore=path.join(root,'dist/modules/storage/entry.js');
+  // Stub only the native operation boundary: the real HTTP service must invoke
+  // the complete restore lease without separately stopping intermediate services.
+  const nativeRestore='const assert=require("node:assert/strict"),fs=require("node:fs");assert.deepEqual(process.argv.slice(2),["launch","restore"]);assert.equal(process.cwd(),'+JSON.stringify(root)+');fs.appendFileSync('+JSON.stringify(calls)+',"native-restore\\n");\n';
+  fs.writeFileSync(restore,nativeRestore+'process.exit(1);\n');
   assert.equal((await request('/command/seed','PATCH',token,'{}')).status,500);
   assert.equal(fs.readFileSync(calls,'utf8'),'native-restore\n','a refused Seed must not stop any service');
   assert.equal((await request('/status','GET',token)).status,200,'failed restore preserves Sync');
-  fs.writeFileSync(path.join(root,'system','seed.sh'),'#!/bin/sh\necho native-restore >> calls\n');
+  fs.writeFileSync(restore,nativeRestore);
   fs.unlinkSync(calls);
   const restored=await request('/command/seed','PATCH',token,'{}');
   assert.equal(restored.status,200);assert.equal(JSON.parse(restored.body).status.needRestart,true);

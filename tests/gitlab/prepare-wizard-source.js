@@ -4,7 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {execFileSync} = require('child_process');
-const {selection, prepare} = require('../../gitlab/prepare-wizard-source');
+const {selection,WizardSourcePreparationService}=require('../../dist/modules/source-preparation/wizardSourcePreparation.service');
+const prepare=(environment=process.env,execute=execFileSync)=>new WizardSourcePreparationService({run(binary,args,options){return {stdout:String(execute(binary,args,{...options,encoding:'utf8'})),stderr:'',status:0};}}).prepare(environment,process.cwd());
 const base = {CI_SERVER_URL: 'https://gitlab.example.test', CI_JOB_TOKEN: 'fixture-token'};
 assert.equal(selection(base), null, 'public checkout remains the portable fallback');
 for (const url of ['http://gitlab.example.test/team/wizard.git', 'https://other.example/team/wizard.git',
@@ -83,4 +84,16 @@ try {
   assert.equal(prepare(selectedEnv, offline), advanced, 'deinitialized module cache is also reconciled before checkout');
   assert.equal(git(path.join(system, 'wizard'), 'remote', 'get-url', 'origin'), primary);
 } finally { process.chdir(previous); fs.rmSync(directory, {recursive: true, force: true}); }
+const monorepoCalls = [];
+assert.equal(prepare({...env, WIZARD_PRIMARY_REPOSITORY_URL: 'invalid obsolete selector'}, (command, args) => {
+  monorepoCalls.push(args);
+  if (args.includes('ls-tree')) return '040000 tree ' + 'b'.repeat(40) + '\twizard\n';
+  if (args.includes('rev-parse')) return sha;
+  return '';
+}), sha);
+assert(!monorepoCalls.some(args => args.includes('submodule')), 'regular source never fetches a former submodule');
+assert.throws(() => prepare({}, (command, args) => {
+  if (args.includes('ls-tree')) return '040000 tree ' + 'b'.repeat(40) + '\twizard';
+  throw Error('dirty source');
+}), /dirty source/);
 console.log('PASS: public fallback, internal authenticated selector, exact gitlink, reused/deinitialized caches and unchanged superproject origin');

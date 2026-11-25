@@ -15,7 +15,7 @@ for the browser procedure.
 | General web project | Framework-free HTML, CSS and JavaScript served by NGINX without a Node build. |
 | Empty repository | README and managed CI; application source and a root Dockerfile must be supplied separately. |
 
-Template files are versioned under `project-bootstrap/templates/`. Source,
+Template files are versioned under `templates/project-bootstrap/templates/`. Source,
 Dockerfile, runtime configuration and CI remain editable after creation.
 Generated application pipelines build an image, publish it to the instance
 registry, perform an HTTP smoke check and deploy enabled environments according
@@ -76,10 +76,10 @@ explicit and independent:
 1. [Initialize source](WIZARD_SOURCE.md) from the committed System Wizard gitlink.
 2. [Build and verify](WIZARD_BUILD.md) the imported application and immutable
    registry candidate.
-3. Configure [Review and Beta](../project-bootstrap/wizard-environments/README.md)
+3. Configure [Review and Beta](../templates/project-bootstrap/wizard-environments/README.md)
    on separate HTTPS hosts and deploy/stop them through manual GitLab jobs.
 4. Apply a verified candidate with the guarded
-   [Production promotion and rollback procedure](../project-bootstrap/wizard-production/README.md).
+   [Production promotion and rollback procedure](../templates/project-bootstrap/wizard-production/README.md).
 
 Source import, candidate builds and Review/Beta deployment do not replace the
 running management interface. Production promotion is an operator-confirmed

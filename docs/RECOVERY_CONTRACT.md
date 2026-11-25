@@ -1,8 +1,17 @@
 # Configuration and Seed recovery
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `dist`, `node_modules` and `assets`
+available offline before maintenance.
+
 The recovery inputs remain separate: a Wizard configuration backup, a completed
-Harvest Seed, and freshly fetched System source including its pinned Wizard
-submodule. Configuration is not copied into Harvest, and no service-data download
+Harvest Seed, and the recorded System source with its Wizard tree. New monorepo
+releases use the ordinary `wizard/` directory; historical gitlink releases also
+require their exact separate Wizard commit. Configuration is not copied into Harvest, and no service-data download
 is provided by the Wizard.
 
 The Wizard imports literal shell assignments, including single/double
@@ -63,7 +72,7 @@ Seed match or authorize recovery.
 
 For a recorded accepted product release, retrieve its
 [public release metadata](RELEASES.md) and fetch that exact source commit with the
-pinned Wizard submodule. For a source-built/private runtime, retain its source
+recorded Wizard tree, or exact separate Wizard commit for a historical gitlink release. For a source-built/private runtime, retain its source
 and verified image payloads independently. Pull exact immutable references or load
 verified archives before recovery; a reference is not a saved image. The native
 private-Wizard recovery path below can pull a matching image from the restored
@@ -96,7 +105,7 @@ and its matching configuration before depending on a replacement host.
 
 ## Creating a completed recovery Seed
 
-Install host integration with `bootstrapper/install-volume-host.sh` so scheduled
+Install host integration with `system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` so scheduled
 Certbot renewals use `system-certbot`. For manual renewal and renewal dry-runs,
 use the same wrapper, for example `system-certbot renew --dry-run`. It shares a
 filesystem lease with Harvest. Do not run an unmanaged Certbot command or modify
@@ -140,18 +149,19 @@ promote a `.harvest-*` staging directory to `current`.
 
 ### Run from the Wizard or the host
 
-With the target available, **Harvest** in the authenticated Wizard uses the
-same repository-owned dispatcher as `system/harvest.sh`. You can instead run
-from a reviewed host checkout using an available, accepted complete controller
-image. Resolve and record its actual image identity, then use:
+With the target available, **Harvest** in the authenticated Wizard uses the same
+shared storage services as the installed `system-bootstrapper harvest` command.
+You can instead select a reviewed host checkout and an available, accepted
+complete controller image explicitly. Resolve and record its actual image
+identity, then run the named command prepared by Quickstart or source installation:
 
 ```sh
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh harvest \
+  system-bootstrapper harvest --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
   --check-only
 sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-  bash bootstrapper/seed-operation.sh harvest \
+  system-bootstrapper harvest --checkout "$PWD" \
   --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID
 ```
 
@@ -162,12 +172,20 @@ Harvest does not add that configuration to the Seed.
 
 ## Restore an external Seed into a fresh local installation
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `dist`, `node_modules` and `assets`
+available offline before maintenance.
+
 The inputs are the completed Seed, matching Wizard `bootstrapper.zip`, recorded
-System source with its pinned submodule, and declared image references or
+System source with its recorded Wizard layout, and declared image references or
 verified image archives. The former live data directory is not an input.
 
 1. Install Docker on the replacement Ubuntu host and check out the intended
-   source revision with pinned submodules. Select `PERSISTENCE_MODE=local` and
+   source revision with its recorded Wizard tree (initialize exact submodules only for historical gitlink releases). Select `PERSISTENCE_MODE=local` and
    a fresh local `PERSISTENT_DIR`, or explicitly select a mounted live volume.
    Mount the retained backup filesystem and set its `SEED_MOUNT`, `SEED_DIR`
    and expected UUID in the private host selector. Do not start GitLab yet.
@@ -175,7 +193,7 @@ verified image archives. The former live data directory is not an input.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash -euc 'set -a; source "$PERSISTENCE_ENV_FILE"; source bootstrapper/storage-env.sh; set +a; exec bash bootstrapper/persistence.sh'
+     system-bootstrapper persistence --checkout "$PWD"
    ```
 
    This step neither starts containers nor requires the backup medium. It must
@@ -192,12 +210,12 @@ verified image archives. The former live data directory is not an input.
 
    ```sh
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/seed-operation.sh restore \
+     system-bootstrapper restore --checkout "$PWD" \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip \
      --check-only
    sudo env PERSISTENCE_ENV_FILE=/etc/system-bootstrapper/persistence.env \
-     bash bootstrapper/seed-operation.sh restore \
+     system-bootstrapper restore --checkout "$PWD" \
      --image sha256:REPLACE_WITH_ACCEPTED_CONTROLLER_IMAGE_ID \
      --configuration-backup /root/recovery/bootstrapper.zip
    ```
@@ -223,11 +241,11 @@ verified image archives. The former live data directory is not an input.
    directory and adds traversal permission to the SSL root while keeping private
    certificate directories and key files unchanged. The retained Seed is unchanged.
    Install Certbot as needed and run
-   `sudo bash bootstrapper/install-volume-host.sh`. This rebinds webroot renewal
+   `sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"`. This rebinds webroot renewal
    paths to the new live directory and installs the renewal/deploy integration.
-   Set the required image selectors, then start with `sudo bash start.sh`.
+   Set the required image selectors, then start with `sudo system-bootstrapper start --checkout "$PWD"`.
    Reprovision optional Review/Beta helpers explicitly if their old immutable
-   image is absent; see the [environment procedure](../project-bootstrap/wizard-environments/README.md).
+   image is absent; see the [environment procedure](../templates/project-bootstrap/wizard-environments/README.md).
    Runner managers/workspaces are recreated from configuration and restored
    GitLab state; old runner directories are not required inputs.
 6. Verify authenticated Fetch, Wizard/GitLab/registry access, restored data and
@@ -248,11 +266,12 @@ An incomplete Seed restore still requires a different fresh target as above.
 
 ### Pulling a restored private Wizard image
 
-After GitLab starts, `system/ensure-wizard-image.sh` recovers an absent immutable
+After GitLab starts, the shared Wizard recovery service recovers an absent immutable
 Wizard image from the platform's own registry. It validates the saved managed
 Wizard receipt and registry/project identity, renders a GitLab/registry-only proxy,
-and waits for GitLab's internal readiness endpoint. GitLab creates a project deploy
-token with only `read_registry`; Docker receives the password on standard input
+and waits for GitLab's internal readiness endpoint. The verified local controller
+credential requests a project deploy token through GitLab's documented API. The
+token has only `read_registry`; Docker receives the password on standard input
 and writes its login to a new private temporary directory. The helper pulls and
 verifies the exact saved digest, revokes the token on success or failure, and
 removes the temporary login. Old host Docker credentials are not recovery inputs.
@@ -269,9 +288,14 @@ ended, remove only that stale lock and retry startup; retain the pending file so
 the helper can revoke the reserved credential. Credential failures stop startup
 before Wizard and project services rather than substituting a different image.
 
+If Harvest cannot confirm completion of the remote GitLab stop command, it keeps
+its Seed and certificate barriers and does not resume services. Inspect the remote
+worker and retained operation ownership before recovery; elapsed client timeout
+alone does not prove that a delayed Docker command has finished.
+
 ## Verification boundaries
 
-`tests/seed/recovery-contract.py` exercises the real shell scripts and rsync with a
+`tests/operations/storage-copy.test.cjs` exercises the native services and real rsync with a
 fixture Docker command, including failed copies, forced shutdown, version mismatch,
 corruption, missing completion markers, active writers, renewal locking and
 interrupted-copy durability. Wizard model regressions cover literal assignments,
@@ -288,7 +312,7 @@ CI and TLS-renewal checks. It checks restored service/data identities, uncached 
 recovery and actual ACME account/renewal/deployment through a local authority.
 These checks do not emulate a new VM's OS installation or systemd timer scheduling.
 
-The retained-volume `recover-volume.sh` path is separate: its image archives are
+The retained-volume `recover-volume.js` path is separate: its image archives are
 explicit inputs, whereas the configuration-plus-Seed scenario rebuilds declared
 custom images from source. Neither path makes an older Seed a matching backup for
 a newer configuration. Capture compatible inputs and verify the intended GitLab

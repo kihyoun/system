@@ -17,7 +17,7 @@ function readInput(filename) {
   requireValue(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=30000&&(stat.mode&0o077)===0,'guided-preview-private-regular-input-required');
   let input;try{input=JSON.parse(fs.readFileSync(filename,'utf8'));}catch{throw Error('guided-preview-input-json-required');}
   const keys=['version','syncUrl','gitlabUrl','controllerImageId','settings','reportPath','timeBudgetMilliseconds'];
-  requireValue(input?.version===1&&Object.keys(input).every(key=>keys.includes(key))&&/^sha256:[a-f0-9]{64}$/.test(input.controllerImageId),'guided-preview-input-contract-invalid');
+  requireValue(input?.version===2&&Object.keys(input).every(key=>keys.includes(key))&&/^sha256:[a-f0-9]{64}$/.test(input.controllerImageId),'guided-preview-input-contract-invalid');
   for(const key of ['syncUrl','gitlabUrl']) {
     let url;try{url=new URL(input[key]);}catch{throw Error('guided-preview-https-platform-urls-required');}
     requireValue(url.protocol==='https:'&&!url.username&&!url.password&&!url.search&&!url.hash&&url.pathname==='/','guided-preview-https-platform-urls-required');
@@ -31,7 +31,8 @@ function readInput(filename) {
   const budget=input.timeBudgetMilliseconds??3600000;
   requireValue(Number.isSafeInteger(budget)&&budget>=60000&&budget<=7200000,'guided-preview-bounded-budget-required');
   input.timeBudgetMilliseconds=budget;
-  acceptance.settings({id:'a'.repeat(24),spec:{operatorAcceptance:true,guidedPreviewAcceptance:true,guidedPreviewSettings:input.settings}});
+  const desired=require('../../dist/modules/project-lifecycle/previewSettings').settings(input.settings);
+  requireValue(desired.version===2,'system-beta-shared-source-settings-required');
   return input;
 }
 const requestScript='('+function(){
@@ -57,11 +58,13 @@ class Operator {
     this.spec={operatorAcceptance:true,guidedPreviewAcceptance:true,guidedPreviewSettings:input.settings};
     this.url=input.syncUrl;this.gitlabUrl=input.gitlabUrl;this.evidence={};this.stages=[];this.deadline=now()+input.timeBudgetMilliseconds;
   }
+
   async inner(args,{input,timeout=120000}={}) {
     const remaining=(this.cleanupDeadline||this.deadline)-this.now();requireValue(remaining>0,'guided-preview-overall-timeout');
     const result=this.command('docker',['--host=unix:///var/run/docker.sock',...args],{input,encoding:'utf8',timeout:Math.min(timeout,remaining),maxBuffer:16000000,stdio:['pipe','pipe','pipe']});
     requireValue(!result.error&&result.status===0,'guided-preview-native-command-failed');return result.stdout||'';
   }
+
   async request(url,options={}) {
     // Host is derived from each exact TLS URL. Never relay another host's
     // private authentication header to a redirect or alternative endpoint.
@@ -74,28 +77,33 @@ class Operator {
       {input:JSON.stringify({url,options:{...options,headers},timeoutMilliseconds}),timeout:timeoutMilliseconds+10000});
     try{return JSON.parse(result);}catch{throw Error('guided-preview-http-result-invalid');}
   }
+
   async api(route,token,method='GET',payload) {
     const result=await this.request(this.gitlabUrl+'/api/v4'+route,{method,headers:{'PRIVATE-TOKEN':token,'Content-Type':'application/json'},
       ...(payload===undefined?{}:{body:JSON.stringify(payload)})});
     requireValue(result.status>=200&&result.status<300,'guided-preview-gitlab-api-request-failed');
     if(!result.body)return null;try{return JSON.parse(result.body);}catch{return result.body;}
   }
+
   async rails(script) {
     const result=await this.inner(['exec','-i','system_gitlab_1','gitlab-rails','runner','-'],{input:script,timeout:180000});
     try{return JSON.parse(result.trim().split('\n').at(-1));}catch{throw Error('guided-preview-native-rails-result-invalid');}
   }
+
   async wait(action,milliseconds) {
     const end=Math.min(this.now()+milliseconds,this.cleanupDeadline||this.deadline);
     while(this.now()<end){if(await action())return;await this.sleep(2000);}
     throw Error('guided-preview-native-check-timeout');
   }
+
   report() {
     const report={version:1,operation:this.id,mode:this.mode,controllerImageId:this.input.controllerImageId,stages:this.stages,evidence:this.evidence,
-      scope:this.mode==='apply'?'Real native imported-default, MR and merged-default pipelines, normal merge, Review and optional Beta lifecycles. No Production promotion or automatic restore.':'Preflight only; no source import, build, adoption or Review deployment.',
-      completed:this.completed===true,acceptancePassed:this.mode==='apply'&&this.completed===true};
+      scope:'Read-only System Beta preflight. Disposable fixture lifecycle is unavailable on operator platforms.',
+      completed:this.completed===true,acceptancePassed:false};
     const next=this.input.reportPath+'.'+this.id+'.tmp';
     fs.writeFileSync(next,JSON.stringify(report,null,2)+'\n',{mode:0o600,flag:'wx',flush:true});fs.renameSync(next,this.input.reportPath);
   }
+
   async stage(name,action) {
     const cleanup=['guided-preview-temporary-credential-revoked','guided-preview-production-retained','guided-preview-native-review-stop','guided-preview-native-beta-stop'].includes(name);
     const previousCleanup=this.cleanupDeadline;if(cleanup)this.cleanupDeadline=this.now()+180000;
@@ -104,6 +112,7 @@ class Operator {
     catch{record.state='failed';throw Error(name+'-failed');}
     finally{record.completedAt=new Date().toISOString();this.report();this.cleanupDeadline=previousCleanup;}
   }
+
   async prepare() {
     await this.stage('guided-preview-exact-accepted-controller',async()=>{
       const rows=JSON.parse(await this.inner(['inspect','system_bootstrapper_1']));
@@ -114,24 +123,23 @@ class Operator {
       this.secrets={user:selected.user,password:selected.password};
     });
   }
+
   async plan() {
     const before=await acceptance.production(this,true);
     const login=await this.request(this.url+'/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:this.secrets.user,password:this.secrets.password})});
     requireValue(login.status===200,'guided-preview-sync-login-failed');const token=JSON.parse(login.body).accessToken;
     const response=await this.request(this.url+'/projects/wizard/preview-setup/preflight',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({settings:this.input.settings})});
     requireValue(response.status===200,'guided-preview-native-preflight-failed');
-    const result=JSON.parse(response.body);requireValue(result.runnerReady===true&&result.productionChanged===false,'guided-preview-preflight-proof-failed');
-    this.evidence.plan={productionMainSha256:before.mainSha256,productionImageId:before.runningImage,retainedPublicImage:before.publicImage,
-      namespaceId:result.namespaceId,runnerReady:result.runnerReady,manualDeployment:true};
+    const result=JSON.parse(response.body);requireValue(result.version===2&&result.manualDeployment===true&&result.productionChanged===false,'guided-preview-preflight-proof-failed');
+    this.evidence.plan={productionMainSha256:before.mainSha256,productionImageId:before.runningImage,namespaceId:result.source?.namespaceId,manualDeployment:true};
   }
 }
 async function main(args=process.argv.slice(2)) {
-  requireValue(args.length===2&&['--check-only','--apply'].includes(args[0]),'Usage: guided-preview-live.js --check-only|--apply PRIVATE_INPUT_JSON');
+  requireValue(args.length===2&&args[0]==='--check-only','Usage: guided-preview-live.js --check-only PRIVATE_INPUT_JSON; use the normal System Beta bind/deploy commands for operator changes');
   const operator=new Operator(readInput(args[1]));operator.mode=args[0].slice(2);operator.report();
   await operator.prepare();
-  if(args[0]==='--check-only')await operator.stage('guided-preview-read-only-native-plan',()=>operator.plan());
-  else await acceptance.run(operator);
+  await operator.stage('guided-preview-read-only-native-plan',()=>operator.plan());
   operator.completed=true;operator.report();return operator;
 }
 module.exports={Operator,readInput,requestScript,main};
-if(require.main===module)main().then(()=>process.stdout.write('Native preview acceptance finished; inspect the private report.\n')).catch(()=>{process.stderr.write('Native preview acceptance failed; inspect the private report and exact owned source/Review state.\n');process.exitCode=1;});
+if(require.main===module)main().then(()=>process.stdout.write('Native preview acceptance finished; inspect the private report.\n')).catch(()=>{process.stderr.write('Native preview acceptance failed; inspect the private report and selected System Beta preflight.\n');process.exitCode=1;});

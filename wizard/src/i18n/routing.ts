@@ -1,0 +1,64 @@
+export const routingGerman: Record<string, string> = {
+  'Review Push impact': 'Auswirkungen der Übertragung prüfen',
+  'Push replaces the saved configuration. Review the expected service impact and keep a private configuration Backup.':
+    'Die Übertragung ersetzt die gespeicherte Konfiguration. Prüfe die erwarteten Auswirkungen auf die Dienste und bewahre eine private Konfigurationssicherung auf.',
+  'Checking configuration changes…': 'Konfigurationsänderungen werden geprüft…',
+  'Only application routing will be applied. GitLab stays available; affected application routes reload briefly.':
+    'Nur das Anwendungsrouting wird angewendet. GitLab bleibt verfügbar; betroffene Anwendungsrouten werden kurz neu geladen.',
+  'No service changes detected. Configuration will be saved without a restart.':
+    'Keine Dienständerungen erkannt. Die Konfiguration wird ohne Neustart gespeichert.',
+  'This Push restarts the platform, including GitLab. The Wizard and application routes will be temporarily unavailable. Keep a current configuration Backup before continuing.':
+    'Diese Übertragung startet die Plattform einschließlich GitLab neu. Wizard und Anwendungsrouten sind vorübergehend nicht verfügbar. Bewahre vor dem Fortfahren eine aktuelle Konfigurationssicherung auf.',
+  'Could not verify Push impact. Fetch and review configuration before retrying.':
+    'Die Auswirkungen der Übertragung konnten nicht geprüft werden. Rufe die Konfiguration ab und prüfe sie vor einem erneuten Versuch.',
+  'Optional exact host aliases, separated by spaces. HTTP and HTTPS redirect to this environment’s canonical host, preserving path and query. Its certificate must cover every alias. ACME HTTP-01 remains reachable.':
+    'Optionale exakte Host-Aliase, durch Leerzeichen getrennt. HTTP und HTTPS leiten unter Beibehaltung von Pfad und Abfrage zum kanonischen Host dieser Umgebung weiter. Das Zertifikat muss alle Aliase abdecken. ACME HTTP-01 bleibt erreichbar.',
+  'Configure at most 100 distinct exact DNS aliases without schemes, ports or wildcards.':
+    'Konfiguriere höchstens 100 unterschiedliche exakte DNS-Aliase ohne Schema, Port oder Platzhalter.',
+  'Application aliases require an exact canonical host in domain mode 0 or 2.':
+    'Anwendungsaliase benötigen einen exakten kanonischen Host im Domainmodus 0 oder 2.',
+  'Each application alias must belong to one enabled environment.':
+    'Jeder Anwendungsalias muss genau einer aktivierten Umgebung gehören.',
+  'An application alias conflicts with a platform host or Wizard alias.':
+    'Ein Anwendungsalias kollidiert mit einem Plattformhost oder Wizard-Alias.',
+  'An application alias conflicts with an enabled project host or alias.':
+    'Ein Anwendungsalias kollidiert mit einem aktivierten Projekthost oder Alias.',
+  'Application routing applied. GitLab remains available.':
+    'Anwendungsrouting angewendet. GitLab bleibt verfügbar.',
+  'Config written. No service restart required.':
+    'Konfiguration gespeichert. Kein Dienstneustart erforderlich.',
+  'Configuration changed since impact review. Review Push again.':
+    'Die Konfiguration hat sich seit der Prüfung geändert. Prüfe die Übertragung erneut.',
+};
+export const routingKorean: Record<string, string> = {
+  'Review Push impact': '설정 전송 영향 검토',
+  'Push replaces the saved configuration. Review the expected service impact and keep a private configuration Backup.':
+    '설정 전송은 저장된 구성을 바꿉니다. 서비스에 미칠 영향을 검토하고 구성 백업을 안전한 개인 저장소에 보관하세요.',
+  'Checking configuration changes…': '구성 변경 사항을 확인하는 중…',
+  'Only application routing will be applied. GitLab stays available; affected application routes reload briefly.':
+    '애플리케이션 라우팅만 적용합니다. GitLab은 계속 사용할 수 있으며 변경된 애플리케이션 경로는 잠시 다시 로드됩니다.',
+  'No service changes detected. Configuration will be saved without a restart.':
+    '서비스 변경이 없습니다. 재시작하지 않고 구성을 저장합니다.',
+  'This Push restarts the platform, including GitLab. The Wizard and application routes will be temporarily unavailable. Keep a current configuration Backup before continuing.':
+    '이 전송은 GitLab을 포함한 플랫폼을 재시작합니다. Wizard와 애플리케이션 경로를 잠시 사용할 수 없습니다. 계속하기 전에 최신 구성 백업을 보관하세요.',
+  'Could not verify Push impact. Fetch and review configuration before retrying.':
+    '설정 전송 영향을 확인하지 못했습니다. 구성을 가져와 검토한 후 다시 시도하세요.',
+  'Optional exact host aliases, separated by spaces. HTTP and HTTPS redirect to this environment’s canonical host, preserving path and query. Its certificate must cover every alias. ACME HTTP-01 remains reachable.':
+    '정확한 호스트 별칭을 공백으로 구분하여 입력하세요. HTTP와 HTTPS는 경로 및 쿼리를 보존하며 이 환경의 기본 호스트로 리디렉션합니다. 인증서에는 모든 별칭이 포함되어야 합니다. ACME HTTP-01은 계속 접근할 수 있습니다.',
+  'Configure at most 100 distinct exact DNS aliases without schemes, ports or wildcards.':
+    '스킴, 포트 또는 와일드카드 없이 서로 다른 정확한 DNS 별칭을 최대 100개 설정하세요.',
+  'Application aliases require an exact canonical host in domain mode 0 or 2.':
+    '애플리케이션 별칭은 도메인 모드 0 또는 2의 정확한 기본 호스트가 필요합니다.',
+  'Each application alias must belong to one enabled environment.':
+    '각 애플리케이션 별칭은 활성화된 환경 하나에 속해야 합니다.',
+  'An application alias conflicts with a platform host or Wizard alias.':
+    '애플리케이션 별칭이 플랫폼 호스트 또는 Wizard 별칭과 충돌합니다.',
+  'An application alias conflicts with an enabled project host or alias.':
+    '애플리케이션 별칭이 활성화된 프로젝트 호스트 또는 별칭과 충돌합니다.',
+  'Application routing applied. GitLab remains available.':
+    '애플리케이션 라우팅을 적용했습니다. GitLab은 계속 사용할 수 있습니다.',
+  'Config written. No service restart required.':
+    '구성을 저장했습니다. 서비스를 재시작할 필요가 없습니다.',
+  'Configuration changed since impact review. Review Push again.':
+    '영향 검토 후 구성이 변경되었습니다. 설정 전송을 다시 검토하세요.',
+};

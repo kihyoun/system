@@ -41,10 +41,7 @@ function address(text,network){
   if(!/^\d+\.\d+\.\d+\.\d+$/.test(ip||''))throw Error('acme-private-address-required');
   return ip;
 }
-function basePaths(base){
-  if(!['/candidate-data/platform','/recovered-data/platform'].includes(base))throw Error('acme-owned-data-root-required');
-  return {base,parent:path.posix.dirname(base),state:base+'/host/letsencrypt',tools:base+'/acme-test-tools',webroot:base+'/ssl/acme-http01'};
-}
+const {basePaths}=require('./acme-host-runtime');
 function issuanceDomains(extra=[]){
   if(!Array.isArray(extra)||extra.length>12||extra.some(host=>typeof host!=='string'||host.length>253||
     !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(host)||!host.endsWith('.candidate.test')))
@@ -71,29 +68,6 @@ async function request(candidate,url,input={}){
     });
   },{url,...input});
 }
-// The GitLab image supplies real host mount utilities. The only adapter is the
-// certbot executable's Docker transport; the lease and deploy scripts are exact
-// fresh-source bytes, and run with real bind mounts and the owned inner socket.
-function hostProgram(paths,caAddress,certbotReference,scripts){
-  const q=value=>"'"+String(value).replace(/'/g,"'\\''")+"'";
-  const marker=paths.state+'/.fixture-deploy-fired';
-  const shim='#!/bin/bash\nset -euo pipefail\n'+
-    'rm -f '+q(marker)+'\n'+
-    'docker run --rm --pull never --name acme-certbot-operation --memory 256m --cpus 0.5 --cap-drop ALL --security-opt no-new-privileges '+
-    '--tmpfs /var/lib/letsencrypt --tmpfs /var/log/letsencrypt --add-host '+q('pebble:'+caAddress)+' '+
-    '--env REQUESTS_CA_BUNDLE=/fixture-tools/pebble.minica.pem '+
-    '--volume '+q(paths.state+':/etc/letsencrypt')+' --volume '+q(paths.tools+':/fixture-tools:ro')+' '+
-    '--volume '+q(paths.webroot+':'+paths.webroot)+' '+q(certbotReference)+' "$@" '+
-    '--deploy-hook '+q('touch /etc/letsencrypt/.fixture-deploy-fired')+'\n'+
-    'if [ -f '+q(marker)+' ]; then RENEWED_LINEAGE=/etc/letsencrypt/live/recovery-fixture bash /tmp/install-volume-certificate.sh; fi\n';
-  return 'set -euo pipefail\numask 077\n'+
-    "printf '%s' "+q('PERSISTENCE_MODE=local\nPERSISTENT_MOUNT=/\nPERSISTENT_DIR='+paths.base+'\n')+' > /tmp/persistence.env\n'+
-    'export PERSISTENCE_ENV_FILE=/tmp/persistence.env\n'+
-    "printf '%s' "+q(shim)+' > /usr/bin/certbot\nchmod 700 /usr/bin/certbot\n'+
-    "printf '%s' "+q(scripts.install)+' > /tmp/install-volume-certificate.sh\n'+
-    "printf '%s' "+q(scripts.lease)+' > /tmp/certbot-with-volume-lock.sh\n'+
-    'bash /tmp/certbot-with-volume-lock.sh "$@"\n';
-}
 class LocalAcme {
   constructor(original,reportDirectory,dependencies={}){
     const checked=validate(original.spec,dependencies.trustPath);
@@ -111,11 +85,8 @@ class LocalAcme {
       await require('./recovery').verifyAliasRouting(...args);
       await require('./application-routing').verify(...args);
     });
-    this.scripts=dependencies.scripts||{
-      lease:fs.readFileSync(path.join(__dirname,'../../bootstrapper/certbot-with-volume-lock.sh'),'utf8'),
-      install:fs.readFileSync(path.join(__dirname,'../../bootstrapper/install-volume-certificate.sh'),'utf8')
-    };
   }
+
   async start(){
     const a=this.authority,d=this.dns,i=this.initializer;
     await this.original.stage('acme-independent-authority-start',async()=>{
@@ -134,10 +105,13 @@ class LocalAcme {
         '--pull','never',this.images.dns.reference,'-defaultIPv4','127.0.0.1','-defaultIPv6','','-http01','','-https01','','-tlsalpn01','']);
       await d.call(['start',this.dnsContainer]);
       this.dnsAddress=address(await d.call(['inspect','--format','{{json .NetworkSettings.Networks}}',this.dnsContainer]),a.name);
+      const initializerImage = this.original.spec.images.candidate.id;
+      const initializerInspection = JSON.parse(await a.call(['image','inspect','--format','{{json .}}',initializerImage]));
+      if (initializerInspection.Id !== initializerImage || Object.keys(initializerInspection.Config?.Volumes || {}).length) throw Error('acme-initializer-image-identity-mismatch');
       const init=await i.create('container',['create','-i','--name',i.name,'--label',LABEL+'='+i.id,'--network','none','--memory','128m','--cpus','0.25',
-        '--read-only','--tmpfs','/tmp','--tmpfs','/etc/letsencrypt','--tmpfs','/var/lib/letsencrypt','--volume',a.name+':/fixture',
-        '--pull','never','--entrypoint','python',this.images.certbot.reference,'-c',
-        "import sys,json,os; fd=os.open('/fixture/pebble.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600); os.write(fd,sys.stdin.buffer.read()); os.fsync(fd); os.close(fd)"]);
+        '--read-only','--tmpfs','/tmp','--volume',a.name+':/fixture',
+        '--pull','never','--entrypoint','node',initializerImage,'-e',
+        "const fs=require('node:fs');fs.writeFileSync('/fixture/pebble.json',fs.readFileSync(0),{flag:'wx',mode:0o600,flush:true});"]);
       await i.call(['start','--attach','--interactive',init],{input:JSON.stringify(pebbleConfiguration())});
       const exit=await i.call(['wait',init]);if(exit!=='0')throw Error('acme-config-initialization-failed');
       if(!i.cleanup())throw Error('acme-initializer-cleanup-failed');i.report(this.reportDirectory(i));
@@ -150,6 +124,7 @@ class LocalAcme {
       this.ready=true;
     });
   }
+
   async attach(candidate){
     if(!this.ready)throw Error('acme-authority-not-started');
     const inspected=JSON.parse(await this.authority.call(['container','inspect',candidate.daemon]))[0];
@@ -161,6 +136,7 @@ class LocalAcme {
     await candidate.wait(async()=>{const r=await request(candidate,DIRECTORY,{trust:this.trust,address:this.caAddress});return r.status===200;},30000);
     return ip;
   }
+
   async prepareClient(candidate,base){
     const p=basePaths(base),item=this.images.certbot;
     await candidate.call(['exec','-i',candidate.daemon,'docker','load','--quiet'],{inputFile:item.archive,timeout:120000});
@@ -170,19 +146,20 @@ class LocalAcme {
     // verified source pin/hash and loaded image ID define this explicit alias.
     await candidate.inner(['tag',item.id,CLIENT_ALIAS]);
     await candidate.call(['exec',candidate.daemon,'mkdir','-p',p.tools,p.webroot]);
-    await candidate.call(['exec','-i',candidate.daemon,'sh','-c','umask 077; cat > "$1"','sh',p.tools+'/pebble.minica.pem'],{input:this.trust});
-    await candidate.inner(['run','--rm','--pull','never','--network','none','--memory','128m','--cpus','0.25','--volume',p.tools+':/fixture-tools','--entrypoint','/bin/sh','system-candidate:under-test',
-      '-ec','cp /usr/bin/docker /fixture-tools/docker; cp /lib/ld-musl-x86_64.so.1 /fixture-tools/ld-musl-x86_64.so.1; chmod 755 /fixture-tools/docker /fixture-tools/ld-musl-x86_64.so.1']);
+    await candidate.inner(['run','--rm','--pull','never','-i','--network','none','--memory','128m','--cpus','0.25',
+      '--volume',p.tools+':/fixture-tools','--entrypoint','node','system-candidate:under-test','-e',
+      "require('node:fs').writeFileSync('/fixture-tools/pebble.minica.pem',require('node:fs').readFileSync(0),{mode:0o600});"],{input:this.trust});
     return p;
   }
+
   async certbot(candidate,base,args){
     const p=basePaths(base);
-    await candidate.inner(['run','--rm','--pull','never','-i','--name','acme-host-integration','--network','none','--memory','256m','--cpus','0.5','--entrypoint','/bin/bash',
-      '--env','PATH=/fixture-tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    await candidate.inner(['run','--rm','--pull','never','-i','--name','acme-host-integration','--network','none','--memory','256m','--cpus','0.5','--entrypoint','node',
       '--volume','/var/run/docker.sock:/var/run/docker.sock','--volume',p.parent+':'+p.parent,'--volume',p.state+':/etc/letsencrypt','--volume',p.tools+':/fixture-tools:ro',
-      '--volume',p.tools+'/ld-musl-x86_64.so.1:/lib/ld-musl-x86_64.so.1:ro','--volume',p.tools+'/ld-musl-x86_64.so.1:/lib/libc.musl-x86_64.so.1:ro',
-      'candidate-gitlab:under-test','-s','--',...args],{input:hostProgram(p,this.caAddress,CLIENT_ALIAS,this.scripts),timeout:120000});
+      'system-candidate:under-test','/system/tests/e2e/acme-host-runtime.js'],
+      {input:JSON.stringify({base,caAddress:this.caAddress,certbotReference:CLIENT_ALIAS,args}),timeout:120000});
   }
+
   async identity(candidate){
     return controller(candidate,function(){
       const fs=require('fs'),path=require('path'),crypto=require('crypto');
@@ -193,6 +170,7 @@ class LocalAcme {
         serial:new crypto.X509Certificate(cert).serialNumber,certificateHash:crypto.createHash('sha256').update(cert).digest('hex')};
     },{});
   }
+
   async issue(candidate,options={}){
     const domains=issuanceDomains(options.domains);
     return candidate.stage('acme-initial-webroot-issuance',async()=>{
@@ -201,7 +179,7 @@ class LocalAcme {
       // Real TLS routing is active using the short-lived bootstrap certificate;
       // Certbot's HTTP-01 webroot will replace it through the actual deploy hook.
       await candidate.stage('acme-initial-proxy-reload',()=>
-        candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']));
+        candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates']));
       await candidate.stage('acme-initial-certbot-issuance',()=>this.certbot(candidate,'/candidate-data/platform',
         ['certonly','--server',DIRECTORY,'--non-interactive','--agree-tos','--register-unsafely-without-email',
         '--webroot','--webroot-path','/candidate-data/platform/ssl/acme-http01','--cert-name','recovery-fixture',...domains.flatMap(host=>['-d',host])]));
@@ -213,6 +191,7 @@ class LocalAcme {
       return candidate.stage('acme-initial-issued-identity',()=>this.identity(candidate));
     });
   }
+
   async renew(candidate,expected){
     await candidate.stage('acme-restored-account-and-real-renewal',async()=>{
       const ip=await this.attach(candidate);await this.prepareClient(candidate,'/recovered-data/platform');
@@ -239,6 +218,7 @@ class LocalAcme {
       if(candidate.evidence?.recovery)candidate.evidence.recovery.acmeRenewalVerified=true;
     });
   }
+
   cleanup(){
     // Cleanup may run after cancellation/deadline. Reuse the guarded synchronous
     // cleanup path, and prove every daemon identity before detaching a bridge.
@@ -259,4 +239,4 @@ class LocalAcme {
     return true;
   }
 }
-module.exports={LocalAcme,PINNED,TRUST_HASH,DIRECTORY,ISSUANCE_CA,validate,pebbleConfiguration,basePaths,hostProgram,request,hashFile,issuanceDomains};
+module.exports={LocalAcme,PINNED,TRUST_HASH,DIRECTORY,ISSUANCE_CA,validate,pebbleConfiguration,basePaths,request,hashFile,issuanceDomains};

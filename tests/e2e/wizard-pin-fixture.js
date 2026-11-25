@@ -1,7 +1,7 @@
 'use strict';
 // Reuse the guided merge's real native image when available. The independent
 // legacy fixture creates a marker image only for runs without guided setup.
-const binding=require('../../project-bootstrap/wizard-source-primary/binding');
+const binding=require('../../dist/modules/project-lifecycle/sourcePrimaryBinding');
 const markerPath='/opt/system-bootstrapper/private-recovery-proof';
 const terminal=new Set(['failed','canceled','skipped','success']);
 function pipelineContent(marker) {
@@ -22,7 +22,7 @@ function pipelineContent(marker) {
     '  artifacts:\n    paths: [source-image.txt, private-image.txt]\n';
 }
 async function readOwnedProject(candidate) {
-  const script="const fs=require('fs');const {readReceipt}=require('/system/sync/dist/ProjectBootstrap');const r=readReceipt(fs.readFileSync('/state/.projects.env/.wizard.env','utf8'));if(!r||r.defaultProject!==true||r.template!=='wizard'||r.state!=='complete'||!Number.isInteger(r.repository?.id))throw Error();process.stdout.write(JSON.stringify({id:r.repository.id,path:r.repository.path,ciPath:r.repository.ciPath}));";
+  const script="const fs=require('fs');const {readReceipt}=require('/system/dist/modules/project-workflow/projectWorkflow');const r=readReceipt(fs.readFileSync('/state/.projects.env/.wizard.env','utf8'));if(!r||r.defaultProject!==true||r.template!=='wizard'||r.state!=='complete'||!Number.isInteger(r.repository?.id))throw Error();process.stdout.write(JSON.stringify({id:r.repository.id,path:r.repository.path,ciPath:r.repository.ciPath}));";
   let receipt;
   try {receipt=JSON.parse(await candidate.inner(['exec','system_bootstrapper_1','node','-e',script]));}
   catch {throw Error('private-wizard-owned-project-required');}
@@ -37,7 +37,7 @@ function immutableImage(repository,tag) {
   return repository.location+'@'+tag.digest;
 }
 async function readNativeProject(candidate) {
-  const script="const fs=require('fs');const binding=require('/system/project-bootstrap/wizard-source-primary/binding');const {setting}=require('/system/project-bootstrap/wizard-source-primary/run');const receipt=binding.validate(binding.read('/state/.projects.env/.wizard.env').receipt);const main=fs.readFileSync('/state/.docker.env','utf8');const registry=new URL(setting(main,'GITLAB_REGISTRY_URL'));if(Number(setting(main,'GITLAB_REGISTRY_DOMAIN_MODE'))<2)registry.port='5050';process.stdout.write(JSON.stringify({receipt,registryHost:registry.host}));";
+  const script="const fs=require('fs');const binding=require('/system/dist/modules/project-lifecycle/sourcePrimaryBinding');const {setting}=require('/system/dist/modules/project-lifecycle/adoptionSession');const receipt=binding.validate(binding.read('/state/.projects.env/.wizard.env').receipt);const main=fs.readFileSync('/state/.docker.env','utf8');const registry=new URL(setting(main,'GITLAB_REGISTRY_URL'));if(Number(setting(main,'GITLAB_REGISTRY_DOMAIN_MODE'))<2)registry.port='5050';process.stdout.write(JSON.stringify({receipt,registryHost:registry.host}));";
   let owned;
   try {owned=JSON.parse(await candidate.inner(['exec','system_bootstrapper_1','node','-e',script]));binding.validate(owned.receipt);}
   catch {throw Error('private-wizard-owned-project-required');}
@@ -75,8 +75,27 @@ async function nativeImage(candidate,owned,merge,token) {
   return {kind:'source-primary-native-v1',projectId,projectPath:receipt.repository.path,registryHost:owned.registryHost,
     sourceCommit:merge.sourceCommit,pipelineId:merge.pipelineId,jobId:build.id,runnerId:build.runnerId,imageRef,imageDigest:merge.imageDigest,imageId:image.Id};
 }
+async function sharedCandidate(candidate) {
+  const evidence=candidate.evidence.guidedPreview;
+  if(evidence.version!==2||evidence.sourceLayout!=='system-monorepo-v1'||evidence.setup?.native!==true||
+    evidence.beta?.containerRemoved!==true||evidence.beta?.leaseReleased!==true)throw Error('private-wizard-owned-project-required');
+  const owned=await require('./guided-preview-platform').node(candidate,function(){
+    const fs=require('fs');const {readReceipt}=require('/system/dist/modules/project-workflow/projectWorkflow');
+    const receipt=readReceipt(fs.readFileSync('/state/.projects.env/.wizard.env','utf8'));
+    const value=require('/system/dist/modules/project-lifecycle/systemBetaBinding').validate(JSON.parse(fs.readFileSync('/state/.projects.env/.wizard.env.system-beta.json','utf8')),{receipt});
+    return {projectId:value.projectId,projectPath:value.projectPath,imageRef:value.wizardImageRef,imageId:value.wizardImageId,sourceCommit:value.sourceCommit};
+  },{});
+  const descriptor={kind:'shared-candidate-registry-v2',...owned,registryHost:'registry.candidate.test:5050',imageDigest:owned.imageRef.split('@')[1]};
+  require('./recovery').privateWizardDescriptor(descriptor,candidate.spec);
+  const image=JSON.parse(await candidate.inner(['image','inspect',descriptor.imageRef]))[0];
+  if(image?.Id!==descriptor.imageId||image.Config?.Labels?.['org.opencontainers.image.revision']!==descriptor.sourceCommit||
+    !image.RepoDigests?.includes(descriptor.imageRef)||evidence.candidate?.projectId!==descriptor.projectId||
+    evidence.candidate?.wizardRegistryDigest!==descriptor.imageDigest)throw Error('private-wizard-registry-identity-invalid');
+  return descriptor;
+}
 async function publish(candidate) {
   if(!/^[a-f0-9]{24}$/.test(candidate.id))throw Error('private-wizard-owner-invalid');
+  if(candidate.evidence?.guidedPreview?.version===2)return sharedCandidate(candidate);
   const native=candidate.spec.guidedPreviewAcceptance===true||candidate.evidence?.guidedPreview!==undefined;
   const owned=native?await readNativeProject(candidate):await readOwnedProject(candidate);
   let token;

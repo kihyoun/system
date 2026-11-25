@@ -5,14 +5,24 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const {execFileSync} = require('node:child_process');
-const graph = require('../../bootstrapper/upgrade-paths.json');
-const {manifest} = require('../../gitlab/publish-dockerhub');
+const graph = require('../../config/releases/upgrade-paths.json');
+const {createPublicationRuntime} = require('../../dist/modules/release/publicationRuntime');
 const recovery = require('./recovery');
-const {terminalContainerState} = require('../../gitlab/upgrade');
+const {terminalContainerState} = require('../../dist/modules/gitlab-upgrade/policy');
+const {fixtureRuntime,runtimeVolumes} = require('../../dist/modules/testing/publicUpgradeTransport.service');
 const diagnostics = require('./public-upgrade-diagnostics.json');
+const security = require('../../config/gitlab/security-release.json');
+const {manifest} = createPublicationRuntime(security).images;
 const hash = raw => crypto.createHash('sha256').update(raw).digest('hex');
 const required = (value, code) => { if (!value) throw Error(code); };
 const root = path.resolve(__dirname, '../..');
+
+function sanitizeGitlabFailure(value) {
+  if(!value||!['running','completed','unavailable'].includes(value.phase))return undefined;
+  if(value.phase==='completed')return Number.isInteger(value.exitCode)&&value.exitCode>=0&&value.exitCode<=255?
+    {phase:'completed',exitCode:value.exitCode}:undefined;
+  return {phase:value.phase};
+}
 
 async function download(repository, version, request = fetch) {
   required(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(repository) &&
@@ -128,12 +138,21 @@ async function replaceController(candidate, baseline, image, fixture) {
   for (const value of baseline.HostConfig.ExtraHosts || []) args.push('--add-host', value);
   for (const mount of baseline.Mounts) {
     required(['bind', 'volume'].includes(mount.Type), 'public-upgrade-unexpected-candidate-mount');
-    args.push('--mount', 'type=' + mount.Type + ',src=' + (mount.Type === 'volume' ? mount.Name : mount.Source) + ',dst=' + mount.Destination + (mount.RW ? '' : ',readonly'));
+    const source = mount.Type === 'volume' ? mount.Name : mount.Source;
+    // Match the native Compose short syntax for named volumes and the Docker
+    // socket. Its long bind syntax for runners and host-letsencrypt uses --mount.
+    // Paired recovery compares the actual retained Mounts, including Mode.
+    if (fixture && (mount.Type === 'volume' || mount.Destination === '/var/run/docker.sock')) {
+      args.push('--volume', source + ':' + mount.Destination + ':' + (mount.RW ? 'rw' : 'ro'));
+    } else {
+      args.push('--mount', 'type=' + mount.Type + ',src=' + source + ',dst=' + mount.Destination + (mount.RW ? '' : ',readonly'));
+    }
   }
   if (fixture) args.push('--env', 'SYSTEM_PUBLIC_UPGRADE_FIXTURE=' + fixture,
     '--volume', fixture + ':' + fixture + ':ro',
-    '--volume', fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker:ro',
-    '--volume', fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker-compose:ro');
+    '--volume', fixture + '/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker:ro',
+    '--volume', fixture + '/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker-compose:ro',
+    ...runtimeVolumes(fixture).flatMap(value => ['--volume', value]));
   await candidate.inner(['stop', '--time', '30', 'system_bootstrapper_1']);
   await candidate.inner(['rm', 'system_bootstrapper_1']);
   await candidate.inner([...args, image]);
@@ -148,25 +167,88 @@ function controllerFixture(baseline, fixture) {
     'SYSTEM_WIZARD_ENVIRONMENT_IMAGE'].filter(key => Object.hasOwn(inherited, key)).map(key => [key, inherited[key]]));
   environment.SYSTEM_PUBLIC_UPGRADE_FIXTURE = fixture;
   const volumes = [fixture + ':' + fixture + ':ro',
-    fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker:ro',
-    fixture + '/source/tests/e2e/public-upgrade-docker.sh:/usr/bin/docker-compose:ro'];
+    fixture + '/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker:ro',
+    fixture + '/source/tests/e2e/public-upgrade-docker.js:/usr/bin/docker-compose:ro', ...runtimeVolumes(fixture)];
   return {services: {bootstrapper: {environment, volumes, network_mode: 'bridge',
     extra_hosts: baseline.HostConfig.ExtraHosts || []}}};
 }
 
-async function waitForServices(candidate, milliseconds = 600000) {
+async function webReconciliation(candidate, selectedImages) {
+  required(/^sha256:[a-f0-9]{64}$/.test(selectedImages.system_bootstrapper_1 || '') &&
+    /^sha256:[a-f0-9]{64}$/.test(selectedImages.system_wizard_1 || '') &&
+    /^sha256:[a-f0-9]{64}$/.test(candidate.spec.images.nginx?.id || ''), 'public-upgrade-selected-images-differ');
+  const rows = JSON.parse(await candidate.inner(['inspect', 'system_web_1']));
+  required(Array.isArray(rows) && rows.length === 1, 'public-upgrade-selected-images-differ');
+  const web = rows[0];
+  required(web?.Name === '/system_web_1' && /^[a-f0-9]{64}$/.test(web.Id || '') &&
+    web.Image === candidate.spec.images.nginx.id && web.State?.Status === 'running' &&
+    web.State.Running === true && web.State.OOMKilled === false && web.State.Dead === false &&
+    !['Paused', 'Restarting'].some(key => web.State[key]) &&
+    (!web.State.Health || web.State.Health.Status === 'healthy'), 'public-upgrade-selected-images-differ');
+  return {previousId: web.Id, imageId: web.Image, controllerImageId: selectedImages.system_bootstrapper_1};
+}
+
+async function replaceControllerAndWait(candidate, baseline, image, wizard, fixture) {
+  const selectedImages = {system_bootstrapper_1: image, system_wizard_1: wizard};
+  const web = await webReconciliation(candidate, selectedImages);
+  await replaceController(candidate, baseline, image, fixture);
+  await waitForServices(candidate, 600000, selectedImages, web);
+}
+
+async function waitForServices(candidate, milliseconds = 600000, selectedImages = {}, web) {
   const names = ['system_bootstrapper_1', 'system_web_1', 'system_gitlab_1', 'system_wizard_1', 'runner_docker_1'];
+  required(Object.entries(selectedImages).every(([name, image]) =>
+    names.includes(name) && /^sha256:[a-f0-9]{64}$/.test(image)), 'public-upgrade-selected-images-differ');
+
+  if (web !== undefined) {
+    required(web && /^[a-f0-9]{64}$/.test(web.previousId || '') &&
+      /^sha256:[a-f0-9]{64}$/.test(web.imageId || '') &&
+      /^sha256:[a-f0-9]{64}$/.test(web.controllerImageId || '') &&
+      selectedImages.system_bootstrapper_1 === web.controllerImageId &&
+      /^sha256:[a-f0-9]{64}$/.test(selectedImages.system_wizard_1 || ''), 'public-upgrade-selected-images-differ');
+  }
+
   await candidate.wait(async () => {
     const rows = JSON.parse(await candidate.inner(['inspect', ...names]));
+    const controller = rows.find(row => row.Name === '/system_bootstrapper_1');
+    const reconciling = web && controller?.Image === web.controllerImageId &&
+      controller.State?.Status === 'running' && controller.State.Running === true &&
+      controller.State.OOMKilled === false && controller.State.Dead === false &&
+      !['Paused', 'Restarting'].some(key => controller.State[key]);
     for (const row of rows) {
-      const terminal = terminalContainerState(row);
+      const reconcilingWeb = web && row.Name === '/system_web_1';
+
+      if (reconcilingWeb) {
+        if (!/^[a-f0-9]{64}$/.test(row.Id || '') || row.Image !== web.imageId) {
+          throw Object.assign(Error('public-upgrade-selected-images-differ'), {noRetry: true});
+        }
+
+        // Explicit native controller startup recreates this exact previous proxy.
+        // Its clean exit is pending replacement, never evidence of readiness.
+        if (reconciling && row.Id === web.previousId && row.State?.Status === 'exited' &&
+          row.State.Running === false && row.State.ExitCode === 0 &&
+          row.State.OOMKilled === false && row.State.Dead === false &&
+          row.State.Paused !== true && row.State.Restarting !== true) {
+          continue;
+        }
+      }
+
+      const terminal = terminalContainerState(row) ||
+        (reconcilingWeb && row.Id !== web.previousId && row.State?.Dead === true ? 'dead' : undefined);
       if (terminal) throw Object.assign(Error('public-upgrade-service-' + terminal), {noRetry: true,
         ...(Number.isInteger(row.State.ExitCode) && row.State.ExitCode >= 0 && row.State.ExitCode <= 255 ? {exitCode: row.State.ExitCode} : {})});
     }
     return rows.length === names.length && new Set(rows.map(row => row.Name)).size === names.length &&
-      rows.every(row => names.includes(row.Name?.replace(/^\//, '')) && row.State?.Running === true &&
-        !['Paused', 'Restarting', 'Dead'].some(key => row.State[key]) &&
-        (!row.State.Health || row.State.Health.Status === 'healthy'));
+      rows.every(row => {
+        const name = row.Name?.replace(/^\//, '');
+        return names.includes(name) && row.State?.Running === true &&
+          row.State.Status !== 'removing' &&
+          (!Object.hasOwn(selectedImages, name) || row.Image === selectedImages[name]) &&
+          (!web || name !== 'system_web_1' || (row.Id !== web.previousId &&
+            row.State.Status === 'running' && row.State.OOMKilled === false && row.State.Dead === false)) &&
+          !['Paused', 'Restarting', 'Dead'].some(key => row.State[key]) &&
+          (!row.State.Health || row.State.Health.Status === 'healthy');
+      });
   }, milliseconds);
 }
 
@@ -178,79 +260,106 @@ class NativeCLI {
     this.planDir = this.live + '/recovery/public-upgrades/candidate-' + candidate.id;
     this.storage = this.live + '/public-upgrade-storage.env';
   }
+
   async write(filename, input) {
-    await this.candidate.call(['exec', '-i', this.candidate.daemon, 'sh', '-ec',
-      'umask 077; cat > "$1"', 'sh', filename], {input});
+    await this.candidate.inner(['run', '--rm', '-i', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
+      '--entrypoint', '/usr/local/bin/node', '--volume', this.live + ':' + this.live,
+      this.candidate.spec.images.candidate.id, '/system/dist/modules/testing/publicUpgradeEntry.js',
+      'write', filename], {input});
   }
+
   async createCredential() {
-    if (!this.token) this.token = await this.candidate.rails("require 'json';u=User.find_by_username('root');t=u.personal_access_tokens.create!(name:'disposable-public-upgrade',scopes:['api'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token,root_id:u.id)");
+    if (!this.token) this.token = await this.candidate.rails("require 'json';u=User.find_by_username('root');t=u.personal_access_tokens.create!(name:'disposable-public-upgrade',scopes:['api'],expires_at:Date.current + 2);puts JSON.generate(token:t.token,root_id:u.id)");
   }
-  async initialize(baseline, expected) {
+
+  async initialize(baseline, expected, beforeMigration = false) {
     const candidate = this.candidate, storage = require('./local-storage'), prepared = candidate.spec.publicUpgrade.source;
-    required(candidate.evidence.gitlabUpgrade?.registryVerified === true, 'existing-candidate-registry-ci-proof-required');
+    required(beforeMigration ? !candidate.evidence.gitlabUpgrade?.migrationVerified : candidate.evidence.gitlabUpgrade?.registryVerified === true, 'existing-candidate-registry-ci-proof-required');
     required(prepared && recovery.hashFile(prepared.archive) === prepared.sha256, 'public-upgrade-source-archive-required');
     await candidate.call(['exec', candidate.daemon, 'mkdir', '-p', this.fixture + '/source', this.fixture + '/bin']);
     await candidate.call(['exec', '-i', candidate.daemon, 'tar', '-xzf', '-', '-C', this.fixture + '/source'], {inputFile: prepared.archive});
-    await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25', '--entrypoint', '/bin/sh',
-      '--volume', this.fixture + ':' + this.fixture, candidate.spec.images.candidate.id, '-ec',
-      'cp /usr/bin/docker "$1/docker.native"; cp -L /usr/bin/docker-compose "$1/docker-compose.native"; '+
-      'cp /lib/ld-musl-x86_64.so.1 "$1/ld-musl-x86_64.so.1"; chmod 755 "$1"/*.native; '+
-      'chmod 755 "$1/source/tests/e2e/public-upgrade-docker.sh" "$1/source/tests/e2e/public-upgrade-findmnt.sh"; '+
-      'ln -s ../source/tests/e2e/public-upgrade-docker.sh "$1/bin/docker"; '+
-      'ln -s ../source/tests/e2e/public-upgrade-docker.sh "$1/bin/docker-compose"; '+
-      'ln -s ../source/tests/e2e/public-upgrade-findmnt.sh "$1/bin/findmnt"', 'sh', this.fixture]);
+    await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '256m', '--cpus', '0.25',
+      '--entrypoint', '/usr/local/bin/node', '--volume', this.fixture + ':' + this.fixture,
+      candidate.spec.images.candidate.id, '/system/dist/modules/testing/publicUpgradeEntry.js',
+      'prepare', this.fixture]);
     const previous = candidate.spec.publicUpgrade.metadata;
-    await this.write(this.fixture + '/fixture.json', JSON.stringify({runId: candidate.id, live: this.live, previous,
+    // Prove the copied interpreter and bundled modules load in the candidate
+    // helper and historical controller before changing the running controller.
+    // Offline tests cannot prove this Alpine/glibc boundary; these probes belong to the real candidate gate.
+    for (const image of [candidate.spec.images.candidate.id, previous.images.controller.imageId]) {
+      const output = await candidate.inner(['run', '--rm', '--network', 'none', '--memory', '128m', '--cpus', '0.25',
+        '--entrypoint', fixtureRuntime + '/node', ...runtimeVolumes(this.fixture).flatMap(value => ['--volume', value]),
+        image, '-e', "require('/opt/system-public-upgrade/dist/modules/testing/publicUpgradeHostEntry.js');process.stdout.write('runtime-ready')"]);
+      required(output.trim() === 'runtime-ready', 'public-upgrade-runtime-unavailable');
+    }
+
+    await this.write(this.fixture + '/fixture.json', JSON.stringify({runId: candidate.id, live: this.live, previous, edge:candidate.spec.publicUpgrade.edge,
       spec: {sourceRevision: candidate.spec.sourceRevision, sourceTree: candidate.spec.sourceTree,
+        sourceLayout:candidate.spec.sourceLayout,wizardSourceTree:candidate.spec.wizardSourceTree,
         wizardSourceRevision: candidate.spec.wizardSourceRevision, ciIdentity: candidate.spec.ciIdentity, images: candidate.spec.images},
-      gitlabUpgrade: candidate.evidence.gitlabUpgrade}));
+      gitlabUpgrade: beforeMigration ? this.securityIdentity() : candidate.evidence.gitlabUpgrade,
+      ...(beforeMigration ? {publicationMode:'future-release-before-prerequisite-v1'} : {}),guidedOrigin:candidate.guidedFixtureOrigin}));
     const mappings = [];
     for (const role of ['controller', 'wizard']) {
       mappings.push(previous.images[role].reference.replace(/^docker.io\//, '') + '\t' + previous.images[role].imageId + '\tprevious');
       mappings.push('system-upgrade-fixture/' + role + '@' + candidate.spec.images[role === 'controller' ? 'candidate' : 'wizard'].id +
         '\t' + candidate.spec.images[role === 'controller' ? 'candidate' : 'wizard'].id + '\ttarget');
     }
+    for (const [reference,image] of Object.entries(require('./gitlab-upgrade').prepared(candidate).imageIds))
+      mappings.push(reference.replace(/^docker.io\//,'')+'\t'+image+'\tsupport');
     await this.write(this.fixture + '/images.tsv', mappings.join('\n') + '\n');
     await this.write(this.fixture + '/compose.yml', JSON.stringify(controllerFixture(baseline, this.fixture)));
     await this.write(this.storage, "export PERSISTENCE_MODE='local'\nexport PERSISTENT_MOUNT='/'\nexport PERSISTENT_DIR='" + this.live +
       "'\nexport PERSISTENT_UUID=''\nexport SEED_DIR='" + storage.SEED + "'\nexport SEED_MOUNT='" + storage.MOUNT + "'\nexport SEED_UUID=''\n");
     await candidate.call(['exec', candidate.daemon, 'cp', '/run/system-bootstrapper/guided-preview-ca.pem', this.fixture + '/ca.pem']);
     await this.createCredential();
-    // The preceding registry-CI stage deliberately committed its verification
-    // job. Freeze that current head before this read-only upgrade data oracle.
+    // Refresh this head again after registry CI when entering the paired phase.
     const branch = await candidate.api('/projects/' + expected.projectId + '/repository/branches/' + encodeURIComponent(expected.branch), this.token.token);
     required(/^[a-f0-9]{40}$/.test(branch.commit?.id || ''), 'public-upgrade-existing-head-required');
     this.baselineHead = branch.commit.id;
     await this.write(this.fixture + '/token', this.token.token);
     await this.invoke(['initialize']);
-    await replaceController(candidate, baseline, previous.images.controller.imageId, this.fixture);
+    if (beforeMigration) {
+      await this.invoke(['gitlab-previous-selectors']);
+      await this.invoke(['freeze-publication']);
+    }
+    // The previous controller reconciles its services asynchronously. Healthy
+    // containers from the restored candidate are not the selected public pair.
+    await replaceControllerAndWait(candidate, baseline, previous.images.controller.imageId,
+      previous.images.wizard.imageId, this.fixture);
   }
+
   async invoke(args) {
     const candidate = this.candidate, storage = require('./local-storage');
-    const command = ['run', '--rm', '-i', '--network', 'host', '--memory', '512m', '--cpus', '1',
-      '--entrypoint', '/opt/gitlab/embedded/bin/python3',
+    const command = ['run', '--rm', '-i', '--pid', 'host', '--network', 'host', '--memory', '512m', '--cpus', '1',
+      '--entrypoint', fixtureRuntime + '/node',
       '--env', 'SYSTEM_PUBLIC_UPGRADE_FIXTURE=' + this.fixture, '--env', 'SYSTEM_PUBLIC_UPGRADE_LIVE=' + this.live,
-      '--env', 'PATH=' + this.fixture + '/bin:/opt/gitlab/embedded/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      '--env', 'PATH=' + this.fixture + '/bin:' + fixtureRuntime + ':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
       '--env', 'GIT_OPTIONAL_LOCKS=0',
       '--env', 'SSL_CERT_FILE=' + this.fixture + '/ca.pem', '--env', 'DOCKER_CONFIG=/tmp/public-upgrade-docker',
       '--volume', this.live + ':' + this.live,
       '--volume', this.fixture + '/source:' + this.fixture + '/source:ro',
       '--volume', '/var/lib/docker:/var/lib/docker:ro', '--volume', '/var/run/docker.sock:/var/run/docker.sock',
-      '--volume', this.fixture + '/ld-musl-x86_64.so.1:/lib/ld-musl-x86_64.so.1:ro',
-      '--volume', this.fixture + '/ld-musl-x86_64.so.1:/lib/libc.musl-x86_64.so.1:ro'];
+      ...runtimeVolumes(this.fixture).flatMap(value => ['--volume', value])];
     if (args[0] === '--operation' && ['plan', 'apply'].includes(args[1])) command.push('--mount',
       'type=bind,src=' + storage.MOUNT + ',dst=' + storage.MOUNT);
     for (const host of ['gitlab', 'registry', 'sync', 'wizard']) command.push('--add-host', host + '.candidate.test:127.0.0.1');
-    const operation = args[0] === '--operation' ? args[1] : args[0];
-    required(['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover'].includes(operation),
-      'public-upgrade-native-operation-invalid');
-    const failureCodes = Object.fromEntries([...new Set([
+    const hooks=['initialize','restore-original','freeze-publication','gitlab-previous-selectors','save-migrated-public-selection','candidate-pair-selectors','restore-migrated-public-selection'];
+    const requested = args[0] === 'gitlab' ? args[args.indexOf('--operation')+1] : args[0] === '--operation' ? args[1] : args[0];
+    required(args[0]==='gitlab' ? ['prepare','plan','promote','status','abort','rollback'].includes(requested) : [...hooks,'plan','apply','status','recover'].includes(requested), 'public-upgrade-native-operation-invalid');
+    const operation=args[0]==='gitlab' ? 'gitlab-'+requested : hooks.includes(requested) && requested!=='restore-original' ? 'initialize' : requested;
+    const storageFailures=Object.entries(diagnostics.storageErrors).map(([code,value])=>
+      ['Seed operation failed: '+code+'.','public-upgrade-native-'+operation+'-'+value]);
+    const storageWrapper=([message])=>['seed-helper-command-failed','seed-helper-operation-failed','seed-operation-failed']
+      .some(code=>message==='Seed operation failed: '+code+'.');
+    const failureCodes = Object.fromEntries([...storageFailures.filter(row=>!storageWrapper(row)), ...[...new Set([
       ...Object.values(diagnostics.errors), ...Object.values(diagnostics.dockerOperations),
-      ...Object.values(diagnostics.exceptionTypes), diagnostics.fallback
-    ])].map(code => [diagnostics.marker + code, 'public-upgrade-native-' + operation + '-' + code]));
+      ...Object.values(diagnostics.exceptionTypes), ...Object.values(diagnostics.planSteps), diagnostics.fallback
+    ])].map(code => [diagnostics.marker + code, 'public-upgrade-native-' + operation + '-' + code]),
+    ...storageFailures.filter(storageWrapper)]);
     try {
-      const raw = await candidate.inner([...command, candidate.spec.images.gitlab.id,
-        this.fixture + '/source/tests/e2e/public-upgrade-host.py', ...args], {timeout: 1200000, failureCodes});
+      const raw = await candidate.inner([...command, candidate.spec.images.candidate.id,
+        this.fixture + '/source/tests/e2e/public-upgrade-host.js', ...args], {timeout: 1200000, failureCodes});
       return JSON.parse(raw.split('\n').at(-1));
     } catch (error) {
       if (['canceled-or-overall-timeout', 'readiness-timeout', 'candidate-overall-timeout', 'candidate-cleanup-timeout'].includes(error.message)) throw error;
@@ -261,14 +370,83 @@ class NativeCLI {
       throw failure;
     }
   }
+
   cli(operation, confirmation) {
     const repository = this.candidate.spec.publicUpgrade.metadata.source.repository.replace(/^https:\/\/github.com\//, '').replace(/\.git$/, '');
-    return this.invoke(['--operation', operation, '--persistence-env', this.storage, '--plan-dir', this.planDir,
+    return this.invoke(['--operation', operation, '--checkout', this.fixture + '/source', '--persistence-env', this.storage, '--plan-dir', this.planDir,
       '--repository', repository, '--target', this.candidate.spec.publicUpgrade.edge.to,
       '--backup-file', require('./local-storage').MOUNT + '/public-upgrade-' + this.candidate.id + '.zip',
+      ...(this.candidate.spec.publicUpgrade.edge.databaseMigration ? ['--gitlab-checkpoint', this.gitlabCheckpointDir || this.candidate.spec.restore.base + '/configuration/gitlab-upgrades/candidate-' + this.candidate.id] : []),
       '--token-file', this.fixture + '/token', '--timeout', '600', '--backup-timeout', '900',
       ...(confirmation ? ['--confirm-plan', confirmation] : [])]);
   }
+
+  securityIdentity() {
+    const ids=require('./gitlab-upgrade').prepared(this.candidate).imageIds;
+    return {fromImage:security.fromImage,toImage:security.toImage,fromImageId:ids[security.fromImage],toImageId:ids[security.toImage],
+      runnerImage:security.runner.toImage,runnerImageId:ids[security.runner.toImage],fromRunnerImageId:ids[security.runner.fromImage],
+      helperImage:security.runner.helperImage,helperImageId:ids[security.runner.helperImage],fromHelperImageId:ids[security.runner.fromHelperImage],
+      runnerVersion:security.runner.toVersion,jobCaBundleSha256:security.jobCaBundleSha256};
+  }
+
+  gitlab(operation, confirmation) {
+    const repository=this.candidate.spec.publicUpgrade.metadata.source.repository.replace(/^https:\/\/github.com\//,'').replace(/\.git$/,'');
+    return this.invoke(['gitlab','--operation',operation,'--checkout',this.fixture+'/source','--persistence-env',this.storage,
+      '--directory',this.live+'/configuration/gitlab-prerequisites/candidate-'+this.candidate.id,
+      '--repository',repository,'--target',this.candidate.spec.publicUpgrade.edge.to,'--timeout','900',
+      ...(confirmation?[operation==='rollback'?'--confirm-checkpoint':'--confirm-plan',confirmation]:[]),
+      ...(operation==='rollback'&&this.pairedCheckpoint?['--paired-checkpoint',this.pairedCheckpoint]:[])]);
+  }
+
+  async migrate() {
+    const prepared=await this.gitlab('prepare');
+    required(prepared.status==='prepared' && typeof prepared.checkpointDir==='string' && prepared.checkpointDir.startsWith(this.live+'/configuration/gitlab-upgrades/'),'public-upgrade-native-GitLab-prerequisite-missing');
+    this.gitlabCheckpointDir=prepared.checkpointDir;
+    const plan=await this.gitlab('plan');
+    required(/^[a-f0-9]{64}$/.test(plan.planSha256||''),'public-upgrade-native-plan-invalid');
+    let result;
+    try {result=await this.gitlab('promote',plan.planSha256);}
+    catch(error) {
+      this.candidate.evidence ||= {};
+      this.candidate.evidence.gitlabUpgradeFailure=await this.captureGitlabFailure();
+      throw error;
+    }
+    required(result.status==='promoted' && result.toImage===security.toImage && /^[a-f0-9]{64}$/.test(result.checkpointSha256||''),'upgrade-checkpoint-proof-invalid');
+    await this.invoke(['save-migrated-public-selection']);
+    await this.invoke(['candidate-pair-selectors']);
+    await replaceControllerAndWait(this.candidate, this.originalBaseline, this.originalBaseline.Image,
+      this.candidate.spec.images.wizard.id, this.fixture);
+    return result;
+  }
+
+  async captureGitlabFailure() {
+    try {
+      // Read the existing owned journal before normal cleanup, without another
+      // database/readiness probe or any process/lease mutation.
+      const script="process.stdout.write(JSON.stringify(require('/opt/system-public-upgrade/dist/modules/gitlab-upgrade/status').upgradeChildOutcome('/state')));";
+      const output=await this.candidate.inner(['exec','system_bootstrapper_1','node','-e',script],{timeout:5000});
+      return sanitizeGitlabFailure(JSON.parse(output)) || {phase:'unavailable'};
+    } catch {return {phase:'unavailable'};}
+  }
+
+  async selectMigratedPublic(expected) {
+    required(this.preparedMigration && this.gitlabCheckpointDir,'public-upgrade-native-GitLab-prerequisite-missing');
+    const branch=await this.candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),this.token.token);
+    required(/^[a-f0-9]{40}$/.test(branch.commit?.id||''),'public-upgrade-existing-head-required');this.baselineHead=branch.commit.id;
+    await this.invoke(['restore-migrated-public-selection']);
+    const previous = this.candidate.spec.publicUpgrade.metadata.images;
+    await replaceControllerAndWait(this.candidate, this.originalBaseline, previous.controller.imageId,
+      previous.wizard.imageId, this.fixture);
+  }
+
+  rollback(checkpoint) {return this.gitlab('rollback',checkpoint);}
+
+  async restoreAfterRollback() {
+    await this.restoreOriginal(this.originalFiles);
+    await this.finish(this.originalFiles,this.originalBaseline);
+    await this.candidate.wait(async()=>{const value=await recovery.syncFetch(this.candidate);return !!value.main?.data;},600000);
+  }
+
   async offline() {
     await this.write(this.fixture + '/offline-recovery', 'previous-public-transport-disabled\n');
     for (const role of ['controller', 'wizard']) {
@@ -279,14 +457,19 @@ class NativeCLI {
       required(absent, 'previous-public-image-not-absent-before-recovery');
     }
   }
+
   interruptRecovery() { return this.write(this.fixture + '/fail-recovery-once', 'one-shot\n'); }
+
   async restoreOriginal(files) {
     await this.write(this.live + '/configuration/.docker.env', files['.docker.env']);
     await this.invoke(['restore-original']);
   }
+
   async finish(_files, baseline) {
-    await replaceController(this.candidate, baseline, baseline.Image);
+    await replaceControllerAndWait(this.candidate, baseline, baseline.Image,
+      this.candidate.spec.images.wizard.id);
   }
+
   async revokeCredential() {
     try {await this.candidate.api('/personal_access_tokens/self', this.token.token, 'DELETE');}
     catch {await this.candidate.rails("User.find_by_username('root').personal_access_tokens.where(name:'disposable-public-upgrade',revoked:false).find_each(&:revoke!);puts '{}'");}
@@ -299,8 +482,8 @@ async function run(candidate, expected, dependencies = {}) {
   const read = dependencies.configuration || configuration;
   let currentExpected = expected;
   let verificationAuth;
-  const verify = dependencies.verify || (async () => {
-    await waitForServices(candidate);
+  const verify = dependencies.verify || (async (web, selectedImages = {}) => {
+    await waitForServices(candidate, 600000, selectedImages, web);
     await candidate.wait(async () => { const value = await recovery.syncFetch(candidate); return !!value.main?.data; }, 600000);
     // This includes the exact existing registry tag/digest. Reuse the native
     // registry job immediately before this stage; do not create more commits
@@ -310,7 +493,7 @@ async function run(candidate, expected, dependencies = {}) {
   });
   await candidate.stage(fixture.edge.requiredStage, async () => {
     const files = await read(candidate), before = preserved(files);
-    const native = dependencies.native || new NativeCLI(candidate), storage = dependencies.storage || require('./local-storage');
+    const native = dependencies.native || candidate.publicUpgradeNative || new NativeCLI(candidate), storage = dependencies.storage || require('./local-storage');
     await native.createCredential();
     verificationAuth = native.token;
     const sample = dependencies.dataSample || (() => require('./public-upgrade-data').sample(candidate, verificationAuth));
@@ -319,11 +502,12 @@ async function run(candidate, expected, dependencies = {}) {
     const oldController = fixture.metadata.images.controller.imageId, oldWizard = fixture.metadata.images.wizard.imageId;
     const targetController = candidate.spec.images.candidate.id, targetWizard = candidate.spec.images.wizard.id;
     await storage.attach(candidate);
-    await native.initialize(baseline, expected);
+    if(native.preparedMigration) await native.selectMigratedPublic(expected);
+    else await native.initialize(baseline, expected);
     verificationAuth = native.token;
     currentExpected = {...expected, head: native.baselineHead || expected.head};
-    const check = async (controller, wizard) => {
-      await verify();
+    const check = async (controller, wizard, web) => {
+      await verify(web, web ? {system_bootstrapper_1: controller, system_wizard_1: wizard} : undefined);
       required(JSON.stringify(await sample()) === JSON.stringify(dataBefore), 'public-upgrade-data-sample-changed');
       required(preserved(await read(candidate)) === before, 'public-upgrade-configuration-changed');
       const actual = dependencies.imageIds ? await dependencies.imageIds() : JSON.parse(await candidate.inner(['inspect', 'system_bootstrapper_1', 'system_wizard_1'])).map(row => row.Image);
@@ -333,6 +517,7 @@ async function run(candidate, expected, dependencies = {}) {
     const plan = await native.cli('plan');
     required(plan.installedVersion === fixture.edge.from && plan.targetVersion === fixture.edge.to &&
       /^[a-f0-9]{64}$/.test(plan.confirmPlanSha256 || ''), 'public-upgrade-native-plan-invalid');
+    if (fixture.edge.databaseMigration) required(plan.gitlabPrerequisite?.fromVersion === '19.5.3' && plan.gitlabPrerequisite?.toVersion === '19.6.1' && /^[a-f0-9]{64}$/.test(plan.gitlabPrerequisite?.checkpointSha256 || ''), 'public-upgrade-native-GitLab-prerequisite-missing');
     let refused = false;
     try { await native.cli('apply', '0'.repeat(64)); } catch { refused = true; }
     required(refused, 'public-upgrade-unconfirmed-plan-not-refused');
@@ -356,9 +541,15 @@ async function run(candidate, expected, dependencies = {}) {
       new RegExp('^export ' + key + "='system-bootstrapper-recovery:[a-f0-9]{64}'$", 'm').test(recovered['.docker.env'])),
     'public-upgrade-recovery-selectors-not-persistent');
     // A separate process restart must re-source the durable recovery aliases.
+    const restartedWeb = await webReconciliation(candidate, {
+      system_bootstrapper_1: oldController, system_wizard_1: oldWizard
+    });
     await candidate.inner(['restart', 'system_bootstrapper_1']);
-    await check(oldController, oldWizard);
+    await check(oldController, oldWizard, restartedWeb);
     required((await native.cli('status')).operation.phase === 'rolled-back', 'public-upgrade-recovery-status-not-durable');
+    if(native.preparedMigration) {
+      native.pairedCheckpoint=native.live+'/recovery/controller-updates/'+path.basename(native.planDir);
+    } else {
     await native.restoreOriginal(files);
     // The final normal controller starts after physical backup detachment,
     // preserving the existing no-backup startup/Fetch acceptance boundary.
@@ -367,9 +558,20 @@ async function run(candidate, expected, dependencies = {}) {
       await verify();
       required(JSON.stringify(await read(candidate)) === JSON.stringify(files), 'public-upgrade-original-configuration-not-restored');
     } finally {await native.revokeCredential();}
+    }
     candidate.evidence.publicUpgrade = {fromVersion: fixture.edge.from, toVersion: fixture.edge.to,
       fromSourceRevision: fixture.metadata.source.revision, fromControllerImageId: oldController, fromWizardImageId: oldWizard,
-      configurationPreserved: true, dataPreserved: true, runnerRegistryVerified: true, rollbackVerified: true};
+      configurationPreserved: true, dataPreserved: true, runnerRegistryVerified: true, rollbackVerified: true,
+      ...(fixture.edge.databaseMigration ? {gitlabPrerequisiteVerified:true,gitlabCheckpointSha256:plan.gitlabPrerequisite.checkpointSha256,gitlabFromVersion:plan.gitlabPrerequisite.fromVersion,gitlabToVersion:plan.gitlabPrerequisite.toVersion} : {})};
   });
 }
-module.exports = {download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, controllerFixture, waitForServices, NativeCLI, run};
+async function prepareGitlabMigration(candidate,expected) {
+  const native=new NativeCLI(candidate);
+  native.originalFiles=await configuration(candidate);
+  native.originalBaseline=JSON.parse(await candidate.inner(['inspect','system_bootstrapper_1']))[0];
+  await native.initialize(native.originalBaseline,expected,true);
+  native.preparedMigration=true;
+  candidate.publicUpgradeNative=native;
+  return native;
+}
+module.exports = {sanitizeGitlabFailure, prepareGitlabMigration, download, prepare, archiveConfigDigest, prepareSource, configuration, preserved, replaceController, replaceControllerAndWait, webReconciliation, controllerFixture, waitForServices, NativeCLI, run};

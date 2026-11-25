@@ -147,6 +147,7 @@ class Candidate {
       password:crypto.randomBytes(24).toString('hex'),root:crypto.randomBytes(24).toString('hex')};
     this.results=[];
   }
+
   async call(args, options) {
     // Promise/microtask-only awaits do not deliver queued OS signal callbacks.
     // Yield to the event loop before EVERY bounded synchronous Docker operation.
@@ -166,15 +167,18 @@ class Candidate {
       throw error;
     }
   }
+
   inner(args, options) { return this.call(['exec','-i',this.daemon,'docker',...args],options); }
+
   async stage(name, action) {
     const start=this.now();
     const previousCleanup=this.cleanupDeadline;
-    if(['guided-preview-native-review-stop','guided-preview-native-beta-stop','guided-preview-production-retained','guided-preview-temporary-credential-revoked'].includes(name))this.cleanupDeadline=start+180000;
+    if(['system-beta-native-stop','guided-preview-native-review-stop','guided-preview-native-beta-stop','guided-preview-production-retained','guided-preview-temporary-credential-revoked'].includes(name))this.cleanupDeadline=start+180000;
     try { const value=await action(); this.results.push({name,status:'passed',milliseconds:this.now()-start}); this.checkpoint(this); return value; }
     catch(error) { this.results.push({name,status:'failed',milliseconds:this.now()-start,reason:stageDiagnostics.failureReason(error.message),...exitDetails(error)}); this.checkpoint(this); throw error; }
     finally {this.cleanupDeadline=previousCleanup;}
   }
+
   async wait(check, milliseconds) {
     const until=Math.min(this.now()+milliseconds,this.cleanupDeadline||this.deadline);
     do { if((this.canceled&&!this.cleanupDeadline) || this.now()>(this.cleanupDeadline||this.deadline)) throw new Error('canceled-or-overall-timeout');
@@ -184,6 +188,7 @@ class Candidate {
     if((this.canceled&&!this.cleanupDeadline) || this.now()>(this.cleanupDeadline||this.deadline)) throw new Error('canceled-or-overall-timeout');
     throw new Error('readiness-timeout');
   }
+
   async create(kind,args) {
     // Journal the unique intended name BEFORE creation: a Docker timeout may
     // occur after creation succeeds but before its ID reaches this process.
@@ -193,6 +198,7 @@ class Candidate {
     if(kind==='volume' ? id!==this.name : !/^[a-f0-9]{64}$/.test(id)) throw new Error('invalid-created-resource-id');
     resource.id=id; this.checkpoint(this); return id;
   }
+
   async start() {
     await this.stage('private-daemon',async()=>{
       const network=await this.create('network',['network','create',...(this.spec.guidedPreviewAcceptance===true?[]:['--internal']),'--label',LABEL+'='+this.id,this.name]);
@@ -213,7 +219,12 @@ class Candidate {
     });
     await this.stage('candidate-images',async()=>{
       const tags={proxy:'candidate-proxy:under-test',candidate:'system-candidate:under-test',wizard:'systembootstrapper/wizard',gitlab:'candidate-gitlab:under-test',runner:'candidate-runner:under-test',nginx:'nginx:latest',helper:'candidate-helper:under-test',previousGitlab:'candidate-gitlab:previous',previousRunner:'candidate-runner:previous',previousHelper:'candidate-helper:previous',previousController:'candidate-controller:previous-public',previousWizard:'candidate-wizard:previous-public'};
+      const privateWizard=this.spec.restore?.expected?.privateWizard;
+      if(privateWizard?.kind==='shared-candidate-registry-v2')require('../e2e/recovery').privateWizardDescriptor(privateWizard,this.spec);
       for (const [role,image] of Object.entries({...this.spec.images,...this.spec.supportImages})) {
+        // Prove restored private-registry recovery from an empty cache, even
+        // when the original lifecycle used this exact prebuilt candidate.
+        if(role==='wizard'&&privateWizard?.kind==='shared-candidate-registry-v2')continue;
         // Stream the explicit archive from an open descriptor. No buffering a
         // multi-gigabyte image in Node and no outer-host bind path assumptions.
         await this.inner(['load'],{inputFile:image.archive,timeout:600000});
@@ -270,6 +281,7 @@ class Candidate {
       await this.inner(['start','system_bootstrapper_1']);
     });
   }
+
   async smoke() {
     await this.stage('routed-wizard',()=>this.wait(async()=>{
       const response=await this.request(this.url+'/',{headers:{Host:'wizard.candidate.test'}});
@@ -294,10 +306,12 @@ class Candidate {
       if(values.GITLAB_IMAGE!=='candidate-gitlab:under-test'||values.GITLAB_RUNNER_IMAGE!=='candidate-runner:under-test') throw new Error('configuration-round-trip-mismatch');
     });
   }
+
   async rails(script) {
     const raw=await this.inner(['exec','-i','system_gitlab_1','gitlab-rails','runner','-'],{input:script,timeout:180000});
     try {return JSON.parse(raw.split('\n').at(-1));} catch {throw new Error('invalid-rails-result');}
   }
+
   async api(route,token,method='GET',payload) {
     const response=await this.request((this.gitlabUrl||this.url)+'/api/v4'+route,{method,headers:{Host:'gitlab.candidate.test',
       'PRIVATE-TOKEN':token,'Content-Type':'application/json'},...(payload===undefined?{}:{body:JSON.stringify(payload)})});
@@ -305,6 +319,25 @@ class Candidate {
     if(!response.body) return null;
     try {return JSON.parse(response.body);} catch {return response.body;}
   }
+
+  async prepareRunnerTransport() {
+    const script='('+function(base){
+      const fs=require('fs');const p=base+'/runners/runner/1/config/config.toml';
+      let t=fs.readFileSync(p,'utf8');
+      if((t.match(/^\s*\[\[runners\]\]\s*$/gm)||[]).length!==1||
+        (t.match(/^\s*\[runners\.docker\]\s*$/gm)||[]).length!==1)throw Error('candidate-runner-docker-section-required');
+      t=t.replace(/(\[runners\.docker\]\r?\n)([\s\S]*?)(?=\r?\n\s*\[|$)/,(_match,header,body)=>
+        header+'    helper_image = "candidate-helper:under-test"\n    pull_policy = "if-not-present"\n    allowed_pull_policies = ["never", "if-not-present"]\n'+
+        body.replace(/^\s*(?:helper_image|pull_policy|allowed_pull_policies)\s*=.*(?:\r?\n|$)/gm,''));
+      fs.writeFileSync(p,t,{mode:0o600});
+    }.toString()+')('+JSON.stringify(this.spec.restore?.base||'/candidate-data/platform')+')';
+    await this.inner(['exec','system_bootstrapper_1','node','-e',script]);
+    if(this.spec.restore&&this.spec.guidedPreviewAcceptance===true)await require('../e2e/guided-preview-platform').configureRunner(this);
+    await this.sleep(4000);
+    await this.inner(['exec','runner_docker_1','gitlab-runner','verify']);
+    await this.inner(['exec','runner_docker_1','sh','-c','grep -F \'allowed_pull_policies = ["never", "if-not-present"]\' /etc/gitlab-runner/config.toml >/dev/null && grep -F \'helper_image = "candidate-helper:under-test"\' /etc/gitlab-runner/config.toml >/dev/null']);
+  }
+
   async platform() {
     if(!this.spec.supportImages?.helper) throw new Error('runner-helper-image-required');
     await this.stage('gitlab-and-runner-ready',async()=>{
@@ -315,28 +348,30 @@ class Candidate {
         await this.inner(['exec','runner_docker_1','gitlab-runner','verify']);return true;
       },this.spec.readinessMilliseconds||600000);
     });
+    if(this.spec.recoveryAcceptance===true&&this.spec.restore){
+      await this.stage('recovery-retained-runner-identity',async()=>{
+        const expected=this.spec.restore.expected;
+        if(!expected?.runnerIdentity||!Number.isSafeInteger(expected.projectId)||!Number.isSafeInteger(expected.registryPipelineId))throw Error('recovery-runner-identity-required');
+        const recovery=require('../e2e/recovery'),actual=await recovery.runnerIdentity(this);
+        recovery.assertRunnerIdentity(expected.runnerIdentity,actual);
+        recovery.assertRunnerIdentity(this.restoredRunnerIdentity,actual,true);
+        await this.prepareRunnerTransport();
+        recovery.assertRunnerIdentity(actual,await recovery.runnerIdentity(this),true);
+        // Retain the original successful pipeline whose immutable blob was backed up.
+        this.evidence={...this.evidence,projectId:expected.projectId,pipelineId:expected.registryPipelineId};
+      });
+      return;
+    }
     let token;
     try {
       await this.stage('runner-registration-idempotent',async()=>{
         const before=await this.rails("require 'json'; u=User.find_by_username('root'); t=u.personal_access_tokens.create!(name: 'disposable-candidate-acceptance',scopes:['api'],expires_at:Date.tomorrow); puts JSON.generate(token:t.token,pools:Ci::Runner.instance_type.where(description:'System Bootstrapper Docker pool').count,active_setup:u.personal_access_tokens.where(name:'system-bootstrapper-runner-setup',revoked:false).count)");
         token=before.token;
         if(before.pools!==1||before.active_setup!==0) throw new Error('runner-setup-state-mismatch');
-        await this.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','bash','register.sh','main'],{timeout:180000});
+        await this.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/lifecycle/entry.js','runner-register','/system','main'],{timeout:180000});
         const after=await this.rails("require 'json'; puts JSON.generate(pools:Ci::Runner.instance_type.where(description:'System Bootstrapper Docker pool').count,active_setup:User.find_by_username('root').personal_access_tokens.where(name:'system-bootstrapper-runner-setup',revoked:false).count)");
         if(after.pools!==1||after.active_setup!==0) throw new Error('runner-idempotency-failed');
-        const script='('+function(base){
-          const fs=require('fs');const p=base+'/runners/runner/1/config/config.toml';
-          let t=fs.readFileSync(p,'utf8');
-          if((t.match(/\[runners\.docker\]\r?\n/g)||[]).length!==1)throw Error('candidate-runner-docker-section-required');
-          t=t.replace(/(\[runners\.docker\]\r?\n)([\s\S]*?)(?=\r?\n\s*\[|$)/,(_match,header,body)=>
-            header+'    helper_image = "candidate-helper:under-test"\n    pull_policy = "if-not-present"\n    allowed_pull_policies = ["never", "if-not-present"]\n'+
-            body.replace(/^\s*(?:helper_image|pull_policy|allowed_pull_policies)\s*=.*(?:\r?\n|$)/gm,''));
-          fs.writeFileSync(p,t,{mode:0o600});
-        }.toString()+')('+JSON.stringify(this.spec.restore?.base||'/candidate-data/platform')+')';
-        await this.inner(['exec','system_bootstrapper_1','node','-e',script]);
-        await this.inner(['exec','runner_docker_1','sh','-c','grep -F \'allowed_pull_policies = ["never", "if-not-present"]\' /etc/gitlab-runner/config.toml >/dev/null && grep -F \'helper_image = "candidate-helper:under-test"\' /etc/gitlab-runner/config.toml >/dev/null']);
-        await this.sleep(4000);
-        await this.inner(['exec','runner_docker_1','gitlab-runner','verify']);
+        await this.prepareRunnerTransport();
       });
       let project,branch;
       await this.stage('registry-build-push-pull-run',async()=>{
@@ -430,13 +465,13 @@ delivery-must-not-run:
       if(!this.spec.recoveryAcceptance) await this.stage('seed-harvest',async()=>{
         const storage=require('../e2e/local-storage');
         await storage.attach(this);
-        await this.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','bash','stop.sh']);
+        await this.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/lifecycle/entry.js','runner-stop','/system']);
         await this.inner(['exec','system_bootstrapper_1','sh','-c','printf candidate-seed-proof > /srv/gitlab/config/.candidate-proof']);
-        await this.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],{timeout:180000});
+        await this.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/storage/entry.js','launch','harvest'],{timeout:180000});
         const proof=await this.inner(['run','--rm','--network','none','--read-only',
           '--env','GITLAB_IMAGE=candidate-gitlab:under-test',
           '--mount','type=bind,src='+storage.SEED+',dst=/seed,readonly','--entrypoint','node','system-candidate:under-test','-e',
-          "process.stdout.write(require('fs').readFileSync(require('/system/system/seed-manifest').current('/seed')+'/srv/gitlab/config/.candidate-proof','utf8'))"]);
+          "process.stdout.write(require('fs').readFileSync(require('/system/dist/modules/storage/manifest').current('/seed')+'/srv/gitlab/config/.candidate-proof','utf8'))"]);
         if(proof!=='candidate-seed-proof')throw new Error('seed-restore-mismatch');
         await storage.detach(this);
       });
@@ -448,6 +483,7 @@ delivery-must-not-run:
       });
     }
   }
+
   async httpFromCandidate(url,options={}) {
     // The CI driver may itself be a container using an outer Docker socket.
     // Its loopback is not the daemon host's loopback. Probe from the private
@@ -479,6 +515,7 @@ delivery-must-not-run:
     }.toString()+')()';
     return JSON.parse(await this.inner(['exec','-i','system_bootstrapper_1','node','-e',script],{input:JSON.stringify(input),timeout:20000}));
   }
+
   cleanup() {
     const failures=[];
     for(const resource of [...this.resources].reverse()) {
@@ -511,10 +548,12 @@ delivery-must-not-run:
     this.results.push({name:'cleanup',status:failures.length?'failed':'passed',failures});
     return failures.length===0;
   }
+
   report(directory,io=fs,platform=process.platform) {
     prepareReportDirectory(directory,io,platform);
     const safe={runId:this.id,startedAt:this.startedAt===undefined?undefined:new Date(this.startedAt).toISOString(),results:this.results,resources:this.resources,
       images:this.spec?.images ? Object.fromEntries(Object.entries(this.spec.images).map(([role,image])=>[role,image.id])) : undefined,
+      ...(this.spec?.sourceLayout==='system-monorepo-v1'?{sourceLayout:this.spec.sourceLayout,sourceTree:this.spec.sourceTree,wizardSourceTree:this.spec.wizardSourceTree}:{}),
       daemonImage:this.spec?.daemonImage,sourceRevision:this.spec?.sourceRevision,ciIdentity:ciIdentity(this.spec?.ciIdentity),guidedPreviewReceipt:this.guidedPreviewReceipt,evidence:this.evidence,fullAcceptance:this.spec?.fullAcceptance===true,
       acceptance:this.spec?.fullAcceptance===true?'explicit-private-platform-scenarios; see individual stage outcomes':'lifecycle-and-http-smoke-only'};
     atomicReplace(path.join(directory,'results.json'),JSON.stringify(safe,null,2),io,platform);
@@ -541,8 +580,9 @@ function recover(report,exec=docker) {
     ['candidate','wizard','gitlab','runner','nginx'].includes(role)&&/^sha256:[a-f0-9]{64}$/.test(id)).map(([role,id])=>[role,{id}]));
   const evidence={};
   for(const key of ['projectId','pipelineId','failurePipelineId']) if(Number.isInteger(report.evidence?.[key])&&report.evidence[key]>0)evidence[key]=report.evidence[key];
+  if(['success','failed','skipped','canceled'].includes(report.evidence?.pipelineStatus))evidence.pipelineStatus=report.evidence.pipelineStatus;
   if(Array.isArray(report.evidence?.jobs)) evidence.jobs=report.evidence.jobs.filter(job=>
-    Number.isInteger(job.id)&&['registry-round-trip','delivery-gate'].includes(job.name)&&['success','failed','skipped'].includes(job.status)).map(job=>({id:job.id,name:job.name,status:job.status,
+    Number.isInteger(job.id)&&['registry-round-trip','delivery-gate','restored-registry-blob'].includes(job.name)&&['success','failed','skipped','canceled'].includes(job.status)).map(job=>({id:job.id,name:job.name,status:job.status,
       ...(Number.isInteger(job.runnerId)?{runnerId:job.runnerId}:{}),
       ...(jobDiagnostics.failureReason(job.failureReason)?{failureReason:jobDiagnostics.failureReason(job.failureReason)}:{}),
       ...(Number.isFinite(job.duration)?{duration:job.duration}:{}),
@@ -558,13 +598,14 @@ function recover(report,exec=docker) {
       if(typeof report.evidence.storage[key]==='boolean')storage[key]=report.evidence.storage[key];
     if(Object.keys(storage).length)evidence.storage=storage;
   }
-  if(report.evidence?.guidedPreview){const clean=require('../../gitlab/guided-preview-evidence').sanitize(report.evidence.guidedPreview);if(clean)evidence.guidedPreview=clean;}
+  if(report.evidence?.guidedPreview){const clean=require('../../dist/modules/release/guidedPreviewEvidence').sanitize(report.evidence.guidedPreview);if(clean)evidence.guidedPreview=clean;}
   if(report.evidence?.gitlabUpgrade){const clean=require('../e2e/gitlab-upgrade').sanitizeEvidence(report.evidence.gitlabUpgrade);if(clean)evidence.gitlabUpgrade=clean;}
+  if(report.evidence?.gitlabUpgradeFailure){const clean=require('../e2e/public-upgrade').sanitizeGitlabFailure(report.evidence.gitlabUpgradeFailure);if(clean)evidence.gitlabUpgradeFailure=clean;}
   Object.assign(instance,{id:report.runId,name,resources:report.resources,results,exec,
     startedAt:typeof report.startedAt==='string'&&Number.isFinite(Date.parse(report.startedAt))?Date.parse(report.startedAt):undefined,
     evidence:Object.keys(evidence).length?evidence:undefined,
-    guidedPreviewReceipt:require('../../gitlab/publish-successor').sanitizeGuidedReceipt(report.guidedPreviewReceipt),
-    spec:{images,ciIdentity:ciIdentity(report.ciIdentity),sourceRevision:/^[a-f0-9]{40}$/.test(report.sourceRevision||'')?report.sourceRevision:undefined,daemonImage:/^[a-z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(report.daemonImage||'')?report.daemonImage:undefined,fullAcceptance:report.fullAcceptance===true}});
+    guidedPreviewReceipt:require('../../dist/modules/release/publicationRuntime').createPublicationRuntime(require('../../config/gitlab/security-release.json')).evidence.sanitizeGuidedReceipt(report.guidedPreviewReceipt),
+    spec:{images,...(report.sourceLayout==='system-monorepo-v1'?{sourceLayout:report.sourceLayout,sourceTree:/^[a-f0-9]{40}$/.test(report.sourceTree||'')?report.sourceTree:undefined,wizardSourceTree:/^[a-f0-9]{40}$/.test(report.wizardSourceTree||'')?report.wizardSourceTree:undefined}:{}),ciIdentity:ciIdentity(report.ciIdentity),sourceRevision:/^[a-f0-9]{40}$/.test(report.sourceRevision||'')?report.sourceRevision:undefined,daemonImage:/^[a-z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(report.daemonImage||'')?report.daemonImage:undefined,fullAcceptance:report.fullAcceptance===true}});
   return instance;
 }
 module.exports={Candidate,configuration,signature,configurationValues,recover,atomicReplace,LABEL};

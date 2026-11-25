@@ -3,9 +3,11 @@
 // alone would also admit a credential shaped like a hyphenated error string.
 const publicUpgrade = require('../e2e/public-upgrade-diagnostics.json');
 const REASONS = new Set([
-  ...['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover'].flatMap(operation =>
+  ...['initialize', 'restore-original', 'plan', 'apply', 'status', 'recover',
+    'gitlab-prepare', 'gitlab-plan', 'gitlab-promote', 'gitlab-status', 'gitlab-abort', 'gitlab-rollback'].flatMap(operation =>
     [...Object.values(publicUpgrade.errors), ...Object.values(publicUpgrade.dockerOperations),
-      ...Object.values(publicUpgrade.exceptionTypes), publicUpgrade.fallback]
+      ...Object.values(publicUpgrade.exceptionTypes), ...Object.values(publicUpgrade.planSteps),
+      ...Object.values(publicUpgrade.storageErrors), publicUpgrade.fallback]
       .map(code => 'public-upgrade-native-' + operation + '-' + code)),
   'public-upgrade-data-inventory-invalid',
   'public-upgrade-data-inventory-limit',
@@ -21,6 +23,12 @@ const REASONS = new Set([
   'public-upgrade-native-apply-failed',
   'public-upgrade-native-status-failed',
   'public-upgrade-native-recover-failed',
+  'public-upgrade-native-gitlab-prepare-failed',
+  'public-upgrade-native-gitlab-plan-failed',
+  'public-upgrade-native-gitlab-promote-failed',
+  'public-upgrade-native-gitlab-status-failed',
+  'public-upgrade-native-gitlab-abort-failed',
+  'public-upgrade-native-gitlab-rollback-failed',
   'seed-target-unavailable',
   'storage-operation-busy',
   'restore-target-not-empty',
@@ -159,6 +167,20 @@ const REASONS = new Set([
   'guided-preview-native-check-timeout',
   'guided-preview-sync-login-failed',
   'guided-preview-sync-result-invalid',
+  'system-beta-registration-namespace-unavailable',
+  'system-beta-registration-project-rejected',
+  'system-beta-registration-default-branch-missing',
+  'system-beta-registration-ci-installation-failed',
+  'system-beta-registration-routing-failed',
+  'system-beta-registration-unknown-failure',
+  'system-beta-pipeline-inventory-required',
+  'system-beta-source-pipeline-invalid',
+  'system-beta-source-pipeline-jobs-present',
+  'system-beta-native-preflight-mismatch',
+  'system-beta-native-setup-failed',
+  'system-beta-native-setup-not-ready',
+  'system-beta-setup-started-build',
+  'system-beta-review-reservation-present',
   'candidate-runner-docker-section-required',
   'completed-snapshot-required',
   'configuration-exporter-identity-mismatch',
@@ -240,6 +262,17 @@ const REASONS = new Set([
   'recovery-identity-repository-head-failed',
   'recovery-identity-user-failed',
   'recovery-input-identity-mismatch',
+  'recovery-runner-identity-required',
+  'recovery-runner-config-unavailable',
+  'recovery-runner-id-invalid',
+  'recovery-runner-credential-invalid',
+  'recovery-runner-manager-invalid',
+  'recovery-runner-container-invalid',
+  'recovery-runner-id-changed',
+  'recovery-runner-credential-changed',
+  'recovery-runner-image-changed',
+  'recovery-runner-manager-changed',
+  'recovery-runner-job-manager-mismatch',
   'recovery-project-export-missing',
   'recovery-restored-registry-tag-failed',
   'recovery-restored-merge-request-failed',
@@ -302,5 +335,7 @@ const REASONS = new Set([
   'harvest-phase-manifest-create',
   'harvest-phase-snapshot-publish',
 ]);
-function failureReason(value) { return REASONS.has(value) ? value : 'stage-error'; }
+function failureReason(value) {
+  return REASONS.has(value)||typeof value==='string'&&/^system-beta-registration-ci-installation-failed-http-[1-5][0-9]{2}$/.test(value)&&!value.endsWith('-201') ? value : 'stage-error';
+}
 module.exports={failureReason};

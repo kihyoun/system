@@ -1,0 +1,271 @@
+# Verwalteter Wizard-Build-Kandidat
+
+Der Build-Ablauf aktiviert Prüfungen und ein unveränderliches Registry-
+Kandidatenartefakt nach ausdrücklicher Vorschau/Aktivierung. Er bewahrt den
+laufenden Production-Wizard; Review-/Beta-Deployment und Production-Freigabe
+sind separate Vorgänge. Die Upstream-Wizard-CI und das Dockerfile bleiben neben
+verwalteten Dateien verfügbar.
+
+Neue Quellcodeimporte verwenden das zum Quellcode passende versionierte Rezept.
+Vite-Schnappschüsse wählen das Node-24-/Vite-Profil. Historische Node-13-/CRA-/
+Jest-Rezepte bleiben nur verfügbar, damit bestehende Reservierungen und
+Nachweise ihre exakten Hashes behalten. Die Controller-Laufzeit verwendet die
+unterstützte Node-24-Werkzeugkette.
+
+`BuildRecipeService` liefert eine deterministische Version/einen Hash, verwaltete CI
+und Dateien unter seinem versionierten Pfad `.system-bootstrapper/build-v1`,
+`build-v2` oder `build-v3`. Die verwalteten Dockerfiles
+verwenden eigene Kontext-Ausschlussdateien, um Git-Metadaten, Dotenv-
+Überschreibungen und private Inhalte auszuschließen. Moderne Prüfungen führen
+Lint, Vitest, TypeScript-/Vite-Build und Konfigurationsexport aus. Das Legacy-Profil
+liefert CRA nur die bekannte sichere Preflight-Einstellung des Quellcodeimporters
+und setzt `CI=true` für Jest. Unabhängige Browserprüfungen kontrollieren die
+dargestellte Oberfläche, den Projekte-Tab und die verschachtelte SPA-Route,
+blockieren externe Ressourcen und speichern Nachweise.
+
+Jeder CI-Job erstellt seinen eigenen benannten, per Digest festgelegten
+BuildKit-Builder und entfernt diesen Builder/Cache sowie seine eigenen
+Image-Referenzen beim Beenden. Kandidatencontainer und ihr internes Netzwerk
+werden separat benannt und entfernt. Globales Docker-Prune, ein Daemon-Neustart
+oder Änderungen an Plattformdiensten gehören nicht zu diesen Prüfungen.
+Hartes Beenden kann zugehörige Ressourcen zurücklassen; prüfe vor einer gezielten
+Wiederaufnahme die Namen des exakten Jobs und bereinige niemals fremde
+Plattformressourcen.
+
+## Aktivierung und Wiederaufnahme
+
+Das Sync-Modul bietet Vorschau, Aktivierung und Status. Der Server erhält den Quellimport-Nachweis und speichert ein separates versioniertes `build`-Objekt der Version 1. Er verlangt den exakten vorgeschauten Rezept-Hash, abgeschlossene verwaltete Quellregistrierung und eine konfigurierte lokale Registry. Eine geprüfte projektgebundene Kennung wird über den gemeinsamen Zugangsdienst bezogen; private Token-Journale bleiben im GitLab-Konfigurationsvolume.
+
+Der Adapter prüft Repository-Eigentum, Quellcodemarkierung, Standardbranch und
+das erwartete deaktivierte Grundgerüst. Die Rezeptinstallation ist ein
+abgesicherter `[skip ci]`-Commit. Sie lehnt belegte/bearbeitete Dateien ab und
+prüft vor jedem Pipeline-Start den Elterncommit des installierten Commits,
+auch bei unterbrochenen Wiederholungen.
+
+Die Erstellung der ersten Pipeline verwendet eine sitzungsbezogene
+PostgreSQL-Advisory-Sperre und eine dauerhafte nicht geheime Projektvariable
+namens `SYSTEM_WIZARD_PIPELINE_<operation>` mit Geltungsbereich `*`, die Vorgang
+und Aktivierungscommit enthält. Andere Projektvariablen werden niemals geändert.
+Die Absicht wird vor dem Senden der Pipeline-Anfrage erstellt. Eine ungewisse
+Antwort oder ein Prozessabbruch nach der Absichtserstellung erlaubt bei
+Wiederholungen nur das Nachschlagen. Es wird kein zweiter blinder Pipeline-POST gesendet.
+
+Falls die ursprüngliche Pipeline später erscheint, ermittelt Aktualisieren
+ihre Identität wieder. Falls keine Pipeline erscheint, meldet der Beleg
+`requires-reconciliation`. Dazu gehört auch das bewusste Absturzfenster nach
+dem Speichern der Absicht, aber vor dem Senden des POST. Ein Administrator
+muss vor jeder ausdrücklichen Reparatur den aufgezeichneten Vorgang, das
+Repository und die Pipeline-Historie prüfen. Lösche/setze den Prüfpunkt nicht
+allein deshalb zurück, weil eine Aktualisierung keine Pipeline liefert.
+Automatische Wiederholungen sind bewusst begrenzt, um bei ungewissem externem
+Ausgang die Garantie gegen Duplikate zu bewahren.
+
+Eine Statusaktualisierung installiert niemals Dateien und erstellt keine
+Pipeline. Ein Kandidat wird erst verifiziert, wenn SHA/Referenz/Quelle der
+aufgezeichneten Pipeline und beide erforderlichen nicht optionalen Jobs
+erfolgreich sind und ihre Artefakte bei Quellcode-Commit, Pipeline-Identität und
+exaktem SHA-256-Digest der konfigurierten Registry übereinstimmen. Browser- und
+Build-Prüfaussagen müssen vorhanden sein. Eine fehlgeschlagene Verifizierung
+entfernt veraltete Angaben zu verifizierten Artefakten und behält Vorgangs-/
+Pipeline-Identitäten für die Untersuchung bei.
+
+## Prüfbedingungen
+
+Fixtures sind `tests/gitlab/wizard-build.js`, `tests/wizard/build-recipe.js`
+und `tests/wizard/build-workflow.js`; das gemeinsame Testmanifest wählt die
+isolierten Prüfungen aus. Frische Installation anhand der Lockdatei, tatsächliche
+Prüfungen mit der gewählten Werkzeugkette, Kandidaten-HTTP-/Browserprüfungen
+und echte GitLab-/Runner-/Registry-Ausführung sind separate Integrationsbedingungen.
+Zwischengespeicherte Build-Abhängigkeiten und Fixtures allein belegen nicht den
+vollständigen Ablauf. Bewahre passende Quellcode-/Pipeline-/Image-Nachweise
+privat auf und prüfe vor einer Kandidatenfreigabe die native Job-Bereinigung.
+
+## Unterstütztes Wizard-Werkzeugkettenprofil
+
+Das bisherige Rezept `build-v1` bleibt für seine aufgezeichneten Hashes und
+historischen GitLab-Nachweise bytegetreu erhalten. Neue Quellcodeimporte,
+deren verifizierter Schnappschuss Vite verwendet, wählen die Familie Node 24 /
+Vite 8 (`node24-vite8-cli-v7` für aktuelle v3-Reservierungen): Node 24.22.0/npm 11.19.1,
+Installation anhand der Lockdatei, Lint, Vitest, TypeScript-/Vite-Build und
+Playwright-1.64.1-Browserprüfungen. Beide Profile verwenden dieselben begrenzten
+Jobnamen und denselben Artefakt-/Digest-Vertrag; moderne Artefakte melden
+`unitTests`, `testRunner: vitest`, `lint` und `typecheck`, statt eine Ausführung
+von Jest zu behaupten.
+
+Ein reservierter Build wählt immer seinen exakten bekannten Rezept-Hash.
+Unbekannte Hashes werden abgelehnt. Review-/Beta-Reservierungen bewahren den
+passenden Build-Rezept-Hash; das unveränderliche Hilfsprogramm prüft, dass er
+weiterhin zur kanonischen Build-Reservierung passt. Das moderne Profil schreibt
+daher keine alten GitLab-Rezepte um und macht aktuelle Deployment-Prüfpunkte
+nicht stillschweigend ungültig. Das Quellcode-/Werkzeugketten-Upgrade eines
+bestehenden importierten Projekts vor Ort erfordert weiterhin eine separat
+geprüfte Migration; ein neuer Schnappschussimport kann das unterstützte Profil
+direkt verwenden.
+
+Eine v7-Reservierung bewahrt `cliArtifactSha256` unabhängig vom aktuell gewählten
+Zielpaket. Der echte Archivhash bleibt Bestandteil des genauen Rezepthashes.
+Source-primary-Nachweise können diese Identität aus ihrem genehmigten CI-
+Dateimanifest rekonstruieren. Fehlt einem älteren verwalteten Nachweis der Hash,
+verweigert die Offline-Prüfung von Build und Umgebungen den Zugriff, ohne
+Konfiguration oder Sperren zu verändern. Der native Upgradeplan der ursprünglich
+importierten Quellen rekonstruiert die Identität aus dem passenden v3-Schnappschuss
+und geprüften Datei-/Commitnachweisen. Ersetze sie niemals durch das neue Zielpaket.
+
+## Exakte Standard-Tag-Bereinigung
+
+Die aufgezeichneten Rezepte `legacy` und `node24-vite8` bleiben für ihre bestehenden
+Belege und historischen Nachweise bytegetreu verfügbar. Sie haben eine bekannte
+Einschränkung bei der Bereinigung: Ein Browser-Image ohne Tag wird von Docker
+als `:latest` aufgezeichnet, und der ältere Bereinigungsvergleich kann dessen
+Job-Tag zurücklassen, obwohl Erfolg gemeldet wird.
+
+Aktuelle v3-Quellbuilds verwenden `node24-vite8-cli-v7`; ältere Snapshots wählen
+ihr quellkompatibles Profil, darunter `legacy-ca-v4` und `node24-vite8-quickstart-v5`. Diese übernehmen die korrigierte Bereinigungsimplementierung
+aus den versionierten Cleanup-v2-Profilen; das moderne Profil übernimmt außerdem
+die unten beschriebenen Navigationsprüfungen. Die Bereinigung ergänzt `:latest`
+nur, wenn die letzte Komponente des Repository-Pfads kein Tag hat; ein
+Registry-Port bleibt erhalten, und ausdrückliche Tags und Digest-Referenzen
+werden nicht verändert. Das Entfernen zielt nur auf genau dieses Tag/diese
+Referenz, ohne Prune oder erzwungenes Image-Entfernen. Ihre unterschiedlichen
+Rezept-Hashes machen die Änderung ausdrücklich.
+
+Die Installation dieses Controllers schreibt weder einen bestehenden kanonischen
+Build noch seinen Beleg um. Ein bereits reserviertes Rezept wählt weiter seinen
+exakten historischen Hash. Verwende einen passenden Controller/ein Hilfs-Image,
+das alte und korrigierte Profile erkennt. Überführe ein aktives kanonisches
+Projekt über die abgesicherte [Migration nur für Build/Umgebungen](../wizard-upgrade/README.md#build-and-environment-recipes-without-reimporting-source)
+auf ein korrigiertes Profil und prüfe die native Job-Bereinigung. Die Migration
+muss aktuelle Quellcodeänderungen, die Quellcode-Importmarkierung, Untergrenzen
+gestoppter Umgebungen und andere Konfiguration bewahren. Die vollständige
+Quellcode-Importmigration ist keine Abkürzung für eine reine Bereinigungsänderung.
+
+## Kompatibilität mit der Übersichtsnavigation
+
+Das Profil `node24-vite8-overview-v3` behält exakt die moderne Cleanup-v2-
+Werkzeugkette, CI, erforderlichen Jobnamen und den Artefaktvertrag bei. Nur sein
+Browserskript ändert sich: Wenn die obersten Tabs **Übersicht** / **Wizard**
+vorhanden sind, prüft es zunächst die Überschrift **Erste Schritte** und den
+ausgewählten Übersicht-Tab und öffnet dann Wizard, bevor es Verbinden, Projekte,
+Konfigurations-ZIP-/Cube-Prüfung und die verschachtelte SPA-Ausweichroute prüft.
+Es prüft, dass der Wechsel zur Übersicht und zurück den ausgewählten Projekte-Tab
+bewahrt und die Aktion **Wizard öffnen** funktioniert. Bildschirmfotos von
+Übersicht und Arbeitsbereich bleiben erhalten. Früherer moderner Quellcode ohne
+diese Tabs behält seinen direkten Browserpfad zum Arbeitsbereich.
+
+Frühere Profile einschließlich beider Cleanup-v2-Profile bleiben anhand ihrer
+exakten reservierten Hashes auswählbar. Ein neuer Controller ersetzt kein
+installiertes Rezept und schreibt seinen Beleg nicht um. Führe vor der
+Auslieferung von Quellcode, der die standardmäßige Übersicht ergänzt, die
+abgesicherte Migration nur für Build/Umgebungen mit einem ausdrücklichen
+`buildProfile` von `node24-vite8-overview-v3` oder `node24-vite8-ca-v4` und passendem unveränderlichem Hilfs-Image
+aus. Behalte das gewählte Profil in den privaten Betreiberoptionen für eine
+spätere Übernahme oder Wiederholung; die Production-Freigabe bleibt ein eigener
+bewusster Vorgang.
+
+## Geprüftes öffentliches CA-Vertrauen
+
+Die Rezepte `legacy-ca-v4` und `node24-vite8-ca-v4` ergänzen die verwalteten Dateien
+um das geprüfte öffentliche Mozilla-CA-Paket des Repositories und ein per
+Prüfsumme verifiziertes Aktualisierungsskript. Build- und Browser-Images
+installieren dieses Paket offline; Node verwendet OpenSSL-CA-Vertrauen, sodass
+seine eingebettete historische CA-Liste kein entferntes Vertrauen wieder
+einführt. Das moderne Profil verwendet außerdem die geprüfte Node-Basis aus
+dem erzeugten Rezept. Version und Rezept-Hash binden diese Änderungen an ihre
+exakten Eingaben.
+
+Bestehende Reservierungen behalten ihre ursprünglichen Bytes und Nachweise.
+Aktualisiere ein bereits verwaltetes Projekt über die abgesicherte Migration
+nur für Build/Umgebungen mit einem ausdrücklichen `buildProfile` von
+`node24-vite8-ca-v4` und dem akzeptierten unveränderlichen Hilfs-Image; baue und
+prüfe danach die Job-Images neu. Ein Controller-Austausch allein aktualisiert
+das Rezept eines reservierten Projekts nicht. Diese Aktualisierung gilt für
+erzeugte Images und CI-Jobs; sie ist kein Wartungsbefehl für den
+Host-Vertrauensspeicher. Prüfe installationsspezifische eigene CAs separat.
+
+## Schnellinstallation und integrierte Docs
+
+Das Profil `node24-vite8-quickstart-v5` übernimmt die exakte CA-v4-Werkzeugkette,
+CI-Prüfungen, Bereinigung und öffentlichen Vertrauensdateien. Nur sein Browserskript
+ändert sich passend zur aktuellen Oberfläche: **So funktioniert’s**, die drei Übersichtskarten,
+die Scroll-/Fokusaktion **System Bootstrapper installieren**, der exakte Befehl zur
+**Schnellinstallation** und die integrierte Handbuchnavigation. Es bewahrt die Projekte-
+Auswahl beim Wechsel zwischen Übersicht, Docs und Wizard, prüft Konfigurations-ZIP und
+exakten Cube sowie die verschachtelte SPA-Ausweichroute und den direkten Einstieg
+`/configuration`. Bildschirmfotos von Übersicht, Docs und Wizard bleiben als Browsernachweise verfügbar.
+
+Dieses Profil setzt die aktuelle Quellcodeoberfläche voraus; es interpretiert frühere
+reservierte Rezepte nicht neu. Liefere seine verwalteten Dateien zusammen mit dem
+passenden Quellcode aus und übernimm dann ausdrücklich
+`"buildProfile": "node24-vite8-quickstart-v5"` über den passenden Ablauf für verwaltete
+Importe oder quellcodeführende Projekte. Abgesicherte Upgrades lehnen ein Downgrade
+dieses Profils auf ältere Browserprüfungen ab.
+
+Um das exakte Smoke-Skript gegen einen isolierten lokalen Build auszuführen, setze
+`WIZARD_BASE_URL` auf dessen HTTP-Ursprung und `WIZARD_EVIDENCE_DIR` auf ein privates
+Ausgabeverzeichnis. Die Standardwerte im verwalteten Container bleiben `http://wizard-candidate`
+und `/evidence`; alle Anfragen außerhalb des gewählten Ursprungs werden blockiert.
+
+Aktuelle Quellsnapshots deklarieren `.gitlab/producer-v3.json` und wählen
+`node24-vite8-cli-v7`. Das quellgebundene reguläre CLI-Archiv, sein Nachweis und
+seine Prüfsumme werden unter `.gitlab/cli` exportiert. Die nativen Quelldateien
+unter `.gitlab/build-v3` und die verwalteten Dateien unter
+`.system-bootstrapper/build-v3` enthalten nur Docker-/Build-Eingaben und die
+festgeschriebene Playwright-Abhängigkeitssperrdatei. Jobs prüfen den Archivhash,
+installieren das Archiv offline ohne Lifecycle-Skripte und rufen
+`system-bootstrapper project-ci build|verify CHECKOUT` auf. Browserprüfungen
+laufen über `system-bootstrapper project-ci browser-smoke CHECKOUT`, den
+TypeScript-Dienst derselben regulären CLI. Umgebungsjobs rufen den Umgebungsdienst
+dieser CLI auf. Der Wizard bleibt eine von Nginx ausgelieferte statische SPA.
+
+## CLI-Begleitpaket vorbereiten
+
+Ein Quellexport enthält das **reguläre gebündelte npm-Paket** aus demselben Build,
+seinen SHA-256 und einen Nachweis, der Paketversion, System-Git-Revision und Git-Baum
+verknüpft. Das Archiv bleibt außerhalb seines eigenen npm-Pakets. Der ausdrückliche
+absolute Pfad `SYSTEM_CLI_ARTIFACT` wählt das aufbewahrte Archiv aus;
+`SYSTEM_CLI_RECEIPT` wählt optional seinen Nachweis aus (Standard: Archivpfad plus
+`.json`). Fehlende oder abweichende Eingaben werden sicher abgelehnt. Archive sind
+auf 8 MiB begrenzt. Jobs prüfen die Prüfsumme des exakten lokalen Archivs und
+installieren es mit `npm install --offline --ignore-scripts`; eine Veröffentlichung
+in der Registry oder eine gleitende Paketversion ist nicht erforderlich.
+
+Installiere in einem sauberen, geprüften Checkout die exakten Node-/npm-Versionen
+aus `package.json`, führe `npm ci --ignore-scripts --no-audit --no-fund` aus und
+bereite das lokale Paket vor dem Quellexport vor:
+
+```sh
+npm run build
+mkdir -p .ci-cli-package
+npm pack --offline --ignore-scripts --pack-destination .ci-cli-package
+npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .ci-cli "./.ci-cli-package/systembootstrapper-cli-$(cat VERSION).tgz"
+export PATH="$PWD/.ci-cli/node_modules/.bin:$PATH"
+system-bootstrapper project-ci package "$PWD" "$PWD/assets/cli-companion"
+export SYSTEM_CLI_ARTIFACT="$PWD/assets/cli-companion/systembootstrapper-cli-$(cat VERSION).tgz"
+system-bootstrapper project-ci artifact-check "$SYSTEM_CLI_ARTIFACT"
+system-bootstrapper source-prepare "$PWD"
+node --test tests/operations/project-ci.test.cjs tests/operations/project-ci-artifact.test.cjs
+```
+
+Alternativ installiere ein bereits geprüftes reguläres CLI-Archiv in einem
+ausdrücklich gewählten npm-Präfix und füge dessen Verzeichnis `node_modules/.bin`
+zu `PATH` hinzu. Bewahre die ursprünglichen Bytes und den Nachweis des Begleitarchivs
+auf; erneutes Installieren und Packen beweist keine Bytegleichheit. Kandidaten-
+Controller-Images bewahren ihr ausgewähltes Paket unter
+`/opt/system-bootstrapper/cli-artifact` auf; Nutzer der eigenständigen npm-Installation
+müssen vor einem Quell-/Projektexport ausdrücklich ein passendes Begleitarchiv angeben.
+
+Bestehende verwaltete Importe oder quellcodeführende Projekte migrieren
+ausdrücklich mit `"buildProfile": "node24-vite8-cli-v7"` und dem passenden
+Quellcode. Der geschützte Plan prüft bestehende verwaltete Dateien und Eigentum,
+bevor er CI ändert. Benutzeränderungen führen zu einem Konflikt, statt
+überschrieben zu werden; v7 darf nicht auf ältere Prüfungen zurückgestuft werden.
+Historische Snapshots v1/v2 und alle früheren reservierten Profile bleiben exakt
+erhalten. Insbesondere wählt `.gitlab/producer-v2.json` weiterhin die eingefrorene
+Laufzeit `node24-vite8-typed-v6`. Bewahre `typed-v6/runtime` und dessen Lizenz
+unverändert; sie bleiben ausschließlich zur Reproduktion reservierter
+historischer Hashes erhalten. Historische environment-v1-Auswahlen lesen
+`wizard-environments/historical`.
+
+Verwaltete Build-Aktivierung und Status verwenden `ManagedBuildService` über den gemeinsamen Operationsbefehl `managed-recipe` und die Sync-API. Die native Sitzung erhält den historischen projekt- und operationsbezogenen PostgreSQL-Advisory-Schlüssel. Git-Commits verwenden geschützte Dateiaktualisierungen; die Pipeline-Erstellung zeichnet zuerst ihren Operations-Checkpoint auf. Private Schreibnachweise überstehen verlorene Antworten ohne erneute Anfrage. Der Status prüft dasselbe reservierte Rezept, erforderliche Jobs und Artefakt-Digest und startet niemals eine Pipeline. Der Abgleich sucht nur nach dem exakten Commit und prüft höchstens 20 Pipeline-Variablensätze; mehrdeutige oder ausgeschöpfte Suchen werden abgelehnt.
+
+Führe nach dem Operations-Build `node tests/gitlab/wizard-build.js` aus, um atomare Installation, unterbrochene Anfragen, Quell-/Pipeline-Rennen sowie historische Jest- und aktuelle Vitest-Nachweisverträge ohne aktive GitLab-Instanz zu prüfen.

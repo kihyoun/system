@@ -6,9 +6,10 @@ const os = require('node:os');
 const path = require('node:path');
 const source = path.resolve(__dirname, '../..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-alias-api-'));
-fs.mkdirSync(path.join(root, 'sync'));
-fs.mkdirSync(path.join(root, 'system/.projects.env'), {recursive: true});
-process.chdir(path.join(root, 'sync'));
+fs.mkdirSync(path.join(root, 'config/system/.projects.env'), {recursive: true});
+const paths = require(path.join(source, 'dist/common/runtime/installationPaths'));
+paths.checkoutRoot = () => root;
+paths.checkoutPath = (...parts) => path.join(root, ...parts);
 let server, application;
 let transports = 0;
 const child = require('node:child_process');
@@ -16,14 +17,14 @@ child.execSync = child.execFile = child.spawn = () => { transports++; throw Erro
 process.env.SYNC_USER = 'fixture'; process.env.SYNC_PASS = 'fixture-password';
 delete process.env.SYSTEM_CONFIG_DIR;
 const log = console.log; console.log = () => {};
-const cube = fs.readFileSync(path.join(source, 'system/.docker.env.example'), 'utf8').slice(0, 1184);
+const cube = fs.readFileSync(path.join(source, 'config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 const main = cube + '\nWIZARD_ENABLE="true"\nWIZARD_HOST="wizard.example.test"\nWIZARD_DOMAIN_MODE="2"\n' +
   'WIZARD_SSL="/ssl/example/cert.pem"\nWIZARD_SSL_KEY="/ssl/example/key.pem"\n' +
   'WIZARD_ALIASES="example.test"\nGITLAB_HOST="gitlab.example.test"\nGITLAB_DOMAIN_MODE="2"\n';
 const project = cube + '\nPROJECT_NAME="aliasowner"\nPROJECT_TEMPLATE="empty"\n' +
   'USE_PROD_HOST="true"\nPROD_HOST="example.test"\nPROD_DOMAIN_MODE="2"\nPROD_DEPLOY_MODE="0"\n' +
   'USE_BETA_HOST="false"\nUSE_REVIEW_HOST="false"\n';
-const {bootstrap: startSync} = require(path.join(source, 'sync/dist/bootstrap'));
+const {bootstrap: startSync} = require(path.join(source, 'dist/api/bootstrap'));
 (async () => {
   application = await startSync({port: 0, host: '127.0.0.1'});
   server = application.getHttpServer();
@@ -38,7 +39,7 @@ const {bootstrap: startSync} = require(path.join(source, 'sync/dist/bootstrap'))
     const jsonHeaders = {...authorization, 'Content-Type': 'application/json'};
     while ((await (await fetch(base + '/status', {headers: authorization})).json()).defaultWizardSetupInProgress)
       await new Promise(resolve => setTimeout(resolve, 5));
-    const mainFile = path.join(root, 'system/.docker.env');
+    const mainFile = path.join(root, 'config/system/.docker.env');
     fs.writeFileSync(mainFile, main);
     for (const [route, body] of [
       ['/config/project', {projectKey: 'aliasowner', data: project}],
@@ -48,7 +49,7 @@ const {bootstrap: startSync} = require(path.join(source, 'sync/dist/bootstrap'))
       assert.equal(response.status, 400, route);
       assert.match((await response.json()).message, /project host/);
       assert.equal(transports, 0, route + ' must reject before service or GitLab work');
-      assert.deepEqual(fs.readdirSync(path.join(root, 'system/.projects.env')), []);
+      assert.deepEqual(fs.readdirSync(path.join(root, 'config/system/.projects.env')), []);
       assert.equal(fs.readFileSync(mainFile, 'utf8'), main);
     }
     for (const alias of ['gitlab.example.test', 'www.app.example.test', '*.example.test', 'oldapp.example.test OLDAPP.EXAMPLE.TEST']) {
@@ -57,7 +58,7 @@ const {bootstrap: startSync} = require(path.join(source, 'sync/dist/bootstrap'))
         body: JSON.stringify({projectKey: 'aliasowner', data})});
       assert.equal(response.status, 400, 'application alias ' + alias);
       assert.equal(transports, 0, 'application alias rejection must precede service work');
-      assert.deepEqual(fs.readdirSync(path.join(root, 'system/.projects.env')), []);
+      assert.deepEqual(fs.readdirSync(path.join(root, 'config/system/.projects.env')), []);
     }
     const upload = new FormData();
     upload.append('.docker.env', new Blob([main.replace('WIZARD_ALIASES="example.test"', 'WIZARD_ALIASES="gitlab.example.test"')]), '.docker.env');

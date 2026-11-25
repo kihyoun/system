@@ -5,8 +5,8 @@ const path=require('node:path');
 const os=require('node:os');
 const http=require('node:http');
 const {spawn}=require('node:child_process');
-const {allowedBrowserOrigin}=require('../../sync/dist/HttpSecurity');
-const {projectConfigPath}=require('../../sync/dist/StatePaths');
+const {allowedBrowserOrigin}=require('../../dist/api/http/security');
+const {projectConfigPath}=require('../../dist/modules/configuration/statePaths');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'sync-security-'));
 const previous=process.env.SYSTEM_CONFIG_DIR;process.env.SYSTEM_CONFIG_DIR=root;
 fs.writeFileSync(path.join(root,'.docker.env'), "WIZARD_HOST='wizard.example.test'\nWIZARD_DOMAIN_MODE=2\nSYNC_ALLOWED_ORIGINS='http://127.0.0.1:5173'\n");
@@ -20,7 +20,7 @@ function request(route,body,extra={},method=body===undefined?'GET':'POST') {retu
  assert(origin('https://wizard.example.test'));assert(origin('http://127.0.0.1:5173'));
  for(const bad of ['null','https://wizard.example.test.attacker.test','https://wizard.example.test@attacker.test','https://attacker.test/#https://wizard.example.test'])assert(!origin(bad));
  assert.throws(()=>projectConfigPath('../outside'));assert.throws(()=>projectConfigPath(['foo']));
- const child=spawn(process.execPath,[path.resolve(__dirname,'../../sync/dist/index.js')],{cwd:path.resolve(__dirname,'../../sync'),stdio:'ignore',env:{...process.env,SYNC_USER:'fixture',SYNC_PASS:'fixture-secret'}});
+ const child=spawn(process.execPath,['-e', 'require(process.argv[1]).bootstrap().catch(() => { process.exitCode = 1; });', path.resolve(__dirname,'../../dist/api/index.js')],{cwd:path.resolve(__dirname,'../..'),stdio:'ignore',env:{...process.env,SYNC_USER:'fixture',SYNC_PASS:'fixture-secret'}});
  const closed=new Promise(resolve=>child.once('exit',resolve));
  try {
   let ready=false;for(let i=0;i<100;i++){try{await request('/status');ready=true;break;}catch{await new Promise(r=>setTimeout(r,50));}}

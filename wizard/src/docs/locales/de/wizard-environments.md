@@ -1,0 +1,191 @@
+# Optionale Wizard-Beta aus dem System-Kandidaten
+
+System und Wizard teilen ein Repository. Die optionale Wizard-Beta verwendet eine
+feste HTTPS-Adresse und exakt das Wizard-Image eines akzeptierten System-Kandidaten.
+Sie startet weder einen zusätzlichen Build noch eine vollständige Plattformpipeline.
+Production wird getrennt und bewusst freigegeben. Normale Anwendungsprojekte behalten
+Review, Beta und Production. Ein isolierter Plattformtest ist eine vorübergehende
+Prüfinstallation und keine dauerhaft betriebene Beta-Plattform.
+
+## Einrichten und binden
+
+Importiere oder forke das vollständige System-Repository mit dem normalen
+GitLab-Repository-Ablauf in deinen privaten Namensraum. Schütze den Standardbranch,
+aktiviere die erforderlichen Pipeline- und Diskussionsfreigaben und verwende die
+CI-Konfiguration im Repository-Stamm. Konfiguriere einen zugelassenen Docker-Runner.
+Wähle im Wizard Configure System Beta, das bestehende gemeinsame Quellprojekt und
+optional einen exakten HTTPS-Beta-Host mit Zertifikat und Schlüssel unter /ssl.
+Ein Review-Host ist nicht erforderlich. Die Vorprüfung kontrolliert Quellbaum,
+DNS und Zertifikat; die Bestätigung reserviert nur Einstellungen. Sie erstellt
+keine Projekte, startet keine Pipelines und verändert Production nicht.
+
+Nachdem der System-Kandidat alle Pflichtprüfungen bestanden hat, verwende das
+Repository-Werkzeug mit einer privaten JSON-Eingabedatei. Die Eingabe enthält
+operation, projectId, projectPath, namespaceId, defaultBranch, pipelineId,
+candidateJobId, sourceCommit, wizardSourceTree, helperImage, wizardImageId und
+wizardImageRef. Übernimm die exakten Werte aus den akzeptierten Release-Metadaten
+und der konfigurierten Reservierung. Der Quellcommit bezeichnet das gemeinsame
+Repository, der Wizard-Baum dessen versioniertes Unterverzeichnis. Bewahre das
+Helper-Image für Stop auf.
+
+Lies die Reservierungsoperation am authentifizierten Sync-Statusendpunkt
+/projects/wizard/preview-setup. Ordne in release.json des akzeptierten Kandidaten
+sourceRevision dem Feld sourceCommit, imageId dem Feld helperImage und
+wizardRegistryReference dem Feld wizardImageRef zu. Übernimm projectId, pipelineId,
+candidateJobId, wizardSourceTree und wizardImageId exakt. projectPath, namespaceId
+und defaultBranch stammen aus demselben ausgewählten gemeinsamen GitLab-Projekt.
+Das Helper-Image muss auf dem Docker-Host des Controllers bereits mit den exakten
+akzeptierten Quell-/Job-Labels vorhanden sein; bewahre es für Stop auf. Werte einer
+anderen Pipeline können diese Reservierung nicht autorisieren.
+
+```sh
+system-bootstrapper system-beta bind plan /state/beta-input.json
+system-bootstrapper system-beta bind apply /state/beta-input.json PLAN_HASH
+```
+
+Führe das Bindungswerkzeug aus dem geprüften Checkout auf dem Docker-Host des
+kanonischen Controllers mit Node 24 und Zugriff auf dessen Docker-Socket aus.
+Die private Eingabe wählt einen Kandidaten aus; sie enthält keine Zugangsdaten.
+Prüfe den Plan vor Bestätigung seines exakten Hashes. Öffne anschließend die bereits
+geprüfte geschützte Standardbranch-Push-Pipeline und starte deploy:wizard-beta oder
+stop:wizard-beta manuell. Die optionalen Jobs sind ohne aktivierende Projektvariable
+vorhanden; Einrichtung und Bindung starten keine weitere Pipeline. Der Launcher
+liest die explizite persistente v2-Bindung, prüft Projekt, Pipeline und Quellcommit
+des aktuellen Jobs dagegen und liest den exakten HTTPS-Host der gebundenen Reservierung.
+Fehlende, veraltete oder fremde Bindungen werden abgelehnt. Deploy erstellt niemals
+eine Bindung. Erhaltene Variablen SYSTEM_BETA_OPERATION und WIZARD_BETA_HOST müssen
+übereinstimmen oder bewusst entfernt werden. Ein manuell bereitgestelltes API-Token
+ist für diesen Startpfad nicht erforderlich. Nach Erfolg einschließlich eigener
+Helper-Bereinigung liefert test-results/system-beta/environment.env die Variable
+SYSTEM_BETA_URL für GitLabs Umgebungslink. Deploy und Stop verwenden vorhandene Release-Artefakte und unveränderliche
+Images. Vor dem Routing werden Projekt, Job, Kandidatenpipeline, gemeinsamer
+Quellbaum, Image-Identitäten, Speicher-/Upgrade-Abnahme und Browserbereinigung
+geprüft. Es gibt keinen Endpunkt für beliebige Images. Stop bleibt bei abgelaufenen
+Build-Artefakten möglich.
+
+## Bestehende Installationen und Wiederherstellung
+
+Alte JSON-/ZIP-Konfigurationen bleiben lesbar und passiv. Öffnen oder Fetch einer
+Sicherung erstellt keine Projekte oder Deployments. Alte gewünschte Vorschauwerte
+bleiben Version 1, bis der Benutzer ausdrücklich Configure System Beta auswählt.
+Review-Werte werden nicht als Beta-Hosts umgedeutet. Bestehende Repository-Identitäten,
+verwaltete Quellenbelege, Benutzeränderungen und Importhistorie bleiben erhalten.
+
+Neue System-Review-Deployments und Bindungen entfallen. Stoppe ein aktives altes
+Review mit dem ursprünglichen aufbewahrten Job und seiner Bindung über den alten
+Launcher im Stop-Modus. Verwende danach die Bereinigung eigener gestoppter Routen.
+Prüfe ausstehende und ausgemusterte Ressourcen vor der Migration. Die Bereinigung
+prüft exakte Operation, Projekt, Generation und Labels; Production und fremde
+Projektressourcen werden nicht entfernt. Lösche niemals Bindungen, Belege,
+Generationsgrenzen oder Tombstones, um einen Konflikt zu umgehen. Beta-Einrichtung
+verweigert aktive, ausstehende, ausgemusterte oder unbereinigte gestoppte Routen.
+
+```sh
+system-bootstrapper system-review stop
+system-bootstrapper project-environments-cleanup OPERATION
+```
+
+Der Stop-Launcher benötigt die ursprüngliche Jobidentität und das aufbewahrte
+Helper-Image. Führe ihn im ursprünglichen autorisierten Job aus; erfinde keine
+CI-Nachweise. Kann dieser Job nicht laufen, verwende die aufbewahrten historischen
+Release-Werkzeuge und den Eigentumsbeleg zur Wiederherstellung. Bindungen und
+Historien gehören zum persistenten Controllerzustand und müssen die passende
+Harvest-/Seed-Wiederherstellung begleiten. Konfigurationssicherung und Dienstdaten
+bleiben getrennt. Historische Releases ohne Quelllayout behalten ihre separate
+Wizard-Gitlink-Identität; deute deren Commit niemals als gemeinsamen Baum um.
+
+## Prüfung und Kapazität
+
+Komponenten- und Kandidatenfreigaben bleiben verpflichtend. Fixtures für Bindung,
+Launcher und Verifier prüfen fremde Eigentümer, veraltete Jobs, Image-/Quellkonflikte,
+Zugangsdatenbereinigung und Stop mit abgelaufenen Artefakten. Vergleiche Laufzeiten
+und Ressourcenverbrauch vergleichbarer akzeptierter Kandidatenläufe. Das Entfernen
+optionaler Review-Jobs verkürzt allein nicht den vollständigen isolierten
+Plattformtest; eine gemessene Einsparung wird damit nicht behauptet.
+
+Das wegwerfbare Plattformszenario deklariert `native-lifecycle-with-contract-verifier`.
+Gemeinsame Einrichtung, Bindung, Docker-Beta-Deploy/Stop, exaktes Host-TLS, Erhalt
+von Production und eigene Ressourcenbereinigung laufen nativ. Sein Autorisierungsprüfer
+verwendet `contract-fixture`-Nachweise: Der übergeordnete Kandidat läuft noch und kann
+sich nicht als abgeschlossene Pipeline selbst autorisieren. Positive und negative
+Verträge prüfen den Production-Verifier separat. Production-Launcher besitzen keinen
+Fixture-Schalter. Offline-Tests oder eine reine Vorprüfung belegen keinen abgeschlossenen
+nativen Lauf.
+
+## Grenze des Deployment-Dienstes
+
+Das kompilierte Operations-Modul `ProjectLifecycleModule` übernimmt
+Deployment-Übergänge, Routenerzeugung, Zustandsabgleich, Rollback, Stilllegung
+und die Bereinigung gestoppter Ressourcen. Sein typisierter Adapter stellt
+Compare-and-swap für Belege, Docker-Zugriff auf eigene Ressourcen, Gesundheitsprüfungen
+und Routen-I/O bereit. Der kompatible Umgebungshelfer liefert diesen Adapter
+und behält seine Sperre am kanonischen Controller und das begrenzte Abbruchbudget.
+Jeder Aufruf erstellt und schließt einen eigenständigen Nest-Kontext ohne
+HTTP-Listener. Operations muss vor der Verwendung des kompatiblen Helfers
+oder der State-Importe gebaut werden.
+
+Die Zustandsregeln erhalten Pipeline-Untergrenzen und Stop-Markierungen.
+Ein fehlgeschlagener Wechsel stellt die vorige Route wieder her, bevor eigene
+Kandidatenressourcen entfernt werden. Ein bestätigter Wechsel bewahrt ausstehende
+Stilllegungsarbeit für den Zustandsabgleich. Stop speichert seine Markierung vor
+dem Löschen von Ressourcen. Historische Rezeptbytes und das GitLab-Ruby-Prüfformat
+bleiben unverändert.
+
+Nach dem Build von Operations und Sync prüft `node tests/wizard/environment-helper.js`
+injizierte Fehler bei Gesundheit, Eigentum, CAS, Reload, veralteten Generationen
+und unterbrochenem Wechsel. `node tests/wizard/environment-canonical.js` prüft
+die erhaltene kanonische Sperre und den Belegadapter. Diese lokalen Prüfungen
+belegen keine Live-Kandidatenabnahme.
+
+`CanonicalModule` übernimmt Reservierungsabfragen, tokengebundene Sperren und Abbruch,
+CAS für bytegenaue Nachweise, DNS-Konsistenz und den Ersatz archivierter Beta-Bindungen.
+Der saubere Helfer ruft seinen kompilierten stdin-Adapter im ursprünglichen Controller auf;
+Quelltext wird nicht mehr als kanonische Implementierung ausgewertet. Der Adapter liefert
+nur die bestehende öffentliche Antwortstruktur und eine feste Fehlerdiagnose.
+
+`EnvironmentModule` übernimmt Helferaufruf, kanonische Reservierungsprüfungen,
+Image-/Quell-/Jobidentität, TLS-Bereitschaft, Auswahl des nativen Ruby-Prüfers und
+Wartung gestoppter Routen. Der begrenzte Prozessadapter verfolgt Kindprozesse und
+behält ein separates Bereinigungsbudget; Abbruch erlaubt niemals fremde Bereinigung.
+Die Reservierungsrichtlinie für primäre Quellen bewahrt genaue CI-Identitäten,
+Nachweisverlauf, Stopp-Tombstones und Generationsuntergrenzen. Kompatibilitätsexporte
+bleiben für bestehende Offline-Tests und verwerfbare Prüfer-Fixtures verfügbar.
+
+`SystemBetaModule` validiert und speichert ausdrückliche Kandidatenbindungen und führt
+den eigenen CI-Helferlebenszyklus mit getrennten Arbeits- und Bereinigungsbudgets aus.
+Der alte System-Review-Einstieg akzeptiert nur Stop; neue Review-Bindungen scheitern
+vor Erwerb einer kanonischen Sperre. Erhaltene Review-Bindungs- und Ressourcenprüfungen
+dienen ausschließlich der Bereinigung eigener Ressourcen.
+
+Beibehaltene verwaltete Anwendungs-Repositories verwenden `ManagedEnvironmentService` über Sync und die Operations-CLI `managed-recipe`. Der Dienst erhält den bisherigen PostgreSQL-Advisory-Schlüssel je Projekt, prüft den aufgezeichneten Build und das vorherige Rezept und lehnt Einstellungsänderungen bei aktiver oder ausstehender Bereitstellung ab. Commit-Anfragen behalten private begrenzte Inhalts-/Elternnachweise im GitLab-Konfigurationsvolume, bis ihre Ergebnisse geprüft sind. Aktualisiere nach einer unterbrochenen Antwort dieselbe Reservierung; fehlende Nachweise halten die Änderungssperre aufrecht und erlauben keinen weiteren Schreibvorgang. Der Rezept-Commit startet keine Pipeline und lässt reservierte historische Build-Dateien unverändert. `node tests/gitlab/environment-upgrade.js` prüft diesen Vertrag mit injiziertem Repository- und Sperrprovider.
+
+## Gemeinsamer Konfigurationsablauf
+
+`WizardEnvironmentsModule` steuert den Konfigurationsablauf des beibehaltenen
+verwalteten Wizards. Reine typisierte Einstellungsregeln, injizierte DNS-/TLS-
+Prüfungen, Aktivierungs-/Statussteuerung und `EnvironmentStoreService` sind
+getrennt. Der Speicher prüft Signatur und Nachweisidentität, erwirbt die bestehende
+Helfersperre und vergleicht die Konfigurationsbytes vor dem Schreiben. Deployment-
+Updates derselben Operation bleiben erhalten; fremde Änderungen und veraltete
+Previews verweigern Schreibzugriff. Externe Absicht wird vor dem GitLab-Aufruf
+dauerhaft gespeichert, damit unterbrochene Operationen ihre Reservierung behalten.
+
+Die authentifizierten Endpunkte `/projects/wizard/environments` und
+`system-bootstrapper wizard-environments` verwenden dieselben Nest-Provider.
+`preview` und `status` lesen den Zustand; `preflight SETTINGS_FILE` prüft explizite
+Einstellungen. `configure REQUEST_FILE` liest Preview-Hash und Einstellungen aus
+einer privaten JSON-Datei. Die CLI startet keinen HTTP-Server. Die Eigentumsgrenzen
+gewöhnlicher Projekt-Review/Beta und der getrennten optionalen System-Beta bleiben.
+
+Aktivierung und Statusänderungen halten außerdem die bestehende gemeinsame
+Speichersperre, damit Harvest und GitLab-Upgrades nicht mit demselben
+Konfigurationsvorgang konkurrieren. Ein erfolgreich oder eindeutig fehlgeschlagen
+abgeschlossener Aufruf gibt nur seine unveränderte eigene Sperre frei. Bei
+ungewissem Transportabschluss, geänderter Eigentümerschaft oder hartem
+Prozessabbruch bleiben Sperre und Abgleichzustand erhalten. Lies diese mit
+`system-bootstrapper wizard-environments inspect`; der Befehl meldet nur
+bereinigte Eigentümer-/Operationsdaten und führt keine Bereinigung aus. Befolge
+vor einer weiteren Statusänderung die [Untersuchung verwaister Operationen](../../../docs/RECOVERY_CONTRACT.md):
+Weise positiv nach, dass der vorherige Eigentümer und seine gestartete Arbeit
+beendet sind, und löse ausschließlich deren verwaiste Sperre auf. Die CLI
+übernimmt keine fremde oder ungeklärte Sperre allein aufgrund verstrichener Zeit.

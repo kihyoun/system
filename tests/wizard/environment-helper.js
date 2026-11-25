@@ -3,8 +3,8 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {Runtime, parse, canonicalLegacyRecipe} = require('../../project-bootstrap/wizard-environments/helper');
-const state = require('../../project-bootstrap/wizard-environments/state');
+const {Runtime, parse, canonicalLegacyRecipe} = require('../../dist/modules/project-lifecycle/environmentRuntime');
+const state = require('../../dist/modules/project-lifecycle/state');
 const op = 'a'.repeat(48), sha = 'b'.repeat(40), digest = 'registry.example.test/root/wizard@sha256:' + 'c'.repeat(64);
 const request = (pipelineId = 10, jobId = 20, mrIid = 1, action = 'deploy', kind = 'review') =>
   ({action, kind, projectId: 1, pipelineId, jobId, mrIid, sourceCommit: sha, operation: op});
@@ -59,9 +59,27 @@ class Fixture extends Runtime {
 }
 async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
 (async () => {
+  const {EnvironmentProcess} = require('../../dist/modules/project-lifecycle/environmentProcess');
+  const calls=[];
+  const transport=new EnvironmentProcess({run:async(binary,args,options)=>{
+    calls.push({binary,args,options});
+    if(args[0]==='wait')return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('cancelled')),{once:true}));
+    return ' clean \n';
+  }});
+  const pending=transport.command(['wait']);transport.cancel();await assert.rejects(pending,/cancelled/);
+  await assert.rejects(transport.command(['start']),/cancelled/);
+  assert.equal(await transport.command(['cleanup'],'private-input',{cleanup:true}),'clean');
+  assert.equal(calls.length,2);assert.equal(calls[1].options.signal.aborted,false);
+  assert(calls[1].options.timeout<=90000);assert.equal(calls[1].options.input,'private-input');
+  transport.cleanupDeadline=Date.now()-1;
+  await assert.rejects(transport.command(['cleanup'],'',{cleanup:true}),/recovery budget/);
+  assert.equal(await transport.command(['unlock'],'',{cleanup:true,release:true}),'clean');
   const args = ['--action', 'deploy', '--kind', 'review', '--project', '1', '--pipeline', '10', '--job', '20', '--sha', sha,
     '--mr', '1', '--operation', op, '--controller', 'system_bootstrapper_1'];
   assert.deepStrictEqual(parse(args), request());
+  for (const invalid of [null, [], {}, {...request(), action: ['deploy']}, {...request(), sourceCommit: [sha]}]) {
+    assert.throws(() => state.validRequest(invalid), /Invalid environment job identity/);
+  }
   assert.throws(() => parse([...args, '--image', digest]));
   assert.throws(() => parse(args.map(value => value === 'system_bootstrapper_1' ? 'test-controller' : value)));
   assert.throws(() => state.validRequest({...request(), mrIid: 0}));
@@ -177,7 +195,7 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   const began = Date.now();
   await rejects(() => cancelled.health(state.record(request(), setting.host, digest)), /cancelled/);
   assert(Date.now() - began < 500, 'health swallowed cancellation and slept');
-  const uncertain = new Runtime(request()); let acquired = false, released = false;
+  const uncertain = new Runtime(request(10, 20, 1, 'stop')); let acquired = false, released = false;
   uncertain.canonical = async action => {
     if (action === 'lock') { acquired = true; throw new Error('lost lock response'); }
     if (action === 'unlock') { acquired = false; released = true; return {ok: true}; }
@@ -218,15 +236,16 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
     assert.strictEqual(fixture.events.length, 0, 'stale Stop mutated newer pending resources');
     fixture.request = request(13, 31, 1, 'deploy');
     fixture.readiness = async () => undefined;
-    await rejects(() => fixture.run(), /another job/);
+    assert.throws(() => state.recoveryAllowed(fixture.environment.deployments.review, fixture.request), /another job/);
+    await rejects(() => fixture.run(), /retired/);
     assert.strictEqual(fixture.events.length, 0, 'other-MR deploy mutated pending resources');
   } finally { fixture.destroy(); }
   const proof = new Runtime(request());
   let legacy = canonicalLegacyRecipe();
-  const logo = require('../../sync/dist/Helper').default.textLogo;
+  const logo = require('../../dist/common/configurationSignature').default.textLogo;
   const options = {settings: {review: setting, beta: {...setting, enabled: false}}, settingsHash: '1'.repeat(64),
     helperImage: 'sha256:' + '2'.repeat(64), operation: op, controller: 'system_bootstrapper_1'};
-  proof.environment = {...options, recipeHash: require('../../project-bootstrap/wizard-environments/recipe').generate(logo, options).recipeHash};
+  proof.environment = {...options, recipeHash: require('../../dist/modules/project-lifecycle/environmentRecipe.service').generate(logo, options).recipeHash};
   proof.context = {publicSettings: {GITLAB_REGISTRY_URL: 'https://registry.example.test', GITLAB_REGISTRY_DOMAIN_MODE: '2'},
     receipt: {operation: 'registration', repository: {id: 1, path: 'root/wizard', defaultBranch: 'main'},
       wizardWorkflow: {sourceRevision: '3'.repeat(40), importCommit: '4'.repeat(40),
@@ -234,8 +253,8 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   let proofRequests = 0;
   proof.json = async (_args, script) => {
     proofRequests++;
-    const encoded = script.match(/^BOOTSTRAPPER_ENVIRONMENT_INPUT = '([A-Za-z0-9+/=]+)'/)[1];
-    const input = JSON.parse(Buffer.from(encoded, 'base64'));
+    assert(_args.includes('/system/dist/modules/project-lifecycle/deploymentEvidenceEntry.js'));
+    const {input} = JSON.parse(script);
     assert.deepStrictEqual(input.legacyFiles, legacy.files, 'runtime omitted or altered an immutable managed build file');
     assert.strictEqual(input.buildActivationCommit, '6'.repeat(40));
     assert.deepStrictEqual(JSON.parse(input.legacyMarker.content), {version: 1, operation: '5'.repeat(48),
@@ -250,10 +269,10 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   proof.context.receipt.wizardWorkflow.build.recipeHash = 'changed';
   await rejects(() => proof.verify(), /managed build recipe identity changed/);
   assert.strictEqual(proofRequests, 1, 'changed canonical recipe reached external verification');
-  legacy = require('../../project-bootstrap/wizard-build/recipe').generate(logo, 'node24-vite8');
+  legacy = require('../../dist/modules/project-lifecycle/buildRecipe.service').generate(logo, 'node24-vite8');
   const modernOptions = {...options, buildRecipeHash: legacy.recipeHash};
   proof.environment = {...modernOptions,
-    recipeHash: require('../../project-bootstrap/wizard-environments/recipe').generate(logo, modernOptions).recipeHash};
+    recipeHash: require('../../dist/modules/project-lifecycle/environmentRecipe.service').generate(logo, modernOptions).recipeHash};
   proof.context.receipt.wizardWorkflow.build.recipeHash = legacy.recipeHash;
   await proof.verify();
   assert.strictEqual(proofRequests, 2, 'modern canonical build did not reach complete proof verification');
@@ -261,7 +280,7 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   await rejects(() => proof.verify(), /managed build recipe identity changed/);
   assert.strictEqual(proofRequests, 2, 'mismatched environment/build profile reached external verification');
 
-  const native = require('../../project-bootstrap/wizard-environments/source-primary');
+  const native = require('../../dist/modules/project-lifecycle/sourcePrimaryEnvironment');
   const ciFiles = ['.gitlab/primary.yml', '.gitlab/delivery/environment.sh'].map(path => ({path, sha256: '7'.repeat(64)}));
   const nativeEnvironment = native.sourcePrimaryEnvironment({phase: 'ready', operation: '8'.repeat(48),
     settings: options.settings, settingsHash: state.hash(JSON.stringify(options.settings)), deployments: {}},
@@ -272,7 +291,7 @@ async function rejects(fn, pattern) { await assert.rejects(fn, pattern); }
   proof.context.receipt.sourcePrimary = {version: 1, adoptionCommit: '9'.repeat(40), ciFiles};
   proof.context.receipt.wizardWorkflow.build = {version: 1, mode: 'source-primary', phase: 'candidate-verified'};
   proof.json = async (_args, script) => {
-    const input = JSON.parse(Buffer.from(script.match(/^BOOTSTRAPPER_ENVIRONMENT_INPUT = '([A-Za-z0-9+/=]+)'/)[1], 'base64'));
+    const {input} = JSON.parse(script);
     assert.deepStrictEqual(input.sourcePrimary.ciFiles, ciFiles);
     assert.strictEqual(input.repository.id, 5);
     assert.strictEqual(input.legacyFiles, undefined, 'Native proof must not depend on old instance markers');

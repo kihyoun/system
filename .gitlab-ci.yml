@@ -20,16 +20,32 @@
 # Gitlab CI Definition
 # ProjectID: systembootstrapper
 # Filepath: ./gitlab-ci.yml
-image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
 services:
   - docker:29.9.2-dind@sha256:9e79b879b177fbd72c34376a3dd3d91747da5db49e1f560f76aea59561471977
 variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
   NODE_OPTIONS: --use-openssl-ca
+  SSL_CERT_FILE: "$CI_PROJECT_DIR/config/ca/cacert-2026-10-20.crt"
+  SSL_CERT_DIR: "$CI_PROJECT_DIR/.empty-ca-directory"
+  npm_config_cafile: "$CI_PROJECT_DIR/config/ca/cacert-2026-10-20.crt"
 
 default:
-  before_script:
-    - sh bootstrapper/refresh-ca.sh
+  before_script: &cli-bootstrap
+    - echo '796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe  config/ca/cacert-2026-10-20.crt' | sha256sum -c -
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
+    - mkdir -p .ci-cli-package
+    - npm pack --offline --ignore-scripts --pack-destination .ci-cli-package
+    - npm install --offline --ignore-scripts --no-audit --no-fund --no-package-lock --prefix .ci-cli ./.ci-cli-package/systembootstrapper-cli-$(cat VERSION).tgz
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - export SYSTEM_CLI_ARTIFACT="$CI_PROJECT_DIR/assets/cli-companion/systembootstrapper-cli-$(cat VERSION).tgz"
+    - system-bootstrapper host-bootstrap ca-check --checkout "$CI_PROJECT_DIR"
+
+.runtime-tools:
+  before_script: &runtime-tools
+    - *cli-bootstrap
+    - system-bootstrapper host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"
 
 stages:
   - prepare
@@ -38,6 +54,7 @@ stages:
   - build
   - deploy
   - public-release
+  - npm-release
 
 cache:
   key: ${CI_COMMIT_REF_SLUG}
@@ -61,23 +78,25 @@ cache:
 
 # The native trusted parent exports public Git objects to a socket-free child.
 check:documentation:
+  before_script: *runtime-tools
   stage: prepare
-  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+  image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
   tags: [docker]
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_DEPTH: "0"
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 2m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 30s
+    RUNNER_SCRIPT_TIMEOUT: 20m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 300s
   cache: []
-  timeout: 3m
+  timeout: 30m
   allow_failure: false
   script:
-    - sh tests/ci-documentation.sh
+    - system-bootstrapper ci documentation "$CI_PROJECT_DIR"
   after_script:
-    - sh tests/ci-documentation.sh cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci documentation "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -95,14 +114,15 @@ renovate:discover:
   image: ghcr.io/renovatebot/renovate:44.222.5-full@sha256:1e5baa47058a74b5f41e425838862f6728b4351790d8278f1356df2e56e8df62
   services: []
   tags: [docker]
-  before_script: []
+  before_script:
+    - *cli-bootstrap
   cache: []
   dependencies: []
   resource_group: renovate-discovery
   timeout: 45m
   variables:
     GIT_SUBMODULE_STRATEGY: none
-    RENOVATE_CONFIG_FILE: gitlab/renovate/config.cjs
+    RENOVATE_CONFIG_FILE: dist/modules/renovate/configEntry.js
     LOG_LEVEL: info
   script:
     - renovate-config-validator --strict --no-global renovate.json
@@ -111,7 +131,7 @@ renovate:discover:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $RENOVATE_ENABLED == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true"'
     - when: never
 
-# Package the exact gitlink while the trusted checkout still contains Git data.
+# Package the exact shared Wizard tree while the trusted checkout contains Git data.
 # Only the validated source snapshot is passed to downstream candidate builds.
 prepare:wizard-source:
   stage: prepare
@@ -121,44 +141,69 @@ prepare:wizard-source:
   variables:
     GIT_SUBMODULE_STRATEGY: none
   cache: []
-  timeout: 5m
+  timeout: 50m
   script:
-    - node gitlab/prepare-wizard-source.js
-    - node docs/check-wizard-docs.js
-    - node project-bootstrap/wizard-source/package.js
-    - node project-bootstrap/wizard-source/package.js --verify
-    - node tests/prepare-context.js
-    - node tests/prepare-candidate.js
-    - node tests/prepare-wizard-browser.js
-    - node tests/prepare-codeql.js
+    - system-bootstrapper project-ci package "$CI_PROJECT_DIR" "$CI_PROJECT_DIR/assets/cli-companion"
+    - system-bootstrapper source-checkout "$CI_PROJECT_DIR"
+    - system-bootstrapper docs check
+    - system-bootstrapper source-prepare "$CI_PROJECT_DIR"
+    - system-bootstrapper source-prepare "$CI_PROJECT_DIR" --verify
+    - system-bootstrapper ci prepare-context "$CI_PROJECT_DIR"
+    - system-bootstrapper ci prepare-candidate "$CI_PROJECT_DIR"
+    - system-bootstrapper ci prepare-wizard-browser "$CI_PROJECT_DIR"
+    - system-bootstrapper ci prepare-codeql "$CI_PROJECT_DIR"
   artifacts:
     expire_in: 1 day
-    paths: [project-bootstrap/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/, .codeql-context/]
+    paths: [assets/cli-companion/, assets/wizard-source/snapshot.json, .test-context/, .candidate-context/, .wizard-browser-context/, .codeql-context/]
+  rules: *runtime-rules
+
+# Package-only checks share the accepted source; no second platform is created.
+test:npm-package:
+  stage: test
+  image: node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
+  services: []
+  tags: [docker]
+  cache: []
+  dependencies: []
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
+  timeout: 50m
+  allow_failure: false
+  script:
+    - npm ci --ignore-scripts --no-audit --no-fund
+    - npm run build
+    - node --test tests/operations/cli.test.cjs tests/operations/package.test.cjs
+    - system-bootstrapper release package-cli
+  artifacts:
+    expire_in: 1 year
+    paths: [test-results/npm-package/]
   rules: *runtime-rules
 
 # The existing trusted socket runner launches a socket-free test child.
 # The current build/deploy jobs retain their upstream publishing behavior.
 test:isolated:
+  before_script: *runtime-tools
   stage: test
-  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+  image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
   tags: [docker]
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 8m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+    RUNNER_SCRIPT_TIMEOUT: 80m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 10m
   parallel:
     matrix:
       - COMPONENT: [gitlab, sync, gitlab-runner, bootstrapper, nginx, wizard, shared, performance]
-  timeout: 10m
+  timeout: 100m
   allow_failure: false
   cache: []
   dependencies: [prepare:wizard-source]
   script:
-    - sh tests/ci-isolated.sh "$COMPONENT"
+    - system-bootstrapper ci isolated "$CI_PROJECT_DIR" "$COMPONENT"
   after_script:
-    - sh tests/ci-isolated.sh cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci isolated "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -169,24 +214,26 @@ test:isolated:
 
 # Independent static gate; no database services or platform execution.
 test:codeql:
+  before_script: *runtime-tools
   stage: test
-  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+  image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
   tags: [docker]
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 32m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+    RUNNER_SCRIPT_TIMEOUT: 320m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 10m
   resource_group: system-codeql-static
-  timeout: 35m
+  timeout: 350m
   allow_failure: false
   cache: []
   dependencies: [prepare:wizard-source]
   script:
-    - sh tests/ci-codeql.sh
+    - system-bootstrapper ci codeql-parent "$CI_PROJECT_DIR"
   after_script:
-    - sh tests/ci-codeql.sh cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci codeql-parent "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -195,23 +242,25 @@ test:codeql:
 
 # Build the complete runtime and packaged Sync/Wizard source before publishing.
 test:candidate-image:
+  before_script: *runtime-tools
   stage: test
-  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+  image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
   tags: [docker]
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 13m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+    RUNNER_SCRIPT_TIMEOUT: 130m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 10m
   cache: []
   dependencies: [prepare:wizard-source]
-  timeout: 15m
+  timeout: 150m
   allow_failure: false
   script:
-    - sh tests/ci-candidate-image.sh
+    - system-bootstrapper ci candidate-image "$CI_PROJECT_DIR"
   after_script:
-    - sh tests/ci-candidate-image.sh cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci candidate-image "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -223,23 +272,25 @@ test:candidate-image:
 # Browser coverage belongs to this same System candidate when the Wizard
 # gitlink is delivered without a separate Wizard pipeline.
 test:wizard-browser:
+  before_script: *runtime-tools
   stage: test
-  image: docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
+  image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
   tags: [docker]
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 13m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+    RUNNER_SCRIPT_TIMEOUT: 250m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 10m
   cache: []
   dependencies: [prepare:wizard-source]
-  timeout: 15m
+  timeout: 300m
   allow_failure: false
   script:
-    - sh tests/ci-wizard-browser.sh
+    - system-bootstrapper ci wizard-browser "$CI_PROJECT_DIR"
   after_script:
-    - sh tests/ci-wizard-browser.sh cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci wizard-browser "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -257,6 +308,7 @@ test:platform-candidate:
   resource_group: system-disposable-candidate
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
+    GIT_DEPTH: "0"
     GIT_SUBMODULE_STRATEGY: none
     RUNNER_SCRIPT_TIMEOUT: 115m
     RUNNER_AFTER_SCRIPT_TIMEOUT: 2m
@@ -264,13 +316,13 @@ test:platform-candidate:
   dependencies: [prepare:wizard-source]
   timeout: 120m
   allow_failure: false
-  before_script:
-    - sh bootstrapper/install-runtime.sh
+  before_script: *runtime-tools
   script:
-    - node gitlab/check-candidate-capacity.js
-    - sh tests/ci-platform.sh
+    - system-bootstrapper ci candidate-capacity "$CI_PROJECT_DIR"
+    - system-bootstrapper ci platform "$CI_PROJECT_DIR"
   after_script:
-    - sh tests/ci-platform.sh cleanup
+    - export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"
+    - system-bootstrapper ci platform "$CI_PROJECT_DIR" cleanup
   artifacts:
     when: always
     expire_in: 7 days
@@ -281,17 +333,14 @@ test:platform-candidate:
 
 build:
   stage: build
-  before_script:
-    - sh bootstrapper/refresh-ca.sh
-    - echo "$CI_REGISTRY_PASSWORD" | docker login --username $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  before_script: *runtime-tools
   script:
-    - docker build --provenance=false --sbom=false -t $IMAGE_TAG ./bootstrapper
-    - docker push $IMAGE_TAG
+    - system-bootstrapper ci build-bootstrapper "$CI_PROJECT_DIR"
   rules: *runtime-rules
 
-# Optional Wizard-only acceptance on the existing reserved HTTPS Review host.
+# Optional Wizard-only acceptance on the configured fixed HTTPS Beta host.
 # The complete candidate is reused; no second Wizard pipeline/build is started.
-.wizard-review:
+.wizard-beta:
   stage: deploy
   image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
   services: []
@@ -302,35 +351,37 @@ build:
     RUNNER_SCRIPT_TIMEOUT: 12m
     RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
   cache: []
-  before_script:
-    - timeout -k 5 110 sh bootstrapper/install-runtime.sh
+  before_script: *runtime-tools
   timeout: 14m
   interruptible: false
-  resource_group: wizard-review
+  resource_group: wizard-beta
+  artifacts:
+    reports:
+      dotenv: test-results/system-beta/environment.env
   allow_failure: true
   rules:
-    - if: '$SYSTEM_REVIEW_ENABLED == "true" && $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       changes: *runtime-changes
       when: manual
     - when: never
 
-deploy:wizard-review:
-  extends: .wizard-review
+deploy:wizard-beta:
+  extends: .wizard-beta
   dependencies: [test:platform-candidate]
   script:
-    - node project-bootstrap/system-review/run.js deploy
+    - system-bootstrapper system-beta run deploy
   environment:
-    name: 'wizard-review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'
-    url: 'https://$WIZARD_REVIEW_HOST'
-    on_stop: stop:wizard-review
+    name: 'wizard-beta/$CI_PROJECT_ID'
+    url: '$SYSTEM_BETA_URL'
+    on_stop: stop:wizard-beta
 
-stop:wizard-review:
-  extends: .wizard-review
+stop:wizard-beta:
+  extends: .wizard-beta
   dependencies: []
   script:
-    - node project-bootstrap/system-review/run.js stop
+    - system-bootstrapper system-beta run stop
   environment:
-    name: 'wizard-review/$CI_PROJECT_ID/mr-$CI_MERGE_REQUEST_IID'
+    name: 'wizard-beta/$CI_PROJECT_ID'
     action: stop
 
 # Publish the exact complete controller and Wizard from the mandatory candidate.
@@ -350,10 +401,9 @@ deploy:dockerhub:
   interruptible: false
   resource_group: 'dockerhub-release-$CI_PROJECT_ID'
   allow_failure: false
-  before_script:
-    - sh bootstrapper/install-runtime.sh
+  before_script: *runtime-tools
   script:
-    - node gitlab/publish-dockerhub.js
+    - system-bootstrapper release dockerhub
   artifacts:
     expire_in: 1 year
     paths: [test-results/dockerhub/]
@@ -381,13 +431,13 @@ deploy:github:
     expire_in: 1 year
     paths: [test-results/github/]
   before_script:
-    - sh bootstrapper/refresh-ca.sh
+    - *cli-bootstrap
   rules:
     - if: '$GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       when: on_success
     - when: never
   script:
-    - sh gitlab/github-backup-ci.sh
+    - system-bootstrapper github-backup ci
 
 
 
@@ -413,18 +463,40 @@ deploy:github-release:
   variables:
     GIT_DEPTH: "0"
     GIT_SUBMODULE_STRATEGY: none
-  dependencies: [test:platform-candidate, deploy:dockerhub, deploy:github]
+  dependencies: [test:npm-package, test:platform-candidate, deploy:dockerhub, deploy:github]
   timeout: 10m
   interruptible: false
   resource_group: 'github-release-$CI_PROJECT_ID'
   allow_failure: false
   script:
-    - node gitlab/publish-github-release.js
+    - system-bootstrapper release github
   artifacts:
     when: always
     expire_in: 1 year
     paths: [test-results/public-release/]
   rules:
-    - if: '$GITHUB_RELEASE_PUBLISH_ENABLED == "true" && $DOCKERHUB_PUBLISH_ENABLED == "true" && $GITHUB_BACKUP_ENABLED == "true" && $WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+    - if: '$GITHUB_RELEASE_PUBLISH_ENABLED == "true" && $DOCKERHUB_PUBLISH_ENABLED == "true" && $GITHUB_BACKUP_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
+      changes: *runtime-changes
+    - when: never
+
+# Token-based publication from self-hosted GitLab after accepted public release.
+deploy:npm:
+  stage: npm-release
+  image: node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5
+  services: []
+  tags: [docker]
+  cache: []
+  variables:
+    GIT_DEPTH: "0"
+    GIT_SUBMODULE_STRATEGY: none
+  dependencies: [test:npm-package, test:platform-candidate, deploy:dockerhub, deploy:github, deploy:github-release]
+  timeout: 5m
+  interruptible: false
+  resource_group: npm-release
+  allow_failure: false
+  script:
+    - system-bootstrapper release npm
+  rules:
+    - if: '$NPM_PUBLISH_ENABLED == "true" && $GITHUB_RELEASE_PUBLISH_ENABLED == "true" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_TAG == null'
       changes: *runtime-changes
     - when: never

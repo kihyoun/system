@@ -3,8 +3,8 @@
 Managed CI activation builds and verifies a candidate after
 [source initialization](WIZARD_SOURCE.md). Build activation preserves the running
 Wizard. Review/Beta use separate
-[manual environment jobs](../project-bootstrap/wizard-environments/README.md);
-Production uses the guarded [operator promotion command](../project-bootstrap/wizard-production/README.md).
+[manual environment jobs](../templates/project-bootstrap/wizard-environments/README.md);
+Production uses the guarded [operator promotion command](../templates/project-bootstrap/wizard-production/README.md).
 
 ## Preview and activate
 
@@ -102,12 +102,16 @@ refresh does not install files or create pipelines.
 
 ## Toolchain profiles
 
-New source imports with Vite select the `node24-vite8-quickstart-v5` profile: the
+Current source imports select the source-bound `node24-vite8-cli-v7` profile: the
 pinned Node 24/npm toolchain, locked install, lint, Vitest, TypeScript/Vite build,
 configuration-export checks and Playwright browser checks. Browser evidence
 includes rendered UI, Projects, SPA navigation, a configuration ZIP and exact
 Cube validation. Use `wizard/package.json` and the managed recipe for the exact
 pinned versions.
+The regular CLI package travels with SourceSnapshot v3 under `.gitlab/cli` and
+is checked against its exact source/version/hash receipt. Jobs install it offline
+and call `system-bootstrapper project-ci`; they require no npm publication. See
+[package preparation](../templates/project-bootstrap/wizard-build/README.md#prepare-the-cli-companion-package) for the explicit companion input.
 
 This profile retains exact-tag cleanup and the build/browser images' public CA
 trust from the reviewed, checksummed
@@ -123,17 +127,17 @@ ZIP/Cube and check nested SPA and direct `/configuration` routes. This profile
 requires that current interface. Existing overview-v3 and CA-v4 reservations
 retain their historical **Getting Started** / **Open Wizard** checks.
 
-For an existing managed import, use the guarded build/environment-only upgrade
-with `"buildProfile": "node24-vite8-quickstart-v5"` alongside the matching source.
+For an existing managed import, use the guarded source/toolchain migration
+with `"buildProfile": "node24-vite8-cli-v7"` alongside the matching source.
 An adopted source-primary project instead uses its
-[native source merge and binding refresh](../project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe).
+[native source merge and binding refresh](../templates/project-bootstrap/wizard-source-primary/README.md#refresh-an-existing-source-primary-build-recipe).
 Every earlier profile retains its exact historical hash. The equivalent current
 legacy profile is `legacy-ca-v4`.
 
 Reserved historical recipes remain verifiable by their exact hash, including
 legacy Node 13/CRA/Jest recipes. Historical compatibility does not make that
 obsolete toolchain appropriate for a new project. Upgrading an imported
-project requires the guarded [source/toolchain migration](../project-bootstrap/wizard-upgrade/README.md);
+project requires the guarded [source/toolchain migration](../templates/project-bootstrap/wizard-upgrade/README.md);
 changing a controller image does not rewrite an existing reservation. A
 build/environment-only upgrade is available when source is already modern and
 must retain local development.
@@ -148,7 +152,7 @@ continuation, failure/status presentation, ownership and mutation guards:
 ```sh
 node tests/wizard/build-recipe.js
 node tests/wizard/build-workflow.js
-ruby tests/gitlab/wizard-build.rb
+node tests/gitlab/wizard-build.js
 ```
 
 These fixtures do not contact the running GitLab. Complete integration checks

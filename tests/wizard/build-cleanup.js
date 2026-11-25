@@ -7,7 +7,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-cleanup-'));
 try {
   fs.mkdirSync(path.join(root, 'bin'));
   const helper = path.join(root, 'cleanup.sh');
-  fs.writeFileSync(helper, fs.readFileSync(path.join(__dirname, '../../project-bootstrap/wizard-build/recipe/cleanup.sh'), 'utf8').replace(/\r\n/g, '\n'));
+  fs.writeFileSync(helper, fs.readFileSync(path.join(__dirname, '../../templates/project-bootstrap/wizard-build/recipe/cleanup.sh'), 'utf8').replace(/\r\n/g, '\n'));
   fs.writeFileSync(path.join(root, 'bin/docker'), `#!${process.execPath}
 const args=process.argv.slice(2), mode=process.env.CLEANUP_MODE;
 require('fs').appendFileSync(process.env.TRACE,JSON.stringify(args)+'\\n');

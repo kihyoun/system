@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert');
-const {settings} = require('../../project-bootstrap/preview-setup/settings');
-const {publicAddress} = require('../../project-bootstrap/preview-setup/source');
+const {settings} = require('../../dist/modules/project-lifecycle/previewSettings');
+const {publicAddress} = require('../../dist/modules/project-lifecycle/sourceTransfer.service');
 const host = {enabled: true, host: 'review.example.test', ssl: '/ssl/review/cert.pem', sslKey: '/ssl/review/key.pem'};
 const desired = {version: 1, namespace: 'team/dev', wizard: {mode: 'import', project: 'wizard-fork', origin: 'https://example.test/fork.git'}, review: host, beta: {...host, enabled: false, host: ''}};
 assert.deepEqual(settings(desired), desired);
@@ -9,3 +9,9 @@ for (const patch of [{token: 'secret'}, {namespaceId: 3}, {version: 99}, {namesp
 for (const address of ['127.0.0.1', '10.3.4.5', '172.16.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '::1', '::', 'fc00::1', 'fe80::1', '::ffff:127.0.0.1', '64:ff9b::a00:1', '198.18.0.1', '192.0.2.1', '2001:db8::1']) assert(!publicAddress(address));
 assert(publicAddress('1.1.1.1')); assert(publicAddress('2606:4700:4700::1111'));
 console.log('Preview setup intent: bounded schema, credential/instance separation, exact HTTPS inputs and public origin guards passed.');
+const betaOnly = {...desired, version: 2, wizard: {mode: 'existing', project: 'system', origin: ''},
+  review: {enabled: false, host: '', ssl: '', sslKey: ''}, beta: {...host, host: 'beta.example.test'}};
+assert.deepEqual(settings(betaOnly), betaOnly);
+assert.throws(() => settings({...betaOnly, review: host}), /retired/);
+assert.throws(() => settings({...betaOnly, wizard: desired.wizard}), /existing shared/);
+assert.deepEqual(settings(desired), desired, 'legacy configuration stays explicit and unchanged');

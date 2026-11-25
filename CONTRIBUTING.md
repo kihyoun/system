@@ -37,6 +37,16 @@ Infrastructure and runtime changes retain the required component, browser,
 candidate-image and disposable platform gates. Documentation-only changes use the
 native documentation lane. Never bypass checks to reduce an update's cost.
 
+Maintained NestJS TypeScript follows the
+[TypeScript Deep Dive style guide](https://github.com/basarat/typescript-book/blob/master/docs/styleguide/styleguide.md).
+Use camelCase filenames, variables and members; PascalCase types; two spaces,
+single quotes, semicolons and `Type[]` arrays. Keep control-flow bodies in
+multiline braces and separate complete `if` statements from surrounding
+statements with a blank line, including nested blocks. Use `npm run format` to
+format sources and `npm run lint` to check the enforced conventions. The existing
+fast CI lane runs the read-only formatting and lint checks. Retain external API
+field names, conventional API `null` values and reserved historical bytes.
+
 For a bundled change, keep the tested Wizard source revision and System gitlink
 consistent. A Wizard merge alone does not update the System pin or Production.
 Dependency Dashboard approval permits Renovate to propose a grouped update; it

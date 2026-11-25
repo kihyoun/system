@@ -17,7 +17,7 @@ async function main() {
     throw Error('Run in the documented disposable Linux test container with SYSTEM_TEST_ISOLATED=1.');
   }
   if (fs.existsSync('/var/run/docker.sock')) throw Error('The isolated suite must not have a Docker socket mounted.');
-  for (const file of ['.docker.env', 'system/.docker.env', 'gitlab/.docker.env']) {
+  for (const file of ['.docker.env', 'config/system/.docker.env', 'config/gitlab/.docker.env', 'system/.docker.env', 'gitlab/.docker.env']) {
     if (fs.existsSync(path.join(root,file))) throw Error('Use a clean checkout without private runtime configuration: ' + file);
   }
   const selected = manifest.filter(item => component === 'all' || item.component === component);

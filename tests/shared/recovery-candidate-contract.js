@@ -38,9 +38,13 @@ function dependencies(first,input,options={}) {
   const events=first.events;
   class FakeCandidate {
     constructor(spec){this.spec=spec;this.id='b'.repeat(24);FakeCandidate.instance=this;events.push('new-host-created');}
+
     report(){events.push('new-host-receipt');}
+
     async start(){assert(first.removed,'old daemon must be removed before fresh daemon startup');events.push('new-host-started');if(options.failStart)throw Error('new-start-failed');}
+
     async platform(){events.push('new-host-ci-registry');if(options.cancelDuringPlatform){first.canceled=true;assert.equal(this.canceled,true);throw Error('canceled');}}
+
     cleanup(){events.push('new-host-cleanup');return !options.failCleanup;}
   }
   return {Candidate:FakeCandidate,capture:async()=>{events.push('backups-captured');return input;},
@@ -118,12 +122,12 @@ test('cleanup failure fails acceptance and retains private recovery inputs',asyn
 test('bootstrap uses only declared binary streams and restores before normal controller startup',async t=>{
   const input=fixture(t),calls=[],stages=[];
   const candidate={spec:{restore:input},daemon:'owned-private-daemon',stage:async(name,action)=>{stages.push(name);return action();},call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{calls.push({args,options});return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'systembootstrapper/wizard':'';}};
-  await recovery.bootstrapRestore(candidate,{rewriter:'print("public fixture only")',storage:storageFixture});
+  await recovery.bootstrapRestore(candidate,{storage:storageFixture});
   assert(!calls.some(call=>call.args[0]==='cp'),'no Docker cp binary transport');
   const uploads=calls.filter(call=>call.options?.inputFile);
   assert.deepEqual(uploads.map(call=>call.options.inputFile),[input.configArchive,input.seedArchive,input.configArchive,input.configArchive]);
   assert(!calls.some(call=>call.options?.input && Buffer.isBuffer(call.options.input)),'archive bytes never buffered into JSON input');
-  const seed=calls.findIndex(call=>call.args.includes('seed.sh'));
+  const seed=calls.findIndex(call=>call.args.includes('/system/dist/modules/storage/entry.js')&&call.args.includes('restore'));
   const normalCreate=calls.findIndex(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint'));
   assert(seed>=0&&normalCreate>seed,'restore completes before normal controller creation');
   assert(calls[seed].args.includes('SYSTEM_SEED_CONFIGURATION_BACKUP=/recovery-inputs/bootstrapper.zip'),
@@ -146,14 +150,17 @@ test('bootstrap uses only declared binary streams and restores before normal con
   assert(initialCreate.args.includes('--restart'));
   assert(initialCreate.args.includes(recovery.BASE+'/host/letsencrypt:/host-letsencrypt'));
   assert(!initialCreate.args.some(arg=>arg.includes('/candidate-data/platform')),'old live paths never mounted');
-  const python=calls.find(call=>call.args.includes('/opt/gitlab/embedded/bin/python3'));
-  assert(python.args.includes('candidate-gitlab:under-test')&&python.args.includes('--network'));
+  const rebind=calls.find(call=>call.args.includes('rebind-renewal'));
+  assert(rebind.args.includes('system-candidate:under-test')&&rebind.args.includes('--network'));
+  assert.deepEqual(rebind.args.slice(-4),['--directory','/renewal-state/renewal','--webroot',recovery.BASE+'/ssl/acme-http01']);
+  assert(calls.indexOf(rebind)>seed&&calls.indexOf(rebind)<normalCreate);
+  assert(!calls.some(call=>call.args.includes('/opt/gitlab/embedded/bin/python3')));
 });
 
 test('native Seed restore records exact public failures through the Docker boundary and redacts other output',async t=>{
   const {Candidate}=require('./disposable-candidate');
   const input=fixture(t),bin=path.join(input.directory,'bin');fs.mkdirSync(bin);
-  const example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+  const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
   const hash='a'.repeat(64),driver=new Candidate({example,daemonImage:'docker:29-dind@sha256:'+hash,
     images:Object.fromEntries(['candidate','wizard','gitlab','runner','nginx'].map(role=>[role,{id:'sha256:'+hash,archive:path.join(input.directory,role+'.tar')}]))});
   const previousPath=process.env.PATH;
@@ -168,7 +175,7 @@ test('native Seed restore records exact public failures through the Docker bound
       const stages=[],events=[];
       const candidate={spec:{restore:input},daemon:'owned-private-daemon',results:stages,now:()=>0,checkpoint:()=>{},stage:Candidate.prototype.stage,
         call:async()=>'',inner:async(args,options)=>{
-          if(args.includes('seed.sh'))return driver.exec(['exec'],options);
+          if(args.includes('/system/dist/modules/storage/entry.js')&&args.includes('restore'))return driver.exec(['exec'],options);
           return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'systembootstrapper/wizard':'';
         }};
       await assert.rejects(()=>recovery.bootstrapRestore(candidate,{storage:{...storageFixture,detach:async()=>events.push('detached')}}),error=>{
@@ -299,7 +306,7 @@ test('original and restored alias checks rerender/reload and restart only the pr
     }});
     assert.deepEqual(events,[
       'recovery-'+phase+'-alias-routing','verified','recovery-'+phase+'-alias-reload',
-      ['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload'],'verified',
+      ['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates'],'verified',
       'recovery-'+phase+'-alias-restart',['restart','system_web_1'],'verified'
     ]);
   }
@@ -340,7 +347,7 @@ test('recording backup fixture settings never replaces an existing image/version
 test('a private Wizard pin fails explicitly without silently selecting the fixture image',async t=>{
   const input=fixture(t),calls=[];
   const candidate={spec:{restore:input},daemon:'owned-private-daemon',call:async(args,options)=>{calls.push({args,options});return '';},inner:async(args,options)=>{calls.push({args,options});return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?'registry.private.test/wizard@sha256:'+'a'.repeat(64):'';}};
-  await assert.rejects(()=>recovery.bootstrapRestore(candidate,{rewriter:'public fixture',storage:storageFixture}),/wizard-pin-recovery-artifact-not-declared/);
+  await assert.rejects(()=>recovery.bootstrapRestore(candidate,{storage:storageFixture}),/wizard-pin-recovery-artifact-not-declared/);
   assert(!calls.some(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint')),'normal provisioning must not conceal a substituted image');
 });
 
@@ -356,7 +363,7 @@ test('declared private pin remains exact and both its new image ID and reference
     calls.push({args,options});if(args[0]==='image')throw Error('absent image');
     return args.includes('source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"')?f.expected.imageRef:'';
   }};
-  await recovery.bootstrapRestore(candidate,{rewriter:'public source fixture',storage:storageFixture});
+  await recovery.bootstrapRestore(candidate,{storage:storageFixture});
   assert.deepEqual(calls.filter(call=>call.args[0]==='image').map(call=>call.args.at(-1)),[f.expected.imageRef,f.expected.imageId]);
   assert(calls.some(call=>call.args[0]==='create'&&!call.args.includes('--entrypoint')));
   assert(!calls.some(call=>call.args.some(arg=>arg===f.expected.imageRef)&&call.args[0]==='tag'),'the test must not manufacture a cached pin');
@@ -396,7 +403,7 @@ test('native private recovery starts with neither immutable reference nor image 
       }};
     if(cached)await assert.rejects(recovery.bootstrapRestore(candidate,{storage:storageFixture}),/image-already-cached/);
     else {
-      await recovery.bootstrapRestore(candidate,{rewriter:'public source fixture',storage:storageFixture});
+      await recovery.bootstrapRestore(candidate,{storage:storageFixture});
       assert.deepEqual(calls.filter(call=>call.args[0]==='image').map(call=>call.args.at(-1)),[f.expected.imageRef,f.expected.imageId]);
     }
     assert(!calls.some(call=>call.args[0]==='tag'||call.args[0]==='build'),'Native recovery manufactured its image');
@@ -423,8 +430,11 @@ test('an independent ACME authority survives the host switch and is removed afte
   const deps=dependencies(first,input);
   deps.LocalAcme=class{
     constructor(owner){assert.equal(owner,first);}
+
     async start(){first.events.push('authority-start');}
+
     async renew(second,expected){assert.equal(expected,input.expected.acme);first.events.push('actual-renewal-proof');second.acmeRenewalVerified=true;}
+
     cleanup(){first.events.push('authority-cleanup');return true;}
   };
   await recovery.run(first,()=>'/unused',deps);
@@ -438,6 +448,7 @@ test('authority startup failure cleans the original owned host before removing t
   const deps=dependencies(first,input);
   deps.LocalAcme=class{
     async start(){throw Error('authority-start-failed');}
+
     cleanup(){first.events.push('authority-cleanup');return true;}
   };
   await assert.rejects(()=>recovery.run(first,()=>'/unused',deps),/authority-start-failed/);
@@ -452,7 +463,7 @@ test('failed restored-host cleanup retains authority dependencies and private ar
   assert(!first.events.includes('authority-cleanup'));assert(fs.existsSync(input.configArchive));
 });
 test('Fetch after ACME activation uses authenticated CA-verified HTTPS for all configuration requests',async()=>{
-  const requests=[],logo=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184);
+  const requests=[],logo=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8').slice(0,1184);
   const candidate={secrets:{user:'synthetic-user',password:'synthetic-password'},request:async()=>{throw Error('unsafe HTTP request');},inner:async(args,options)=>{
     if(args[0]==='inspect')return JSON.stringify({bridge:{Gateway:'127.0.0.1'}});
     const input=JSON.parse(options.input);requests.push(input);assert.equal(input.host,'sync.candidate.test');assert.equal(input.certificate,'/ssl/fixture-ca.pem');
@@ -463,11 +474,12 @@ test('Fetch after ACME activation uses authenticated CA-verified HTTPS for all c
   const result=await recovery.syncFetch(candidate,{certificate:'/ssl/fixture-ca.pem'});
   assert.equal(result.main.data,logo);assert.deepEqual(requests.map(input=>input.route),['/login','/config/main','/config/projects']);
 });
-function identityFixture(failRoute){
+function identityFixture(failRoute,store={variables:new Map(),owners:[]},owner='c'.repeat(24)){
   const requests=[],stages=[],sha='a'.repeat(40),digest='sha256:'+'b'.repeat(64);
-  const reviewSha='d'.repeat(40),reviewBranch='recovery-review-cccccccc',createdAt='2026-01-01T00:00:00.000Z';
-  const state={review:null,discussion:null,nonce:null,username:null};
-  const candidate={id:'c'.repeat(24),evidence:{projectId:12,pipelineId:21},rails:async()=>({token:'private-fixture-token',root_id:1}),
+  const index=store.owners.length,reviewSha=(13+index).toString(16).repeat(40),reviewBranch='recovery-review-'+owner.slice(0,8),createdAt='2026-01-01T00:00:00.000Z';
+  const state={review:null,discussion:null,nonce:null,username:null,issueIid:7+index,userId:9+index,reviewIid:3+index,reviewBranch,reviewSha};
+  store.owners.push(state);
+  const candidate={id:owner,evidence:{projectId:12,pipelineId:21},rails:async()=>({token:'private-fixture-token',root_id:1}),
     wait:async action=>assert.equal(await action(),true),
     stage:async(name,action)=>{try{const value=await action();stages.push({name,status:'passed'});return value;}catch(error){stages.push({name,status:'failed',reason:error.message});throw error;}},
     api:async(route,token,method='GET',body)=>{
@@ -475,10 +487,12 @@ function identityFixture(failRoute){
       if(route===failRoute)throw Error('private-upstream-body-token-must-not-escape');
       if(route==='/projects/12')return {default_branch:'main',path_with_namespace:'root/recovery'};
       if(route==='/projects/12/repository/branches/main')return {commit:{id:sha}};
-      if(route==='/projects/12/repository/branches/'+reviewBranch)return {commit:{id:reviewSha}};
+      const branchOwner=store.owners.find(item=>route==='/projects/12/repository/branches/'+item.reviewBranch);
+      if(branchOwner)return {commit:{id:branchOwner.reviewSha}};
       if(route==='/projects/12/pipelines/21')return {status:'success',sha};
-      if(route==='/projects/12/issues'){assert.equal(method,'POST');state.nonce=body.description;return {iid:7};}
-      if(route==='/projects/12/issues/7')return {iid:7,description:state.nonce};
+      if(route==='/projects/12/issues'){assert.equal(method,'POST');state.nonce=body.description;return {iid:state.issueIid};}
+      const issueOwner=store.owners.find(item=>route==='/projects/12/issues/'+item.issueIid);
+      if(issueOwner)return {iid:issueOwner.issueIid,description:issueOwner.nonce};
       if(route==='/projects/12/repository/commits'){
         assert.equal(method,'POST');assert.equal(body.branch,reviewBranch);assert.equal(body.start_sha,sha);
         assert.match(body.commit_message,/\[skip ci\]/);assert.deepEqual(body.actions,[{action:'create',file_path:'recovery-proof.txt',content:state.nonce+'\n'}]);
@@ -486,14 +500,15 @@ function identityFixture(failRoute){
       }
       if(route==='/projects/12/merge_requests'){
         assert.equal(method,'POST');assert.equal(body.source_branch,reviewBranch);assert.equal(body.target_branch,'main');
-        assert.match(body.description,/Recovery proof for #7/);assert.match(body.title,/^Draft:/);
-        state.review={id:31,iid:3,project_id:12,title:body.title,description:body.description,state:'opened',
+        assert(body.description.includes('Recovery proof for #'+state.issueIid));assert.match(body.title,/^Draft:/);
+        state.review={id:31+index,iid:state.reviewIid,project_id:12,title:body.title,description:body.description,state:'opened',
           source_branch:body.source_branch,target_branch:body.target_branch,source_project_id:12,target_project_id:12,
           author:{id:1},created_at:createdAt,sha:reviewSha,merge_commit_sha:null,merged_at:null};
         return state.review;
       }
-      if(route==='/projects/12/merge_requests/3')return state.review;
-      const discussionRoute='/projects/12/merge_requests/3/discussions';
+      const reviewOwner=store.owners.find(item=>route==='/projects/12/merge_requests/'+item.reviewIid);
+      if(reviewOwner)return reviewOwner.review;
+      const discussionRoute='/projects/12/merge_requests/'+state.reviewIid+'/discussions';
       if(route===discussionRoute){
         assert.equal(method,'POST');state.discussion={id:'e'.repeat(40),individual_note:false,
           notes:[{id:41,body:body.body,author:{id:1},created_at:createdAt,updated_at:createdAt,resolvable:true,resolved:false}]};
@@ -503,17 +518,26 @@ function identityFixture(failRoute){
         assert.equal(method,'POST');const note={id:42,body:body.body,author:{id:1},created_at:createdAt,updated_at:createdAt,resolvable:true,resolved:false};
         state.discussion.notes.push(note);return note;
       }
-      if(route===discussionRoute+'/'+'e'.repeat(40))return state.discussion;
-      if(route==='/projects/12/variables'){assert.equal(method,'POST');return {};}
-      if(route==='/projects/12/variables/RECOVERY_ENCRYPTED_PROOF')return {value:state.nonce};
-      if(route==='/users'){assert.equal(method,'POST');state.username=body.username;return {id:9,username:body.username};}
-      if(route==='/users/9')return {id:9,username:state.username};
+      const discussionOwner=store.owners.find(item=>route==='/projects/12/merge_requests/'+item.reviewIid+'/discussions/'+'e'.repeat(40));
+      if(discussionOwner)return discussionOwner.discussion;
+      if(route==='/projects/12/variables'){
+        assert.equal(method,'POST');assert.equal(body.masked,true);assert.match(body.value,/^[a-f0-9]{48}$/);
+        if(store.variables.has(body.key))throw Error('private-duplicate-variable-conflict');
+        store.variables.set(body.key,{...body});return {...body};
+      }
+      if(route.startsWith('/projects/12/variables/')){
+        assert.equal(method,'GET');const variable=store.variables.get(decodeURIComponent(route.slice('/projects/12/variables/'.length)));
+        assert(variable,'Only an existing retained variable can be read.');return {...variable};
+      }
+      if(route==='/users'){assert.equal(method,'POST');state.username=body.username;return {id:state.userId,username:body.username};}
+      const userOwner=store.owners.find(item=>route==='/users/'+item.userId);
+      if(userOwner)return {id:userOwner.userId,username:userOwner.username};
       if(route==='/projects/12/registry/repositories')return [{id:14,path:'root/recovery/probe'}];
       if(route==='/projects/12/registry/repositories/14/tags/'+sha)return {digest};
       if(route==='/personal_access_tokens/self'){assert.equal(method,'DELETE');return null;}
       throw Error('unexpected API route');
     }};
-  return {candidate,requests,stages,sha,digest,reviewSha,state};
+  return {candidate,requests,stages,sha,digest,reviewSha,state,store};
 }
 test('identity capture uses the documented project-scoped tag endpoint and journals every data boundary',async()=>{
   const f=identityFixture();const result=await recovery.recordIdentity(f.candidate);
@@ -524,7 +548,37 @@ test('identity capture uses the documented project-scoped tag endpoint and journ
   assert.equal(result.head,f.sha,'review fixture must not move the default branch');
   assert.equal(result.mergeRequest.review.sha,f.reviewSha);assert.equal(result.mergeRequest.review.state,'opened');
   assert.equal(result.mergeRequest.discussion.notes.length,2);assert.equal(result.mergeRequest.discussion.notes[1].body,'Recovery reply '+result.nonce);
+  assert.equal(result.variableKey,'RECOVERY_ENCRYPTED_PROOF_'+f.candidate.id.toUpperCase());
+  assert.deepEqual(f.store.variables.get(result.variableKey),{key:result.variableKey,value:result.nonce,masked:true});
   assert(f.stages.every(item=>item.status==='passed'));
+});
+test('original and restored owners retain independent masked proof variables and complete identity datasets in the same project',async()=>{
+  const first=identityFixture(),original=await recovery.recordIdentity(first.candidate);
+  const originalVariable=structuredClone(first.store.variables.get(original.variableKey)),originalState=structuredClone(first.state);
+  const second=identityFixture(undefined,first.store,'d'.repeat(24)),migration=await recovery.recordIdentity(second.candidate);
+  assert.notEqual(original.variableKey,migration.variableKey);assert.notEqual(original.nonce,migration.nonce);
+  assert.deepEqual(first.store.variables.get(original.variableKey),originalVariable);assert.deepEqual(first.state,originalState);
+  assert.equal(first.store.variables.size,2);
+  assert.deepEqual(first.store.variables.get(migration.variableKey),{key:migration.variableKey,value:migration.nonce,masked:true});
+  second.requests.length=0;
+  await recovery.verifyServiceIdentity(second.candidate,original);
+  await recovery.verifyServiceIdentity(second.candidate,migration);
+  assert(second.requests.some(item=>item.route==='/projects/12/variables/'+original.variableKey));
+  assert(second.requests.some(item=>item.route==='/projects/12/variables/'+migration.variableKey));
+  assert(![...first.requests,...second.requests].some(item=>item.route.includes('/variables')&&['PUT','DELETE'].includes(item.method)));
+  assert.deepEqual(first.store.variables.get(original.variableKey),originalVariable);assert.deepEqual(first.state,originalState);
+  assert(!JSON.stringify(second.candidate.evidence).includes(migration.nonce));
+});
+test('retained variable keys are validated before lookup and changed encrypted proof values fail identity checks',async()=>{
+  const f=identityFixture(),expected=await recovery.recordIdentity(f.candidate),auth={token:'private-fixture-token',root_id:1};
+  for(const variableKey of [undefined,'','RECOVERY_ENCRYPTED_PROOF',expected.variableKey.toLowerCase(),expected.variableKey+'\n',expected.variableKey+'/other','../private','RECOVERY_ENCRYPTED_PROOF_%2F']){
+    f.requests.length=0;
+    await assert.rejects(()=>recovery.verifyServiceIdentity(f.candidate,{...expected,variableKey},auth),{message:'restored-service-identity-mismatch'});
+    assert.deepEqual(f.requests,[],'Malformed retained keys must never enter an API route.');
+  }
+  f.store.variables.get(expected.variableKey).value='changed-proof';
+  await assert.rejects(()=>recovery.verifyServiceIdentity(f.candidate,expected,auth),{message:'restored-service-identity-mismatch'});
+  assert.equal(f.candidate.mergeRequestRecoveryVerified,false);
 });
 test('capture failures identify the precise operation, revoke credentials and suppress upstream private errors',async()=>{
   const {failureReason}=require('./stage-diagnostics');
@@ -557,7 +611,7 @@ test('a caller-owned identity credential preserves all checks without minting or
   const auth={token:'private-fixture-token',root_id:expected.rootId};
   await recovery.verifyServiceIdentity(f.candidate,expected,auth);
   assert.equal(f.candidate.mergeRequestRecoveryVerified,true);
-  assert(f.requests.some(item=>item.route==='/projects/12/variables/RECOVERY_ENCRYPTED_PROOF'));
+  assert(f.requests.some(item=>item.route==='/projects/12/variables/'+expected.variableKey));
   assert(f.requests.some(item=>item.route==='/projects/12/registry/repositories/14/tags/'+f.sha));
   assert(f.stages.some(item=>item.name==='recovery-restored-merge-request'&&item.status==='passed'));
   assert(!f.requests.some(item=>item.route==='/personal_access_tokens/self'));
@@ -611,7 +665,7 @@ function restoredConfigurationFixture(changes={}) {
   const {Candidate}=require('./disposable-candidate');
   let time=0;
   const stages=[],requests=[];
-  const config=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8').slice(0,1184)+
+  const config=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8').slice(0,1184)+
     "export SEED_DIR='"+recovery.SEED+"'\nexport RECOVERY_RUNTIME_PROOF=\"literal=one=two \\$HOME\"\n";
   const input={expected:{certificateHash:'a'.repeat(64),accountIdentity:'test-account'}};
   const candidate={spec:{readinessMilliseconds:5000},secrets:{user:'restored-user',password:'restored-password'},
@@ -725,7 +779,7 @@ function coldSeedFixture(t,failure){
   const input=fixture(t),events=[],stages=[];
   const candidate={daemon:'owned-daemon',results:stages,now:()=>0,checkpoint:()=>{},stage:require('./disposable-candidate').Candidate.prototype.stage,
     inner:async(args,options)=>{
-      const kind=args.includes('stop.sh')?'runner-stop':args.includes('harvest.sh')?'harvest':'manifest-current';events.push(kind);
+      const kind=args.includes('runner-stop')?'runner-stop':args.includes('harvest')?'harvest':'manifest-current';events.push(kind);
       if(kind==='harvest')assert.deepEqual(options.failureCodes,recovery.HARVEST_FAILURE_CODES);
       if(kind===failure?.step)throw Object.assign(Error(failure.message||'private-upstream-error'),failure.metadata);
       return kind==='manifest-current'?'/seed/snapshots/completed-fixture':'';
@@ -742,17 +796,17 @@ test('cold Seed capture journals runner stop, actual Harvest, completed manifest
 test('the fresh readonly manifest helper preserves the harvested image check without inheriting controller environment',async t=>{
   const f=coldSeedFixture(t),seed=path.join(f.input.directory,'seed'),snapshot=path.join(seed,'snapshots/completed');
   for(const directory of ['srv','ssl','letsencrypt'])fs.mkdirSync(path.join(snapshot,directory),{recursive:true});
-  const manifest=require('../../system/seed-manifest').create(snapshot);
+  const manifest=require('../../dist/modules/storage/manifest').create(snapshot);
   manifest.gitlabImage='candidate-gitlab:under-test';
   fs.writeFileSync(path.join(snapshot,'manifest.json'),JSON.stringify(manifest));
   fs.symlinkSync('snapshots/completed',path.join(seed,'current'));
   const env={...process.env};delete env.GITLAB_IMAGE;
   const execute=environment=>require('child_process').spawnSync(process.execPath,
-    [path.join(__dirname,'../../system/seed-manifest.js'),'current',seed],{env:environment,encoding:'utf8'});
+    [path.join(__dirname,'../../dist/modules/storage/manifestEntry.js'),'current',seed],{env:environment,encoding:'utf8'});
   assert.notEqual(execute(env).status,0,'a fresh helper really refuses an undeclared harvested image');
   const inner=f.candidate.inner;
   f.candidate.inner=async(args,options)=>{
-    if(!args.includes('/system/system/seed-manifest.js'))return inner(args,options);
+    if(!args.includes('/system/dist/modules/storage/manifestEntry.js'))return inner(args,options);
     for(let index=0;index<args.length-1;index++)if(args[index]==='--env'){
       const match=/^([A-Z_]+)=(.*)$/.exec(args[++index]);if(match)env[match[1]]=match[2];
     }
@@ -777,13 +831,226 @@ test('cold Seed failures identify each command and do not attempt later operatio
 });
 test('fixed Harvest failure codes identify internal phases without exposing arbitrary output',async t=>{
   const {failureReason}=require('./stage-diagnostics');
-  const script=fs.readFileSync(path.join(__dirname,'../../system/harvest.sh'),'utf8');
+  const script=fs.readFileSync(path.join(__dirname,'../../src/modules/storage/copy.ts'),'utf8');
   for(const [line,code]of Object.entries(recovery.HARVEST_FAILURE_CODES)){
     assert.equal(failureReason(code),code);
-    if(line.startsWith('Harvest phase failed: '))assert(script.includes('phase='+line.slice('Harvest phase failed: '.length,-1)));
-    else assert(script.includes(line));
+    if(line.startsWith('Harvest phase failed: '))assert(script.includes("phase = '"+line.slice('Harvest phase failed: '.length,-1)+"'"));
+    // Historical shell messages remain accepted for older saved diagnostics.
+    else if(!line.includes(' ')&&line!=='storage-operation-busy')assert(script.includes(line));
     const f=coldSeedFixture(t,{step:'harvest',message:code,metadata:{exitCode:1}});
     await assert.rejects(()=>recovery.captureSeed(f.candidate,f.input),{message:code});
     assert.equal(f.stages.at(-1).reason,code);assert.deepEqual(f.events,['runner-stop','harvest']);
+  }
+});
+
+test('shared candidate registry recovery accepts exact candidate and forbids cached aliases or invented jobs',()=>{
+  const {images}=privateFixture(),sourceRevision='f'.repeat(40);
+  const spec={images,sourceRevision};
+  const value={kind:'shared-candidate-registry-v2',projectId:12,projectPath:'root/wizard',registryHost:'registry.candidate.test:5050',sourceCommit:sourceRevision,imageId:images.wizard.id,imageDigest:'sha256:'+'d'.repeat(64)};
+  value.imageRef=value.registryHost+'/'+value.projectPath+'/successor-wizard@'+value.imageDigest;
+  assert.equal(recovery.privateWizardDescriptor(value,spec),value);
+  for(const change of [{jobId:31},{pipelineId:21},{sourceCommit:'a'.repeat(40)},{imageId:images.candidate.id},{projectPath:'root/../wizard'}])assert.throws(()=>recovery.privateWizardDescriptor({...value,...change},spec),/descriptor-invalid/);
+  assert.throws(()=>recovery.privateWizardDescriptor(value,{...spec,supportImages:{helper:{id:value.imageId}}}),/descriptor-invalid/);
+});
+function runnerFixture(t){
+  const platform=fs.mkdtempSync(path.join(os.tmpdir(),'runner-identity-'));t.after(()=>fs.rmSync(platform,{recursive:true,force:true}));
+  const root=path.join(platform,'runners/runner/1/config');fs.mkdirSync(root,{recursive:true});
+  const token='glrt-private-fixture',manager='s_native',calls=[],stages=[];
+  const config=(id=56,credential=token)=>fs.writeFileSync(path.join(root,'config.toml'),
+    'concurrent = 1\n[[runners]]\n name = "runner-docker-1"\n executor = "docker"\n id = '+id+'\n token = "'+credential+'"\n'+
+    ' url = "https://gitlab.candidate.test"\n clone_url = "https://gitlab.candidate.test"\n [runners.docker]\n'+
+    '    image = "alpine:3.23"\n    helper_image = "candidate-helper:under-test"\n    volumes = ["/var/run/docker.sock:/var/run/docker.sock"]\n');
+  const system=value=>fs.writeFileSync(path.join(root,'.runner_system_id'),value);
+  config();system(manager+'\n');
+  const container={Image:'sha256:'+'b'.repeat(64),State:{Running:true}};
+  const candidate={spec:{recoveryAcceptance:true,supportImages:{helper:{}},restore:{base:platform,expected:{projectId:12,registryPipelineId:34}}},evidence:{},url:'https://candidate.test',
+    prepareRunnerTransport:require('./disposable-candidate').Candidate.prototype.prepareRunnerTransport,sleep:async milliseconds=>assert.equal(milliseconds,4000),
+    stage:async(name,action)=>{stages.push(name);return action();},wait:async action=>assert.equal(await action(),true),request:async()=>({status:200}),
+    inner:async(args,options)=>{calls.push(args);if(args[0]==='inspect')return JSON.stringify([container]);
+      if(args.includes('-e'))return require('node:child_process').execFileSync(process.execPath,['-e',args[4],...args.slice(5)],{encoding:'utf8',stdio:'pipe'});
+      if(args.includes('cat')&&args.includes('/etc/gitlab-runner/config.toml'))return fs.readFileSync(path.join(root,'config.toml'),'utf8');
+      if(args.some(arg=>arg.includes('config.toml.guided-tmp')))fs.writeFileSync(path.join(root,'config.toml'),options.input);
+      return '';},
+    rails:async()=>{throw Error('Fresh registration must not run on restored path');},api:async()=>{throw Error('Generic new project pipelines must not run on restored path');}};
+  return {root,token,manager,candidate,container,calls,stages,config,system};
+}
+test('fresh restored platform accepts changed or matching manager IDs while retaining runner registration and current-host identity',async t=>{
+  const {Candidate}=require('./disposable-candidate');
+  for(const changed of [false,true])await t.test(String(changed),async t=>{
+    const f=runnerFixture(t),current=await recovery.runnerIdentity(f.candidate);
+    f.candidate.restoredRunnerIdentity=current;
+    f.candidate.spec.restore.expected.runnerIdentity={...current,manager:changed?'c'.repeat(64):current.manager};
+    await Candidate.prototype.platform.call(f.candidate);
+    assert.deepEqual(f.stages,['gitlab-and-runner-ready','recovery-retained-runner-identity']);
+    assert(f.calls.some(args=>args.includes('http://127.0.0.1/-/readiness')));
+    assert(f.calls.some(args=>args.includes('gitlab-runner')&&args.includes('verify')));
+    assert.deepEqual(f.candidate.evidence,{projectId:12,pipelineId:34});
+    const transport=fs.readFileSync(path.join(f.root,'config.toml'),'utf8');
+    assert(transport.includes('allowed_pull_policies = ["never", "if-not-present"]'));
+    assert(transport.includes('helper_image = "candidate-helper:under-test"'));
+    assert(transport.includes('clone_url = "https://gitlab.candidate.test"'));
+    await f.candidate.prepareRunnerTransport();assert.equal(fs.readFileSync(path.join(f.root,'config.toml'),'utf8'),transport);
+    assert.deepEqual(await recovery.runnerIdentity(f.candidate),current);
+    assert(!JSON.stringify(current).includes(f.token));assert(!JSON.stringify(current).includes(f.manager));
+    f.system(f.manager);assert.deepEqual(await recovery.runnerIdentity(f.candidate),current,'file newline does not change canonical manager fingerprint');
+  });
+});
+test('restored runner probe rejects changed registration, credential, image and same-host manager with fixed diagnostics',async t=>{
+  const {Candidate}=require('./disposable-candidate'),{failureReason}=require('./stage-diagnostics');
+  const cases=[
+    [f=>f.config(57),'recovery-runner-id-changed'],
+    [f=>f.config(56,'glrt-other-private-fixture'),'recovery-runner-credential-changed'],
+    [f=>{f.container.Image='sha256:'+'d'.repeat(64);},'recovery-runner-image-changed'],
+    [f=>f.system('r_restarted'),'recovery-runner-manager-changed'],
+    [f=>f.system('private malformed manager'),'recovery-runner-manager-invalid'],
+    [f=>f.config('not-numeric'),'recovery-runner-id-invalid'],
+    [f=>f.config(56,'private invalid credential'),'recovery-runner-credential-invalid'],
+    [f=>fs.rmSync(path.join(f.root,'config.toml')),'recovery-runner-config-unavailable'],
+    [f=>{f.container.State.Running=false;},'recovery-runner-container-invalid'],
+    [f=>{delete f.candidate.spec.restore.expected.runnerIdentity;},'recovery-runner-identity-required'],
+    [f=>{delete f.candidate.restoredRunnerIdentity;},'recovery-runner-identity-required'],
+  ];
+  for(const [index,[change,code]]of cases.entries())await t.test(String(index),async t=>{
+    const f=runnerFixture(t),current=await recovery.runnerIdentity(f.candidate);
+    f.candidate.restoredRunnerIdentity=current;f.candidate.spec.restore.expected.runnerIdentity={...current,manager:'e'.repeat(64)};
+    change(f);await assert.rejects(()=>Candidate.prototype.platform.call(f.candidate),{message:code});
+    assert.equal(failureReason(code),code);assert.deepEqual(f.candidate.evidence,{});
+  });
+});
+test('existing recovery phase jobs prove the current manager and commit changed CI after cold rollback',async t=>{
+  const cases=[
+    [{},undefined],
+    [{runner_manager:{system_id:'s_oldmanager'}},'recovery-runner-job-manager-mismatch'],
+    [{runner_manager:{system_id:'private invalid manager'}},'recovery-runner-job-manager-mismatch'],
+    [{runner_manager:null},'recovery-runner-job-manager-mismatch'],
+    [{runner:{id:57}},'restored-registry-job-not-successful'],
+  ];
+  for(const [index,[change,code]]of cases.entries())await t.test(String(index),async t=>{
+    const f=runnerFixture(t),current=await recovery.runnerIdentity(f.candidate),requests=[];
+    f.candidate.restoredRunnerIdentity=current;f.candidate.evidence={projectId:12,pipelineId:34};
+    const expected={...f.candidate.spec.restore.expected,runnerIdentity:{...current,manager:'c'.repeat(64)},branch:'main',imageCommit:'e'.repeat(40)};
+    let minted=0,content='original build CI',commit='f'.repeat(40);const writes=[];
+    f.candidate.rails=async()=>{minted++;return {token:'private-api-fixture',root_id:1};};
+    f.candidate.api=async(route,_token,method='GET',body)=>{
+      requests.push({route,method});
+      if(method==='DELETE')return {};
+      if(method==='PUT'){
+        assert.notEqual(body.content,content,'GitLab rejects unchanged file commits');
+        content=body.content;writes.push(content);commit=String(writes.length).padStart(40,'0');return {};
+      }
+      if(route.includes('/repository/files/'))return {last_commit_id:commit};
+      if(route.endsWith('/pipelines'))return [{id:34+writes.length,status:'success',sha:commit}];
+      if(route.endsWith('/pipelines/'+(34+writes.length)+'/jobs'))return [{id:44+writes.length,name:'restored-registry-blob',status:'success',runner:{id:56},runner_manager:{system_id:f.manager},...change}];
+      throw Error('unexpected API request');
+    };
+    const run=()=>recovery.verifyRegistryBlob(f.candidate,{expected});
+    if(code){await assert.rejects(run,{message:code});assert.equal(f.candidate.evidence.recovery,undefined);assert.equal(require('./stage-diagnostics').failureReason(code),code);}
+    else {
+      await run();assert.equal(f.candidate.evidence.recovery.jobId,45);assert.equal(f.candidate.evidence.recovery.pipelineId,35);
+      await recovery.verifyRegistryBlob(f.candidate,{expected,phase:'upgraded'});
+      content=writes[0]; // The database checkpoint restores the earlier CI file.
+      await recovery.verifyRegistryBlob(f.candidate,{expected,phase:'rollback'});
+      assert.deepEqual(writes.map(value=>value.split('\n')[0]),['# Recovery Registry proof: restored','# Recovery Registry proof: upgraded','# Recovery Registry proof: rollback']);
+      for(const value of writes)assert(value.includes('$CI_REGISTRY_IMAGE/probe:'+expected.imageCommit));
+      assert.equal(f.candidate.evidence.recovery.jobId,47);assert.equal(f.candidate.evidence.recovery.pipelineId,37);
+      assert.equal(f.candidate.evidence.pipelineId,34);assert.equal(f.candidate.evidence.projectId,12);
+    }
+    const probes=code?1:3;
+    assert.equal(minted,probes);assert.equal(requests.filter(row=>row.method==='PUT').length,probes);assert.equal(requests.filter(row=>row.method==='DELETE').length,probes);
+    assert(!requests.some(row=>row.method==='POST'));assert.equal(requests.filter(row=>row.route.endsWith('/jobs')).length,probes);
+    assert(!JSON.stringify(f.candidate.evidence).includes('private-'));
+  });
+});
+
+test('fresh restored guided manager reapplies test CA transport without changing native identity',async t=>{
+  const f=runnerFixture(t),current=await recovery.runnerIdentity(f.candidate);
+  f.candidate.id='a'.repeat(24);
+  Object.assign(f.candidate.spec,{fullAcceptance:true,guidedPreviewAcceptance:true,sourceLayout:'system-monorepo-v1',
+    sourceRevision:'e'.repeat(40),sourceTree:'d'.repeat(40),wizardSourceTree:'c'.repeat(40),
+    images:{candidate:{id:'sha256:'+'1'.repeat(64)},wizard:{id:'sha256:'+'2'.repeat(64)}},
+    guidedPreviewSettings:{version:2,namespace:'root',wizard:{mode:'existing',project:'wizard',origin:''},
+      review:{enabled:false,host:'',ssl:'',sslKey:''},beta:{enabled:true,host:'beta.candidate.test',ssl:'/ssl/live/recovery-fixture/fullchain.pem',sslKey:'/ssl/live/recovery-fixture/privkey.pem'}}});
+  f.candidate.restoredRunnerIdentity=current;f.candidate.spec.restore.expected.runnerIdentity=current;
+  await require('./disposable-candidate').Candidate.prototype.platform.call(f.candidate);
+  const content=fs.readFileSync(path.join(f.root,'config.toml'),'utf8');
+  assert(content.includes('/run/system-bootstrapper/guided-preview-ca.pem:/etc/system-bootstrapper/guided-preview-ca.pem:ro'));
+  for(const name of ['SSL_CERT_FILE','GIT_SSL_CAINFO','CURL_CA_BUNDLE','NODE_EXTRA_CA_CERTS','REQUESTS_CA_BUNDLE'])assert(content.includes(name+'=/etc/system-bootstrapper/guided-preview-ca.pem'));
+  assert(content.includes('allowed_pull_policies = ["never", "if-not-present"]'));
+  assert(!content.includes('SSL_NO_VERIFY'));assert.deepEqual(await recovery.runnerIdentity(f.candidate),current);
+});
+
+test('restored registry failures retain bounded child diagnostics through report and recovery serialization',async t=>{
+  for(const unavailable of [false,true])await t.test(String(unavailable),async t=>{
+    const f=runnerFixture(t),requests=[],{Candidate,recover}=require('./disposable-candidate');
+    f.candidate.id='a'.repeat(24);f.candidate.resources=[];f.candidate.results=[];f.candidate.evidence={projectId:12,pipelineId:34};
+    f.candidate.restoredRunnerIdentity=await recovery.runnerIdentity(f.candidate);
+    const expected={...f.candidate.spec.restore.expected,runnerIdentity:f.candidate.restoredRunnerIdentity,branch:'main',imageCommit:'e'.repeat(40)};
+    f.candidate.rails=async()=>({token:'private-api-fixture',root_id:1});
+    f.candidate.api=async(route,_token,method='GET')=>{
+      requests.push({route,method});
+      if(method==='DELETE'||method==='PUT')return {};
+      if(route.includes('/repository/files/'))return {last_commit_id:'f'.repeat(40)};
+      if(route.endsWith('/pipelines'))return [{id:35,status:'failed',sha:'f'.repeat(40)}];
+      if(route.endsWith('/pipelines/35/jobs'))return [
+        {id:45,name:'restored-registry-blob',status:'failed',runner:{id:56},failure_reason:'runner_configuration_error',duration:3,queued_duration:1},
+        {id:46,name:'restored-registry-blob',status:'skipped',failure_reason:'private-secret-reason'},
+        {id:47,name:'private-secret-job',status:'failed'}];
+      if(route.endsWith('/jobs/45/trace')){
+        if(unavailable)throw Error('private-secret-transport');
+        return 'private-secret-token\nERROR: Job failed (system failure): the configured PullPolicies ([never]) are not allowed by AllowedPullPolicies ([always])';
+      }
+      throw Error('unexpected API request');
+    };
+    await assert.rejects(()=>recovery.verifyRegistryBlob(f.candidate,{expected}),{message:'restored-registry-ci-failed'});
+    assert.equal(requests.filter(row=>row.route.endsWith('/jobs')).length,1);
+    assert.deepEqual(requests.filter(row=>row.route.endsWith('/trace')).map(row=>row.route),['/projects/12/jobs/45/trace']);
+    const reportDirectory=path.join(f.root,'report');Candidate.prototype.report.call(f.candidate,reportDirectory);
+    const receipt=JSON.parse(fs.readFileSync(path.join(reportDirectory,'results.json'),'utf8'));
+    const resumed=recover(receipt);resumed.report(path.join(f.root,'resumed'));
+    const durable=JSON.parse(fs.readFileSync(path.join(f.root,'resumed/results.json'),'utf8'));
+    assert.equal(durable.evidence.pipelineId,34);assert.equal(durable.evidence.projectId,12);assert.equal(durable.evidence.failurePipelineId,35);assert.equal(durable.evidence.pipelineStatus,'failed');
+    assert.equal(durable.evidence.jobs.length,2);assert.equal(durable.evidence.jobs[0].failureReason,'runner_configuration_error');
+    assert.deepEqual(durable.evidence.jobs[0].diagnostics,unavailable?{codes:['trace-unavailable']}:{commands:[],codes:['runner-pull-policy']});
+    assert.equal(durable.evidence.jobs[1].diagnostics,undefined);assert.equal(durable.evidence.jobs[1].failureReason,undefined);
+    assert(!JSON.stringify(receipt).includes('private-'));assert(!JSON.stringify(durable).includes('private-'));
+    assert.equal(requests.filter(row=>row.method==='PUT').length,1);assert.equal(requests.filter(row=>row.method==='DELETE').length,1);
+    assert(!requests.some(row=>row.method==='POST'));
+  });
+});
+
+test('restored registry proof permits only declared phase image transitions and retains registration and manager',async t=>{
+  const old='sha256:'+'b'.repeat(64),target='sha256:'+'c'.repeat(64),foreign='sha256:'+'d'.repeat(64);
+  const cases=[
+    [target,target,undefined,undefined],[old,old,undefined,undefined],
+    [target,undefined,undefined,'recovery-runner-image-changed'],
+    [foreign,foreign,undefined,'recovery-runner-image-changed'],
+    [target,'invalid',undefined,'recovery-runner-image-changed'],
+    [old,target,undefined,'recovery-runner-image-changed'],
+    [target,target,f=>f.config(57),'recovery-runner-id-changed'],
+    [target,target,f=>f.config(56,'glrt-other-fixture'),'recovery-runner-credential-changed'],
+    [target,target,f=>f.system('s_other'),'recovery-runner-manager-changed'],
+  ];
+  for(const [index,[image,runnerImageId,change,code]]of cases.entries())await t.test(String(index),async t=>{
+    const f=runnerFixture(t),baseline=await recovery.runnerIdentity(f.candidate);
+    f.candidate.restoredRunnerIdentity=baseline;f.candidate.spec.images={runner:{id:target}};
+    f.candidate.spec.supportImages.previousRunner={id:old};f.container.Image=image;if(change)change(f);
+    f.candidate.rails=async()=>({token:'private-api-fixture',root_id:1});
+    f.candidate.api=async(route,_token,method='GET')=>{
+      if(method==='DELETE'||method==='PUT')return {};
+      if(route.includes('/repository/files/'))return {last_commit_id:'f'.repeat(40)};
+      if(route.endsWith('/pipelines'))return [{id:35,status:'success',sha:'f'.repeat(40)}];
+      if(route.endsWith('/jobs'))return [{id:45,name:'restored-registry-blob',status:'success',runner:{id:56},runner_manager:{system_id:f.manager}}];
+      throw Error('unexpected API request');
+    };
+    const input={expected:{...f.candidate.spec.restore.expected,runnerIdentity:baseline,branch:'main',imageCommit:'e'.repeat(40)},...(runnerImageId===undefined?{}:{runnerImageId})};
+    if(code)await assert.rejects(()=>recovery.verifyRegistryBlob(f.candidate,input),{message:code});else await recovery.verifyRegistryBlob(f.candidate,input);
+    assert.equal(f.candidate.restoredRunnerIdentity,baseline,'Phase image selection must not rewrite the retained native identity.');
+  });
+  for(const phase of ['unknown','upgraded\nprivate',{},1]){
+    const f=runnerFixture(t);let called=false;
+    f.candidate.rails=async()=>{called=true;throw Error('must not mint credential');};
+    f.candidate.api=async()=>{called=true;throw Error('must not mutate GitLab');};
+    await assert.rejects(()=>recovery.verifyRegistryBlob(f.candidate,{phase}),{message:'restored-registry-job-not-successful'});
+    assert.equal(called,false);
   }
 });

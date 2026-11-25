@@ -1,7 +1,21 @@
 # Initialize the Wizard repository from pinned source
 
+System now includes regular Wizard sources under `wizard/`. A fresh checkout
+needs no submodule download. Wizard and Sync keep separate dependencies, tests
+and Docker images. Change both components in one System commit and merge request.
+The import commit retains the original Wizard repository as a merge parent;
+original commits, authors and historical gitlinks remain reachable. Keep the
+historical source repository and published tags available for older releases.
+
+New source snapshots use version 2 and `sourceLayout=system-monorepo-v1`, with
+`sourceRevision` identifying the System commit and `wizardSourceTree` identifying
+its Wizard tree. Historical version 1 snapshots preserve their original separate
+Wizard commit and exact manifest hashing. Packaging reads committed Git objects,
+never dirty or untracked files. Source-only legacy imports remain explicit;
+new optional Beta uses the shared System candidate instead of a separate build.
+
 This is the legacy managed-source workflow. An explicitly adopted
-[source-primary repository](../project-bootstrap/wizard-source-primary/README.md)
+[source-primary repository](../templates/project-bootstrap/wizard-source-primary/README.md)
 develops directly through its own merge requests and does not import source.
 Generic `.system-bootstrapper/build-v1/` producers committed by such a repository
 are excluded from legacy source snapshots: managed build activation installs its
@@ -39,25 +53,26 @@ The running interface, routing and Production URL are untouched. Beta and Review
 remain disabled. Source initialization does not start builds or deployment;
 [managed build activation](WIZARD_BUILD.md) is a separate explicit action.
 Review/Beta deployment and
-[Production promotion](../project-bootstrap/wizard-production/README.md) are
+[Production promotion](../templates/project-bootstrap/wizard-production/README.md) are
 separate explicit operations. Importing source does not promote an image.
 
 ## Build the immutable source package
 
-Initialize the pinned Wizard submodule before building the System image:
+Verify the committed source layout before building the System image. Historical
+gitlinks are initialized only when the selected commit requires them:
 
 ```sh
-git submodule update --init wizard
-bash project-bootstrap/wizard-source/prepare.sh
+system-bootstrapper source-checkout
+system-bootstrapper source-prepare
 ```
 
-The normal root `start.sh` invokes preparation before Compose builds the System
+The host CLI `start --checkout /absolute/reviewed/source` invokes preparation before Compose builds the System
 image. Manual System image builds must run the same command first. The image
 build validates the generated manifest and file hashes; it fails if preparation
 was omitted. Do not commit the generated `snapshot.json`.
 
-Preparation reads Git objects at the Wizard gitlink committed in the System's
-HEAD. Dirty checkout files, untracked files and a different checked-out Wizard
+Preparation reads the regular Wizard tree or historical Wizard gitlink committed
+in the selected System HEAD. Dirty checkout files, untracked files and a different checked-out Wizard
 branch cannot change the snapshot. It preserves binary bytes and executable
 modes, rejects symlinks and nested submodules, and excludes dotenv files,
 credential file conventions, seeds, dependency directories and build outputs.
@@ -92,11 +107,11 @@ After compiling Sync and generating the snapshot, run:
 ```sh
 node tests/wizard/source-package.js
 node tests/wizard/source-workflow.js
-ruby tests/wizard/source-import.rb
+node tests/gitlab/source-import.js
 ```
 
 The package test creates disposable Git repositories. The workflow test uses a
-temporary private configuration and stubbed Rails transport. The Ruby adapter
+temporary private configuration and stubbed transport. The native import/status
 test uses an in-memory GitLab API fixture. These tests never contact the running
 GitLab or mutate the platform. Run the Wizard checks with the Node/npm versions
 declared in `wizard/package.json`: `npm ci`, `npm run lint`, `npm test`,

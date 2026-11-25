@@ -24,6 +24,13 @@ const HARVEST_FAILURE_CODES={
   'GitLab restart failed after Harvest.':'harvest-gitlab-restart-failed',
   'GitLab did not shut down cleanly; no Seed published.':'harvest-gitlab-unclean'
 };
+Object.assign(HARVEST_FAILURE_CODES,{
+  'harvest-source-missing':'harvest-missing-source',
+  'restore-incomplete':'harvest-incomplete-restore',
+  'seed-operation-busy':'harvest-operation-locked',
+  'storage-operation-busy':'harvest-operation-locked',
+  'gitlab-restart-failed':'harvest-gitlab-restart-failed'
+});
 for(const phase of ['certificate-lock','gitlab-inspect','gitlab-quiesce','gitlab-services-down','gitlab-stop','gitlab-stopped-check','gitlab-clean-exit','stage-create','srv-copy','ssl-copy','certbot-copy','manifest-create','snapshot-publish']){
   HARVEST_FAILURE_CODES['Harvest phase failed: '+phase+'.']='harvest-phase-'+phase;
 }
@@ -33,6 +40,16 @@ const SEED_RESTORE_FAILURE_CODES=Object.fromEntries([
 ].map(code=>['Seed operation failed: '+code+'.',code]));
 
 function privateWizardDescriptor(value,spec) {
+  if(value?.kind==='shared-candidate-registry-v2') {
+    const other=Object.entries({...spec.images,...spec.supportImages,...spec.acmeImages}).filter(([role])=>role!=='wizard');
+    if(!Number.isSafeInteger(value.projectId)||value.projectId<1||
+      !/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+$/.test(value.projectPath||'')||value.projectPath.split('/').some(part=>['.','..'].includes(part))||
+      value.registryHost!=='registry.candidate.test:5050'||!/^sha256:[a-f0-9]{64}$/.test(value.imageDigest||'')||
+      value.sourceCommit!==spec.sourceRevision||value.imageId!==spec.images?.wizard?.id||other.some(([,image])=>image.id===value.imageId)||
+      value.imageRef!==value.registryHost+'/'+value.projectPath+'/successor-wizard@'+value.imageDigest||
+      ['pipelineId','jobId','runnerId','marker','markerPath','sourceImageId'].some(key=>Object.hasOwn(value,key)))throw Error('private-wizard-recovery-descriptor-invalid');
+    return value;
+  }
   if(value?.kind==='source-primary-native-v1') {
     const archives=Object.values({...spec.images,...spec.supportImages,...spec.acmeImages});
     if(!['projectId','pipelineId','jobId','runnerId'].every(key=>Number.isSafeInteger(value[key])&&value[key]>0)||
@@ -98,7 +115,7 @@ async function syncFetch(candidate,connection,{waitForReady=false}={}) {
   if(candidate.spec?.guidedPreviewAcceptance===true&&!candidate.spec.restore){
     const preview=await request('/projects/wizard/preview-setup',{headers});
     if(preview.status!==200)throw Error('recovery-preview-intent-fetch-failed');
-    result.previewSetup=require('../../project-bootstrap/preview-setup/settings').settings(JSON.parse(preview.body).settings);
+    result.previewSetup=require('../../dist/modules/project-lifecycle/previewSettings').settings(JSON.parse(preview.body).settings);
   }
   signature(result.main.data);
   if(!Array.isArray(result.projects)||!result.projects.some(project=>project.filename==='.wizard.env')) throw Error('recovery-project-export-missing');
@@ -186,22 +203,58 @@ async function recordIdentity(original){
   const auth=await step('credential',()=>rootToken(original));
   try{
     const projectId=original.evidence?.projectId;
-    if(!Number.isInteger(projectId))throw Error('successful-original-project-required');
+    if(!Number.isInteger(projectId)||typeof original.id!=='string'||!/^[a-f0-9]{24}$/.test(original.id))throw Error('successful-original-project-required');
+    const variableKey='RECOVERY_ENCRYPTED_PROOF_'+original.id.toUpperCase();
     const project=await step('project',()=>original.api('/projects/'+projectId,auth.token));
     const branch=await step('repository-head',()=>original.api('/projects/'+projectId+'/repository/branches/'+encodeURIComponent(project.default_branch),auth.token));
     const pipeline=await step('pipeline',()=>original.api('/projects/'+projectId+'/pipelines/'+original.evidence.pipelineId,auth.token));
     const nonce=crypto.randomBytes(24).toString('hex');
     const issue=await step('issue',()=>original.api('/projects/'+projectId+'/issues',auth.token,'POST',{title:'Backup-only recovery proof',description:nonce}));
     const mergeRequest=await recordReview(original,projectId,project.default_branch,branch.commit.id,issue.iid,nonce,auth.token);
-    await step('encrypted-variable',()=>original.api('/projects/'+projectId+'/variables',auth.token,'POST',{key:'RECOVERY_ENCRYPTED_PROOF',value:nonce,masked:true}));
+    await step('encrypted-variable',()=>original.api('/projects/'+projectId+'/variables',auth.token,'POST',{key:variableKey,value:nonce,masked:true}));
     const user=await step('user',()=>original.api('/users',auth.token,'POST',{username:'recovery_'+original.id.slice(0,8),name:'Recovery fixture',email:'recovery-'+original.id+'@example.invalid',password:crypto.randomBytes(24).toString('hex'),skip_confirmation:true}));
     const repositories=await step('registry-repositories',()=>original.api('/projects/'+projectId+'/registry/repositories',auth.token));
     const repository=repositories.find(item=>item.path.endsWith('/probe'));
     if(!repository||pipeline.status!=='success')throw Error('original-registry-proof-required');
     const tag=await step('registry-tag',()=>registryTag(original,projectId,repository.id,pipeline.sha,auth.token));
     return {rootId:auth.root_id,projectId,path:project.path_with_namespace,branch:project.default_branch,head:branch.commit.id,
-      issueIid:issue.iid,mergeRequest,nonce,userId:user.id,userName:user.username,registryId:repository.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
+      issueIid:issue.iid,mergeRequest,nonce,variableKey,userId:user.id,userName:user.username,registryId:repository.id,registryDigest:tag.digest,imageCommit:pipeline.sha};
   }finally{await step('credential-revoked',()=>revoke(original,auth.token));}
+}
+async function runnerIdentity(candidate) {
+  const base=candidate.spec.restore?.base||'/candidate-data/platform';
+  const script='('+function(base){
+    const fs=require('fs'),c=require('crypto'),fail=error=>process.stdout.write(JSON.stringify({error}));
+    const read=(file,limit)=>{const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>limit)throw Error();return fs.readFileSync(file,'utf8');};
+    let text;try{text=read(base+'/config.toml',65536);}catch{return fail('recovery-runner-config-unavailable');}
+    const ids=[...text.matchAll(/^\s*id\s*=\s*(\d+)\s*$/gm)];
+    if(ids.length!==1||!Number.isSafeInteger(Number(ids[0][1]))||Number(ids[0][1])<1)return fail('recovery-runner-id-invalid');
+    const tokens=[...text.matchAll(/^\s*token\s*=\s*"([^"\r\n]*)"\s*$/gm)];
+    if(tokens.length!==1||!/^glrt-[A-Za-z0-9_.-]+$/.test(tokens[0][1]))return fail('recovery-runner-credential-invalid');
+    let manager;try{manager=read(base+'/.runner_system_id',256);}catch{return fail('recovery-runner-manager-invalid');}
+    const canonical=manager.trim();
+    if(!/^[rs]_[A-Za-z0-9]{1,128}$/.test(canonical)||![canonical,canonical+'\n',canonical+'\r\n'].includes(manager))return fail('recovery-runner-manager-invalid');
+    const hash=value=>c.createHash('sha256').update(value).digest('hex');
+    process.stdout.write(JSON.stringify({runnerId:Number(ids[0][1]),credential:hash(tokens[0][1]),manager:hash(canonical)}));
+  }.toString()+')(process.argv[1]);';
+  const raw=await candidate.inner(['exec','system_bootstrapper_1','node','-e',script,base+'/runners/runner/1/config']);
+  let identity;try{identity=JSON.parse(raw);}catch{throw Error('recovery-runner-identity-required');}
+  const errors=['recovery-runner-config-unavailable','recovery-runner-id-invalid','recovery-runner-credential-invalid','recovery-runner-manager-invalid'];
+  if(identity?.error)throw Error(errors.includes(identity.error)?identity.error:'recovery-runner-identity-required');
+  const inspected=await candidate.inner(['inspect','runner_docker_1']);
+  let container;try{container=JSON.parse(inspected)[0];}catch{throw Error('recovery-runner-container-invalid');}
+  if(!container?.State?.Running||!/^sha256:[a-f0-9]{64}$/.test(container.Image||''))throw Error('recovery-runner-container-invalid');
+  const result={runnerId:identity?.runnerId,credential:identity?.credential,manager:identity?.manager,imageId:container.Image};
+  assertRunnerIdentity(result,result);return result;
+}
+function assertRunnerIdentity(expected,actual,retainManager=false) {
+  const valid=value=>Number.isSafeInteger(value?.runnerId)&&value.runnerId>0&&/^[a-f0-9]{64}$/.test(value.credential||'')&&
+    /^[a-f0-9]{64}$/.test(value.manager||'')&&/^sha256:[a-f0-9]{64}$/.test(value.imageId||'');
+  if(!valid(expected)||!valid(actual))throw Error('recovery-runner-identity-required');
+  if(actual.runnerId!==expected.runnerId)throw Error('recovery-runner-id-changed');
+  if(actual.credential!==expected.credential)throw Error('recovery-runner-credential-changed');
+  if(actual.imageId!==expected.imageId)throw Error('recovery-runner-image-changed');
+  if(retainManager&&actual.manager!==expected.manager)throw Error('recovery-runner-manager-changed');
 }
 async function capture(original,dependencies={}) {
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'system-recovery-'));
@@ -210,6 +263,8 @@ async function capture(original,dependencies={}) {
   try {
     await original.stage('recovery-record-service-identity',async()=>{
       inputs.expected=await recordIdentity(original);
+      inputs.expected.runnerIdentity=await runnerIdentity(original);
+      inputs.expected.registryPipelineId=original.evidence.pipelineId;
       if(original.spec.guidedPreviewAcceptance===true)inputs.expected.guidedBinding=await require('./guided-preview-platform').bindingProof(original);
     });
     if(original.spec.privateWizardRecovery)await original.stage('recovery-publish-uncached-private-wizard',async()=>{
@@ -260,7 +315,7 @@ async function capture(original,dependencies={}) {
       },{settings,certificate,privateKey,identity:original.id,privateWizard:inputs.expected.privateWizard?.imageRef,realAcme:!!dependencies.acme});
       inputs.expected.wizardAliases=WIZARD_ALIAS;
       if(dependencies.acme)inputs.expected.acme=guided?original.guidedAcmeIdentity:await dependencies.acme.issue(original);
-      else await original.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
+      else await original.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates']);
       const connection=dependencies.acme?{certificate:require('./local-acme').ISSUANCE_CA}:{};
       await verifyAliasLifecycle(original,connection,'original');
       await require('./application-routing').setup(original,connection);
@@ -277,7 +332,7 @@ async function capture(original,dependencies={}) {
       // metadata subsequently consumed by the unchanged native restore path.
       await node(original,function(input){
         const assert=require('node:assert/strict'),{execFileSync}=require('node:child_process');
-        require('/system/system/seed-operation').validateBackup('/tmp/bootstrapper.zip');
+        require('/system/dist/modules/storage/configuration').validateBackup('/tmp/bootstrapper.zip');
         const read=name=>execFileSync('unzip',['-p','/tmp/bootstrapper.zip',name],{encoding:'utf8',maxBuffer:5000000});
         const metadata=JSON.parse(read('recovery.json')),backup=JSON.parse(read('bootstrapper.json'));
         assert.equal(input.observation?.format,'system-runtime-observation-v1');
@@ -286,6 +341,7 @@ async function capture(original,dependencies={}) {
         assert.deepEqual(backup.recovery,metadata);
         assert.deepEqual(metadata.observedRuntime,input.observation);
         assert.equal(metadata.savedImages.gitlab.reference,'candidate-gitlab:under-test');
+        if(input.expectedSavedController!==undefined)assert.equal(metadata.savedImages.controller.reference,input.expectedSavedController);
         assert.equal(metadata.savedImages.wizard.reference,input.wizard);
         assert.equal(metadata.observedRuntime.images.controller.imageId,input.controller);
         assert.equal(metadata.seed.verified,false);
@@ -294,6 +350,7 @@ async function capture(original,dependencies={}) {
         assert.equal(metadata.recoveryTools.extendedConfigurationZipRequired,true);
         assert.match(read('RECOVERY.md'),/matching completed Seed/);
       },{observation:fetched.main.recoveryObservation,controller:original.spec.images.candidate.id,
+        ...(guided?{expectedSavedController:original.spec.images.candidate.id}:{}),
         wizard:inputs.expected.privateWizard?.imageRef||'systembootstrapper/wizard'});
       await fromController(original,'/tmp/bootstrapper.zip',inputs.configArchive);
     });
@@ -311,13 +368,13 @@ async function capture(original,dependencies={}) {
 
 async function captureSeed(original,inputs) {
   const step=(name,action,allowedReasons)=>checkpoint(original,'recovery-seed-'+name,action,allowedReasons);
-  await step('runner-stop',()=>original.inner(['exec','-w','/system/gitlab-runner','system_bootstrapper_1','bash','stop.sh']));
-  await step('harvest',()=>original.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','harvest.sh'],
+  await step('runner-stop',()=>original.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/lifecycle/entry.js','runner-stop','/system']));
+  await step('harvest',()=>original.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/storage/entry.js','launch','harvest'],
     {timeout:180000,failureCodes:HARVEST_FAILURE_CODES}),Object.values(HARVEST_FAILURE_CODES));
   const current=await step('manifest-current',async()=>{
     const current=await original.inner(['run','--rm','--network','none','--read-only',
       '--env','GITLAB_IMAGE=candidate-gitlab:under-test','--mount','type=bind,src='+SEED+',dst=/seed,readonly',
-      '--entrypoint','node','system-candidate:under-test','/system/system/seed-manifest.js','current','/seed']);
+      '--entrypoint','node','system-candidate:under-test','/system/dist/modules/storage/manifestEntry.js','current','/seed']);
     if(!/^\/seed\/snapshots\/[A-Za-z0-9.-]+$/.test(current))throw Error('completed-snapshot-required');
     return current;
   });
@@ -357,7 +414,7 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await candidate.inner([...args,'--entrypoint','/bin/sh','system-candidate:under-test','-c','sleep infinity']);
   await candidate.inner(['start','system_bootstrapper_1']);
   await transferToController(candidate,input.configArchive,'/system/bootstrapper.zip');
-  await candidate.inner(['exec','-w','/system/system','system_bootstrapper_1','bash','push.sh']);
+  await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/configuration/entry.js','push','/system','/state','/system/bootstrapper.zip']);
   const wizardImage=await candidate.inner(['exec','system_bootstrapper_1','bash','-c','source /state/.docker.env; printf "%s" "${WIZARD_IMAGE:-systembootstrapper/wizard}"']);
   if(wizardImage!==(privateWizard?.imageRef||'systembootstrapper/wizard'))throw Error('wizard-pin-recovery-artifact-not-declared');
   if(privateWizard)for(const identity of [privateWizard.imageRef,privateWizard.imageId]){
@@ -379,16 +436,16 @@ async function bootstrapRestore(candidate,dependencies={}) {
   await candidate.call(['exec','-i',candidate.daemon,'sh','-ec',
     'umask 077; mkdir -m 700 /recovery-inputs; cat > '+hostBackup],{inputFile:input.configArchive});
   await candidate.stage('recovery-seed-native-restore',()=>candidate.inner(
-    ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system/system','system_bootstrapper_1','bash','seed.sh'],
+    ['exec','--env','SYSTEM_SEED_CONFIGURATION_BACKUP='+hostBackup,'-w','/system','system_bootstrapper_1','node','/system/dist/modules/storage/entry.js','launch','restore'],
     {timeout:180000,failureCodes:SEED_RESTORE_FAILURE_CODES}));
   if(candidate.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(candidate);
   await storageAdapter.detach(candidate,{retainDevice:!!candidate.spec.publicUpgrade});
   candidate.externalSeedRestored=true;
-  // Execute the actual fresh-source host rewriter, using the already declared
-  // GitLab image's embedded Python; never install/download an undeclared tool.
-  const rewriter=dependencies.rewriter || fs.readFileSync(path.join(__dirname,'../../bootstrapper/rebind-renewal.py'),'utf8');
-  await candidate.inner(['run','--rm','-i','--network','none','--entrypoint','/opt/gitlab/embedded/bin/python3','--volume',BASE+'/host/letsencrypt:/renewal-state',
-    'candidate-gitlab:under-test','-','/renewal-state/renewal',BASE+'/ssl/acme-http01'],{input:rewriter});
+  // Rebind retained renewal files through the same provider as host recovery.
+  await candidate.inner(['run','--rm','--network','none','--memory','128m','--cpus','0.25','--entrypoint','node',
+    '--volume',BASE+'/host/letsencrypt:/renewal-state','system-candidate:under-test',
+    '/system/dist/modules/host-bootstrap/entry.js','rebind-renewal','--checkout','/system',
+    '--directory','/renewal-state/renewal','--webroot',BASE+'/ssl/acme-http01']);
   await candidate.inner(['rm','--force','system_bootstrapper_1']);
   await candidate.inner([...args,'system-candidate:under-test']);
   await candidate.inner(['start','system_bootstrapper_1']);
@@ -474,7 +531,7 @@ async function verifyAliasLifecycle(candidate,connection,phase,dependencies={}) 
     ['canonical-alias-redirect-failed','canonical-alias-challenge-failed']);
   await step('routing',()=>verify(candidate,connection));
   await step('reload',async()=>{
-    await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
+    await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates']);
     await verify(candidate,connection);
   });
   await step('restart',async()=>{
@@ -548,10 +605,11 @@ async function verifyServiceIdentity(candidate,expected,authentication){
   const auth=authentication||await rootToken(candidate);
   if(typeof auth.token!=='string'||!auth.token||!Number.isInteger(auth.root_id))throw Error('recovery-test-credential-failed');
   try {
+    if(typeof expected.variableKey!=='string'||!/^RECOVERY_ENCRYPTED_PROOF_[A-F0-9]{24}$/.test(expected.variableKey))throw Error('restored-service-identity-mismatch');
     const project=await candidate.api('/projects/'+expected.projectId,auth.token);
     const branch=await candidate.api('/projects/'+expected.projectId+'/repository/branches/'+encodeURIComponent(expected.branch),auth.token);
     const issue=await candidate.api('/projects/'+expected.projectId+'/issues/'+expected.issueIid,auth.token);
-    const variable=await candidate.api('/projects/'+expected.projectId+'/variables/RECOVERY_ENCRYPTED_PROOF',auth.token);
+    const variable=await candidate.api('/projects/'+expected.projectId+'/variables/'+encodeURIComponent(expected.variableKey),auth.token);
     const user=await candidate.api('/users/'+expected.userId,auth.token);
     const tag=await checkpoint(candidate,'recovery-restored-registry-tag',()=>registryTag(candidate,expected.projectId,expected.registryId,expected.imageCommit,auth.token));
     if(auth.root_id!==expected.rootId || project.path_with_namespace!==expected.path || branch.commit.id!==expected.head || issue.description!==expected.nonce ||
@@ -572,27 +630,54 @@ async function verifyServiceIdentity(candidate,expected,authentication){
 async function verifyPrivateWizard(candidate,expected){
   await candidate.stage('recovery-private-wizard-image-and-credential-cleanup',async()=>{
     const identity=await candidate.inner(['inspect','--format','{{.Image}}','system_wizard_1']);
-    const proof=expected.kind==='source-primary-native-v1'?
+    const proof=['source-primary-native-v1','shared-candidate-registry-v2'].includes(expected.kind)?
       await candidate.inner(['inspect','--format','{{index .Config.Labels "org.opencontainers.image.revision"}}','system_wizard_1']):
       await candidate.inner(['exec','system_wizard_1','cat',PRIVATE_MARKER]);
     const cleanup=await candidate.rails("require 'json';p=Project.find("+expected.projectId+");raise unless p.full_path=="+JSON.stringify(expected.projectPath)+";puts JSON.generate(active:p.deploy_tokens.where(name:'system-bootstrapper-wizard-image-recovery',revoked:false).count)");
-    if(identity!==expected.imageId||proof!==(expected.kind==='source-primary-native-v1'?expected.sourceCommit:expected.marker)||cleanup.active!==0)throw Error('private-wizard-restoration-or-credential-cleanup-failed');
+    if(identity!==expected.imageId||proof!==(['source-primary-native-v1','shared-candidate-registry-v2'].includes(expected.kind)?expected.sourceCommit:expected.marker)||cleanup.active!==0)throw Error('private-wizard-restoration-or-credential-cleanup-failed');
     candidate.privateWizardPinVerified=true;
   });
 }
 async function verifyRegistryBlob(candidate,input) {
   await candidate.stage('recovery-original-registry-blob-ci',async()=>{
+    const phase=input.phase??'restored';
+    if(!['restored','upgraded','rollback'].includes(phase))throw Error('restored-registry-job-not-successful');
+    const baseline=candidate.restoredRunnerIdentity;
+    const runnerImageId=input.runnerImageId===undefined?baseline?.imageId:input.runnerImageId;
+    if(input.runnerImageId!==undefined&&(!/^sha256:[a-f0-9]{64}$/.test(runnerImageId)||
+      ![candidate.spec.images?.runner?.id,candidate.spec.supportImages?.previousRunner?.id].includes(runnerImageId)))throw Error('recovery-runner-image-changed');
     const auth=await rootToken(candidate);
     try {
       const expected=input.expected;
-      const content=`stages: [verify]\nrestored-registry-blob:\n  stage: verify\n  image: {name: system-candidate:under-test, pull_policy: never}\n  tags: [docker]\n  script:\n    - printf '%s' "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin\n    - docker pull "$CI_REGISTRY_IMAGE/probe:${expected.imageCommit}"\n    - docker run --rm --network none "$CI_REGISTRY_IMAGE/probe:${expected.imageCommit}" node -e "if(require('fs').readFileSync('/candidate-proof','utf8')!=='candidate-registry-ok')process.exit(1)"\n`;
+      // A cold rollback restores the earlier CI file too. Distinct fixed phase
+      // markers make each existing probe a real commit, including after rollback.
+      const content=`# Recovery Registry proof: ${phase}\nstages: [verify]\nrestored-registry-blob:\n  stage: verify\n  image: {name: system-candidate:under-test, pull_policy: never}\n  tags: [docker]\n  script:\n    - printf '%s' "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" --username "$CI_REGISTRY_USER" --password-stdin\n    - docker pull "$CI_REGISTRY_IMAGE/probe:${expected.imageCommit}"\n    - docker run --rm --network none "$CI_REGISTRY_IMAGE/probe:${expected.imageCommit}" node -e "if(require('fs').readFileSync('/candidate-proof','utf8')!=='candidate-registry-ok')process.exit(1)"\n`;
       await candidate.api('/projects/'+expected.projectId+'/repository/files/.gitlab-ci.yml',auth.token,'PUT',{branch:expected.branch,content,commit_message:'Verify restored original registry blob'});
       const commit=await candidate.api('/projects/'+expected.projectId+'/repository/files/.gitlab-ci.yml?ref='+encodeURIComponent(expected.branch),auth.token);
       let pipeline;
       await candidate.wait(async()=>{const runs=await candidate.api('/projects/'+expected.projectId+'/pipelines',auth.token);pipeline=runs.find(run=>run.sha===commit.last_commit_id);return pipeline&&['success','failed','skipped','canceled'].includes(pipeline.status);},180000);
-      if(pipeline.status!=='success')throw Error('restored-registry-ci-failed');
       const jobs=await candidate.api('/projects/'+expected.projectId+'/pipelines/'+pipeline.id+'/jobs',auth.token);
-      if(jobs.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id)throw Error('restored-registry-job-not-successful');
+      if(!Number.isSafeInteger(pipeline.id)||pipeline.id<1||!Array.isArray(jobs))throw Error('restored-registry-job-not-successful');
+      const diagnostics=require('../shared/job-diagnostics');
+      const observed=jobs.filter(job=>Number.isSafeInteger(job.id)&&job.id>0&&job.name==='restored-registry-blob'&&
+        ['success','failed','skipped','canceled'].includes(job.status)).map(job=>({id:job.id,name:job.name,status:job.status,
+        ...(Number.isSafeInteger(job.runner?.id)&&job.runner.id>0?{runnerId:job.runner.id}:{}),
+        ...(diagnostics.failureReason(job.failure_reason)?{failureReason:diagnostics.failureReason(job.failure_reason)}:{}),
+        ...(Number.isFinite(job.duration)&&job.duration>=0?{duration:job.duration}:{}),
+        ...(Number.isFinite(job.queued_duration)&&job.queued_duration>=0?{queuedSeconds:job.queued_duration}:{})}));
+      for(const job of observed.filter(job=>job.status==='failed')){
+        try{job.diagnostics=diagnostics.classify(await candidate.api('/projects/'+expected.projectId+'/jobs/'+job.id+'/trace',auth.token));}
+        catch{job.diagnostics={codes:['trace-unavailable']};}
+      }
+      if(pipeline.status!=='success'){
+        Object.assign(candidate.evidence,{failurePipelineId:pipeline.id,pipelineStatus:pipeline.status,jobs:observed});
+        throw Error('restored-registry-ci-failed');
+      }
+      if(jobs.length!==1||observed.length!==1||jobs[0].status!=='success'||!jobs[0].runner?.id||(expected.runnerIdentity&&jobs[0].runner.id!==expected.runnerIdentity.runnerId))throw Error('restored-registry-job-not-successful');
+      const current=await runnerIdentity(candidate);assertRunnerIdentity(baseline&&{...baseline,imageId:runnerImageId},current,true);
+      const manager=jobs[0].runner_manager?.system_id;
+      if(typeof manager!=='string'||!/^[rs]_[A-Za-z0-9]{1,128}$/.test(manager)||
+        crypto.createHash('sha256').update(manager).digest('hex')!==current.manager)throw Error('recovery-runner-job-manager-mismatch');
       candidate.evidence.recovery={originalProjectId:expected.projectId,originalRegistryPreserved:true,pipelineId:pipeline.id,jobId:jobs[0].id,syntheticTlsVerified:!input.expected.acme,acmeRenewalVerified:false,privateWizardPinVerified:candidate.privateWizardPinVerified===true,mergeRequestRecoveryVerified:candidate.mergeRequestRecoveryVerified===true,guidedBindingRestored:candidate.guidedBindingRestored===true};
     } finally {await revoke(candidate,auth.token);}
   });
@@ -616,9 +701,10 @@ async function run(original,reportDirectory,dependencies={}) {
     second.secrets={...original.secrets};
     second.report(reportDirectory(second));
     await second.start();
-    if(original.spec.guidedPreviewAcceptance===true)await require('./guided-preview-platform').restoreTrust(second);
     await (dependencies.verifyRestore || verifyRestore)(second,input);
     if(!dependencies.Candidate)await second.stage('storage-detached-backup-normal-operation',async()=>{
+      second.restoredRunnerIdentity=await runnerIdentity(second);
+      assertRunnerIdentity(input.expected.runnerIdentity,second.restoredRunnerIdentity);
       await storage.verifyLocalLive(second,BASE);await storage.assertAbsent(second);
       await storage.refuseMissingTarget(second);
       await storage.verifyControlWithoutBackup(second);
@@ -628,6 +714,13 @@ async function run(original,reportDirectory,dependencies={}) {
     await second.platform();
     await (dependencies.verifyRegistryBlob || verifyRegistryBlob)(second,input);
     if(acme)await acme.renew(second,input.expected.acme);
+    if(original.spec.guidedPreviewAcceptance===true&&!dependencies.Candidate){
+      // Private future-publication fixture input retains where lifecycle ran.
+      // This is not the final restored acceptance receipt.
+      second.guidedFixtureOrigin={runId:original.id,results:original.results.map(({name,status})=>({name,status})),
+        guidedPreview:require('../../dist/modules/release/guidedPreviewEvidence').validateAuthority(original.evidence.guidedPreview,original.results,{
+          ...original.spec,candidateImageId:original.spec.images.candidate.id,wizardImageId:original.spec.images.wizard.id})};
+    }
     if(original.spec.gitlabUpgradeAcceptance===true){
       await require('./gitlab-upgrade').run(second);
       original.evidence.gitlabUpgrade=second.evidence.gitlabUpgrade;
@@ -647,4 +740,4 @@ async function run(original,reportDirectory,dependencies={}) {
     if(!clean)throw Error('restored-host-cleanup-failed');
   }
 }
-module.exports={capture,bootstrapRestore,verifyRestore,verifyServiceIdentity,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,httpProbe,verifyAliasRouting,verifyAliasLifecycle,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,SEED_RESTORE_FAILURE_CODES,BASE,SEED,WIZARD_ALIAS,ALIAS_ROUTE};
+module.exports={runnerIdentity,assertRunnerIdentity,capture,bootstrapRestore,verifyRestore,verifyServiceIdentity,verifyPrivateWizard,verifyRegistryBlob,run,exporter,tlsProbe,httpProbe,verifyAliasRouting,verifyAliasLifecycle,syncFetch,hashFile,updateConfiguration,privateWizardDescriptor,recordIdentity,registryTag,verifyConfiguration,readyResponse,captureSeed,HARVEST_FAILURE_CODES,SEED_RESTORE_FAILURE_CODES,BASE,SEED,WIZARD_ALIAS,ALIAS_ROUTE};

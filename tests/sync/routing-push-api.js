@@ -6,21 +6,27 @@ const os = require('node:os');
 const path = require('node:path');
 const child = require('node:child_process');
 const source = path.resolve(__dirname, '../..'), root = fs.mkdtempSync(path.join(os.tmpdir(), 'routing-push-api-'));
-for (const folder of ['sync', 'system', 'state/.projects.env', 'nginx', 'project-bootstrap']) fs.mkdirSync(path.join(root, folder), {recursive: true});
-for (const name of ['system/push.sh', 'nginx/wizard-aliases.js', 'nginx/application-aliases.js',
-  'project-bootstrap/preserve-system-project.js', 'project-bootstrap/routing-impact.js', 'project-bootstrap/configuration-archive.js'])
-  fs.copyFileSync(path.join(source, name), path.join(root, name));
-fs.writeFileSync(path.join(root, 'project-bootstrap/apply.sh'), 'printf "%s\\n" "$*" >> ../apply-trace\n[[ ! -f ../fail-apply ]]\n');
-process.chdir(path.join(root, 'sync'));
+for (const folder of ['config/system', 'state/.projects.env']) fs.mkdirSync(path.join(root, folder), {recursive: true});
+const paths = require(path.join(source, 'dist/common/runtime/installationPaths'));
+paths.checkoutRoot = () => root;
+paths.checkoutPath = (...parts) => path.join(root, ...parts);
 process.env.SYSTEM_CONFIG_DIR = path.join(root, 'state'); process.env.SYNC_USER = 'fixture'; process.env.SYNC_PASS = 'fixture-password';
 let server, application;
-const execute = child.execSync;
-child.execSync = (command, options) => {
-  assert.equal(command, 'cd ../system; bash push.sh', 'route-only Push must not stop GitLab or the platform');
-  return execute(command, {...options, stdio: ['pipe', 'pipe', 'pipe']});
+const execute = child.execFileSync;
+child.execFileSync = (command, args, options) => {
+  if(command!==process.execPath)return execute(command,args,options);
+  assert(args[0].endsWith('/dist/cli/main.js'));
+  assert.equal(args[1],'configuration');
+  assert.equal(args[2],'push','route-only Push must not stop GitLab or the platform');
+  const {ConfigurationService}=require(path.join(source,'dist/modules/configuration/configuration.service'));
+  const {NativeProcessRunner}=require(path.join(source,'dist/common/runtime/process'));
+  const routing={run(value){assert.equal(value.action,'apply');fs.appendFileSync(path.join(root,'apply-trace'),value.projects.join(' ')+'\n');if(fs.existsSync(path.join(root,'fail-apply')))throw Error('Injected routing failure');}};
+  const service=new ConfigurationService(new NativeProcessRunner(),routing);
+  const mode=service.push({root,state:path.join(root,'state'),archive:path.join(root,'bootstrapper.zip'),fingerprint:options.env.SYSTEM_PUSH_IMPACT});
+  return Buffer.from('APPLY_MODE='+mode+'\nReady.\n');
 };
 child.execFile = child.spawn = () => { throw Error('GitLab and service transports are forbidden.'); };
-const cube = fs.readFileSync(path.join(source, 'system/.docker.env.example'), 'utf8').slice(0, 1184);
+const cube = fs.readFileSync(path.join(source, 'config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 const main = cube + '\nGITLAB_HOST="gitlab.example.test"\nGITLAB_RUNNER_SCALE="1"\n';
 const project = cube + '\nPROJECT_NAME="sample"\nPROJECT_TEMPLATE="react"\nUSE_PROD_HOST="true"\nPROD_HOST="www.example.test"\nPROD_DOMAIN_MODE="0"\nUSE_BETA_HOST="false"\nUSE_REVIEW_HOST="false"\n';
 function zip(data, selectedMain = main) {
@@ -29,7 +35,7 @@ function zip(data, selectedMain = main) {
   return fs.readFileSync(archive);
 }
 const log = console.log; console.log = () => {};
-const {bootstrap: startSync} = require(path.join(source, 'sync/dist/bootstrap'));
+const {bootstrap: startSync} = require(path.join(source, 'dist/api/bootstrap'));
 (async () => {
   application = await startSync({port: 0, host: '127.0.0.1'});
   server = application.getHttpServer();

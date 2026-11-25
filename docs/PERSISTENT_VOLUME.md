@@ -1,5 +1,13 @@
 # Working data and independent Seed backups
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `dist`, `node_modules` and `assets`
+available offline before maintenance.
+
 The platform has two storage roles:
 
 | Role | Purpose | Availability |
@@ -127,7 +135,7 @@ remain empty. The file can be regenerated from configuration.
 Persist the full Certbot tree beneath `host/letsencrypt`: account keys,
 `archive`, `live`, renewal configuration and hooks. `live` symlinks alone are
 insufficient. Install Certbot separately, then run
-`sudo bash bootstrapper/install-volume-host.sh` from the selected checkout.
+`sudo system-bootstrapper host-bootstrap install-volume-host --checkout "$PWD"` from the selected checkout.
 The compatibility-named installer handles both live storage modes. Volume mode
 retains its fstab/Docker mount dependency; local mode adds no external-storage
 prerequisite. Neither mode adds a dependency on removable Seed media.
@@ -164,11 +172,20 @@ convenience path, described below. It does not prove external-Seed recovery.
 
 ## Replacing a VM while retaining live data
 
+Before native host installation, start/stop, persistence checks or recovery,
+complete [host runtime preparation](../Prepare-Host.md#prepare-the-host-operations-runtime).
+Fresh Quickstart prepares Node and operations automatically. Manual/source and
+replacement-host paths must prepare or restore them first; `--install-host`
+installs native host dependencies, not the missing operations runtime. Keep the
+verified Node installation, `dist`, `node_modules` and `assets`
+available offline before maintenance.
+
 1. Stop writers cleanly before detaching storage. Retain the volume explicitly
    when deleting the VM; do not format it or initialize another filesystem over it.
 2. Provision a compatible Ubuntu host, attach the volume and mount its existing
-   filesystem. Fetch the intended System revision with pinned submodules. Install
-   Docker using `sudo bash bootstrapper/install.sh`; install Certbot separately.
+   filesystem. Fetch the intended System revision and its recorded Wizard tree;
+   initialize exact submodules only for a historical gitlink release. Install
+   Docker using `sudo system-bootstrapper host-bootstrap install-host --checkout "$PWD"`; install Certbot separately.
 3. Recreate `/etc/system-bootstrapper/persistence.env` with
    `PERSISTENCE_MODE=volume` and the retained mount/directory/UUID selectors.
    Check mount/UUID and saved configuration. Run the host integration described
@@ -177,8 +194,8 @@ convenience path, described below. It does not prove external-Seed recovery.
    images from the intended source, pull public images at recorded versions or
    digests, and retain immutable private Wizard pins. Optional managed Review/Beta
    helpers require their own clean rebuild and explicit reprovisioning if their
-   prior local image is absent; see the [managed environment guide](../project-bootstrap/wizard-environments/README.md).
-5. Run `sudo bash start.sh` from that checkout. It checks storage, builds the
+   prior local image is absent; see the [managed environment guide](../templates/project-bootstrap/wizard-environments/README.md).
+5. Run `sudo system-bootstrapper start --checkout "$PWD"` from that checkout. It checks storage, builds the
    controller and starts services using retained configuration. Container IPs,
    networks and proxy configuration are regenerated. Change DNS if the host's
    address changed while preserving the configured domain names.
@@ -186,7 +203,7 @@ convenience path, described below. It does not prove external-Seed recovery.
    renewal. Inspect every retained mount and named-volume device against the
    attached filesystem.
 
-An alternative archive-based path is `bootstrapper/recover-volume.sh`. It requires
+An alternative archive-based path is `system-bootstrapper host-bootstrap recover-volume --checkout "$PWD"`. It requires
 operator-prepared `PERSISTENT_DIR/recovery/images.json`, the referenced gzip image
 archives with SHA-256 values, public image references and a retained selector file;
 these private recovery artifacts are not supplied by a source checkout. Set
@@ -234,7 +251,7 @@ saved configuration. Ensure its selected reference or alias matches that
 configuration. The private Wizard image can remain an exact registry digest and
 be recovered from the retained registry during startup. Protect the manifest and
 archives, retain an independent record of their expected checksums and verify
-them with `recover-volume.sh --verify` before startup. Image archives do not
+them with `recover-volume.js --verify` before startup. Image archives do not
 replace the live filesystem, complete saved configuration or Certbot state.
 
 Before deliberately moving live data between local and volume layouts, stop

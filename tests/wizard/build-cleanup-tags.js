@@ -4,8 +4,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
-const recipes = require('../../project-bootstrap/wizard-build/recipe');
-const logo = fs.readFileSync(path.join(__dirname, '../../sync/src/Helper.ts'), 'utf8').match(/return `([\s\S]*?)`;/)[1];
+const recipes = require('../../dist/modules/project-lifecycle/buildRecipe.service');
+const logo = require('../../dist/common/configurationSignature').configurationLogo;
 const historical = {
   legacy: 'd6f99917add408077ad732621f717bb545566e75c98c896624bd606c00a0c406',
   'node24-vite8': 'd0d8fcd0e325cdf806f2f5fec6aec59481f13dea78c475f7f69c8764db947360'

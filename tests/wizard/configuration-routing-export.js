@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
-const {impact} = require('../../project-bootstrap/routing-impact');
+const {impact} = require('../../dist/modules/projects-routing/impact');
 function run(exporter) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configuration-routing-export-'));
   let sequence = 0;
@@ -20,7 +20,7 @@ function run(exporter) {
     return output;
   };
   try {
-    const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+    const cube = fs.readFileSync(path.join(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
     const values = {PROJECT_NAME: 'sample', PROJECT_TEMPLATE: 'empty', PROD_DEPLOY_MODE: '0', BETA_DEPLOY_MODE: '0', REVIEW_DEPLOY_MODE: '0',
       USE_PROD_HOST: 'true', PROD_HOST: 'www.example.test', PROD_DOMAIN_MODE: '2', PROD_SSL: '/ssl/sample/fullchain.pem', PROD_SSL_KEY: '/ssl/sample/privkey.pem',
       USE_BETA_HOST: 'true', BETA_HOST: 'beta.example.test', BETA_DOMAIN_MODE: '0', USE_REVIEW_HOST: 'false', GITLAB_RUNNER_SCALE: '0', GITLAB_RUNNER_TOKEN: ''};

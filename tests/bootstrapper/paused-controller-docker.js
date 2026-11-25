@@ -50,7 +50,7 @@ async function main() {
     // controller service has no Compose dependencies. Config does not create
     // resources or inspect any operator's saved configuration.
     const actual = JSON.parse(command(['compose', '--env-file', '/dev/null', '-p', project,
-      '-f', join(__dirname, '../../system/docker-compose.yml'), 'config', '--format', 'json'], {
+      '-f', join(__dirname, '../../config/system/docker-compose.yml'), 'config', '--format', 'json'], {
       env: {...process.env, PERSISTENT_DIR: '/system-paused-test-unmounted'},
     }).toString());
     assert.deepEqual(Object.keys(actual.services.bootstrapper.depends_on || {}), []);

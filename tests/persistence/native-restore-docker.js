@@ -22,26 +22,21 @@ function run({helperImage,configurationExporter,backup}) {
   const image=inspect(['image','inspect',helperImage])[0].Id;
   assert.match(image,/^sha256:[a-f0-9]{64}$/);
   const sourceRoot=path.resolve(__dirname,'../..');
-  const files=Object.fromEntries(['system/seed-operation.js','system/seed-manifest.js','system/seed.sh',
-    'system/push.sh','nginx/wizard-aliases.js','nginx/application-aliases.js','project-bootstrap/routing-impact.js','project-bootstrap/configuration-archive.js','project-bootstrap/preserve-system-project.js'].map(file=>[file,fs.readFileSync(path.join(sourceRoot,file),'utf8')]));
   const code=(container,text)=>docker(['exec','--interactive',container,'node','-'],text);
-  const install=container=>code(container,
-    `const fs=require('node:fs'),path=require('node:path');for(const [file,text] of Object.entries(${JSON.stringify(files)})){
-      const target='/system/'+file;fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,text);}`);
   const create=(container,mounts)=>{
     created.push(container);
-    docker(['create','--name',container,'--label',label+'='+name,'--network','none','--read-only','--workdir','/',
+    docker(['create','--name',container,'--label',label+'='+name,'--network','none','--workdir','/',
       '--memory','256m','--cpus','0.5','--pids-limit','64','--tmpfs','/tmp:rw,noexec,nosuid,size=16m',
-      '--tmpfs','/system:rw,noexec,nosuid,size=16m','--tmpfs','/srv:rw,noexec,nosuid,size=4m',
+      '--tmpfs','/srv:rw,noexec,nosuid,size=4m',
       '--tmpfs','/probe-bin:rw,exec,nosuid,nodev,size=1m',...mounts,'--entrypoint','node',image,'-e','setInterval(()=>{},1000)']);
-    docker(['start',container]);install(container);
+    docker(['start',container]);
   };
   try {
     phase='owned-volume';volumeIntended=true;docker(['volume','create','--label',label+'='+name,volume]);
     const initializer=name+'-init';
     create(initializer,['--mount','type=volume,src='+volume+',dst=/host']);
-    phase='completed-seed-fixture';code(initializer,`const fs=require('node:fs'),path=require('node:path'),manifest=require('/system/system/seed-manifest');
-      const operation=require('/system/system/seed-operation'),mounts='1 0 0:1 / / rw - overlay overlay rw\\n2 1 8:2 / /external-seed rw - ext4 fixture rw\\n';
+    phase='completed-seed-fixture';code(initializer,`const fs=require('node:fs'),path=require('node:path'),manifest=require('/system/dist/modules/storage/manifest');
+      const operation=require('/system/dist/modules/storage/validation'),mounts='1 0 0:1 / / rw - overlay overlay rw\\n2 1 8:2 / /external-seed rw - ext4 fixture rw\\n';
       fs.mkdirSync('/host/proc/1',{recursive:true});fs.writeFileSync('/host/proc/1/mountinfo',mounts);
       operation.prepareLocal({PERSISTENCE_MODE:'local',PERSISTENT_MOUNT:'/',PERSISTENT_DIR:'/live-root'},'/host',mounts);
       const seed='/host/external-seed/seed',stage=seed+'/.harvest-fixture';
@@ -57,7 +52,7 @@ function run({helperImage,configurationExporter,backup}) {
       phase='wizard-exporter-integrity';
       const bytes=fs.readFileSync(configurationExporter.archive);
       assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),configurationExporter.sha256);
-      const example=fs.readFileSync(path.join(sourceRoot,'system/.docker.env.example'),'utf8');
+      const example=fs.readFileSync(path.join(sourceRoot,'config/system/.docker.env.example'),'utf8');
       const main=example.replace(/^(?:export )?GITLAB_IMAGE=.*$/m,"export GITLAB_IMAGE='fixture-gitlab:under-test'") +
         "\nexport SYSTEM_LOG_MAX_SIZE='20m'\nexport SYSTEM_LOG_MAX_FILES='4'\n";
       code(initializer,`const fs=require('node:fs');fs.writeFileSync('/system/export-configuration.cjs',Buffer.from(${JSON.stringify(bytes.toString('base64'))},'base64'));
@@ -71,7 +66,9 @@ function run({helperImage,configurationExporter,backup}) {
     create(helper,['--mount','type=volume,src='+volume+',dst=/host',...mount('live-root','/live'),
       ...mount('external-seed/seed','/seed'),...['config','logs','data'].flatMap(dir=>mount('live-root/gitlab/'+dir,'/srv/gitlab/'+(dir==='logs'?'log':dir)))]);
     phase='native-restore-and-verification';code(helper,`const fs=require('node:fs'),assert=require('node:assert/strict'),crypto=require('node:crypto'),path=require('node:path');
-      const operation=require('/system/system/seed-operation');
+      const {StorageService}=require('/system/dist/modules/storage/storage.service'),{nativeProcess}=require('/system/dist/common/runtime/process'),{normalizePreview}=require('/system/dist/common/runtime/previewSettings');
+      const service=new StorageService(nativeProcess,normalizePreview);
+      const operation={...require('/system/dist/modules/storage/configuration'),inside:spec=>service.inside(spec)};
       fs.copyFileSync('/host/bootstrapper.zip','/system/bootstrapper.zip');
       const hash=()=>crypto.createHash('sha256').update(fs.readFileSync('/host/bootstrapper.zip')).digest('hex'),before=hash();
       operation.validateBackup('/system/bootstrapper.zip');

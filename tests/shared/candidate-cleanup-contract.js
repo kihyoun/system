@@ -10,7 +10,7 @@ function receipt(id,fullAcceptance,resources) {
   fs.writeFileSync(path.join(target,'results.json'),JSON.stringify({runId:id,fullAcceptance,resources}));
 }
 try {
-  const host=['bootstrapper/certbot-with-volume-lock.sh','bootstrapper/install-volume-certificate.sh','bootstrapper/rebind-renewal.py'];
+  const host=['src/modules/host-bootstrap/certificate.service.ts','src/modules/host-lifecycle/lifecycle.service.ts','tests/e2e/acme-host-runtime.js'];
   assert.equal(acmeAcceptance(host,()=>false),false);
   assert.equal(acmeAcceptance(host,()=>true),true);
   assert.throws(()=>acmeAcceptance(host.slice(0,2),()=>true),/complete pinned authority/);

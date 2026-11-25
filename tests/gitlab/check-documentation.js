@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {execFileSync, spawnSync} = require('child_process');
-const {check} = require('../../gitlab/check-documentation');
+const {check} = require('../../dist/modules/ci/documentationPolicy');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'documentation-check-'));
 const git = (...args) => execFileSync('git', ['-C', root, ...args],
   {encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']}).trim();
@@ -56,7 +56,7 @@ try {
   assert.deepEqual(check(environment(renamed, deleted), root).markdownFiles, [], 'deleted documents are not opened');
   write('docs/new\nname.md', '# A filename with a newline\n'); const newline = commit('Newline filename');
   assert.deepEqual(check(environment(deleted, newline), root).markdownFiles, ['docs/new\nname.md']);
-  const cli = spawnSync(process.execPath, [path.resolve(__dirname, '../../gitlab/check-documentation.js')],
+  const cli = spawnSync(process.execPath, [path.resolve(__dirname, '../../dist/modules/ci/documentationCheckEntry.js')],
     {cwd: root, env: {...process.env, ...environment(deleted, newline)}, encoding: 'utf8'});
   const report = JSON.parse(fs.readFileSync(path.join(root, 'test-results/documentation/report.json'), 'utf8'));
   if (fs.existsSync('/var/run/docker.sock')) {

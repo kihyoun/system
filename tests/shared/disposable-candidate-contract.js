@@ -6,7 +6,7 @@ const os=require('os');
 const {Candidate,configuration,signature,configurationValues,recover,LABEL}=require('./disposable-candidate');
 // Git's committed LF bytes are the signed contract; Windows checkout conversion
 // must not lead this fixture to rewrite or relax the Cube validator.
-let example=fs.readFileSync(path.join(__dirname,'../../system/.docker.env.example'),'utf8');
+let example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
 try {signature(example);} catch {
   example=require('child_process').execFileSync('git',['-c','core.autocrlf=false','show','HEAD:system/.docker.env.example'],{cwd:path.join(__dirname,'../..'),encoding:'utf8'});
 }
@@ -187,11 +187,16 @@ function fixture(overrides={}) {
   assert.deepEqual(diagnostic.classify('ERROR: Job failed (system failure): the configured PullPolicies ([never]) are not allowed by AllowedPullPolicies ([always])'),{commands:[],codes:['runner-pull-policy']});
   assert.equal(diagnostic.failureReason('runner_configuration_error'),'runner_configuration_error');
   assert.equal(diagnostic.failureReason('secret-fixture-token'),undefined);
+  const originalGuided=fixture({guidedPreviewAcceptance:true});
+  await originalGuided.instance.prepareRunnerTransport();
+  assert(!originalGuided.commands.some(call=>call.args.includes('cat')&&call.args.includes('/etc/gitlab-runner/config.toml')),
+    'The original HTTP phase must not bind a test CA before guided TLS preparation creates it.');
   const failing=fixture().instance;
   const policyDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-runner-policy-'));
   const policyFile=path.join(policyDirectory,'runners/runner/1/config/config.toml');
   fs.mkdirSync(path.dirname(policyFile),{recursive:true});
-  fs.writeFileSync(policyFile,'[[runners]]\r\n  token = "secret-fixture-token"\r\n  [runners.docker]\r\n    image = "alpine"\r\n');
+  const originalPolicy='[[runners]]\r\n  id = 56\r\n  token = "secret-fixture-token"\r\n  url = "https://gitlab.candidate.test"\r\n  clone_url = "https://gitlab.candidate.test"\r\n  [runners.docker]\r\n    image = "alpine"\r\n  [runners.cache]\r\n    Type = "s3"\r\n';
+  fs.writeFileSync(policyFile,originalPolicy);
   failing.spec={...spec,supportImages:{helper:{}},restore:{base:policyDirectory}};
   const policyTransport=failing.inner.bind(failing);
   failing.inner=async(args,options)=>{
@@ -215,10 +220,25 @@ function fixture(overrides={}) {
     assert(fs.readFileSync(policyFile,'utf8').includes('allowed_pull_policies = ["never", "if-not-present"]'));
     assert.deepEqual(failing.evidence.jobs[0].diagnostics,classified);
     assert.equal(failing.evidence.jobs[0].failureReason,'runner_configuration_error');
-    fs.writeFileSync(policyFile,'[[runners]]\n  token = "secret-fixture-token"\n');
-    await assert.rejects(failing.platform());
-    assert.equal(createdProjects,1,'A missing real Docker TOML section must fail before creating any CI project.');
+    const configured=fs.readFileSync(policyFile,'utf8');
+    assert(configured.startsWith(originalPolicy.slice(0,originalPolicy.indexOf('  [runners.docker]'))));
+    assert(configured.endsWith('  [runners.cache]\r\n    Type = "s3"\r\n'));
+    await failing.prepareRunnerTransport();assert.equal(fs.readFileSync(policyFile,'utf8'),configured,'Transport preparation is idempotent.');
+    for(const invalid of ['[[runners]]\n  token = "secret-fixture-token"\n',originalPolicy+'  [runners.docker]\n',originalPolicy+'[[runners]]\n']){
+      fs.writeFileSync(policyFile,invalid);await assert.rejects(failing.platform());
+      assert.equal(fs.readFileSync(policyFile,'utf8'),invalid,'Ambiguous TOML remains untouched.');
+    }
+    assert.equal(createdProjects,1,'Missing or ambiguous real Docker TOML sections must fail before creating any CI project.');
   } finally {fs.rmSync(policyDirectory,{recursive:true,force:true});}
+  const recoveryModule=require('../e2e/recovery'),oldRestore=recoveryModule.bootstrapRestore;
+  const wizardId='sha256:'+'f'.repeat(64),sourceRevision='e'.repeat(40),imageDigest='sha256:'+'d'.repeat(64);
+  const privateWizard={kind:'shared-candidate-registry-v2',projectId:12,projectPath:'root/wizard',registryHost:'registry.candidate.test:5050',sourceCommit:sourceRevision,imageId:wizardId,imageDigest,imageRef:'registry.candidate.test:5050/root/wizard/successor-wizard@'+imageDigest};
+  const restored=fixture({sourceRevision,images:{...spec.images,wizard:{id:wizardId,archive:path.resolve('wizard-only.tar')}},restore:{expected:{privateWizard}}});
+  recoveryModule.bootstrapRestore=async()=>{};
+  try {await restored.instance.start();}finally{recoveryModule.bootstrapRestore=oldRestore;}
+  const loaded=restored.commands.filter(call=>call.args.includes('load')).map(call=>call.options.inputFile);
+  assert(!loaded.includes(path.resolve('wizard-only.tar')),'shared Wizard candidate must be absent before registry recovery');
+  assert.equal(loaded.length,4,'all other declared service images remain available');
   const upgrades=fixture({gitlabUpgradeAcceptance:true,supportImages:Object.fromEntries(
     ['helper','previousGitlab','previousRunner','previousHelper'].map((role,index)=>[role,{id:'sha256:'+String(index+1).repeat(64),archive:path.resolve(role+'.tar')}]))});
   await upgrades.instance.start();

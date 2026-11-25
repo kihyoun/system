@@ -5,7 +5,16 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {test} = require('node:test');
-const {context, token, api, gates, publicMetadata, present} = require('../../gitlab/publish-github-release');
+const release=require('../../dist/modules/release');
+const profile=release.readPublicationProfile(path.resolve(__dirname,'../..'));
+const native=release.createPublicationRuntime(profile);
+const context=(env,root)=>release.githubContext(env,root,native.images.context);
+const {publicationToken:token,publicationApi:api,githubGates:gates,githubPublicMetadata:publicMetadata,presentGithubRelease:present}=release;
+async function publish(env,root,request){
+ const {NestFactory}=require('../../node_modules/@nestjs/core');
+ const app=await NestFactory.createApplicationContext(release.ReleaseModule.registerGithub(release.createPublicationRuntime(profile,request).githubPorts),{logger:false,abortOnError:false});
+ try{return await app.get(release.GithubPublicationService).publish(env,root);}finally{await app.close();}
+}
 const guided = require('../shared/guided-preview-fixture');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const sha = 'a'.repeat(40), tree = 'b'.repeat(40), wizard = 'c'.repeat(40), id = n => 'sha256:' + n.repeat(64);
@@ -147,6 +156,10 @@ test('gates bind required successful jobs and byte-identical artifacts before Gi
     return {only_allow_merge_if_pipeline_succeeds: true, default_branch: 'master'};
   };
   await gates(ci, environment, root, gitlab);
+  await assert.rejects(gates(ci, environment, root, gitlab, 'system-monorepo-v1'), /Every required/);
+  jobs.push({name:'test:npm-package',id:77,status:'success',allow_failure:false,pipeline:{id:10},commit:{id:sha}});
+  await gates(ci, environment, root, gitlab, 'system-monorepo-v1');
+  jobs.pop();
   jobs.find(row => row.name === 'test:wizard-browser').status = 'failed';
   await assert.rejects(gates(ci, environment, root, gitlab), /Every required/);
   jobs.find(row => row.name === 'test:wizard-browser').status = 'success';
@@ -154,11 +167,10 @@ test('gates bind required successful jobs and byte-identical artifacts before Gi
   await assert.rejects(gates(ci, environment, root, gitlab), /differs/);
 });
 
-test('complete publisher derives deterministic public assets from one accepted real Git checkout without rebuilding', async t => {
+for (const monorepo of [false, true]) test(monorepo ? 'publisher derives deterministic monorepo assets without rebuilding' : 'publisher refuses historical layout before external publication', async t => {
   const {spawnSync} = require('node:child_process');
-  const {publish} = require('../../gitlab/publish-github-release');
-  const {candidates, validateEvidence} = require('../../gitlab/publish-successor');
-  const security = require('../../gitlab/security-release.json');
+  const {candidates, validateEvidence} = native.evidence;
+  const security = require('../../config/gitlab/security-release.json');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'github-release-full-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   const git = (...args) => {
@@ -166,13 +178,15 @@ test('complete publisher derives deterministic public assets from one accepted r
     assert.equal(result.status, 0, result.stderr); return result.stdout.trim();
   };
   git('init', '--quiet'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
-  fs.mkdirSync(path.join(root, 'bootstrapper'));
-  for (const name of ['quickstart.sh', 'install.sh']) fs.copyFileSync(path.join(__dirname, '../../bootstrapper', name), path.join(root, 'bootstrapper', name));
+  fs.mkdirSync(path.join(root, 'config/releases'),{recursive:true});
+  fs.mkdirSync(path.join(root, 'tools/quickstart'), {recursive: true});
+  fs.copyFileSync(path.join(__dirname, '../../tools/quickstart/quickstart.sh'), path.join(root, 'tools/quickstart/quickstart.sh'));
   fs.writeFileSync(path.join(root, 'CHANGELOG.md'), '# Changelog\n\n## 1.0.0\n\nReviewed fixture release. See [Quickstart](docs/QUICKSTART.md).\n');
   fs.writeFileSync(path.join(root, 'VERSION'), '1.0.0\n');
-  fs.writeFileSync(path.join(root, 'bootstrapper/upgrade-paths.json'), JSON.stringify({format: 'system-upgrade-paths-v1', versions: ['1.0.0'], transitions: []}));
-  fs.writeFileSync(path.join(root, '.gitmodules'), '[submodule "wizard"]\npath = wizard\nurl = https://github.com/kihyoun/system-wizard.git\n');
-  git('add', '.'); git('update-index', '--add', '--cacheinfo', '160000,' + wizard + ',wizard'); git('commit', '--quiet', '-m', 'Accepted fixture');
+  fs.writeFileSync(path.join(root, 'config/releases/upgrade-paths.json'), JSON.stringify({format: 'system-upgrade-paths-v1', versions: ['1.0.0'], transitions: []}));
+  if (monorepo) { fs.mkdirSync(path.join(root, 'wizard')); fs.writeFileSync(path.join(root, 'wizard/index.ts'), 'export {};\n'); }
+  else fs.writeFileSync(path.join(root, '.gitmodules'), '[submodule "wizard"]\npath = wizard\nurl = https://github.com/kihyoun/system-wizard.git\n');
+  git('add', '.'); if (!monorepo) git('update-index', '--add', '--cacheinfo', '160000,' + wizard + ',wizard'); git('commit', '--quiet', '-m', 'Accepted fixture');
   const commit = git('rev-parse', 'HEAD'), sourceTree = git('rev-parse', 'HEAD^{tree}');
   const env = {...environment, CI_COMMIT_SHA: commit, CI_API_V4_URL: 'https://gitlab.example.test/api/v4',
     SYSTEM_RELEASE_GITLAB_TOKEN: 'fixture-gitlab', GITHUB_RELEASE_TOKEN: 'fixture-github'};
@@ -198,13 +212,31 @@ test('complete publisher derives deterministic public assets from one accepted r
     results: [...guided.stages, 'recovery-original-host-removed', 'cleanup'].map(name => ({name, status: 'passed'})),
     evidence: {guidedPreview: guided.proof(restored.images.wizard), gitlabUpgrade: restored.evidence.gitlabUpgrade,
       recovery: {runId: restored.runId, backupOnly: true, originalHostRemoved: true, guidedBindingRestored: true}}};
+  const layout = monorepo ? {sourceLayout: 'system-monorepo-v1', sourceTree, wizardSourceTree: git('rev-parse', 'HEAD:wizard')} : {};
+  for (const receipt of [original, restored]) Object.assign(receipt, layout);
+  if (monorepo) {
+    const beta = require('../shared/system-beta-evidence-fixture');
+    const proof = beta.proof();
+    proof.productionImageId = restored.images.wizard;
+    proof.productionRetained.runningImage = restored.images.wizard;
+    Object.assign(proof.candidate, {sourceCommit: commit, sourceTree, wizardSourceTree: layout.wizardSourceTree,
+      helperImage: restored.images.candidate, wizardImageId: restored.images.wizard,
+      fixturePipelineId: ciIdentity.pipelineId, fixtureCandidateJobId: ciIdentity.candidateJobId});
+    proof.setup.sourceCommit = commit;
+    proof.beta.stoppedThroughPipelineId = ciIdentity.pipelineId;
+    for (const deployment of [proof.beta.deployment, proof.beta.stopped])
+      Object.assign(deployment, {sourceCommit: commit, pipelineId: ciIdentity.pipelineId,
+        generation: 'p' + ciIdentity.pipelineId + '-j' + proof.beta.fixtureDeployJobId});
+    original.evidence.guidedPreview = proof;
+    original.results = [...beta.results, {name: 'recovery-original-host-removed', status: 'passed'}, {name: 'cleanup', status: 'passed'}];
+  }
   const candidateDirectory = path.join(root, 'test-results/e2e');
   for (const receipt of [original, restored]) {
     const directory = path.join(candidateDirectory, receipt.runId);
     fs.mkdirSync(directory, {recursive: true});
     fs.writeFileSync(path.join(directory, 'results.json'), JSON.stringify(receipt));
   }
-  const candidateCi = {sourceRevision: commit, ...ciIdentity};
+  const candidateCi = {sourceRevision: commit, ...ciIdentity, ...layout};
   const [{proof, bytes: proofBytes}] = candidates(candidateDirectory, candidateCi);
   assert.equal(proof.guidedPreviewReceipt.runId, original.runId);
   assert.equal(proof.evidence.guidedPreview, undefined);
@@ -212,7 +244,8 @@ test('complete publisher derives deterministic public assets from one accepted r
   for (const change of [value => delete value.guidedPreviewReceipt,
     value => { value.guidedPreviewReceipt.ciIdentity.candidateJobId++; },
     value => { value.guidedPreviewReceipt.evidence.recovery.runId = original.runId; },
-    value => { value.guidedPreviewReceipt.evidence.guidedPreview.merge.normalGate = false; }]) {
+    value => { if (monorepo) value.guidedPreviewReceipt.evidence.guidedPreview.verifier.negativeGatesPassed = false;
+      else value.guidedPreviewReceipt.evidence.guidedPreview.merge.normalGate = false; }]) {
     const invalid = structuredClone(proof); change(invalid);
     assert.throws(() => validateEvidence(invalid, candidateCi));
   }
@@ -225,15 +258,30 @@ test('complete publisher derives deterministic public assets from one accepted r
     upstreamRelease: {...publication.upstreamRelease, candidateEvidenceSha256: hash(proofBytes)},
     controller: {...publication.controller, sourceRevision: commit, reference: 'example/system@' + digests.controller},
     wizard: {...publication.wizard, reference: 'example/wizard@' + digests.wizard}};
+  if (monorepo) {
+    env.WIZARD_GITHUB_SOURCE_PUBLISH_ENABLED = undefined;
+    for (const value of [accepted, publicPair]) { delete value.wizardRevision; value.sourceLayout = 'system-monorepo-v1'; value.wizardSourceTree = git('rev-parse', 'HEAD:wizard'); }
+    publicPair.wizard.sourceRevision = commit;
+  }
   const publicSource = {...source, systemRevision: commit, publicationJobId: 9};
   const inputs = {'test-results/successor/release.json': Buffer.from(JSON.stringify(accepted)),
     'test-results/successor/candidate-results.json': proofBytes, 'test-results/dockerhub/release.json': Buffer.from(JSON.stringify(publicPair)),
     'test-results/github/wizard-source.json': Buffer.from(JSON.stringify(publicSource))};
+  if (monorepo) delete inputs['test-results/github/wizard-source.json'];
   for (const [file, bytes] of Object.entries(inputs)) { fs.mkdirSync(path.dirname(path.join(root, file)), {recursive: true}); fs.writeFileSync(path.join(root, file), bytes); }
   const names = ['check:documentation', 'prepare:wizard-source', 'test:candidate-image', 'test:platform-candidate', 'build',
     'test:wizard-browser', 'test:codeql', 'deploy:dockerhub', 'deploy:github', ...['gitlab', 'sync', 'gitlab-runner', 'bootstrapper', 'nginx', 'wizard', 'shared', 'performance'].map(name => 'test:isolated: [' + name + ']')];
+  if (monorepo) names.push('test:npm-package');
   const jobs = names.map((name, index) => ({name, id: name === 'test:platform-candidate' ? 20 : index + 1,
     status: 'success', allow_failure: false, pipeline: {id: 10}, commit: {id: commit}}));
+  if (monorepo) {
+    const bytes = Buffer.from('fixture exact tested bundled CLI tarball');
+    const filename = 'systembootstrapper-cli-1.0.0.tgz';
+    const receipt = {format:'system-cli-source-v1',name:'@systembootstrapper/cli',version:'1.0.0',sourceRevision:commit,sourceTree,pipelineId:10,packageJobId:jobs.find(job=>job.name==='test:npm-package').id,filename,sha256:hash(bytes),integrity:'sha512-'+require('node:crypto').createHash('sha512').update(bytes).digest('base64')};
+    inputs['test-results/npm-package/'+filename]=bytes;
+    inputs['test-results/npm-package/receipt.json']=Buffer.from(JSON.stringify(receipt));
+    for (const [file, content] of Object.entries(inputs)) { fs.mkdirSync(path.dirname(path.join(root,file)),{recursive:true}); fs.writeFileSync(path.join(root,file),content); }
+  }
   const fixture = githubFixture();
   const request = async (url, options = {}) => {
     const parsed = new URL(url);
@@ -255,6 +303,7 @@ test('complete publisher derives deterministic public assets from one accepted r
     assert(['api.github.com', 'uploads.github.com'].includes(parsed.hostname));
     if (parsed.pathname.includes('/git/commits/')) {
       const isWizard = parsed.pathname.includes('/kihyoun/system-wizard/');
+      assert(!monorepo || !isWizard, 'Monorepo does not query a separate Wizard repository');
       return Response.json({sha: isWizard ? wizard : commit, tree: {sha: sourceTree}});
     }
     // The fixture's source constants are independent; map the accepted commit
@@ -263,15 +312,29 @@ test('complete publisher derives deterministic public assets from one accepted r
     if (result === null) return new Response(null, {status: 404});
     return Buffer.isBuffer(result) ? new Response(result) : Response.json(result);
   };
+  if (!monorepo) {
+    await assert.rejects(publish(env, root, request), /historical releases.*own accepted source/);
+    assert.equal(fixture.calls.length, 0, 'historical releases cannot publish a new incompatible installer');
+    return;
+  }
   const result = await publish(env, root, request);
   assert.equal(result.tag, 'v1.0.0');
   const published = JSON.parse(fs.readFileSync(path.join(root, 'test-results/public-release/system-release-v1.0.0.json')));
   assert.equal(published.source.revision, commit);
+  if (monorepo) {
+    assert.equal(published.source.sourceLayout, 'system-monorepo-v1');
+    assert.equal(published.source.wizardSourceTree, accepted.wizardSourceTree);
+    assert.equal(published.source.wizardRevision, undefined);
+    assert.equal(published.source.wizardRepository, undefined);
+    const provenance = JSON.parse(fs.readFileSync(path.join(root, 'test-results/public-release/system-upgrade-v1.0.0.json')));
+    assert.equal(provenance.release.sourceLayout, 'system-monorepo-v1');
+    assert.equal(provenance.release.wizardSourceTree, accepted.wizardSourceTree);
+  }
   assert.equal(published.images.controller.reference, publicPair.controller.reference);
   assert.equal(published.quickstart.sha256, hash(fs.readFileSync(path.join(root, 'test-results/public-release/quickstart.sh'))));
   assert.match(fs.readFileSync(path.join(root, 'test-results/public-release/quickstart.sh'), 'utf8'), /ACCEPTED_RELEASE_TAG = 'v1.0.0'/);
   assert(!JSON.stringify(published).includes('registry.example.test'));
-  assert.equal(fixture.getRelease().assets.length, 5);
+  assert.equal(fixture.getRelease().assets.length, monorepo ? 6 : 5);
   fixture.calls.length = 0;
   await publish(env, root, request);
   assert(!fixture.calls.some(row => row.options.method), 'full native publication retry reuses the identical evidence/assets');
@@ -292,4 +355,23 @@ test('real Fetch transport exposes asset 302 without following it with the API c
   assert.equal(downloaded.toString(), 'actual-http-asset');
   assert.deepEqual(requests, [{path: '/repos/example/system/releases/assets/1', authorization: 'Bearer scoped-fixture'},
     {path: '/asset', authorization: undefined}]);
+});
+
+test('monorepo public metadata rejects mixed source identities and invented Wizard receipts', () => {
+  const accepted = {...released, sourceLayout: 'system-monorepo-v1', wizardSourceTree: wizard}; delete accepted.wizardRevision;
+  const pair = {...publication, sourceLayout: 'system-monorepo-v1', wizardSourceTree: wizard, wizard: {...publication.wizard, sourceRevision: sha}}; delete pair.wizardRevision;
+  const metadata = publicMetadata(ci, accepted, pair, undefined, Buffer.from('n'), Buffer.from('q'));
+  assert.equal(metadata.source.wizardSourceTree, wizard);
+  for (const patch of [{wizardSourceTree: sha}, {sourceLayout: undefined}, {wizardRevision: wizard}, {wizard: publication.wizard}])
+    assert.throws(() => publicMetadata(ci, accepted, {...pair, ...patch}, undefined, Buffer.from('n'), Buffer.from('q')));
+  assert.throws(() => publicMetadata(ci, accepted, pair, source, Buffer.from('n'), Buffer.from('q')));
+});
+
+
+test('publication transport stops oversized bodies before buffering an unbounded response', async () => {
+  let canceled = false, pulls = 0;
+  const body = new ReadableStream({pull(controller) { pulls++; controller.enqueue(new Uint8Array(1024 * 1024)); }, cancel() { canceled = true; }});
+  await assert.rejects(api('https://api.github.com', 'fixture', 'Authorization', async () => new Response(body))('/repos/example/system/releases', {raw: true}), /too large/);
+  assert.equal(canceled, true);
+  assert(pulls <= 10, 'bounded reader cancels upstream after crossing eight MiB');
 });

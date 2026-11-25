@@ -44,7 +44,7 @@ challenges, tokens, certificate keys and raw server errors are not returned.
 
 **Try helper-image pull** is a separate action. Select a running managed runner
 manager first. The dialog shows the exact immutable helper-image reference before
-the action. Its default comes from `gitlab/security-release.json`; operators can
+the action. Its default comes from `config/gitlab/security-release.json`; operators can
 set `GITLAB_RUNNER_HELPER_IMAGE` in server configuration. The image must retain an
 explicit SHA-256 digest. A client cannot submit another image or Docker endpoint.
 
@@ -87,7 +87,7 @@ From a checkout with the documented Node runtime and Sync dependencies installed
 run the controlled fixture suite:
 
 ```sh
-npm --prefix sync run build
+npm run build
 node --test tests/sync/system-diagnostics.js
 ```
 

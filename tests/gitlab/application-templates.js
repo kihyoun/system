@@ -1,8 +1,8 @@
 const assert = require('assert');
 const crypto = require('crypto');
-const {prepareApplication} = require('../../sync/dist/ApplicationTemplates');
-const {validateProject} = require('../../sync/dist/ProjectBootstrap');
-const logo = require('../../sync/dist/Helper').default.textLogo;
+const {prepareApplication} = require('../../dist/modules/project-workflow/applicationTemplates');
+const {validateProject} = require('../../dist/modules/project-workflow/projectWorkflow');
+const logo = require('../../dist/common/configurationSignature').default.textLogo;
 const settings = {
   PROJECT_NAME: 'templatecheck', USE_PROD_HOST: 'true', PROD_HOST: 'app.localhost',
   PROD_DOMAIN_MODE: '0', PROD_DEPLOY_MODE: '0', USE_BETA_HOST: 'false',
@@ -12,26 +12,33 @@ for (const template of ['angular', 'react', 'web']) {
   const generated = prepareApplication(template, settings.PROJECT_NAME, settings);
   const files = new Map(generated.files.map(file => [file.file_path, file.content]));
   assert(files.has('Dockerfile'));
-  assert(files.has('.system-bootstrapper/refresh-ca.sh'));
-  assert(files.get('Dockerfile').includes('refresh-ca.sh'));
-  assert(generated.ci.includes('29.9.2-cli@sha256:'));
-  assert(generated.ci.includes('sh .system-bootstrapper/refresh-ca.sh'));
-  assert.equal(require('crypto').createHash('sha256').update(files.get('.system-bootstrapper/ca/cacert-2026-10-20.crt')).digest('hex'), require('../../gitlab/security-release.json').jobCaBundleSha256);
+  assert(!files.has('.system-bootstrapper/refresh-ca.sh'));
+  assert(files.has('.gitlab/cli/system-bootstrapper.tgz'));
+  const artifact=generated.files.find(file=>file.file_path==='.gitlab/cli/system-bootstrapper.tgz');
+  assert.equal(artifact.encoding,'base64');
+  const receipt=JSON.parse(Buffer.from(files.get('.gitlab/cli/system-bootstrapper.tgz.json'),'base64'));
+  assert.equal(crypto.createHash('sha256').update(Buffer.from(artifact.content,'base64')).digest('hex'),receipt.sha256);
+  assert.equal(generated.templateVersion, 3);
+  assert(files.get('Dockerfile').includes('system-bootstrapper host-bootstrap refresh-ca'));
+  assert(generated.ci.includes('node:24.22.0-alpine3.24@sha256:'));
+  assert(generated.ci.includes('system-bootstrapper host-bootstrap install-runtime'));
+  assert(generated.ci.includes('sha256sum -c'));
+  assert(generated.ci.includes('npm install --offline --ignore-scripts'));
   assert(files.has('GETTING_STARTED.md'));
   assert(!generated.files.some(file => file.file_path.includes('node_modules') || file.file_path.includes('..')));
   assert(generated.files.every(file => file.action === 'create' && !file.content.includes('__PROJECT_KEY__')));
   assert(generated.ci.includes('$CI_DEFAULT_BRANCH'));
   assert(generated.ci.includes('https://$CI_COMMIT_REF_SLUG.review.localhost'));
-  assert(generated.ci.includes('--network templatecheck_review'));
+  const application=JSON.parse(files.get('.system-bootstrapper/application-v2.json'));
+  assert.equal(application.key,'templatecheck');
+  assert.deepEqual(application.environments,{prod:{host:'app.localhost'},review:{host:'review.localhost'}});
   assert(generated.ci.includes('when: manual'));
   assert(generated.ci.includes('test:http:'));
-  const runs = generated.ci.split('\n').filter(line => line.includes('docker run -d'));
-  assert.equal(runs.length, 3);
-  assert(runs.every(line => line.includes('--log-driver json-file') && line.includes('max-size=$APP_LOG_MAX_SIZE') && line.includes('max-file=$APP_LOG_MAX_FILES')));
+  for(const action of ['build','verify','deploy prod','deploy review','stop review'])assert(generated.ci.includes('system-bootstrapper project-ci application \"$CI_PROJECT_DIR\" '+action));
+  assert(!generated.ci.includes('docker run')&&!generated.ci.includes('docker rm')&&!generated.ci.includes('grep -Eq'));
   assert(generated.ci.includes("APP_LOG_MAX_SIZE: '10m'"));
   assert(generated.ci.includes("APP_LOG_MAX_FILES: '3'"));
-  const validation = generated.ci.indexOf('echo "$APP_LOG_MAX_SIZE" | grep -Eq');
-  assert(validation >= 0 && validation < generated.ci.indexOf('docker rm -f "templatecheck-prod"'));
+  assert(generated.ci.includes('dotenv: app-image.env')&&generated.ci.includes('job: test:http'));
   assert(!generated.ci.includes('cypress') || generated.ci.substr(0, 1184).includes('cypress'));
   assert.equal(generated.ci.substr(807, 1), '$');
   assert.equal(crypto.createHash('md5').update(generated.ci.substr(0, 1184)).digest('hex'), 'bd4a8426355824593a5e21ad759830c1');

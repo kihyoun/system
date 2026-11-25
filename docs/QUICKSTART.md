@@ -1,7 +1,7 @@
 # Quickstart on a fresh Ubuntu host
 
 Run on your own **fresh Ubuntu 24.04 or 26.04 LTS amd64** host with root/sudo,
-curl, standard Python 3, internet access, **at least 8 GiB RAM**, 40 GiB free on
+curl, internet access, **at least 8 GiB RAM**, 40 GiB free on
 the system/live-data filesystem and 1 GiB for source. Reserve more space for
 repositories, registry images, builds and backups. Ports 80 and 443 must be free.
 An SSH session or local console must remain available. The memory preflight allows
@@ -10,6 +10,12 @@ up to 512 MiB reserved by the kernel/firmware on an 8 GiB host (7.5 GiB reported
 ```bash
 curl -fsSL https://github.com/kihyoun/system/releases/latest/download/quickstart.sh | sudo bash
 ```
+
+Quickstart also prepares the pinned host Node runtime and copies the matching
+compiled operations, dependencies and policy assets from the verified CLI package before invoking
+host lifecycle tools. A preinstalled user Node/nvm is not required or replaced.
+Manual installation and replacement-host recovery must prepare or restore those
+[host runtime inputs](../Prepare-Host.md#prepare-the-host-operations-runtime) separately.
 
 The command downloads and runs the repository-owned installer as root. You can
 inspect the release's `quickstart.sh` before running it. The published script is
@@ -20,8 +26,8 @@ No private GitLab account, job artifact, Docker Hub login or local version list 
 required. Public registries and GitHub may enforce anonymous request limits.
 
 The installer checks OS, architecture, privileges, resources, ports and existing
-installation paths before changing host packages. It delegates dependencies to
-`bootstrapper/install.sh` and startup to `bootstrapper/install-release.py`; it
+installation paths before changing host packages. Its shared NestJS services prepare
+host dependencies and call the native release installer; it
 neither builds replacement images nor starts GitLab before browser configuration.
 The native release installer rechecks clean source, image labels, immutable digests,
 accepted image IDs, same candidate attempt and fresh persistent state.
@@ -79,3 +85,24 @@ A public release publication also does not change an existing platform.
 
 See [release policy and exact source checkout](RELEASES.md) for the public metadata
 contract, installation from an explicit version and update/rollback requirements.
+
+## Use the installed CLI
+
+Quickstart installs the named `system-bootstrapper` command with its verified
+Node runtime. A fresh SSH session and `sudo` do not need an nvm shell profile or
+a JavaScript file path. The private installation binding selects the reviewed
+checkout and persistence settings; it does not select a newer release.
+
+```sh
+system-bootstrapper --help
+sudo system-bootstrapper start
+sudo system-bootstrapper harvest
+```
+
+Harvest still requires your configured backup filesystem to be mounted. It
+performs the same storage checks and acquires the same leases as the Wizard.
+For another explicitly reviewed checkout, pass `--checkout /absolute/path` and
+the documented recovery inputs. Installing only the runtime does not bind an
+installation or start services. Developer checkouts can expose the npm bin with
+`npm link --ignore-scripts`; system-wide binding uses `system-bootstrapper cli-install`
+only after its ownership and accepted-installation checks pass.

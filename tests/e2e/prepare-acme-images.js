@@ -6,8 +6,8 @@ const path=require('path');
 const {execFileSync}=require('child_process');
 const {PINNED,hashFile}=require('./local-acme');
 function prepare(output,dependencies={}){
-  const run=dependencies.run||((args)=>execFileSync('docker',args,{stdio:'inherit',timeout:180000}));
-  const inspect=dependencies.inspect||((reference)=>JSON.parse(execFileSync('docker',['image','inspect','--format','{{json .}}',reference],{encoding:'utf8',timeout:10000})));
+  const run=dependencies.run||((args)=>execFileSync('docker',args,{stdio:'inherit'}));
+  const inspect=dependencies.inspect||((reference)=>JSON.parse(execFileSync('docker',['image','inspect','--format','{{json .}}',reference],{encoding:'utf8'})));
   fs.mkdirSync(output,{recursive:true,mode:0o700});
   const images={};
   for(const [role,reference]of Object.entries(PINNED)){

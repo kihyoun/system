@@ -12,7 +12,8 @@ persistent service data, including databases and repositories.
 
 The platform combines GitLab Community Edition, its container registry, GitLab
 Runner managers, NGINX routing, an authenticated Sync API and a React configuration
-Wizard. Shell scripts and Docker Compose coordinate their lifecycle.
+Wizard. Shared TypeScript/NestJS operation services coordinate storage, routing
+and host release operations; Docker Compose remains the native service runtime.
 
 ## Internal Sync API
 
@@ -24,36 +25,89 @@ HTTP requests and injected services coordinate the repository-owned tools.
 This structure keeps the public API on port `8071`, configuration and Seed formats,
 and operational workflows compatible. It adds no database or separate deployment
 service. Application starters remain Angular, React and general web projects;
-NestJS is used by the internal Sync service. The [test guide](../tests/README.md)
+NestJS is used by the internal Sync service and operations runtime. The [test guide](../tests/README.md)
 provides the isolated verification commands.
+
+## Shared operations runtime
+
+The root package supplies feature modules under `src/modules/`, HTTP adapters
+under `src/api/`, CLI adapters under `src/cli/` and shared runtime infrastructure
+under `src/common/`. The public `system-bootstrapper` CLI invokes the same
+services as the authenticated Sync API. React remains a separate `wizard/` frontend. A Nest context starts no HTTP server and grants no deployment authority.
+Services use injected process, configuration and evidence ports.
+
+- `HostLifecycleModule` validates live storage and coordinates host start/stop
+  through `HostPersistenceService` and `HostLifecycleService`.
+- `HostModule` owns accepted installation, host storage dispatch, source/image
+  and release authority, cold maintenance, controller/paired-upgrade coordination,
+  recovery journals and runtime inspection.
+- `StorageModule` owns Harvest, Seed restore and coordinated configuration backup,
+  including persistent operation leases and completed recovery receipts.
+- `ConfigurationModule` owns ZIP Push, impact checks and exact configuration
+  replacement; `ProjectsRoutingModule` owns proxy selection, routing and rollback.
+- `LifecycleModule` owns controller/runner startup and shutdown, registration,
+  cancellation and the unlimited foreground prebuilt Sync process.
+- `ProjectLifecycleModule`, `EnvironmentModule` and `CanonicalModule` own project
+  deployment transactions, source transfer and canonical environment state.
+  `WizardEnvironmentsModule` separates typed settings, DNS/TLS preflight,
+  activation/status decisions and locked receipt storage. HTTP and the standalone
+  `wizard-environments` command inject the same workflow service; process-local
+  preparation state never replaces durable configuration or operation leases.
+  `PreviewOperatorModule`, `AdoptionModule`, `UpgradeModule`, `ProductionModule`
+  and `SystemBetaModule` separate setup, source adoption/build upgrades, deliberate
+  Wizard Production promotion and accepted-candidate System Beta.
+- `GitLabUpgradeModule` owns the approved native database transition, cold
+  checkpoint, readiness verification, abort and rollback under its durable guardian.
+- `ReleaseModule` binds accepted source/image/job evidence to immutable image,
+  GitHub and npm publication. It does not promote the running installation.
+
+The [operation inventory](https://github.com/kihyoun/system/blob/HEAD/docs/OPERATIONS_ARCHITECTURE.md) maps public and
+CLI commands, their callers, privileges, persistent ownership, native
+tools, failure handling and executable tests. Thin entries call prepared compiled
+Nest services shared by the standalone CLI and API; current host preflight,
+backup polling, promotion and recovery no longer delegate to Python programs.
+
+Prepare the [host runtime](../Prepare-Host.md#prepare-the-host-operations-runtime)
+**before** host start/stop, persistence checks, installation or recovery. Fresh
+Quickstart prepares it; source developers build it before using host lifecycle
+commands. Retain Node, compiled operations and dependencies for offline recovery.
+The initial Quickstart and minimal initial GitLab-token Ruby invocation are
+explicit exceptions under `tools/`. OS/Certbot coordination and independent
+child guardians are native TypeScript services; reserved historical recipe
+bytes remain under `templates/`. GitLab's own declarative Ruby configuration
+remains an upstream service interface.
+Docker/Compose, NGINX, Git and `flock` remain native execution boundaries. These
+boundaries preserve Wizard HTTP endpoints, saved configuration and Harvest/Seed.
 
 ## Operational guide map
 
-Application starters cover Angular, React and general web projects. The
-[project guide](PROJECT_BOOTSTRAP_GUIDE.md) explains private repository creation,
-editable source, CI and application environments. The Wizard is itself registered
-as a managed project: explicit [source initialization](WIZARD_SOURCE.md),
-[build configuration](WIZARD_BUILD.md),
-[Review/Beta environments](../project-bootstrap/wizard-environments/README.md) and
-[controlled Production promotion](../project-bootstrap/wizard-production/README.md)
-provide separate, inspectable operations. Building or merging source alone does
-not replace the running management interface.
+Application starters retain independent repositories and Review, Beta and
+Production environments. The [project guide](PROJECT_BOOTSTRAP_GUIDE.md) explains
+creation, editable source and CI. System and Wizard instead share the System
+repository and candidate pipeline. Wizard source is an ordinary directory;
+its original repository history remains reachable through the import merge.
+There is no separate Wizard gitlink in new commits.
 
-An operator with an existing Wizard development repository can instead adopt
-[one source-primary Wizard project](../project-bootstrap/wizard-source-primary/README.md)
-for source, native checks, candidate environments and production images. This
-keeps development and delivery in one repository without importing over user
-changes. The legacy managed initialization remains available for other setups.
+The optional [System candidate Beta](SYSTEM_CANDIDATE_REVIEW.md) reuses the exact
+Wizard image from an already accepted System candidate at a fixed HTTPS address.
+Setup selects an existing shared project and reserves configuration only. It
+creates no extra build or complete platform pipeline. Production promotion stays
+separate and deliberate. Normal project Review Apps remain supported; new System
+Review bindings and deployments are retired. Existing System Review resources
+require their original owned Stop and cleanup before explicit Beta migration.
 
-An operator can also select GitLab as the development and issue-tracking
-platform with an optional [GitHub code mirror](GITLAB_GITHUB_BACKUP.md).
-That guide covers source-history mapping, reviewed merges, tracker migration
-and verification. The mirror forwards merged code; selected live storage
-and the recovery contract retain GitLab's service state.
+Historical source receipts, JSON/ZIP configuration, bindings, generation floors,
+tombstones and matching Seeds remain valid recovery inputs. Preserve their
+recorded layout and identities; never reinterpret an old Wizard commit as a
+shared source tree or reimport over user edits. The [source guide](WIZARD_SOURCE.md)
+describes both layouts. GitLab can remain the development platform with an
+optional [GitHub code mirror](GITLAB_GITHUB_BACKUP.md); mirrored source alone does
+not back up GitLab service data.
 
-For a bundled System/Wizard change, optional [System candidate Review jobs](SYSTEM_CANDIDATE_REVIEW.md)
-reuse the tested Wizard image on the configured Review HTTPS host for personal
-UI acceptance before deliberate Production promotion.
+The disposable Beta acceptance test performs real setup, binding, container
+lifecycle, TLS and cleanup. Candidate authorization uses explicit contract
+fixtures while its parent pipeline is running. It does not claim a completed
+native authorization pipeline; see the [verification boundary](../tests/e2e/GUIDED_PREVIEW_ACCEPTANCE.md).
 
 Persistent service data lives beneath `PERSISTENT_DIR`, normally
 `/var/lib/system-bootstrapper/platform` on the Ubuntu/WSL system disk. No second
@@ -109,7 +163,7 @@ The workflow is:
    default-branch revision receives its own applicable checks; a merge does
    not automatically replace Production.
 5. **Promote the accepted version.** Use the committed
-   [controller promotion tool](../bootstrapper/README.md#promoting-a-tested-successor-controller)
+   [controller promotion tool](BOOTSTRAPPER.md#promoting-a-tested-successor-controller)
    and, for the declared GitLab migration, the
    [upgrade procedure](HANDBOOK.md#migrate-gitlab-through-the-accepted-controller).
    They bind the operation to accepted source/image evidence and preserve
@@ -126,7 +180,7 @@ reverting an image cannot undo a database migration. The accepted checkout,
 images, credentials and recovery inputs must remain accessible while GitLab
 is unavailable, independently of the service being upgraded.
 
-The [declared release profile](../gitlab/security-release.json) and its tests define
+The [declared release profile](../config/gitlab/security-release.json) and its tests define
 the supported migration. A new version or component change still needs its own
 acceptance criteria and successful checks; existing tools do not establish that
 every possible upgrade is safe.
@@ -192,15 +246,16 @@ The container definitions can be reproduced; GitLab repositories, database conte
 
 | Path | Purpose in the existing implementation |
 | --- | --- |
-| `start.sh`, `stop.sh` | Top-level lifecycle entry points. |
-| `bootstrapper/` | Base image, host initialization, recovery, runtime verification and accepted controller promotion/export tools. |
-| `system/` | Main Compose definition and orchestration scripts. |
-| `gitlab/` | GitLab lifecycle/configuration and supported upgrade, checkpoint and rollback tools. |
-| `gitlab-runner/` | Runner configuration, registration, and lifecycle scripts. |
-| `nginx/` | Entry-point reverse-proxy configuration and lifecycle scripts. |
-| `nginx-proxy/` | Production, beta, and review proxy configuration. |
-| `sync/` | Modular NestJS API for configuration, project workflows, operations and diagnostics. |
-| `wizard/` | Configuration wizard submodule. |
+| `src/api/` | Authenticated Sync HTTP adapters for configuration, projects, operations and diagnostics. |
+| `src/cli/` | The named CLI dispatcher and dependency-free pre-installation CA verification entry. |
+| `src/modules/` | Capability modules, injectable services and typed native adapters shared by HTTP, CLI and workers. |
+| `src/common/` | Shared configuration signature, validation and runtime infrastructure. |
+| `config/` | Public Compose definitions, GitLab configuration, release policies and CA provenance. Runtime secrets are separate. |
+| `templates/` | NGINX and project templates, including byte-preserved historical build recipes. |
+| `containers/` | Controller and bootstrapper image definitions. |
+| `tools/` | The two documented bootstrap exceptions: initial Quickstart and initial GitLab administrator token creation. |
+| `wizard/` | Separate React frontend, integrated into the same System source release. |
+| `dist/`, `assets/` | Generated compiled application and verified runtime/source assets; not independently maintained scripts. |
 | `.gitlab-ci.yml` | Short documentation lane; required runtime component, image and disposable platform checks; image publishing and optional GitHub mirror. |
 | [tests/](../tests/README.md) | Component inventory, isolated test commands and explicit live-integration boundaries. |
 | [Prepare-Host.md](../Prepare-Host.md) | Host installation, service-image selection and startup. |

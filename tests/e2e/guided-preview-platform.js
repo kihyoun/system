@@ -1,7 +1,7 @@
 'use strict';
 // Configure the original owned disposable platform before taking the guided
 // baseline. Source CI bytes and TLS verification remain unchanged.
-const {settings: desiredSettings}=require('../../project-bootstrap/preview-setup/settings');
+const {settings: desiredSettings}=require('../../dist/modules/project-lifecycle/previewSettings');
 const recovery=require('./recovery');
 const {ISSUANCE_CA,issuanceDomains}=require('./local-acme');
 const {runnerCapacity}=require('./guided-preview-runner-capacity');
@@ -14,16 +14,17 @@ function requireValue(value,code){if(!value)throw Error(code);}
 function settings(candidate){
   const spec=candidate.spec;
   requireValue(spec.fullAcceptance===true&&spec.guidedPreviewAcceptance===true&&/^[a-f0-9]{24}$/.test(candidate.id),'guided-preview-owned-platform-required');
-  requireValue(['sourceRevision','sourceTree','wizardSourceRevision'].every(key=>/^[a-f0-9]{40}$/.test(spec[key]||''))&&
+  requireValue(['sourceRevision','sourceTree','wizardSourceTree'].every(key=>/^[a-f0-9]{40}$/.test(spec[key]||''))&&
     ['candidate','wizard'].every(role=>/^sha256:[a-f0-9]{64}$/.test(spec.images?.[role]?.id||'')),'guided-preview-source-identities-required');
   const desired=desiredSettings(spec.guidedPreviewSettings);
-  for(const kind of ['review','beta'])requireValue(desired[kind].enabled&&desired[kind].host===HOSTS[kind]&&
+  requireValue(spec.sourceLayout==='system-monorepo-v1'&&desired.version===2&&!desired.review.enabled,'system-beta-shared-source-required');
+  for(const kind of ['beta'])requireValue(desired[kind].enabled&&desired[kind].host===HOSTS[kind]&&
     desired[kind].ssl===LEAF&&desired[kind].sslKey===KEY,'guided-preview-owned-tls-settings-required');
   return desired;
 }
-async function node(candidate,action,input){
+async function node(candidate,action,input,options={}){
   const script="let raw='';process.stdin.on('data',part=>raw+=part);process.stdin.on('end',async()=>{try{const input=JSON.parse(raw);const result=await ("+action.toString()+")(input);if(result!==undefined)process.stdout.write(JSON.stringify(result));}catch{process.exitCode=1;}});";
-  const result=await candidate.inner(['exec','-i','system_bootstrapper_1','node','-e',script],{input:JSON.stringify(input),timeout:30000});
+  const result=await candidate.inner(['exec','-i','system_bootstrapper_1','node','-e',script],{input:JSON.stringify(input),timeout:options.timeout||30000});
   return result?JSON.parse(result):undefined;
 }
 function runnerTrust(content){
@@ -82,7 +83,7 @@ async function installTrust(candidate,dependencies={}){
     const root=fs.readFileSync(input.root,'utf8');
     const certificate=new crypto.X509Certificate(root);
     if(!certificate.ca||!certificate.verify(certificate.publicKey))throw Error();
-    const publicBundle=fs.readFileSync('/system/bootstrapper/ca/cacert-2026-10-20.crt','utf8');
+    const publicBundle=fs.readFileSync('/system/config/ca/cacert-2026-10-20.crt','utf8');
     const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
     if(sha(publicBundle)!=='796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe')throw Error();
     const bundle=publicBundle.trimEnd()+'\n'+root.trim()+'\n';
@@ -119,23 +120,19 @@ async function restoreTrust(candidate,dependencies={}){
 async function bindingProof(candidate,dependencies={}){
   return (dependencies.node||node)(candidate,function(){
     const fs=require('fs'),crypto=require('crypto');
-    const binding=require('/system/project-bootstrap/wizard-source-primary/binding');
-    const source=require('/system/project-bootstrap/wizard-environments/source-primary');
-    const state=require('/system/project-bootstrap/wizard-environments/state');
-    const file='/state/.projects.env/.wizard.env',current=binding.read(file),receipt=current.receipt;
-    if(!binding.primary(receipt))throw Error();binding.validate(receipt);
+    const {readReceipt}=require('/system/dist/modules/project-workflow/projectWorkflow');
+    const state=require('/system/dist/modules/project-lifecycle/state');
+    const file='/state/.projects.env/.wizard.env',text=fs.readFileSync(file,'utf8'),receipt=readReceipt(text);
     const environment=receipt.wizardWorkflow?.environments;
-    if(environment?.phase!=='ready'||environment.recipeHash!==source.reservation(environment).recipeHash)throw Error();
-    for(const kind of ['review','beta']){
-      const settings=environment.settings[kind],slot=environment.deployments?.[kind],stopped=slot?.tombstone;
-      if(!settings?.enabled||slot.active||slot.pending||slot.retired?.length||stopped?.state!=='stopped'||
-        stopped.projectId!==receipt.repository.id||stopped.operation!==environment.operation||stopped.kind!==kind||
-        stopped.host!==settings.host||!Number.isSafeInteger(slot.lastPipelineId)||slot.lastPipelineId<stopped.pipelineId||
-        !Number.isSafeInteger(slot.stoppedThroughPipelineId)||slot.stoppedThroughPipelineId<stopped.pipelineId)throw Error();
-      state.validRequest(stopped);
-    }
+    if(environment?.phase!=='ready'||environment.managementMode!=='system-monorepo'||environment.settings.review.enabled)throw Error();
+    const slot=environment.deployments?.beta,stopped=slot?.tombstone;
+    if(!environment.settings.beta.enabled||slot.active||slot.pending||slot.retired?.length||stopped?.state!=='stopped'||
+      stopped.projectId!==environment.systemSource?.id||stopped.operation!==environment.operation||stopped.kind!=='beta'||stopped.delivery!=='system'||
+      stopped.host!==environment.settings.beta.host||!Number.isSafeInteger(slot.lastPipelineId)||slot.lastPipelineId<stopped.pipelineId||
+      !Number.isSafeInteger(slot.stoppedThroughPipelineId)||slot.stoppedThroughPipelineId<stopped.pipelineId)throw Error();
+    state.validRequest(stopped);
     const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
-    if(fs.readFileSync(file,'utf8')!==current.text)throw Error();
+    if(fs.readFileSync(file,'utf8')!==text)throw Error();
     return {projectId:receipt.repository.id,operation:environment.operation,receiptSha256:sha(JSON.stringify(receipt)),settingsSha256:sha(JSON.stringify(environment.settings))};
   },{});
 }
@@ -147,7 +144,7 @@ async function configureRunner(candidate){
   if(after!==before)await candidate.inner(['exec','-i',runner,'sh','-ec',
     'umask 077; cat > /etc/gitlab-runner/config.toml.guided-tmp; mv /etc/gitlab-runner/config.toml.guided-tmp /etc/gitlab-runner/config.toml'],{input:after});
   await candidate.inner(['exec',runner,'gitlab-runner','verify']);
-  await candidate.rails("require 'json';r=Ci::Runner.instance_type.find_by!(description:'System Bootstrapper Docker pool');r.update!(tag_list:(r.tag_list+['wizard-source-primary']).uniq);puts JSON.generate(id:r.id,tags:r.tag_list)");
+
 }
 async function bootstrapTls(candidate,domains,execute){
   const key='/tmp/.guided-bootstrap-key',certificate='/tmp/.guided-bootstrap-certificate';
@@ -162,7 +159,7 @@ async function bootstrapTls(candidate,domains,execute){
     WIZARD_ALIASES:recovery.WIZARD_ALIAS};
   await execute(candidate,function(input){
     const fs=require('fs'),path=require('path');
-    const {signature}=require('/system/project-bootstrap/wizard-production/run');
+    const {signature}=require('/system/dist/modules/project-lifecycle/productionSession');
     fs.mkdirSync(path.dirname(input.leaf),{recursive:true,mode:0o700});
     fs.writeFileSync(input.leaf,input.certificate+'\n',{mode:0o644});fs.writeFileSync(input.key,input.privateKey+'\n',{mode:0o600});
     let config=fs.readFileSync('/state/.docker.env','utf8');signature(config);
@@ -178,16 +175,20 @@ async function prepare(candidate,acme,dependencies={}){
   settings(candidate);
   requireValue(acme&&acme.original===candidate&&acme.ready===true,'guided-preview-existing-acme-authority-required');
   const execute=dependencies.node||node,probe=dependencies.tlsProbe||recovery.tlsProbe;
-  const domains=issuanceDomains([HOSTS.gitlab,HOSTS.review,HOSTS.beta]);
-  await candidate.stage('guided-preview-bootstrap-tls',()=>bootstrapTls(candidate,domains,execute));
+  const domains=issuanceDomains([HOSTS.gitlab,HOSTS.beta]);
+  await candidate.stage('guided-preview-bootstrap-tls',async()=>{
+    // Complete asynchronous registration before changing its GitLab transport.
+    await (dependencies.waitForRegistration||require('./wizard-registration').waitForRegistration)(candidate);
+    await bootstrapTls(candidate,domains,execute);
+  });
   candidate.guidedAcmeIdentity=await acme.issue(candidate,{domains});
   await candidate.stage('guided-preview-public-trust',async()=>{
     candidate.guidedTrust=await installTrust(candidate,{node:execute});await configureRunner(candidate);
   });
   await candidate.stage('guided-preview-native-https-configuration',async()=>{
-    await candidate.inner(['exec','-w','/system/gitlab','system_bootstrapper_1','bash','-e','start.sh'],{timeout:180000});
+    await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/lifecycle/entry.js','gitlab-start','/system'],{timeout:180000});
     await candidate.wait(async()=>{try{return (await candidate.inner(['exec','system_gitlab_1','curl','-fsS','--max-time','3','http://127.0.0.1/-/readiness'])).includes('ok');}catch{return false;}},600000);
-    await candidate.inner(['exec','-w','/system/nginx','system_bootstrapper_1','bash','-e','start.sh','reload']);
+    await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/projects-routing/entry.js','routing','reload','/system','/templates']);
     // GitLab restricts monitoring endpoints to its local monitoring allowlist.
     // Keep readiness above on loopback; exercise the public sign-in route here.
     for(const [host,route]of [[HOSTS.gitlab,'/users/sign_in'],[HOSTS.sync,'/'],[HOSTS.wizard,'/']]){
@@ -195,8 +196,8 @@ async function prepare(candidate,acme,dependencies={}){
     }
   });
   await candidate.stage('guided-preview-native-source-installation-record',()=>candidate.inner(['exec','system_bootstrapper_1','node',
-    '/system/bootstrapper/record-source-installation.js','--controller',candidate.spec.images.candidate.id,'--wizard',candidate.spec.images.wizard.id,
-    '--source-revision',candidate.spec.sourceRevision,'--source-tree',candidate.spec.sourceTree,'--wizard-revision',candidate.spec.wizardSourceRevision]));
+    '/system/dist/modules/lifecycle/sourceInstallationEntry.js','--controller',candidate.spec.images.candidate.id,'--wizard',candidate.spec.images.wizard.id,
+    '--source-revision',candidate.spec.sourceRevision,'--source-tree',candidate.spec.sourceTree,'--wizard-revision',candidate.spec.sourceRevision]));
   return {acmeIdentity:candidate.guidedAcmeIdentity,trust:candidate.guidedTrust,domains};
 }
 module.exports={prepare,restoreTrust,installTrust,installAnchor,bindingProof,configureRunner,runnerTrust,settings,node,HOSTS,LEAF,KEY,TRUST,JOB_TRUST};

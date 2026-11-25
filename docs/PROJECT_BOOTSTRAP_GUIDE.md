@@ -15,8 +15,13 @@ reported without linking to it, overwriting it or adding a suffix.
 ## Save and inspect the first pipeline
 
 Save creates a private repository, uses its configured default branch, installs
-managed CI at `.system-bootstrapper/ci.yml` and selects that CI path. Provisioning
-runs server-side through an authenticated background job; the browser polls
+managed CI at `.system-bootstrapper/ci.yml` and selects that CI path. Before
+installing missing managed CI in the private repository owned by this provisioning
+operation, the controller automation account receives explicit project Maintainer
+access to write to the protected default branch. Resuming an already valid
+repository binding only reads GitLab; branch protection and user files are
+preserved. Provisioning runs
+server-side through an authenticated background job; the browser polls
 short requests. Keep the form open until completion. A failed request can be
 retried with Save. After a browser/service restart, Fetch the pending
 configuration and use **Edit → Save** to resume the same operation.
@@ -59,7 +64,7 @@ This procedure uses a separate Certbot lineage for one exact application host.
 Repeat it for additional Production, Beta or Review hosts. Wildcard HTTPS needs
 an operator-configured DNS-01 certificate; HTTP-01 cannot issue wildcard
 certificates. The managed system Wizard environments have their own
-[activation procedure](../project-bootstrap/wizard-environments/README.md).
+[activation procedure](../templates/project-bootstrap/wizard-environments/README.md).
 
 Prepare these operator inputs and prerequisites:
 
@@ -239,11 +244,11 @@ key or repository ownership conflict before retrying startup.
 
 Registration alone installs a disabled scaffold. Use the managed project actions
 to [initialize pinned source](WIZARD_SOURCE.md), [build and verify a candidate](WIZARD_BUILD.md)
-and configure [Review/Beta environments](../project-bootstrap/wizard-environments/README.md).
+and configure [Review/Beta environments](../templates/project-bootstrap/wizard-environments/README.md).
 The optional environments begin disabled and require explicit host/certificate
 configuration. Their deploy/stop jobs are manual. A candidate replaces the
 Production interface only through the separate guarded
-[operator promotion procedure](../project-bootstrap/wizard-production/README.md).
+[operator promotion procedure](../templates/project-bootstrap/wizard-production/README.md).
 
 Push/Fetch and Open/Backup manage configuration independently of Harvest/Seed,
 which handles persistent service data and certificates. Save actual
@@ -252,11 +257,13 @@ for credentials or exported configuration.
 
 ## Verification
 
-Build Sync with `cd sync && npm run build`. The isolated API regression
+Build the shared backend with `npm run build` from the repository root. The isolated API regression
 `node tests/gitlab/project-bootstrap.js` uses port 8071 and must run in a
 disposable container/network namespace. It covers validation, authentication,
 namespace conflicts, competing Save, recovery, polling, configuration-write
-exclusion and Fetch round trips. Template generation is covered by
+exclusion and Fetch round trips. The same fixture exercises native namespace
+pagination, owned repository creation, read-only receipt recovery after user edits,
+interrupted API writes and idempotent initial pipeline creation. Template generation is covered by
 `node tests/gitlab/application-templates.js`.
 
 For Wizard checks, use the Node/npm versions declared in `wizard/package.json`,
@@ -271,10 +278,18 @@ the Wizard generator. It creates or resumes its `bootstrapdemo` project, checks
 concurrent/repeated Save and Fetch, and leaves that project for inspection. Do
 not point it at an unrelated existing key. Template live checks are in
 `tests/gitlab/live/application-templates.js` and
-`tests/gitlab/live/application-templates-audit.rb`.
+`tests/gitlab/live/application-templates-audit.js --projects-file /tmp/template-live-results.json --timeout 720`.
+Run the audit inside the reviewed controller after normal setup. It reads the
+existing ready automation credential and verifies the exact private repositories,
+starter files, unique initial pipeline and successful Review/Production environments.
+It never retries failed jobs automatically. The separate
+`tests/gitlab/live/project-bootstrap-audit.js --project root/bootstrapdemo` checks
+private project identity, the managed CI path, exact Cube and official CI lint.
+Neither audit initializes credentials or invokes Rails; supply your own explicit
+test project path or metadata file.
 
 `tests/wizard/default-wizard.js` and
-`tests/nginx/default-wizard-routing.sh` cover managed registration and single-route
+`tests/nginx/typed-routing.js` cover managed registration and single-route
 behavior; `tests/wizard/live/default-wizard.js` is its authenticated live check.
 Local HTTP fixtures do not demonstrate real DNS, certificate issuance/renewal,
 GitLab job execution or a successful Production rollout. Exercise those gates

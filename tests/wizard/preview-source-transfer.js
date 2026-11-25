@@ -31,6 +31,17 @@ child.execFile = (command, args, options, callback) => {
     });
   }
   calls.push({args, options});
+  if (args.includes(destination)) {
+    assert.equal(options.env.GIT_CONFIG_COUNT, '3');
+    assert.equal(options.env.GIT_CONFIG_KEY_0, 'credential.helper');
+    assert.equal(options.env.GIT_CONFIG_VALUE_0, '');
+    assert.equal(options.env.GIT_CONFIG_KEY_1, 'http.' + destination + '.extraHeader');
+    assert.equal(options.env.GIT_CONFIG_VALUE_1, '');
+    assert.equal(options.env.GIT_CONFIG_KEY_2, 'http.' + destination + '.extraHeader');
+    assert.equal(options.env.GIT_CONFIG_VALUE_2, 'Authorization: Basic ' + Buffer.from('oauth2:' + input.token).toString('base64'));
+  } else assert(!options.env.GIT_CONFIG_COUNT, 'Source reads must never receive destination credentials');
+  assert(!options.env.GIT_ASKPASS);
+  assert(!options.env.PREVIEW_GIT_TOKEN);
   let output = '';
   const push = args.includes('push'), ordinal = pushes.length + 1;
   if (failure && args.includes(failure.command) && (!failure.ordinal || failure.ordinal === ordinal) && !failure.after) {
@@ -55,10 +66,7 @@ child.execFile = (command, args, options, callback) => {
     assert(args.includes('--atomic')); assert(args.includes('--no-follow-tags')); assert(!args.includes('--force'));
     for (const name of selected) assert(args.includes('--force-with-lease=' + name + ':'));
     assert.equal(args.filter(value => value.startsWith('--force-with-lease=')).length, selected.length);
-    assert.equal(options.env.PREVIEW_GIT_TOKEN, input.token);
     assert(!args.join(' ').includes(input.token));
-    assert(fs.existsSync(options.env.GIT_ASKPASS));
-    assert.equal(fs.statSync(options.env.GIT_ASKPASS).mode & 0o777, 0o700);
     assert(calls.some(row => row.args.includes('show')), 'Producer verification must precede either push');
     for (const name of selected) {
       assert(!actual.has(name), 'An import must never overwrite a ref');
@@ -69,16 +77,26 @@ child.execFile = (command, args, options, callback) => {
   if (failure && push && failure.command === 'push' && failure.ordinal === ordinal && failure.after) callback(failure.error, '');
   else callback(null, output);
 };
-const {transfer} = require('../../project-bootstrap/preview-setup/source');
+const {sourceTransfer: transfer} = require('../../dist/modules/project-lifecycle/sourceEntry');
 const cleaned = () => {
-  for (const row of calls.filter(row => row.options.env.GIT_ASKPASS))
-    assert(!fs.existsSync(row.options.env.GIT_ASKPASS), 'Temporary credential helper survived transfer');
+  for (const row of calls.filter(row => row.args.includes('clone')))
+    assert(!fs.existsSync(path.dirname(row.args.at(-1))), 'Temporary clone survived transfer');
 };
 function fixtureGit(cwd, ...args) {
   return child.execFileSync('git', ['-C', cwd, ...args], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}).trim();
 }
 (async () => {
+  for (const invalid of [{username: 'bad:name'}, {username: 'bad\nname'}, {token: 'bad\ntoken'}])
+    await assert.rejects(transfer({...input, ...invalid}), /scoped temporary repository credential/);
   assert.equal((await transfer(input)).imported, true);
+  const authenticated = calls.find(row => row.args.includes(destination)).options.env;
+  const header = child.execFileSync('git', ['config', '--get-urlmatch', 'http.extraHeader', destination + '/info/refs'], {env: authenticated, encoding: 'utf8'});
+  assert(header.includes('Authorization: Basic '));
+  for (const other of [origin, 'https://gitlab.example.test/team/other.git', destination + '-other']) {
+    const result = child.spawnSync('git', ['config', '--get-urlmatch', 'http.extraHeader', other], {env: authenticated, encoding: 'utf8'});
+    assert.equal(result.status, 1, 'Repository authorization must not match another URL');
+    assert.equal(result.stdout, '');
+  }
   assert.equal(pushes.length, 2);
   assert.deepEqual(pushes[0].selected, [master], 'Historical ref ordering must not displace default-branch CI');
   assert(!pushes[0].args.some(value => /ci\.skip|push-option/.test(value)), 'Candidate CI must use an ordinary source push');
@@ -145,6 +163,9 @@ function fixtureGit(cwd, ...args) {
     const source = path.join(directory, 'source'), target = path.join(directory, 'target.git'), events = path.join(directory, 'receives');
     fs.mkdirSync(source); fixtureGit(source, 'init', '--quiet', '--initial-branch=master');
     fs.mkdirSync(path.join(source, '.gitlab')); fs.writeFileSync(path.join(source, '.gitlab/primary.yml'), producers);
+    const binary=Buffer.alloc(5*1024*1024,0x81),binaryPath='.gitlab/cli/system-bootstrapper.tgz';
+    fs.mkdirSync(path.join(source,'.gitlab/cli'));fs.writeFileSync(path.join(source,binaryPath),binary);
+    const nativeInput={...input,approvedFiles:[...input.approvedFiles,{path:binaryPath,sha256:crypto.createHash('sha256').update(binary).digest('hex')}]};
     fixtureGit(source, 'add', '.'); fixtureGit(source, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'Native CI fixture');
     for (let n = 0; n < 7; n++) fixtureGit(source, 'branch', 'codex/history-' + n);
     fixtureGit(source, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'tag', '-a', 'v0.1.0', '-m', 'Historical tag', '--no-sign', '--', 'HEAD');
@@ -155,14 +176,14 @@ function fixtureGit(cwd, ...args) {
     process.env.PREVIEW_TEST_RECEIVES = events;
     native = {source, destination: target};
     try {
-      assert.equal((await transfer(input)).imported, true);
+      assert.equal((await transfer(nativeInput)).imported, true);
       const transactions = fs.readFileSync(events, 'utf8').split('push:').filter(Boolean);
       assert.equal(transactions.length, 2);
       assert(transactions[0].startsWith('0:\n')); assert.equal(transactions[0].trim().split('\n').length, 2);
       assert(transactions[0].includes(' ' + master));
       assert(transactions[1].startsWith('1:ci.skip\n')); assert(!transactions[1].includes(' ' + master));
       assert.equal(fixtureGit(target, 'for-each-ref', '--format=%(refname)').split('\n').length, 9);
-      assert.equal((await transfer(input)).unchanged, true);
+      assert.equal((await transfer(nativeInput)).unchanged, true);
       assert.equal(fs.readFileSync(events, 'utf8').split('push:').length - 1, 2);
       const resume = path.join(directory, 'resume.git'), reject = path.join(directory, 'reject-history');
       fixtureGit(directory, 'init', '--quiet', '--bare', '--initial-branch=master', resume);
@@ -170,9 +191,9 @@ function fixtureGit(cwd, ...args) {
       fs.writeFileSync(reject, 'reject one historical transaction');
       fs.writeFileSync(path.join(resume, 'hooks/pre-receive'), '#!/bin/sh\nset -eu\ncat >/dev/null\nif [ "${GIT_PUSH_OPTION_0:-}" = ci.skip ] && [ -e "' + reject + '" ]; then rm -- "' + reject + '"; exit 1; fi\n', {mode: 0o755});
       native.destination = resume;
-      await assert.rejects(transfer(input), error => error.uncertain === true && error.action === 'preview-source-push');
+      await assert.rejects(transfer(nativeInput), error => error.uncertain === true && error.action === 'preview-source-push');
       assert.equal(fixtureGit(resume, 'for-each-ref', '--format=%(refname)'), master);
-      assert.equal((await transfer(input)).imported, true, 'Exact default-only state can resume after an inspected settled Git rejection');
+      assert.equal((await transfer(nativeInput)).imported, true, 'Exact default-only state can resume after an inspected settled Git rejection');
       assert.equal(fixtureGit(resume, 'for-each-ref', '--format=%(refname)').split('\n').length, 9);
     } finally {
       native = undefined;

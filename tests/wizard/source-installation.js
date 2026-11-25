@@ -5,18 +5,18 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {test} = require('node:test');
-const installation = require('../../project-bootstrap/wizard-source-primary/source-installation');
-const {parse} = require('../../bootstrapper/record-source-installation');
-const {Adoption} = require('../../project-bootstrap/wizard-source-primary/run');
+const installation = require('../../dist/modules/project-lifecycle/sourceInstallation');
+const {parseSourceInstallation: parse} = require('../../dist/modules/lifecycle/sourceInstallationEntry');
+const {Adoption} = require('../../dist/modules/project-lifecycle/adoptionSession');
 const clone = value => JSON.parse(JSON.stringify(value));
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
-const cube = fs.readFileSync(path.join(__dirname, '../../system/.docker.env.example'), 'utf8').slice(0, 1184);
+const cube = fs.readFileSync(path.join(__dirname, '../../config/system/.docker.env.example'), 'utf8').slice(0, 1184);
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'source-installation-'));
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
   const expected = {controller: 'sha256:' + 'a'.repeat(64), wizard: 'sha256:' + 'b'.repeat(64),
     sourceCommit: 'c'.repeat(40), sourceTree: 'd'.repeat(40), wizardSourceRevision: 'e'.repeat(40)};
-  const mainConfig = path.join(directory, '.docker.env'), filename = path.join(directory, installation.FILE);
+  const mainConfig = path.join(directory, '.docker.env'), filename = path.join(directory, installation.file);
   const main = cube + '\nexport BOOTSTRAPPER_IMAGE=' + expected.controller + '\nexport WIZARD_IMAGE=' + expected.wizard + '\n';
   fs.writeFileSync(mainConfig, main, {mode: 0o600});
   const files = ['package.json', 'src/api/Helper.tsx', '.gitlab-ci.yml'].map(name => ({path: name, mode: '100644',

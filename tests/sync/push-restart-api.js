@@ -5,28 +5,23 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const {spawn} = require('child_process');
-const entry = process.env.SYNC_ENTRY || path.resolve(__dirname, '../../sync/dist/index.js');
-const pushScript = process.env.PUSH_SCRIPT || path.resolve(__dirname, '../../system/push.sh');
+const entry = process.env.SYNC_ENTRY || path.resolve(__dirname, '../../dist/api/index.js');
+const startCode = `const path=require('node:path');const paths=require(path.join(path.dirname(process.argv[1]),'../common/runtime/installationPaths'));const fixture=process.argv[2];paths.checkoutRoot=()=>fixture;paths.checkoutPath=(...parts)=>path.join(fixture,...parts);require(process.argv[1]).bootstrap().catch(()=>{process.exitCode=1;});`;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function scenario(validArchive) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'push-restart-'));
-  for (const dir of ['sync', 'system', 'state', 'archive']) fs.mkdirSync(path.join(root, dir));
+  fs.symlinkSync(path.resolve(__dirname,'../../dist'),path.join(root,'dist'),'dir');
+  for (const dir of ['config/system', 'state', 'archive']) fs.mkdirSync(path.join(root, dir),{recursive:true});
   fs.mkdirSync(path.join(root, 'nginx'));
   fs.mkdirSync(path.join(root, 'project-bootstrap'));
-  fs.copyFileSync(path.resolve(__dirname, '../../nginx/wizard-aliases.js'), path.join(root, 'nginx/wizard-aliases.js'));
-  fs.copyFileSync(path.resolve(__dirname, '../../project-bootstrap/preserve-system-project.js'), path.join(root, 'project-bootstrap/preserve-system-project.js'));
-  fs.copyFileSync(path.resolve(__dirname, '../../nginx/application-aliases.js'), path.join(root, 'nginx/application-aliases.js'));
-  fs.copyFileSync(path.resolve(__dirname, '../../project-bootstrap/routing-impact.js'), path.join(root, 'project-bootstrap/routing-impact.js'));
-  fs.copyFileSync(path.resolve(__dirname, '../../project-bootstrap/configuration-archive.js'), path.join(root, 'project-bootstrap/configuration-archive.js'));
-  fs.copyFileSync(pushScript, path.join(root, 'system/push.sh'));
-  fs.writeFileSync(path.join(root, 'system/stop-intermediate.sh'), 'touch ../stopped\n');
+
   const saved = path.join(root, 'state/.docker.env');
   fs.writeFileSync(saved, 'export GITLAB_RUNNER_SCALE=1\n');
   // Stored ZIP fixture: .docker.env containing export GITLAB_RUNNER_SCALE=4.
   const archive = validArchive ? Buffer.from('UEsDBBQAAAAAAM94Ul29Zn2WHQAAAB0AAAALAAAALmRvY2tlci5lbnZleHBvcnQgR0lUTEFCX1JVTk5FUl9TQ0FMRT00ClBLAQIUAxQAAAAAAM94Ul29Zn2WHQAAAB0AAAALAAAAAAAAAAAAAACAAQAAAAAuZG9ja2VyLmVudlBLBQYAAAAAAQABADkAAABGAAAAAAA=', 'base64') : Buffer.from('invalid zip');
-  const child = spawn(process.execPath, [entry], {
-    cwd: path.join(root, 'sync'), stdio: 'ignore',
+  const child = spawn(process.execPath, ['-e', startCode, entry, root], {
+    cwd: root, stdio: 'ignore',
     env: {...process.env, SYSTEM_CONFIG_DIR: path.join(root, 'state'), SYNC_USER: 'fixture', SYNC_PASS: 'fixture-password'}
   });
   let exited = false;

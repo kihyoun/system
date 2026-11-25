@@ -3,6 +3,39 @@
 Versions follow [Semantic Versioning](https://semver.org/). A version belongs to
 one accepted System source revision and tested controller/Wizard image attempt.
 
+## 2.0.0
+
+### Architecture and distribution
+
+- Include the Wizard as a regular directory in the System repository, retaining
+  its source history. New releases bind both images to one System commit and an
+  explicit Wizard tree; historical releases retain their separate Wizard commit.
+- Consolidate platform operations in shared TypeScript services and Nest modules,
+  with offline host entry points and the public `@systembootstrapper/cli` package.
+- Preserve the Wizard HTTP API, independent configuration exports and the
+  Harvest/Seed storage model, including durable operation leases and recovery.
+- Replace System-specific MR Review environments with an optional reusable
+  Wizard Beta using the existing accepted candidate image. Ordinary projects
+  retain Review Apps, Beta and Production.
+
+### Platform and interface
+
+- Update GitLab CE from 19.5.3 to 19.6.1 with the reviewed Runner/Helper pair.
+  Database migration requires the documented checkpoint and recovery procedure.
+- Apply shared formatting conventions to maintained Wizard, Sync and operations
+  sources, and show the original System Cube in the CLI and browser console.
+- Use the double-Cube favicon in the Wizard.
+
+### Migration
+
+- Use the versioned host instructions and reviewed upgrade path. Prepare the
+  accepted runtime and recovery artifacts before maintenance; recovery must not
+  depend on a running GitLab, Sync service or an available npm registry.
+- Existing saved configuration remains authoritative. Legacy System Review
+  reservations require explicit owned-resource cleanup before configuring Beta.
+- Old accepted image/source metadata remain versioned and supported; a new shared
+  source identity must never be substituted into historical release evidence.
+
 ## 1.2.0
 
 ### Features

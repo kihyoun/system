@@ -8,16 +8,16 @@ assert.equal(policy.automerge, false);
 assert.equal(policy.ignoreUnstable, true);
 assert(policy.enabledManagers.includes('npm'));
 assert(policy.enabledManagers.includes('custom.regex'));
-assert(policy.ignorePaths.includes('wizard/**'));
+assert(!policy.ignorePaths.includes('wizard/**'), 'embedded Wizard dependencies must be discovered');
 assert(policy.ignorePaths.includes('**/security-release.json'));
 const custom = policy.customManagers[0];
-assert.equal(custom.managerFilePatterns[0], '/^system/Dockerfile$/');
-const pin = fs.readFileSync(path.join(root, 'system/Dockerfile'), 'utf8');
+assert.equal(custom.managerFilePatterns[0], '/^containers/controller/Dockerfile$/');
+const pin = fs.readFileSync(path.join(root, 'containers/controller/Dockerfile'), 'utf8');
 const matches = [...pin.matchAll(new RegExp(custom.matchStrings[0], 'g'))];
 assert.equal(matches.length, 1, 'custom manager extracts only the supported ARG pin');
 assert.equal(matches[0].groups.depName, 'node');
 assert.match(matches[0].groups.currentDigest, /^sha256:[a-f0-9]{64}$/);
-for (const [index, files] of [[1, ['gitlab-runner/register.sh']], [2, ['project-bootstrap/wizard-build/modern/build.sh', 'project-bootstrap/wizard-build/modern/verify.sh']]]) {
+for (const [index, files] of [[1, ['src/modules/lifecycle/runner.service.ts']], [2, ['templates/project-bootstrap/wizard-build/modern/build.sh', 'templates/project-bootstrap/wizard-build/modern/verify.sh']]]) {
   const manager = policy.customManagers[index];
   for (const file of files) {
     assert(new RegExp(manager.managerFilePatterns[0].slice(1, -1)).test(file));
@@ -26,7 +26,7 @@ for (const [index, files] of [[1, ['gitlab-runner/register.sh']], [2, ['project-
     assert.match(extracted[0].groups.currentDigest, /^sha256:[a-f0-9]{64}$/);
   }
 }
-const globalPath = path.join(root, 'gitlab/renovate/config.cjs');
+const globalPath = path.join(root, 'dist/modules/renovate/configEntry.js');
 const original = {...process.env};
 try {
   process.env.CI_API_V4_URL = 'https://gitlab.example.com/api/v4';
@@ -42,10 +42,13 @@ try {
   assert.equal(config.force.platformAutomerge, false);
   assert.equal(config.allowScripts, false);
   assert.deepEqual(config.allowedCommands, []);
-  for (const repos of ['[]', '["example/system"]', '["example/system","example/system"]', '["example/system","https://unexpected.example/repo"]']) {
+  delete require.cache[require.resolve(globalPath)];
+  process.env.RENOVATE_REPOSITORIES = '["example/system"]';
+  assert.deepEqual(require(globalPath).repositories, ['example/system']);
+  for (const repos of ['[]', '{}', 'null', '["example/system","example/wizard","example/other"]', '["example/system","example/system"]', '["example/system","https://unexpected.example/repo"]']) {
     delete require.cache[require.resolve(globalPath)];
     process.env.RENOVATE_REPOSITORIES = repos;
-    assert.throws(() => require(globalPath), /exactly/);
+    assert.throws(() => require(globalPath), /must select/);
   }
 } finally {
   for (const key of ['CI_API_V4_URL','RENOVATE_TOKEN','RENOVATE_REPOSITORIES']) {
@@ -53,3 +56,35 @@ try {
   }
 }
 console.log('PASS: explicit repository allowlist, approval safety policy and supported custom pin extraction');
+
+// Consolidated former Python discovery checks use the same native service as CLI.
+(async () => {
+  await require('./renovate-setup-fixture')();
+  const {RenovateVerificationService} = require('../../dist/modules/renovate/verification.service');
+  const {RenovateModule} = require('../../dist/modules/renovate/renovate.module');
+  const {NestFactory} = require('../../node_modules/@nestjs/core');
+  const app = await NestFactory.createApplicationContext(RenovateModule, {logger:false});
+  try {
+    const service = app.get(RenovateVerificationService);
+    let changed = false, extraJob = false;
+    const api = {
+      async all(route) {
+        if (route.includes('/repository/branches')) return [{name:'main'}, ...(changed ? [{name:'renovate/unapproved'}] : [])];
+        if (route.includes('/merge_requests?')) return [];
+        if (route.includes('/issues?')) return [{title:'Dependency Dashboard',author:{id:9},iid:1}];
+        if (route.endsWith('/jobs')) return [{name:'renovate:discover',status:'success'}, ...(extraJob ? [{name:'test:isolated',status:'success'}] : [])];
+        throw Error('Unexpected read route');
+      },
+      async get() { return {last_pipeline:{id:42,status:'success'}}; },
+    };
+    const config = {project_ids:[10,11]}, state = {user_id:9,schedule_id:3};
+    const baseline = {project_ids:[10,11],user_id:9,inventory:await service.inventory(api,[10,11])};
+    assert.equal((await service.verify(api,config,state,baseline)).discovery,'dashboard-only');
+    changed = true;
+    await assert.rejects(service.verify(api,config,state,baseline),/inventories changed/);
+    changed = false; extraJob = true;
+    await assert.rejects(service.verify(api,config,state,baseline),/unexpected/);
+    await assert.rejects(service.verify(api,config,state,{...baseline,user_id:99}),/another bot/);
+    console.log('PASS: shared Nest discovery verifies dashboard-only run and rejects unrelated inventories/jobs');
+  } finally { await app.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });
