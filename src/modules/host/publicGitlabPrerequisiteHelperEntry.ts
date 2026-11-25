@@ -160,6 +160,16 @@ export async function publicGitlabHelperMain(args = process.argv.slice(2)): Prom
       ['system_gitlab_1', 'config/gitlab/.docker.env', 'GITLAB_IP'],
       ['system_wizard_1', 'wizard/.docker.env', 'WIZARD_IP'],
     ]) {
+      // A cold checkpoint interruption can leave GitLab stopped and without an address.
+      // The recovery workflow verifies its ownership and starts it before routing resumes.
+      if (
+        name === 'system_gitlab_1' &&
+        ['abort', 'rollback'].includes(operation) &&
+        record(native.inspect(name).State).Running === false
+      ) {
+        continue;
+      }
+
       const address = native
         .docker([
           'inspect',

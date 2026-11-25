@@ -58,6 +58,21 @@ test('source changes and missing Wizard tree are rejected before pulls',t=>{
  assert(!f.calls.some(c=>c.binary==='docker'));
  f.git('checkout','--','source.txt');f.git('update-index','--force-remove','wizard');f.git('commit','--quiet','-m','No Wizard');assert.throws(()=>f.service.source(f.checkout),/identities/);
 });
+test('accepted metadata normalizes publisher and caller DockerHub references',t=>{
+ const f=fixture(t,true),filename=path.join(f.dir,'release.json');
+ for(const metadataPrefix of [true,false]) {
+  const metadata=structuredClone(f.metadata);
+  for(const role of ['controller','wizard']) {
+   if(!metadataPrefix)metadata.images[role].reference=metadata.images[role].reference.replace('docker.io/','');
+  }
+  fs.writeFileSync(filename,JSON.stringify(metadata));
+  for(const c of [controller,controller.replace('docker.io/','')])for(const w of [wizard,wizard.replace('docker.io/','')]) {
+   assert.deepEqual(api.acceptedMetadata(filename,f.identity,c,w),metadata);
+  }
+  assert.throws(()=>api.acceptedMetadata(filename,f.identity,controller,'example/wizard@'+id('f')),/public-release-paired-image-mismatch/);
+  assert.throws(()=>api.acceptedMetadata(filename,f.identity,controller,'example/wizard:latest'),/public-dockerhub-digest-required/);
+ }
+});
 test('accepted metadata refuses altered source, mixed layouts, image pair, candidate and version',t=>{
  const f=fixture(t,true),filename=path.join(f.dir,'release.json');
  for(const change of [v=>v.source.wizardSourceTree='0'.repeat(40),v=>v.source.wizardRevision='c'.repeat(40),v=>v.images.wizard.reference=controller,v=>v.acceptance.controllerWizardSameAttempt=false,v=>v.version='01.0.0']) {

@@ -267,7 +267,7 @@ export function acceptedMetadata(
     const row = value.images?.[role];
     requireValue(
       row &&
-        reference(row.reference) === selected &&
+        reference(row.reference) === reference(selected) &&
         imageId(row.imageId) &&
         imageId(row.configDigest),
       'public-release-paired-image-mismatch',

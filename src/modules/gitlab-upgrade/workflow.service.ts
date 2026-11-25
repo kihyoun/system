@@ -2,6 +2,7 @@ import { cliPath } from '../../common/runtime/installationPaths';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { isIPv4 } from 'node:net';
 import { isDeepStrictEqual } from 'node:util';
 import { Injectable } from '@nestjs/common';
 import type { UpgradeSession } from './session';
@@ -279,6 +280,24 @@ export class UpgradeWorkflowService {
     }
 
     await session.ready(release.fromVersion, current.Image);
+
+    if (session.publicExecution) {
+      // docker start does not regenerate the disposable helper's lifecycle address record.
+      const address = session
+        .docker([
+          'inspect',
+          '--format',
+          '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}',
+          'system_gitlab_1',
+        ])
+        .trim();
+
+      if (!isIPv4(address)) {
+        throw Error('public-gitlab-service-address-required');
+      }
+
+      atomic(path.join(root, 'config/gitlab/.docker.env'), 'export GITLAB_IP=' + address + '\n');
+    }
 
     if (session.owner.runnersStopped) {
       session.runnersReady(session.runnerPlan(false), true);

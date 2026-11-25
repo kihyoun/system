@@ -490,7 +490,7 @@ deploy:npm:
     GIT_DEPTH: "0"
     GIT_SUBMODULE_STRATEGY: none
   dependencies: [test:npm-package, test:platform-candidate, deploy:dockerhub, deploy:github, deploy:github-release]
-  timeout: 5m
+  timeout: 45m
   interruptible: false
   resource_group: npm-release
   allow_failure: false
