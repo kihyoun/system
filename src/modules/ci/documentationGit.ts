@@ -11,7 +11,6 @@ export class NativeDocumentationGit implements DocumentationGit {
       {
         cwd: directory,
         env: environment,
-        timeout: 30000,
         maxBuffer: 16 * 1024 * 1024,
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,

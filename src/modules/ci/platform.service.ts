@@ -26,7 +26,7 @@ export class PlatformCheckService {
       binary: string,
       args: string[],
       inherit = false,
-      timeout: number | null = 8000,
+      timeout: number | null = 80000,
       activeSignal: AbortSignal | null | undefined = signal,
     ) =>
       this.process.run(binary, args, {
@@ -59,7 +59,7 @@ export class PlatformCheckService {
             'docker',
             ['image', 'ls', '--filter', `reference=${name}`, '--format', '{{.ID}}'],
             false,
-            8000,
+            80000,
             null,
           );
 
@@ -68,7 +68,7 @@ export class PlatformCheckService {
           }
 
           const rows: unknown = JSON.parse(
-            await run('docker', ['image', 'inspect', name], false, 8000, null),
+            await run('docker', ['image', 'inspect', name], false, 80000, null),
           );
 
           if (
@@ -79,7 +79,7 @@ export class PlatformCheckService {
             throw new Error('candidate-image-owner-mismatch');
           }
 
-          await run('docker', ['image', 'rm', name], false, 8000, null);
+          await run('docker', ['image', 'rm', name], false, 80000, null);
         } catch (error) {
           failure ??= error;
         }

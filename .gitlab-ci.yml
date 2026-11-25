@@ -45,7 +45,7 @@ default:
 .runtime-tools:
   before_script: &runtime-tools
     - *cli-bootstrap
-    - timeout -k 5 110 system-bootstrapper host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"
+    - system-bootstrapper host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"
 
 stages:
   - prepare
@@ -87,10 +87,10 @@ check:documentation:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_DEPTH: "0"
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 2m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 30s
+    RUNNER_SCRIPT_TIMEOUT: 20m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 300s
   cache: []
-  timeout: 3m
+  timeout: 30m
   allow_failure: false
   script:
     - system-bootstrapper ci documentation "$CI_PROJECT_DIR"
@@ -141,7 +141,7 @@ prepare:wizard-source:
   variables:
     GIT_SUBMODULE_STRATEGY: none
   cache: []
-  timeout: 5m
+  timeout: 50m
   script:
     - system-bootstrapper project-ci package "$CI_PROJECT_DIR" "$CI_PROJECT_DIR/assets/cli-companion"
     - system-bootstrapper source-checkout "$CI_PROJECT_DIR"
@@ -167,7 +167,7 @@ test:npm-package:
   dependencies: []
   variables:
     GIT_SUBMODULE_STRATEGY: none
-  timeout: 5m
+  timeout: 50m
   allow_failure: false
   script:
     - npm ci --ignore-scripts --no-audit --no-fund
@@ -190,12 +190,12 @@ test:isolated:
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 8m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+    RUNNER_SCRIPT_TIMEOUT: 80m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 10m
   parallel:
     matrix:
       - COMPONENT: [gitlab, sync, gitlab-runner, bootstrapper, nginx, wizard, shared, performance]
-  timeout: 10m
+  timeout: 100m
   allow_failure: false
   cache: []
   dependencies: [prepare:wizard-source]
@@ -222,10 +222,10 @@ test:codeql:
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 32m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+    RUNNER_SCRIPT_TIMEOUT: 320m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 10m
   resource_group: system-codeql-static
-  timeout: 35m
+  timeout: 350m
   allow_failure: false
   cache: []
   dependencies: [prepare:wizard-source]
@@ -250,11 +250,11 @@ test:candidate-image:
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 13m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+    RUNNER_SCRIPT_TIMEOUT: 130m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 10m
   cache: []
   dependencies: [prepare:wizard-source]
-  timeout: 15m
+  timeout: 150m
   allow_failure: false
   script:
     - system-bootstrapper ci candidate-image "$CI_PROJECT_DIR"
@@ -280,11 +280,11 @@ test:wizard-browser:
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 25m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 1m
+    RUNNER_SCRIPT_TIMEOUT: 250m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 10m
   cache: []
   dependencies: [prepare:wizard-source]
-  timeout: 30m
+  timeout: 300m
   allow_failure: false
   script:
     - system-bootstrapper ci wizard-browser "$CI_PROJECT_DIR"

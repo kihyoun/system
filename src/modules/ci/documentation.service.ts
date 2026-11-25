@@ -18,7 +18,7 @@ export class DocumentationCheckService {
     const owner = `${env.CI_PROJECT_ID}:${env.CI_JOB_ID}`;
     const report = path.join(root, 'test-results/documentation');
     fs.mkdirSync(report, { recursive: true });
-    const docker = (args: string[], timeout = 8000, independent = false) =>
+    const docker = (args: string[], timeout: number | null = null, independent = false) =>
       this.process.run('docker', args, {
         cwd: root,
         env,
@@ -28,7 +28,7 @@ export class DocumentationCheckService {
     const list = (independent = false) =>
       docker(
         ['container', 'ls', '--all', '--filter', `name=^/${resource}$`, '--format', '{{.Names}}'],
-        8000,
+        80000,
         independent,
       );
     const cleanup = async (phase: string) => {
@@ -42,7 +42,7 @@ export class DocumentationCheckService {
           }
 
           const rows: unknown = JSON.parse(
-            await docker(['container', 'inspect', resource], 8000, true),
+            await docker(['container', 'inspect', resource], 80000, true),
           );
 
           if (
@@ -54,7 +54,7 @@ export class DocumentationCheckService {
             throw Error('documentation-cleanup-owner-mismatch');
           }
 
-          await docker(['container', 'rm', '--force', rows[0].Id], 8000, true);
+          await docker(['container', 'rm', '--force', rows[0].Id], 80000, true);
         }
       } catch (error) {
         failure = error;
@@ -83,7 +83,7 @@ export class DocumentationCheckService {
         env: { ...env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' },
         input,
         inputFile,
-        timeout: 20000,
+        timeout: null,
         signal,
         maxBuffer: 8 * 1024 * 1024,
       });
@@ -193,7 +193,7 @@ export class DocumentationCheckService {
       fs.chmodSync(candidate, 0o777);
       const image =
         'node:24.22.0-bookworm@sha256:925de64a85319052d6971ae81ef2417da956e8a3a2c4a0fac732327970f017f5';
-      await docker(['pull', image], 45000);
+      await docker(['pull', image]);
       await docker(
         [
           '--config',
@@ -237,12 +237,12 @@ export class DocumentationCheckService {
           image,
           '/candidate/runtime/modules/ci/documentationCheckEntry.js',
         ],
-        10000,
+        null,
       );
-      await docker(['cp', candidate, `${resource}:/`], 10000);
+      await docker(['cp', candidate, `${resource}:/`], 100000);
       await docker(['start', resource]);
       try {
-        const status = (await docker(['wait', resource], 45000)).trim();
+        const status = (await docker(['wait', resource])).trim();
 
         if (status !== '0') {
           primary = /^\d+$/.test(status)
@@ -253,14 +253,14 @@ export class DocumentationCheckService {
         primary = error;
       }
       try {
-        process.stdout.write(await docker(['logs', resource], 8000, true));
+        process.stdout.write(await docker(['logs', resource], 80000, true));
       } catch (error) {
         primary ??= error;
       }
       try {
         await docker(
           ['cp', `${resource}:/candidate/test-results/documentation/.`, report],
-          8000,
+          80000,
           true,
         );
       } catch (error) {

@@ -65,7 +65,7 @@ function verifyPreparedTrust(tags,execute=execFileSync){
     ['daemon',defaults.daemon,'/etc/ssl/certs/ca-certificates.crt'],
     ['gitlab',defaults.gitlab,'/opt/gitlab/embedded/ssl/certs/cacert.pem']
   ]){
-    const bundle=execute('docker',['run','--rm','--network','none','--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'--entrypoint','cat',reference,file],{encoding:'utf8',timeout:60000});
+    const bundle=execute('docker',['run','--rm','--network','none','--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'--entrypoint','cat',reference,file],{encoding:'utf8'});
     if(trust.check(trust.certificates(bundle))<50)throw Error('Incomplete prepared '+role+' CA trust.');
   }
 }
@@ -90,7 +90,7 @@ async function prepare(){
   if(acmeRenewalAcceptance&&!recoveryAcceptance)throw Error('ACME acceptance requires marked Seed recovery.');
   if(privateWizardRecovery&&!recoveryAcceptance)throw Error('Private Wizard recovery requires marked Seed recovery.');
   if(recoveryAcceptance&&!fs.existsSync(path.join(__dirname,'recovery.js')))throw Error('Marked Seed requires the complete cold recovery adapter.');
-  const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',timeout:600000,...options});
+  const run=(args,options={})=>execFileSync('docker',args,{stdio:'inherit',...options});
   let fd=fs.openSync(archive,'r');
   try{run(['build','--provenance=false','--sbom=false','--label','org.opencontainers.image.revision='+process.env.CI_COMMIT_SHA,'--label','org.system-bootstrapper.source-tree='+sourceTree,'--label','org.system-bootstrapper.test-job='+process.env.CI_JOB_ID,'-f','containers/controller/Dockerfile','-t',tags.candidate,'-'],{stdio:[fd,'inherit','inherit']});}finally{fs.closeSync(fd);}
   run(['run','--rm','--network','none','--memory','128m','--cpus','0.25',

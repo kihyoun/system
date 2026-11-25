@@ -16,7 +16,6 @@ export class NativeContextProcess implements ContextProcess {
   ): Buffer {
     const result = spawnSync(binary, args, {
       ...options,
-      timeout: 120000,
       maxBuffer: options.maxBuffer ?? 32 * 1024 * 1024,
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,

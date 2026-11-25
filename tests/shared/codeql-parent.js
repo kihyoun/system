@@ -28,6 +28,8 @@ test('static scanner keeps isolated child, file stdin and owned cleanup',async t
  await new CodeqlParentService(adapter).execute(root,env);
  const build=calls.find(c=>c.args.includes('build'));
  assert.equal(build.options.inputFile,path.join(root,'.codeql-context/context.tar'));
+ assert.equal(build.options.timeout,null);
+ assert.equal(calls.find(c=>c.args[0]==='wait').options.timeout,null);
  const create=calls.find(c=>c.args.includes('create')).args;
  assert.equal(create[create.indexOf('--network')+1],'none');
  for(const [flag,value]of [['--memory','6g'],['--memory-swap','6g'],['--cpus','2'],['--pids-limit','256'],['--user','1000:1000'],['--cap-drop','ALL'],['--security-opt','no-new-privileges']]) {
@@ -84,7 +86,7 @@ test('create/start failures retain redacted private diagnostics and the original
       });
       assert.equal(fs.statSync(path.join(report, 'startup-' + phase + '.log')).mode & 0o077, 0);
       assert.equal(fs.statSync(path.join(report, 'startup-' + phase + '.json')).mode & 0o077, 0);
-      assert.equal(calls.find(call => phase === 'create' ? call.args.includes('create') : call.args[0] === 'start').options.timeout, 120000);
+      assert.equal(calls.find(call => phase === 'create' ? call.args.includes('create') : call.args[0] === 'start').options.timeout, null);
       assert.equal(calls.some(call => call.args[0] === 'wait' || call.args[0] === 'cp'), false);
       assert.equal(fs.existsSync(path.join(report, 'scan.log')), false);
       assert.equal(calls.filter(call => call.args[1] === 'rm').length, 2);

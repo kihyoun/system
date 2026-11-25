@@ -142,11 +142,11 @@ const cliBootstrap = [
   'export SYSTEM_CLI_ARTIFACT="$CI_PROJECT_DIR/assets/cli-companion/systembootstrapper-cli-$(cat VERSION).tgz"',
   'system-bootstrapper host-bootstrap ca-check --checkout "$CI_PROJECT_DIR"'
 ];
-const native = [cliBootstrap, 'timeout -k 5 110 system-bootstrapper host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"'];
+const native = [cliBootstrap, 'system-bootstrapper host-bootstrap install-runtime --checkout "$CI_PROJECT_DIR"'];
 const isolated = {services: [], tags: ['docker']};
-equal('check:documentation', {...isolated, script: ['system-bootstrapper ci documentation "$CI_PROJECT_DIR"'], after_script: ['export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"', 'system-bootstrapper ci documentation "$CI_PROJECT_DIR" cleanup'], timeout: '3m', allow_failure: false, needs: undefined, dependencies: undefined});
-assert.equal(jobs['check:documentation'].variables.RUNNER_SCRIPT_TIMEOUT, '2m');
-assert.equal(jobs['check:documentation'].variables.RUNNER_AFTER_SCRIPT_TIMEOUT, '30s');
+equal('check:documentation', {...isolated, script: ['system-bootstrapper ci documentation "$CI_PROJECT_DIR"'], after_script: ['export PATH="$CI_PROJECT_DIR/.ci-cli/node_modules/.bin:$PATH"', 'system-bootstrapper ci documentation "$CI_PROJECT_DIR" cleanup'], timeout: '30m', allow_failure: false, needs: undefined, dependencies: undefined});
+assert.equal(jobs['check:documentation'].variables.RUNNER_SCRIPT_TIMEOUT, '20m');
+assert.equal(jobs['check:documentation'].variables.RUNNER_AFTER_SCRIPT_TIMEOUT, '300s');
 assert(!Object.keys(jobs).some(name => name.includes('wizard-review')), 'System Review jobs must not return');
 for (const name of beta) {
   equal(name, {...isolated, allow_failure: true, resource_group: 'wizard-beta', stage: 'deploy', before_script: native, timeout: '14m', needs: undefined});

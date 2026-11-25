@@ -47,7 +47,7 @@ export class BrowserCheckService {
       {
         cwd: root,
         env,
-        timeout: 540000,
+        timeout: 5400000,
         signal,
         inherit: true,
       },

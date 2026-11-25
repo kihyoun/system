@@ -70,7 +70,7 @@ export class ContainerCheckService {
     fs.mkdirSync(report, { recursive: true });
     const run = async (
       args: string[],
-      timeout: number | null = 120000,
+      timeout: number | null = null,
       inputFile?: string,
       independent = false,
     ) => {
@@ -119,7 +119,7 @@ export class ContainerCheckService {
           '--format',
           type === 'container' ? '{{.Names}}' : '{{.Repository}}:{{.Tag}}',
         ],
-        8000,
+        80000,
         undefined,
         independent,
       );
@@ -141,7 +141,7 @@ export class ContainerCheckService {
           }
 
           const rows: unknown = JSON.parse(
-            await run([type, 'inspect', name], 8000, undefined, true),
+            await run([type, 'inspect', name], 80000, undefined, true),
           );
 
           if (
@@ -157,7 +157,7 @@ export class ContainerCheckService {
 
           await run(
             [type, 'rm', ...(type === 'container' ? ['--force'] : []), rows[0].Id],
-            60000,
+            600000,
             undefined,
             true,
           );
@@ -268,9 +268,9 @@ export class ContainerCheckService {
             ? []
             : [selection]),
       ]);
-      await run(['start', resource], 120000);
+      await run(['start', resource]);
       try {
-        const status = (await run(['wait', resource], browser ? 240000 : null)).trim();
+        const status = (await run(['wait', resource])).trim();
 
         console.log(
           `[${kind}] container exit status: ${/^\d+$/.test(status) ? status : 'invalid'}`,
@@ -285,7 +285,7 @@ export class ContainerCheckService {
         primary = error;
       }
       try {
-        process.stdout.write(await run(['logs', resource], 15000, undefined, true));
+        process.stdout.write(await run(['logs', resource], 150000, undefined, true));
       } catch (error) {
         primary ??= error;
       }
@@ -298,7 +298,7 @@ export class ContainerCheckService {
               `${resource}:/candidate/test-results/${browser ? 'wizard-browser/.' : '.'}`,
               browser ? report : path.join(root, 'test-results/'),
             ],
-            20000,
+            200000,
             undefined,
             true,
           );

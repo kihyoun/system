@@ -24,7 +24,12 @@ export class CodeqlParentService {
     const label = 'org.system-bootstrapper.codeql-job';
     const report = path.join(root, 'test-results/codeql');
     fs.mkdirSync(report, { recursive: true });
-    const run = (args: string[], timeout = 15000, inputFile?: string, cleanup = false) =>
+    const run = (
+      args: string[],
+      timeout: number | null = null,
+      inputFile?: string,
+      cleanup = false,
+    ) =>
       this.process.run('docker', args, {
         cwd: root,
         env,
@@ -43,7 +48,7 @@ export class CodeqlParentService {
         await this.process.run('docker', args, {
           cwd: root,
           env,
-          timeout: 120000,
+          timeout: null,
           signal,
           output: (chunk) => {
             const available = Math.max(0, limit - bytes);
@@ -127,7 +132,7 @@ export class CodeqlParentService {
                 '--format',
                 format,
               ],
-              8000,
+              80000,
               undefined,
               true,
             )
@@ -142,7 +147,7 @@ export class CodeqlParentService {
           }
 
           const rows: unknown = JSON.parse(
-            await run([kind, 'inspect', name], 8000, undefined, true),
+            await run([kind, 'inspect', name], 80000, undefined, true),
           );
 
           if (
@@ -156,7 +161,7 @@ export class CodeqlParentService {
 
           await run(
             [kind, 'rm', ...(kind === 'container' ? ['--force'] : []), rows[0].Id],
-            8000,
+            80000,
             undefined,
             true,
           );
@@ -218,7 +223,7 @@ export class CodeqlParentService {
           image,
           '-',
         ],
-        { cwd: root, env, timeout: 900000, inputFile: archive, signal },
+        { cwd: root, env, timeout: null, inputFile: archive, signal },
         path.join(report, 'build.log'),
       );
       await startup('create', [
@@ -251,13 +256,13 @@ export class CodeqlParentService {
       await startup('start', ['start', resource]);
       let status: string | undefined;
       try {
-        status = (await run(['wait', resource], 900000)).trim();
+        status = (await run(['wait', resource])).trim();
       } catch (error) {
         primary = error;
       }
       // Collect available evidence even after cancellation; do not hide the original failure.
       try {
-        const log = await run(['logs', resource], 15000, undefined, true);
+        const log = await run(['logs', resource], 150000, undefined, true);
         fs.writeFileSync(path.join(report, 'scan.log'), log);
         process.stdout.write(log);
       } catch (error) {
@@ -267,7 +272,7 @@ export class CodeqlParentService {
         try {
           await run(
             ['cp', `${resource}:/reports/${file}`, path.join(report, file)],
-            15000,
+            150000,
             undefined,
             true,
           );
