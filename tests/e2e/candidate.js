@@ -73,7 +73,13 @@ async function main() {
   // Only the tracked public example is accepted, never a private workstation config.
   spec.example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
   const reportDirectory=instance=>path.join(__dirname,'../../test-results/e2e',instance.id);
-  const candidate=new Candidate(spec,{checkpoint:instance=>instance.report(reportDirectory(instance))});
+  const progress=({name,status,milliseconds,reason,systemCode})=>{
+    // Only source-owned stage names and sanitized error codes, never argv or output.
+    if(!/^[a-z][a-z0-9-]{0,80}$/.test(name)||!['started','passed','failed'].includes(status))return;
+    console.log('[candidate] '+name+': '+status+(Number.isFinite(milliseconds)?' ('+milliseconds+' ms)':'')+
+      (reason?' '+reason:'')+(systemCode?' '+systemCode:''));
+  };
+  const candidate=new Candidate(spec,{checkpoint:instance=>instance.report(reportDirectory(instance)),progress});
   candidate.report(reportDirectory(candidate));
   console.log('Disposable candidate run: '+candidate.id);
   const cancel=()=>{candidate.canceled=true;};

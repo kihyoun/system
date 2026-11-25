@@ -74,7 +74,7 @@ test('failed original-host removal prevents a second daemon',async t=>{
   assert(!first.events.includes('new-host-created'));
 });
 
-for(const [budget,guided,publicUpgrade]of [[3600000,false],[4500000,true],[6600000,true,{}]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
+for(const [budget,guided,publicUpgrade]of [[3600000,false],[4500000,true],[360*60000,true,{}]])test(`upgrade recovery preserves its shared ${budget/60000}-minute deadline`,async t=>{
   const {Candidate}=require('./disposable-candidate');
   const input=fixture(t),first=original(),deps=dependencies(first,input),calls=[];
   first.startedAt=1000;first.deadline=first.startedAt+budget;

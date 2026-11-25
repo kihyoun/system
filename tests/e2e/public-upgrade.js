@@ -424,7 +424,7 @@ class NativeCLI {
       // Read the existing owned journal before normal cleanup, without another
       // database/readiness probe or any process/lease mutation.
       const script="process.stdout.write(JSON.stringify(require('/opt/system-public-upgrade/dist/modules/gitlab-upgrade/status').upgradeChildOutcome('/state')));";
-      const output=await this.candidate.inner(['exec','system_bootstrapper_1','node','-e',script],{timeout:5000});
+      const output=await this.candidate.inner(['exec','system_bootstrapper_1','node','-e',script],{timeout:5000,boundedTransport:true});
       return sanitizeGitlabFailure(JSON.parse(output)) || {phase:'unavailable'};
     } catch {return {phase:'unavailable'};}
   }

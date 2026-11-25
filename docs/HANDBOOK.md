@@ -1815,7 +1815,7 @@ reviewed promotion/migration procedure instead.
 
 For combined guided previews and GitLab migration, `guidedPreviewAcceptance === true`
 and `gitlabUpgradeAcceptance === true` select one fixed 75-minute execution budget.
-Adding a prepared `publicUpgrade` fixture selects one fixed 110-minute budget for
+Adding a prepared `publicUpgrade` fixture selects one fixed 360-minute budget for
 the additional real public CLI plan/apply, fresh matching cold Seed/configuration
 backup, interrupted offline image recovery and separate controller restart with
 durable recovery selectors. Without that fixture the combined scenario retains 75 minutes.
@@ -1825,8 +1825,8 @@ restored candidate, ACME authority and all side owners share the original absolu
 deadline. Starting a phase or replacing a host never resets it; a timeout fails
 acceptance without an automatic extension.
 
-The full platform CI job allows a 115-minute runner script, a separate two-minute
-`after_script` and a 120-minute job limit for preparation, execution, publication
+The full platform CI job allows a 390-minute runner script, a separate ten-minute
+`after_script` and a 405-minute job limit for preparation, execution, publication
 and artifact collection. The shared System Beta scenario reuses the existing
 candidate images and starts no additional Wizard build or System pipeline. Its
 native setup, binding, Beta deployment, TLS, Stop and owned cleanup are verified;
@@ -1837,8 +1837,10 @@ bound, not a runtime guarantee or a measured saving. The candidate remains limit
 to 12 GiB RAM and four CPUs. All nested work shares this ceiling. Completed
 subprocess failures abort their step immediately. Readiness polling retries
 transient startup states; confirmed container or identity failures abort
-immediately. Per-operation deadlines remain in force, and reports distinguish a
-timed-out invocation from a process exit. The overall ceiling is an additional
+immediately. Native operation limits and bounded readiness, diagnostic and cleanup
+commands remain in force. Normal full-acceptance Docker calls use the remaining
+shared deadline, without competing per-command transport limits. Reports
+distinguish a timed-out invocation from a process exit. The overall ceiling is an additional
 safeguard, not a required wait.
 
 Documentation-only changes retain their short

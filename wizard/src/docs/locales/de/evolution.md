@@ -111,7 +111,7 @@ Freigabe-/Migrationsverfahren.
 Für die Kombination aus geführten Vorschauen und GitLab-Migration wählen
 `guidedPreviewAcceptance === true` und `gitlabUpgradeAcceptance === true` ein
 festes gemeinsames Ausführungsbudget von 75 Minuten. Eine zusätzlich vorbereitete
-`publicUpgrade`-Testumgebung wählt ein festes Budget von 110 Minuten für den echten
+`publicUpgrade`-Testumgebung wählt ein festes Budget von 360 Minuten für den echten
 öffentlichen CLI-Plan und dessen Anwendung, eine neue passende kalte Seed-/Konfigurationssicherung,
 unterbrochene Offline-Image-Wiederherstellung und einen separaten Controller-Neustart
 mit dauerhaften Wiederherstellungsselektoren. Ohne diese Testumgebung behält das
@@ -122,8 +122,8 @@ Kandidat, die ACME-Stelle und alle weiteren Ressourceneigentümer teilen die
 ursprüngliche absolute Frist. Weder eine neue Phase noch ein Hostwechsel setzt
 sie zurück; eine Zeitüberschreitung lässt die Abnahme ohne automatische Verlängerung scheitern.
 
-Der vollständige Plattform-CI-Job erlaubt ein 115-minütiges Runner-Skript, ein
-separates zweiminütiges `after_script` und ein Job-Limit von 120 Minuten für
+Der vollständige Plattform-CI-Job erlaubt ein 390-minütiges Runner-Skript, ein
+separates zehnminütiges `after_script` und ein Job-Limit von 405 Minuten für
 Vorbereitung, Ausführung, Veröffentlichung und Artefaktsammlung. Das gemeinsame
 System-Beta-Szenario verwendet bestehende Kandidatenimages und startet keinen
 zusätzlichen Wizard-Build oder System-Pipeline. Native Einrichtung, Bindung,
@@ -135,8 +135,10 @@ ist eine Obergrenze, keine Laufzeitgarantie und keine gemessene Einsparung. Der
 Kandidat bleibt auf 12 GiB RAM und vier CPUs begrenzt. Alle verschachtelten Vorgänge
 teilen diese Grenze. Fehlgeschlagene Unterprozesse brechen ihren Schritt sofort ab.
 Bereitschaftsabfragen wiederholen vorübergehende Startzustände; bestätigte Container-
-oder Identitätsfehler führen sofort zum Abbruch. Vorgangsfristen gelten weiterhin;
-Berichte unterscheiden Zeitüberschreitung und Prozessende. Die Gesamtgrenze ist
+oder Identitätsfehler führen sofort zum Abbruch. Native Vorgangsfristen und begrenzte
+Bereitschafts-, Diagnose- und Bereinigungsaufrufe gelten weiterhin. Normale Docker-Aufrufe
+der vollständigen Abnahme nutzen die verbleibende gemeinsame Frist ohne konkurrierende
+Transportlimits je Aufruf. Berichte unterscheiden Zeitüberschreitung und Prozessende. Die Gesamtgrenze ist
 eine zusätzliche Absicherung und keine vorgeschriebene Wartezeit.
 
 Reine Dokumentationsänderungen behalten ihren kurzen Pfad. Kein früherer

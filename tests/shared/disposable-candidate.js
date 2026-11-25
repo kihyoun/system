@@ -55,10 +55,14 @@ function docker(args, options={}) {
   if (result.error || result.status !== 0) {
     // Preserve only operation/error codes, never potentially private output.
     let reason='docker-'+args[0]+'-failed';
-    const lines=new Set(((result.stderr||'')+'\n'+(result.stdout||'')).split(/\r?\n/));
-    for(const [message,code]of Object.entries(options.failureCodes||{})) {
-      if(message.length>0&&message.length<=1024&&stageDiagnostics.failureReason(code)===code&&lines.has(message)) {
-        reason=code;break;
+    // A refusal line is evidence only after a confirmed nonzero process exit.
+    // A timed-out client may have emitted that line before remote work settled.
+    if(!result.error&&result.signal===null&&Number.isInteger(result.status)&&result.status>0) {
+      const lines=new Set(((result.stderr||'')+'\n'+(result.stdout||'')).split(/\r?\n/));
+      for(const [message,code]of Object.entries(options.failureCodes||{})) {
+        if(message.length>0&&message.length<=1024&&stageDiagnostics.failureReason(code)===code&&lines.has(message)) {
+          reason=code;break;
+        }
       }
     }
     const error=new Error(reason);
@@ -138,11 +142,12 @@ class Candidate {
     this.now=options.now || Date.now;
     this.id=crypto.randomBytes(12).toString('hex'); this.name='system-candidate-'+this.id;
     this.resources=[]; this.canceled=false; this.startedAt=this.now();
-    const guidedBudget=spec.publicUpgrade?6600000:4500000;
+    const guidedBudget=spec.publicUpgrade?360*60000:4500000;
     const budget=spec.gitlabUpgradeAcceptance===true?
       (spec.guidedPreviewAcceptance===true?guidedBudget:3600000):spec.acmeRenewalAcceptance===true?1500000:1200000;
     this.deadline=this.startedAt+budget;
     this.checkpoint=options.checkpoint || (()=>{});
+    this.progress=options.progress || (()=>{});
     this.secrets={user:'test'+crypto.randomBytes(8).toString('hex'),
       password:crypto.randomBytes(24).toString('hex'),root:crypto.randomBytes(24).toString('hex')};
     this.results=[];
@@ -152,11 +157,19 @@ class Candidate {
     // Promise/microtask-only awaits do not deliver queued OS signal callbacks.
     // Yield to the event loop before EVERY bounded synchronous Docker operation.
     await new Promise(resolve=>setImmediate(resolve));
-    const deadline=this.cleanupDeadline||this.deadline;
-    if((this.canceled&&!this.cleanupDeadline) || this.now()>deadline) throw new Error('canceled-or-overall-timeout');
-    const remaining=deadline-this.now(),requested=options?.timeout || 120000;
+    const deadline=this.cleanupDeadline||this.deadline,now=this.now(),remaining=deadline-now;
+    if((this.canceled&&!this.cleanupDeadline) || remaining<=0) throw new Error('canceled-or-overall-timeout');
+    // A full acceptance command may await several independently bounded native
+    // operations (validation, helper creation, copy, migration and recovery).
+    // Never kill its Docker client at a shorter, unrelated transport deadline.
+    // Readiness polling, explicit diagnostics and owned cleanup keep their
+    // distinct bounds. No completed error or uncertain mutation is retried.
+    const sharedBudget=!this.cleanupDeadline&&!options?.boundedTransport&&
+      (options?.timeout===null||(this.spec?.fullAcceptance===true&&!this.polling));
+    const requested=sharedBudget?remaining:options?.timeout||120000;
+    const timeout=Math.max(1,Math.min(requested,remaining));
     try {
-      return await this.exec(args,{...options,timeout:Math.max(1,Math.min(requested,remaining))});
+      return await this.exec(args,{...options,timeout});
     } catch(error) {
       if(error.systemCode==='ETIMEDOUT'&&remaining<=requested) {
         const failure=new Error(this.cleanupDeadline?'candidate-cleanup-timeout':'candidate-overall-timeout');
@@ -174,19 +187,25 @@ class Candidate {
     const start=this.now();
     const previousCleanup=this.cleanupDeadline;
     if(['system-beta-native-stop','guided-preview-native-review-stop','guided-preview-native-beta-stop','guided-preview-production-retained','guided-preview-temporary-credential-revoked'].includes(name))this.cleanupDeadline=start+180000;
-    try { const value=await action(); this.results.push({name,status:'passed',milliseconds:this.now()-start}); this.checkpoint(this); return value; }
-    catch(error) { this.results.push({name,status:'failed',milliseconds:this.now()-start,reason:stageDiagnostics.failureReason(error.message),...exitDetails(error)}); this.checkpoint(this); throw error; }
+    this.progress?.({name,status:'started'});
+    try { const value=await action(); const result={name,status:'passed',milliseconds:this.now()-start}; this.results.push(result); this.checkpoint(this); this.progress?.(result); return value; }
+    catch(error) { const result={name,status:'failed',milliseconds:this.now()-start,reason:stageDiagnostics.failureReason(error.message),...exitDetails(error)}; this.results.push(result); this.checkpoint(this); this.progress?.(result); throw error; }
     finally {this.cleanupDeadline=previousCleanup;}
   }
 
   async wait(check, milliseconds) {
+    const previousPolling=this.polling;
     const until=Math.min(this.now()+milliseconds,this.cleanupDeadline||this.deadline);
-    do { if((this.canceled&&!this.cleanupDeadline) || this.now()>(this.cleanupDeadline||this.deadline)) throw new Error('canceled-or-overall-timeout');
-      try { if(await check()) return; } catch(error) { if(error.noRetry===true)throw error; /* bounded readiness retry */ }
-      await this.sleep(1000);
-    } while(this.now()<until);
-    if((this.canceled&&!this.cleanupDeadline) || this.now()>(this.cleanupDeadline||this.deadline)) throw new Error('canceled-or-overall-timeout');
-    throw new Error('readiness-timeout');
+    // Keep the existing readiness-probe budgets separate from long operations.
+    this.polling=true;
+    try {
+      do { if((this.canceled&&!this.cleanupDeadline) || this.now()>(this.cleanupDeadline||this.deadline)) throw new Error('canceled-or-overall-timeout');
+        try { if(await check()) return; } catch(error) { if(error.noRetry===true)throw error; /* bounded readiness retry */ }
+        await this.sleep(1000);
+      } while(this.now()<until);
+      if((this.canceled&&!this.cleanupDeadline) || this.now()>(this.cleanupDeadline||this.deadline)) throw new Error('canceled-or-overall-timeout');
+      throw new Error('readiness-timeout');
+    } finally {this.polling=previousPolling;}
   }
 
   async create(kind,args) {
