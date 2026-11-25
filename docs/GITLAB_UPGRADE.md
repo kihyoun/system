@@ -71,7 +71,7 @@ requires restoring data, secrets, configuration and matching images together.
 ## Official public release upgrade
 
 For an unchanged official 1.2.0 installation, follow the
-[native public 2.0.0 procedure](RELEASES.md#native-upgrade-from-120-to-200).
+[native public 2.0.1 procedure](RELEASES.md#native-upgrade-from-120-to-201).
 The public CLI validates published provenance and the installed release, retains
 preparation inputs and pulls the accepted target helper before maintenance. It
 runs the same GitLab upgrade services in a one-shot container while retaining

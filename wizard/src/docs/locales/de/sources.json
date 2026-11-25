@@ -6,7 +6,7 @@
   "measurements": "3bcf5259b7bb8af04c840adb53aef08279256539f29a5f03d84589e129c69df5",
   "host-preparation": "81a297990ec555a0212f4771083746aaf1ef9e49b45e798262fc305e450ae24a",
   "quickstart": "04cefc81df68957bd0fe785e8578c469c8eebbcea7edac3f6f68a08577514099",
-  "releases": "ad9e95d7d1c8c9048413c46c4ad24c453cfafe727ab76ddd5be88d07378b8280",
+  "releases": "4d8af0ccb8dfd65c452fd7ad008eb8d73296f537d720db491945760fffba9692",
   "foundations": "362555c49a955a654355ab9821c1cc23779ddd000b15bed6e88af18a7e20e958",
   "configuration": "6e817e23c3a9a6e4e5279dc18a701f8b32fae0f1e5c4b4d78fa72018a65101ab",
   "aliases": "f32083b68bef2aeaf5e1f379c4da228a2308bf7e933d374d7ae1ab89b4f8f3a8",
@@ -38,7 +38,7 @@
   "dependency-updates": "19eaab8052df6a8efd3da572f043385797505e1e0ec0cacb81da5f9b9e170e61",
   "dependency-security": "78e613ab89a3db37cc1998a163f3b1ba49115310c05c65ef7ece0272a54125cf",
   "development-previews": "b160e068d523f3533d36533f116d4edeeb4f735cf9aa436773e0f2cacad45210",
-  "controller-reference": "5e2aec133c86bcd70bec6691654e6e5f40f7afadd07234075ce63494bebd5f69",
+  "controller-reference": "d9db38d738bf76e39bca10901119163c56f1e43380c843868cb5e8715f306a74",
   "verification": "1ddb195e3ef2b7abd6d79eb3b57e1dd85fa140ac2e6ee5f7b9db9ec1b6225a88",
   "candidate-testing": "c2026f43efa07dbda923f33ac859ffd431a2b5c5bc160fea89c58f1886b009e9",
   "guided-preview-acceptance": "076c4a6b18f5bd3e4b5b10e9b10980b39aebd0f64e311cb89651b26b98a39666"

@@ -3,6 +3,21 @@
 Versions follow [Semantic Versioning](https://semver.org/). A version belongs to
 one accepted System source revision and tested controller/Wizard image attempt.
 
+## 2.0.1
+
+### Fixes
+
+- Normalize both public DockerHub references during host CLI installation while
+  preserving release identity and digest checks.
+- Retry npm registry verification after a successful publish until the immutable
+  package is visible, and reject conflicting package integrity immediately.
+- Give GitLab checkpoint creation and restoration an explicit longer data I/O
+  budget and remove the redundant outer helper deadline for these operations.
+- Recover an interrupted pre-checkpoint GitLab upgrade when the original GitLab
+  container is stopped; resolve its current address before restarting dependents.
+- Declare the direct 1.2.0 to 2.0.1 upgrade with the same reviewed GitLab and
+  Runner transition. Require matching 2.0.1 candidate evidence before publication.
+
 ## 2.0.0
 
 ### Architecture and distribution

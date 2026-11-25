@@ -124,7 +124,7 @@ Wizard Docs의 릴리스 장에서는 Sync 없이 설치 버전과 대상 버전
 다음 예시는 **과거 1.2.0 체크아웃**에 해당합니다. Python 진입점은 해당 태그에
 그대로 남아 있으며 2.0 런타임에는 포함되지 않습니다. 각 필수 중간 단계에는
 해당 버전의 명령을 사용하세요. 2.0에서는 기본 CLI 런타임을 준비하고 별도로
-검토된 [GitLab 마이그레이션](#native-upgrade-from-120-to-200)을 완료한 뒤 릴리스 쌍 단계를 진행하세요.
+검토된 [GitLab 마이그레이션](#native-upgrade-from-120-to-201)을 완료한 뒤 릴리스 쌍 단계를 진행하세요.
 
 1. 선택한 대상 릴리스 소스와 정확한 Wizard Git 링크를 가져옵니다. 이전
    체크아웃과 복구 입력을 별도로 보관합니다. 공개 메타데이터와 게시자를
@@ -247,7 +247,7 @@ Wizard 다이제스트 참조를 가져와 기록된 이미지 ID와 일치하�
 복구 입력을 삭제하지 마세요.
 
 현재 그래프는 컨트롤러/Wizard 쌍 업데이트 전에 GitLab 데이터베이스를
-마이그레이션하는 **1.2.0 → 2.0.0** 전환도 선언합니다. 컨테이너 롤백은 데이터베이스
+마이그레이션하는 **1.2.0 → 2.0.0** 및 **1.2.0 → 2.0.1** 전환도 선언합니다. 컨테이너 롤백은 데이터베이스
 마이그레이션을 되돌릴 수 없습니다. 선언된 서비스 전환은 기존
 [GitLab 마이그레이션 및 콜드 체크포인트 복구](HANDBOOK.md#5-evolving-a-running-system)
 절차의 필수 중간 버전과 독립적으로 보관한 복구 입력을 사용하며, 공개 CLI는
@@ -279,7 +279,7 @@ Wizard 다이제스트 참조를 가져와 기록된 이미지 ID와 일치하�
 게시자는 일치하는 성공한 런타임 전환 증거가 없으면 해당 경로를 거부합니다.
 메타데이터를 바꾸는 것만으로 호환성이 생기지 않습니다.
 
-### 1.2.0에서 2.0.0으로 기본 업그레이드
+### 1.2.0에서 2.0.1로 기본 업그레이드
 
 지원되는 Ubuntu x86_64의 변경되지 않은 공식 1.2.0 설치와 일치하는 구성/Seed
 백업을 사용하세요. 실행 중인 작업과 미완료 백그라운드 마이그레이션을 기다리세요.
@@ -293,8 +293,8 @@ Wizard 다이제스트 참조를 가져와 기록된 이미지 ID와 일치하�
 ```bash
 git clone https://github.com/kihyoun/system.git system-upgrade-2
 cd system-upgrade-2
-git checkout --detach v2.0.0
-sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
+git checkout --detach v2.0.1
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.1
 test ! -e dist && test ! -e node_modules && test ! -e assets && \
 sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/dist dist && \
 sudo cp -a /opt/system-bootstrapper-runtime/cli/node_modules/@systembootstrapper/cli/node_modules node_modules && \
@@ -310,17 +310,17 @@ Prepare는 공개 메타데이터/검증 자료와 설치된 릴리스를 검증
 
 ```bash
 sudo system-bootstrapper gitlab-upgrade \
-  --operation prepare --checkout "$PWD" --target 2.0.0 \
+  --operation prepare --checkout "$PWD" --target 2.0.1 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-1
 sudo system-bootstrapper gitlab-upgrade \
   --operation plan --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-1
 sudo system-bootstrapper gitlab-upgrade \
   --operation promote --checkout "$PWD" --confirm-plan GITLAB_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-1
 ```
 
 반환된 `checkpointDir`와 `checkpointSha256`을 보관하세요. 첫 번째 값은 아래 쌍
@@ -331,16 +331,16 @@ sudo system-bootstrapper gitlab-upgrade \
 
 ```bash
 sudo system-bootstrapper upgrade \
-  --checkout "$PWD" --target 2.0.0 \
+  --checkout "$PWD" --target 2.0.1 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
-  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2-0-0 \
-  --backup-file /mnt/backup/configuration-before-2.0.0.zip \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.1 \
+  --gitlab-checkpoint /var/lib/system-bootstrapper/platform/configuration/gitlab-upgrades/public-to-2-0-1 \
+  --backup-file /mnt/backup/configuration-before-2.0.1.zip \
   --token-file /root/system-api-token
 sudo system-bootstrapper upgrade \
   --operation apply --checkout "$PWD" --confirm-plan PAIR_PLAN_SHA256 \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0 \
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.1 \
   --token-file /root/system-api-token
 ```
 
@@ -352,11 +352,11 @@ sudo system-bootstrapper upgrade \
 sudo system-bootstrapper upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.0
+  --plan-dir /var/lib/system-bootstrapper/platform/recovery/public-upgrades/to-2.0.1
 sudo system-bootstrapper gitlab-upgrade \
   --operation status --checkout "$PWD" \
   --persistence-env /etc/system-bootstrapper/persistence.env \
-  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-0
+  --directory /var/lib/system-bootstrapper/platform/configuration/gitlab-prerequisites/to-2-0-1
 ```
 
 쌍 업데이트가 중단되면 `system-bootstrapper upgrade --operation recover`를 같은 계획
@@ -364,7 +364,7 @@ sudo system-bootstrapper gitlab-upgrade \
 이전 컨트롤러/Wizard 쌍을 복구하며 GitLab은 되돌리지 않습니다. 데이터베이스 롤백도
 필요하면 먼저 쌍 복구를 완료한 뒤 `system-bootstrapper gitlab-upgrade --operation rollback`을
 같은 준비 디렉터리, `--confirm-checkpoint GITLAB_CHECKPOINT_SHA256` 및
-`--paired-checkpoint /var/lib/system-bootstrapper/platform/recovery/controller-updates/to-2.0.0`과 함께
+`--paired-checkpoint /var/lib/system-bootstrapper/platform/recovery/controller-updates/to-2.0.1`과 함께
 사용하세요. 도우미는 재생성된 이전 컨트롤러를 허용하기 전에 완료된 쌍 복구를
 검증합니다. 완료된 GitLab 체크포인트가 없으면 별도의
 `--operation abort --confirm-plan GITLAB_PLAN_SHA256`으로 이전 세대를 재개하세요.

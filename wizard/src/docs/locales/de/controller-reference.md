@@ -781,7 +781,7 @@ Quickstart prüft das festgelegte nvm-Skript und das Node-**24.22.0**-Archiv und
 Bereite die Laufzeit eines ausdrücklich ausgewählten akzeptierten Releases vor der Wiederherstellung vor:
 
 ```sh
-sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.1
 ```
 
 Rufe die beibehaltene CLI mit einem ausdrücklich geprüften Checkout auf. Dieser Modus installiert nur die Node-/CLI-Laufzeit; er startet die Plattform nicht und stellt sie nicht wieder her. Bewahre beim Vorbereiten einer Offline-Wiederherstellung die kompilierten Operations-Dateien, gebündelten Abhängigkeiten und Richtlinienressourcen des Checkouts auf. Führe vor dem Aufruf von Checkout-Einstiegen das vollständige [Verfahren zur Laufzeitbereitstellung](../Prepare-Host.md#prepare-the-host-operations-runtime) durch; `--runtime-only` allein installiert das Paket unter `/opt/system-bootstrapper-runtime/cli`.

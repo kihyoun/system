@@ -8,7 +8,7 @@ server. Use the CLI version distributed with your accepted System release.
 With Node 24.22.0 and the matching npm toolchain available:
 
 ```sh
-npm install --global --ignore-scripts @systembootstrapper/cli@2.0.0
+npm install --global --ignore-scripts @systembootstrapper/cli@2.0.1
 ```
 
 This installs the CLI, not the platform. A fresh platform uses the repository's

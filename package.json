@@ -1,6 +1,6 @@
 {
   "name": "@systembootstrapper/cli",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Shared System Bootstrapper operations runtime",
   "main": "dist/index.js",
   "scripts": {

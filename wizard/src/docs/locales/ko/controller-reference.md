@@ -711,7 +711,7 @@ Docker 기본 동작 테스트는 소켓 없는 구성 요소 테스트와 별�
 명시적으로 선택한 승인 릴리스는 복구 전에 런타임을 준비하세요:
 
 ```sh
-sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.0
+sudo bash tools/quickstart/quickstart.sh --runtime-only v2.0.1
 ```
 
 보관한 CLI를 명시적으로 검토한 체크아웃과 함께 호출하세요. 이 모드는 Node/CLI 런타임만 설치하며 플랫폼을 시작하거나 복원하지 않습니다. 오프라인 복구 환경을 준비할 때 체크아웃의 컴파일된 operations, 번들된 의존성과 정책 리소스를 보관하세요. 체크아웃 진입점을 호출하기 전에 전체 [런타임 배치 절차](../Prepare-Host.md#prepare-the-host-operations-runtime)를 따르세요. `--runtime-only`만 실행하면 패키지를 `/opt/system-bootstrapper-runtime/cli` 아래에 설치합니다.
