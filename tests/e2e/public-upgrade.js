@@ -269,7 +269,7 @@ class NativeCLI {
   }
 
   async createCredential() {
-    if (!this.token) this.token = await this.candidate.rails("require 'json';u=User.find_by_username('root');t=u.personal_access_tokens.create!(name:'disposable-public-upgrade',scopes:['api'],expires_at:Date.tomorrow);puts JSON.generate(token:t.token,root_id:u.id)");
+    if (!this.token) this.token = await this.candidate.rails("require 'json';u=User.find_by_username('root');t=u.personal_access_tokens.create!(name:'disposable-public-upgrade',scopes:['api'],expires_at:Date.current + 2);puts JSON.generate(token:t.token,root_id:u.id)");
   }
 
   async initialize(baseline, expected, beforeMigration = false) {
