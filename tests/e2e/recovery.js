@@ -692,7 +692,7 @@ async function run(original,reportDirectory,dependencies={}) {
     input=await (dependencies.capture || capture)(original,{acme});
     await original.stage('recovery-original-host-removed',async()=>{if(!original.cleanup())throw Error('original-host-cleanup-failed');originalRemoved=true;});
     const Candidate=dependencies.Candidate || require('../shared/disposable-candidate').Candidate;
-    second=new Candidate({...original.spec,recoveryAcceptance:true,restore:input},{checkpoint:instance=>instance.report(reportDirectory(instance))});
+    second=new Candidate({...original.spec,recoveryAcceptance:true,restore:input},{checkpoint:instance=>instance.report(reportDirectory(instance)),progress:original.progress});
     second.deadline=original.deadline;
     let canceled=false;
     Object.defineProperty(second,'canceled',{configurable:true,get:()=>canceled||original.canceled,set:value=>{canceled=value;}});

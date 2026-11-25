@@ -58,7 +58,7 @@ function failureCodes(code) {
 async function refused(candidate,code,operation='harvest') {
   try {
     await candidate.inner(['exec','-w','/system','system_bootstrapper_1','node','/system/dist/modules/storage/entry.js','launch',operation],
-      {timeout:30000,failureCodes:failureCodes(code)});
+      {timeout:null,failureCodes:failureCodes(code)});
   } catch(error) {if(error.message===code)return;throw error;}
   throw Error('storage-refusal-not-enforced');
 }
@@ -77,8 +77,11 @@ async function refuseLockedLive(candidate,operation='harvest') {
   const identity=operation==='restore'?()=>candidate.inner(['ps','-aq','--filter','name=^/system_gitlab_1$']):()=>serviceIdentity(candidate);
   const before=await identity();
   await candidate.inner(['exec','system_bootstrapper_1','mkdir','/state/.storage-operation-lock']);
-  try {await refused(candidate,'storage-operation-busy',operation);}
-  finally {await candidate.inner(['exec','system_bootstrapper_1','rmdir','/state/.storage-operation-lock']);}
+  // A timed-out transport does not prove that the helper stopped. Keep the
+  // fixture's barrier until the expected refusal is confirmed; the owned
+  // disposable daemon is cleaned up on failure.
+  await refused(candidate,'storage-operation-busy',operation);
+  await candidate.inner(['exec','system_bootstrapper_1','rmdir','/state/.storage-operation-lock']);
   if(await identity()!==before)throw Error('storage-guard-changed-live-service');
   candidate.globalLeaseVerified=true;
 }

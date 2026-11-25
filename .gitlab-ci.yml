@@ -310,11 +310,11 @@ test:platform-candidate:
     DOCKER_HOST: unix:///var/run/docker.sock
     GIT_DEPTH: "0"
     GIT_SUBMODULE_STRATEGY: none
-    RUNNER_SCRIPT_TIMEOUT: 115m
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 2m
+    RUNNER_SCRIPT_TIMEOUT: 390m
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 10m
   cache: []
   dependencies: [prepare:wizard-source]
-  timeout: 120m
+  timeout: 405m
   allow_failure: false
   before_script: *runtime-tools
   script:

@@ -230,3 +230,59 @@ test('post-restart Sync readiness retains its finite retry window and shared can
     assert(!JSON.stringify(f.results).includes('private-'));
   }
 });
+
+// Exercise the same Candidate.call used by the full-platform CI, not just a
+// mocked storage adapter. Advance a virtual clock past the previous 30 s cap.
+test('full acceptance waits for native storage refusal and retains a shared deadline',async()=>{
+  const example=fs.readFileSync(path.join(__dirname,'../../config/system/.docker.env.example'),'utf8');
+  const id='sha256:'+'a'.repeat(64),archive=path.resolve('fixture.tar'),calls=[];
+  let clock=0,lock=false;
+  const candidate=new Candidate({example,daemonImage:'docker:29-dind@'+id,fullAcceptance:true,
+    guidedPreviewAcceptance:true,gitlabUpgradeAcceptance:true,publicUpgrade:{},
+    images:Object.fromEntries(['candidate','wizard','gitlab','runner','nginx'].map(role=>[role,{id,archive}]))},
+    {now:()=>clock,sleep:async ms=>{clock+=ms;},docker:(args,options)=>{
+      calls.push({args,timeout:options.timeout});
+      if(args.includes('mkdir')){lock=true;return '';}
+      if(args.includes('rmdir')){assert(lock);lock=false;return '';}
+      if(args.includes('launch')){
+        assert(lock);assert(options.timeout>3600000,'native helper must not be cut off by transport');
+        clock+=35000;
+        throw Error('storage-operation-busy');
+      }
+      return '';
+    }});
+  candidate.daemon='owned';
+  assert.equal(candidate.deadline,360*60000);
+  await storage.refuseLockedLive(candidate,'restore');
+  assert.equal(candidate.globalLeaseVerified,true);assert.equal(lock,false);
+  assert.equal(calls.filter(call=>call.args.includes('launch')).length,1);
+  assert.equal(clock,35000);
+  // An ordinary operation inherits the remaining absolute budget even with a
+  // legacy numeric limit. Explicit diagnostics and readiness keep their bounds.
+  await candidate.call(['info'],{timeout:1000});
+  assert.equal(calls.at(-1).timeout,candidate.deadline-clock);
+  await candidate.call(['info'],{timeout:5000,boundedTransport:true});
+  assert.equal(calls.at(-1).timeout,5000);
+  await candidate.wait(async()=>{await candidate.call(['info'],{timeout:5000});return true;},2000);
+  assert.equal(calls.at(-1).timeout,5000);
+  assert.equal(candidate.polling,undefined);
+  await candidate.stage('system-beta-native-stop',()=>candidate.call(['info'],{timeout:30000}));
+  assert.equal(calls.at(-1).timeout,30000);
+  clock=candidate.deadline;
+  const count=calls.length;
+  await assert.rejects(()=>candidate.call(['info']),/canceled-or-overall-timeout/);
+  assert.equal(calls.length,count);
+});
+
+test('an uncertain storage refusal never releases the fixture lock or publishes acceptance',async()=>{
+  const calls=[],candidate={inner:async(args,options)=>{
+    calls.push({args,options});
+    if(args.includes('launch'))throw Object.assign(Error('docker-exec-failed'),{systemCode:'ETIMEDOUT'});
+    return '';
+  }};
+  await assert.rejects(()=>storage.refuseLockedLive(candidate,'restore'),/docker-exec-failed/);
+  assert.equal(calls.find(call=>call.args.includes('launch')).options.timeout,null);
+  assert.equal(calls.filter(call=>call.args.includes('launch')).length,1);
+  assert.equal(calls.some(call=>call.args.includes('rmdir')),false);
+  assert.equal(candidate.globalLeaseVerified,undefined);
+});

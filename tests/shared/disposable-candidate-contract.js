@@ -38,7 +38,7 @@ for(const [options,budget]of [[{},1200000],[{acmeRenewalAcceptance:false},120000
   [{publicUpgrade:{}},1200000],
   [{gitlabUpgradeAcceptance:true,publicUpgrade:{}},3600000],
   [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:null},4500000],
-  [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:{}},6600000]]) {
+  [{gitlabUpgradeAcceptance:true,guidedPreviewAcceptance:true,publicUpgrade:{}},360*60000]]) {
   const bounded=new Candidate({...spec,...options},{now:()=>123});
   assert.equal(bounded.deadline,123+budget);
 }
@@ -122,6 +122,9 @@ function fixture(overrides={}) {
     for(const failureCodes of [{'Fixed fixture failure':'secret-fixture-token'},{'fixture failure':'configuration-round-trip-mismatch'}]) {
       assert.throws(()=>streamed.exec(['exec'],{failureCodes,timeout:2000}),error=>error.message==='docker-exec-failed'&&error.exitCode===7);
     }
+    fs.writeFileSync(path.join(streams,'docker'),'#!/bin/sh\nprintf "%s\\n" "Seed operation failed: storage-operation-busy." >&2\nexec sleep 2\n',{mode:0o755});
+    assert.throws(()=>streamed.exec(['exec'],{timeout:100,failureCodes:{'Seed operation failed: storage-operation-busy.':'storage-operation-busy'}}),
+      error=>error.message==='docker-exec-failed'&&error.systemCode==='ETIMEDOUT'&&error.exitCode===undefined);
     fs.writeFileSync(path.join(streams,'docker'),'#!/bin/sh\nexec sleep 2\n',{mode:0o755});
     await assert.rejects(streamed.stage('recovery-completed-cold-seed',async()=>streamed.exec(['exec'],{timeout:30})));
     assert.equal(streamed.results.at(-1).systemCode,'ETIMEDOUT');

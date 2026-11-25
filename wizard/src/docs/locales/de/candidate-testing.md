@@ -121,15 +121,19 @@ ACME ohne GitLab-Upgrade teilt ein fünfundzwanzigminütiges Budget unter allen
 Eigentümern. Ein GitLab-Upgrade ohne geführte Vorschauen hat sechzig Minuten.
 `guidedPreviewAcceptance === true` und `gitlabUpgradeAcceptance === true`
 wählen zusammen fünfundsiebzig Minuten; eine zusätzlich vorbereitete `publicUpgrade`-
-Testumgebung wählt 110 Minuten für die zusätzlichen nativen öffentlichen CLI-,
-Sicherungs- und Wiederherstellungsprüfungen. Jedes Szenario verwendet eine absolute
-Frist, die zwischen begrenzten Docker-/HTTP-Vorgängen geprüft wird. Jeder gestreamte Archivimport ist auf
-zehn Minuten begrenzt;
-andere Docker-Vorgänge auf zwei Minuten und einzelne HTTP-Anfragen auf zehn
-Sekunden. Ein ausdrückliches Abgeben der Ereignisschleife vor jedem Docker-Vorgang liefert
-wartende Signal-Callbacks aus. Abbruch wird zwischen Vorgängen beachtet, sodass ein
-Archivimport einen kooperativen Abbruch um bis zu zehn Minuten verzögern kann. CI muss
-Bereinigung nach dieser Grenze zulassen und den Beleg für erzwungene Beendigung aufbewahren.
+Testumgebung wählt 360 Minuten für die zusätzlichen nativen öffentlichen CLI-,
+Sicherungs- und Wiederherstellungsprüfungen. Jedes Szenario verwendet eine absolute Frist, die zwischen begrenzten Docker-/HTTP-
+Vorgängen geprüft wird. Normale Docker-Aufrufe der vollständigen Abnahme nutzen
+das verbleibende gemeinsame Budget statt eines konkurrierenden Transportlimits.
+Native Vorgangsfristen gelten weiterhin. Bereitschaftsabfragen, ausdrückliche
+Diagnoseaufrufe und eigene Bereinigung behalten ihre separaten Grenzen. Normale
+Smoke-Tests behalten zehn Minuten je Archivimport und standardmäßig zwei Minuten
+je Docker-Aufruf. Einzelne HTTP-Anfragen behalten ihre bestehenden Grenzen
+(normalerweise zehn Sekunden). Ein ausdrückliches Abgeben der Ereignisschleife
+vor jedem Docker-Vorgang liefert wartende Signal-Callbacks aus. Abbruch wird
+zwischen Vorgängen beachtet, sodass ein synchroner Aufruf den kooperativen Abbruch
+bis zu seiner wirksamen Frist verzögern kann. CI muss den Beleg aufbewahren und
+nach erzwungener Beendigung geschützte Bereinigung zulassen.
 
 Aus einem versionierten LF-Checkout; das signierte Beispiel muss unverändert validieren:
 
@@ -226,10 +230,10 @@ aus dem validierten festgelegten Snapshot und lädt die festgelegten Dienst-Imag
 Der Job wird mit einer GitLab-Ressourcengruppe serialisiert. Die Image-Vorbereitung
 hat ein separates begrenztes Budget. Die kombinierte Ausführung geführter Vorschauen
 und des GitLab-Upgrades mit öffentlicher Release-Upgrade-Testumgebung hat ein festes
-gemeinsames Limit von 110 Minuten für ursprünglichen Host, wiederhergestellten Host,
+gemeinsames Limit von 360 Minuten für ursprünglichen Host, wiederhergestellten Host,
 ACME-Stelle und weitere Ressourceneigentümer. Ohne diese zusätzliche Testumgebung
 behält das kombinierte Szenario fünfundsiebzig Minuten. Das Runner-Skript erlaubt
-115 Minuten, die separate Bereinigung zwei Minuten und der gesamte Job 120 Minuten.
+390 Minuten, die separate Bereinigung zehn Minuten und der gesamte Job 405 Minuten.
 Der Runner-Host benötigt zwölf GiB Kandidaten-RAM zusätzlich zu seiner bestehenden Plattform-/Job-
 Reserve und genügend freien Speicher für Image-Archive, Entpackung und GitLab-Zustand.
 
@@ -377,7 +381,7 @@ Lebenszyklusbudget von 1.500 Sekunden einschließlich beider Plattformhosts und
 dieser Testeigentümer. GitLab-Upgrades verwenden das sechzigminütige Budget oder
 fünfundsiebzig Minuten, wenn geführte Vorschauen ebenfalls aktiviert sind.
 Die zusätzliche öffentliche Release-Upgrade-Testumgebung wählt für dieses kombinierte
-Szenario 110 Minuten.
+Szenario 360 Minuten.
 Normale Smoke-Tests behalten 1.200 Sekunden. Weder eine neue Phase noch ein
 Hostwechsel setzt die Frist zurück oder verlängert sie automatisch.
 Äußere Skript- und CI-Job-Limits müssen darüber hinaus Reserve für Vorbereitung, Veröffentlichung
@@ -453,7 +457,7 @@ phasen gehören zum Beleg des wiederhergestellten Kandidaten. Weder rohe private
 noch Konfiguration, Zugangsdaten oder Datenbankprotokolle werden jemals öffentliche CI-Artefakte.
 
 Das Nachfolgerszenario verwendet nur dann ein festes Gesamt-Kandidatenbudget von
-110 Minuten, wenn sowohl `guidedPreviewAcceptance === true` als auch
+360 Minuten, wenn sowohl `guidedPreviewAcceptance === true` als auch
 `gitlabUpgradeAcceptance === true` gelten und eine vorbereitete `publicUpgrade`-
 Testumgebung vorhanden ist. Das kombinierte Szenario ohne diese Testumgebung behält
 75 Minuten. Beide umfassen native gemeinsame System-Einrichtung und Beta-Deploy/Stop
@@ -467,13 +471,14 @@ behält sein Budget von 60 Minuten. Ursprünglicher und wiederhergestellter Kand
 ACME-Stelle und alle weiteren Ressourceneigentümer teilen die ursprüngliche absolute
 Frist; weder eine Phase noch ein Hostwechsel setzt sie zurück, und eine
 Zeitüberschreitung verlängert sie nicht automatisch. Native Upgrade- und
-Rollback-Bereitschaft erlauben jeweils 900 Sekunden innerhalb
-eines Aufruflimits von 1.200 Sekunden und derselben absoluten Kandidatenfrist. Bereitschaft
+Rollback-Bereitschaft erlauben jeweils 900 Sekunden. In der vollständigen Abnahme
+nutzt der Docker-Client die verbleibende gemeinsame Frist; kleinere Szenarien
+behalten das Aufruflimit von 1.200 Sekunden. Bereitschaft
 verlangt weiterhin abgeschlossene Hintergrundmigrationen; ein erfolgreicher Migrationsbatch allein
 erfüllt diese Bedingung nicht. Das Szenario verwendet die bestehende serialisierte Ressourcen-
 gruppe und Grenze des privaten Daemons von 12 GiB und vier CPUs; prüfen Sie vor
-dem Start die tatsächliche Host-Reserve. Der Plattformjob erlaubt ein 115-minütiges
-Skript und eine separate zweiminütige Bereinigung innerhalb eines 120-minütigen
+dem Start die tatsächliche Host-Reserve. Der Plattformjob erlaubt ein 390-minütiges
+Skript und eine separate zehnminütige Bereinigung innerhalb eines 405-minütigen
 Job-Limits und lässt Zeit für Vorbereitung, Veröffentlichung und Artefakt-
 sammlung. Normale Smoke- und reine ACME-Lebenszyklusbudgets bleiben unverändert. Ein
 erfolgreicher nachgebildeter Adaptervertrag ist keine erfolgreiche echte Migration; verwenden Sie die

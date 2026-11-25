@@ -78,11 +78,11 @@ test('platform job retains preparation, independent cleanup and artifact reserve
     images:Object.fromEntries(['candidate','wizard','gitlab','runner','nginx'].map(role=>[role,{id,archive}]))},
     {now:()=>0});
   const script=duration('RUNNER_SCRIPT_TIMEOUT'),cleanup=duration('RUNNER_AFTER_SCRIPT_TIMEOUT'),total=duration('timeout');
-  assert.equal(candidate.deadline,110*60000);
-  assert.equal(script,115*60000);assert.equal(cleanup,2*60000);assert.equal(total,120*60000);
-  assert.equal((ci.match(/RUNNER_SCRIPT_TIMEOUT: 115m/g)||[]).length,1,'the larger script reserve belongs only to the full platform gate');
-  assert.equal((ci.match(/timeout: 120m/g)||[]).length,1,'other CI jobs keep their own deadlines');
-  assert(script>=candidate.deadline+5*60000,'preparation/publication must fit outside the shared lifecycle');
+  assert.equal(candidate.deadline,360*60000);
+  assert.equal(script,390*60000);assert.equal(cleanup,10*60000);assert.equal(total,405*60000);
+  assert.equal((ci.match(/RUNNER_SCRIPT_TIMEOUT: 390m/g)||[]).length,1,'the larger script reserve belongs only to the full platform gate');
+  assert.equal((ci.match(/timeout: 405m/g)||[]).length,1,'other CI jobs keep their own deadlines');
+  assert(script>=candidate.deadline+30*60000,'preparation/publication must fit outside the shared lifecycle');
   assert(total>=script+cleanup+3*60000,'independent cleanup and artifact collection need job time');
   assert.match(job,/before_script: \*runtime-tools/);
   assert.match(job,/after_script:\n\s+- export PATH="\$CI_PROJECT_DIR\/\.ci-cli\/node_modules\/\.bin:\$PATH"\n\s+- system-bootstrapper ci platform "\$CI_PROJECT_DIR" cleanup/);

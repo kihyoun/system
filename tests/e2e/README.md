@@ -118,16 +118,18 @@ readiness gate). Ordinary smoke has a twenty-minute budget; ACME without a GitLa
 upgrade shares one twenty-five-minute budget across all owners. A GitLab upgrade
 without guided previews has sixty minutes. `guidedPreviewAcceptance === true`
 and `gitlabUpgradeAcceptance === true` together select seventy-five minutes;
-adding a prepared `publicUpgrade` fixture selects 110 minutes for its
+adding a prepared `publicUpgrade` fixture selects 360 minutes for its
 additional native public CLI, backup and recovery coverage.
 Each scenario uses one absolute deadline, checked between bounded Docker/HTTP
-operations. Each streamed archive load is capped at
-ten minutes;
-other Docker operations at two minutes and individual HTTP requests at ten
-seconds. An explicit event-loop yield before every Docker operation delivers
-queued signal callbacks. Cancellation is observed between operations, so an
-archive load can delay cooperative cancellation by up to ten minutes. CI must allow
-cleanup after that boundary and retain the receipt for forced termination.
+operations. Normal full-acceptance Docker calls use the remaining shared budget
+instead of a competing transport timeout. Native operation limits still apply.
+Readiness polling, explicit diagnostic calls and owned cleanup keep their separate
+bounds. Ordinary smoke retains the ten-minute archive-load and two-minute default
+Docker limits. Individual HTTP requests retain their existing limits (normally ten
+seconds). An explicit event-loop yield before every Docker operation delivers
+queued signal callbacks. Cancellation is observed between operations, so a
+synchronous call can delay cooperative cancellation until its effective deadline.
+CI must retain the receipt and allow guarded cleanup after forced termination.
 
 From a committed LF checkout (the signed example must validate unchanged):
 
@@ -223,11 +225,11 @@ pinned CLI utilities as System, builds the full System context and the Wizard
 from the validated pinned snapshot, and preloads the pinned service images.
 The job is serialized with a GitLab resource group. Image preparation has a
 separate bounded budget. The combined guided-preview/GitLab-upgrade execution
-with a public-release upgrade fixture has one fixed 110-minute limit, shared
+with a public-release upgrade fixture has one fixed 360-minute limit, shared
 by the original host, restored host, ACME authority and side owners. Without that
 additional fixture the combined scenario retains seventy-five minutes. The runner
-script allows 115 minutes, the separate cleanup allows two minutes and
-the job limit is 120 minutes.
+script allows 390 minutes, the separate cleanup allows ten minutes and
+the job limit is 405 minutes.
 The runner host needs twelve GiB candidate RAM plus its existing platform/job
 headroom and enough free disk for image archives, extraction and GitLab state.
 
@@ -371,7 +373,7 @@ inherits the original candidate's absolute deadline and cancellation. An
 1,500-second lifecycle budget, including both platform hosts and these fixture
 owners. GitLab upgrades use the sixty-minute budget, or seventy-five minutes
 when guided previews are also enabled. Adding the public-release upgrade fixture
-to that combined scenario selects 110 minutes. Ordinary smoke retains 1,200 seconds.
+to that combined scenario selects 360 minutes. Ordinary smoke retains 1,200 seconds.
 Starting a stage or replacing a host never resets the deadline or extends it
 automatically.
 The outer script and CI-job limits must also retain preparation, publication
@@ -445,7 +447,7 @@ The outer receipt copies the bounded migration proof; the detailed migration
 stages belong to the restored candidate receipt. Raw private checkpoints,
 configuration, credentials and database logs are never public CI artifacts.
 
-The successor scenario uses one fixed 110-minute overall candidate budget only
+The successor scenario uses one fixed 360-minute overall candidate budget only
 when both `guidedPreviewAcceptance === true` and `gitlabUpgradeAcceptance === true`
 and a prepared `publicUpgrade` fixture are present. The combined scenario without
 that fixture retains 75 minutes. Both include native shared System setup and Beta deploy/stop with the explicit
@@ -456,13 +458,14 @@ controller restart with durable recovery selectors. These are fixed upper bounds
 not runtime guarantees. An upgrade without guided previews retains its 60-minute budget. Original and
 restored candidates, the ACME authority and all side owners share the original
 absolute deadline; no phase or host switch resets it, and no timeout extends it
-automatically. Native upgrade and rollback readiness each allow 900 seconds, within
-a 1,200-second invocation limit and the same absolute candidate deadline. Readiness
+automatically. Native upgrade and rollback readiness each allow 900 seconds. In full acceptance
+the Docker client uses the remaining shared deadline; smaller scenarios retain
+the 1,200-second invocation limit. Readiness
 still requires completed background migrations; a successful migration batch alone
 does not satisfy that condition. The scenario uses the existing serialized resource
 group and 12-GiB/four-CPU private daemon ceiling; check actual host headroom before
-starting it. The platform job allows a 115-minute script and a separate two-minute cleanup
-within a 120-minute job limit, leaving time for preparation, publication and artifact
+starting it. The platform job allows a 390-minute script and a separate ten-minute cleanup
+within a 405-minute job limit, leaving time for preparation, publication and artifact
 collection. Ordinary smoke and ACME-only lifecycle budgets remain unchanged. A
 passing mocked adapter contract is not a successful real migration; use the
 complete platform CI gate for that proof. Completed subprocess errors and confirmed
